@@ -12,6 +12,7 @@ import {
   PUSH_CLONE_BUFFER_MS,
   tenantKey,
 } from "./credential-push";
+import { parseLegacyTenantPools } from "./legacy-tenant-pools";
 
 const NOW = 1_700_000_000_000;
 const DAY = 24 * 60 * 60_000;
@@ -139,6 +140,50 @@ describe("planCredentialPush", () => {
       );
     });
 
+    it("mints a configured pool from its own connection, record or not", () => {
+      const legacyPools = parseLegacyTenantPools(
+        JSON.stringify([
+          {
+            name: "p",
+            orgId: "org_a",
+            repo: "acme/site",
+            connectionId: "conn_a",
+          },
+          {
+            name: "q",
+            orgId: "org_a",
+            repo: "acme/new",
+            connectionId: "conn_a",
+          },
+        ]),
+      );
+      expect(
+        planCredentialPush({
+          sandboxes: [],
+          pools: [
+            pool("org_a", "https://github.com/acme/site"),
+            pool("org_a", "https://github.com/acme/new"),
+          ],
+          records,
+          legacyPools,
+          now: NOW,
+        }).poolClones,
+      ).toEqual([
+        {
+          tenant: "org_a",
+          repoUrl: "https://github.com/acme/site",
+          connectionId: "conn_a",
+          cloneUrl: "https://github.com/acme/site.git",
+        },
+        {
+          tenant: "org_a",
+          repoUrl: "https://github.com/acme/new",
+          connectionId: "conn_a",
+          cloneUrl: "https://github.com/acme/new.git",
+        },
+      ]);
+    });
+
     it("refuses a pool repo with no record in the pool's org, even when another org has one", () => {
       expect(
         plan(
@@ -185,6 +230,12 @@ describe("mintCredentialPush", () => {
             repoUrl: "https://github.com/acme/site",
             repositoryId: "repo_a",
           },
+          {
+            tenant: "org_a",
+            repoUrl: "https://github.com/acme/app",
+            connectionId: "conn_a",
+            cloneUrl: "https://github.com/acme/app.git",
+          },
         ],
         orgFs: [{ ...A, orgSlug: "acme" }],
         refused: 0,
@@ -206,9 +257,15 @@ describe("mintCredentialPush", () => {
       { cloneUrl: "https://github.com/acme/site.git", connectionId: "conn_a" },
       { bufferMs: PUSH_CLONE_BUFFER_MS },
     ]);
-    expect(asked.at(-1)).toEqual([
-      { cloneUrl: "", repositoryId: "repo_a" },
-      { bufferMs: PUSH_CLONE_BUFFER_MS },
+    expect(asked.slice(-2)).toEqual([
+      [
+        { cloneUrl: "", repositoryId: "repo_a" },
+        { bufferMs: PUSH_CLONE_BUFFER_MS },
+      ],
+      [
+        { cloneUrl: "https://github.com/acme/app.git", connectionId: "conn_a" },
+        { bufferMs: PUSH_CLONE_BUFFER_MS },
+      ],
     ]);
     expect(batches).toEqual([
       {
@@ -230,6 +287,12 @@ describe("mintCredentialPush", () => {
           {
             tenant: "org_a",
             repoUrl: "https://github.com/acme/site",
+            cloneUrl: "https://x-access-token:t@github.com/acme/site.git",
+            expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
+          },
+          {
+            tenant: "org_a",
+            repoUrl: "https://github.com/acme/app",
             cloneUrl: "https://x-access-token:t@github.com/acme/site.git",
             expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
           },
