@@ -19,7 +19,7 @@ import {
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
@@ -832,6 +832,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       : previewOrigin(previewUrl);
 
   /**
+   * The app frame is opaque-origin, so its bridge can only target "*" — and a
+   * frame can navigate itself to a third party. The bridge is therefore live
+   * only while the frame shows the document Studio loaded: a `load` Studio did
+   * not start by setting `src` turns it off (the app's own routing uses
+   * pushState and fires none) until Studio sets `src` again.
+   */
+  const appBridgeRef = useRef({ studioNavigated: true, live: false });
+  const markStudioNavigation = () => {
+    appBridgeRef.current.studioNavigated = true;
+  };
+  /** `editorBridgeOrigin`, or null while the app frame's bridge is off. */
+  const liveBridgeOrigin = () =>
+    appFrame && !appBridgeRef.current.live ? null : editorBridgeOrigin;
+
+  /**
    * Fast Preview in-place editing: while the Blocks panel is open on a Fast
    * Preview (production) frame, edits refresh the frame by POSTing the merged
    * decofile to /live/previews (an in-place DOM swap, no commit, no reload — see
@@ -1090,6 +1105,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
   iframeSrcRef.current = iframeSrc;
 
+  // React (re)sets the frame's `src` in this commit, before its `load` fires.
+  useLayoutEffect(() => {
+    if (appFrame && iframeSrc) markStudioNavigation();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- markStudioNavigation only flips a ref
+  }, [appFrame, iframeSrc, display.iframeBase]);
+
   // Self-heal a stuck iframe: when the dev server is/was unreachable the frame
   // lands on the browser's connection-refused page and fires no load/error
   // event, so nothing reloads it once the server is back. This watchdog retries
@@ -1116,6 +1137,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const iframe = previewIframeRef.current;
     if (iframe && iframe.getAttribute("src") !== iframeSrc) {
       beginNavigation();
+      markStudioNavigation();
       iframe.src = iframeSrc;
     }
   }, [draftPreviewUrl, iframeSrc]);
@@ -1123,7 +1145,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Post the current page's merged decofile to the frame for an in-place render.
   const renderPreviewInPlace = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin || !decofile || !currentPageKey) return;
     const pageBlock = decofile[currentPageKey];
     if (!pageBlock || typeof pageBlock !== "object") return;
@@ -1248,7 +1270,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const handler = (e: MessageEvent) => {
       if (
         allowedOrigin === "*"
-          ? e.source !== previewIframeRef.current?.contentWindow
+          ? e.source !== previewIframeRef.current?.contentWindow ||
+            !appBridgeRef.current.live
           : e.origin !== allowedOrigin
       ) {
         return;
@@ -1321,7 +1344,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const injectCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin) return;
     // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`.
     win.postMessage(
@@ -1346,7 +1369,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const deactivateCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin) return;
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
@@ -1354,7 +1377,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
   const clearEditorHover = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin) return;
     win.postMessage({ type: "cms-editor::clear-hover" }, origin);
     win.postMessage({ type: "visual-editor::clear-hover" }, origin);
@@ -1403,6 +1426,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     iframe.tabIndex = -1;
     iframe.style.pointerEvents = "none";
     iframe.blur();
+    markStudioNavigation();
     reloadIframeOrFallback(iframe, iframeSrcRef.current);
     let fallbackTimer: ReturnType<typeof setTimeout>;
     const restore = () => {
@@ -2165,6 +2189,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // A load reached the frame — cancel the recovery watchdog
                             // and reset its backoff before anything else.
                             iframeRecovery.handleLoad();
+                            // The app bridge stays on only for a load Studio started.
+                            if (appFrame) {
+                              const bridge = appBridgeRef.current;
+                              bridge.live = bridge.studioNavigated;
+                              bridge.studioNavigated = false;
+                            }
                             // The page finished loading — always clear the navigation
                             // indicator first, before any of the early returns below.
                             endNavigation();
