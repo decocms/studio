@@ -9,12 +9,12 @@ import {
   ChevronRight,
   DotsHorizontal,
   EyeOff,
-  Folder,
   Pin02,
   Plus,
   XClose,
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -29,8 +29,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import type { ProjectFolder } from "@decocms/shared/project-sidebar";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { tasksNeedingMe } from "@/components/org-home/daily-pulse";
@@ -119,21 +121,27 @@ function SectionLabel({
   );
 }
 
-/** One project, wherever it sits. */
+/** One project, wherever it sits. Tasks waiting on the member mark it like
+ *  an unread channel, in every section: the name a weight up and a dot. */
 function ProjectRow({
   project,
   isActive,
   onNavigate,
+  waiting = 0,
   trailing,
   children,
 }: {
   project: VirtualMCPEntity;
   isActive: boolean;
   onNavigate?: () => void;
+  waiting?: number;
   trailing?: ReactNode;
   children?: ReactNode;
 }) {
+  const t = useT();
   const navigateToAgent = useNavigateToAgent();
+  const waitingLabel =
+    waiting > 0 ? t("sidebar.projects.waiting", { count: waiting }) : null;
 
   return (
     <SidebarNavRow
@@ -141,7 +149,18 @@ function ProjectRow({
       label={project.title}
       isActive={isActive}
       contextId={`project:${project.id}`}
-      trailing={trailing}
+      trailing={
+        waitingLabel ? (
+          <span
+            title={waitingLabel}
+            className="mr-1 size-2 rounded-full bg-warning group-hover/menu-item:invisible"
+          />
+        ) : (
+          trailing
+        )
+      }
+      className={cn(waitingLabel && "font-semibold")}
+      ariaLabel={waitingLabel ? `${project.title}, ${waitingLabel}` : undefined}
       /** A button, not a link: these resolve a session, so the destination id
        *  is not knowable at render time. */
       onSelect={() => {
@@ -155,8 +174,7 @@ function ProjectRow({
   );
 }
 
-/** A Suggested project: a badge for why, and Pin / Dismiss on hover. A task
- *  waiting on the member cannot be dismissed, only acted on or pinned. */
+/** A Suggested project: the dot or "New" for why, Pin / Dismiss on hover. */
 function SuggestedRow({
   suggestion,
   isActive,
@@ -171,29 +189,16 @@ function SuggestedRow({
   onDismiss: () => void;
 }) {
   const t = useT();
-  const waiting = suggestion.reason === "needs-you";
 
   return (
     <ProjectRow
       project={suggestion.project}
       isActive={isActive}
       onNavigate={onNavigate}
+      waiting={suggestion.waiting}
       trailing={
-        <span className="group-hover/menu-item:invisible">
-          {waiting ? (
-            <span
-              title={t("sidebar.projects.waiting", {
-                count: suggestion.waiting,
-              })}
-              className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-2xs font-medium text-warning-foreground tabular-nums"
-            >
-              {suggestion.waiting}
-            </span>
-          ) : (
-            <span className="text-2xs text-muted-foreground">
-              {t("sidebar.projects.newBadge")}
-            </span>
-          )}
+        <span className="text-2xs text-muted-foreground group-hover/menu-item:invisible">
+          {t("sidebar.projects.newBadge")}
         </span>
       }
     >
@@ -202,11 +207,9 @@ function SuggestedRow({
         <RowAction label={t("sidebar.projects.pin")} onClick={onPin}>
           <Pin02 size={14} />
         </RowAction>
-        {!waiting && (
-          <RowAction label={t("sidebar.projects.dismiss")} onClick={onDismiss}>
-            <XClose size={14} />
-          </RowAction>
-        )}
+        <RowAction label={t("sidebar.projects.dismiss")} onClick={onDismiss}>
+          <XClose size={14} />
+        </RowAction>
       </span>
     </ProjectRow>
   );
@@ -234,51 +237,60 @@ function RowAction({
   );
 }
 
-/** A folder and the projects in it. Open by default: a folder is a grouping,
- *  not a drawer. */
-function FolderRow({
+/** A folder as its own section, Discord-style: the name is a heading at the
+ *  level of Pinned and Suggested, it folds like an accordion, and its projects
+ *  sit flush under it. Open by default. */
+function FolderSection({
   label,
   contextId,
   projects,
   selectedId,
   onNavigate,
+  actions,
+  waitingByProject,
 }: {
   label: string;
   contextId?: string;
   projects: VirtualMCPEntity[];
   selectedId: string | null;
   onNavigate?: () => void;
+  waitingByProject: ReadonlyMap<string, number>;
+  /** The header's own "⋯" and "+", the same on every section. */
+  actions?: ReactNode;
 }) {
   const [open, setOpen] = useState(true);
+  const Chevron = open ? ChevronDown : ChevronRight;
 
   return (
-    <SidebarNavRow
-      icon={
-        <>
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <Folder size={16} />
-        </>
-      }
-      label={label}
-      contextId={contextId}
-      className="text-sidebar-foreground/70"
-      onSelect={() => setOpen((it) => !it)}
-    >
+    <div className="flex flex-col gap-1" data-context-id={contextId}>
+      <div className="flex h-6 items-center justify-between gap-2 px-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((it) => !it)}
+          className="group/folder flex min-w-0 items-center gap-1 rounded-md text-left"
+        >
+          <span className="truncate font-medium text-xs text-muted-foreground transition-colors group-hover/folder:text-sidebar-foreground">
+            {label}
+          </span>
+          <Chevron size={12} className="shrink-0 text-muted-foreground" />
+        </button>
+        {actions}
+      </div>
       {open && projects.length > 0 && (
-        <div className="mt-1 ml-4 border-sidebar-border border-l pl-2">
-          <SidebarMenu className="gap-1">
-            {projects.map((project) => (
-              <ProjectRow
-                key={project.id}
-                project={project}
-                isActive={project.id === selectedId}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </SidebarMenu>
-        </div>
+        <SidebarMenu className="gap-1">
+          {projects.map((project) => (
+            <ProjectRow
+              key={project.id}
+              project={project}
+              isActive={project.id === selectedId}
+              onNavigate={onNavigate}
+              waiting={waitingByProject.get(project.id)}
+            />
+          ))}
+        </SidebarMenu>
       )}
-    </SidebarNavRow>
+    </div>
   );
 }
 
@@ -321,22 +333,36 @@ export function SidebarProjectsTree({
   const selectedId =
     leafPath === FLAT_PROJECT_ROUTE ? (search.project?.trim() ?? null) : null;
 
+  /** Undoing a pin or a hide is still a decision: "dismissed" keeps the
+   *  project in its place instead of making it new to you again. */
   const pin = (id: string, on: boolean) => {
     track(on ? "sidebar_project_pinned" : "sidebar_project_unpinned");
     updatePreferences.mutate((prefs) =>
-      setProjectState(prefs, id, on ? "pinned" : null),
+      setProjectState(prefs, id, on ? "pinned" : "dismissed"),
     );
   };
   const hide = (id: string, on: boolean) => {
     track(on ? "sidebar_project_hidden" : "sidebar_project_shown");
     updatePreferences.mutate((prefs) =>
-      setProjectState(prefs, id, on ? "hidden" : null),
+      setProjectState(prefs, id, on ? "hidden" : "dismissed"),
     );
   };
   const dismiss = (id: string) => {
     track("sidebar_suggestion_dismissed");
     updatePreferences.mutate((prefs) =>
       setProjectState(prefs, id, "dismissed"),
+    );
+  };
+  /** Clearing only takes a project out of Suggested; one with a waiting task
+   *  stays marked in its folder until the task is done. */
+  const dismissableIds = model.suggested.map((s) => s.project.id);
+  const clearSuggested = () => {
+    track("sidebar_suggestions_cleared");
+    updatePreferences.mutate((prefs) =>
+      dismissableIds.reduce(
+        (next, id) => setProjectState(next, id, "dismissed"),
+        prefs,
+      ),
     );
   };
   const hideFolder = (id: string, on: boolean) =>
@@ -384,6 +410,93 @@ export function SidebarProjectsTree({
       ? buildProjectTree(model.loose)
       : { folders: [], loose: model.loose };
 
+  /** Every section header's "⋯" and "+". "Projects" is the first grouping,
+   *  the projects in no folder, so it gets the same controls as a folder. */
+  const sectionActions = (folder: ProjectFolder | null) => (
+    <span className="-mr-1 flex shrink-0 items-center gap-0.5">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={t(
+              folder
+                ? "sidebar.customize.folderOptions"
+                : "sidebar.projects.more",
+            )}
+            title={t(
+              folder
+                ? "sidebar.customize.folderOptions"
+                : "sidebar.projects.more",
+            )}
+            className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
+            <DotsHorizontal size={14} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {folder && (
+            <DropdownMenuItem onSelect={() => hideFolder(folder.id, true)}>
+              {t("sidebar.projects.hideFolder")}
+            </DropdownMenuItem>
+          )}
+          {folder && canManage && (
+            <>
+              <DropdownMenuItem
+                onSelect={() =>
+                  setFolderName({
+                    kind: "rename",
+                    folderId: folder.id,
+                    name: folder.name,
+                  })
+                }
+              >
+                {t("sidebar.projects.renameFolder")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() =>
+                  updateFolders.mutate((folders) =>
+                    deleteFolder(folders, folder.id),
+                  )
+                }
+              >
+                {t("sidebar.projects.deleteFolder")}
+              </DropdownMenuItem>
+            </>
+          )}
+          {folder && <DropdownMenuSeparator />}
+          {canManage && (
+            <DropdownMenuItem
+              onSelect={() => setFolderName({ kind: "create" })}
+            >
+              {t("sidebar.projects.newFolder")}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onSelect={() => setCustomizing(true)}>
+            {t("sidebar.projects.customize")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {canManage && (
+        <button
+          type="button"
+          aria-label={t("projects.home.newProject")}
+          title={t("projects.home.newProject")}
+          /* From a folder, the new project is filed in it. */
+          onClick={() =>
+            openNewProjectDialog(
+              "sidebar",
+              folder ? { onCreated: (id) => move(id, folder.id) } : undefined,
+            )
+          }
+          className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        >
+          <Plus size={14} />
+        </button>
+      )}
+    </span>
+  );
+
   const projectRows = (list: VirtualMCPEntity[]) =>
     list.map((project) => (
       <ProjectRow
@@ -391,6 +504,7 @@ export function SidebarProjectsTree({
         project={project}
         isActive={project.id === selectedId}
         onNavigate={onNavigate}
+        waiting={waitingByProject.get(project.id)}
       />
     ));
 
@@ -415,9 +529,25 @@ export function SidebarProjectsTree({
             )}
 
             {model.suggested.length > 0 && (
-              <div className="flex flex-col gap-1">
+              /* Ruled off above and below: it is a prompt, not a place. */
+              <div className="flex flex-col gap-1 border-y border-sidebar-border py-3">
                 {!collapsed && (
-                  <SectionLabel label={t("sidebar.projects.suggested")} />
+                  <SectionLabel
+                    label={t("sidebar.projects.suggested")}
+                    action={
+                      dismissableIds.length > 0 && (
+                        <button
+                          type="button"
+                          aria-label={t("sidebar.projects.clearSuggested")}
+                          title={t("sidebar.projects.clearSuggested")}
+                          onClick={clearSuggested}
+                          className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        >
+                          <XClose size={12} />
+                        </button>
+                      )
+                    }
+                  />
                 )}
                 <SidebarMenu className="gap-1">
                   {model.suggested.map((suggestion) => (
@@ -434,96 +564,15 @@ export function SidebarProjectsTree({
               </div>
             )}
 
-            <div className="flex flex-col gap-1">
-              {!collapsed && (
-                <SectionLabel
-                  label={t("sidebar.projects.heading")}
-                  action={
-                    <span className="-mr-1 flex items-center gap-0.5">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            aria-label={t("sidebar.projects.more")}
-                            title={t("sidebar.projects.more")}
-                            className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                          >
-                            <DotsHorizontal size={14} />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          {canManage && (
-                            <DropdownMenuItem
-                              onSelect={() => setFolderName({ kind: "create" })}
-                            >
-                              {t("sidebar.projects.newFolder")}
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onSelect={() => setCustomizing(true)}
-                          >
-                            {t("sidebar.projects.customize")}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      {canManage && (
-                        <button
-                          type="button"
-                          aria-label={t("projects.home.newProject")}
-                          title={t("projects.home.newProject")}
-                          onClick={() => openNewProjectDialog("sidebar")}
-                          className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      )}
-                    </span>
-                  }
-                />
-              )}
+            {collapsed ? (
               <SidebarMenu className="gap-1">
-                {collapsed
-                  ? projectRows([
-                      ...model.folders.flatMap((f) => f.projects),
-                      ...model.loose,
-                    ])
-                  : model.folders.map(({ folder, projects: inside }) => (
-                      <FolderRow
-                        key={folder.id}
-                        label={folder.name}
-                        contextId={`folder:${folder.id}`}
-                        projects={inside}
-                        selectedId={selectedId}
-                        onNavigate={onNavigate}
-                      />
-                    ))}
-                {autoTree.folders.map((folder) => (
-                  <FolderRow
-                    key={folder.kind}
-                    label={t(
-                      folder.kind === "code"
-                        ? "sidebar.projects.folderCode"
-                        : "sidebar.projects.folderOther",
-                    )}
-                    projects={folder.projects}
-                    selectedId={selectedId}
-                    onNavigate={onNavigate}
-                  />
-                ))}
-                {!collapsed && projectRows(autoTree.loose)}
-                {hiddenCount > 0 && !collapsed && (
-                  <SidebarNavRow
-                    icon={<EyeOff size={16} />}
-                    label={t("sidebar.projects.hiddenCount", {
-                      count: hiddenCount,
-                    })}
-                    className="text-muted-foreground"
-                    onSelect={() => setCustomizing(true)}
-                  />
-                )}
-                {/* Collapsed, the heading and its `+` are gone, so the rail
-                    keeps the row it always had. */}
-                {canManage && collapsed && (
+                {projectRows([
+                  ...model.folders.flatMap((f) => f.projects),
+                  ...model.loose,
+                ])}
+                {/* Collapsed, the headings and their `+` are gone, so the
+                    rail keeps the row it always had. */}
+                {canManage && (
                   <SidebarNavRow
                     icon={<Plus size={16} />}
                     label={t("projects.home.newProject")}
@@ -531,7 +580,56 @@ export function SidebarProjectsTree({
                   />
                 )}
               </SidebarMenu>
-            </div>
+            ) : (
+              <FolderSection
+                label={t("sidebar.projects.heading")}
+                projects={autoTree.loose}
+                selectedId={selectedId}
+                onNavigate={onNavigate}
+                waitingByProject={waitingByProject}
+                actions={sectionActions(null)}
+              />
+            )}
+
+            {!collapsed &&
+              model.folders.map(({ folder, projects: inside }) => (
+                <FolderSection
+                  key={folder.id}
+                  label={folder.name}
+                  contextId={`folder:${folder.id}`}
+                  projects={inside}
+                  selectedId={selectedId}
+                  onNavigate={onNavigate}
+                  waitingByProject={waitingByProject}
+                  actions={sectionActions(folder)}
+                />
+              ))}
+            {autoTree.folders.map((folder) => (
+              <FolderSection
+                key={folder.kind}
+                label={t(
+                  folder.kind === "code"
+                    ? "sidebar.projects.folderCode"
+                    : "sidebar.projects.folderOther",
+                )}
+                projects={folder.projects}
+                selectedId={selectedId}
+                onNavigate={onNavigate}
+                waitingByProject={waitingByProject}
+              />
+            ))}
+            {hiddenCount > 0 && !collapsed && (
+              <SidebarMenu>
+                <SidebarNavRow
+                  icon={<EyeOff size={16} />}
+                  label={t("sidebar.projects.hiddenCount", {
+                    count: hiddenCount,
+                  })}
+                  className="text-muted-foreground"
+                  onSelect={() => setCustomizing(true)}
+                />
+              </SidebarMenu>
+            )}
           </div>
         </ContextMenuTrigger>
 

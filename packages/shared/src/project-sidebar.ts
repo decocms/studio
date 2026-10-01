@@ -35,7 +35,8 @@ export const SidebarPreferencesSchema = z.object({
   /** In the member's pin order. */
   pinned: ids,
   hidden: ids,
-  /** Closed from Suggested without pinning. */
+  /** Decided on and shown in its place: cleared from Suggested, or unpinned
+   *  or unhidden. Never "new" again. */
   dismissed: ids,
   /** Folders hidden whole, their projects with them. */
   hiddenFolders: ids,

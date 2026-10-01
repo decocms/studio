@@ -110,6 +110,18 @@ describe("buildProjectSidebar", () => {
     expect(ids(dismissed.loose)).toEqual(["new"]);
   });
 
+  test("hiding a new project and showing it again keeps it in its place", () => {
+    let preferences = setProjectState(
+      EMPTY_SIDEBAR_PREFERENCES,
+      "new",
+      "hidden",
+    );
+    preferences = setProjectState(preferences, "new", "dismissed");
+    const model = build({ projects: [project("new", NEW)], preferences });
+    expect(model.suggested).toEqual([]);
+    expect(ids(model.loose)).toEqual(["new"]);
+  });
+
   test("a new project in a hidden folder is not suggested", () => {
     const model = build({
       projects: [project("new", NEW)],
@@ -125,18 +137,40 @@ describe("buildProjectSidebar", () => {
     ).toEqual([]);
   });
 
-  test("a waiting task suggests a project even out of a hide, most waiting first", () => {
+  test("a waiting task suggests a project and keeps it in its folder", () => {
     const model = build({
-      projects: [project("a", OLD), project("b", OLD), project("c", OLD)],
-      folders: [{ id: "f", name: "F", projectIds: ["b"] }],
-      preferences: { hidden: ["a"], hiddenFolders: ["f"] },
+      projects: [project("a", OLD), project("b", OLD)],
+      folders: [{ id: "f", name: "F", projectIds: ["a"] }],
       waiting: { a: 1, b: 3 },
     });
     expect(model.suggested.map((s) => [s.project.id, s.waiting])).toEqual([
       ["b", 3],
       ["a", 1],
     ]);
-    expect(model.hidden).toEqual([]);
+    expect(ids(model.folders[0]?.projects ?? [])).toEqual(["a"]);
+    expect(ids(model.loose)).toEqual(["b"]);
+  });
+
+  test("hiding wins over a waiting task, for the project or its folder", () => {
+    const model = build({
+      projects: [project("a", OLD), project("b", OLD)],
+      folders: [{ id: "f", name: "F", projectIds: ["b"] }],
+      preferences: { hidden: ["a"], hiddenFolders: ["f"] },
+      waiting: { a: 1, b: 1 },
+    });
+    expect(model.suggested).toEqual([]);
+    expect(ids(model.hidden)).toEqual(["a"]);
+  });
+
+  test("a cleared waiting suggestion stays in its folder, still marked", () => {
+    const model = build({
+      projects: [project("a", OLD)],
+      folders: [{ id: "f", name: "F", projectIds: ["a"] }],
+      preferences: { dismissed: ["a"] },
+      waiting: { a: 1 },
+    });
+    expect(model.suggested).toEqual([]);
+    expect(ids(model.folders[0]?.projects ?? [])).toEqual(["a"]);
   });
 
   test("a pinned project with waiting tasks stays in Pinned", () => {

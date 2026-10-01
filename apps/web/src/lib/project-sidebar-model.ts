@@ -2,14 +2,11 @@
  * What the project sidebar shows, from the org's folders and the member's own
  * pins and hides. Pure, so every rule below is a test.
  *
- * A project appears in exactly ONE place:
+ * Where a project shows:
  *
  * 1. Pinned, when the member pinned it. Pinning wins over every hide.
- * 2. Suggested, when it needs the member (a waiting task) or is new to them
- *    (created after they joined, no decision yet). A waiting task surfaces a
- *    project even out of a hidden folder or a hide: that is the point of it.
- * 3. Its folder, or the loose list when it has none.
- * 4. Hidden, when the member hid it or its folder.
+ * 2. Else its folder (or loose), unless hidden; hiding beats a waiting task.
+ * 3. Suggested until cleared: waiting tasks (also in folder) or new (instead).
  *
  * The edit helpers at the bottom each return the next whole document, which
  * the hooks send as is.
@@ -87,9 +84,14 @@ export function buildProjectSidebar({
 
   const pinned = resolve(preferences.pinned);
 
+  const hidden = (id: string) => hiddenIds.has(id) || inHiddenFolder(id);
   const needsYou: SidebarSuggestion[] = projects
     .filter(
-      (p) => !pinnedIds.has(p.id) && (waitingByProject.get(p.id) ?? 0) > 0,
+      (p) =>
+        !pinnedIds.has(p.id) &&
+        !dismissedIds.has(p.id) &&
+        !hidden(p.id) &&
+        (waitingByProject.get(p.id) ?? 0) > 0,
     )
     .map((project) => ({
       project,
@@ -107,8 +109,7 @@ export function buildProjectSidebar({
         Date.parse(p.created_at) > joined &&
         !pinnedIds.has(p.id) &&
         !dismissedIds.has(p.id) &&
-        !hiddenIds.has(p.id) &&
-        !inHiddenFolder(p.id) &&
+        !hidden(p.id) &&
         !needsYouIds.has(p.id),
     )
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -116,10 +117,8 @@ export function buildProjectSidebar({
     .map((project) => ({ project, reason: "new" as const, waiting: 0 }));
 
   const suggested = [...needsYou, ...fresh];
-  const elsewhere = new Set([
-    ...pinnedIds,
-    ...suggested.map((s) => s.project.id),
-  ]);
+  /** Only a "new" suggestion takes the project out of its folder. */
+  const elsewhere = new Set([...pinnedIds, ...fresh.map((s) => s.project.id)]);
   const visible = (p: VirtualMCPEntity) =>
     !elsewhere.has(p.id) && !hiddenIds.has(p.id);
 
