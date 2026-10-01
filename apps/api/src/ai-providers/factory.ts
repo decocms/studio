@@ -1,12 +1,7 @@
 import type { ModelCapability } from "@decocms/shared/sdk";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import type { ModelListCache } from "./model-list-cache";
-import type {
-  StudioProvider,
-  ModelInfo,
-  OpenRouterAPIModel,
-  ProviderAdapter,
-} from "./types";
+import type { StudioProvider, ModelInfo, OpenRouterAPIModel } from "./types";
 import { getProviders } from "./registry";
 import {
   fetchWithTransientRetry,
@@ -228,7 +223,7 @@ export class AIProviderFactory {
         // Re-apply per-request flags (e.g. asyncResearch) on the cached
         // payload — entries cached before the flag existed otherwise leak
         // through stale.
-        return applyProviderFlags(cached, adapter, apiKey);
+        return applyProviderFlags(cached, adapter.create(apiKey));
       }
     }
 
@@ -261,23 +256,18 @@ export class AIProviderFactory {
       await this.cache.set(organizationId, providerId, result);
     }
 
-    return applyProviderFlags(result, adapter, apiKey);
+    return applyProviderFlags(result, provider);
   }
 }
 
 /**
  * Stamp request-time flags onto a model list. Lets us ship new flags
  * (currently `asyncResearch`) without forcing a cache invalidation.
- *
- * Creates a provider once and reuses it across all models — `adapter.create`
- * is cheap (just closure construction) but worth not repeating per model.
  */
 function applyProviderFlags(
   models: ModelInfo[],
-  adapter: ProviderAdapter,
-  apiKey: string,
+  provider: StudioProvider,
 ): ModelInfo[] {
-  const provider = adapter.create(apiKey);
   const asyncResearch = provider.asyncResearch;
   if (!asyncResearch) return models;
   return models.map((m) =>
