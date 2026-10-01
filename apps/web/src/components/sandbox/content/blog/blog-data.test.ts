@@ -1636,6 +1636,18 @@ describe("uniquePostSlug", () => {
     expect(uniquePostSlug("!!!", [])).toMatch(/^post-[0-9a-f]{6}$/);
   });
 
+  test("keeps the suffixed slug inside the 80-character cap", () => {
+    const long = "a".repeat(80);
+    const result = uniquePostSlug(long, [long]);
+    expect(result).toHaveLength(80);
+    expect(result).toBe(`${"a".repeat(78)}-2`);
+  });
+
+  test("does not leave a dangling hyphen after shortening the base", () => {
+    const long = `${"a".repeat(77)}-bb`;
+    expect(uniquePostSlug(long, [long])).toBe(`${"a".repeat(77)}-2`);
+  });
+
   // The slug editor passes an already-slugified value, not a title.
   test("is idempotent on an input that is already a slug", () => {
     expect(uniquePostSlug("linho-no-verao", [])).toBe("linho-no-verao");
