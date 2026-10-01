@@ -66,8 +66,7 @@ export function appBuildPointerUrls(base: string, branch: string): string[] {
   return [`${base}branches/${path}.json`, `${base}default.json`];
 }
 
-const appBuildSrc = (base: string, sha: string) =>
-  `${base}${sha}/studio.html`;
+const appBuildSrc = (base: string, sha: string) => `${base}${sha}/studio.html`;
 
 /**
  * The URL Studio built for a site (`<server>/<page>?__draft=…`, or a
