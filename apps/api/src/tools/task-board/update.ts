@@ -16,6 +16,7 @@ import {
 } from "./schema";
 import { inReviewPhase, isDeliveryLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
+import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
@@ -375,12 +376,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // below so attachTags() picks up the new set either way. Every id must
     // belong to this org — otherwise a caller could attach another org's tag.
     if (input.tagIds !== undefined) {
-      const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
-      const validTagIds = new Set(orgTags.map((t) => t.id));
-      for (const tagId of input.tagIds) {
-        if (!validTagIds.has(tagId)) {
-          throw new Error(`Tag not found: ${tagId}`);
-        }
+      if (input.tagIds.length > 0) {
+        await assertValidTagIds(ctx, organizationId, input.tagIds);
       }
       await ctx.storage.taskBoard.setItemTags(
         input.id,
