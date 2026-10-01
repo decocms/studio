@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   isSecurePreviewUrl,
   resolvePreviewServerUrl,
 } from "@decocms/shared/deco-site-production-url";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { KEYS } from "@/lib/query-keys";
 
 /**
@@ -17,9 +18,12 @@ import { KEYS } from "@/lib/query-keys";
 const WELL_KNOWN_PATH = "/.well-known/deco-preview.json";
 const MAX_HINT_BYTES = 4096;
 const HINT_TIMEOUT_MS = 3000;
+const HINT_POLL_MS = 3000;
 
 const EITRI_PLAY_RE =
   /^eitri:\/\/workspace\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+const EITRI_LOGIN_RE = /^https:\/\/console\.eitri\.tech\/[^\s"<>]*$/;
 
 const PreviewDeviceHintSchema = z.object({
   kind: z.string().min(1).max(64),
@@ -29,6 +33,17 @@ const PreviewDeviceHintSchema = z.object({
    * `eitri://workspace/<uuid>` is dropped, never shown.
    */
   eitriPlay: z.string().regex(EITRI_PLAY_RE).optional().catch(undefined),
+  /**
+   * Dev only: the Eitri Console link `eitri login` printed, while the CLI next
+   * to the preview server waits for the developer to sign in. Only
+   * `https://console.eitri.tech/...` is kept.
+   */
+  eitriLogin: z
+    .string()
+    .regex(EITRI_LOGIN_RE)
+    .max(512)
+    .optional()
+    .catch(undefined),
 });
 
 export type PreviewDeviceHint = z.infer<typeof PreviewDeviceHintSchema>;
@@ -39,9 +54,16 @@ export type PreviewDeviceHint = z.infer<typeof PreviewDeviceHintSchema>;
  */
 export function previewDeviceHintBase(input: {
   localPreviewUrl: string | null | undefined;
+  /** The sandbox dev server the canvas renders, when the project runs one. */
+  sandboxPreviewUrl?: string | null | undefined;
   previewServerUrl: string | null | undefined;
 }): string | null {
-  return input.localPreviewUrl || input.previewServerUrl || null;
+  return (
+    input.localPreviewUrl ||
+    input.sandboxPreviewUrl ||
+    input.previewServerUrl ||
+    null
+  );
 }
 
 /** The hint URL for a preview server, or null when Studio must not ask it. */
@@ -100,13 +122,32 @@ async function fetchPreviewDeviceHint(
 /** One read per preview-server origin; `null` skips the request entirely. */
 export function usePreviewDeviceHint(
   previewServerUrl: string | null | undefined,
+  /** Re-read every few seconds (e.g. while "View on phone" waits for the QR). */
+  poll = false,
+  /** Remember the answer for this project, so labels outside the canvas agree. */
+  rememberForProjectId?: string | null,
 ): PreviewDeviceHint | null {
   const url = previewDeviceHintUrl(previewServerUrl);
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: KEYS.previewDeviceHint(url ?? ""),
-    queryFn: () => fetchPreviewDeviceHint(url!),
+    queryFn: async () => {
+      const hint = await fetchPreviewDeviceHint(url!);
+      if (rememberForProjectId) {
+        const key = rendersAppStorageKey(rememberForProjectId);
+        const isApp = hintRendersApp(hint);
+        try {
+          localStorage.setItem(key, JSON.stringify(isApp));
+        } catch {
+          // storage unavailable: the label just follows the hint
+        }
+        queryClient.setQueryData(["localStorage", key], isApp);
+      }
+      return hint;
+    },
     enabled: !!url,
-    staleTime: 10 * 60 * 1000,
+    staleTime: poll ? 0 : 10 * 60 * 1000,
+    refetchInterval: poll ? HINT_POLL_MS : false,
     retry: false,
   });
   return url ? (data ?? null) : null;
@@ -136,5 +177,14 @@ export function useProjectRendersApp(
   const hint = usePreviewDeviceHint(
     previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
   );
-  return hintRendersApp(hint);
+  // The sandbox URL is only known inside the canvas; it remembers the answer
+  // here so the sidebar and header agree even before (or without) a canvas.
+  const [rememberedApp] = useLocalStorage<boolean>(
+    rendersAppStorageKey(project?.id),
+    false,
+  );
+  return hintRendersApp(hint) || (!!project?.id && rememberedApp);
 }
+
+export const rendersAppStorageKey = (projectId: string | null | undefined) =>
+  `deco:project-renders-app:${projectId ?? ""}`;

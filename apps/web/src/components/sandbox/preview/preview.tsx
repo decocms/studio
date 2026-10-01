@@ -514,12 +514,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Ask the rendering server (Local tunnel, else the preview server) what it
   // renders. An app opens on mobile and repaints edits in place: it doesn't
   // run the deco runtime, so the commit-and-reload draft path shows stale blocks.
+  const previewHintBase = previewDeviceHintBase({
+    localPreviewUrl,
+    sandboxPreviewUrl: lifecycle.previewUrl,
+    previewServerUrl,
+  });
   const previewDeviceHint = usePreviewDeviceHint(
-    previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
+    previewHintBase,
+    false,
+    virtualMcpId,
   );
   const rendersApp = hintRendersApp(previewDeviceHint);
-  const previewDeviceSize: PreviewDeviceSize =
-    chosenDeviceSize ?? (rendersApp ? "mobile" : "desktop");
+  // An app is a phone: always mobile, no device toggle. Sites keep the toggle.
+  const previewDeviceSize: PreviewDeviceSize = rendersApp
+    ? "mobile"
+    : (chosenDeviceSize ?? "desktop");
   const fastPreviewEnabled =
     !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
@@ -1748,25 +1757,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewNavigation =
     showPreviewToolbar || contentEditingEnabled ? (
       <div className="flex min-w-0 items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-            >
-              {previewDeviceSize === "mobile" ? (
-                <Phone02 size={16} />
-              ) : previewDeviceSize === "tablet" ? (
-                <Tablet01 size={16} />
-              ) : (
-                <Monitor04 size={16} />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-          </TooltipContent>
-        </Tooltip>
+        {!rendersApp && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={handleDeviceToggle}
+                aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+              >
+                {previewDeviceSize === "mobile" ? (
+                  <Phone02 size={16} />
+                ) : previewDeviceSize === "tablet" ? (
+                  <Tablet01 size={16} />
+                ) : (
+                  <Monitor04 size={16} />
+                )}
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
@@ -1775,7 +1786,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
-          <AppPreviewButton hint={previewDeviceHint} />
+          <AppPreviewButton
+            hint={previewDeviceHint}
+            hintBase={previewHintBase}
+          />
         </div>
       </div>
     ) : null;

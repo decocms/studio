@@ -739,7 +739,10 @@ export const sandbox = {
   "sandbox.preview.appPreview.eitriPlayTrouble":
     "Nada mudou no celular? O eitri app start ao lado do servidor de preview precisa estar rodando, e as edições só seguem com o editor de blocos aberto.",
   "sandbox.preview.appPreview.noEitriPlay":
-    "Para ver no celular, rode este comando no repo do app, ao lado do servidor de preview, e recarregue esta página:",
+    "Preparando o app para o celular… O QR aparece aqui sozinho. Se demorar, confira o terminal eitri:play ou rode no repo do app:",
+  "sandbox.preview.appPreview.eitriLoginDescription":
+    "Entre na sua conta Eitri para gerar o QR. Depois do login, o QR aparece aqui sozinho.",
+  "sandbox.preview.appPreview.eitriLogin": "Entrar na Eitri",
   "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",

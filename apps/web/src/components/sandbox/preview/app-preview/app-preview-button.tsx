@@ -15,7 +15,10 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useT } from "@/i18n/use-t.ts";
-import type { PreviewDeviceHint } from "../preview-device-hint";
+import {
+  type PreviewDeviceHint,
+  usePreviewDeviceHint,
+} from "../preview-device-hint";
 
 /**
  * "View on phone" for app preview servers (`kind: "eitri-app"`): the single
@@ -23,10 +26,20 @@ import type { PreviewDeviceHint } from "../preview-device-hint";
  * receives this tab's edits), or how to start one. The store app has no
  * preview mode, so there is no store QR.
  */
-export function AppPreviewButton({ hint }: { hint: PreviewDeviceHint | null }) {
+export function AppPreviewButton({
+  hint: cachedHint,
+  hintBase,
+}: {
+  hint: PreviewDeviceHint | null;
+  /** Server the hint came from; re-read while the dialog is open. */
+  hintBase: string | null;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  // While open, poll so the sign-in link and then the QR show up by themselves.
+  const hint = usePreviewDeviceHint(hintBase, open) ?? cachedHint;
   if (hint?.kind !== "eitri-app") return null;
+  const status = hint.eitriPlay ? "qr" : hint.eitriLogin ? "login" : "waiting";
   const label = t("sandbox.preview.appPreview.button");
   return (
     <>
@@ -44,9 +57,11 @@ export function AppPreviewButton({ hint }: { hint: PreviewDeviceHint | null }) {
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
               {t(
-                hint.eitriPlay
+                status === "qr"
                   ? "sandbox.preview.appPreview.eitriPlayDescription"
-                  : "sandbox.preview.appPreview.noEitriPlay",
+                  : status === "login"
+                    ? "sandbox.preview.appPreview.eitriLoginDescription"
+                    : "sandbox.preview.appPreview.noEitriPlay",
               )}
             </DialogDescription>
           </DialogHeader>
@@ -60,6 +75,15 @@ export function AppPreviewButton({ hint }: { hint: PreviewDeviceHint | null }) {
                 {t("sandbox.preview.appPreview.eitriPlayTrouble")}
               </p>
             </div>
+          ) : status === "login" ? (
+            <a
+              href={hint.eitriLogin}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+            >
+              {t("sandbox.preview.appPreview.eitriLogin")}
+            </a>
           ) : (
             <code className="rounded-md bg-muted px-3 py-2 text-sm">
               eitri app start -p
