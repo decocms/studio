@@ -733,7 +733,13 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.valueForParam": "Valor de {label}",
+  "sandbox.preview.appBuildPending":
+    "Código novo ainda compilando — mostrando a versão anterior.",
   "sandbox.preview.appPreview.button": "Ver no celular",
+  "sandbox.preview.appPreview.previewLinkDescription":
+    "Escaneie com a câmera do celular (com o app de Dev da loja instalado). Abre o rascunho deste branch; as edições salvas chegam em alguns segundos.",
+  "sandbox.preview.appPreview.previewLinkTrouble":
+    "Não abriu? Instale o app de Dev da loja pela Eitri. O link vale 6 horas; abra este diálogo de novo para um novo.",
   "sandbox.preview.appPreview.eitriPlayDescription":
     "Escaneie no Eitri Play. As edições desta aba aparecem no aparelho em alguns segundos.",
   "sandbox.preview.appPreview.eitriPlayTrouble":

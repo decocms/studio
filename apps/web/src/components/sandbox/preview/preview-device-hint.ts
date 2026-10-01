@@ -7,6 +7,7 @@ import {
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { KEYS } from "@/lib/query-keys";
+import { appPreviewBuildBase } from "./app-preview/app-preview-build";
 
 /**
  * Preview-server hint: a preview server that renders a mobile app on the web
@@ -174,8 +175,16 @@ export function useProjectRendersApp(
   const previewServerUrl = project
     ? resolvePreviewServerUrl(project.metadata)
     : null;
+  // A preview server that is this Studio's app-build folder is an app already.
+  const appBuild = !!appPreviewBuildBase(
+    previewServerUrl,
+    window.location.origin,
+  );
   const hint = usePreviewDeviceHint(
-    previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
+    previewDeviceHintBase({
+      localPreviewUrl,
+      previewServerUrl: appBuild ? null : previewServerUrl,
+    }),
   );
   // The sandbox URL is only known inside the canvas; it remembers the answer
   // here so the sidebar and header agree even before (or without) a canvas.
@@ -183,7 +192,7 @@ export function useProjectRendersApp(
     rendersAppStorageKey(project?.id),
     false,
   );
-  return hintRendersApp(hint) || (!!project?.id && rememberedApp);
+  return appBuild || hintRendersApp(hint) || (!!project?.id && rememberedApp);
 }
 
 export const rendersAppStorageKey = (projectId: string | null | undefined) =>

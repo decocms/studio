@@ -767,6 +767,9 @@ export const KEYS = {
   // per origin) — the file is public, so it is shared across projects.
   previewDeviceHint: (hintUrl: string) =>
     ["preview-device-hint", hintUrl] as const,
+  // App preview build pointer (CI-published) for one project folder + branch.
+  appPreviewBuild: (base: string, branch: string) =>
+    ["app-preview-build", base, branch] as const,
   // The repo's committed `deno.json`, read for its pinned deco-apps version.
   denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["deno-json", orgSlug, virtualMcpId, branch] as const,

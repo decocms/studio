@@ -29,8 +29,10 @@ import { resolvePreviewDisplay } from "./preview-display";
 import {
   hintRendersApp,
   previewDeviceHintBase,
+  rendersAppStorageKey,
   usePreviewDeviceHint,
 } from "./preview-device-hint";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -82,7 +84,10 @@ import {
   resolveSectionPreviewBase,
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
-import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
+import {
+  useDraftPointer,
+  useFastPreviewDraftUrl,
+} from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { toast } from "sonner";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
@@ -101,6 +106,12 @@ import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
 import { AppPreviewButton } from "./app-preview/app-preview-button";
+import {
+  appPreviewBuildBase,
+  fillPreviewLink,
+  toAppBuildSrc,
+  useAppPreviewBuild,
+} from "./app-preview/app-preview-build";
 import {
   useSandboxEvents,
   useSandboxReloadHandler,
@@ -514,17 +525,36 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Ask the rendering server (Local tunnel, else the preview server) what it
   // renders. An app opens on mobile and repaints edits in place: it doesn't
   // run the deco runtime, so the commit-and-reload draft path shows stale blocks.
+  // An app whose CI publishes preview builds to this Studio: the canvas opens
+  // the branch's build (no sandbox); the build's pointer is the app signal.
+  const appBuildBase = localPreviewUrl
+    ? null
+    : appPreviewBuildBase(previewServerUrl, window.location.origin);
+  const appBuild = useAppPreviewBuild(appBuildBase, branch ?? null);
+  // "View on phone": the app's preview link carrying this branch's draft pointer.
+  const appDraftPointer = useDraftPointer(
+    appBuild && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
+  );
+  const appPreviewLink = fillPreviewLink(
+    appBuild?.previewLink,
+    appDraftPointer,
+  );
   const previewHintBase = previewDeviceHintBase({
     localPreviewUrl,
     sandboxPreviewUrl: lifecycle.previewUrl,
-    previewServerUrl,
+    previewServerUrl: appBuildBase ? null : previewServerUrl,
   });
   const previewDeviceHint = usePreviewDeviceHint(
     previewHintBase,
     false,
     virtualMcpId,
   );
-  const rendersApp = hintRendersApp(previewDeviceHint);
+  const rendersApp = hintRendersApp(previewDeviceHint) || !!appBuild;
+  // Remembered from an earlier hint: "View on phone" shows before this one loads.
+  const [rememberedApp] = useLocalStorage<boolean>(
+    rendersAppStorageKey(virtualMcpId),
+    false,
+  );
   // An app is a phone: always mobile, no device toggle. Sites keep the toggle.
   const previewDeviceSize: PreviewDeviceSize = rendersApp
     ? "mobile"
@@ -792,8 +822,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     registeredPreviewOrigin === externalPreviewOrigin;
 
   // Origin of the in-iframe editor bridge — sandbox proxy / Local tunnel, or the site's own origin under Fast Preview.
-  const editorBridgeOrigin =
-    display.mode === "production"
+  // An app build renders in a sandboxed frame with an opaque origin: messages
+  // can only target "*", and replies are matched by source window instead.
+  const appFrame = !!appBuild && display.mode === "production";
+  const editorBridgeOrigin = appFrame
+    ? "*"
+    : display.mode === "production"
       ? productionOrigin
       : previewOrigin(previewUrl);
 
@@ -831,7 +865,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- persist the frozen/relatched pin for the next render's decision
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
-  const iframeSrc = withDecoFBT(
+  const siteSrc = withDecoFBT(
     display.mode === "sandbox" && externalOriginReady
       ? withVariantMatcherOverride(
           withDeviceHint(
@@ -860,6 +894,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           )
         : null,
   );
+  // Same page + draft pointer, aimed at the app build (see app-preview-build.ts).
+  // Nothing while its pointer loads: the folder URL alone is not a page.
+  const iframeSrc = appBuildBase
+    ? appFrame
+      ? toAppBuildSrc(appBuild.src, siteSrc)
+      : null
+    : siteSrc;
 
   /** Registers `externalPreviewOrigin` with the native shell before the iframe navigates there (see `externalOriginReady`). */
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
@@ -905,12 +946,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       : null);
   const openInNewTabUrl =
     display.mode === "production"
-      ? productionOpenTabBase
-        ? withVariantMatcherOverride(
-            productionOpenTabBase,
-            workspace.state.variantOverride ?? [],
-          )
-        : null
+      ? appFrame
+        ? iframeSrc
+        : productionOpenTabBase
+          ? withVariantMatcherOverride(
+              productionOpenTabBase,
+              workspace.state.variantOverride ?? [],
+            )
+          : null
       : (iframeSrc ?? display.iframeBase);
 
   const handleOpenPreview = async () => {
@@ -1085,7 +1128,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const pageBlock = decofile[currentPageKey];
     if (!pageBlock || typeof pageBlock !== "object") return;
     const req = buildPageRenderRequest({
-      previewBaseUrl: origin,
+      // The app build answers the render inside its own frame; any secure base works.
+      previewBaseUrl: origin === "*" ? window.location.origin : origin,
       pageBlock: pageBlock as Record<string, unknown>,
       decofile: decofile as Record<string, unknown>,
       path: resolvedPath,
@@ -1202,7 +1246,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const allowedOrigin = editorBridgeOrigin;
     if (!allowedOrigin) return;
     const handler = (e: MessageEvent) => {
-      if (e.origin !== allowedOrigin) return;
+      if (
+        allowedOrigin === "*"
+          ? e.source !== previewIframeRef.current?.contentWindow
+          : e.origin !== allowedOrigin
+      ) {
+        return;
+      }
       if (e.data?.type === "visual-editor::element-clicked") {
         const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success) setVisualElement(result.data);
@@ -1789,6 +1839,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <AppPreviewButton
             hint={previewDeviceHint}
             hintBase={previewHintBase}
+            previewLink={appPreviewLink}
+            isApp={rendersApp || rememberedApp}
           />
         </div>
       </div>
@@ -2048,6 +2100,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
+                    {appFrame && appBuild.pending && (
+                      <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground shadow-sm pointer-events-none select-none">
+                        <Spinner className="size-3.5 shrink-0" />
+                        {t("sandbox.preview.appBuildPending")}
+                      </div>
+                    )}
+
                     {effectiveEditingMode === "visual" && !visualElement && (
                       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
                         <CursorClick01 size={12} />
@@ -2087,6 +2146,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           key={display.iframeBase}
                           ref={previewIframeRef}
                           src={iframeSrc}
+                          // App builds are served from Studio's own origin: the
+                          // sandbox gives them an opaque one (no Studio cookies/APIs).
+                          sandbox={appFrame ? "allow-scripts" : undefined}
                           referrerPolicy="strict-origin-when-cross-origin"
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}

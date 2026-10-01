@@ -708,7 +708,13 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
+  "sandbox.preview.appBuildPending":
+    "New code is still building — showing the previous build.",
   "sandbox.preview.appPreview.button": "View on phone",
+  "sandbox.preview.appPreview.previewLinkDescription":
+    "Scan it with the phone camera (the store's dev app must be installed). It opens this branch's draft; saved edits show up in a few seconds.",
+  "sandbox.preview.appPreview.previewLinkTrouble":
+    "Nothing opened? Install the store's dev app from Eitri. The link expires in 6 hours; reopen this dialog for a fresh one.",
   "sandbox.preview.appPreview.eitriPlayDescription":
     "Scan it in Eitri Play. This tab's edits show up on the device in a few seconds.",
   "sandbox.preview.appPreview.eitriPlayTrouble":
