@@ -28,6 +28,16 @@ import { TASK_BOARD_ITEM_UPDATE } from "@/tools/task-board/update";
 import { TASK_BOARD_ITEM_DELETE } from "@/tools/task-board/delete";
 import { TASK_BOARD_ITEM_PRS_GET } from "@/tools/task-board/prs-get";
 import {
+  TASK_BOARD_PROMPT_DELETE,
+  TASK_BOARD_PROMPT_LIST,
+  TASK_BOARD_PROMPT_UPSERT,
+} from "@/tools/task-board/prompts";
+import {
+  TASK_BOARD_AUTOMATION_DELETE,
+  TASK_BOARD_AUTOMATION_LIST,
+  TASK_BOARD_AUTOMATION_UPSERT,
+} from "@/tools/task-board/automations";
+import {
   TASK_BOARD_ADMIN_ORG_LIST,
   TASK_BOARD_COST,
   TASK_BOARD_DELIVERY,
@@ -75,6 +85,13 @@ export function createTaskBoardTools(
     TASK_BOARD_ITEM_UPDATE: wrap(TASK_BOARD_ITEM_UPDATE),
     TASK_BOARD_ITEM_DELETE: wrap(TASK_BOARD_ITEM_DELETE),
     TASK_BOARD_ITEM_PRS_GET: wrap(TASK_BOARD_ITEM_PRS_GET),
+    // Column rules, so the agent can set the board up with the user (the `task-board-setup` skill).
+    TASK_BOARD_PROMPT_LIST: wrap(TASK_BOARD_PROMPT_LIST),
+    TASK_BOARD_PROMPT_UPSERT: wrap(TASK_BOARD_PROMPT_UPSERT),
+    TASK_BOARD_PROMPT_DELETE: wrap(TASK_BOARD_PROMPT_DELETE),
+    TASK_BOARD_AUTOMATION_LIST: wrap(TASK_BOARD_AUTOMATION_LIST),
+    TASK_BOARD_AUTOMATION_UPSERT: wrap(TASK_BOARD_AUTOMATION_UPSERT),
+    TASK_BOARD_AUTOMATION_DELETE: wrap(TASK_BOARD_AUTOMATION_DELETE),
     // The board's analytics, and the orgs a cross-org read may name.
     // Without these the agent cannot answer the questions the two Grafana
     // dashboards answer, and cannot discover the orgs the `org` parameter on

@@ -1809,6 +1809,7 @@ export interface TaskBoardPromptTable {
   organization_id: string;
   column_key: string | null;
   prompt: string;
+  skills: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

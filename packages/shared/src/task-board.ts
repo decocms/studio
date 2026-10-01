@@ -505,6 +505,9 @@ export function outstandingReviewFeedback(
  */
 export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
 
+/** Org-scoped SSE event: a board prompt scope or column automation changed; `data` is `{ columnKey }`. */
+export const TASK_BOARD_RULES_UPDATED_EVENT = "task-board.rules.updated";
+
 /**
  * Org-scoped SSE event pushed on `sseHub` whenever a task board item is deleted.
  * Its `data` is `{ id }`; the web board drops that item from its react-query
