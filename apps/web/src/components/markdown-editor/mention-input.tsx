@@ -108,7 +108,11 @@ export function MentionInput({
       const url = URL.createObjectURL(file);
       drafts.set(url, file);
       pos = isImageFile(file)
-        ? insertUpload(view, pos, "image", { src: url, alt: file.name })
+        ? insertUpload(view, pos, "image", {
+            src: url,
+            // The alt lands in `![alt](…)` unescaped, so a bracket would end it early.
+            alt: file.name.replace(/[[\]]/g, ""),
+          })
         : insertUpload(view, pos, "attachment", { href: url, name: file.name });
     }
   };

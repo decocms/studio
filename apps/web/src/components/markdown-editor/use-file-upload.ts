@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
+import { IMAGE_EXTENSION_BY_TYPE } from "@decocms/shared/task-comment-attachments";
 import { FILE_DIR, IMAGE_DIR, UPLOAD_VOLUME } from "./uploads";
 
 /** Images are inlined as a preview, so an oversized one is also a huge render. */
@@ -9,19 +10,10 @@ const MAX_IMAGE_MB = 10;
 /** Attachments are only ever downloaded — a deck or a spec can be bigger. */
 const MAX_FILE_MB = 25;
 
-const EXT_BY_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/avif": ".avif",
-  "image/svg+xml": ".svg",
-};
-
 function fileExtension(file: File): string {
   return (
     file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
-    EXT_BY_MIME[file.type] ??
+    IMAGE_EXTENSION_BY_TYPE[file.type] ??
     // Nothing to go on: an image still needs an extension for the read route to
     // serve it back as one, while an attachment is only ever downloaded.
     (isImageFile(file) ? ".png" : "")

@@ -16,8 +16,12 @@ interface CtUploads {
 declare global {
   interface Window {
     __ctUploads?: CtUploads;
+    /** Most uploads in flight at once, so a spec can see the send is bounded. */
+    __ctUploadPeak?: number;
   }
 }
+
+let inFlight = 0;
 
 function record(): CtUploads {
   window.__ctUploads ??= { uploaded: [], removed: [] };
@@ -31,6 +35,10 @@ export function useCommentAttachments(taskId: string) {
       const uploads = record();
       const path = `task-comments/${taskId}/u${uploads.uploaded.length}/${file.name}`;
       uploads.uploaded.push(path);
+      inFlight++;
+      window.__ctUploadPeak = Math.max(window.__ctUploadPeak ?? 0, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlight--;
       return {
         path,
         url: `/api/acme/fs/uploads/read?${new URLSearchParams({ path })}`,

@@ -250,6 +250,63 @@ test("pasting spreadsheet cells pastes their text, not the picture beside it", a
   expect((await uploads(page)).uploaded).toEqual([]);
 });
 
+test("an image whose name has brackets still posts as an image", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await pasteFile(input, "v2]final.png", "image/png");
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      "![v2final.png](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fv2%5Dfinal.png)",
+    ]),
+  );
+});
+
+test("undo after sending brings nothing of the sent draft back", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await pasteFile(input, "shot.png", "image/png");
+  await component.getByLabel("Remove image").click();
+  await input.pressSequentially("text only");
+  await component.getByLabel("Send").last().click();
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify(["text only"]),
+  );
+
+  await input.press("ControlOrMeta+z");
+  await input.press("ControlOrMeta+z");
+
+  await expect(input).toHaveText("");
+  await expect(component.getByRole("img", { name: "shot.png" })).toHaveCount(0);
+  await expect(component.getByLabel("Send").last()).toBeDisabled();
+});
+
+test("many files upload a few at a time", async ({ mount, page }) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  await component.locator('input[type="file"]').setInputFiles(
+    Array.from({ length: 10 }, (_, i) => ({
+      name: `doc-${i}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`doc ${i}`),
+    })),
+  );
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toContainText("doc-9.txt");
+  expect((await uploads(page)).uploaded).toHaveLength(10);
+  expect(await page.evaluate(() => window.__ctUploadPeak)).toBeLessThanOrEqual(
+    4,
+  );
+});
+
 test("a file dropped on the composer joins the text and stays out of the chat's drop zone", async ({
   mount,
   page,

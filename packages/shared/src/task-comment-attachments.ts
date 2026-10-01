@@ -28,18 +28,33 @@ function isSafeSegment(segment: string): boolean {
 
 const MAX_STORED_NAME_LENGTH = 100;
 
+/** The read route serves a file by its extension, so an image needs one to render. */
+export const IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/avif": ".avif",
+  "image/svg+xml": ".svg",
+};
+
+const EXTENSION = /\.[A-Za-z0-9]{1,8}$/;
+
 /**
  * The file name as the Library shows it. The chip keeps the original name from
  * the link text, so this only has to stay readable and safe to put in a path.
  */
-function storedName(fileName: string): string {
-  const safe = fileName
+function storedName(fileName: string, type: string): string {
+  const cleaned = fileName
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .replace(/[^A-Za-z0-9._-]+/g, "-");
-  if (!isSafeSegment(safe)) return "file";
+  const base = isSafeSegment(cleaned) ? cleaned : "file";
+  const safe = EXTENSION.test(base)
+    ? base
+    : base + (IMAGE_EXTENSION_BY_TYPE[type] ?? "");
   if (safe.length <= MAX_STORED_NAME_LENGTH) return safe;
-  const extension = safe.match(/\.[A-Za-z0-9]{1,8}$/)?.[0] ?? "";
+  const extension = safe.match(EXTENSION)?.[0] ?? "";
   return safe.slice(0, MAX_STORED_NAME_LENGTH - extension.length) + extension;
 }
 
@@ -47,8 +62,9 @@ function storedName(fileName: string): string {
 export function commentAttachmentPath(
   taskId: string,
   fileName: string,
+  type = "",
 ): string {
-  return `${commentAttachmentDir(taskId)}/${crypto.randomUUID()}/${storedName(fileName)}`;
+  return `${commentAttachmentDir(taskId)}/${crypto.randomUUID()}/${storedName(fileName, type)}`;
 }
 
 /** The folder an upload sits alone in, so removing it removes the upload. */

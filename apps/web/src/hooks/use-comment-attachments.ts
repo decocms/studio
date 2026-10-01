@@ -19,7 +19,7 @@ export function useCommentAttachments(taskId: string) {
   return {
     /** Upload one file and say where it went; throws when it didn't land. */
     upload: async (file: File) => {
-      const path = commentAttachmentPath(taskId, file.name);
+      const path = commentAttachmentPath(taskId, file.name, file.type);
       const dir = commentAttachmentFolder(path);
       await upload.mutateAsync({
         dir,

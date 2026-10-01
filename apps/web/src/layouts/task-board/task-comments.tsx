@@ -29,6 +29,7 @@ import {
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { mapBounded } from "@decocms/shared/std";
 import { useCommentAttachments } from "@/hooks/use-comment-attachments";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
@@ -195,6 +196,9 @@ function AuthorGlyph({ author }: { author: CommentAuthor }) {
  */
 type SubmitComment = (body: string) => void | boolean | Promise<void | boolean>;
 
+/** A batch of screenshots must not open that many uploads at once. */
+const UPLOAD_CONCURRENCY = 4;
+
 export function NewCommentComposer({
   taskId,
   onSubmit,
@@ -230,15 +234,20 @@ function CommentComposer({
   const send = async (markdown: string, attached: DraftAttachment[]) => {
     setSending(true);
     try {
-      const results = await Promise.allSettled(
-        attached.map(async (draft) => ({
-          draft,
-          ...(landed.get(draft.url) ?? (await attachments.upload(draft.file))),
-        })),
+      const results = await mapBounded(
+        attached,
+        UPLOAD_CONCURRENCY,
+        async (draft) => {
+          try {
+            const upload =
+              landed.get(draft.url) ?? (await attachments.upload(draft.file));
+            return { draft, ...upload };
+          } catch {
+            return null;
+          }
+        },
       );
-      const uploaded = results.flatMap((r) =>
-        r.status === "fulfilled" ? [r.value] : [],
-      );
+      const uploaded = results.filter((r) => r !== null);
       const failed = attached.find(
         (draft) => !uploaded.some((u) => u.draft === draft),
       );

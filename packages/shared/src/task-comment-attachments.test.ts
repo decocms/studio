@@ -119,6 +119,20 @@ describe("commentAttachmentPath", () => {
     },
   );
 
+  test.each([
+    ["abc", "image/jpeg", "abc.jpg"],
+    ["", "image/png", "file.png"],
+    ["shot.webp", "image/png", "shot.webp"],
+    ["notes", "text/plain", "notes"],
+  ])(
+    "an image named %p without an extension gets one from its type (%p), so it is served as an image",
+    (name, type, stored) => {
+      expect(commentAttachmentPath(TASK, name, type).split("/").at(-1)).toBe(
+        stored,
+      );
+    },
+  );
+
   test("a very long name is shortened but keeps its extension", () => {
     const stored = commentAttachmentPath(TASK, `${"a".repeat(300)}.pdf`)
       .split("/")
