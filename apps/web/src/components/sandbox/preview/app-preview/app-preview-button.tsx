@@ -86,7 +86,7 @@ export function AppPreviewButton({
             <div className="flex min-w-0 flex-col items-center gap-3">
               {/* QR codes need a light quiet zone to scan, in either theme. */}
               <div className="rounded-md bg-white p-3">
-                <QRCode value={qr} size={176} />
+                <QRCode value={qr} size={208} />
               </div>
               <p className="w-full text-xs text-muted-foreground">
                 {t(
