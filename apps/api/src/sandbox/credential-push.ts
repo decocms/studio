@@ -21,6 +21,10 @@ import { normalizeRepoUrl } from "@decocms/sandbox/provider/agent-sandbox";
 import { cloneUrlFor, parseRepoUrl } from "@decocms/shared/git-providers";
 import { mapBounded } from "@decocms/shared/std";
 import { ORG_FS_KEY_TTL_MS } from "@/file-storage/mount/provisioning";
+import {
+  type LegacyTenantPool,
+  legacyPoolMintRequest,
+} from "@/sandbox/legacy-tenant-pools";
 import type { Database as DatabaseSchema } from "@/storage/types";
 
 /** Every pushed clone token has at least this much life left. */
@@ -65,7 +69,12 @@ export interface CredentialRecords {
 
 export interface CredentialPushPlan {
   clones: Array<{ tenant: Tenant; repo: RepoIdentity }>;
-  poolClones: Array<{ tenant: string; repoUrl: string; repositoryId: string }>;
+  poolClones: Array<
+    { tenant: string; repoUrl: string } & (
+      | { repositoryId: string }
+      | { connectionId: string; cloneUrl: string }
+    )
+  >;
   orgFs: Array<Tenant & { orgSlug: string }>;
   /** Listed tenants or repos Studio's records do not authorize. */
   refused: number;
@@ -95,6 +104,8 @@ export function planCredentialPush(input: {
   sandboxes: readonly SandboxListing[];
   pools: readonly ListedTenantPool[];
   records: CredentialRecords;
+  /** `STUDIO_SANDBOX_TENANT_POOLS`, which names each pool's connection. */
+  legacyPools?: readonly LegacyTenantPool[];
   now: number;
 }): CredentialPushPlan {
   const { records, now } = input;
@@ -106,10 +117,25 @@ export function planCredentialPush(input: {
   const orgFs = new Map<string, CredentialPushPlan["orgFs"][number]>();
   let refused = 0;
 
-  // A pool's tenant is an org id, and only that org's own record for the repo mints.
+  // A pool's tenant is an org id, and only that org's own record for the repo
+  // mints. A configured pool mints from its own connection, as in-process.
   for (const pool of input.pools) {
-    for (const { repoUrl } of pool.repos) {
+    for (const { repoUrl, branch } of pool.repos) {
       const key = poolRepoKey(pool.tenant, repoUrl);
+      const configured = legacyPoolMintRequest(input.legacyPools ?? [], {
+        tenant: pool.tenant,
+        repoUrl,
+        branch,
+      });
+      if (key && configured?.connectionId) {
+        poolClones.set(key, {
+          tenant: pool.tenant,
+          repoUrl,
+          connectionId: configured.connectionId,
+          cloneUrl: configured.cloneUrl,
+        });
+        continue;
+      }
       const repositoryId = key ? records.orgRepositories.get(key) : undefined;
       if (!key || !repositoryId) {
         refused++;
@@ -316,7 +342,9 @@ export async function mintCredentialPush(
     async (target) => {
       try {
         const cloneUrl = await minters.mintCloneUrl(
-          { cloneUrl: "", repositoryId: target.repositoryId },
+          "repositoryId" in target
+            ? { cloneUrl: "", repositoryId: target.repositoryId }
+            : { cloneUrl: target.cloneUrl, connectionId: target.connectionId },
           { bufferMs: PUSH_CLONE_BUFFER_MS },
         );
         return cloneUrl
