@@ -280,10 +280,31 @@ export interface CategoryRef {
   slug: string;
 }
 
-/** A single author reference, denormalized on a post payload. */
+/**
+ * An author denormalized on a post payload. The post carries the author's
+ * FULL record — the blog app renders the author box (type, job title,
+ * company, website, avatar) from the post, never from the Author block — so
+ * extra fields ride along; `name`/`email` are only the identity.
+ */
 export interface AuthorRef {
   name: string;
   email: string;
+  [field: string]: unknown;
+}
+
+/**
+ * The site's authors as the refs a post stores — full record, identity
+ * stringified. Authors without an email are dropped: nothing could reference
+ * them.
+ */
+export function listAuthorRefs(decofile: Record<string, unknown>): AuthorRef[] {
+  return listBlogPayloads(decofile, "authors")
+    .map(({ payload }) => ({
+      ...payload,
+      name: str(payload.name),
+      email: str(payload.email),
+    }))
+    .filter((author) => author.email);
 }
 
 /** Compact metadata for a post, used by the posts list filters/sort. */
@@ -801,6 +822,7 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         email: "",
         jobTitle: "",
         company: "",
+        url: "",
         avatar: "",
       };
     case "categories":
