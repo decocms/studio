@@ -127,13 +127,16 @@ export function planCredentialPush(input: {
         repoUrl,
         branch,
       });
-      if (key && configured?.connectionId) {
-        poolClones.set(key, {
-          tenant: pool.tenant,
-          repoUrl,
-          connectionId: configured.connectionId,
-          cloneUrl: configured.cloneUrl,
-        });
+      if (key && configured) {
+        if (configured.connectionId) {
+          poolClones.set(key, {
+            tenant: pool.tenant,
+            repoUrl,
+            connectionId: configured.connectionId,
+            cloneUrl: configured.cloneUrl,
+          });
+        }
+        // Else: an anonymous clone, no credential to ever expire.
         continue;
       }
       const repositoryId = key ? records.orgRepositories.get(key) : undefined;
