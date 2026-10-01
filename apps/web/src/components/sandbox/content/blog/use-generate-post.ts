@@ -11,6 +11,7 @@ import {
   type CategoryRef,
   emptyDraftPostPayload,
   filledBrandRules,
+  listAuthorRefs,
   listBlogPayloads,
   listPostsWithMeta,
   mentionableSections,
@@ -132,13 +133,7 @@ export function useGeneratePost({
           .filter((category) => category.slug);
     const authors: AuthorRef[] = briefing.author
       ? [briefing.author]
-      : listBlogPayloads(decofile, "authors")
-          .map(({ payload }) => ({
-            ...payload,
-            name: str(payload.name),
-            email: str(payload.email),
-          }))
-          .filter((author) => author.email);
+      : listAuthorRefs(decofile);
 
     try {
       const draft = await studio.call("BLOG_POST_DRAFT", {

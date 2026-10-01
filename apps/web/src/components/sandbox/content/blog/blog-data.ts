@@ -292,6 +292,21 @@ export interface AuthorRef {
   [field: string]: unknown;
 }
 
+/**
+ * The site's authors as the refs a post stores — full record, identity
+ * stringified. Authors without an email are dropped: nothing could reference
+ * them.
+ */
+export function listAuthorRefs(decofile: Record<string, unknown>): AuthorRef[] {
+  return listBlogPayloads(decofile, "authors")
+    .map(({ payload }) => ({
+      ...payload,
+      name: str(payload.name),
+      email: str(payload.email),
+    }))
+    .filter((author) => author.email);
+}
+
 /** Compact metadata for a post, used by the posts list filters/sort. */
 export interface PostMeta {
   /** Decofile key (block id). */

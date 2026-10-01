@@ -30,6 +30,7 @@ import {
   emptyDraftPostPayload,
   planningMeta,
   buildPlanningPostBlock,
+  listAuthorRefs,
   listPlanningPosts,
   listAllPostsWithMeta,
   movePostToStatus,
@@ -248,6 +249,35 @@ describe("discoverBlogBlockTypes", () => {
     )[0]!;
     expect(block.iconName).toBe("Star01");
     expect(block.iconUrl).toBeUndefined();
+  });
+});
+
+describe("listAuthorRefs", () => {
+  const decofile = {
+    "collections/blog/authors/ana": {
+      __resolveType: "blog/loaders/Author.ts",
+      author: {
+        name: "Ana",
+        email: "ana@marca.com",
+        jobTitle: "Editora",
+        url: "https://ana.example.com",
+      },
+    },
+    "collections/blog/authors/sem-email": {
+      __resolveType: "blog/loaders/Author.ts",
+      author: { name: "Sem email", email: "" },
+    },
+  };
+
+  test("carries the whole record, not just the identity", () => {
+    expect(listAuthorRefs(decofile)).toEqual([
+      {
+        name: "Ana",
+        email: "ana@marca.com",
+        jobTitle: "Editora",
+        url: "https://ana.example.com",
+      },
+    ]);
   });
 });
 
