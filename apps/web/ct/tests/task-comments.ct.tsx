@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+import type { Locator, Page } from "@playwright/test";
 import {
   TaskCommentsDialogHarness,
   TaskCommentsHarness,
@@ -58,12 +59,183 @@ test("existing agent replies share the single task composer", async ({
   await expect(component.getByText(/^On it\./)).toBeVisible();
 });
 
-test("the composer offers no attach control until attachments exist", async ({
+/** Paste a file into the composer the way the clipboard hands over a screenshot. */
+async function pasteFile(composer: Locator, name: string, type: string) {
+  await composer.focus();
+  await composer.evaluate(
+    (el, file) => {
+      const data = new DataTransfer();
+      data.items.add(new File(["bytes"], file.name, { type: file.type }));
+      el.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData: data,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    },
+    { name, type },
+  );
+}
+
+async function dropFile(composer: Locator, name: string, type: string) {
+  await composer.evaluate(
+    (el, file) => {
+      const data = new DataTransfer();
+      data.items.add(new File(["bytes"], file.name, { type: file.type }));
+      const box = el.getBoundingClientRect();
+      el.dispatchEvent(
+        new DragEvent("drop", {
+          dataTransfer: data,
+          bubbles: true,
+          cancelable: true,
+          clientX: box.right - 4,
+          clientY: box.top + box.height / 2,
+        }),
+      );
+    },
+    { name, type },
+  );
+}
+
+function uploads(page: Page) {
+  return page.evaluate(
+    () => window.__ctUploads ?? { uploaded: [], removed: [] },
+  );
+}
+
+const PDF = {
+  name: "spec v2.pdf",
+  mimeType: "application/pdf",
+  buffer: Buffer.from("%PDF"),
+};
+
+test("the composer offers an attach control", async ({ mount }) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  await expect(component.getByLabel("Attach file")).toBeVisible();
+});
+
+test("a picked file waits in the draft and only uploads when the comment is sent", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByTestId("new-comment-composer");
+
+  await component.locator('input[type="file"]').setInputFiles(PDF);
+  await expect(composer.getByText("spec v2.pdf")).toBeVisible();
+  expect((await uploads(page)).uploaded).toEqual([]);
+
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      "[spec v2.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fspec+v2.pdf)",
+    ]),
+  );
+  expect((await uploads(page)).uploaded).toEqual([
+    "task-comments/board_1/u0/spec v2.pdf",
+  ]);
+  await expect(composer.getByText("spec v2.pdf")).toHaveCount(0);
+});
+
+test("a pasted screenshot previews in the draft and can be sent without text", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await pasteFile(input, "shot.png", "image/png");
+  await expect(
+    component.getByTestId("new-comment-composer").getByRole("img", {
+      name: "shot.png",
+    }),
+  ).toBeVisible();
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      "![shot.png](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fshot.png)",
+    ]),
+  );
+});
+
+test("a file dropped on the composer joins the text and stays out of the chat's drop zone", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+  await page.evaluate(() => {
+    window.addEventListener("drop", () =>
+      document.body.classList.add("chat-got-drop"),
+    );
+  });
+
+  await input.fill("see the log");
+  await dropFile(input, "run.log", "text/plain");
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      "see the log[run.log](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Frun.log)",
+    ]),
+  );
+  await expect(page.locator("body.chat-got-drop")).toHaveCount(0);
+});
+
+test("a failed upload posts nothing, keeps the draft and removes what did upload", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByTestId("new-comment-composer");
+
+  await component
+    .locator('input[type="file"]')
+    .setInputFiles([
+      PDF,
+      { name: "fail.png", mimeType: "image/png", buffer: Buffer.from("png") },
+    ]);
+  await component.getByLabel("Send").last().click();
+
+  await expect
+    .poll(async () => (await uploads(page)).removed)
+    .toEqual(["task-comments/board_1/u0/spec v2.pdf"]);
+  await expect(component.getByTestId("posted")).toHaveText("[]");
+  await expect(composer.getByText("spec v2.pdf")).toBeVisible();
+  await expect(composer.getByRole("img", { name: "fail.png" })).toBeVisible();
+});
+
+test("a comment that fails to post leaves no uploaded file behind", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness postFails />);
+
+  await component.locator('input[type="file"]').setInputFiles(PDF);
+  await component.getByLabel("Send").last().click();
+
+  await expect
+    .poll(async () => (await uploads(page)).removed)
+    .toEqual(["task-comments/board_1/u0/spec v2.pdf"]);
+  await expect(
+    component.getByTestId("new-comment-composer").getByText("spec v2.pdf"),
+  ).toBeVisible();
+});
+
+test("a posted attachment reads as a chip that downloads under its own name", async ({
   mount,
 }) => {
   const component = await mount(<TaskCommentsHarness />);
 
-  await expect(component.getByLabel("Attach")).toHaveCount(0);
+  const chip = component.locator('a[download="spec v2.pdf"]');
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveAttribute(
+    "href",
+    "/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2.pdf",
+  );
 });
 
 test("the send button still submits, despite the card-wide focus click", async ({

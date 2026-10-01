@@ -8,6 +8,14 @@ describe("isEditorFileUrl", () => {
     ).toBe(true);
   });
 
+  it("matches a file attached to a task comment", () => {
+    expect(
+      isEditorFileUrl(
+        "/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec.pdf",
+      ),
+    ).toBe(true);
+  });
+
   it("rejects an image upload — those render as a preview, not a chip", () => {
     expect(
       isEditorFileUrl("/api/acme/fs/uploads/read?path=editor-images%2Fa.png"),

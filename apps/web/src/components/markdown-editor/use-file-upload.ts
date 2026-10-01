@@ -32,6 +32,19 @@ export function isImageFile(file: File): boolean {
   return file.type.startsWith("image/");
 }
 
+/** Whether a file is small enough to attach; says why not when it isn't. */
+export function useUploadSizeCheck() {
+  const t = useT();
+  return (file: File): boolean => {
+    const maxMb = isImageFile(file) ? MAX_IMAGE_MB : MAX_FILE_MB;
+    if (file.size <= maxMb * 1024 * 1024) return true;
+    toast.error(
+      t("markdownEditor.fileTooLarge", { name: file.name, max: String(maxMb) }),
+    );
+    return false;
+  };
+}
+
 /**
  * Uploads editor files to the org filesystem and hands back a same-origin
  * `/api/:org/fs/...` URL. That route is session-authenticated on the same
@@ -40,6 +53,7 @@ export function isImageFile(file: File): boolean {
  */
 export function useEditorFileUpload() {
   const t = useT();
+  const fitsSizeLimit = useUploadSizeCheck();
   const { upload } = useOrgFsMutations(UPLOAD_VOLUME);
   const fileUrl = useOrgFsDownloadUrl(UPLOAD_VOLUME);
   // A count, not a boolean: pasting three screenshots at once must not clear
@@ -47,17 +61,8 @@ export function useEditorFileUpload() {
   const [pending, setPending] = useState(0);
 
   const uploadFile = async (file: File): Promise<string | null> => {
+    if (!fitsSizeLimit(file)) return null;
     const isImage = isImageFile(file);
-    const maxMb = isImage ? MAX_IMAGE_MB : MAX_FILE_MB;
-    if (file.size > maxMb * 1024 * 1024) {
-      toast.error(
-        t("markdownEditor.fileTooLarge", {
-          name: file.name,
-          max: String(maxMb),
-        }),
-      );
-      return null;
-    }
     // Pasted screenshots are all named "image.png", and the upload path is
     // derived from the file name — reusing it would overwrite another task's
     // file in place.

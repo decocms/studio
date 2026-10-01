@@ -522,12 +522,12 @@ export class TaskBoardStorage {
    *
    * User-created cards are deleted outright.
    */
-  /** Returns false when the id isn't in this org — a no-op, not a delete. */
+  /** Null when the id isn't in this org — a no-op, not a delete. */
   async delete(
     id: string,
     organizationId: string,
     by: string,
-  ): Promise<boolean> {
+  ): Promise<"deleted" | "dismissed" | null> {
     return this.inTransaction(async (trx) => {
       const row = await trx
         .selectFrom("task_board_items")
@@ -535,7 +535,7 @@ export class TaskBoardStorage {
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .executeTakeFirst();
-      if (!row) return false;
+      if (!row) return null;
       if (isReportsTask({ createdBy: row.created_by })) {
         await trx
           .updateTable("task_board_items")
@@ -545,7 +545,7 @@ export class TaskBoardStorage {
           // Already dismissed — keep the first dismissal's who/when.
           .where("dismissed_at", "is", null)
           .execute();
-        return true;
+        return "dismissed";
       }
       await trx
         .deleteFrom("task_board_item_threads")
@@ -563,7 +563,7 @@ export class TaskBoardStorage {
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .execute();
-      return true;
+      return "deleted";
     });
   }
 
@@ -2708,29 +2708,32 @@ export class TaskBoardStorage {
     return row ? commentFromDbRow(row) : null;
   }
 
-  /** Delete a comment; a root takes its replies with it (FK cascade). False
-   *  when the comment isn't in this org, or isn't the caller's own — except a
-   *  Super Agent comment, which nobody's `authorId` ever matches, so any org
-   *  member (already access-checked) may remove it; it's working for the org,
-   *  not a person whose comment they shouldn't be able to erase. */
+  /** Delete a comment; a root takes its replies with it. Returns every comment
+   *  removed, so the caller can clean up what they linked to. Null when the
+   *  comment isn't in this org, or isn't the caller's own — except a Super
+   *  Agent comment, which nobody's `authorId` ever matches, so any org member
+   *  (already access-checked) may remove it; it's working for the org, not a
+   *  person whose comment they shouldn't be able to erase. */
   async deleteComment(
     id: string,
     organizationId: string,
     callerId: string,
-  ): Promise<boolean> {
+  ): Promise<TaskBoardComment[] | null> {
     const existing = await this.commentInOrg(id, organizationId);
-    if (!existing) return false;
+    if (!existing) return null;
     if (
       existing.authorId !== callerId &&
       existing.authorId !== SUPER_AGENT_ASSIGNEE_ID
     ) {
-      return false;
+      return null;
     }
-    await this.db
+    // Named here, not left to the FK cascade, so RETURNING includes the replies.
+    const rows = await this.db
       .deleteFrom("task_board_comments")
-      .where("id", "=", id)
+      .where((eb) => eb.or([eb("id", "=", id), eb("parent_id", "=", id)]))
+      .returningAll()
       .execute();
-    return true;
+    return rows.map((row) => commentFromDbRow(row));
   }
 
   async getComment(

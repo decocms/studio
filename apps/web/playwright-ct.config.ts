@@ -80,6 +80,11 @@ export default defineConfig({
             find: /^@\/hooks\/use-new-blocks-editor$/,
             replacement: stub("use-new-blocks-editor.ts"),
           },
+          // The comment composer's uploads write to org-fs via useProjectContext().
+          {
+            find: /^@\/hooks\/use-comment-attachments$/,
+            replacement: stub("use-comment-attachments.ts"),
+          },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches
           // only `@/`-prefixed ids, so `@decocms/ui`, `@tanstack/*` etc. are

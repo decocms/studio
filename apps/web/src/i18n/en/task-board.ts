@@ -183,6 +183,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentResolvedSummaryOne":
     "1 resolved comment from {names}",
   "taskBoard.taskDialog.commentSubmitAriaLabel": "Send",
+  "taskBoard.taskDialog.attachFile": "Attach file",
+  "taskBoard.taskDialog.attachmentUploadFailed":
+    "Couldn't upload {name}, so the comment wasn't sent.",
   "taskBoard.taskDialog.commentUnresolveThread": "Unresolve thread",
   "taskBoard.taskDialog.commentYouLabel": "You",
   "taskBoard.taskDialog.linksLabel": "Links",

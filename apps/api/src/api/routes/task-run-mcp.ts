@@ -49,7 +49,7 @@ export const createTaskRunMcpRoutes = () => {
     // Tool handlers read both stores at call time, so the request must run
     // inside their scope.
     return managementContextStore.run(ctx, () =>
-      taskRunContextStore.run({ threadId }, () =>
+      taskRunContextStore.run({ threadId, sandboxed: true }, () =>
         serveMcpRequest(server, transport, c.req.raw, "mcp:task-run"),
       ),
     );

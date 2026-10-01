@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
+import { deleteTaskCommentAttachments } from "./comment-attachments";
 import { emitTaskBoardDeleted } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_DELETE = defineTool({
@@ -36,6 +37,10 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
     );
     if (!deleted) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+    // A dismissed card keeps its comments, so their files stay too.
+    if (deleted === "deleted") {
+      await deleteTaskCommentAttachments(ctx, input.id);
     }
     // Broadcast the removal so every open board drops the card live.
     emitTaskBoardDeleted(organizationId, input.id);

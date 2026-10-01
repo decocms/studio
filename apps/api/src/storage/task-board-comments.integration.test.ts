@@ -129,14 +129,14 @@ describe("TaskBoardStorage comments", () => {
       "org_test",
       "user_123",
     );
-    expect(stolenDelete).toBe(false);
+    expect(stolenDelete).toBeNull();
 
     const ownDelete = await storage.deleteComment(
       comment!.id,
       "org_test",
       "user_1",
     );
-    expect(ownDelete).toBe(true);
+    expect(ownDelete).not.toBeNull();
   });
 
   it("lets any org member delete a Super Agent comment", async () => {
@@ -155,7 +155,64 @@ describe("TaskBoardStorage comments", () => {
       "org_test",
       "user_123",
     );
-    expect(deleted).toBe(true);
+    expect(deleted).not.toBeNull();
+  });
+
+  it("deleting a thread root hands back the root and every reply it took with it", async () => {
+    const root = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      body: "root with a screenshot",
+    });
+    const reply = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_123",
+      parentId: root!.id,
+      body: "reply with a pdf",
+    });
+
+    const removed = await storage.deleteComment(root!.id, "org_test", "user_1");
+
+    expect(removed?.map((c) => c.body).sort()).toEqual([
+      "reply with a pdf",
+      "root with a screenshot",
+    ]);
+    const left = await storage.listComments(itemId, "org_test");
+    expect(left.some((c) => c.id === root!.id || c.id === reply!.id)).toBe(
+      false,
+    );
+  });
+
+  it("tells a deleted task from a dismissed one, whose comments stay", async () => {
+    const mine = await storage.create({
+      organizationId: "org_test",
+      title: "user task",
+      by: "user_1",
+    });
+    const finding = await storage.create({
+      organizationId: "org_test",
+      title: "reports task",
+      externalKey: "diag:example.com:lcp",
+      by: "system",
+    });
+    await storage.createComment({
+      taskBoardItemId: finding.id,
+      organizationId: "org_test",
+      authorId: "user_1",
+      body: "kept with the card",
+    });
+
+    expect(await storage.delete(mine.id, "org_test", "user_1")).toBe("deleted");
+    expect(await storage.delete(finding.id, "org_test", "user_1")).toBe(
+      "dismissed",
+    );
+    expect(await storage.delete("board_missing", "org_test", "user_1")).toBe(
+      null,
+    );
+    const kept = await storage.listComments(finding.id, "org_test");
+    expect(kept.map((c) => c.body)).toEqual(["kept with the card"]);
   });
 
   it("notifies a member newly @-mentioned by editing a comment's body", async () => {

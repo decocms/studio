@@ -1,0 +1,38 @@
+/**
+ * Uploads a task comment's attachments when it is sent, and takes them back
+ * when it isn't: a draft that is abandoned, or fails to post, must not leave
+ * files behind in the Library.
+ */
+
+import {
+  COMMENT_ATTACHMENT_VOLUME,
+  commentAttachmentFolder,
+  commentAttachmentPath,
+} from "@decocms/shared/task-comment-attachments";
+import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
+
+export function useCommentAttachments(taskId: string) {
+  const { upload, remove } = useOrgFsMutations(COMMENT_ATTACHMENT_VOLUME);
+  const fileUrl = useOrgFsDownloadUrl(COMMENT_ATTACHMENT_VOLUME);
+
+  return {
+    /** Upload one file and say where it went; throws when it didn't land. */
+    upload: async (file: File) => {
+      const path = commentAttachmentPath(taskId, file.name);
+      const dir = commentAttachmentFolder(path);
+      await upload.mutateAsync({
+        dir,
+        files: [
+          new File([file], path.slice(dir.length + 1), { type: file.type }),
+        ],
+      });
+      return { path, url: fileUrl(path) };
+    },
+    /** Remove uploads whose comment was never posted. Best-effort. */
+    remove: async (paths: string[]) => {
+      await Promise.allSettled(
+        paths.map((path) => remove.mutateAsync(commentAttachmentFolder(path))),
+      );
+    },
+  };
+}

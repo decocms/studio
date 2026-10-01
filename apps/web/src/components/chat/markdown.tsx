@@ -14,7 +14,9 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@decocms/ui/components/markdown.tsx";
-import { Check, Copy01 } from "@untitledui/icons";
+import { Check, Copy01, Download01, File02 } from "@untitledui/icons";
+import { ATTACHMENT_CHIP_CLASS } from "@/components/markdown-editor/attachment-chip";
+import { isEditorFileUrl } from "@/components/markdown-editor/uploads";
 import { ImageLightbox } from "./image-lightbox.tsx";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
@@ -275,6 +277,23 @@ function MarkdownAnchor({
       <span className="rounded bg-primary/10 px-1 font-medium text-primary">
         {label}
       </span>
+    );
+  }
+  if (href && isEditorFileUrl(href)) {
+    // The stored name is sanitized; `download` saves it under the uploaded one.
+    const name = React.Children.toArray(children)
+      .filter((c) => typeof c === "string")
+      .join("");
+    return (
+      <a
+        href={href}
+        download={name || undefined}
+        className={ATTACHMENT_CHIP_CLASS}
+      >
+        <File02 size={14} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate">{label}</span>
+        <Download01 size={14} className="shrink-0 text-muted-foreground" />
+      </a>
     );
   }
   if (ctx && browsePath) {

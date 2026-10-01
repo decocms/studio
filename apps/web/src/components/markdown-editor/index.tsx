@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Attachment01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -10,6 +9,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
+import { insertUpload } from "./insert-upload";
 import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
 import { isImageFile, useEditorFileUpload } from "./use-file-upload";
@@ -62,26 +62,6 @@ const PLACEHOLDER_CLASS = [
   "[&_p.is-editor-empty:first-child::before]:h-0",
   "[&_p.is-editor-empty:first-child::before]:pointer-events-none",
 ].join(" ");
-
-/**
- * Insert an uploaded file's node and return the position after it, so a batch
- * of pasted files stacks in the order they were picked instead of every insert
- * landing on the same stale offset.
- */
-function insertUpload(
-  view: EditorView,
-  pos: number,
-  typeName: "image" | "attachment",
-  attrs: Record<string, string>,
-): number {
-  const type = view.state.schema.nodes[typeName];
-  if (!type) return pos;
-  const tr = view.state.tr.replaceWith(pos, pos, type.create(attrs));
-  const after = tr.mapping.map(pos, 1);
-  tr.setSelection(Selection.near(tr.doc.resolve(after)));
-  view.dispatch(tr);
-  return view.state.selection.to;
-}
 
 /**
  * One `@`-mentionable item. `name` is inserted into the markdown verbatim, so

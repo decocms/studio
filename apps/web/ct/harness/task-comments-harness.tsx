@@ -31,8 +31,17 @@ const THREAD: TaskComment = {
       createdAt: new Date("2026-07-30T12:01:00Z").toISOString(),
       replies: [],
     },
+    {
+      id: "c1-r2",
+      author: ME,
+      body: "The spec: [spec v2.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2.pdf)",
+      createdAt: new Date("2026-07-30T12:02:00Z").toISOString(),
+      replies: [],
+    },
   ],
 };
+
+const TASK_ID = "board_1";
 
 /**
  * CT surface for task comments: one thread card (root + existing agent reply)
@@ -42,8 +51,11 @@ const THREAD: TaskComment = {
  */
 export function TaskCommentsHarness({
   resolved = false,
+  postFails = false,
 }: {
   resolved?: boolean;
+  /** The post itself fails, after any uploads have landed. */
+  postFails?: boolean;
 }) {
   const [thread, setThread] = useState<TaskComment | null>({
     ...THREAD,
@@ -70,7 +82,12 @@ export function TaskCommentsHarness({
         />
       )}
       <NewCommentComposer
-        onSubmit={(body) => setPosted((prev) => [...prev, body])}
+        taskId={TASK_ID}
+        onSubmit={(body) => {
+          if (postFails) return false;
+          setPosted((prev) => [...prev, body]);
+          return true;
+        }}
       />
       <pre tabIndex={0} data-testid="posted">
         {JSON.stringify(posted)}
@@ -97,6 +114,7 @@ export function TaskCommentsDialogHarness() {
         <DialogTitle className="sr-only">Task</DialogTitle>
         <div className="flex flex-1 flex-col justify-end overflow-y-auto p-6">
           <NewCommentComposer
+            taskId={TASK_ID}
             onSubmit={(body) => setPosted((prev) => [...prev, body])}
           />
         </div>

@@ -7,6 +7,8 @@
  * parser needs that to turn a file link back into an attachment chip.
  */
 
+import { COMMENT_ATTACHMENT_ROOT } from "@decocms/shared/task-comment-attachments";
+
 /** Same volume the Library writes user uploads to. */
 export const UPLOAD_VOLUME = "uploads";
 /** Kept out of the Library root so pasted screenshots don't clutter it. */
@@ -34,5 +36,10 @@ export function isEditorFileUrl(url: string): boolean {
   // looks like ours — don't dress it up as an org attachment.
   if (parsed.origin !== RELATIVE_BASE) return false;
   if (!FS_READ_PATH.test(parsed.pathname)) return false;
-  return (parsed.searchParams.get("path") ?? "").startsWith(`${FILE_DIR}/`);
+  const path = parsed.searchParams.get("path") ?? "";
+  // Or a file the comment composer attached, filed under its task's folder.
+  return (
+    path.startsWith(`${FILE_DIR}/`) ||
+    path.startsWith(`${COMMENT_ATTACHMENT_ROOT}/`)
+  );
 }

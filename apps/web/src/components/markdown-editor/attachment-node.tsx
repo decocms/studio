@@ -7,6 +7,7 @@ import {
 import { Download01, File02, X } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { ATTACHMENT_CHIP_CLASS } from "./attachment-chip";
 
 /**
  * A file with nothing to preview (pdf, docx, pptx, txt, …), rendered as a chip
@@ -28,7 +29,7 @@ function AttachmentNodeView({
     <NodeViewWrapper
       as="span"
       className={cn(
-        "mx-0.5 inline-flex max-w-full select-none items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 align-middle text-sm text-foreground",
+        ATTACHMENT_CHIP_CLASS,
         selected && "ring-2 ring-ring ring-offset-2 ring-offset-background",
       )}
     >

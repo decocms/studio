@@ -179,7 +179,7 @@ const input = (over: Partial<Input> = {}): Input => ({
 });
 
 const run = <T>(fn: () => Promise<T>) =>
-  taskRunContextStore.run({ threadId: THREAD }, fn);
+  taskRunContextStore.run({ threadId: THREAD, sandboxed: false }, fn);
 
 describe("JIRA_ISSUE_CREATE", () => {
   const originalFetch = globalThis.fetch;

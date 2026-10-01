@@ -19,6 +19,8 @@ import {
 export interface TaskRunContext {
   /** The run thread this MCP session belongs to. */
   threadId: string;
+  /** The run has the org filesystem mounted, so an upload is a path it can `Read`. */
+  sandboxed: boolean;
 }
 
 export const taskRunContextStore = new AsyncLocalStorage<TaskRunContext>();

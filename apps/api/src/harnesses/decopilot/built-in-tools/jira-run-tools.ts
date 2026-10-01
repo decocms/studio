@@ -32,7 +32,7 @@ export function createJiraRunTools(
   // store the MCP endpoint sets. Supplying it here is what lets one
   // implementation serve both paths.
   const inRunScope = <T>(run: () => Promise<T>): Promise<T> =>
-    taskRunContextStore.run({ threadId }, run);
+    taskRunContextStore.run({ threadId, sandboxed: false }, run);
 
   return {
     JIRA_ISSUE_GET: tool({

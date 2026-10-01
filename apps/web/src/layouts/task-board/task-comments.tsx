@@ -6,10 +6,9 @@
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
  * member before handing it here.
  *
- * No attach affordance: the paperclip belongs with attachment storage. The
- * composer is a Tiptap field rather than a textarea for one reason — an
+ * The composer is a Tiptap field rather than a textarea because an
  * `@`-mention needs a chip and a user id, not the name the user happened to
- * type.
+ * type — and an attachment needs a preview.
  */
 
 import { Fragment, useRef, useState } from "react";
@@ -20,8 +19,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { ArrowUp, DotsHorizontal, Trash03 } from "@untitledui/icons";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import {
+  ArrowUp,
+  Attachment01,
+  DotsHorizontal,
+  Trash03,
+} from "@untitledui/icons";
+import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCommentAttachments } from "@/hooks/use-comment-attachments";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
@@ -29,6 +37,7 @@ import { TaskMessage } from "./task-message";
 import { useT } from "@/i18n/use-t.ts";
 import {
   MentionInput,
+  type DraftAttachment,
   type MentionInputHandle,
 } from "@/components/markdown-editor/mention-input";
 
@@ -186,39 +195,96 @@ function AuthorGlyph({ author }: { author: CommentAuthor }) {
  */
 type SubmitComment = (body: string) => void | boolean | Promise<void | boolean>;
 
-export function NewCommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
-  return <CommentComposer onSubmit={onSubmit} />;
+export function NewCommentComposer({
+  taskId,
+  onSubmit,
+}: {
+  /** The task the comment's attachments are filed under. */
+  taskId: string;
+  onSubmit: SubmitComment;
+}) {
+  return <CommentComposer taskId={taskId} onSubmit={onSubmit} />;
 }
 
-function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
+function CommentComposer({
+  taskId,
+  onSubmit,
+}: {
+  taskId: string;
+  onSubmit: SubmitComment;
+}) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [empty, setEmpty] = useState(true);
+  const [sending, setSending] = useState(false);
+  const attachments = useCommentAttachments(taskId);
 
   const submit = () => ref.current?.submit();
+
+  // Every file uploads, or none is kept: a comment never posts with a hole.
+  const send = async (markdown: string, attached: DraftAttachment[]) => {
+    setSending(true);
+    try {
+      const results = await Promise.allSettled(
+        attached.map(async (draft) => ({
+          draft,
+          ...(await attachments.upload(draft.file)),
+        })),
+      );
+      const uploaded = results.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : [],
+      );
+      const failed = attached.find(
+        (draft) => !uploaded.some((u) => u.draft === draft),
+      );
+      if (failed) {
+        void attachments.remove(uploaded.map((u) => u.path));
+        toast.error(
+          t("taskBoard.taskDialog.attachmentUploadFailed", {
+            name: failed.file.name,
+          }),
+        );
+        return false;
+      }
+      const body = uploaded.reduce(
+        (text, u) => text.replaceAll(u.draft.url, u.url),
+        markdown,
+      );
+      if ((await onSubmit(body)) === false) {
+        void attachments.remove(uploaded.map((u) => u.path));
+        return false;
+      }
+      return true;
+    } finally {
+      setSending(false);
+    }
+  };
 
   const textarea = (
     <MentionInput
       ref={ref}
       placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
-      onSubmit={onSubmit}
+      onSubmit={send}
       onEmptyChange={setEmpty}
-      className={cn("w-full [&_.tiptap]:outline-none", "min-h-10")}
+      attachments
+      className={cn(
+        "w-full [&_.tiptap]:outline-none",
+        "min-h-10",
+        // A screenshot is context for the text, not the point of the card.
+        "[&_img]:max-h-40",
+      )}
     />
   );
 
   const actions = (
-    <button
-      type="button"
-      disabled={empty}
+    <IconButton
+      label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
+      disabled={empty || sending}
       onClick={submit}
-      aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
-      // cursor-pointer: the composer around it sets cursor-text, which would
-      // otherwise inherit onto the button.
-      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
-      <ArrowUp size={16} />
-    </button>
+      {sending ? <Spinner className="size-4" /> : <ArrowUp size={16} />}
+    </IconButton>
   );
 
   // The whole composer is the click target, not just the one-line input inside
@@ -233,10 +299,41 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
     <div
       data-testid="new-comment-composer"
       onClick={focusInput}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        // A drop on the text itself is the field's; this catches the rest of the card.
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        ref.current?.attach(files);
+      }}
       className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
     >
       {textarea}
-      <div className="flex items-center justify-end">{actions}</div>
+      <div className="flex items-center justify-between">
+        <IconButton
+          label={t("taskBoard.taskDialog.attachFile")}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Attachment01 size={16} />
+        </IconButton>
+        {actions}
+      </div>
+      {/* No `accept`: images become previews, everything else a file chip. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          ref.current?.attach(Array.from(e.target.files ?? []));
+          // Let the same file be picked again after it was removed.
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

@@ -9,6 +9,11 @@ import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { deleteCommentAttachments } from "./comment-attachments";
+import {
+  sandboxPathsAsUploads,
+  uploadsAsSandboxPaths,
+} from "./description-uploads";
 import { taskRunContextStore } from "./task-run-context";
 
 /** No real comment is this long — caps the row a single POST can write. */
@@ -39,10 +44,21 @@ function requireOrg(ctx: StudioContext): string {
   return organizationId;
 }
 
+/** A body a sandboxed run writes points its upload links back at Studio, as
+ *  people wrote them before LIST handed the run its sandbox paths. */
+function bodyFromRun(body: string, ctx: StudioContext): string {
+  const orgSlug = ctx.organization?.slug;
+  return taskRunContextStore.getStore()?.sandboxed && orgSlug
+    ? sandboxPathsAsUploads(body, orgSlug)
+    : body;
+}
+
 export const TASK_BOARD_COMMENT_LIST = defineTool({
   name: "TASK_BOARD_COMMENT_LIST",
   description:
-    "List a task board item's comments (flat, oldest first; replies carry parentId).",
+    "List a task board item's comments (flat, oldest first; replies carry parentId). " +
+    "In a sandboxed task run, a comment's image and file links are real paths " +
+    "in the sandbox — `Read` them.",
   annotations: {
     title: "List Task Comments",
     readOnlyHint: true,
@@ -59,6 +75,15 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       input.taskBoardItemId,
       requireOrg(ctx),
     );
+    // An upload URL is cookie-authenticated, useless in a sandbox that mounts the bytes.
+    if (taskRunContextStore.getStore()?.sandboxed) {
+      return {
+        comments: comments.map((c) => ({
+          ...c,
+          body: uploadsAsSandboxPaths(c.body),
+        })),
+      };
+    }
     return { comments };
   },
 });
@@ -113,10 +138,12 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
     // `org/output/…` screenshot refs into renderable image URLs.
     const taskRun = taskRunContextStore.getStore();
     const orgSlug = ctx.organization?.slug;
-    const body =
+    const body = bodyFromRun(
       taskRun?.threadId && orgSlug
         ? embedOrgOutputImages(input.body, taskRun.threadId, orgSlug)
-        : input.body;
+        : input.body,
+      ctx,
+    );
     const comment = await ctx.storage.taskBoard.createComment({
       taskBoardItemId: input.taskBoardItemId,
       organizationId,
@@ -179,7 +206,7 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
       id: input.id,
       organizationId,
       callerId: getUserId(ctx)!,
-      body: input.body,
+      body: input.body === undefined ? undefined : bodyFromRun(input.body, ctx),
       resolved: input.resolved,
     });
     if (!comment) {
@@ -187,8 +214,8 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
         "Comment not found, or you can only edit your own comments",
       );
     }
-    // Notify only mentions this edit added, same as an edited description.
     if (input.body !== undefined && comment.body !== existing?.body) {
+      // Notify only mentions this edit added, same as an edited description.
       await ctx.storage.notifications.notifyMentions({
         taskBoardItemId: comment.taskBoardItemId,
         organizationId,
@@ -196,6 +223,14 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
         body: comment.body,
         previousBody: existing?.body ?? null,
       });
+      // A run only reads people's attachments; whatever the edit still links to is kept.
+      if (existing && !taskRunContextStore.getStore()) {
+        await deleteCommentAttachments(ctx, {
+          taskId: comment.taskBoardItemId,
+          organizationId,
+          bodies: [existing.body],
+        });
+      }
     }
     return { comment };
   },
@@ -217,11 +252,20 @@ export const TASK_BOARD_COMMENT_DELETE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-    const deleted = await ctx.storage.taskBoard.deleteComment(
+    const organizationId = requireOrg(ctx);
+    const removed = await ctx.storage.taskBoard.deleteComment(
       input.id,
-      requireOrg(ctx),
+      organizationId,
       getUserId(ctx)!,
     );
-    return { success: deleted };
+    const taskId = removed?.[0]?.taskBoardItemId;
+    if (removed && taskId) {
+      await deleteCommentAttachments(ctx, {
+        taskId,
+        organizationId,
+        bodies: removed.map((c) => c.body),
+      });
+    }
+    return { success: removed !== null };
   },
 });

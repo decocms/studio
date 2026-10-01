@@ -12,9 +12,7 @@
 import type { Page } from "@playwright/test";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
-
-/** Cold-Vite first paint on a fresh sandbox is slow (SPA compile + auth). */
-const FIRST_PAINT_MS = 60_000;
+import { FIRST_PAINT_MS, TaskBoardPage } from "../pages/task-board";
 
 const DOC_NAME = "spec.txt";
 const DOC = Buffer.from("attachment body\n");
@@ -68,11 +66,7 @@ async function closeTask(page: Page) {
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
-  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
-  await page.goto(`/${orgSlug}/tasks?assignee=any`);
-  const card = page.getByText(title, { exact: true });
-  await card.waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
-  await card.click();
+  await new TaskBoardPage(page).openTask(orgSlug, title);
   await page
     .getByTestId("task-detail")
     .getByRole("button", { name: "Edit", exact: true })
