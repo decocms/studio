@@ -1,4 +1,5 @@
-const PREVIEW_LINK = /!?\[[^\]]*\]\((blob:[^)\s]+)\)/g;
+// A file name arrives with its brackets escaped (see `escapeLinkText`).
+const PREVIEW_LINK = /!?\[(?:\\.|[^\\\]])*\]\((blob:[^)\s]+)\)/g;
 
 /**
  * A draft's markdown without the previews it no longer holds. An undo after a

@@ -22,8 +22,8 @@ import { getUserId } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 
-/** A markdown link target on Studio's own origin, the only form the composer writes. */
-const RELATIVE_LINK = /\]\((\/api\/[^)\s]+)\)/g;
+/** A markdown link's target. */
+const LINK_TARGET = /\]\(([^)\s]+)\)/g;
 
 /**
  * A comment body as a sandboxed run reads it: this task's attachments point at
@@ -34,7 +34,7 @@ export function attachmentsAsSandboxPaths(
   body: string,
   taskId: string,
 ): string {
-  return body.replace(RELATIVE_LINK, (link, url: string) => {
+  return body.replace(LINK_TARGET, (link, url: string) => {
     const [attachment] = commentAttachmentLinks(url, taskId);
     return attachment?.url === url
       ? `](${orgFsSandboxPath(COMMENT_ATTACHMENT_VOLUME, attachment.path)})`
@@ -42,10 +42,7 @@ export function attachmentsAsSandboxPaths(
   });
 }
 
-const SANDBOX_LINK = new RegExp(
-  `\\]\\(${orgFsSandboxPath(COMMENT_ATTACHMENT_VOLUME, "").replace(/\./g, "\\.")}/([^)\\s]+)\\)`,
-  "g",
-);
+const SANDBOX_ROOT = `${orgFsSandboxPath(COMMENT_ATTACHMENT_VOLUME, "")}/`;
 
 /** The inverse, for a body a sandboxed run writes: people get their URLs back,
  *  for any task's attachment the run may have read. */
@@ -53,11 +50,14 @@ export function sandboxPathsAsAttachments(
   body: string,
   orgSlug: string,
 ): string {
-  return body.replace(SANDBOX_LINK, (link, path: string) =>
-    commentAttachmentTaskOf(path)
+  return body.replace(LINK_TARGET, (link, target: string) => {
+    const path = target.startsWith(SANDBOX_ROOT)
+      ? target.slice(SANDBOX_ROOT.length)
+      : "";
+    return commentAttachmentTaskOf(path)
       ? `](${commentAttachmentUrl(orgSlug, path)})`
-      : link,
-  );
+      : link;
+  });
 }
 
 /** A thread full of screenshots must not fan out into that many storage calls at once. */

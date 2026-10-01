@@ -7,7 +7,7 @@
  * parser needs that to turn a file link back into an attachment chip.
  */
 
-import { COMMENT_ATTACHMENT_ROOT } from "@decocms/shared/task-comment-attachments";
+import { commentAttachmentTaskOf } from "@decocms/shared/task-comment-attachments";
 
 /** Same volume the Library writes user uploads to. */
 export const UPLOAD_VOLUME = "uploads";
@@ -21,8 +21,9 @@ const FS_READ_PATH = new RegExp(`^/api/[^/]+/fs/${UPLOAD_VOLUME}/read$`);
 const RELATIVE_BASE = "http://relative.invalid";
 
 /**
- * True for the download URL of a non-image attachment uploaded by this editor
- * (`/api/:org/fs/uploads/read?path=editor-files/…`). Only those render as an
+ * True for the download URL of a non-image file this editor uploaded
+ * (`/api/:org/fs/uploads/read?path=editor-files/…`) or a task comment attached
+ * (`…?path=task-comments/<taskId>/<uuid>/<name>`). Only those render as an
  * attachment chip; every other link stays a plain link.
  */
 export function isEditorFileUrl(url: string): boolean {
@@ -37,9 +38,7 @@ export function isEditorFileUrl(url: string): boolean {
   if (parsed.origin !== RELATIVE_BASE) return false;
   if (!FS_READ_PATH.test(parsed.pathname)) return false;
   const path = parsed.searchParams.get("path") ?? "";
-  // Or a file the comment composer attached, filed under its task's folder.
   return (
-    path.startsWith(`${FILE_DIR}/`) ||
-    path.startsWith(`${COMMENT_ATTACHMENT_ROOT}/`)
+    path.startsWith(`${FILE_DIR}/`) || commentAttachmentTaskOf(path) !== null
   );
 }

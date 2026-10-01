@@ -13,6 +13,7 @@ import {
   type MentionMenuStore,
 } from "./mention-suggestion";
 import { MarkdownImage } from "./image-node";
+import { unescapeLinkText } from "./link-text";
 import { isEditorFileUrl } from "./uploads";
 
 const LINK_OPTIONS = {
@@ -31,7 +32,10 @@ const AttachmentAwareLink = Link.extend({
   parseMarkdown: (token, helpers) => {
     const href = typeof token.href === "string" ? token.href : "";
     if (isEditorFileUrl(href)) {
-      return helpers.createNode("attachment", { href, name: token.text ?? "" });
+      return helpers.createNode("attachment", {
+        href,
+        name: unescapeLinkText(token.text ?? ""),
+      });
     }
     const mentionId = mentionIdFromHref(href);
     if (mentionId) {

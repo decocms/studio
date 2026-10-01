@@ -99,12 +99,15 @@ export function MentionInput({
   });
   const sending = useRef(false);
 
-  const attachAt = (view: EditorView, files: File[], at: number) => {
+  /** At `at`, or in place of the selection, as a paste replaces it. */
+  const attachAt = (view: EditorView, files: File[], at?: number) => {
     // The draft being sent is already counted; a file added now would be lost.
     if (sending.current) return;
-    let pos = at;
-    for (const file of files) {
-      if (!fitsSizeLimit(file)) continue;
+    const fitting = files.filter(fitsSizeLimit);
+    if (fitting.length === 0) return;
+    if (at === undefined) view.dispatch(view.state.tr.deleteSelection());
+    let pos = at ?? view.state.selection.from;
+    for (const file of fitting) {
       const url = URL.createObjectURL(file);
       drafts.set(url, file);
       pos = isImageFile(file)
@@ -172,7 +175,7 @@ export function MentionInput({
         if (files.length === 0) return false;
         // Ours, not the chat composer's window-level listener (`useWindowFileDrop`).
         event.stopPropagation();
-        attachAt(view, files, view.state.selection.to);
+        attachAt(view, files);
         return true;
       },
       handleDrop: (view, event, _slice, moved) => {

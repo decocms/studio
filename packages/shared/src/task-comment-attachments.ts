@@ -12,7 +12,7 @@
 export const COMMENT_ATTACHMENT_VOLUME = "uploads";
 
 /** Parent of every task's attachment folder. */
-export const COMMENT_ATTACHMENT_ROOT = "task-comments";
+const COMMENT_ATTACHMENT_ROOT = "task-comments";
 
 /** The folder holding every file attached to one task's comments. */
 export function commentAttachmentDir(taskId: string): string {

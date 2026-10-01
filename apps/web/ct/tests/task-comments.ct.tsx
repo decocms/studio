@@ -266,6 +266,44 @@ test("an image whose name has brackets still posts as an image", async ({
   );
 });
 
+test("a file whose name reads as markdown posts under that name, not formatted", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  await component.locator('input[type="file"]').setInputFiles({
+    ...PDF,
+    name: "notes *v2*.pdf",
+  });
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      "[notes \\*v2\\*.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fnotes+*v2*.pdf)",
+    ]),
+  );
+});
+
+test("a file pasted over selected text takes its place", async ({ mount }) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await input.pressSequentially("see this");
+  await input.press("Shift+ArrowLeft");
+  await input.press("Shift+ArrowLeft");
+  await input.press("Shift+ArrowLeft");
+  await input.press("Shift+ArrowLeft");
+  await pasteFile(input, "shot.png", "image/png");
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      // An image is a block of its own, so it goes below what is left of the line.
+      "see \n\n![shot.png](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fshot.png)",
+    ]),
+  );
+});
+
 test("undo after sending brings nothing of the sent draft back", async ({
   mount,
 }) => {
@@ -386,11 +424,11 @@ test("a posted attachment reads as a chip that downloads under its own name", as
 }) => {
   const component = await mount(<TaskCommentsHarness withAttachment />);
 
-  const chip = component.locator('a[download="spec v2.pdf"]');
-  await expect(chip).toBeVisible();
+  const chip = component.locator('a[download="spec *v2*.pdf"]');
+  await expect(chip).toHaveText("spec *v2*.pdf");
   await expect(chip).toHaveAttribute(
     "href",
-    "/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2.pdf",
+    "/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2-.pdf",
   );
 });
 

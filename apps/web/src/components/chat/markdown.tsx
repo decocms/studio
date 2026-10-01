@@ -253,6 +253,15 @@ function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
   );
 }
 
+/** A link's text as one string, even where markdown formatted part of it. */
+function textOf(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return `${node}`;
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  return React.isValidElement<{ children?: React.ReactNode }>(node)
+    ? textOf(node.props.children)
+    : "";
+}
+
 // Markdown links whose href is an org file path open the in-chat preview;
 // all other links keep their external-tab behavior. `animate` routes the label
 // through the streaming word-fade animator. Like MarkdownCode, the in-chat
@@ -281,9 +290,7 @@ function MarkdownAnchor({
   }
   if (href && isEditorFileUrl(href)) {
     // The stored name is sanitized; `download` saves it under the uploaded one.
-    const name = React.Children.toArray(children)
-      .filter((c) => typeof c === "string")
-      .join("");
+    const name = textOf(children);
     return (
       <a
         href={href}

@@ -16,6 +16,20 @@ describe("isEditorFileUrl", () => {
     ).toBe(true);
   });
 
+  it("rejects a Library file under the comments folder that no comment uploaded", () => {
+    for (const path of [
+      "task-comments/board_1/spec.pdf",
+      "task-comments/board_1/a1/b2/spec.pdf",
+      "task-comments/board_1/a1/../spec.pdf",
+    ]) {
+      expect(
+        isEditorFileUrl(
+          `/api/acme/fs/uploads/read?${new URLSearchParams({ path })}`,
+        ),
+      ).toBe(false);
+    }
+  });
+
   it("rejects an image upload — those render as a preview, not a chip", () => {
     expect(
       isEditorFileUrl("/api/acme/fs/uploads/read?path=editor-images%2Fa.png"),

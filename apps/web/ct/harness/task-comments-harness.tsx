@@ -37,7 +37,8 @@ const THREAD: TaskComment = {
 const ATTACHMENT_REPLY: TaskComment = {
   id: "c1-r2",
   author: ME,
-  body: "The spec: [spec v2.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2.pdf)",
+  // The name escaped, as the composer writes it.
+  body: "The spec: [spec \\*v2\\*.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2-.pdf)",
   createdAt: new Date("2026-07-30T12:02:00Z").toISOString(),
   replies: [],
 };

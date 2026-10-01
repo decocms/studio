@@ -55,6 +55,8 @@ describe("attachmentsAsSandboxPaths / sandboxPathsAsAttachments", () => {
       "![qa](org/output/qa/home.png)",
       "![y](org/.uploads/editor-images/y.png)",
       "[z](org/.uploads/task-comments/board_1/a1/../../board_2/a1/x.pdf)",
+      // The mount root's dot is literal, not any character.
+      "[w](org/xuploads/task-comments/board_1/a1/x.pdf)",
     ].join("\n");
     expect(sandboxPathsAsAttachments(body, "acme")).toBe(body);
   });

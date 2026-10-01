@@ -8,6 +8,7 @@ import { Download01, File02, X } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { ATTACHMENT_CHIP_CLASS } from "./attachment-chip";
+import { escapeLinkText } from "./link-text";
 
 /**
  * A file with nothing to preview (pdf, docx, pptx, txt, …), rendered as a chip
@@ -35,8 +36,8 @@ function AttachmentNodeView({
     >
       <File02 size={14} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 truncate">{name}</span>
-      {/* The stored file name is a UUID, so `download` is what gives the saved
-          file the name it was uploaded with. */}
+      {/* The stored file name is a UUID or a sanitized copy, so `download` is
+          what gives the saved file the name it was uploaded with. */}
       <a
         href={href}
         download={name}
@@ -62,11 +63,6 @@ function AttachmentNodeView({
       )}
     </NodeViewWrapper>
   );
-}
-
-/** A file name may contain brackets; unescaped they'd truncate the link text. */
-function escapeLinkText(text: string): string {
-  return text.replace(/([[\]])/g, "\\$1");
 }
 
 /**
