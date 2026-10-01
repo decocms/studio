@@ -817,8 +817,6 @@ export const settings = {
   "settings.taskPrompt.failed":
     "N\u00e3o foi poss\u00edvel salvar o system prompt",
   "settings.taskPrompt.skillsLabel": "Skills em todas as colunas",
-  "settings.taskPrompt.skillsHint":
-    "Toda execução do agente iniciada por um card carrega estas, em qualquer coluna.",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",

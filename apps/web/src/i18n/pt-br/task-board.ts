@@ -85,8 +85,6 @@ export const taskBoard = {
   "taskBoard.columnRules.editAriaLabel": "Editar regras de {lane}",
   "taskBoard.columnRules.defaultRun": "Executa o agente",
   "taskBoard.columnRules.skillsOnly": "{count} skills",
-  "taskBoard.columnRules.sheetDescription":
-    "O que acontece quando um card chega nesta coluna.",
   "taskBoard.columnRules.runLabel": "Executar o agente",
   "taskBoard.columnRules.runHint":
     "Inicia uma execução em cada card que chega aqui, a menos que alguém já seja o responsável.",
@@ -97,8 +95,6 @@ export const taskBoard = {
   "taskBoard.columnRules.promptLabel": "Instruções",
   "taskBoard.columnRules.promptPlaceholder":
     "Convenções, ferramentas preferidas, o que nunca tocar",
-  "taskBoard.columnRules.promptHint":
-    "Adicionadas a cada execução do agente em cards desta coluna, depois das instruções do quadro.",
   "taskBoard.columnRules.skillsLabel": "Skills",
   "taskBoard.columnRules.removeSkill": "Remover {skill}",
   "taskBoard.columnRules.searchSkills": "Buscar skills",
