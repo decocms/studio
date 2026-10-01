@@ -4,7 +4,7 @@
  *   GET /api/:org/app-content/:virtualMcpId
  *
  * Always the default branch head: a draft branch is never served here (drafts
- * reach phones only through preview sessions). Every gate — org flag
+ * reach phones only through Eitri Play, in dev). Every gate — org flag
  * `app_content_delivery`, `cms` plan, project in the org, repository binding,
  * `.deco/app.json` with `publishedContent: true` — fails to the same 404 so
  * the route cannot be used to enumerate projects. Secret blocks (top-level or
@@ -15,10 +15,12 @@
  */
 
 import { isSecretBlock } from "@decocms/shared/decofile";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import { Hono, type Context } from "hono";
 import type { StudioContext } from "@/core/studio-context";
+import { orgHasFeature } from "@/core/plan-feature-gate";
 import { readAppManifest } from "@/app-content/manifest";
-import { resolveAppProject, VIRTUAL_MCP_ID_RE } from "@/app-content/project";
 import { readDecofileAtSha } from "@/decofile/read-decofile";
 import { createSingleFlight } from "@/decofile/single-flight";
 import {
@@ -27,7 +29,41 @@ import {
   requireBranchHead,
 } from "@/git-providers";
 import type { Env } from "../hono-env";
+import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import { clientIp, createWindowLimiter } from "../utils/rate-limit";
+
+// Gates: org flag `app_content_delivery`, the `cms` plan, the virtual MCP in the org.
+const VIRTUAL_MCP_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+interface AppProject {
+  /** Null when the project has no repository binding. */
+  repository: RepositoryBinding | null;
+  packagePath: string | null;
+}
+
+/** Null = not an app-content project of this org (flag, plan or ownership). */
+async function resolveAppProject(
+  ctx: StudioContext,
+  organizationId: string,
+  virtualMcpId: string,
+): Promise<AppProject | null> {
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  if (!orgFlagEnabled(settings?.flags, "app_content_delivery")) return null;
+  if (!(await orgHasFeature(ctx, organizationId, "cms"))) return null;
+
+  const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
+  if (!virtualMcp || virtualMcp.organization_id !== organizationId) {
+    return null;
+  }
+  const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
+  const repository = parseRepositoryBinding(
+    metadata,
+    virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
+  );
+  const runtime = metadata?.runtime as { path?: string | null } | undefined;
+  const packagePath = runtime?.path?.replace(/^\/+|\/+$/g, "") || null;
+  return { repository, packagePath };
+}
 
 /** Head (and gates) re-resolved at most this often per project per pod. */
 const REVALIDATE_MS = 30_000;
