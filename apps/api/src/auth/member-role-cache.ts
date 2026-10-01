@@ -26,7 +26,7 @@ function cacheKey(userId: string, organizationId: string): string {
   return `${userId}:${organizationId}`;
 }
 
-export function createMemberRoleCache(options?: {
+function createMemberRoleCache(options?: {
   ttlMs?: number;
   maxSize?: number;
 }): MemberRoleCache {
