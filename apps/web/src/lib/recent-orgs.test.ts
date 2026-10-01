@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pushRecentOrg, railOrgs } from "./recent-orgs";
+import { pushRecentOrg, railOrgLimit, railOrgs } from "./recent-orgs";
 
 const orgs = (...slugs: string[]) => slugs.map((slug) => ({ slug }));
 const slugs = (list: { slug: string }[]) => list.map((o) => o.slug);
@@ -81,5 +81,18 @@ describe("switching to an org already on the rail", () => {
     expect(slugs(railOrgs(all, next, "a", 5).shown)).toEqual(
       slugs(before.shown),
     );
+  });
+});
+
+describe("railOrgLimit", () => {
+  test("follows the window's height", () => {
+    expect(railOrgLimit(833)).toBe(7);
+    expect(railOrgLimit(700)).toBe(4);
+  });
+
+  test("never fewer than 3, never more than 10", () => {
+    expect(railOrgLimit(0)).toBe(3);
+    expect(railOrgLimit(500)).toBe(3);
+    expect(railOrgLimit(1440)).toBe(10);
   });
 });

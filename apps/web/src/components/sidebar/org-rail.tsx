@@ -1,7 +1,7 @@
 /** The always-visible org strip. Which orgs it draws is `railOrgs`; how one
  *  mark is drawn, labelled and marked as current is `RailItem`. */
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Plus } from "@untitledui/icons";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -21,13 +21,23 @@ import {
   useRememberOpenApp,
 } from "@/hooks/use-recent-apps";
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
-import { railOrgs } from "@/lib/recent-orgs";
+import { railOrgLimit, railOrgs } from "@/lib/recent-orgs";
 import { OrgSearch } from "./org-search";
 import { RailItem } from "./rail-item";
 import type { RecentApp } from "@/lib/recent-apps";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+
+/** The window's height is external mutable state, so it is read through
+ *  `useSyncExternalStore` (as `useIsMobile` reads its width). The snapshot is
+ *  the derived count, so a resize that keeps it re-renders nothing. */
+function subscribeToResize(onChange: () => void): () => void {
+  globalThis.addEventListener("resize", onChange);
+  return () => globalThis.removeEventListener("resize", onChange);
+}
+const orgLimitSnapshot = () => railOrgLimit(globalThis.innerHeight);
+const orgLimitServerSnapshot = () => railOrgLimit(0);
 
 interface RailOrg {
   id: string;
@@ -140,7 +150,17 @@ export function OrgRail() {
 
   const orgs = (organizations ?? []) as RailOrg[];
   const { recent: recentOrgs, remember } = useRecentOrgs();
-  const { shown, hidden } = railOrgs(orgs, recentOrgs, currentOrg.slug);
+  const orgLimit = useSyncExternalStore(
+    subscribeToResize,
+    orgLimitSnapshot,
+    orgLimitServerSnapshot,
+  );
+  const { shown, hidden } = railOrgs(
+    orgs,
+    recentOrgs,
+    currentOrg.slug,
+    orgLimit,
+  );
 
   const travelTo = (slug: string) => {
     track("org_rail_travel");
