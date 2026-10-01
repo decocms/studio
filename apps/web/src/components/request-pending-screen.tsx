@@ -43,7 +43,7 @@ export function RequestPendingScreen({
           window.location.href = "/";
         }}
       >
-        {t("common.requestPendingScreen.goHome")}
+        {t("common.goHome")}
       </Button>
     </AccessScreenLayout>
   );

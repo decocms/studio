@@ -28,9 +28,7 @@ export function ArchivedOrgScreen({ orgName }: ArchivedOrgScreenProps) {
             : t("common.archivedOrgScreen.deletedGeneric")}
         </p>
       </div>
-      <Button onClick={handleGoHome}>
-        {t("common.archivedOrgScreen.goHome")}
-      </Button>
+      <Button onClick={handleGoHome}>{t("common.goHome")}</Button>
     </AccessScreenLayout>
   );
 }
