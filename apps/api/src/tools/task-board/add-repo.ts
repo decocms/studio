@@ -209,6 +209,27 @@ function repoProbe(dir: string): string {
 }
 
 /**
+ * Whether the checkout at `dir` is complete: cloned, and with the same listing
+ * across two probes, since one non-empty probe can still be mid-clone.
+ */
+async function checkoutSettled(
+  provider: SandboxProvider,
+  handle: string,
+  threadId: string,
+  dir: string,
+): Promise<boolean> {
+  const probe = () =>
+    podBash(provider, handle, threadId, repoProbe(dir))
+      .then((res) => parseRepoProbe(res.stdout))
+      .catch(() => null);
+  const first = await probe();
+  if (!first?.cloned) return false;
+  await sleep(CLONE_POLL_MS);
+  const second = await probe();
+  return !!second?.cloned && second.listing === first.listing;
+}
+
+/**
  * Interpret the clone probe (`__CLONED__` marker + `ls -A`).
  *
  * The marker is the answer, and the directory listing is NOT. Readiness used to
@@ -595,9 +616,7 @@ export const TASK_ADD_REPO = defineTool({
     // Only a real checkout ends here; anything else is delivered again.
     if (
       isPrimaryRepo &&
-      (await podBash(provider, record.sandboxHandle, threadId, repoProbe("."))
-        .then((probe) => parseRepoProbe(probe.stdout).cloned)
-        .catch(() => false))
+      (await checkoutSettled(provider, record.sandboxHandle, threadId, "."))
     ) {
       return {
         success: false,

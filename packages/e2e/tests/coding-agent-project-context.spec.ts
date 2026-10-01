@@ -132,6 +132,7 @@ for (const scenario of [
     // The lookup found the record; with no live sandbox behind the synthetic
     // handle, the call can only fail later, at the checkout probe.
     expect(JSON.stringify(envelope)).not.toContain("No sandbox is registered");
+    expect(JSON.stringify(envelope)).not.toContain("already checked out");
     const db = await connectDevDb();
     try {
       const stored = await db.query(
