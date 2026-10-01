@@ -624,7 +624,6 @@ function ConnectionInspectorViewWithConnection({
                         metadata: null,
                         tools: null,
                         bindings: null,
-                        status: "inactive",
                       });
                       const mcpProxyUrl = new URL(
                         `/api/${projectOrg.slug}/mcp/${newId}`,

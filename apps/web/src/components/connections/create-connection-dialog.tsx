@@ -266,7 +266,6 @@ export function CreateConnectionDialog({
         metadata: null,
         tools: null,
         bindings: null,
-        status: "inactive",
       });
 
       form.reset();

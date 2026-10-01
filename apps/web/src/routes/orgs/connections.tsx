@@ -850,7 +850,6 @@ function OrgMcpsContent() {
       metadata: null,
       tools: null,
       bindings: null,
-      status: "inactive",
     });
 
     closeCreateDialog();
