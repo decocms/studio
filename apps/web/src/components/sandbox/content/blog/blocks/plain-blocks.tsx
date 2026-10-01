@@ -1,20 +1,14 @@
 import { useRef, useState } from "react";
-import {
-  Bold01,
-  Italic01,
-  Strikethrough01,
-  Underline01,
-} from "@untitledui/icons";
-import type { Editor } from "@tiptap/core";
-import type { BubbleMenuPluginProps } from "@tiptap/extension-bubble-menu";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { RichTextLinkControl } from "@/components/sections-editor/rich-text-link-control";
+import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { useLinkSources } from "./link-pickers";
 import { listHtmlToRows, rowsToListHtml } from "./list-html";
+import { InlineMarksToolbar } from "./marks-toolbar";
 import { FloatingToolbar, InlineText, ToolbarButton } from "./primitives";
 
 const HEADING_LEVELS = ["1", "2", "3"] as const;
@@ -127,87 +121,6 @@ export function CodeBlock({
   );
 }
 
-/** Follows the caret, not just a selection — marks apply to what's typed next. */
-const shouldShowMarks: NonNullable<BubbleMenuPluginProps["shouldShow"]> = ({
-  editor,
-  state,
-}) => editor.isEditable && (editor.isFocused || !state.selection.empty);
-
-/** Below the caret — above is where the block's format toolbar already sits. */
-const MARKS_MENU_OPTIONS = { placement: "bottom-start", offset: 8 } as const;
-
-/**
- * Toolbar for a List block's *content*: the marks that apply to the text at
- * the caret (or under the selection). Separate from the block toolbar, which
- * owns the list format — bulleted vs numbered.
- */
-function ListMarksToolbar({ editor }: { editor: Editor }) {
-  const t = useT();
-  const [linkOpen, setLinkOpen] = useState(false);
-  // State, not a ref: `appendTo` re-registers the plugin if it isn't stable.
-  const [host, setHost] = useState<HTMLDivElement | null>(null);
-
-  const marks = useEditorState({
-    editor,
-    selector: ({ editor }) => ({
-      bold: editor.isActive("bold"),
-      italic: editor.isActive("italic"),
-      underline: editor.isActive("underline"),
-      strike: editor.isActive("strike"),
-      link: editor.isActive("link"),
-    }),
-  });
-
-  return (
-    <div ref={setHost} className="relative z-20">
-      {host && (
-        <BubbleMenu
-          editor={editor}
-          appendTo={host}
-          shouldShow={shouldShowMarks}
-          options={MARKS_MENU_OPTIONS}
-          className="flex items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md"
-        >
-          <ToolbarButton
-            active={marks.bold}
-            label={t("sectionsEditor.richTextField.bold")}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-          >
-            <Bold01 size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.italic}
-            label={t("sectionsEditor.richTextField.italic")}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-          >
-            <Italic01 size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.underline}
-            label={t("sectionsEditor.richTextField.underline")}
-            onClick={() => editor.chain().focus().toggleUnderline().run()}
-          >
-            <Underline01 size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            active={marks.strike}
-            label={t("sectionsEditor.richTextField.strikethrough")}
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-          >
-            <Strikethrough01 size={14} />
-          </ToolbarButton>
-          <RichTextLinkControl
-            editor={editor}
-            active={marks.link}
-            open={linkOpen}
-            onOpenChange={setLinkOpen}
-          />
-        </BubbleMenu>
-      )}
-    </div>
-  );
-}
-
 /**
  * Editor surface for a List block. Two toolbars, because they answer two
  * different questions: the block toolbar above picks the list *format*
@@ -219,12 +132,19 @@ export function ListBlock({
   items,
   style,
   onChange,
+  decofile,
+  sandboxRef,
 }: {
   items: string;
   style: string;
   onChange: (next: { items: string; style: string }) => void;
+  /** The site's blocks — enables linking to another post. */
+  decofile?: Record<string, unknown>;
+  /** A running preview — enables linking to a catalog product. */
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
+  const linkSources = useLinkSources({ decofile, sandboxRef });
 
   // Read from onUpdate only — recreating the editor would reset selection/undo.
   const onChangeRef = useRef(onChange);
@@ -260,6 +180,7 @@ export function ListBlock({
           "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-7 [&_ol]:pl-7",
           "[&_ul]:my-0 [&_ol]:my-0 [&_li]:pl-1.5 [&_li]:my-1 [&_p]:my-0",
           "marker:text-muted-foreground marker:tabular-nums",
+          EDITOR_LINK_CLASS,
         ),
       },
       // Swallow Tab: a flat `items` string has nowhere to put nesting.
@@ -315,7 +236,7 @@ export function ListBlock({
           </ToolbarButton>
         </FloatingToolbar>
       )}
-      <ListMarksToolbar editor={editor} />
+      <InlineMarksToolbar editor={editor} sources={linkSources} />
       <EditorContent editor={editor} className="text-foreground" />
     </div>
   );

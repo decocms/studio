@@ -604,6 +604,8 @@ export const sandbox = {
   "sandbox.postEditor.coverAltLabel": "Cover image alt text",
   "sandbox.postEditor.coverImageLabel": "Cover image",
   "sandbox.postEditor.dateLabel": "Date",
+  "sandbox.postEditor.duplicateTitleWarning":
+    "Another post already uses this title. Duplicate titles compete with each other in search.",
   "sandbox.postEditor.excerptLabel": "Excerpt",
   "sandbox.postEditor.extraPropsLabel": "Extra props",
   "sandbox.postEditor.issuePlural": "issues",
@@ -641,6 +643,8 @@ export const sandbox = {
   "sandbox.postEditor.seoTitleLabel": "SEO title",
   "sandbox.postEditor.settingsTab": "Settings",
   "sandbox.postEditor.statusLabel": "Status",
+  "sandbox.postEditor.slugDeduped":
+    "That slug was already taken — saved as “{slug}”.",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "my-post",
   "sandbox.postEditor.valuePlaceholder": "value",

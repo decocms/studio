@@ -43,6 +43,7 @@ import {
   missingBrandForGeneration,
   postStructures,
   sectionResolveTypes,
+  maskSlugInput,
   slugifyTitle,
   uniquePostSlug,
   unknownCitations,
@@ -1596,6 +1597,31 @@ describe("slugifyTitle", () => {
   });
 });
 
+describe("maskSlugInput", () => {
+  test("folds accents, lowercases and hyphenates as the author types", () => {
+    expect(maskSlugInput("Meu Post Legal")).toBe("meu-post-legal");
+    expect(maskSlugInput("ação")).toBe("acao");
+  });
+
+  test("keeps a trailing hyphen so a separator survives the next keystroke", () => {
+    expect(maskSlugInput("meu-")).toBe("meu-");
+    expect(maskSlugInput("meu post ")).toBe("meu-post-");
+    // Trailing punctuation is the same case — slugifyTitle trims it on blur.
+    expect(maskSlugInput("Meu Post Legal!")).toBe("meu-post-legal-");
+    expect(slugifyTitle(maskSlugInput("Meu Post Legal!"))).toBe(
+      "meu-post-legal",
+    );
+  });
+
+  test("drops leading hyphens and collapses runs", () => {
+    expect(maskSlugInput("---a---b")).toBe("a-b");
+  });
+
+  test("caps at 80 characters", () => {
+    expect(maskSlugInput("a".repeat(120))).toHaveLength(80);
+  });
+});
+
 describe("uniquePostSlug", () => {
   test("uses the plain slug when it's free", () => {
     expect(uniquePostSlug("Linho no verão", [])).toBe("linho-no-verao");
@@ -1608,6 +1634,26 @@ describe("uniquePostSlug", () => {
 
   test("falls back to a random slug for an unslugifiable title", () => {
     expect(uniquePostSlug("!!!", [])).toMatch(/^post-[0-9a-f]{6}$/);
+  });
+
+  test("keeps the suffixed slug inside the 80-character cap", () => {
+    const long = "a".repeat(80);
+    const result = uniquePostSlug(long, [long]);
+    expect(result).toHaveLength(80);
+    expect(result).toBe(`${"a".repeat(78)}-2`);
+  });
+
+  test("does not leave a dangling hyphen after shortening the base", () => {
+    const long = `${"a".repeat(77)}-bb`;
+    expect(uniquePostSlug(long, [long])).toBe(`${"a".repeat(77)}-2`);
+  });
+
+  // The slug editor passes an already-slugified value, not a title.
+  test("is idempotent on an input that is already a slug", () => {
+    expect(uniquePostSlug("linho-no-verao", [])).toBe("linho-no-verao");
+    expect(uniquePostSlug("linho-no-verao", ["linho-no-verao"])).toBe(
+      "linho-no-verao-2",
+    );
   });
 });
 

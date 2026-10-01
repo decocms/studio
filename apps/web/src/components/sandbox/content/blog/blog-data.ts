@@ -1623,6 +1623,9 @@ export function buildPostSections(
   return blocks;
 }
 
+/** Longest slug a post may carry, suffix included. */
+const SLUG_MAX_LENGTH = 80;
+
 /** URL-safe slug from a title: accents folded, punctuation dropped. */
 export function slugifyTitle(title: string): string {
   return title
@@ -1631,7 +1634,24 @@ export function slugifyTitle(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+    .slice(0, SLUG_MAX_LENGTH);
+}
+
+/** Slugify as the author types: keeps the trailing "-" `slugifyTitle` trims, or typing "meu-post" would eat the separator. */
+export function maskSlugInput(raw: string): string {
+  return raw
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, SLUG_MAX_LENGTH);
+}
+
+/** `base-suffix`, shortening the base so the whole slug still fits the cap. */
+function suffixSlug(base: string, suffix: string): string {
+  const room = SLUG_MAX_LENGTH - suffix.length - 1;
+  return `${base.slice(0, room).replace(/-+$/, "")}-${suffix}`;
 }
 
 /** `slugifyTitle`, suffixed until it stops colliding with an existing post. */
@@ -1640,10 +1660,10 @@ export function uniquePostSlug(title: string, taken: string[]): string {
   const used = new Set(taken);
   if (!used.has(base)) return base;
   for (let n = 2; n < 100; n++) {
-    const candidate = `${base}-${n}`;
+    const candidate = suffixSlug(base, String(n));
     if (!used.has(candidate)) return candidate;
   }
-  return `${base}-${randomHex(4)}`;
+  return suffixSlug(base, randomHex(4));
 }
 
 /** A freshly generated post: lands in Awaiting review, with no cover image. */

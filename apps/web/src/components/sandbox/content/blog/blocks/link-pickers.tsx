@@ -6,10 +6,11 @@
  */
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loading02, SearchSm } from "@untitledui/icons";
+import { File02, Loading02, SearchSm, Tag01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { LinkSource } from "@/components/sections-editor/rich-text-link-control";
 import { applyBlogPageSlug, findBlogPageSlug } from "../blog-preview-url";
 import { listPostsWithMeta } from "../blog-data";
 import {
@@ -89,7 +90,7 @@ function ResultRow({
 }
 
 /** Link to one of the site's own posts — resolves the on-site post path. */
-export function PostLinkPicker({
+function PostLinkPicker({
   decofile,
   onPick,
 }: {
@@ -146,7 +147,7 @@ export function PostLinkPicker({
 }
 
 /** Link to a catalog product — resolves the PDP url via the site's loader. */
-export function ProductLinkPicker({
+function ProductLinkPicker({
   sandboxRef,
   onPick,
 }: {
@@ -206,4 +207,40 @@ export function ProductLinkPicker({
       )}
     </PickerShell>
   );
+}
+
+/**
+ * The link-target tabs a block editor offers beyond a plain URL: "a post" when
+ * the site's blocks are known, "a product" when a preview is running. Shared by
+ * every rich-text surface in a post, so a link is picked the same way from a
+ * paragraph, a list item or a table cell.
+ */
+export function useLinkSources({
+  decofile,
+  sandboxRef,
+}: {
+  decofile?: Record<string, unknown>;
+  sandboxRef?: PreviewProxyRef | null;
+}): LinkSource[] {
+  const t = useT();
+  const sources: LinkSource[] = [];
+  if (decofile) {
+    sources.push({
+      id: "post",
+      label: t("sandbox.linkPicker.tabPost"),
+      icon: <File02 size={12} />,
+      render: (apply) => <PostLinkPicker decofile={decofile} onPick={apply} />,
+    });
+  }
+  if (sandboxRef) {
+    sources.push({
+      id: "product",
+      label: t("sandbox.linkPicker.tabProduct"),
+      icon: <Tag01 size={12} />,
+      render: (apply) => (
+        <ProductLinkPicker sandboxRef={sandboxRef} onPick={apply} />
+      ),
+    });
+  }
+  return sources;
 }
