@@ -2,7 +2,8 @@
  *
  *  It answers what ran, what broke and what is stopped on you before it lists
  *  projects. Everything below the headline derives from the ONE board query it
- *  already makes, plus the automation list for the schedules card. */
+ *  already makes, plus the automation list for the schedules card and this
+ *  browser's app-open history for the order of the Apps card. */
 
 import { usePreferences } from "@/hooks/use-preferences";
 import { ChatInput } from "@/components/chat/input";

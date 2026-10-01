@@ -128,6 +128,15 @@ function RailAppButton({
   );
 }
 
+/** Records the app the route is on, by URL as much as by launcher. Mounted
+ *  by `Layout` beside the rail but on every viewport, since the org home's
+ *  app order reads this history on mobile too. */
+export function OpenAppRecorder() {
+  const { org } = useProjectContext();
+  useRememberOpenApp(org.slug);
+  return null;
+}
+
 /** Mounted once by `Layout`, outside the resizable `<Sidebar>`, so collapse
  *  and resize never touch it. Desktop only — the mobile picker drawer already
  *  lists every org. */
@@ -141,9 +150,6 @@ export function OrgRail() {
    *  sidebar's place (`useAppTakeover`), leaving nothing to separate. */
   const takeover = useAppTakeover();
   const { recent } = useRecentApps(currentOrg.slug);
-  /** Records by URL as much as by launcher, since the rail is what takes you
-   *  back. */
-  useRememberOpenApp(currentOrg.slug);
   /** Which recent is the screen you are on, so the rail marks it the same way
    *  it marks the current org. */
   const openApp = useOpenApp();
