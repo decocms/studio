@@ -65,7 +65,8 @@ export const EXPERIMENT_RESULTS = defineTool({
       .optional()
       .describe("Window end (YYYY-MM-DD)."),
     goals: z
-      .array(z.string())
+      .array(z.string().min(1).max(200))
+      .max(20)
       .default([])
       .describe("Custom goals to aggregate conversions for."),
     goalOnDash: z
