@@ -27,6 +27,7 @@ Self-hosted deployments configure auth entirely through `AUTH_*` environment var
 
 - `BETTER_AUTH_SECRET` (required)
 - `BETTER_AUTH_URL` / `BASE_URL` (recommended to set explicitly in production)
+- `ENCRYPTION_KEY` (required for production; generated with `openssl rand -base64 32`)
 
 ## Deployment-wide SSO (OIDC)
 
