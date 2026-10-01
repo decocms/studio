@@ -19,6 +19,7 @@ import {
   TaskBoardItemStatusSchema,
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
+import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -139,13 +140,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       : (input.status ?? LANES.intake);
 
     if (input.tagIds?.length) {
-      const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
-      const validTagIds = new Set(orgTags.map((t) => t.id));
-      for (const tagId of input.tagIds) {
-        if (!validTagIds.has(tagId)) {
-          throw new Error(`Tag not found: ${tagId}`);
-        }
-      }
+      await assertValidTagIds(ctx, organizationId, input.tagIds);
     }
 
     let duplicateCheck: DuplicateOutcome | null = null;
