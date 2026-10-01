@@ -164,11 +164,10 @@ export function OrgRail() {
 
   const travelTo = (slug: string) => {
     track("org_rail_travel");
-    /** An org already on the rail keeps the rail as it is. */
-    remember(
-      slug,
-      shown.map((it) => it.slug),
-    );
+    /** An org already on the rail keeps the rail as it is; one picked from
+     *  search rolls the oldest off by recency, as before. */
+    const onRail = shown.some((it) => it.slug === slug);
+    remember(slug, onRail ? shown.map((it) => it.slug) : undefined);
     navigate({ to: "/$org/home", params: { org: slug } });
   };
 

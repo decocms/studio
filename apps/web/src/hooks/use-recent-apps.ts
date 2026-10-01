@@ -110,14 +110,9 @@ export function useRememberOpenApp(orgSlug: string): void {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- the event is the navigation itself; a deep link has no click to record on
   useEffect(() => {
+    if (openKey) opens.remember(openKey);
     if (!open || !title) return;
     remember({ app: open.app, projectId: open.projectId, projectTitle: title });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `remember` is a fresh closure each render; the entry is the identity that matters
-  }, [orgSlug, open?.app, open?.projectId, title]);
-
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- same reason as above: a deep link has no click to record on
-  useEffect(() => {
-    if (openKey) opens.remember(openKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the entry, like the rail's write
-  }, [orgSlug, openKey]);
+  }, [orgSlug, openKey, open?.app, open?.projectId, title]);
 }

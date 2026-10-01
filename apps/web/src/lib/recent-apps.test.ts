@@ -62,7 +62,13 @@ describe("pushAppOpen", () => {
   });
 
   test("the same app in two projects is two entries", () => {
-    expect(appOpenKey("p1", "hosting")).not.toBe(appOpenKey("p2", "hosting"));
+    const p1 = appOpenKey("p1", "hosting");
+    const p2 = appOpenKey("p2", "hosting");
+    expect(pushAppOpen(pushAppOpen([], p1), p2)).toEqual([p2, p1]);
+  });
+
+  test("a key cannot collide across the project and app boundary", () => {
+    expect(appOpenKey("a|b", "c")).not.toBe(appOpenKey("a", "b|c"));
   });
 
   test("drops the oldest past the limit", () => {

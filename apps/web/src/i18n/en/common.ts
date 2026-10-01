@@ -187,6 +187,7 @@ export const common = {
   "common.repositoryPicker.unknownError": "Unknown error",
   "common.iconPicker.apply": "Apply",
   "common.iconPicker.changeColor": "Change color",
+  "common.iconPicker.changeIcon": "Change icon",
   "common.iconPicker.failedToReadImage": "Failed to read image file",
   "common.iconPicker.filterPlaceholder": "Filter...",
   "common.iconPicker.iconsTab": "Icons",

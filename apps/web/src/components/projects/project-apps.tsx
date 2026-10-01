@@ -214,26 +214,48 @@ const ORG_HIDDEN_APPS = new Set<LaunchableViewId>(["reports", "site-editor"]);
 /** A project's tiles, bare, so the org home can lay several projects' tiles
  *  in one row. A component rather than a function because native presence is
  *  a per-project hook. */
-function ProjectAppTiles({
-  project,
-  orgSlug,
-  showProject,
-  rank,
-}: {
+interface ProjectAppTilesProps {
   project: VirtualMCPEntity;
   orgSlug: string;
   showProject?: boolean;
   /** Position of an `appOpenKey` in the org's history, when ordering by it. */
   rank?: (key: string) => number;
+}
+
+/** Probes native presence only for a project that enabled a native app, so
+ *  the org home does not fire a site-access check per project. */
+function ProjectAppTiles(props: ProjectAppTilesProps) {
+  const wantsNative = launchableApps(props.project).some(isProjectNativeViewId);
+  return wantsNative ? (
+    <ProjectAppTilesWithPresence {...props} />
+  ) : (
+    <ProjectAppTilesBody {...props} native={null} />
+  );
+}
+
+function ProjectAppTilesWithPresence(props: ProjectAppTilesProps) {
+  const native = useProjectNativeViewPresence(props.project);
+  return <ProjectAppTilesBody {...props} native={native.presence} />;
+}
+
+function ProjectAppTilesBody({
+  project,
+  orgSlug,
+  showProject,
+  rank,
+  native,
+}: ProjectAppTilesProps & {
+  /** Null when the project enabled no native app, so none was probed. */
+  native: ProjectNativeViewPresence | null;
 }) {
   const t = useT();
   /** Site Editor opens a repo; without one the tile would bounce to
    *  Settings. */
   const hasSource = agentHasClonableSource(project.metadata);
-  const native = useProjectNativeViewPresence(project);
-  const apps = launchableApps(project, native.presence).filter(
+  const apps = launchableApps(project, native ?? undefined).filter(
     (id) =>
-      (id !== "site-editor" || hasSource) &&
+      /* Both need a repo, as in the sidebar's presence rules. */
+      ((id !== "site-editor" && id !== "experiments") || hasSource) &&
       /* Every project has these two, so across an org they bury the apps
          someone actually chose. They stay on each project's own screen. */
       !(showProject && ORG_HIDDEN_APPS.has(id)),
@@ -325,11 +347,15 @@ function useFirstLine(): readonly [
       /* By position, not DOM order: `order` reshuffles the tiles. */
       const top = Math.min(...tiles.map((tile) => tile.offsetTop));
       const firstLine = tiles.filter((tile) => tile.offsetTop === top);
-      setLine({
-        overflows: firstLine.length < tiles.length,
-        /* The tallest tile on the line: a two-line name is taller. */
-        height: Math.max(...firstLine.map((tile) => tile.offsetHeight)),
-      });
+      const overflows = firstLine.length < tiles.length;
+      /* The tallest tile on the line: a two-line name is taller. */
+      const height = Math.max(...firstLine.map((tile) => tile.offsetHeight));
+      /* The ref re-attaches each render; a fresh object would loop. */
+      setLine((prev) =>
+        prev.overflows === overflows && prev.height === height
+          ? prev
+          : { overflows, height },
+      );
     };
     measure();
     const resize = new ResizeObserver(measure);

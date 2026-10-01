@@ -37,7 +37,7 @@ const APP_OPENS_LIMIT = 100;
 /** One app in one project. `app` is a `LaunchableViewId`, or
  *  `app:<connectionId>:<toolName>` for a pinned connection app. */
 export function appOpenKey(projectId: string, app: string): string {
-  return `${projectId}|${app}`;
+  return JSON.stringify([projectId, app]);
 }
 
 export function pushAppOpen(

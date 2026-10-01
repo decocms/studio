@@ -35,6 +35,9 @@ export function pinnedViewsOf(project: VirtualMCPEntity): PinnedView[] {
       !!pv &&
       typeof pv === "object" &&
       typeof (pv as PinnedView).connectionId === "string" &&
-      typeof (pv as PinnedView).toolName === "string",
+      typeof (pv as PinnedView).toolName === "string" &&
+      ["undefined", "string"].includes(typeof (pv as PinnedView).label) &&
+      ((pv as PinnedView).icon == null ||
+        typeof (pv as PinnedView).icon === "string"),
   );
 }
