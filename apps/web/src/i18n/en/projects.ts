@@ -68,6 +68,8 @@ export const projects = {
   "projects.flat.viewProject": "Project",
   "projects.flat.viewFiles": "Files",
   "projects.apps.heading": "Apps",
+  "projects.apps.seeAll": "See all",
+  "projects.apps.showLess": "Show less",
   "projects.apps.reports": "Report",
   "projects.apps.reportsCaption": "What is wrong with the storefront",
   "projects.apps.siteEditor": "Site editor",

@@ -7,18 +7,34 @@
  * rail keeps its muscle memory.
  */
 
-/** What fits a laptop once each mark carries its name underneath
- *  (`rail-item.tsx`), beside search, "new org" and four recent apps. */
-const RAIL_ORG_LIMIT = 5;
+/** The rail's org count is set by the window's height, between these. */
+const RAIL_ORG_MIN = 3;
+const RAIL_ORG_MAX = 10;
+/** Height the rest of the rail claims: search, "new org", the rule and four
+ *  labelled recent apps, plus the rail's own padding. */
+const RAIL_RESERVED_PX = 440;
+/** One org mark (36px) and its gap, rounded up so the rail keeps air. */
+const RAIL_ORG_SLOT_PX = 55;
+
+/** How many orgs the rail draws in a window this tall: about 3 on a small
+ *  laptop, 7 at ~830px, 10 on a large desktop. */
+export function railOrgLimit(windowHeight: number): number {
+  const fits = Math.floor((windowHeight - RAIL_RESERVED_PX) / RAIL_ORG_SLOT_PX);
+  return Math.min(RAIL_ORG_MAX, Math.max(RAIL_ORG_MIN, fits));
+}
 
 /** Newest first, one entry per slug. Kept longer than the rail's limit because
- *  search ranks by this history too. */
+ *  search ranks by this history too. `keep` is what the rail shows now: it goes
+ *  right behind `slug`, so switching to an org already on the rail cannot push
+ *  another one out of the first entries that `railOrgs`
+ *  reads. */
 export function pushRecentOrg(
   list: readonly string[],
   slug: string,
-  limit = RAIL_ORG_LIMIT * 3,
+  limit = RAIL_ORG_MAX * 3,
+  keep: readonly string[] = [],
 ): string[] {
-  return [slug, ...list.filter((it) => it !== slug)].slice(0, limit);
+  return [...new Set([slug, ...keep, ...list])].slice(0, limit);
 }
 
 /**
@@ -30,7 +46,7 @@ export function railOrgs<T extends { slug: string }>(
   all: readonly T[],
   recentSlugs: readonly string[],
   currentSlug: string | null,
-  limit = RAIL_ORG_LIMIT,
+  limit: number,
 ): { shown: T[]; hidden: T[] } {
   if (all.length <= limit) return { shown: [...all], hidden: [] };
 

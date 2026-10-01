@@ -94,8 +94,9 @@ export function BriefHeadline({
       <p className="text-sm text-muted-foreground">{eyebrow}</p>
       {/* Set in the product's own typeface at display weight. The authority
           comes from size and tracking, not from borrowing a second family —
-          see the `font-display` utility. */}
-      <h1 className="font-display max-w-[40ch] text-[2.125rem] leading-[1.18] text-foreground">
+          see the `font-display` utility. Smaller on a phone, where the
+          display size turned one sentence into six lines. */}
+      <h1 className="font-display max-w-[40ch] text-2xl leading-[1.22] text-foreground sm:text-[2.125rem] sm:leading-[1.18]">
         {leadSentence(t, pulse, waiting, greeting ?? null)}
       </h1>
       {children}

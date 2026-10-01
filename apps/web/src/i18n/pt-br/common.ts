@@ -195,6 +195,7 @@ export const common = {
   "common.repositoryPicker.unknownError": "Erro desconhecido",
   "common.iconPicker.apply": "Aplicar",
   "common.iconPicker.changeColor": "Alterar cor",
+  "common.iconPicker.changeIcon": "Alterar ícone",
   "common.iconPicker.failedToReadImage": "Falha ao ler arquivo de imagem",
   "common.iconPicker.filterPlaceholder": "Filtrar...",
   "common.iconPicker.iconsTab": "Ícones",
@@ -298,9 +299,6 @@ export const common = {
   "common.signInScreen.configLoadFailed":
     "Não foi possível carregar as opções de login.",
   "common.signInScreen.tryAgain": "Tentar novamente",
-  "common.simpleIconPicker.changeIcon": "Alterar ícone",
-  "common.simpleIconPicker.filterPlaceholder": "Filtrar…",
-  "common.simpleIconPicker.noIconsFound": "Nenhum ícone encontrado",
   "common.ssoRequiredScreen.goBack": "Voltar",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "Esta organização requer autenticação SSO para acessar.",
