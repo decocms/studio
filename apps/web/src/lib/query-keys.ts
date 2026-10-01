@@ -763,6 +763,13 @@ export const KEYS = {
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
+  // Preview server's /.well-known/deco-preview.json, keyed by hint URL (one
+  // per origin) — the file is public, so it is shared across projects.
+  previewDeviceHint: (hintUrl: string) =>
+    ["preview-device-hint", hintUrl] as const,
+  // App preview build pointer (CI-published) for one project folder + branch.
+  appPreviewBuild: (base: string, branch: string) =>
+    ["app-preview-build", base, branch] as const,
   // The repo's committed `deno.json`, read for its pinned deco-apps version.
   denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["deno-json", orgSlug, virtualMcpId, branch] as const,

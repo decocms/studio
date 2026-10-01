@@ -21,6 +21,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 import { isBrowserNavigation } from "../utils/browser-navigation";
+import { sanitizeKey } from "@/object-storage/key-utils";
 
 type Variables = { studioContext: StudioContext };
 
@@ -44,11 +45,25 @@ const FORWARDED_RESPONSE_HEADERS = [
   "last-modified",
 ] as const;
 
+const APP_PREVIEW_PREFIX = "app-preview/";
+
 /** Now that bytes are served same-origin (no more redirect to the storage
  * domain), member-authored active content must not run with studio's origin.
  * CSP-sandbox it so scripts get an opaque origin and can't make credentialed
  * same-origin calls (same posture as the org-fs /read route). */
-function applyContentPolicy(headers: Headers, contentType: string): void {
+function applyContentPolicy(
+  headers: Headers,
+  contentType: string,
+  key: string,
+): void {
+  // App preview builds (published by the app repo's CI) run with an opaque
+  // origin even when opened top-level — never as Studio. Whatever the content
+  // type (svg, xhtml, xml, none, odd casing): no sniffing either.
+  if (key.startsWith(APP_PREVIEW_PREFIX)) {
+    headers.set("Content-Security-Policy", "sandbox allow-scripts");
+    headers.set("X-Content-Type-Options", "nosniff");
+    return;
+  }
   if (
     contentType.startsWith("text/html") ||
     contentType.startsWith("image/svg")
@@ -82,7 +97,15 @@ app.get("/:org/files/*", async (c) => {
 
   // Extract the file key from the wildcard segment
   // Full path is /api/:org/files/:key — strip everything up to and including /files/
-  const key = c.req.path.replace(/^.*\/files\//, "");
+  const rawKey = c.req.path.replace(/^.*\/files\//, "");
+  // Storage resolves keys through sanitizeKey, so `app-preview%2F…` or
+  // `/app-preview/…` reach the same object as `app-preview/…`: decide on (and
+  // fetch) the normalized key so an app build never takes the generic branch
+  // of applyContentPolicy. Every other key keeps its raw spelling.
+  const normalizedKey = sanitizeKey(rawKey);
+  const key = normalizedKey.startsWith(APP_PREVIEW_PREFIX)
+    ? normalizedKey
+    : rawKey;
 
   if (!key) {
     throw new HTTPException(400, { message: "Missing file key" });
@@ -108,7 +131,7 @@ app.get("/:org/files/*", async (c) => {
       "Content-Type": contentType!,
       "Cache-Control": "private, max-age=86400",
     });
-    applyContentPolicy(headers, contentType!);
+    applyContentPolicy(headers, contentType!, key);
     return new Response(bytes, { status: 200, headers });
   }
 
@@ -142,7 +165,7 @@ app.get("/:org/files/*", async (c) => {
     if (value) headers.set(name, value);
   }
   headers.set("Cache-Control", "private, max-age=86400");
-  applyContentPolicy(headers, headers.get("content-type") ?? "");
+  applyContentPolicy(headers, headers.get("content-type") ?? "", key);
 
   return new Response(upstream.body, { status: upstream.status, headers });
 });

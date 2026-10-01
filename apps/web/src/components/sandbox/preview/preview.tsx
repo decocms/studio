@@ -19,13 +19,20 @@ import {
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
+import {
+  hintRendersApp,
+  previewDeviceHintBase,
+  rendersAppStorageKey,
+  usePreviewDeviceHint,
+} from "./preview-device-hint";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -77,7 +84,10 @@ import {
   resolveSectionPreviewBase,
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
-import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
+import {
+  useDraftPointer,
+  useFastPreviewDraftUrl,
+} from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { toast } from "sonner";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
@@ -95,6 +105,13 @@ import { parseSections } from "@/components/sections-editor/parse-sections";
 import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
+import { AppPreviewButton } from "./app-preview/app-preview-button";
+import {
+  appPreviewBuildBase,
+  fillPreviewLink,
+  toAppBuildSrc,
+  useAppPreviewBuild,
+} from "./app-preview/app-preview-build";
 import {
   useSandboxEvents,
   useSandboxReloadHandler,
@@ -118,7 +135,14 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector } from "./cms-controls";
+import {
+  showCmsPageSelector,
+  showPreviewToolbar as shouldShowPreviewToolbar,
+} from "./cms-controls";
+import {
+  PREVIEW_NAVIGATED_MESSAGE,
+  parsePreviewNavigatedPath,
+} from "./preview-navigation";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
@@ -388,8 +412,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
     defaultPreviewEditingMode({ cmsMode, isMobile }),
   );
-  const [previewDeviceSize, setPreviewDeviceSize] =
-    useState<PreviewDeviceSize>("desktop");
+  /** The toolbar toggle's pick; null until the user toggles, so the default
+   *  below can still follow a device hint that resolves after mount. */
+  const [chosenDeviceSize, setChosenDeviceSize] =
+    useState<PreviewDeviceSize | null>(null);
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   /**
@@ -496,6 +522,43 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
+  // Ask the rendering server (Local tunnel, else the preview server) what it
+  // renders. An app opens on mobile and repaints edits in place: it doesn't
+  // run the deco runtime, so the commit-and-reload draft path shows stale blocks.
+  // An app whose CI publishes preview builds to this Studio: the canvas opens
+  // the branch's build (no sandbox); the build's pointer is the app signal.
+  const appBuildBase = localPreviewUrl
+    ? null
+    : appPreviewBuildBase(previewServerUrl, window.location.origin);
+  const appBuild = useAppPreviewBuild(appBuildBase, branch ?? null);
+  // "View on phone": the app's preview link carrying this branch's draft pointer.
+  const appDraftPointer = useDraftPointer(
+    appBuild && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
+  );
+  const appPreviewLink = fillPreviewLink(
+    appBuild?.previewLink,
+    appDraftPointer,
+  );
+  const previewHintBase = previewDeviceHintBase({
+    localPreviewUrl,
+    sandboxPreviewUrl: lifecycle.previewUrl,
+    previewServerUrl: appBuildBase ? null : previewServerUrl,
+  });
+  const previewDeviceHint = usePreviewDeviceHint(
+    previewHintBase,
+    false,
+    virtualMcpId,
+  );
+  const rendersApp = hintRendersApp(previewDeviceHint) || !!appBuild;
+  // Remembered from an earlier hint: "View on phone" shows before this one loads.
+  const [rememberedApp] = useLocalStorage<boolean>(
+    rendersAppStorageKey(virtualMcpId),
+    false,
+  );
+  // An app is a phone: always mobile, no device toggle. Sites keep the toggle.
+  const previewDeviceSize: PreviewDeviceSize = rendersApp
+    ? "mobile"
+    : (chosenDeviceSize ?? "desktop");
   const fastPreviewEnabled =
     !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
@@ -759,10 +822,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     registeredPreviewOrigin === externalPreviewOrigin;
 
   // Origin of the in-iframe editor bridge — sandbox proxy / Local tunnel, or the site's own origin under Fast Preview.
-  const editorBridgeOrigin =
-    display.mode === "production"
+  // An app build renders in a sandboxed frame with an opaque origin: messages
+  // can only target "*", and replies are matched by source window instead.
+  const appFrame = !!appBuild && display.mode === "production";
+  const editorBridgeOrigin = appFrame
+    ? "*"
+    : display.mode === "production"
       ? productionOrigin
       : previewOrigin(previewUrl);
+
+  /**
+   * The app frame is opaque-origin, so its bridge can only target "*" — and a
+   * frame can navigate itself to a third party. The bridge is therefore live
+   * only while the frame shows the document Studio loaded: a `load` Studio did
+   * not start by setting `src` turns it off (the app's own routing uses
+   * pushState and fires none) until Studio sets `src` again.
+   */
+  const appBridgeRef = useRef({ studioNavigated: true, live: false });
+  const markStudioNavigation = () => {
+    appBridgeRef.current.studioNavigated = true;
+  };
+  /** `editorBridgeOrigin`, or null while the app frame's bridge is off. */
+  const liveBridgeOrigin = () =>
+    appFrame && !appBridgeRef.current.live ? null : editorBridgeOrigin;
 
   /**
    * Fast Preview in-place editing: while the Blocks panel is open on a Fast
@@ -774,7 +856,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * place, and re-tracks live once the panel closes.
    */
   const inPlaceRenderEnabled =
-    agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
+    agent?.id === virtualMcpId &&
+    (agent.metadata?.fastPreviewInPlace === true || rendersApp);
   // Local renders fake edits in place against the tunnel's `/live/previews`.
   const inPlaceRenderActive = localPreviewUrl
     ? display.mode === "sandbox" &&
@@ -797,7 +880,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- persist the frozen/relatched pin for the next render's decision
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
-  const iframeSrc = withDecoFBT(
+  const siteSrc = withDecoFBT(
     display.mode === "sandbox" && externalOriginReady
       ? withVariantMatcherOverride(
           withDeviceHint(
@@ -826,6 +909,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           )
         : null,
   );
+  // Same page + draft pointer, aimed at the app build (see app-preview-build.ts).
+  // Nothing while its pointer loads: the folder URL alone is not a page.
+  const iframeSrc = appBuildBase
+    ? appFrame
+      ? toAppBuildSrc(appBuild.src, siteSrc)
+      : null
+    : siteSrc;
 
   /** Registers `externalPreviewOrigin` with the native shell before the iframe navigates there (see `externalOriginReady`). */
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
@@ -871,12 +961,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       : null);
   const openInNewTabUrl =
     display.mode === "production"
-      ? productionOpenTabBase
-        ? withVariantMatcherOverride(
-            productionOpenTabBase,
-            workspace.state.variantOverride ?? [],
-          )
-        : null
+      ? appFrame
+        ? iframeSrc
+        : productionOpenTabBase
+          ? withVariantMatcherOverride(
+              productionOpenTabBase,
+              workspace.state.variantOverride ?? [],
+            )
+          : null
       : (iframeSrc ?? display.iframeBase);
 
   const handleOpenPreview = async () => {
@@ -1013,6 +1105,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
   iframeSrcRef.current = iframeSrc;
 
+  // React (re)sets the frame's `src` in this commit, before its `load` fires.
+  useLayoutEffect(() => {
+    if (appFrame && iframeSrc) markStudioNavigation();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- markStudioNavigation only flips a ref
+  }, [appFrame, iframeSrc, display.iframeBase]);
+
   // Self-heal a stuck iframe: when the dev server is/was unreachable the frame
   // lands on the browser's connection-refused page and fires no load/error
   // event, so nothing reloads it once the server is back. This watchdog retries
@@ -1039,6 +1137,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const iframe = previewIframeRef.current;
     if (iframe && iframe.getAttribute("src") !== iframeSrc) {
       beginNavigation();
+      markStudioNavigation();
       iframe.src = iframeSrc;
     }
   }, [draftPreviewUrl, iframeSrc]);
@@ -1046,12 +1145,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Post the current page's merged decofile to the frame for an in-place render.
   const renderPreviewInPlace = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin || !decofile || !currentPageKey) return;
     const pageBlock = decofile[currentPageKey];
     if (!pageBlock || typeof pageBlock !== "object") return;
     const req = buildPageRenderRequest({
-      previewBaseUrl: origin,
+      // The app build answers the render inside its own frame; any secure base works.
+      previewBaseUrl: origin === "*" ? window.location.origin : origin,
       pageBlock: pageBlock as Record<string, unknown>,
       decofile: decofile as Record<string, unknown>,
       path: resolvedPath,
@@ -1168,7 +1268,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const allowedOrigin = editorBridgeOrigin;
     if (!allowedOrigin) return;
     const handler = (e: MessageEvent) => {
-      if (e.origin !== allowedOrigin) return;
+      if (
+        allowedOrigin === "*"
+          ? e.source !== previewIframeRef.current?.contentWindow ||
+            !appBridgeRef.current.live
+          : e.origin !== allowedOrigin
+      ) {
+        return;
+      }
       if (e.data?.type === "visual-editor::element-clicked") {
         const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success) setVisualElement(result.data);
@@ -1196,11 +1303,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         );
       } else if (e.data?.type === "cms-editor::render-error") {
         endNavigation();
+      } else if (e.data?.type === PREVIEW_NAVIGATED_MESSAGE) {
+        // A cross-origin frame navigated itself; follow it like the same-origin onLoad sync does.
+        const path = parsePreviewNavigatedPath(e.data);
+        if (!path || activeGlobalSection) return;
+        if (normalizePagePath(path) === normalizePagePath(resolvedPath)) return;
+        setCurrentPath(path);
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [editorBridgeOrigin, cmsSectionLabels, cmsSectionKinds, cmsSectionKeys]);
+  }, [
+    editorBridgeOrigin,
+    cmsSectionLabels,
+    cmsSectionKinds,
+    cmsSectionKeys,
+    activeGlobalSection,
+    resolvedPath,
+  ]);
 
   // Target origin is pinned to the preview site itself: with "*" the parent
   // would still hand the editor script and page-structure metadata to
@@ -1224,7 +1344,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const injectCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin) return;
     // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`.
     win.postMessage(
@@ -1249,7 +1369,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const deactivateCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin) return;
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
@@ -1257,7 +1377,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
   const clearEditorHover = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = editorBridgeOrigin;
+    const origin = liveBridgeOrigin();
     if (!win || !origin) return;
     win.postMessage({ type: "cms-editor::clear-hover" }, origin);
     win.postMessage({ type: "visual-editor::clear-hover" }, origin);
@@ -1306,6 +1426,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     iframe.tabIndex = -1;
     iframe.style.pointerEvents = "none";
     iframe.blur();
+    markStudioNavigation();
     reloadIframeOrFallback(iframe, iframeSrcRef.current);
     let fallbackTimer: ReturnType<typeof setTimeout>;
     const restore = () => {
@@ -1334,7 +1455,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
-    setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
+    setChosenDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
   };
 
   const setPathParamValue = (name: string, value: string) => {
@@ -1473,8 +1594,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar =
-    previewSurfaceActive && (daemonReady || display.mode === "production");
+  const showPreviewToolbar = shouldShowPreviewToolbar({
+    previewSurfaceActive,
+    daemonReady,
+    productionDisplay: display.mode === "production",
+    localPreview: !!localPreviewUrl,
+  });
 
   /** The page selector shares the exact project-level gate used by Content and
    *  Blocks. Session runtime and metadata readiness do not change the topbar's
@@ -1706,25 +1831,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewNavigation =
     showPreviewToolbar || contentEditingEnabled ? (
       <div className="flex min-w-0 items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-            >
-              {previewDeviceSize === "mobile" ? (
-                <Phone02 size={16} />
-              ) : previewDeviceSize === "tablet" ? (
-                <Tablet01 size={16} />
-              ) : (
-                <Monitor04 size={16} />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-          </TooltipContent>
-        </Tooltip>
+        {!rendersApp && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={handleDeviceToggle}
+                aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+              >
+                {previewDeviceSize === "mobile" ? (
+                  <Phone02 size={16} />
+                ) : previewDeviceSize === "tablet" ? (
+                  <Tablet01 size={16} />
+                ) : (
+                  <Monitor04 size={16} />
+                )}
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
@@ -1733,6 +1860,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
+          <AppPreviewButton
+            hint={previewDeviceHint}
+            hintBase={previewHintBase}
+            previewLink={appPreviewLink}
+            isApp={rendersApp || rememberedApp}
+          />
         </div>
       </div>
     ) : null;
@@ -1991,6 +2124,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
+                    {appFrame && appBuild.pending && (
+                      <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground shadow-sm pointer-events-none select-none">
+                        <Spinner className="size-3.5 shrink-0" />
+                        {t("sandbox.preview.appBuildPending")}
+                      </div>
+                    )}
+
                     {effectiveEditingMode === "visual" && !visualElement && (
                       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
                         <CursorClick01 size={12} />
@@ -2019,15 +2159,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             (navigation, hover, postMessage), so picking the token set is
                             a change that needs the real sandbox running to verify — a
                             missing token silently breaks a customer's site preview.
-                            Deliberately not bolted on during a lint sweep. */}
+                            Deliberately not bolted on during a lint sweep. The
+                            referrer policy is pinned so an external preview server
+                            only ever learns Studio's origin, never the project path. */}
                         {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
                         <iframe
                           // Key on the iframe base: remount when the base URL changes
                           // (branch switch, or the production→sandbox swap once the dev
                           // server is up). Path navigation is driven by `iframeSrc`.
-                          key={display.iframeBase}
+                          // The app frame gets its own key: `sandbox` only applies
+                          // from a frame's next navigation, so it must never be
+                          // toggled on a frame that already loaded something.
+                          key={
+                            appFrame
+                              ? `app:${display.iframeBase}`
+                              : display.iframeBase
+                          }
                           ref={previewIframeRef}
+                          // App builds are served from Studio's own origin: the
+                          // sandbox gives them an opaque one (no Studio cookies/APIs).
+                          // Set before `src`, so the first navigation is sandboxed.
+                          sandbox={appFrame ? "allow-scripts" : undefined}
                           src={iframeSrc}
+                          referrerPolicy="strict-origin-when-cross-origin"
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
                           onError={iframeRecovery.handleError}
@@ -2035,6 +2189,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // A load reached the frame — cancel the recovery watchdog
                             // and reset its backoff before anything else.
                             iframeRecovery.handleLoad();
+                            // The app bridge stays on only for a load Studio started.
+                            if (appFrame) {
+                              const bridge = appBridgeRef.current;
+                              bridge.live = bridge.studioNavigated;
+                              bridge.studioNavigated = false;
+                            }
                             // The page finished loading — always clear the navigation
                             // indicator first, before any of the early returns below.
                             endNavigation();

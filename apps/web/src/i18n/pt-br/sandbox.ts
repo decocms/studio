@@ -733,6 +733,22 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.valueForParam": "Valor de {label}",
+  "sandbox.preview.appBuildPending":
+    "Código novo ainda compilando — mostrando a versão anterior.",
+  "sandbox.preview.appPreview.button": "Ver no celular",
+  "sandbox.preview.appPreview.previewLinkDescription":
+    "Escaneie com a câmera do celular (com o app de Dev da loja instalado). Abre o rascunho deste branch; as edições salvas chegam em alguns segundos.",
+  "sandbox.preview.appPreview.previewLinkTrouble":
+    "Não abriu? Instale o app de Dev da loja pela Eitri. O link vale 6 horas; abra este diálogo de novo para um novo.",
+  "sandbox.preview.appPreview.eitriPlayDescription":
+    "Escaneie no Eitri Play. As edições desta aba aparecem no aparelho em alguns segundos.",
+  "sandbox.preview.appPreview.eitriPlayTrouble":
+    "Nada mudou no celular? O eitri app start ao lado do servidor de preview precisa estar rodando, e as edições só seguem com o editor de blocos aberto.",
+  "sandbox.preview.appPreview.noEitriPlay":
+    "Preparando o app para o celular… O QR aparece aqui sozinho. Se demorar, confira o terminal eitri:play ou rode no repo do app:",
+  "sandbox.preview.appPreview.eitriLoginDescription":
+    "Entre na sua conta Eitri para gerar o QR. Depois do login, o QR aparece aqui sozinho.",
+  "sandbox.preview.appPreview.eitriLogin": "Entrar na Eitri",
   "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",

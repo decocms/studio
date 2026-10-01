@@ -64,6 +64,7 @@ import {
   selectSkillFiles,
   streamSkillTar,
 } from "@/file-storage/skill-tar";
+import { clientIp } from "../utils/rate-limit";
 import { fsByteResponse as byteResponse } from "../utils/fs-bytes";
 
 type Variables = { studioContext: StudioContext };
@@ -139,18 +140,6 @@ function recordUnlockFail(ipKey: string, shareKey: string): void {
   }
   bumpAttempt(ipKey, now);
   bumpAttempt(shareKey, now);
-}
-
-function clientIp(c: Ctx): string {
-  // cf-connecting-ip is set by Cloudflare and not client-spoofable behind it;
-  // x-real-ip by many reverse proxies. The leftmost x-forwarded-for is
-  // client-supplied (spoofable) — last resort only.
-  return (
-    c.req.header("cf-connecting-ip") ||
-    c.req.header("x-real-ip") ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
 }
 
 function requestIsSecure(c: Ctx): boolean {

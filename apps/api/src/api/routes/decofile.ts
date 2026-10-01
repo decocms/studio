@@ -8,6 +8,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/commerce  read-only VTEX relay for app previews (session OR ?token=)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -46,10 +47,25 @@ import {
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
-import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import {
+  invalidateMemoizedBranchHead,
+  readDecofileSnapshot,
+} from "@/decofile/read-decofile";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
+import {
+  commerceRelayTarget,
+  relayCommerceRead,
+} from "@/decofile/commerce-relay";
+import {
+  isAppPreviewServerUrl,
+  readAppManifestCached,
+} from "@/app-content/manifest";
 import type { Env } from "../hono-env";
+import { clientIp, createWindowLimiter } from "../utils/rate-limit";
+
+/** Per caller and project: an app screen fires a few dozen catalog reads. */
+const commerceLimiter = createWindowLimiter({ max: 600, windowMs: 60_000 });
 
 interface DecofileScope {
   organizationId: string;
@@ -57,6 +73,8 @@ interface DecofileScope {
   branch: string;
   packagePath: string | null;
   repository: RepositoryBinding;
+  /** The preview server is the CI-built app canvas (`app-preview/` folder). */
+  appPreview: boolean;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
 }
@@ -210,6 +228,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     branch,
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     repository,
+    appPreview: isAppPreviewServerUrl(previewServerUrl),
     userId,
   });
   return next();
@@ -274,7 +293,12 @@ export function createDecofileRoutes() {
         // on GitHub at first CMS touch (the sandbox flow forks locally at
         // clone time; this is the sandbox-less equivalent). Editor sessions
         // only — an anonymous draft pull of a missing branch keeps 404ing.
-        { createBranchIfMissing: !!scope.userId },
+        // An app-preview canvas polls anonymously every few seconds: its head
+        // is reused briefly (sites and editor reads always ask the provider).
+        {
+          createBranchIfMissing: !!scope.userId,
+          memoizeHead: !scope.userId && scope.appPreview,
+        },
       );
 
       const headers: Record<string, string> = {
@@ -313,6 +337,40 @@ export function createDecofileRoutes() {
     } catch (err) {
       return errorResponse(c, err);
     }
+  });
+
+  // Read-only VTEX relay for app previews (opaque-origin frame, VTEX has no
+  // CORS). Same draft token as the read above; sites never call it.
+  app.get("/:virtualMcpId/:branch/commerce", async (c) => {
+    const cors = { "access-control-allow-origin": "*" };
+    const scope = c.get("decofileScope");
+    if (!commerceLimiter.hit(`${clientIp(c)}:${scope.virtualMcpId}`)) {
+      return c.json({ error: "Too many requests" }, 429, cors);
+    }
+    // App projects only: the app-preview canvas or a `.deco/app.json`, whose
+    // optional `vtexAccount` pins the one store the relay may read.
+    let manifest: Awaited<ReturnType<typeof readAppManifestCached>>;
+    try {
+      manifest = await readAppManifestCached(
+        await contentClientForScope(c),
+        scope.branch,
+        scope.packagePath,
+      );
+    } catch {
+      return c.json({ error: "upstream" }, 502, cors);
+    }
+    if (
+      manifest === "invalid" ||
+      (manifest === "absent" && !scope.appPreview)
+    ) {
+      return c.json({ error: "Not an app project" }, 404, cors);
+    }
+    const target = commerceRelayTarget(
+      c.req.query("url"),
+      manifest === "absent" ? null : manifest.vtexAccount,
+    );
+    if (!target) return c.json({ error: "Not allowed" }, 403, cors);
+    return relayCommerceRead(target);
   });
 
   app.get("/:virtualMcpId/:branch/meta", async (c) => {
@@ -407,6 +465,7 @@ export function createDecofileRoutes() {
         },
         patch,
       );
+      invalidateMemoizedBranchHead(client.repo, scope.branch);
       const token = signDraftToken({
         organizationId: scope.organizationId,
         virtualMcpId: scope.virtualMcpId,
@@ -436,6 +495,10 @@ export function createDecofileRoutes() {
           // Sync branch-wins first; the branch then sits on base and this FFs.
           await repoGitRebase(client, scope.branch, baseBranch);
           sha = await client.mergeBranches(baseBranch, scope.branch, message);
+        } finally {
+          // The merge moves the base; a 409 rebase rewrites the branch.
+          invalidateMemoizedBranchHead(client.repo, baseBranch);
+          invalidateMemoizedBranchHead(client.repo, scope.branch);
         }
         return sha
           ? c.json({ result: "merged", sha })

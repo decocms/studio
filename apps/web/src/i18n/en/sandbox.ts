@@ -708,6 +708,22 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
+  "sandbox.preview.appBuildPending":
+    "New code is still building — showing the previous build.",
+  "sandbox.preview.appPreview.button": "View on phone",
+  "sandbox.preview.appPreview.previewLinkDescription":
+    "Scan it with the phone camera (the store's dev app must be installed). It opens this branch's draft; saved edits show up in a few seconds.",
+  "sandbox.preview.appPreview.previewLinkTrouble":
+    "Nothing opened? Install the store's dev app from Eitri. The link expires in 6 hours; reopen this dialog for a fresh one.",
+  "sandbox.preview.appPreview.eitriPlayDescription":
+    "Scan it in Eitri Play. This tab's edits show up on the device in a few seconds.",
+  "sandbox.preview.appPreview.eitriPlayTrouble":
+    "Nothing changed on the phone? The eitri app start next to the preview server must be running, and edits only flow while the blocks editor is open.",
+  "sandbox.preview.appPreview.noEitriPlay":
+    "Getting the app ready for your phone… The QR shows up here by itself. If it takes long, check the eitri:play terminal or run this in the app repo:",
+  "sandbox.preview.appPreview.eitriLoginDescription":
+    "Sign in to your Eitri account to get the QR. After signing in, the QR shows up here by itself.",
+  "sandbox.preview.appPreview.eitriLogin": "Sign in to Eitri",
   "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",

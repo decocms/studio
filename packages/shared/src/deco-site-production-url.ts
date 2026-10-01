@@ -29,6 +29,28 @@ export function sanitizeSiteUrl(
 }
 
 /**
+ * Whether Studio may send editor traffic (draft decofiles, device-hint reads)
+ * to this URL: `https:` anywhere, plain `http:` only on loopback, where there
+ * is no network path to intercept.
+ */
+export function isSecurePreviewUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  try {
+    const { protocol, hostname } = new URL(value);
+    if (protocol === "https:") return true;
+    return (
+      protocol === "http:" &&
+      (hostname === "localhost" ||
+        hostname.endsWith(".localhost") ||
+        hostname === "127.0.0.1" ||
+        hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The ONE reader for the preview server URL: `previewServerUrl` wins, the
  * legacy `productionUrl` key is the fallback. Every consumer (web gate, API
  * gate, preview surfaces) goes through here so the dual-read lives in exactly

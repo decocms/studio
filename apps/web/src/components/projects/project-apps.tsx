@@ -22,6 +22,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
+import { useProjectRendersApp } from "@/components/sandbox/preview/preview-device-hint";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   effectiveProjectSidebarViews,
@@ -249,6 +250,9 @@ function ProjectAppTilesBody({
   native: ProjectNativeViewPresence | null;
 }) {
   const t = useT();
+  /** An app project calls its Site Editor "App Editor"; the org view hides
+   *  that tile, so it asks nothing there. */
+  const rendersApp = useProjectRendersApp(showProject ? null : project);
   /** Site Editor opens a repo; without one the tile would bounce to
    *  Settings. */
   const hasSource = agentHasClonableSource(project.metadata);
@@ -280,7 +284,11 @@ function ProjectAppTilesBody({
              *  `useRememberOpenApp`. */
             onClick={() => track("project_app_launched", { app: id })}
             title={t(app.captionKey)}
-            label={t(app.labelKey)}
+            label={t(
+              rendersApp && id === "site-editor"
+                ? "sidebar.projectNav.appEditor"
+                : app.labelKey,
+            )}
             caption={caption}
             order={rank?.(appOpenKey(project.id, id))}
             face={

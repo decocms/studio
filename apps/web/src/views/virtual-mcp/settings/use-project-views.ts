@@ -18,6 +18,7 @@ import {
   normalizePanelSegment,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { useT } from "@/i18n/use-t.ts";
+import { useProjectRendersApp } from "@/components/sandbox/preview/preview-device-hint";
 import { useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
@@ -89,6 +90,7 @@ export function useProjectViews({
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
   const nativeViews = useProjectNativeViewPresence(virtualMcp);
+  const rendersApp = useProjectRendersApp(virtualMcp);
   const optimisticSidebarViews =
     useOptimisticProjectSidebarViewsActions(virtualMcpId);
   const pendingSidebarViews = useOptimisticProjectSidebarViews(virtualMcpId);
@@ -412,7 +414,11 @@ export function useProjectViews({
     overview: t("sidebar.navDestinations.home"),
     reports: t("sidebar.navDestinations.reports"),
     board: t("sidebar.navDestinations.tasks"),
-    "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
+    "site-editor": t(
+      rendersApp
+        ? "sidebar.projectNav.appEditor"
+        : "virtualMcp.layoutTabContent.siteEditor",
+    ),
     assets: t("common.mainPanelTabs.assets"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),

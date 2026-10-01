@@ -277,6 +277,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Use the redesigned blocks editor for every member of the organization. Off by default — the classic editor stays until an admin opts the org in.",
     ),
+  app_content_delivery: z
+    .boolean()
+    .optional()
+    .describe(
+      "Serve the published decofile of app projects that opt in (`.deco/app.json`) to their mobile apps.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
