@@ -166,6 +166,13 @@ function OrgHomeBody({
               tasks={tasks}
               orgSlug={org.slug}
             />
+            {/* Standing OFFERS, so they come after the work. In this column
+                rather than a full-width footer: under What moved they read as
+                part of the brief, and the column is the shorter one. Both
+                self-hide (no site, no diagnostic), so they cost nothing for
+                the orgs without one. */}
+            <TrainingCard />
+            <ReportBanner />
           </>
         }
         aside={
@@ -179,19 +186,6 @@ function OrgHomeBody({
           </>
         }
       />
-
-      {/* Standing OFFERS, which is why they are last — and why they are inside
-          this branch. The connect pill is never satisfied by anything the page
-          can see, so above the brief it becomes permanent furniture; on an org
-          with no projects yet it competes with the one invitation that matters.
-          Full width, not the aside: a narrow column stranded the report card
-          off to one side whenever the board had nothing on it. */}
-      <footer className="flex flex-col gap-4 pt-3">
-        <TrainingCard />
-        {/* The store's own diagnostic. Self-hiding and failure-proof, so it
-            costs nothing for the orgs without one. */}
-        <ReportBanner />
-      </footer>
     </div>
   );
 }
