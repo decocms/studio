@@ -2143,12 +2143,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           // Key on the iframe base: remount when the base URL changes
                           // (branch switch, or the production→sandbox swap once the dev
                           // server is up). Path navigation is driven by `iframeSrc`.
-                          key={display.iframeBase}
+                          // The app frame gets its own key: `sandbox` only applies
+                          // from a frame's next navigation, so it must never be
+                          // toggled on a frame that already loaded something.
+                          key={
+                            appFrame
+                              ? `app:${display.iframeBase}`
+                              : display.iframeBase
+                          }
                           ref={previewIframeRef}
-                          src={iframeSrc}
                           // App builds are served from Studio's own origin: the
                           // sandbox gives them an opaque one (no Studio cookies/APIs).
+                          // Set before `src`, so the first navigation is sandboxed.
                           sandbox={appFrame ? "allow-scripts" : undefined}
+                          src={iframeSrc}
                           referrerPolicy="strict-origin-when-cross-origin"
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
