@@ -187,7 +187,7 @@ function AppTile({
       onClick={onClick}
       title={title}
       style={order === undefined ? undefined : { order }}
-      className="group flex w-28 shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
+      className="group flex shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
     >
       {face}
       <span className="flex w-full flex-col">
@@ -377,12 +377,15 @@ function AppsSection({
     <div
       ref={oneLine ? lineRef : undefined}
       className={cn(
-        "flex min-w-0 flex-wrap gap-4",
-        /* A tile's text box sits inside its 12px hover padding, and a name
-           wraps rather than widening past it. On a project that box already
-           starts on the `pl-3` heading; in the card the pull starts it on
-           the title's `px-5` column, so no name hangs left of the title. */
-        oneLine && "-ml-3",
+        /* In the card, a grid whose columns stretch to share the width, so
+           the line ends on the card's edge instead of a ragged gap; the pull
+           on both sides lets the tiles' 12px hover padding reach the card's
+           `px-5` on each edge. On a project, fixed tiles that wrap, starting
+           on the `pl-3` heading. */
+        oneLine
+          ? "-mx-3 grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-x-2 gap-y-4"
+          : "flex flex-wrap gap-4 *:w-28",
+        "min-w-0",
         clipped && "overflow-hidden",
       )}
       style={
