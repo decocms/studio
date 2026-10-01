@@ -143,56 +143,10 @@ export const common = {
   "common.createSite.created": "Site {name} criado",
   "common.createSite.agentDescription":
     "Criado a partir do template {template}",
-  "common.repositoryPicker.accountNotListed": "Conta não listada?",
   "common.repositoryPicker.addRepo": "Adicionar repositório",
   "common.repositoryPicker.addedRepo": "Adicionado {name}",
-  "common.repositoryPicker.authenticatingGitHub": "Autenticando com GitHub",
-  "common.repositoryPicker.backToAccounts": "Voltar às contas",
-  "common.repositoryPicker.changeConnection": "Alterar conexão",
-  "common.repositoryPicker.checkAgain": "Verificar novamente",
-  "common.repositoryPicker.chooseRepositories": "Escolher repositórios",
-  "common.repositoryPicker.completeOAuthFlow":
-    "Complete o fluxo OAuth no seu navegador",
-  "common.repositoryPicker.connectionExpiredMessage":
-    "Sua conexão com o GitHub pode ter expirado. Reconecte para restaurar o acesso.",
-  "common.repositoryPicker.connectionFailed": "Conexão falhou",
-  "common.repositoryPicker.failedImport":
-    "Falha ao importar repositório: {error}",
-  "common.repositoryPicker.failedImportFork":
-    "Não foi possível importar o fork {name}. Se ele não estiver compartilhado com o aplicativo GitHub, adicione-o em GitHub → Settings → Installations e tente novamente.",
-  "common.repositoryPicker.failedLoadAccounts":
-    "Falha ao carregar contas do GitHub",
-  "common.repositoryPicker.failedReconnect":
-    "Falha ao reconectar GitHub: {error}",
-  "common.repositoryPicker.forkBadge": "Fork",
-  "common.repositoryPicker.githubConnected": "GitHub conectado",
   "common.repositoryPicker.importFromGitHub": "Importar reposit\u00f3rio",
   "common.repositoryPicker.importedRepo": "Importado {name}",
-  "common.repositoryPicker.installGitHubApp": "Instalar o aplicativo GitHub",
-  "common.repositoryPicker.installingGitHubConnection":
-    "Instalando a conexão com GitHub...",
-  "common.repositoryPicker.noRepositoriesFound":
-    "Nenhum repositório encontrado",
-  "common.repositoryPicker.noRepositoriesShared":
-    "Ainda não há repositórios compartilhados com a Deco. Escolha no GitHub o que deseja compartilhar e volte aqui para continuar.",
-  "common.repositoryPicker.personalAccount": "Conta pessoal",
-  "common.repositoryPicker.private": "Privado",
-  "common.repositoryPicker.public": "Público",
-  "common.repositoryPicker.reconnectGitHub": "Reconectar GitHub",
-  "common.repositoryPicker.repositoryAccessNote":
-    "Você decide exatamente o que a Deco pode acessar. Escolher “todos os repositórios” é opcional.",
-  "common.repositoryPicker.searchRepositories": "Pesquisar repositórios...",
-  "common.repositoryPicker.select": "Selecionar",
-  "common.repositoryPicker.selectConnection": "Selecione uma conexão",
-  "common.repositoryPicker.settingUpGitHub": "Configurando GitHub",
-  "common.repositoryPicker.setupRepositoriesTitle":
-    "Permita que a Deco veja seus repositórios",
-  "common.repositoryPicker.somethingWentWrong":
-    "Algo deu errado ao conectar ao GitHub.",
-  "common.repositoryPicker.tryAgain": "Tentar novamente",
-  "common.repositoryPicker.tryDifferentSearchTerm":
-    "Tente um termo de pesquisa diferente",
-  "common.repositoryPicker.unknownError": "Erro desconhecido",
   "common.iconPicker.apply": "Aplicar",
   "common.iconPicker.changeColor": "Alterar cor",
   "common.iconPicker.changeIcon": "Alterar ícone",
