@@ -191,6 +191,8 @@ export class AccessControl {
     // Two kinds of principal, each with its OWN self-contained rule:
     //   - API key   → the key's stored allowlist is the whole decision. It is a
     //     capability, not a member: no role, no basic-usage, no Better Auth.
+    //     (An org-bound key only authenticates while a member is behind it;
+    //     see the API-key branch of context-factory's authenticateRequest.)
     //   - everyone else (session / MCP OAuth / studio JWT) → membership floor +
     //     admin/owner bypass + Better Auth grants.
     return this.boundAuth?.isApiKeyPrincipal

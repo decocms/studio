@@ -64,6 +64,14 @@ export class OrgSsoSessionStorage {
     return result;
   }
 
+  async deleteForMember(userId: string, organizationId: string): Promise<void> {
+    await this.db
+      .deleteFrom("org_sso_sessions")
+      .where("user_id", "=", userId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
   async deleteExpired(): Promise<void> {
     await this.db
       .deleteFrom("org_sso_sessions")

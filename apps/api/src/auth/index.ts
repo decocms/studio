@@ -53,6 +53,7 @@ import {
   GENERIC_EMAIL_DOMAINS,
 } from "./org-assurance-policy";
 import { ensureUserOrganization } from "./ensure-user-organization";
+import { revokeRemovedMemberAccess } from "./member-removal";
 import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
 import { rejectOrganizationSlugChange } from "./reject-slug-change";
 
@@ -245,6 +246,9 @@ const plugins = [
       },
     },
     organizationHooks: {
+      afterRemoveMember: async ({ member }) => {
+        await revokeRemovedMemberAccess(auth, getDb().db, member);
+      },
       // This is the canonical creation boundary: it also covers direct calls
       // to Better Auth's /organization/create endpoint, not only Studio's UI
       // and MCP tool wrappers.
