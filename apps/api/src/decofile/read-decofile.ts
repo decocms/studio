@@ -23,6 +23,7 @@ import {
   removeScratchDir,
 } from "./disk-cache";
 import { createSingleFlight } from "./single-flight";
+import { createTtlLruCache } from "@/lib/ttl-lru-cache";
 import { extractBlocksFromTarball } from "./tar-extract";
 
 /** Disk-cache and single-flight namespace for a repo, host-qualified so two
@@ -282,12 +283,56 @@ export async function readDecofileSnapshot(
      *  session-authenticated (editor) reads only; an anonymous draft pull of
      *  a missing branch must keep 404ing to the published fallback. */
     createBranchIfMissing?: boolean;
+    /** Reuse the branch head for a few seconds (see memoizedBranchHead).
+     *  Anonymous app-preview polls only; never with createBranchIfMissing. */
+    memoizeHead?: boolean;
   },
 ): Promise<DecofileSnapshot> {
   const sha = options?.createBranchIfMissing
     ? await resolveOrCreateHead(client, branch)
-    : await requireBranchHead(client, branch);
+    : options?.memoizeHead
+      ? await memoizedBranchHead(client, branch)
+      : await requireBranchHead(client, branch);
   return readDecofileAtSha(client, sha, packagePath);
+}
+
+/** An app preview polls its draft every ~3 s per open frame; without this
+ *  each poll costs one provider call for the branch head. */
+const HEAD_MEMO_TTL_MS = 2_500;
+const headMemo = createTtlLruCache<string>({
+  ttlMs: HEAD_MEMO_TTL_MS,
+  maxSize: 1000,
+});
+const headFlight = createSingleFlight<string>();
+/** Bumped on every invalidation: a lookup that started before a write must
+ *  not store the pre-write head after it. */
+let headMemoGeneration = 0;
+
+const headMemoKey = (repo: RepoRef, branch: string) =>
+  `${repoIdentityKey(repo)}#${branch}`;
+
+export async function memoizedBranchHead(
+  client: RepoContentClient,
+  branch: string,
+): Promise<string> {
+  const key = headMemoKey(client.repo, branch);
+  const hit = headMemo.get(key);
+  if (hit) return hit;
+  const generation = headMemoGeneration;
+  return headFlight.run(`${key}@${generation}`, async () => {
+    const sha = await requireBranchHead(client, branch);
+    if (generation === headMemoGeneration) headMemo.set(key, sha);
+    return sha;
+  });
+}
+
+/** Drop the memoized head after a write to `branch` (PATCH, publish). */
+export function invalidateMemoizedBranchHead(
+  repo: RepoRef,
+  branch: string,
+): void {
+  headMemoGeneration++;
+  headMemo.delete(headMemoKey(repo, branch));
 }
 
 /** The merged decofile at a commit the caller already resolved — lets a reader

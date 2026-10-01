@@ -47,7 +47,10 @@ import {
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
-import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import {
+  invalidateMemoizedBranchHead,
+  readDecofileSnapshot,
+} from "@/decofile/read-decofile";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import {
@@ -290,7 +293,12 @@ export function createDecofileRoutes() {
         // on GitHub at first CMS touch (the sandbox flow forks locally at
         // clone time; this is the sandbox-less equivalent). Editor sessions
         // only — an anonymous draft pull of a missing branch keeps 404ing.
-        { createBranchIfMissing: !!scope.userId },
+        // An app-preview canvas polls anonymously every few seconds: its head
+        // is reused briefly (sites and editor reads always ask the provider).
+        {
+          createBranchIfMissing: !!scope.userId,
+          memoizeHead: !scope.userId && scope.appPreview,
+        },
       );
 
       const headers: Record<string, string> = {
@@ -457,6 +465,7 @@ export function createDecofileRoutes() {
         },
         patch,
       );
+      invalidateMemoizedBranchHead(client.repo, scope.branch);
       const token = signDraftToken({
         organizationId: scope.organizationId,
         virtualMcpId: scope.virtualMcpId,
@@ -486,6 +495,10 @@ export function createDecofileRoutes() {
           // Sync branch-wins first; the branch then sits on base and this FFs.
           await repoGitRebase(client, scope.branch, baseBranch);
           sha = await client.mergeBranches(baseBranch, scope.branch, message);
+        } finally {
+          // The merge moves the base; a 409 rebase rewrites the branch.
+          invalidateMemoizedBranchHead(client.repo, baseBranch);
+          invalidateMemoizedBranchHead(client.repo, scope.branch);
         }
         return sha
           ? c.json({ result: "merged", sha })

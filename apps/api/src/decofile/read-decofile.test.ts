@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import type { TreeEntry } from "@/git-providers";
+import type { RepoContentClient, TreeEntry } from "@/git-providers";
 import {
   aliasPathsForKey,
   blockEntriesInTree,
   blocksDirPath,
   gitBlobSha,
+  invalidateMemoizedBranchHead,
+  memoizedBranchHead,
 } from "./read-decofile";
 
 function blob(path: string): TreeEntry {
@@ -82,5 +84,65 @@ describe("gitBlobSha", () => {
   it("hashes byte length, not code-point length", () => {
     expect(gitBlobSha("é")).toBe(gitBlobSha("\u00e9"));
     expect(gitBlobSha("é")).not.toBe(gitBlobSha("e"));
+  });
+});
+
+describe("memoizedBranchHead", () => {
+  function fakeClient() {
+    const state = { sha: "a", calls: 0 };
+    const client = {
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: `acme/app-${Math.random()}`,
+      },
+      getBranch: async () => {
+        state.calls++;
+        return { sha: state.sha };
+      },
+    } as unknown as RepoContentClient;
+    return { client, state };
+  }
+
+  it("asks the provider once per branch while fresh, concurrent polls included", async () => {
+    const { client, state } = fakeClient();
+    const heads = await Promise.all([
+      memoizedBranchHead(client, "draft"),
+      memoizedBranchHead(client, "draft"),
+    ]);
+    expect(await memoizedBranchHead(client, "draft")).toBe("a");
+    expect(heads).toEqual(["a", "a"]);
+    expect(state.calls).toBe(1);
+    await memoizedBranchHead(client, "other");
+    expect(state.calls).toBe(2);
+  });
+
+  it("a write invalidates it, even with a lookup in flight", async () => {
+    const { client, state } = fakeClient();
+    expect(await memoizedBranchHead(client, "draft")).toBe("a");
+    state.sha = "b";
+    invalidateMemoizedBranchHead(client.repo, "draft");
+    expect(await memoizedBranchHead(client, "draft")).toBe("b");
+
+    // A lookup that started before the write must not memoize its old answer.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let calls = 0;
+    const slow = {
+      ...client,
+      repo: { ...client.repo, path: `${client.repo.path}-slow` },
+      getBranch: async () => {
+        if (calls++ > 0) return { sha: "new" };
+        await gate;
+        return { sha: "old" };
+      },
+    } as unknown as RepoContentClient;
+    const pending = memoizedBranchHead(slow, "draft");
+    invalidateMemoizedBranchHead(slow.repo, "draft");
+    release();
+    expect(await pending).toBe("old");
+    expect(await memoizedBranchHead(slow, "draft")).toBe("new");
   });
 });
