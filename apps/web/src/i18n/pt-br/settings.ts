@@ -1234,5 +1234,5 @@ export const settings = {
   "settings.gitCredentials.tokenExposureWarning":
     "O token é instalado na configuração git do sandbox durante a sessão, então comandos e agentes executados lá podem usá-lo. Restrinja-o aos repositórios necessários.",
   "settings.gitCredentials.tokenLabel": "Token de acesso pessoal",
-  "settings.gitCredentials.tokenPlaceholder": "ghp_…",
+  "settings.gitCredentials.tokenPlaceholder": "Cole seu token",
 } satisfies Record<keyof typeof settingsEn, string>;
