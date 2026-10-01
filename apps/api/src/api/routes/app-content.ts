@@ -148,7 +148,7 @@ const loadPublishedDecofile: PublishedLoader = async (
 
 /** Drops every secret block — top-level or nested, in objects and arrays.
  *  Encrypted or not, secret material never leaves on an app surface. */
-export function stripSecrets(value: unknown): unknown {
+function stripSecrets(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.filter((v) => !isSecretBlock(v)).map(stripSecrets);
   }

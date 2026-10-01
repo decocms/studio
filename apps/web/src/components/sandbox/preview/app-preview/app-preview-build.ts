@@ -66,7 +66,7 @@ export function appBuildPointerUrls(base: string, branch: string): string[] {
   return [`${base}branches/${path}.json`, `${base}default.json`];
 }
 
-export const appBuildSrc = (base: string, sha: string) =>
+const appBuildSrc = (base: string, sha: string) =>
   `${base}${sha}/studio.html`;
 
 /**
