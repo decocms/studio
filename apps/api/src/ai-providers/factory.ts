@@ -20,6 +20,18 @@ function stripProviderPrefix(id: string): string {
   return id.includes("/") ? id.split("/").slice(1).join("/") : id;
 }
 
+// Skips a model missing the nested metadata mapOpenRouterModel relies on (mirrors adapters/openrouter.ts).
+function isMappableModel(m: OpenRouterAPIModel): boolean {
+  return (
+    typeof m.id === "string" &&
+    !!m.architecture &&
+    Array.isArray(m.architecture.input_modalities) &&
+    Array.isArray(m.architecture.output_modalities) &&
+    !!m.top_provider &&
+    !!m.pricing
+  );
+}
+
 function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
   // OpenRouter can omit `supported_parameters`; guard like adapters/openrouter.ts does.
   const canTools = m.supported_parameters?.includes("tools") ?? false;
@@ -87,7 +99,7 @@ async function getOpenRouterIndex(
     );
     if (!res.ok) await throwResponseError("OpenRouter enrichment index", res);
     const { data }: { data: OpenRouterAPIModel[] } = await res.json();
-    const models = data.map(mapOpenRouterModel);
+    const models = data.filter(isMappableModel).map(mapOpenRouterModel);
     if (cache) await cache.set(OR_INDEX_ORG_ID, "openrouter", models);
     return buildIndex(models);
   } catch {
