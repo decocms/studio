@@ -157,8 +157,6 @@ export const settings = {
   "settings.repositories.githubSelectTitle": "Select repositories",
   "settings.repositories.githubSelectedShareHint":
     "Members with repository permissions in {organization} can use the repositories you authorize here.",
-  "settings.repositories.githubSelectHint":
-    "Choose up to 500 repositories for this workspace.",
   "settings.repositories.githubPreselectedHint":
     "Previously authorized or linked repositories are already selected when you have permission to authorize them. Review the selection before saving.",
   "settings.repositories.githubReplaceHint":
