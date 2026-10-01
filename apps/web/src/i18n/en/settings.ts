@@ -1157,6 +1157,8 @@ export const settings = {
   "settings.gitCredentials.hostInvalidMessage":
     "Bare hostname, e.g. github.com (no scheme or path).",
   "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.maxReached":
+    "You've reached the limit of {max} git credentials. Remove one to add another.",
   "settings.gitCredentials.nameLabel": "Name",
   "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
   "settings.gitCredentials.nameHelperText":
