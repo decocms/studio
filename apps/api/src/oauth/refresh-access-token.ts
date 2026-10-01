@@ -57,6 +57,14 @@ export interface TokenRefreshResult {
   status?: number;
   /** OAuth error code from the response body, when present. */
   errorCode?: string;
+  /**
+   * The server sent an `expires_in` we rejected (non-finite, negative, or
+   * absurdly large) rather than omitting it. Distinguishes "no expiry" (a
+   * provider that never expires tokens) from "we don't actually know the
+   * expiry" so the caller can fail safe instead of caching the token as
+   * eternal.
+   */
+  expiresInMalformed?: boolean;
 }
 
 export async function refreshAccessToken(
@@ -188,6 +196,7 @@ export async function refreshAccessToken(
 
     // expires_in is untrusted server input — reject non-finite/negative values; 0 is valid (already-expired).
     let expiresIn: number | undefined;
+    let expiresInMalformed = false;
     if (data.expires_in !== undefined) {
       const parsed = Number(data.expires_in);
       if (
@@ -197,6 +206,7 @@ export async function refreshAccessToken(
       ) {
         expiresIn = parsed;
       } else {
+        expiresInMalformed = true;
         console.warn("[TokenRefresh] ignoring malformed expires_in", {
           connectionId: token.connectionId,
           tokenEndpoint: token.tokenEndpoint,
@@ -213,6 +223,7 @@ export async function refreshAccessToken(
           ? data.refresh_token
           : token.refreshToken,
       expiresIn,
+      expiresInMalformed,
       scope: typeof data.scope === "string" ? data.scope : undefined,
     };
   } catch (error) {

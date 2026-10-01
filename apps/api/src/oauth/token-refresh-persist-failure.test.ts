@@ -71,4 +71,20 @@ describe("refreshAndStore — storage failures don't throw", () => {
 
     await expect(refreshAndStore(baseToken, storage)).resolves.toBeNull();
   });
+
+  it("stores a rejected expires_in as already-expired, not as never-expiring", async () => {
+    mockRefreshAccessToken.mockResolvedValue({
+      success: true,
+      accessToken: "new-access",
+      expiresInMalformed: true,
+    });
+    const upsert = vi.fn().mockResolvedValue(undefined);
+    const storage = fakeStorage({ upsert });
+
+    await refreshAndStore(baseToken, storage);
+
+    const expiresAt = upsert.mock.calls[0]?.[0].expiresAt as Date;
+    expect(expiresAt).toBeInstanceOf(Date);
+    expect(expiresAt.getTime()).toBeLessThanOrEqual(Date.now());
+  });
 });
