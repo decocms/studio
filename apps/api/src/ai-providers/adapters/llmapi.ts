@@ -77,7 +77,8 @@ export const llmapiAdapter: ProviderAdapter = {
         // Skip a catalog entry missing its id instead of crashing the whole call.
         return data
           .filter(
-            (m): m is LlmapiModel & { id: string } => typeof m.id === "string",
+            (m): m is LlmapiModel & { id: string } =>
+              typeof m.id === "string" && m.id.length > 0,
           )
           .map((m) => {
             const arch = m.architecture ?? {};
