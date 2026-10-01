@@ -1639,7 +1639,7 @@ function DefaultNotFoundComponent() {
           onClick={() => window.history.back()}
           className="text-sm text-primary hover:underline"
         >
-          {t("common.index.goBack")}
+          {t("common.goBack")}
         </button>
       </div>
     </div>

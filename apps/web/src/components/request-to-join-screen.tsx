@@ -95,7 +95,7 @@ export function RequestToJoinScreen({
           }}
           disabled={requestMutation.isPending}
         >
-          {t("common.requestToJoinScreen.goToHome")}
+          {t("common.goHome")}
         </Button>
       </div>
     </AccessScreenLayout>

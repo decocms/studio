@@ -2,6 +2,8 @@ export const common = {
   "common.copy": "Copy",
   "common.seeAll": "See all {count} {noun}",
   "common.soon": "Soon",
+  "common.goBack": "Go back",
+  "common.goHome": "Go to home",
   "common.accountPopover.account": "Account",
   "common.accountPopover.adminDashboard": "Admin Dashboard",
   "common.accountPopover.community": "Community",
@@ -28,7 +30,6 @@ export const common = {
     "This organization has been deleted or is no longer available.",
   "common.archivedOrgScreen.deletedWithName":
     "{orgName} has been deleted or is no longer available.",
-  "common.archivedOrgScreen.goHome": "Go to home",
   "common.archivedOrgScreen.orgUnavailable": "Organization unavailable",
   "common.blockedOrgScreen.goToBilling": "Go to billing",
   "common.blockedOrgScreen.switchOrg": "Switch organization",
@@ -52,7 +53,6 @@ export const common = {
   "common.desktopKeychainUnavailable.title":
     "Unable to access your saved session",
   "common.autoDomainJoinScreen.enterOrg": "Enter {orgName}",
-  "common.autoDomainJoinScreen.goHome": "Go to home",
   "common.autoDomainJoinScreen.joinDescription":
     "Anyone with an @{domain} email can join this organization.",
   "common.autoDomainJoinScreen.joinError": "Failed to join organization",
@@ -163,7 +163,6 @@ export const common = {
     "Failed to prepare deco.cx import",
   "common.importFromDecoDialog.githubNotConnected":
     "GitHub is not connected. Complete GitHub setup and try again.",
-  "common.importFromDecoDialog.goBack": "Go back",
   "common.importFromDecoDialog.import": "Import",
   "common.importFromDecoDialog.importFailed": "Import failed: {error}",
   "common.importFromDecoDialog.importSuccess": "Imported {slug} from deco.cx",
@@ -185,7 +184,6 @@ export const common = {
     "Selected site is no longer available",
   "common.importFromDecoDialog.title": "Import from deco.cx",
   "common.importFromDecoDialog.unknownError": "Unknown error",
-  "common.index.goBack": "Go back",
   "common.index.pageNotFound": "Page not found",
   "common.index.pageNotFoundDescription":
     "The page you are looking for does not exist or has been moved.",
@@ -216,7 +214,6 @@ export const common = {
   "common.noAccessScreen.askAdminToInvite": "Ask an admin to invite you.",
   "common.noAccessScreen.couldNotFind":
     "We couldn't find an organization called",
-  "common.noAccessScreen.goToHome": "Go to home",
   "common.noAccessScreen.noAccess": "No access",
   "common.noAccessScreen.noAccessTo": "You don't have access to",
   "common.noAccessScreen.organizationNotFound": "Organization not found",
@@ -232,18 +229,15 @@ export const common = {
   "common.pendingInviteScreen.invitedTo": "You've been invited to {orgName}",
   "common.requestPendingScreen.description":
     "Your request to join {orgName} is waiting for an admin to approve it. You'll get access once it's approved.",
-  "common.requestPendingScreen.goHome": "Go to home",
   "common.requestPendingScreen.title": "Request pending",
   "common.requestToJoinScreen.description":
     "An admin must approve requests from @{domain} emails before you can join.",
   "common.requestToJoinScreen.failedToRequest": "Failed to request access",
-  "common.requestToJoinScreen.goToHome": "Go to home",
   "common.requestToJoinScreen.requestButton": "Request to join",
   "common.requestToJoinScreen.requesting": "Requesting…",
   "common.requestToJoinScreen.title": "Request to join {orgName}?",
   "common.signInScreen.configLoadFailed": "Couldn't load sign-in options.",
   "common.signInScreen.tryAgain": "Try again",
-  "common.ssoRequiredScreen.goBack": "Go back",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "This organization requires SSO authentication to access.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requires SSO authentication",
