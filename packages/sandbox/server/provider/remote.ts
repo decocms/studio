@@ -60,7 +60,9 @@ const CONTROL_TIMEOUT_MS = 30_000;
 const UNBOUNDED_MS = 2 ** 31 - 1;
 const RECONNECT_BASE_MS = 500;
 /** The host answers 503 before handling a call while it has no leader to serve it. */
-const UNAVAILABLE_ATTEMPTS = 5;
+const UNAVAILABLE_ATTEMPTS = 10;
+/** Half jitter keeps the retries spanning a leader election (16s–33s in all), never cut short by luck. */
+const UNAVAILABLE_JITTER = 0.5;
 const RECONNECT_CAP_MS = 5_000;
 /** Same reuse window as the in-process capacity probe. */
 const CAPACITY_TTL_MS = 3_000;
@@ -250,6 +252,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
           maxAttempts: UNAVAILABLE_ATTEMPTS,
           minTimeout: RECONNECT_BASE_MS,
           maxTimeout: RECONNECT_CAP_MS,
+          jitter: UNAVAILABLE_JITTER,
           isRetriable: hostUnavailable,
           signal,
         },
