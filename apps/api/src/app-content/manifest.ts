@@ -5,14 +5,22 @@
  * treated as absent, so every consumer fails closed.
  */
 
+import { repoIdentityKey } from "@decocms/shared/git-providers";
 import { z } from "zod";
 import type { RepoContentClient } from "@/git-providers";
+import { createSingleFlight } from "@/decofile/single-flight";
+import { createTtlLruCache } from "@/lib/ttl-lru-cache";
 
 const MAX_MANIFEST_CHARS = 64 * 1024;
 
 const AppManifestSchema = z.object({
   kind: z.literal("eitri-app"),
   publishedContent: z.boolean().optional(),
+  /** The only VTEX account the draft preview's commerce relay may read. */
+  vtexAccount: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+    .optional(),
 });
 
 export type AppManifest = z.infer<typeof AppManifestSchema>;
@@ -42,4 +50,43 @@ export async function readAppManifest(
   return parseAppManifest(
     await client.readFileAtRef(ref, appManifestPath(packagePath)),
   );
+}
+
+/** `invalid`: the file is there but unparseable — callers fail closed. */
+export type CachedAppManifest = AppManifest | "absent" | "invalid";
+
+const manifestCache = createTtlLruCache<CachedAppManifest>({
+  ttlMs: 60_000,
+  maxSize: 1000,
+});
+const manifestFlight = createSingleFlight<CachedAppManifest>();
+
+/** The manifest at `ref`, re-read from the provider at most once a minute. */
+export async function readAppManifestCached(
+  client: RepoContentClient,
+  ref: string,
+  packagePath: string | null,
+): Promise<CachedAppManifest> {
+  const key = `${repoIdentityKey(client.repo)}#${ref}:${packagePath ?? ""}`;
+  const hit = manifestCache.get(key);
+  if (hit) return hit;
+  return manifestFlight.run(key, async () => {
+    const text = await client.readFileAtRef(ref, appManifestPath(packagePath));
+    const value: CachedAppManifest =
+      text === null ? "absent" : (parseAppManifest(text) ?? "invalid");
+    manifestCache.set(key, value);
+    return value;
+  });
+}
+
+/** True when `previewServerUrl` is a Studio app-preview storage folder
+ *  (`…/api/<org>/files/app-preview/<project>/`) — the CI-built app canvas. */
+export function isAppPreviewServerUrl(previewServerUrl: string): boolean {
+  try {
+    return /^\/api\/[^/]+\/files\/app-preview\/[^?#]+\/$/.test(
+      new URL(previewServerUrl).pathname,
+    );
+  } catch {
+    return false;
+  }
 }

@@ -54,6 +54,10 @@ import {
   commerceRelayTarget,
   relayCommerceRead,
 } from "@/decofile/commerce-relay";
+import {
+  isAppPreviewServerUrl,
+  readAppManifestCached,
+} from "@/app-content/manifest";
 import type { Env } from "../hono-env";
 import { clientIp, createWindowLimiter } from "../utils/rate-limit";
 
@@ -66,6 +70,8 @@ interface DecofileScope {
   branch: string;
   packagePath: string | null;
   repository: RepositoryBinding;
+  /** The preview server is the CI-built app canvas (`app-preview/` folder). */
+  appPreview: boolean;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
 }
@@ -219,6 +225,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     branch,
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     repository,
+    appPreview: isAppPreviewServerUrl(previewServerUrl),
     userId,
   });
   return next();
@@ -332,7 +339,28 @@ export function createDecofileRoutes() {
     if (!commerceLimiter.hit(`${clientIp(c)}:${scope.virtualMcpId}`)) {
       return c.json({ error: "Too many requests" }, 429, cors);
     }
-    const target = commerceRelayTarget(c.req.query("url"));
+    // App projects only: the app-preview canvas or a `.deco/app.json`, whose
+    // optional `vtexAccount` pins the one store the relay may read.
+    let manifest: Awaited<ReturnType<typeof readAppManifestCached>>;
+    try {
+      manifest = await readAppManifestCached(
+        await contentClientForScope(c),
+        scope.branch,
+        scope.packagePath,
+      );
+    } catch {
+      return c.json({ error: "upstream" }, 502, cors);
+    }
+    if (
+      manifest === "invalid" ||
+      (manifest === "absent" && !scope.appPreview)
+    ) {
+      return c.json({ error: "Not an app project" }, 404, cors);
+    }
+    const target = commerceRelayTarget(
+      c.req.query("url"),
+      manifest === "absent" ? null : manifest.vtexAccount,
+    );
     if (!target) return c.json({ error: "Not allowed" }, 403, cors);
     return relayCommerceRead(target);
   });

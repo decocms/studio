@@ -6,27 +6,37 @@
  * relays exactly the public catalog / Intelligent Search / read-only GraphQL
  * GETs those screens need. It rides on the decofile draft token
  * (`GET /api/:org/decofile/:vmcp/:branch/commerce?token=…&url=…`), so only a
- * frame Studio opened can use it, scoped to one project.
+ * frame Studio opened can use it, scoped to one app project (the route only
+ * serves projects on the app-preview canvas or with a `.deco/app.json`).
  *
  * Never an open proxy: https only, `<account>.vtexcommercestable.com.br` or
- * `<account>.myvtex.com`, a fixed path allowlist, GET only, no client headers
- * (no cookies, no Authorization), no redirects, JSON responses only, size and
- * time caps. Responses carry no upstream headers but the content type.
+ * `<account>.myvtex.com` (only the manifest's `vtexAccount` when it names
+ * one), a fixed path allowlist with no encoded separators, GET only, GraphQL
+ * only as `query`/`variables`/`operationName`, no client headers (no cookies,
+ * no Authorization), no redirects, JSON responses only, size and time caps,
+ * a byte-bounded cache. Responses carry no upstream headers but the type.
  */
 
-import { createTtlLruCache } from "@/lib/ttl-lru-cache";
-
 const HOST_RE =
-  /^[a-z0-9][a-z0-9-]{0,62}\.(?:vtexcommercestable\.com\.br|myvtex\.com)$/;
+  /^([a-z0-9][a-z0-9-]{0,62})\.(?:vtexcommercestable\.com\.br|myvtex\.com)$/;
 const PATH_RE =
   /^\/api\/(?:catalog_system\/pub\/|intelligent-search\/|io\/_v\/api\/intelligent-search\/)/;
 const GRAPHQL_RE = /^\/api\/io\/_v\/(?:private|public)\/graphql\/v1\/?$/;
+const GRAPHQL_PARAMS = new Set(["query", "variables", "operationName"]);
+/** Encoded `/`, `\` or `.` could step out of the allowlisted prefix upstream. */
+const ENCODED_SEPARATOR_RE = /%(?:2f|5c|2e)/i;
 const MAX_URL_CHARS = 8192;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const TIMEOUT_MS = 10_000;
 
-/** The upstream URL to relay, or null when the policy refuses it. */
-export function commerceRelayTarget(raw: string | undefined): URL | null {
+/**
+ * The upstream URL to relay, or null when the policy refuses it. With
+ * `account` (the app's `.deco/app.json` `vtexAccount`), only that store.
+ */
+export function commerceRelayTarget(
+  raw: string | undefined,
+  account?: string | null,
+): URL | null {
   if (!raw || raw.length > MAX_URL_CHARS) return null;
   let url: URL;
   try {
@@ -34,17 +44,23 @@ export function commerceRelayTarget(raw: string | undefined): URL | null {
   } catch {
     return null;
   }
+  const host = HOST_RE.exec(url.hostname);
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
     url.port ||
-    !HOST_RE.test(url.hostname)
+    !host ||
+    (account && host[1] !== account) ||
+    ENCODED_SEPARATOR_RE.test(url.pathname)
   ) {
     return null;
   }
   if (PATH_RE.test(url.pathname)) return url;
   if (GRAPHQL_RE.test(url.pathname)) {
+    for (const name of url.searchParams.keys()) {
+      if (!GRAPHQL_PARAMS.has(name)) return null;
+    }
     const query = url.searchParams.get("query");
     // A persisted query (no text) can't be proven read-only.
     return query && !/\b(?:mutation|subscription)\b/.test(query) ? url : null;
@@ -52,14 +68,48 @@ export function commerceRelayTarget(raw: string | undefined): URL | null {
   return null;
 }
 
-/** Same URL, same answer for everyone (no credentials go upstream). */
-const cache = createTtlLruCache<{
+/** Bodies above this are relayed but never cached. */
+const MAX_CACHED_BODY_BYTES = 256 * 1024;
+/** Whole relay cache per pod, in body bytes. */
+const MAX_CACHE_BYTES = 32 * 1024 * 1024;
+const CACHE_TTL_MS = 60_000;
+
+interface CacheEntry {
   status: number;
   body: Uint8Array<ArrayBuffer>;
-}>({
-  ttlMs: 60_000,
-  maxSize: 500,
-});
+  expiresAt: number;
+}
+
+/** Same URL, same answer for everyone (no credentials go upstream).
+ *  Insertion-ordered, so shedding from the front drops the oldest. */
+const cache = new Map<string, CacheEntry>();
+let cacheBytes = 0;
+
+function cacheDrop(key: string, entry: CacheEntry): void {
+  cache.delete(key);
+  cacheBytes -= entry.body.byteLength;
+}
+
+function cacheGet(key: string): CacheEntry | undefined {
+  const entry = cache.get(key);
+  if (entry && entry.expiresAt <= Date.now()) {
+    cacheDrop(key, entry);
+    return undefined;
+  }
+  return entry;
+}
+
+function cacheSet(key: string, body: Uint8Array<ArrayBuffer>): void {
+  if (body.byteLength > MAX_CACHED_BODY_BYTES) return;
+  const previous = cache.get(key);
+  if (previous) cacheDrop(key, previous);
+  cache.set(key, { status: 200, body, expiresAt: Date.now() + CACHE_TTL_MS });
+  cacheBytes += body.byteLength;
+  for (const [oldest, entry] of cache) {
+    if (cacheBytes <= MAX_CACHE_BYTES) break;
+    cacheDrop(oldest, entry);
+  }
+}
 
 const relayHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -99,7 +149,7 @@ export async function relayCommerceRead(
   target: URL,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
-  const hit = cache.get(target.href);
+  const hit = cacheGet(target.href);
   if (hit) {
     return new Response(hit.body, {
       status: hit.status,
@@ -134,8 +184,6 @@ export async function relayCommerceRead(
       { status: 502, headers: relayHeaders },
     );
   }
-  if (res.status === 200 && body.byteLength < 1024 * 1024) {
-    cache.set(target.href, { status: 200, body });
-  }
+  if (res.status === 200) cacheSet(target.href, body);
   return new Response(body, { status: res.status, headers: relayHeaders });
 }

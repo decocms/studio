@@ -54,6 +54,20 @@ describe("commerceRelayTarget", () => {
       "https://nb.vtexcommercestable.com.br/api/io/_v/private/graphql/v1?extensions=x",
     ],
     ["too long", `${IS}&q=${"a".repeat(9000)}`],
+    [
+      "encoded slash",
+      "https://nb.vtexcommercestable.com.br/api/catalog_system/pub/..%2F..%2Fcheckout/pub/orderForm",
+    ],
+    [
+      "encoded backslash",
+      "https://nb.vtexcommercestable.com.br/api/catalog_system/pub/x%5Cy",
+    ],
+    [
+      "encoded dot",
+      "https://nb.vtexcommercestable.com.br/api/catalog_system/pub/%2E%2E/x",
+    ],
+    ["graphql extra param", `${graphql("{ a }")}&extensions=x`],
+    ["graphql unknown param", `${graphql("{ a }")}&workspace=x`],
   ])("refuses %s", (_label, url) => {
     expect(commerceRelayTarget(url)).toBeNull();
   });
@@ -125,5 +139,66 @@ describe("relayCommerceRead", () => {
     await relayCommerceRead(url, fetchImpl);
     await relayCommerceRead(url, fetchImpl);
     expect(calls).toBe(1);
+  });
+});
+
+describe("commerceRelayTarget with the manifest's vtexAccount", () => {
+  test("only that account", () => {
+    expect(commerceRelayTarget(IS, "nb")).not.toBeNull();
+    expect(
+      commerceRelayTarget(IS.replace("//nb.", "//other."), "nb"),
+    ).toBeNull();
+    expect(commerceRelayTarget(IS.replace("//nb.", "//other."))).not.toBeNull();
+  });
+
+  test("graphql keeps query, variables and operationName", () => {
+    expect(
+      commerceRelayTarget(
+        `${graphql("query P { a }")}&variables=%7B%7D&operationName=P`,
+        "nb",
+      ),
+    ).not.toBeNull();
+  });
+});
+
+describe("relay cache", () => {
+  const json = (bytes: number) =>
+    (async () =>
+      new Response("x".repeat(bytes), {
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+
+  test("never caches a body above 256 KB", async () => {
+    let calls = 0;
+    const big = json(256 * 1024 + 1);
+    const fetchImpl = ((...args: Parameters<typeof fetch>) => {
+      calls++;
+      return big(...args);
+    }) as typeof fetch;
+    const url = new URL(`${IS}&n=big`);
+    await relayCommerceRead(url, fetchImpl);
+    await relayCommerceRead(url, fetchImpl);
+    expect(calls).toBe(2);
+  });
+
+  test("holds at most 32 MB, shedding the oldest", async () => {
+    const seen: string[] = [];
+    const body = json(256 * 1024);
+    const fetchImpl = ((url: URL, init?: RequestInit) => {
+      seen.push(url.href);
+      return body(url, init);
+    }) as typeof fetch;
+    const urls = Array.from(
+      { length: 129 },
+      (_, i) => new URL(`${IS}&budget=${i}`),
+    );
+    for (const url of urls) await relayCommerceRead(url, fetchImpl);
+    expect(seen.length).toBe(129);
+    // 128 × 256 KB fit; the 129th pushed the first out.
+    await relayCommerceRead(urls[128]!, fetchImpl);
+    await relayCommerceRead(urls[1]!, fetchImpl);
+    expect(seen.length).toBe(129);
+    await relayCommerceRead(urls[0]!, fetchImpl);
+    expect(seen.length).toBe(130);
   });
 });
