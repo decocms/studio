@@ -12,6 +12,10 @@ import {
   sandboxWatchResponse,
 } from "./sandbox-server";
 import { computeHandle } from "./shared";
+import {
+  sandboxProviderOfError,
+  tagSandboxProvider,
+} from "./shared/provider-tag";
 
 // The client against the host helpers it is paired with, over real MCP and
 // SSE, registered the way @decocms/runtime registers tools (by `.shape`).
@@ -47,6 +51,7 @@ const fake = {
       workdir: "/app",
       previewUrl: null,
       warmPoolAdopted: true,
+      provider: "kubernetes",
     };
   },
   daemonEndpoint: async () => ({ url: "http://127.0.0.1:1", token: "d-tok" }),
@@ -193,6 +198,7 @@ describe("RemoteSandboxProvider against the host tools", () => {
       workdir: "/app",
       previewUrl: null,
       warmPoolAdopted: true,
+      provider: "kubernetes",
     });
     expect(await provider.resolvePreviewUpstreamUrl(HANDLE)).toBe(
       "http://127.0.0.1:1",
@@ -204,6 +210,13 @@ describe("RemoteSandboxProvider against the host tools", () => {
     const err = await provider.ensure(ID).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConfigRequestError);
     expect((err as ConfigRequestError).status).toBe(409);
+    ensureFails = null;
+  });
+
+  it("carries the host's provider on a failed ensure", async () => {
+    ensureFails = tagSandboxProvider(new Error("vm boot failed"), "freestyle");
+    const err = await provider.ensure(ID).catch((e: unknown) => e);
+    expect(sandboxProviderOfError(err)).toBe("freestyle");
     ensureFails = null;
   });
 

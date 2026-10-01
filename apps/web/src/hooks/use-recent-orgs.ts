@@ -17,7 +17,7 @@ const EMPTY: string[] = [];
 
 export function useRecentOrgs(): {
   recent: string[];
-  remember: (slug: string) => void;
+  remember: (slug: string, keep?: readonly string[]) => void;
 } {
   const [recent, setRecent] = useLocalStorage<string[]>(
     LOCALSTORAGE_KEYS.recentOrgs(),
@@ -27,7 +27,9 @@ export function useRecentOrgs(): {
   return {
     /** A value from an older build must not crash the rail. */
     recent: Array.isArray(recent) ? recent : EMPTY,
-    remember: (slug) =>
-      setRecent((prev) => pushRecentOrg(Array.isArray(prev) ? prev : [], slug)),
+    remember: (slug, keep) =>
+      setRecent((prev) =>
+        pushRecentOrg(Array.isArray(prev) ? prev : [], slug, undefined, keep),
+      ),
   };
 }

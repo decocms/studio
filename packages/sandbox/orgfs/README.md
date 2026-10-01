@@ -126,6 +126,18 @@ to link, because a run without its skills or transcript completes with a
 wrong answer instead of an error. `WaitSkillLinks` then waits a bounded time
 for the plugin copy, since Claude Code scans skills only at startup.
 
+## On Freestyle VMs
+
+`FreestyleSandboxProvider` reproduces the pod layout with two containers in
+the VM. Host directories stand in for the `emptyDir` volumes:
+`/srv/sandbox/org` is a shared bind mount, which the sidecar mounts `rshared`
+and the sandbox container mounts `rslave`. `/srv/sandbox/orgfs-ctl` is a
+tmpfs. Both are in the VM's fstab, so they return before Docker restarts the
+containers after a reboot. A reboot empties the ctl directory, which drops
+the stale `status.json`. Every resume relays the config again, and a sidecar
+that has already mounted ignores it. The base snapshot pulls the sidecar
+image next to the sandbox image.
+
 ## Freshness and failure handling
 
 - **External writes.** WebDAV has no change notification. For each volume,

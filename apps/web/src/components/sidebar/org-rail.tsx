@@ -1,7 +1,7 @@
 /** The always-visible org strip. Which orgs it draws is `railOrgs`; how one
  *  mark is drawn, labelled and marked as current is `RailItem`. */
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Plus } from "@untitledui/icons";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -21,13 +21,23 @@ import {
   useRememberOpenApp,
 } from "@/hooks/use-recent-apps";
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
-import { railOrgs } from "@/lib/recent-orgs";
+import { railOrgLimit, railOrgs } from "@/lib/recent-orgs";
 import { OrgSearch } from "./org-search";
 import { RailItem } from "./rail-item";
 import type { RecentApp } from "@/lib/recent-apps";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+
+/** The window's height is external mutable state, so it is read through
+ *  `useSyncExternalStore` (as `useIsMobile` reads its width). The snapshot is
+ *  the derived count, so a resize that keeps it re-renders nothing. */
+function subscribeToResize(onChange: () => void): () => void {
+  globalThis.addEventListener("resize", onChange);
+  return () => globalThis.removeEventListener("resize", onChange);
+}
+const orgLimitSnapshot = () => railOrgLimit(globalThis.innerHeight);
+const orgLimitServerSnapshot = () => railOrgLimit(0);
 
 interface RailOrg {
   id: string;
@@ -118,6 +128,15 @@ function RailAppButton({
   );
 }
 
+/** Records the app the route is on, by URL as much as by launcher. Mounted
+ *  by `Layout` beside the rail but on every viewport, since the org home's
+ *  app order reads this history on mobile too. */
+export function OpenAppRecorder() {
+  const { org } = useProjectContext();
+  useRememberOpenApp(org.slug);
+  return null;
+}
+
 /** Mounted once by `Layout`, outside the resizable `<Sidebar>`, so collapse
  *  and resize never touch it. Desktop only — the mobile picker drawer already
  *  lists every org. */
@@ -131,20 +150,30 @@ export function OrgRail() {
    *  sidebar's place (`useAppTakeover`), leaving nothing to separate. */
   const takeover = useAppTakeover();
   const { recent } = useRecentApps(currentOrg.slug);
-  /** Records by URL as much as by launcher, since the rail is what takes you
-   *  back. */
-  useRememberOpenApp(currentOrg.slug);
   /** Which recent is the screen you are on, so the rail marks it the same way
    *  it marks the current org. */
   const openApp = useOpenApp();
 
   const orgs = (organizations ?? []) as RailOrg[];
   const { recent: recentOrgs, remember } = useRecentOrgs();
-  const { shown, hidden } = railOrgs(orgs, recentOrgs, currentOrg.slug);
+  const orgLimit = useSyncExternalStore(
+    subscribeToResize,
+    orgLimitSnapshot,
+    orgLimitServerSnapshot,
+  );
+  const { shown, hidden } = railOrgs(
+    orgs,
+    recentOrgs,
+    currentOrg.slug,
+    orgLimit,
+  );
 
   const travelTo = (slug: string) => {
     track("org_rail_travel");
-    remember(slug);
+    /** An org already on the rail keeps the rail as it is; one picked from
+     *  search rolls the oldest off by recency, as before. */
+    const onRail = shown.some((it) => it.slug === slug);
+    remember(slug, onRail ? shown.map((it) => it.slug) : undefined);
     navigate({ to: "/$org/home", params: { org: slug } });
   };
 

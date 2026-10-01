@@ -5,13 +5,25 @@ import { nanos, type NatsConnection } from "@nats-io/nats-core";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { VOICE_SESSION_TTL_MS } from "@decocms/shared/voice";
-import type { SpeechAdapter } from "@/ai-providers/voice/types";
+import type {
+  ConversationAdapter,
+  SpeechAdapter,
+} from "@/ai-providers/voice/types";
 import { signVoiceGrant, verifyVoiceGrant, type VoiceClaims } from "./grant";
+
+import {
+  resolveVoiceConfig,
+  VoiceConversationConfigSchema,
+  type VoiceConversationConfig,
+  type VoiceDefaults,
+} from "./config";
 
 type Scope = Omit<VoiceClaims, "sessionId" | "expiresAt">;
 const ReservationSchema = z.object({
   sessionId: z.string().uuid(),
   expiresAt: z.number(),
+  connected: z.boolean().optional(),
+  conversation: VoiceConversationConfigSchema.optional(),
   characters: z.number().int().nonnegative(),
   requests: z.number().int().nonnegative(),
 });
@@ -29,6 +41,11 @@ export class VoiceSessions {
   constructor(
     private readonly deps: {
       adapter: SpeechAdapter | null;
+      conversationAdapters: Record<
+        VoiceConversationConfig["provider"],
+        ConversationAdapter | null
+      >;
+      defaults: VoiceDefaults;
       secret: string;
       getConnection: () => NatsConnection | null;
     },
@@ -61,8 +78,32 @@ export class VoiceSessions {
     return this.deps.adapter;
   }
 
-  async create(scope: Scope) {
-    const adapter = this.adapter();
+  async create(
+    scope: Scope,
+    conversation = false,
+    language: "en" | "pt" = "en",
+    override?: {
+      voice_provider: string | null;
+      voice_model: string | null;
+    } | null,
+  ) {
+    let config: VoiceConversationConfig | undefined;
+    if (conversation) {
+      try {
+        config = resolveVoiceConfig(this.deps.defaults, override);
+      } catch {
+        throw new HTTPException(503, {
+          message: "Voice configuration is invalid",
+        });
+      }
+    }
+    const adapter = config
+      ? this.deps.conversationAdapters[config.provider]
+      : this.adapter();
+    if (!adapter)
+      throw new HTTPException(503, {
+        message: "Voice is not configured on this deployment",
+      });
     const claims: VoiceClaims = {
       ...scope,
       sessionId: crypto.randomUUID(),
@@ -78,6 +119,7 @@ export class VoiceSessions {
       JSON.stringify({
         sessionId: claims.sessionId,
         expiresAt: claims.expiresAt,
+        conversation: config,
         characters: 0,
         requests: 0,
       }),
@@ -94,7 +136,16 @@ export class VoiceSessions {
       });
     }
     try {
-      const transcriptionToken = await adapter.createTranscriptionToken();
+      if (config && "createSession" in adapter) {
+        const connection = await adapter.createSession({
+          language,
+          model: config.model,
+          safetyIdentifier: userKey(scope),
+        });
+        return { token, ...connection, expiresAt: claims.expiresAt };
+      }
+      const transcriptionToken =
+        await this.adapter().createTranscriptionToken();
       return { token, transcriptionToken, expiresAt: claims.expiresAt };
     } catch (error) {
       await this.release(claims);
@@ -113,6 +164,52 @@ export class VoiceSessions {
       throw new HTTPException(403, { message: "Invalid voice session" });
     }
     return claims;
+  }
+
+  async connect(
+    scope: Scope,
+    input: { token: string; sdp: string; language: "en" | "pt" },
+  ) {
+    const claims = this.authorize(scope, input.token);
+    const kv = await this.kv();
+    const key = userKey(claims);
+    const entry = await kv.get(key);
+    const value =
+      entry?.operation === "PUT" ? ReservationSchema.parse(entry.json()) : null;
+    if (
+      !entry ||
+      !value ||
+      value.sessionId !== claims.sessionId ||
+      value.expiresAt <= Date.now()
+    )
+      throw new HTTPException(403, { message: "Voice session expired" });
+    const adapter = value.conversation
+      ? this.deps.conversationAdapters[value.conversation.provider]
+      : null;
+    if (!adapter?.negotiate || !value.conversation)
+      throw new HTTPException(409, {
+        message: "Voice session does not support SDP negotiation",
+      });
+    if (value.connected)
+      throw new HTTPException(409, {
+        message: "Voice session already connected",
+      });
+    // Claim before provider billing. An ambiguous failure requires a new reservation.
+    try {
+      await kv.update(
+        key,
+        codec.encode(JSON.stringify({ ...value, connected: true })),
+        entry.revision,
+      );
+    } catch {
+      throw new HTTPException(409, { message: "Voice session is busy" });
+    }
+    return adapter.negotiate({
+      sdp: input.sdp,
+      language: input.language,
+      model: value.conversation.model,
+      safetyIdentifier: key,
+    });
   }
 
   async speak(scope: Scope, token: string, text: string, signal: AbortSignal) {

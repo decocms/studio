@@ -6,7 +6,6 @@
  * The number is delivery, not a business goal — see `lib/project-profile.ts`.
  */
 
-import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
@@ -119,7 +118,13 @@ function ProjectRosterItem({
             label={t("home.projects.rhythm", { name: project.title })}
           />
           <span className="flex w-10 shrink-0 flex-col items-end">
-            <span className="text-sm tabular-nums text-foreground">
+            {/* A quiet zero, so the projects that did ship stand out. */}
+            <span
+              className={cn(
+                "text-sm tabular-nums",
+                shipped > 0 ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               {shipped}
             </span>
             <Delta value={current} previous={previous} />
@@ -139,15 +144,12 @@ export function ProjectRoster({
   projects,
   summaries = NO_SUMMARIES,
   series = NO_SERIES,
-  action,
 }: {
   projects: VirtualMCPEntity[];
   /** One headline per project id, from `projectSummaries`. */
   summaries?: Map<string, ProjectSummary>;
   /** Shipped-per-day per project id, from `shippedSeries`. */
   series?: Map<string, readonly number[]>;
-  /** Passed in rather than imported, so the roster owns no creation path. */
-  action?: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
@@ -162,13 +164,10 @@ export function ProjectRoster({
       label={t("home.projects.heading")}
       count={projects.length}
       action={
-        <span className="flex items-center gap-3">
-          {/* The aside is a narrow column, so this labels the number column
-              only where it actually fits beside the block's own title. */}
-          <span className="hidden whitespace-nowrap text-xs text-muted-foreground @[19rem]:inline">
-            {t("home.projects.shippedCaption")}
-          </span>
-          {action}
+        /* The aside is a narrow column, so this labels the number column only
+           where it actually fits beside the block's own title. */
+        <span className="hidden whitespace-nowrap text-xs text-muted-foreground @[19rem]:inline">
+          {t("home.projects.shippedCaption")}
         </span>
       }
     >

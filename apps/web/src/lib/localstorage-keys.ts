@@ -29,6 +29,9 @@ export const LOCALSTORAGE_KEYS = {
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,
+  /** Every app opened in the org, newest first, as `appOpenKey`s — the org
+   *  home's tile order. Longer than `recentApps`, which is the rail's four. */
+  appOpens: (orgSlug: string) => `studio:app-opens:${orgSlug}`,
   /** Not scoped to an org — this is the list of orgs themselves. */
   recentOrgs: () => `studio:recent-orgs`,
   sidePanelWidth: () => `studio:side-panel:width`,

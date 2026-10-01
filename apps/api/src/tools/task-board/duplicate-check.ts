@@ -11,8 +11,9 @@
  *
  * Shape, mirroring `pr-open-board-reaction.ts`:
  * - a pure, lexical pre-filter picks the candidate cards (bounded prompt cost);
- * - Jev checks for a duplicate through an org OpenRouter or Deco key; the org's
- *   "fast" tier handles unavailable, oversized, or inconclusive checks;
+ * - Jev checks each draft for a duplicate, one small question per draft,
+ *   through an org OpenRouter or Deco key; the org's "fast" tier settles the
+ *   drafts Jev could not (unavailable, a failed call, an inconclusive answer);
  * - a pure gate accepts the verdict only at high confidence and only for an id
  *   that was actually offered.
  *
@@ -29,7 +30,10 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
-import { evaluateDecisions } from "@/core/evaluate-decisions";
+import {
+  type DecisionModel,
+  openDecisionModel,
+} from "@/core/evaluate-decisions";
 import {
   buildDuplicateDecisions,
   acceptDecisionDuplicates,
@@ -38,6 +42,7 @@ import {
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardItem } from "@/storage/types";
 import { LANES } from "@decocms/shared/task-board";
+import { mapBounded } from "@decocms/shared/std";
 
 /** Cap on cards sent to the model. Same bound as the PR-open reaction. */
 export const MAX_DUPLICATE_CANDIDATES = 50;
@@ -361,8 +366,7 @@ export type DuplicateOutcome =
 
 /**
  * Batch form, for the reports import, which lands up to 100 findings at once.
- * One request per model for the whole batch, never one per item: the import holds a
- * transaction open while it writes, and this check runs before it.
+ * It runs before the import's transaction, so no model latency sits inside it.
  *
  * A draft in a batch, addressed by its position so the verdict can name it.
  */
@@ -512,12 +516,66 @@ export function acceptBatchDuplicates(
   return accepted;
 }
 
+const JEV_MODEL_ID = "typesafe/jev-1.13";
+/** Jev questions in flight at once, per check. */
+const DECISION_CONCURRENCY = 5;
+/** Earlier drafts of the batch offered to a draft, most alike first. */
+const MAX_EARLIER_DRAFTS = 10;
+
+/**
+ * One draft's Jev input: the question about `draft`, with its best-matching
+ * cards and the most alike of the drafts before it. When that is over the
+ * model's budget, the weakest cards go first. Null when even no card fits.
+ * Returns the cards it kept: the verdict names them by position.
+ */
+export function fitDraftDecision(
+  draft: IndexedDraft,
+  earlier: readonly IndexedDraft[],
+  cards: readonly TaskBoardItem[],
+  fits: (input: unknown) => boolean,
+) {
+  const draftTokens = tokenize(`${draft.title} ${draft.description ?? ""}`);
+  const offered = earlier
+    .map((d) => ({
+      d,
+      score: overlap(
+        draftTokens,
+        tokenize(`${d.title} ${d.description ?? ""}`),
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_EARLIER_DRAFTS)
+    .map(({ d }) => d);
+  const drafts = [...offered, draft];
+  for (let kept = cards.length; kept >= 0; kept--) {
+    const input = buildDuplicateDecisions(drafts, cards.slice(0, kept), [
+      draft,
+    ]);
+    if (fits(input)) return { input, drafts, cards: cards.slice(0, kept) };
+  }
+  return null;
+}
+
+interface DecisionOutcome {
+  matches: Map<number, BatchDuplicate>;
+  /** Drafts Jev did not settle: a failed call or an inconclusive answer. */
+  unsettled: IndexedDraft[];
+}
+
+/**
+ * Jev, one small question per draft. Asked in one request, a batch never
+ * fit: 20 findings against a real board came to about 50 KB of input, twice
+ * the budget, so every import went to the fast tier. Null when Jev is not
+ * available to the org: no OpenRouter or Deco key, not permitted, or no such
+ * model.
+ */
 async function askDecisionModel(
   ctx: StudioContext,
   orgId: string,
   drafts: readonly IndexedDraft[],
-  candidates: readonly TaskBoardItem[],
-): Promise<Map<number, BatchDuplicate> | null> {
+  items: readonly TaskBoardItem[],
+): Promise<DecisionOutcome | null> {
+  let jev: DecisionModel;
   try {
     const keys = await ctx.storage.aiProviderKeys.list({
       organizationId: orgId,
@@ -526,18 +584,10 @@ async function askDecisionModel(
       keys.find((entry) => entry.providerId === "openrouter") ??
       keys.find((entry) => entry.providerId === "deco");
     if (!key) return null;
-    const input = buildDuplicateDecisions(drafts, candidates);
-    const { answers } = await evaluateDecisions(
-      ctx,
-      { keyId: key.id, modelId: "typesafe/jev-1.13" },
-      input,
-    );
-    return acceptDecisionDuplicates(
-      answers,
-      input.questions,
-      drafts,
-      candidates,
-    );
+    jev = await openDecisionModel(ctx, {
+      keyId: key.id,
+      modelId: JEV_MODEL_ID,
+    });
   } catch (error) {
     console.warn(
       "[task-board] Decision check unavailable; using fast model",
@@ -545,25 +595,70 @@ async function askDecisionModel(
     );
     return null;
   }
+  const verdicts = await mapBounded(
+    [...drafts],
+    DECISION_CONCURRENCY,
+    async (draft) => {
+      const fitted = fitDraftDecision(
+        draft,
+        drafts.filter((d) => d.index < draft.index),
+        selectDuplicateCandidates(items, draft),
+        jev.fits,
+      );
+      if (!fitted) return { draft, decided: null };
+      try {
+        const { answers } = await jev.evaluate(fitted.input);
+        return {
+          draft,
+          decided: acceptDecisionDuplicates(
+            answers,
+            fitted.input.questions,
+            fitted.drafts,
+            fitted.cards,
+          ),
+        };
+      } catch (error) {
+        console.warn(
+          "[task-board] Decision check failed for a draft; using fast model",
+          error instanceof Error ? error.message : "unknown error",
+        );
+        return { draft, decided: null };
+      }
+    },
+  );
+  const outcome: DecisionOutcome = { matches: new Map(), unsettled: [] };
+  for (const { draft, decided } of verdicts) {
+    if (decided === null) outcome.unsettled.push(draft);
+    else {
+      const match = decided.get(draft.index);
+      if (match) outcome.matches.set(draft.index, match);
+    }
+  }
+  return outcome;
 }
 
 /**
- * The batch check: for each draft, the existing card or the earlier draft of
- * the batch that already tracks it. Drafts absent from the result should be
- * created. Jev may fall back to one fast-model call; no per-item requests.
+ * The batch check: for each draft, the card or the earlier draft of the batch
+ * that already tracks it. Drafts absent from the result should be created.
+ * `extra` cards are candidates the board list leaves out (the import's
+ * dismissed reports cards). Jev settles what it can; one fast-tier call reads
+ * the whole batch and settles the rest.
  */
 export async function findDuplicatesForBatch(
   ctx: StudioContext,
   orgId: string,
   drafts: readonly IndexedDraft[],
+  extra: readonly TaskBoardItem[] = [],
 ): Promise<Map<number, BatchDuplicate>> {
   if (drafts.length === 0) return new Map();
-  const items = await ctx.storage.taskBoard.list(orgId);
+  const items = [...(await ctx.storage.taskBoard.list(orgId)), ...extra];
   const candidates = selectBatchCandidates(items, drafts);
   // One draft and no candidate card: nothing to compare it against.
   if (candidates.length === 0 && drafts.length === 1) return new Map();
-  const decided = await askDecisionModel(ctx, orgId, drafts, candidates);
-  if (decided !== null) return decided;
+  const decided = await askDecisionModel(ctx, orgId, drafts, items);
+  if (decided && decided.unsettled.length === 0) return decided.matches;
+  const matches = new Map(decided?.matches);
+  const pending = new Set((decided?.unsettled ?? drafts).map((d) => d.index));
   const asked = await askFastTier(
     ctx,
     orgId,
@@ -571,8 +666,14 @@ export async function findDuplicatesForBatch(
     BATCH_SYSTEM,
     buildBatchDuplicatePrompt(drafts, candidates),
   );
-  if ("skipped" in asked) return new Map();
-  return acceptBatchDuplicates(asked.answer, drafts, candidates);
+  if ("skipped" in asked) return matches;
+  for (const [index, match] of acceptBatchDuplicates(
+    asked.answer,
+    drafts,
+    candidates,
+  ))
+    if (pending.has(index)) matches.set(index, match);
+  return matches;
 }
 
 /**
@@ -592,10 +693,10 @@ export async function findDuplicateTask(
     ctx,
     orgId,
     [{ ...draft, index: 0 }],
-    candidates,
+    items,
   );
-  if (decided !== null) {
-    const match = decided.get(0);
+  if (decided && decided.unsettled.length === 0) {
+    const match = decided.matches.get(0);
     return match && "item" in match
       ? { status: "matched", ...match }
       : { status: "no_match" };

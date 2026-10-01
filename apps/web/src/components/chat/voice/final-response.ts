@@ -1,20 +1,14 @@
 import { VOICE_MAX_TEXT_LENGTH } from "@decocms/shared/voice";
 import type { ChatMessage } from "../types";
+import { turnMessages } from "./work-status";
 
 /** Only the final text part belonging to this user turn may be spoken. */
 export function finalVoiceResponse(
   messages: ChatMessage[],
   userMessageId: string,
 ): string | null {
-  const index = messages.findIndex(
-    (message) => message.id === userMessageId && message.role === "user",
-  );
-  if (index < 0) return null;
-  const turn: ChatMessage[] = [];
-  for (const message of messages.slice(index + 1)) {
-    if (message.role === "user") break;
-    if (message.role === "assistant") turn.push(message);
-  }
+  const turn = turnMessages(messages, userMessageId);
+  if (!turn) return null;
   const last = turn.at(-1);
   if (
     !last ||

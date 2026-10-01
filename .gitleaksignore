@@ -6,3 +6,7 @@
 # branch — never a real credential, just a fake response value for the
 # in-memory control-plane/analytics stand-in.
 ca3ca7032226a4a746382ec75674859d1c51b5bf:scripts/dev-hosting-mock.ts:generic-api-key:1313
+
+# sha256 content hash of sandbox/dbos-credential-push.ts in the DBOS
+# workflow-source snapshot; matched only because its key says "credential".
+805fedd95ed19c6d0d9936dd60624f2a23586129:apps/api/src/dbos/workflow-source-guard.snapshot.json:generic-api-key:13

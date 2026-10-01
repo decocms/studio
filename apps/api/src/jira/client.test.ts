@@ -1140,3 +1140,131 @@ describe("JiraClient.isOnBoard", () => {
     }
   });
 });
+
+describe("JiraClient.listStatusChanges", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withPages<T>(
+    pages: unknown[],
+    body: (requests: Array<Record<string, unknown>>) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://acme.atlassian.net/rest/api/3/changelog/bulkfetch",
+      );
+      requests.push(JSON.parse(String(init?.body)));
+      const page = pages[requests.length - 1];
+      return new Response(JSON.stringify(page ?? {}), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      return await body(requests);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  const history = (
+    id: string | number,
+    created: number | string,
+    from: string,
+    to: string,
+  ) => ({
+    id,
+    created,
+    author: { accountId: "acc-ana", displayName: "Ana" },
+    items: [
+      {
+        fieldId: "status",
+        from: `s-${from}`,
+        fromString: from,
+        to: `s-${to}`,
+        toString: to,
+      },
+    ],
+  });
+
+  it("asks for status only, follows pages and returns the moves oldest first", async () => {
+    await withPages(
+      [
+        {
+          issueChangeLogs: [
+            { changeHistories: [history("12", 2_000, "Doing", "Review")] },
+          ],
+          nextPageToken: "p2",
+        },
+        {
+          issueChangeLogs: [
+            {
+              changeHistories: [
+                history(11, "1970-01-01T00:00:01.000Z", "Backlog", "Doing"),
+              ],
+            },
+          ],
+        },
+      ],
+      async (requests) => {
+        const changes = await client().listStatusChanges("10001");
+        expect(requests).toEqual([
+          {
+            issueIdsOrKeys: ["10001"],
+            fieldIds: ["status"],
+            maxResults: 1000,
+          },
+          {
+            issueIdsOrKeys: ["10001"],
+            fieldIds: ["status"],
+            maxResults: 1000,
+            nextPageToken: "p2",
+          },
+        ]);
+        expect(changes).toEqual([
+          {
+            id: "11",
+            at: 1_000,
+            by: { accountId: "acc-ana", displayName: "Ana" },
+            fromId: "s-Backlog",
+            from: "Backlog",
+            toId: "s-Doing",
+            to: "Doing",
+          },
+          {
+            id: "12",
+            at: 2_000,
+            by: { accountId: "acc-ana", displayName: "Ana" },
+            fromId: "s-Doing",
+            from: "Doing",
+            toId: "s-Review",
+            to: "Review",
+          },
+        ]);
+      },
+    );
+  });
+
+  it("drops entries that record no readable status move", async () => {
+    await withPages(
+      [
+        {
+          issueChangeLogs: [
+            {
+              changeHistories: [
+                { id: "1", created: 1, items: [{ fieldId: "assignee" }] },
+                { ...history("2", "not a date", "A", "B") },
+                { ...history("3", 3, "A", "B"), author: { displayName: "x" } },
+                { id: "4", created: 4, items: [{ fieldId: "status" }] },
+              ],
+            },
+          ],
+        },
+      ],
+      async () => {
+        const changes = await client().listStatusChanges("EX-1");
+        expect(changes).toHaveLength(1);
+        expect(changes[0]).toMatchObject({ id: "3", by: null, to: "B" });
+      },
+    );
+  });
+});

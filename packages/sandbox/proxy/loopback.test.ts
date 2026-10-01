@@ -27,7 +27,11 @@ describe("pickLoopback", () => {
   });
 
   test("returns null when neither loopback responds", async () => {
-    const port = 49000 + Math.floor(Math.random() * 10000);
+    // A port the OS just handed out and took back, not a guess in the ephemeral range.
+    let port = 0;
+    await withServer("127.0.0.1", async (p) => {
+      port = p;
+    });
     expect(await pickLoopback(port)).toBeNull();
   });
 });

@@ -26,7 +26,10 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { keepAttachedPinnedViews } from "@/layouts/main-panel-tabs/attached-pinned-views";
+import {
+  keepAttachedPinnedViews,
+  pinnedViewsOf,
+} from "@/layouts/main-panel-tabs/attached-pinned-views";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
@@ -34,7 +37,6 @@ import {
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
 import { useTabLocked } from "./use-tab-locked";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectRendersApp } from "@/components/sandbox/preview/preview-device-hint";
 import { track } from "@/lib/posthog-client";
@@ -50,29 +52,6 @@ import {
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
 import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
 import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
-
-/** A project's curated app views. The metadata bag is `.loose()`, so this
- *  validates the shape rather than trusting it. */
-function pinnedViewsOf(project: VirtualMCPEntity): PinnedView[] {
-  const ui = (
-    project.metadata as { ui?: { pinnedViews?: unknown } } | undefined
-  )?.ui;
-  if (!Array.isArray(ui?.pinnedViews)) return [];
-  return ui.pinnedViews.filter(
-    (pv): pv is PinnedView =>
-      !!pv &&
-      typeof pv === "object" &&
-      typeof (pv as PinnedView).connectionId === "string" &&
-      typeof (pv as PinnedView).toolName === "string",
-  );
-}
-
-interface PinnedView {
-  connectionId: string;
-  toolName: string;
-  label?: string;
-  icon?: string | null;
-}
 
 interface ProjectView {
   key: string;

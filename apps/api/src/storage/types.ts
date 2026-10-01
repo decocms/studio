@@ -174,6 +174,8 @@ export interface DefaultHomeAgentsConfig {
 
 export interface OrganizationSettingsTable {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   // Connection ids a coding-agent run must not mount, even with
   // `coding_agent_org_mcps` on. See migration 212.
@@ -191,6 +193,8 @@ export interface OrganizationSettingsTable {
 
 export interface OrganizationSettings {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: SidebarItem[] | null;
   coding_agent_mcp_excluded: string[] | null;
   simple_mode: SimpleModeConfig | null;
@@ -2180,6 +2184,15 @@ export interface OrgJiraColumnAutomationTable {
   /** Continue the pull request the issue already carries instead of opening
    *  a new one (migration 220). */
   continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Which origins the rule answers, and its identity within the status
+   *  (migration 229, `jira/rule-from.ts`). */
+  from_kind: ColumnType<
+    "any" | "earlier" | "later" | "statuses",
+    "any" | "earlier" | "later" | "statuses" | undefined,
+    "any" | "earlier" | "later" | "statuses"
+  >;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
+  from_key: ColumnType<string, string | undefined, string>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

@@ -59,8 +59,11 @@ There is no card for anyone to read. A final message in this run is not a
 report.
 
 - `JIRA_COMMENT_ADD` posts your review (markdown, tables included). Open with
-  the verdict in ONE line — approved, or changes requested — then the evidence,
-  then the findings, each naming a file and line or a screenshot.
+  the verdict in ONE line — approved, or changes requested — naming the pull
+  request and the head commit you reviewed (`gh pr view <n> --json
+  headRefOid`), then the evidence, then the findings, each naming a file and
+  line or a screenshot. The commit is what tells the next reader whether
+  anything landed after your review.
 - A finding is a defect you OBSERVED, not a preference. Say what you did, what
   you expected, and what happened instead. If you found nothing, say that
   plainly rather than padding the list: an invented finding costs more than a

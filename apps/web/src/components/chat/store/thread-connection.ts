@@ -47,6 +47,7 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/hooks/use-preferences";
 import type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import type { VoiceTranscript } from "@decocms/shared/voice";
 import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
 import { guardToolInvariant } from "./tool-invariant-guard";
@@ -66,6 +67,8 @@ export { Store };
 
 export interface RequestOptions {
   voiceMode?: boolean;
+  /** Model-only context for a spoken turn; never rendered as message text. */
+  voiceTranscript?: VoiceTranscript;
   tier: SimpleModeTier;
   mode: ChatMode;
   toolApprovalLevel: ToolApprovalLevel;
