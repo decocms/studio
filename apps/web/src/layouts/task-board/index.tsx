@@ -34,6 +34,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
+import { AgenticSetupButton } from "./agentic-setup";
+import { ColumnRulesStrip } from "./column-rules";
+import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -1130,6 +1133,7 @@ function TaskBoardBody({
   const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
     null,
   );
+  useTaskBoardRulesLive();
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
@@ -1468,6 +1472,7 @@ function TaskBoardBody({
             }
           >
             <TaskBoardAdminControls />
+            <AgenticSetupButton />
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
               {t("taskBoard.taskBoard.newTask")}
@@ -2616,6 +2621,7 @@ function Lane({
         isTarget && "bg-muted/50",
       )}
     >
+      <ColumnRulesStrip columnKey={status} label={label} />
       {/* Sticky so the column header stays visible while the cards scroll
           vertically under it — needs an opaque bg for that to hide scrolled-
           under cards, so it tracks the lane's own highlight color (solid,

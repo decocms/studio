@@ -76,6 +76,39 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
   "taskBoard.taskBoard.hideColumn": "Ocultar",
+  "taskBoard.agenticSetup.button": "Configuração com agente",
+  "taskBoard.agenticSetup.message":
+    "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",
+  "taskBoard.agenticSetup.failed":
+    "Não foi possível iniciar o chat de configuração do quadro",
+  "taskBoard.columnRules.add": "Adicionar instruções",
+  "taskBoard.columnRules.editAriaLabel": "Editar regras de {lane}",
+  "taskBoard.columnRules.defaultRun": "Executa o agente",
+  "taskBoard.columnRules.skillsOnly": "{count} skills",
+  "taskBoard.columnRules.sheetDescription":
+    "O que acontece quando um card chega nesta coluna.",
+  "taskBoard.columnRules.runLabel": "Executar o agente",
+  "taskBoard.columnRules.runHint":
+    "Inicia uma execução em cada card que chega aqui, a menos que alguém já seja o responsável.",
+  "taskBoard.columnRules.automationLabel":
+    "O que fazer com um card que chega aqui",
+  "taskBoard.columnRules.automationPlaceholder":
+    "O que o agente deve fazer com um card que chega aqui? Deixe vazio para o comportamento padrão.",
+  "taskBoard.columnRules.promptLabel": "Instruções",
+  "taskBoard.columnRules.promptPlaceholder":
+    "Convenções, ferramentas preferidas, o que nunca tocar",
+  "taskBoard.columnRules.promptHint":
+    "Adicionadas a cada execução do agente em cards desta coluna, depois das instruções do quadro.",
+  "taskBoard.columnRules.skillsLabel": "Skills",
+  "taskBoard.columnRules.removeSkill": "Remover {skill}",
+  "taskBoard.columnRules.searchSkills": "Buscar skills",
+  "taskBoard.columnRules.noSkills": "Nenhuma skill encontrada",
+  "taskBoard.columnRules.inheritedHint":
+    "Também disponíveis aqui, de Configurações → Tarefas:",
+  "taskBoard.columnRules.cancel": "Cancelar",
+  "taskBoard.columnRules.save": "Salvar",
+  "taskBoard.columnRules.saved": "Regras da coluna salvas",
+  "taskBoard.columnRules.failed": "Não foi possível salvar as regras da coluna",
   "taskBoard.taskBoard.hiddenColumns": "Colunas ocultas",
   "taskBoard.taskBoard.showColumn": "Mostrar",
   "taskBoard.taskBoard.selectedCount": "{count} selecionado(s)",
