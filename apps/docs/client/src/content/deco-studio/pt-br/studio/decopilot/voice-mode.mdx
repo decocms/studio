@@ -77,7 +77,7 @@ O escopo da assinatura são as tasks criadas nessa chamada. O navegador lê os I
 delas a partir dos resultados de `TASK_BOARD_ITEM_CREATE` nos turnos da chamada,
 incluindo turnos de resultado em segundo plano, e filtra os eventos push do task
 board para esse conjunto. Uma task não relacionada que termina em outro lugar
-permanece silenciosa. Um turno de criação de tasks terminar não estabelece que as
+permanece silenciosa. O término de um turno de criação de tasks não estabelece que as
 tasks criadas terminaram. Limitações conhecidas: reentrar no modo de voz começa com
 um conjunto de tasks vazio, e uma mudança de lane durante uma reconexão do stream de
 push só é reportada pela próxima mudança.
