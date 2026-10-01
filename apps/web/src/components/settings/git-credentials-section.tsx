@@ -126,6 +126,23 @@ function GitCredentialsEditor() {
     }
   }
 
+  // Unlike commit(), a removal must persist even if another row is half-filled.
+  async function removeAt(index: number) {
+    const next = rows
+      .filter((_, i) => i !== index)
+      .map((r) => ({ ...r, host: r.host.trim() }));
+    setDraft(next);
+    try {
+      await setCredentials.mutateAsync(next.filter(isComplete));
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.gitCredentials.failedToSave"),
+      );
+    }
+  }
+
   const replaceAt = (index: number, row: SubmoduleCredential) =>
     rows.map((r, i) => (i === index ? row : r));
 
@@ -149,7 +166,7 @@ function GitCredentialsEditor() {
                 void commit(replaceAt(index, { ...row, secretId }))
               }
               onCreateNewSecret={() => setDialogIndex(index)}
-              onRemove={() => void commit(rows.filter((_, i) => i !== index))}
+              onRemove={() => void removeAt(index)}
             />
           </li>
         ))}
