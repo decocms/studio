@@ -57,12 +57,11 @@ function applyContentPolicy(
   key: string,
 ): void {
   // App preview builds (published by the app repo's CI) run with an opaque
-  // origin even when opened top-level — never as Studio.
-  if (
-    key.startsWith(APP_PREVIEW_PREFIX) &&
-    contentType.startsWith("text/html")
-  ) {
+  // origin even when opened top-level — never as Studio. Whatever the content
+  // type (svg, xhtml, xml, none, odd casing): no sniffing either.
+  if (key.startsWith(APP_PREVIEW_PREFIX)) {
     headers.set("Content-Security-Policy", "sandbox allow-scripts");
+    headers.set("X-Content-Type-Options", "nosniff");
     return;
   }
   if (

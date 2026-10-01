@@ -40,6 +40,19 @@ describe("GET /:org/files/* app-preview keys", () => {
     expect(fetched).toEqual(["app-preview/p1/abc/studio.html"]);
   });
 
+  test.each([
+    "image/svg+xml",
+    "application/xhtml+xml",
+    "application/xml",
+    "TEXT/HTML",
+    "application/octet-stream",
+  ])("%s under app-preview/ is sandboxed and nosniff", async (type) => {
+    const { app } = buildApp(type);
+    const res = await app.request("/api/acme/files/app-preview/p1/abc/x");
+    expect(res.headers.get("content-security-policy")).toBe(APP_CSP);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
   test("other keys keep their raw spelling and policy", async () => {
     const { app, fetched } = buildApp("text/html");
     const res = await app.request("/api/acme/files/uploads%2Fa.html");
