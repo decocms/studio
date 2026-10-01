@@ -9,6 +9,12 @@ import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { taskCommentAttachmentPaths } from "@decocms/shared/task-comment-attachments";
+import {
+  deleteAttachmentFiles,
+  orphanedCommentAttachments,
+} from "./comment-attachments";
+import { uploadsAsSandboxPaths } from "./description-uploads";
 import { taskRunContextStore } from "./task-run-context";
 
 /** No real comment is this long — caps the row a single POST can write. */
@@ -39,10 +45,38 @@ function requireOrg(ctx: StudioContext): string {
   return organizationId;
 }
 
+/**
+ * Delete the attachment files that `removed` comment bodies linked to and
+ * nothing the task keeps — `keptComments` and its description — still mentions.
+ */
+async function deleteOrphanedAttachments(
+  ctx: StudioContext,
+  task: { id: string; organizationId: string },
+  removed: string[],
+  keptComments: string[],
+): Promise<void> {
+  if (
+    !removed.some((body) => taskCommentAttachmentPaths(body, task.id).length)
+  ) {
+    return;
+  }
+  const item = await ctx.storage.taskBoard.getById(
+    task.id,
+    task.organizationId,
+  );
+  const orphaned = orphanedCommentAttachments({
+    taskId: task.id,
+    removed,
+    kept: [...keptComments, item?.description ?? ""],
+  });
+  await deleteAttachmentFiles(ctx.orgFs, orphaned, getUserId(ctx)!);
+}
+
 export const TASK_BOARD_COMMENT_LIST = defineTool({
   name: "TASK_BOARD_COMMENT_LIST",
   description:
-    "List a task board item's comments (flat, oldest first; replies carry parentId).",
+    "List a task board item's comments (flat, oldest first; replies carry parentId). " +
+    "Inside a task run, links to files attached to a comment are paths in your sandbox — `Read` them.",
   annotations: {
     title: "List Task Comments",
     readOnlyHint: true,
@@ -59,7 +93,14 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       input.taskBoardItemId,
       requireOrg(ctx),
     );
-    return { comments };
+    // Only a sandboxed run reaches this through the task-run endpoint, and only it has the uploads mount.
+    if (!taskRunContextStore.getStore()) return { comments };
+    return {
+      comments: comments.map((comment) => ({
+        ...comment,
+        body: uploadsAsSandboxPaths(comment.body),
+      })),
+    };
   },
 });
 
@@ -187,6 +228,22 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
         "Comment not found, or you can only edit your own comments",
       );
     }
+    if (
+      existing &&
+      comment.body !== existing.body &&
+      taskCommentAttachmentPaths(existing.body, comment.taskBoardItemId).length
+    ) {
+      const taskComments = await ctx.storage.taskBoard.listComments(
+        comment.taskBoardItemId,
+        organizationId,
+      );
+      await deleteOrphanedAttachments(
+        ctx,
+        { id: comment.taskBoardItemId, organizationId },
+        [existing.body],
+        taskComments.map((c) => c.body),
+      );
+    }
     // Notify only mentions this edit added, same as an edited description.
     if (input.body !== undefined && comment.body !== existing?.body) {
       await ctx.storage.notifications.notifyMentions({
@@ -217,11 +274,32 @@ export const TASK_BOARD_COMMENT_DELETE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    const comment = await ctx.storage.taskBoard.getComment(
+      input.id,
+      organizationId,
+    );
+    if (!comment) return { success: false };
+    // Read before the delete, which takes a root's replies with it.
+    const taskComments = await ctx.storage.taskBoard.listComments(
+      comment.taskBoardItemId,
+      organizationId,
+    );
     const deleted = await ctx.storage.taskBoard.deleteComment(
       input.id,
-      requireOrg(ctx),
+      organizationId,
       getUserId(ctx)!,
     );
-    return { success: deleted };
+    if (!deleted) return { success: false };
+
+    const isRemoved = (c: { id: string; parentId: string | null }) =>
+      c.id === comment.id || c.parentId === comment.id;
+    await deleteOrphanedAttachments(
+      ctx,
+      { id: comment.taskBoardItemId, organizationId },
+      taskComments.filter(isRemoved).map((c) => c.body),
+      taskComments.filter((c) => !isRemoved(c)).map((c) => c.body),
+    );
+    return { success: true };
   },
 });

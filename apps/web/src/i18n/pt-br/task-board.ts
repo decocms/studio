@@ -181,9 +181,13 @@ export const taskBoard = {
   "taskBoard.taskDialog.assignToPlaceholder": "Atribuir a…",
   "taskBoard.taskDialog.closeAriaLabel": "Fechar",
   "taskBoard.taskDialog.commentActionsAriaLabel": "Ações do comentário",
+  "taskBoard.taskDialog.commentAttachmentLimit":
+    "Um comentário pode levar até {max} arquivos",
+  "taskBoard.taskDialog.commentAttachments": "Anexos",
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
   "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
+  "taskBoard.taskDialog.commentRemoveAttachment": "Remover {name}",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} comentários resolvidos de {names}",

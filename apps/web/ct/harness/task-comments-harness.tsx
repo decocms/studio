@@ -70,6 +70,7 @@ export function TaskCommentsHarness({
         />
       )}
       <NewCommentComposer
+        taskId="tbi_1"
         onSubmit={(body) => setPosted((prev) => [...prev, body])}
       />
       <pre tabIndex={0} data-testid="posted">
@@ -97,6 +98,7 @@ export function TaskCommentsDialogHarness() {
         <DialogTitle className="sr-only">Task</DialogTitle>
         <div className="flex flex-1 flex-col justify-end overflow-y-auto p-6">
           <NewCommentComposer
+            taskId="tbi_1"
             onSubmit={(body) => setPosted((prev) => [...prev, body])}
           />
         </div>

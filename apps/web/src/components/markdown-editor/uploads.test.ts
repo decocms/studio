@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isEditorFileUrl } from "./uploads";
+import { isEditorFileUrl, isTaskCommentFileUrl } from "./uploads";
 
 describe("isEditorFileUrl", () => {
   it("matches an attachment this editor uploaded", () => {
@@ -33,5 +33,36 @@ describe("isEditorFileUrl", () => {
     ).toBe(false);
     expect(isEditorFileUrl("not a url at all")).toBe(false);
     expect(isEditorFileUrl("")).toBe(false);
+  });
+});
+
+describe("isTaskCommentFileUrl", () => {
+  it("matches a file attached to a task comment", () => {
+    expect(
+      isTaskCommentFileUrl(
+        "/api/acme/fs/uploads/read?path=task-comments%2Ftbi_1%2Fa1.pdf",
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves the description editor's uploads and other volumes alone", () => {
+    expect(
+      isTaskCommentFileUrl(
+        "/api/acme/fs/uploads/read?path=editor-files%2Fspec.pdf",
+      ),
+    ).toBe(false);
+    expect(
+      isTaskCommentFileUrl(
+        "/api/acme/fs/home/read?path=task-comments%2Ftbi_1%2Fa1.pdf",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a full URL, however close it looks", () => {
+    expect(
+      isTaskCommentFileUrl(
+        "https://evil.example.com/api/acme/fs/uploads/read?path=task-comments/tbi_1/a1.pdf",
+      ),
+    ).toBe(false);
   });
 });

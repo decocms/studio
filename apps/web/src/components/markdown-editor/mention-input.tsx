@@ -39,6 +39,8 @@ export function MentionInput({
   placeholder,
   onSubmit,
   onEmptyChange,
+  allowEmptySubmit = false,
+  onPasteFiles,
   ref,
   className,
 }: {
@@ -47,6 +49,10 @@ export function MentionInput({
   onSubmit: (markdown: string) => void | boolean | Promise<void | boolean>;
   /** Drives the send button's disabled state. */
   onEmptyChange: (empty: boolean) => void;
+  /** Send with no text, when the composer has something else to post. */
+  allowEmptySubmit?: boolean;
+  /** Files pasted from the clipboard. Without it, a paste is text only. */
+  onPasteFiles?: (files: File[]) => void;
   /** Submit and focus, for the send button and the click-anywhere-to-type
    *  surface the composer wraps this in. */
   ref?: Ref<MentionInputHandle>;
@@ -100,6 +106,16 @@ export function MentionInput({
         submit();
         return true;
       },
+      handlePaste: (_view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []);
+        if (!onPasteFiles || files.length === 0) return false;
+        // Text copied from an office app carries a picture of itself; the text is what was meant.
+        if (event.clipboardData?.getData("text/plain")) return false;
+        onPasteFiles(files);
+        return true;
+      },
+      // The schema has no node for a file, so a dropped one is left to the composer around this field.
+      handleDrop: (_view, event) => (event.dataTransfer?.files.length ?? 0) > 0,
     },
     onUpdate: ({ editor }) => onEmptyChange(editor.isEmpty),
   });
@@ -107,7 +123,7 @@ export function MentionInput({
   async function submit() {
     if (!editor || sending.current) return;
     const markdown = editor.getMarkdown().trim();
-    if (!markdown) return;
+    if (!markdown && !allowEmptySubmit) return;
     sending.current = true;
     editor.setEditable(false);
     try {

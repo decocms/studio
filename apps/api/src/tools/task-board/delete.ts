@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
+import { taskCommentAttachmentDir } from "@decocms/shared/task-comment-attachments";
+import { deleteAttachmentFiles } from "./comment-attachments";
 import { emitTaskBoardDeleted } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_DELETE = defineTool({
@@ -29,13 +31,22 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
     }
 
     // Storage dismisses a reports task instead of dropping the row.
-    const deleted = await ctx.storage.taskBoard.delete(
+    const actor = getUserId(ctx) ?? "system";
+    const outcome = await ctx.storage.taskBoard.delete(
       input.id,
       organizationId,
-      getUserId(ctx) ?? "system",
+      actor,
     );
-    if (!deleted) {
+    if (!outcome) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+    // A dismissed card keeps its comments for a restore, so only a real delete takes their files.
+    if (outcome === "deleted") {
+      await deleteAttachmentFiles(
+        ctx.orgFs,
+        [taskCommentAttachmentDir(input.id)],
+        actor,
+      );
     }
     // Broadcast the removal so every open board drops the card live.
     emitTaskBoardDeleted(organizationId, input.id);

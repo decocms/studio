@@ -12,7 +12,8 @@ import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
 import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
-import { isImageFile, useEditorFileUpload } from "./use-file-upload";
+import { useEditorFileUpload } from "./use-file-upload";
+import { isImageFile } from "./uploads";
 
 /**
  * Block styling for the editor surface. Explicit rather than `prose`:

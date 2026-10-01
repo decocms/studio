@@ -60,7 +60,7 @@ export function TaskMessage({
       {body && (
         <div
           className={cn(
-            "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
+            "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm [&_img]:max-h-80",
             isReply && "ml-3 border-l border-border pl-5",
           )}
         >

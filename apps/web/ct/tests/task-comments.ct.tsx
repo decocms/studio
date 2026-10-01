@@ -58,12 +58,209 @@ test("existing agent replies share the single task composer", async ({
   await expect(component.getByText(/^On it\./)).toBeVisible();
 });
 
-test("the composer offers no attach control until attachments exist", async ({
+const PNG = {
+  name: "shot.png",
+  mimeType: "image/png",
+  buffer: Buffer.from("png"),
+};
+const PDF = {
+  name: "spec.pdf",
+  mimeType: "application/pdf",
+  buffer: Buffer.from("pdf"),
+};
+const link = (name: string) =>
+  `/api/acme/fs/uploads/read?path=${encodeURIComponent(`task-comments/tbi_1/${name}`)}`;
+
+test("the paperclip attaches picked files as previews", async ({
   mount,
+  page,
 }) => {
   const component = await mount(<TaskCommentsHarness />);
 
-  await expect(component.getByLabel("Attach")).toHaveCount(0);
+  const chooser = page.waitForEvent("filechooser");
+  await component.getByRole("button", { name: "Attach file" }).click();
+  await (await chooser).setFiles([PNG, PDF]);
+
+  const attachments = component.getByRole("list", { name: "Attachments" });
+  await expect(
+    attachments.getByRole("img", { name: "shot.png" }),
+  ).toBeVisible();
+  await expect(attachments.getByText("spec.pdf")).toBeVisible();
+});
+
+test("a comment can be only attachments", async ({ mount, page }) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  const chooser = page.waitForEvent("filechooser");
+  await component.getByRole("button", { name: "Attach file" }).click();
+  await (await chooser).setFiles([PDF]);
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`[spec.pdf](${link("spec.pdf")})`]),
+  );
+  // The draft is spent: its files go with the comment.
+  await expect(
+    component.getByRole("list", { name: "Attachments" }),
+  ).toHaveCount(0);
+});
+
+test("Enter posts the text with its attachments after it", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  const chooser = page.waitForEvent("filechooser");
+  await component.getByRole("button", { name: "Attach file" }).click();
+  await (await chooser).setFiles([PNG]);
+  await composer.fill("the checkout breaks");
+  await composer.press("Enter");
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`the checkout breaks\n\n![shot.png](${link("shot.png")})`]),
+  );
+});
+
+test("dropping files on the composer attaches them", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const card = component.getByTestId("new-comment-composer");
+
+  const dataTransfer = await page.evaluateHandle(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["notes"], "notes.txt", { type: "text/plain" }));
+    return dt;
+  });
+  await card.dispatchEvent("dragenter", { dataTransfer });
+  await card.dispatchEvent("dragover", { dataTransfer });
+  await card.dispatchEvent("drop", { dataTransfer });
+
+  await expect(
+    component.getByRole("list", { name: "Attachments" }).getByText("notes.txt"),
+  ).toBeVisible();
+});
+
+test("pasting a screenshot attaches it, but text that carries a picture pastes as text", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  // A spreadsheet's copy carries a picture of the cells next to their text.
+  await composer.evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", "Q3 numbers");
+    dt.items.add(new File(["png"], "image.png", { type: "image/png" }));
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(composer).toHaveText("Q3 numbers");
+  await expect(
+    component.getByRole("list", { name: "Attachments" }),
+  ).toHaveCount(0);
+
+  // A screenshot is only the picture.
+  await composer.evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["png"], "image.png", { type: "image/png" }));
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(
+    component
+      .getByRole("list", { name: "Attachments" })
+      .getByRole("img", { name: "image.png" }),
+  ).toBeVisible();
+});
+
+test("a removed preview is not posted", async ({ mount, page }) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  const chooser = page.waitForEvent("filechooser");
+  await component.getByRole("button", { name: "Attach file" }).click();
+  await (await chooser).setFiles([PNG, PDF]);
+  await component.getByRole("button", { name: "Remove shot.png" }).click();
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`[spec.pdf](${link("spec.pdf")})`]),
+  );
+});
+
+test("a file over the size limit, or past ten, is turned away", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const attach = component.getByRole("button", { name: "Attach file" });
+
+  let chooser = page.waitForEvent("filechooser");
+  await attach.click();
+  await (await chooser).setFiles([
+    {
+      name: "huge.png",
+      mimeType: "image/png",
+      buffer: Buffer.alloc(10 * 1024 * 1024 + 1),
+    },
+  ]);
+  await expect(
+    component.getByRole("list", { name: "Attachments" }),
+  ).toHaveCount(0);
+
+  chooser = page.waitForEvent("filechooser");
+  await attach.click();
+  await (await chooser).setFiles(
+    Array.from({ length: 11 }, (_, i) => ({
+      name: `note-${i}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from("x"),
+    })),
+  );
+  await expect(
+    component.getByRole("list", { name: "Attachments" }).getByRole("listitem"),
+  ).toHaveCount(10);
+});
+
+test("a failed upload keeps the draft for another try", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  const chooser = page.waitForEvent("filechooser");
+  await component.getByRole("button", { name: "Attach file" }).click();
+  await (await chooser).setFiles([{ ...PDF, name: "fail-spec.pdf" }]);
+  await composer.fill("see attached");
+  await composer.press("Enter");
+
+  await expect(component.getByTestId("posted")).toHaveText("[]");
+  await expect(composer).toHaveText("see attached");
+  await expect(
+    component
+      .getByRole("list", { name: "Attachments" })
+      .getByText("fail-spec.pdf"),
+  ).toBeVisible();
 });
 
 test("the send button still submits, despite the card-wide focus click", async ({

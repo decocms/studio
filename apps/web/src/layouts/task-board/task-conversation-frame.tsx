@@ -72,6 +72,7 @@ export function TaskConversationFrame({
             </div>
           )}
           <NewCommentComposer
+            taskId={item.id}
             onSubmit={async (body) => {
               try {
                 await comments.post.mutateAsync({ body });

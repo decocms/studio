@@ -217,4 +217,26 @@ describe("TaskBoardStorage comments", () => {
     });
     expect(result).toBeNull();
   });
+
+  // A dismissed card keeps its comments for a restore, so only "deleted" may take their attachments.
+  it("tells a deleted card from a dismissed one, so only a delete takes the comments' files", async () => {
+    const userCard = await storage.create({
+      organizationId: "org_test",
+      title: "made by a person",
+      by: "user_test",
+    });
+    const reportsCard = await storage.create({
+      organizationId: "org_test",
+      title: "pushed by a diagnostic",
+      by: "system",
+    });
+
+    expect(await storage.delete(userCard.id, "org_test", "user_1")).toBe(
+      "deleted",
+    );
+    expect(await storage.delete(reportsCard.id, "org_test", "user_1")).toBe(
+      "dismissed",
+    );
+    expect(await storage.delete(userCard.id, "org_test", "user_1")).toBeNull();
+  });
 });

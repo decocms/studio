@@ -2,12 +2,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
-import { FILE_DIR, IMAGE_DIR, UPLOAD_VOLUME } from "./uploads";
-
-/** Images are inlined as a preview, so an oversized one is also a huge render. */
-const MAX_IMAGE_MB = 10;
-/** Attachments are only ever downloaded — a deck or a spec can be bigger. */
-const MAX_FILE_MB = 25;
+import {
+  FILE_DIR,
+  IMAGE_DIR,
+  isImageFile,
+  maxUploadMb,
+  UPLOAD_VOLUME,
+} from "./uploads";
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/png": ".png",
@@ -18,7 +19,7 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/svg+xml": ".svg",
 };
 
-function fileExtension(file: File): string {
+export function fileExtension(file: File): string {
   return (
     file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
     EXT_BY_MIME[file.type] ??
@@ -26,10 +27,6 @@ function fileExtension(file: File): string {
     // serve it back as one, while an attachment is only ever downloaded.
     (isImageFile(file) ? ".png" : "")
   );
-}
-
-export function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/");
 }
 
 /**
@@ -48,7 +45,7 @@ export function useEditorFileUpload() {
 
   const uploadFile = async (file: File): Promise<string | null> => {
     const isImage = isImageFile(file);
-    const maxMb = isImage ? MAX_IMAGE_MB : MAX_FILE_MB;
+    const maxMb = maxUploadMb(file);
     if (file.size > maxMb * 1024 * 1024) {
       toast.error(
         t("markdownEditor.fileTooLarge", {
