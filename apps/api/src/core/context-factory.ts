@@ -73,6 +73,10 @@ import type {
 
 import type { MemberRoleCache } from "../auth/member-role-cache";
 import { readStudioHeader } from "./studio-headers";
+import {
+  evictExpiredTtlCacheEntries,
+  refreshTtlCacheEntry,
+} from "./ttl-lru-cache";
 
 // ============================================================================
 // Helper Functions
@@ -600,45 +604,26 @@ export async function fetchRolePermissions(
 const ARCHIVED_CACHE_TTL_MS = 60_000;
 // Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
 const ARCHIVED_CACHE_MAX_SIZE = 10_000;
-const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+type OrgArchivedCacheEntry = { value: boolean; at: number };
+const orgArchivedCache = new Map<string, OrgArchivedCacheEntry>();
 
 /** Write (or refresh) a cache entry, moving it to the most-recently-set
- *  position. `Map.set` on an existing key updates the value in place but
- *  keeps its original iteration position, so a hot org that's refreshed on
- *  every lookup would otherwise sit at the "oldest" end forever and be the
- *  first thing `evictExpiredOrgArchivedEntries` trims once the cache is
- *  full — evicting the entry the cache most needs to keep. Exported for
- *  unit testing. */
+ *  position — see ttl-lru-cache.ts. Exported for unit testing. */
 export function refreshOrgArchivedCacheEntry(
-  cache: Map<string, { archived: boolean; at: number }>,
+  cache: Map<string, OrgArchivedCacheEntry>,
   organizationId: string,
   archived: boolean,
 ): void {
-  cache.delete(organizationId);
-  cache.set(organizationId, { archived, at: Date.now() });
+  refreshTtlCacheEntry(cache, organizationId, archived);
 }
 
 /** Exported for unit testing. */
 export function evictExpiredOrgArchivedEntries(
-  cache: Map<string, { archived: boolean; at: number }>,
+  cache: Map<string, OrgArchivedCacheEntry>,
   maxSize: number,
   ttlMs: number,
 ): void {
-  if (cache.size <= maxSize) return;
-  const now = Date.now();
-  for (const [key, entry] of cache) {
-    if (now - entry.at >= ttlMs) cache.delete(key);
-  }
-  // Trims oldest first (Map iteration order = insertion order).
-  if (cache.size > maxSize) {
-    const excess = cache.size - maxSize;
-    let removed = 0;
-    for (const key of cache.keys()) {
-      if (removed >= excess) break;
-      cache.delete(key);
-      removed++;
-    }
-  }
+  evictExpiredTtlCacheEntries(cache, maxSize, ttlMs);
 }
 
 async function isOrgArchivedCached(
@@ -648,7 +633,7 @@ async function isOrgArchivedCached(
   spanName: string,
 ): Promise<boolean> {
   const hit = orgArchivedCache.get(organizationId);
-  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.archived;
+  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.value;
   const orgRow = await timings.measure(spanName, () =>
     db
       .selectFrom("organization")
