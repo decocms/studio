@@ -66,6 +66,7 @@
 import { createHmac } from "node:crypto";
 import { Hono } from "hono";
 import { auth } from "@/auth";
+import { getActiveMcpSessionUserId } from "@/auth/mcp-session";
 
 const app = new Hono();
 
@@ -124,10 +125,9 @@ async function resolveDesktopBearer(token: string): Promise<string | null> {
     // bearer as a malformed API key. It is created here, never client-trusted.
     "X-MCP-Session-Auth": "true",
   });
-  const mcp: unknown = await auth.api
-    .getMcpSession({ headers })
-    .catch(() => null);
-  const mcpUserId = directUserId(mcp);
+  const mcpUserId = await getActiveMcpSessionUserId(auth, headers).catch(
+    () => null,
+  );
   if (mcpUserId) return mcpUserId;
 
   // Local/dev fallback: the native client may use a Better Auth API key when

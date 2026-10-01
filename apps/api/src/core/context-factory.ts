@@ -71,6 +71,7 @@ import type {
 // ============================================================================
 
 import type { MemberRoleCache } from "../auth/member-role-cache";
+import { getActiveMcpSessionUserId } from "../auth/mcp-session";
 import { readStudioHeader } from "./studio-headers";
 
 // ============================================================================
@@ -793,17 +794,11 @@ async function authenticateRequest(
     const mcpHeaders = new Headers(req.headers);
     mcpHeaders.set("X-MCP-Session-Auth", "true");
 
-    const session = await timings.measure(
-      "auth_get_mcp_session",
-      () =>
-        auth.api.getMcpSession({
-          headers: mcpHeaders,
-        }) as Promise<{ userId: string } | null>,
+    const userId = await timings.measure("auth_get_mcp_session", () =>
+      getActiveMcpSessionUserId(auth, mcpHeaders),
     );
 
-    if (session) {
-      const userId = session.userId;
-
+    if (userId) {
       // For MCP OAuth sessions we need to query the database directly because
       // getFullOrganization requires a browser session (cookies). The OAuth
       // grant doesn't carry org context. A canonical `/api/:org` path is
