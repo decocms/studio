@@ -48,7 +48,17 @@ const FORWARDED_RESPONSE_HEADERS = [
  * domain), member-authored active content must not run with studio's origin.
  * CSP-sandbox it so scripts get an opaque origin and can't make credentialed
  * same-origin calls (same posture as the org-fs /read route). */
-function applyContentPolicy(headers: Headers, contentType: string): void {
+function applyContentPolicy(
+  headers: Headers,
+  contentType: string,
+  key: string,
+): void {
+  // App preview builds (published by the app repo's CI) run with an opaque
+  // origin even when opened top-level — never as Studio.
+  if (key.startsWith("app-preview/") && contentType.startsWith("text/html")) {
+    headers.set("Content-Security-Policy", "sandbox allow-scripts");
+    return;
+  }
   if (
     contentType.startsWith("text/html") ||
     contentType.startsWith("image/svg")
@@ -108,7 +118,7 @@ app.get("/:org/files/*", async (c) => {
       "Content-Type": contentType!,
       "Cache-Control": "private, max-age=86400",
     });
-    applyContentPolicy(headers, contentType!);
+    applyContentPolicy(headers, contentType!, key);
     return new Response(bytes, { status: 200, headers });
   }
 
@@ -142,7 +152,7 @@ app.get("/:org/files/*", async (c) => {
     if (value) headers.set(name, value);
   }
   headers.set("Cache-Control", "private, max-age=86400");
-  applyContentPolicy(headers, headers.get("content-type") ?? "");
+  applyContentPolicy(headers, headers.get("content-type") ?? "", key);
 
   return new Response(upstream.body, { status: upstream.status, headers });
 });

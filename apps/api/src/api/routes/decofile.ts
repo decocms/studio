@@ -8,6 +8,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/commerce  read-only VTEX relay for app previews (session OR ?token=)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -49,7 +50,15 @@ import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
+import {
+  commerceRelayTarget,
+  relayCommerceRead,
+} from "@/decofile/commerce-relay";
 import type { Env } from "../hono-env";
+import { clientIp, createWindowLimiter } from "../utils/rate-limit";
+
+/** Per caller and project: an app screen fires a few dozen catalog reads. */
+const commerceLimiter = createWindowLimiter({ max: 600, windowMs: 60_000 });
 
 interface DecofileScope {
   organizationId: string;
@@ -313,6 +322,19 @@ export function createDecofileRoutes() {
     } catch (err) {
       return errorResponse(c, err);
     }
+  });
+
+  // Read-only VTEX relay for app previews (opaque-origin frame, VTEX has no
+  // CORS). Same draft token as the read above; sites never call it.
+  app.get("/:virtualMcpId/:branch/commerce", async (c) => {
+    const cors = { "access-control-allow-origin": "*" };
+    const scope = c.get("decofileScope");
+    if (!commerceLimiter.hit(`${clientIp(c)}:${scope.virtualMcpId}`)) {
+      return c.json({ error: "Too many requests" }, 429, cors);
+    }
+    const target = commerceRelayTarget(c.req.query("url"));
+    if (!target) return c.json({ error: "Not allowed" }, 403, cors);
+    return relayCommerceRead(target);
   });
 
   app.get("/:virtualMcpId/:branch/meta", async (c) => {
