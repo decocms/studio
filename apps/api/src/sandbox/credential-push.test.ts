@@ -184,6 +184,26 @@ describe("planCredentialPush", () => {
       ]);
     });
 
+    it("skips a configured anonymous pool repo, not refused", () => {
+      const legacyPools = parseLegacyTenantPools(
+        JSON.stringify([{ name: "p", orgId: "org_a", repo: "acme/anon" }]),
+      );
+      expect(
+        planCredentialPush({
+          sandboxes: [],
+          pools: [pool("org_a", "https://github.com/acme/anon")],
+          records,
+          legacyPools,
+          now: NOW,
+        }),
+      ).toEqual({
+        clones: [],
+        poolClones: [],
+        orgFs: [],
+        refused: 0,
+      });
+    });
+
     it("refuses a pool repo with no record in the pool's org, even when another org has one", () => {
       expect(
         plan(
