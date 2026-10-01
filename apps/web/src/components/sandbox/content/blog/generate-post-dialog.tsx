@@ -138,6 +138,7 @@ export function GeneratePostDialog({
     .filter((category) => category.slug);
   const authors: AuthorRef[] = listBlogPayloads(decofile, "authors")
     .map(({ payload }) => ({
+      ...payload,
       name: str(payload.name),
       email: str(payload.email),
     }))

@@ -134,6 +134,7 @@ export function useGeneratePost({
       ? [briefing.author]
       : listBlogPayloads(decofile, "authors")
           .map(({ payload }) => ({
+            ...payload,
             name: str(payload.name),
             email: str(payload.email),
           }))
@@ -163,7 +164,8 @@ export function useGeneratePost({
             purpose: section.description,
           })),
         categories,
-        authors,
+        // The draft tool only attributes the post — identity is enough.
+        authors: authors.map(({ name, email }) => ({ name, email })),
         extraInstructions: briefing.extraInstructions?.trim() || undefined,
       });
 

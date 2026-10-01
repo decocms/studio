@@ -1702,6 +1702,30 @@ describe("buildGeneratedPostPayload", () => {
     ]);
   });
 
+  test("the chosen author's whole record rides onto the post", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      authors: [
+        {
+          name: "Ana",
+          email: "ana@marca.com",
+          jobTitle: "Editora",
+          url: "https://ana.example.com",
+          avatar: "https://cdn.example.com/ana.png",
+        },
+      ],
+    });
+    expect(payload.authors).toEqual([
+      {
+        name: "Ana",
+        email: "ana@marca.com",
+        jobTitle: "Editora",
+        url: "https://ana.example.com",
+        avatar: "https://cdn.example.com/ana.png",
+      },
+    ]);
+  });
+
   test("an unmatched pick attributes nobody rather than inventing an author", () => {
     const payload = buildGeneratedPostPayload({
       ...args,
