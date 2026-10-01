@@ -7,6 +7,7 @@ import { Attachment01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
 import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
@@ -37,7 +38,7 @@ const CONTENT_CLASS = [
   "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
   "[&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-[13px]",
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
-  "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2",
+  EDITOR_LINK_CLASS,
   "[&_hr]:my-4 [&_hr]:border-border",
   "[&_strong]:font-semibold [&_strong]:text-foreground",
   // Tables and checklists come from markdown the editor did not author — a

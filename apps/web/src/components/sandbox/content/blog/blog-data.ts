@@ -1634,6 +1634,17 @@ export function slugifyTitle(title: string): string {
     .slice(0, 80);
 }
 
+/** Slugify as the author types: keeps the trailing "-" `slugifyTitle` trims, or typing "meu-post" would eat the separator. */
+export function maskSlugInput(raw: string): string {
+  return raw
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 80);
+}
+
 /** `slugifyTitle`, suffixed until it stops colliding with an existing post. */
 export function uniquePostSlug(title: string, taken: string[]): string {
   const base = slugifyTitle(title) || `post-${randomHex(6)}`;

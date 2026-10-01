@@ -96,6 +96,8 @@ export function BlockEditor({
             items={str(block.items)}
             style={str(block.style)}
             onChange={(next) => onChange({ ...block, ...next })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "BlockImage":
@@ -180,6 +182,8 @@ export function BlockEditor({
             headers={jsonField(block.headers)}
             rows={jsonField(block.rows)}
             onChange={(next) => onChange({ ...block, ...next })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "ProductCard":
