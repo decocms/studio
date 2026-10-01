@@ -52,6 +52,7 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
+import { sandboxPathsAsAttachments } from "./comment-attachments";
 import { nudgeThreadTurn } from "./nudge-thread";
 
 /** What the reviewer still owes the card. Null = nothing. */
@@ -152,7 +153,10 @@ export async function ensureReviewerCommented(
   // The record itself costs nothing — the reviewer already wrote it, into the
   // one channel the timeline truncates. Move it where it renders.
   if (gap === "missing") {
-    const body = verdictCommentBody(kind, verdict.decision, verdict.notes);
+    const notes = verdictCommentBody(kind, verdict.decision, verdict.notes);
+    // A sandboxed reviewer quotes attachments by the path LIST handed it.
+    const slug = ctx.organization?.slug;
+    const body = slug ? sandboxPathsAsAttachments(notes, slug) : notes;
     await ctx.storage.taskBoard.createComment({
       taskBoardItemId: item.id,
       organizationId: item.organizationId,

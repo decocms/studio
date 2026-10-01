@@ -276,7 +276,6 @@ function CommentComposer({
       placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
       onSubmit={send}
       onEmptyChange={setEmpty}
-      attachments
       className={cn(
         "w-full [&_.tiptap]:outline-none",
         "min-h-10",

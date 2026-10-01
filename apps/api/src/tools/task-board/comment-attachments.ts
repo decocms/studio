@@ -1,6 +1,5 @@
 /**
- * Removing the files a task comment attached, when the comment (or the part of
- * it an edit took out) goes away. Each upload sits in its own folder under the
+ * Removing a comment's attached files when it goes away, never on an edit. Each upload sits in its own folder under the
  * task's (see `@decocms/shared/task-comment-attachments`), so that folder is
  * what gets deleted.
  *

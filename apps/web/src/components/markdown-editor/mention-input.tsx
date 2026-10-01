@@ -1,5 +1,5 @@
 /**
- * A one-field composer that understands `@`-mentions and, when asked, files.
+ * A one-field composer that understands `@`-mentions and attached files.
  *
  * Tiptap, not a textarea, because a mention needs a chip and an id — so
  * this stays as close to the textarea it replaced as it can: no toolbar, no
@@ -17,6 +17,7 @@ import { Markdown } from "@tiptap/markdown";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { MarkdownAttachment } from "./attachment-node";
 import { MarkdownImage } from "./image-node";
+import { withoutDeadPreviews } from "./draft-previews";
 import { insertUpload } from "./insert-upload";
 import { MarkdownMention } from "./mention-node";
 import {
@@ -26,6 +27,24 @@ import {
   mentionSuggestionExtension,
 } from "./mention-suggestion";
 import { isImageFile, useUploadSizeCheck } from "./use-file-upload";
+
+/**
+ * Pasted markup keeps only this draft's own previews, as when an image is cut
+ * and pasted further down. Any other image or chip is a URL from elsewhere,
+ * not a file of ours.
+ */
+function keepDraftAttachments(html: string, drafts: Map<string, File>): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const img of doc.querySelectorAll("img")) {
+    if (!drafts.has(img.getAttribute("src") ?? "")) img.remove();
+  }
+  for (const chip of doc.querySelectorAll("a[data-attachment]")) {
+    if (!drafts.has(chip.getAttribute("href") ?? "")) {
+      chip.removeAttribute("data-attachment");
+    }
+  }
+  return doc.body.innerHTML;
+}
 
 /** What the composer around this field drives from its own chrome. */
 export interface MentionInputHandle {
@@ -53,7 +72,6 @@ export function MentionInput({
   placeholder,
   onSubmit,
   onEmptyChange,
-  attachments = false,
   ref,
   className,
 }: {
@@ -66,8 +84,6 @@ export function MentionInput({
   ) => void | boolean | Promise<void | boolean>;
   /** Drives the send button's disabled state. */
   onEmptyChange: (empty: boolean) => void;
-  /** Accept pasted, dropped and `attach`ed files. Read at creation time. */
-  attachments?: boolean;
   /** Submit and focus, for the send button and the click-anywhere-to-type
    *  surface the composer wraps this in. */
   ref?: Ref<MentionInputHandle>;
@@ -118,7 +134,8 @@ export function MentionInput({
       mentionSuggestionExtension(mentionStore),
       Placeholder.configure({ placeholder }),
       Markdown,
-      ...(attachments ? [MarkdownImage, MarkdownAttachment] : []),
+      MarkdownImage,
+      MarkdownAttachment,
     ],
     editorProps: {
       attributes: {
@@ -143,12 +160,12 @@ export function MentionInput({
         submit();
         return true;
       },
-      // Pasted markup brings text only; its images and chips aren't files of ours.
-      transformPastedHTML: (html) =>
-        html.replace(/<img\b[^>]*>/gi, "").replace(/\sdata-attachment\b/gi, ""),
+      transformPastedHTML: (html) => keepDraftAttachments(html, drafts),
       handlePaste: (view, event) => {
+        // Text wins: a spreadsheet or a document also puts a picture of it there.
+        if (event.clipboardData?.getData("text/plain").trim()) return false;
         const files = Array.from(event.clipboardData?.files ?? []);
-        if (!attachments || files.length === 0) return false;
+        if (files.length === 0) return false;
         // Ours, not the chat composer's window-level listener (`useWindowFileDrop`).
         event.stopPropagation();
         attachAt(view, files, view.state.selection.to);
@@ -158,7 +175,7 @@ export function MentionInput({
         // A drag within the editor is a move, not an attachment.
         if (moved) return false;
         const files = Array.from(event.dataTransfer?.files ?? []);
-        if (!attachments || files.length === 0) return false;
+        if (files.length === 0) return false;
         const at = view.posAtCoords({
           left: event.clientX,
           top: event.clientY,
@@ -175,7 +192,7 @@ export function MentionInput({
 
   async function submit() {
     if (!editor || sending.current) return;
-    const markdown = editor.getMarkdown().trim();
+    const markdown = withoutDeadPreviews(editor.getMarkdown(), drafts).trim();
     if (!markdown) return;
     const attached = [...drafts]
       .filter(([url]) => markdown.includes(url))
@@ -200,7 +217,7 @@ export function MentionInput({
     submit,
     focus: () => editor?.commands.focus(),
     attach: (files) => {
-      if (!editor || !attachments) return;
+      if (!editor) return;
       attachAt(editor.view, files, editor.state.selection.to);
       editor.commands.focus();
     },

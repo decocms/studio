@@ -66,7 +66,7 @@ export function commentAttachmentTaskOf(path: string): string | null {
 }
 
 /** Whether a path is one of this task's uploads. */
-export function isCommentAttachmentPath(path: string, taskId: string): boolean {
+function isCommentAttachmentPath(path: string, taskId: string): boolean {
   return commentAttachmentTaskOf(path) === taskId;
 }
 

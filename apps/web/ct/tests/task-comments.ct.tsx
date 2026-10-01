@@ -190,6 +190,66 @@ test("images in pasted web content are left out, like before attachments", async
   );
 });
 
+test("pasting a draft screenshot again keeps it attached", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await pasteFile(input, "shot.png", "image/png");
+  const preview = component
+    .getByTestId("new-comment-composer")
+    .getByRole("img", { name: "shot.png" });
+  const src = await preview.getAttribute("src");
+  // What the editor itself puts on the clipboard when the image is copied.
+  await input.evaluate((el, html) => {
+    const data = new DataTransfer();
+    data.setData("text/html", html);
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, `<img src="${src}" alt="shot.png">`);
+  await component.getByLabel("Send").last().click();
+
+  const url =
+    "/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fshot.png";
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`![shot.png](${url})\n\n![shot.png](${url})`]),
+  );
+});
+
+test("pasting spreadsheet cells pastes their text, not the picture beside it", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await input.focus();
+  await input.evaluate((el) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "Q3 revenue");
+    data.items.add(new File(["png"], "image.png", { type: "image/png" }));
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify(["Q3 revenue"]),
+  );
+  expect((await uploads(page)).uploaded).toEqual([]);
+});
+
 test("a file dropped on the composer joins the text and stays out of the chat's drop zone", async ({
   mount,
   page,
