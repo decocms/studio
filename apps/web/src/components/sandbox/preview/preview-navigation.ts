@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { PreviewDeviceHint } from "./preview-device-hint";
 
 /**
  * Cross-origin preview frames (a Local tunnel, a production preview server)
@@ -29,17 +28,4 @@ export function parsePreviewNavigatedPath(data: unknown): string | null {
   const url = new URL(path, "https://preview.invalid");
   if (url.origin !== "https://preview.invalid") return null;
   return url.pathname;
-}
-
-/**
- * Whether content edits repaint the frame in place (`/live/previews` POST)
- * even when the project's experimental in-place flag is off. An app preview
- * server (`kind: "eitri-app"`) has no other way to show unsaved content: it
- * doesn't run the deco runtime, so the commit-and-reload draft path would show
- * stale blocks.
- */
-export function previewTargetRendersInPlace(
-  hint: PreviewDeviceHint | null,
-): boolean {
-  return hint?.kind === "eitri-app";
 }

@@ -65,7 +65,6 @@ export const projects = {
   "projects.apps.reports": "Relatório",
   "projects.apps.reportsCaption": "O que está errado na loja",
   "projects.apps.siteEditor": "Editor de site",
-  "projects.apps.appEditor": "Editor do app",
   "projects.apps.siteEditorCaption": "Páginas, seções e conteúdo",
   "projects.apps.assets": "Assets",
   "projects.apps.assetsCaption": "Imagens e arquivos que o site usa",

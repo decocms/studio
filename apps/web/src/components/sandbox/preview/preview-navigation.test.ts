@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   PREVIEW_NAVIGATED_MESSAGE,
   parsePreviewNavigatedPath,
-  previewTargetRendersInPlace,
 } from "./preview-navigation";
 
 const msg = (path: unknown) => ({ type: PREVIEW_NAVIGATED_MESSAGE, path });
@@ -36,20 +35,5 @@ describe("parsePreviewNavigatedPath", () => {
     ).toBeNull();
     expect(parsePreviewNavigatedPath(null)).toBeNull();
     expect(parsePreviewNavigatedPath("/calcado")).toBeNull();
-  });
-});
-
-describe("previewTargetRendersInPlace", () => {
-  it("renders app previews in place regardless of the project flag", () => {
-    expect(
-      previewTargetRendersInPlace({ kind: "eitri-app", device: "mobile" }),
-    ).toBe(true);
-  });
-
-  it("leaves other targets on the project's setting", () => {
-    expect(previewTargetRendersInPlace(null)).toBe(false);
-    expect(
-      previewTargetRendersInPlace({ kind: "storefront", device: "mobile" }),
-    ).toBe(false);
   });
 });

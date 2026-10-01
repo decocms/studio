@@ -189,7 +189,7 @@ export function ProjectApps({
               <span className="w-full truncate text-foreground text-xs font-medium">
                 {t(
                   rendersApp && id === "site-editor"
-                    ? "projects.apps.appEditor"
+                    ? "sidebar.projectNav.appEditor"
                     : app.labelKey,
                 )}
               </span>

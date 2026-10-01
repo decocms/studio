@@ -416,7 +416,7 @@ export function useProjectViews({
     board: t("sidebar.navDestinations.tasks"),
     "site-editor": t(
       rendersApp
-        ? "virtualMcp.layoutTabContent.appEditor"
+        ? "sidebar.projectNav.appEditor"
         : "virtualMcp.layoutTabContent.siteEditor",
     ),
     assets: t("common.mainPanelTabs.assets"),

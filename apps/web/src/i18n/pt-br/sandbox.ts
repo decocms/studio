@@ -702,8 +702,6 @@ export const sandbox = {
   "sandbox.preview.devServerPreviewTitle":
     "Visualização do servidor de desenvolvimento",
   "sandbox.preview.deviceDesktop": "Desktop",
-  "sandbox.preview.deviceHintEitriApp": "App mobile (Eitri)",
-  "sandbox.preview.deviceHintMobile": "Preview mobile",
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.enterToGo": "Enter para ir",
@@ -846,12 +844,6 @@ export const sandbox = {
     "Preview instantâneo (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
     "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
-  "sandbox.cmsSettings.previewDevice.label": "Dispositivo do preview",
-  "sandbox.cmsSettings.previewDevice.description":
-    "Dispositivo em que o preview abre. Automático segue o que o servidor de preview declara.",
-  "sandbox.cmsSettings.previewDevice.auto": "Automático",
-  "sandbox.cmsSettings.previewDevice.mobile": "Mobile",
-  "sandbox.cmsSettings.previewDevice.desktop": "Desktop",
   "sandbox.cmsSettings.contentEditing.on": "Ativado",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "O Editor do Site oferece Conteúdo e abre Blocos ao lado do Preview no desktop.",

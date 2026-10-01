@@ -4,30 +4,25 @@ import {
   isSecurePreviewUrl,
   resolvePreviewServerUrl,
 } from "@decocms/shared/deco-site-production-url";
-import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { KEYS } from "@/lib/query-keys";
 
 /**
- * Preview-server device hint: a preview server that renders something other
- * than a responsive website (e.g. a mobile app on the web) publishes
- * `GET /.well-known/deco-preview.json` so the canvas opens on the right device.
- * A regular deco site has no such file (404) and keeps today's desktop default.
+ * Preview-server hint: a preview server that renders a mobile app on the web
+ * publishes `GET /.well-known/deco-preview.json` with `kind: "eitri-app"`.
+ * That one signal opens the canvas on mobile, repaints edits in place, labels
+ * the surface "App Editor" and shows "View on phone". A regular deco site has
+ * no such file (404) and keeps today's behavior.
  */
 const WELL_KNOWN_PATH = "/.well-known/deco-preview.json";
 const MAX_HINT_BYTES = 4096;
 const HINT_TIMEOUT_MS = 3000;
 
-const ViewportSideSchema = z.number().int().min(200).max(4000);
 const EITRI_PLAY_RE =
   /^eitri:\/\/workspace\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const PreviewDeviceHintSchema = z.object({
   kind: z.string().min(1).max(64),
-  device: z.enum(["mobile", "desktop"]),
-  viewport: z
-    .object({ width: ViewportSideSchema, height: ViewportSideSchema })
-    .optional(),
   /**
    * Dev only: the `eitri app start` workspace this preview server follows.
    * "View on phone" shows it as the single QR for Eitri Play. Anything but
@@ -37,7 +32,6 @@ const PreviewDeviceHintSchema = z.object({
 });
 
 export type PreviewDeviceHint = z.infer<typeof PreviewDeviceHintSchema>;
-type PreviewDevice = PreviewDeviceHint["device"];
 
 /**
  * Which server the hint is read from: the one the canvas actually renders.
@@ -118,22 +112,9 @@ export function usePreviewDeviceHint(
   return url ? (data ?? null) : null;
 }
 
-/** Explicit project setting > preview-server hint > desktop. */
-export function resolveDefaultPreviewDevice(input: {
-  explicit: PreviewDevice | null | undefined;
-  hint: PreviewDeviceHint | null;
-}): PreviewDevice {
-  return input.explicit ?? input.hint?.device ?? "desktop";
-}
-
-/** Toolbar badge naming what the preview server says it renders. */
-export function previewDeviceHintBadgeKey(
-  hint: PreviewDeviceHint | null,
-): TranslationKey | null {
-  if (hint?.kind === "eitri-app") return "sandbox.preview.deviceHintEitriApp";
-  if (hint?.device === "mobile") return "sandbox.preview.deviceHintMobile";
-  return null;
-}
+/** The one app signal. */
+export const hintRendersApp = (hint: PreviewDeviceHint | null): boolean =>
+  hint?.kind === "eitri-app";
 
 /**
  * Whether the project's editor surface renders an app rather than a site, so
@@ -155,5 +136,5 @@ export function useProjectRendersApp(
   const hint = usePreviewDeviceHint(
     previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
   );
-  return hint?.kind === "eitri-app";
+  return hintRendersApp(hint);
 }

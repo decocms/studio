@@ -18,7 +18,6 @@ import {
   CommandItem,
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
-import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef, useEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -28,9 +27,8 @@ import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycl
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
 import {
-  previewDeviceHintBadgeKey,
+  hintRendersApp,
   previewDeviceHintBase,
-  resolveDefaultPreviewDevice,
   usePreviewDeviceHint,
 } from "./preview-device-hint";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
@@ -133,7 +131,6 @@ import {
 import {
   PREVIEW_NAVIGATED_MESSAGE,
   parsePreviewNavigatedPath,
-  previewTargetRendersInPlace,
 } from "./preview-navigation";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
@@ -514,21 +511,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
-  const explicitPreviewDevice =
-    agent?.id === virtualMcpId ? agent.metadata?.previewDevice : null;
   // Ask the rendering server (Local tunnel, else the preview server) what it
-  // renders. An explicit project device still wins below; the hint's `kind`
-  // also decides whether edits repaint in place.
+  // renders. An app opens on mobile and repaints edits in place: it doesn't
+  // run the deco runtime, so the commit-and-reload draft path shows stale blocks.
   const previewDeviceHint = usePreviewDeviceHint(
     previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
   );
+  const rendersApp = hintRendersApp(previewDeviceHint);
   const previewDeviceSize: PreviewDeviceSize =
-    chosenDeviceSize ??
-    resolveDefaultPreviewDevice({
-      explicit: explicitPreviewDevice,
-      hint: previewDeviceHint,
-    });
-  const previewDeviceHintBadge = previewDeviceHintBadgeKey(previewDeviceHint);
+    chosenDeviceSize ?? (rendersApp ? "mobile" : "desktop");
   const fastPreviewEnabled =
     !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
@@ -808,8 +799,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    */
   const inPlaceRenderEnabled =
     agent?.id === virtualMcpId &&
-    (agent.metadata?.fastPreviewInPlace === true ||
-      previewTargetRendersInPlace(previewDeviceHint));
+    (agent.metadata?.fastPreviewInPlace === true || rendersApp);
   // Local renders fake edits in place against the tunnel's `/live/previews`.
   const inPlaceRenderActive = localPreviewUrl
     ? display.mode === "sandbox" &&
@@ -1777,9 +1767,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
           </TooltipContent>
         </Tooltip>
-        {previewDeviceHintBadge && (
-          <Badge variant="muted">{t(previewDeviceHintBadge)}</Badge>
-        )}
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
@@ -1798,12 +1785,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const canVisualEdit = display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
-  // A hinting preview server knows its own device size (e.g. the app's phone).
-  const previewViewport =
-    previewDeviceHint?.device === previewDeviceSize &&
-    previewDeviceHint.viewport
-      ? previewDeviceHint.viewport
-      : PREVIEW_VIEWPORTS[previewDeviceSize];
+  const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
   const previewFluid =
     previewDeviceSize === "desktop" &&
     (canvasSize.width === 0 ||
