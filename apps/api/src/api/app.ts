@@ -53,7 +53,7 @@ import { getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { endTime, startTime, timing } from "hono/timing";
 import { auth } from "../auth";
-import { createMemberRoleCache } from "../auth/member-role-cache";
+import { memberRoleCache } from "../auth/member-role-cache";
 import {
   ContextFactory,
   createStudioContextFactory,
@@ -1619,7 +1619,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ============================================================================
 
   // Context factory only needs the Kysely instance, not the full StudioDatabase
-  const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });
   const factory = await createStudioContextFactory({
     db: database.db,
     auth,

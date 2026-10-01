@@ -5,9 +5,9 @@
  * avoids hitting PostgreSQL on every request by keeping recent lookups in
  * memory with a TTL.
  *
- * Invalidation happens explicitly when roles are mutated (add / remove /
- * update-role) and the TTL acts as a safety net for any mutation path we
- * might miss (e.g. direct Better Auth API calls from the web client).
+ * Invalidation happens explicitly when roles are mutated (update-role, and
+ * removal via Better Auth's `afterRemoveMember` hook). Each pod has its own
+ * cache, so another pod can serve a stale role until the TTL expires.
  */
 
 export interface MemberRoleCache {
@@ -80,3 +80,6 @@ export function createMemberRoleCache(options?: {
     },
   };
 }
+
+/** The process-wide cache read by the auth paths in core/context-factory.ts. */
+export const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });

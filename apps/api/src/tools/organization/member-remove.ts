@@ -55,16 +55,12 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
       );
     }
 
-    // Remove member via Better Auth.
-    const removed = await ctx.boundAuth.organization.removeMember({
+    // Better Auth's afterRemoveMember hook revokes the member's keys and
+    // cached role (auth/member-removal.ts).
+    await ctx.boundAuth.organization.removeMember({
       organizationId,
       memberIdOrEmail: input.memberIdOrEmail,
     });
-
-    // Invalidate the removed member's cached role immediately — otherwise a
-    // just-removed admin/owner keeps passing the cached-role permission
-    // fast-path (see member-role-cache.ts) for up to the cache's TTL.
-    ctx.invalidateMemberRole?.(removed.member.userId, organizationId);
 
     const actorId = getUserId(ctx);
     if (actorId) {

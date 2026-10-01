@@ -72,6 +72,7 @@ import type {
 
 import type { MemberRoleCache } from "../auth/member-role-cache";
 import { readStudioHeader } from "./studio-headers";
+import { isTaskBoardAdminUser } from "./task-board-admin";
 
 // ============================================================================
 // Helper Functions
@@ -1047,6 +1048,16 @@ async function authenticateRequest(
           orgMetadata?.id,
           memberRoleCache,
         );
+
+        // The acting user counts so the org's `_self` key outlives its creator's membership.
+        if (
+          orgMetadata?.id &&
+          !role &&
+          !onBehalfOf?.role &&
+          !(await isTaskBoardAdminUser(db, userId))
+        ) {
+          return { user: undefined };
+        }
 
         return {
           apiKeyId: result.key.id,
