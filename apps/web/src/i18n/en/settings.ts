@@ -797,8 +797,6 @@ export const settings = {
   "settings.taskPrompt.saved": "System prompt saved",
   "settings.taskPrompt.failed": "Couldn't save the system prompt",
   "settings.taskPrompt.skillsLabel": "Skills on every column",
-  "settings.taskPrompt.skillsHint":
-    "Every agent run started from a card loads these, in any column.",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",

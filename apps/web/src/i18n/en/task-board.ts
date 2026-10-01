@@ -81,8 +81,6 @@ export const taskBoard = {
   "taskBoard.columnRules.editAriaLabel": "Edit rules for {lane}",
   "taskBoard.columnRules.defaultRun": "Runs the agent",
   "taskBoard.columnRules.skillsOnly": "{count} skills",
-  "taskBoard.columnRules.sheetDescription":
-    "What happens when a card lands in this column.",
   "taskBoard.columnRules.runLabel": "Run the agent",
   "taskBoard.columnRules.runHint":
     "Start a run on every card that lands here, unless someone already owns it.",
@@ -93,8 +91,6 @@ export const taskBoard = {
   "taskBoard.columnRules.promptLabel": "Instructions",
   "taskBoard.columnRules.promptPlaceholder":
     "Conventions, tools to prefer, what never to touch",
-  "taskBoard.columnRules.promptHint":
-    "Added to every agent run on cards in this column, after the board-wide instructions.",
   "taskBoard.columnRules.skillsLabel": "Skills",
   "taskBoard.columnRules.removeSkill": "Remove {skill}",
   "taskBoard.columnRules.searchSkills": "Search skills",

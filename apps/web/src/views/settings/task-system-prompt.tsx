@@ -53,12 +53,9 @@ export function TaskSystemPromptSettings() {
                 placeholder={t("settings.taskPrompt.placeholder")}
                 onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
               />
-              <div className="flex w-full flex-col gap-1.5">
-                <span className="text-sm font-medium">
+              <div className="flex w-full flex-col gap-2">
+                <span className="text-sm font-medium text-foreground">
                   {t("settings.taskPrompt.skillsLabel")}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("settings.taskPrompt.skillsHint")}
                 </span>
                 <SkillsField
                   value={draft.skills}

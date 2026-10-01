@@ -87,7 +87,7 @@ export function AgenticSetupButton() {
 
   return (
     <Button size="sm" variant="outline" disabled={starting} onClick={start}>
-      <Stars02 size={16} />
+      <Stars02 size={16} className="text-special" />
       {t("taskBoard.agenticSetup.button")}
     </Button>
   );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, Stars02, XClose, Zap } from "@untitledui/icons";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Command,
@@ -12,10 +13,10 @@ import {
   CommandItem,
   CommandList,
 } from "@decocms/ui/components/command.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
@@ -78,7 +79,7 @@ export function ColumnRulesStrip({
             )}
             <span className="min-w-0 flex-1 truncate">{summary}</span>
             {showSkillCount && (
-              <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-medium">
+              <span className="flex shrink-0 items-center gap-0.5 text-2xs font-medium">
                 <Stars02 size={11} />
                 {skillCount}
               </span>
@@ -92,12 +93,12 @@ export function ColumnRulesStrip({
         )}
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full gap-0 sm:max-w-md">
+        <SheetContent
+          className="w-full gap-0 sm:max-w-md"
+          aria-describedby={undefined}
+        >
           <SheetHeader className="border-b">
             <SheetTitle>{label}</SheetTitle>
-            <SheetDescription>
-              {t("taskBoard.columnRules.sheetDescription")}
-            </SheetDescription>
           </SheetHeader>
           <ColumnRulesForm
             columnKey={columnKey}
@@ -161,14 +162,14 @@ function ColumnRulesForm({
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col divide-y overflow-y-auto px-4">
-        <section className="flex flex-col gap-3 py-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
+        <section className="flex flex-col gap-2">
           <label className="flex items-start gap-3">
             <span className="flex-1">
-              <span className="block text-sm font-medium">
+              <span className="block text-sm font-medium text-foreground">
                 {t("taskBoard.columnRules.runLabel")}
               </span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
+              <span className="text-meta mt-0.5 block">
                 {t("taskBoard.columnRules.runHint")}
               </span>
             </span>
@@ -184,7 +185,7 @@ function ColumnRulesForm({
             />
           )}
         </section>
-        <section className="flex flex-col gap-2 py-4">
+        <section className="flex flex-col gap-2">
           <SectionTitle>{t("taskBoard.columnRules.promptLabel")}</SectionTitle>
           <Textarea
             value={prompt}
@@ -194,13 +195,11 @@ function ColumnRulesForm({
             placeholder={t("taskBoard.columnRules.promptPlaceholder")}
             aria-label={t("taskBoard.columnRules.promptLabel")}
           />
-          <p className="text-xs text-muted-foreground">
-            {t("taskBoard.columnRules.promptHint")}
-          </p>
         </section>
-        <section className="flex flex-col gap-2 py-4">
+        <section className="flex min-h-64 flex-1 flex-col gap-2">
           <SectionTitle>{t("taskBoard.columnRules.skillsLabel")}</SectionTitle>
           <SkillsField
+            fill
             value={skills}
             onChange={setSkills}
             inherited={boardSkills}
@@ -220,11 +219,7 @@ function ColumnRulesForm({
 }
 
 function SectionTitle({ children }: { children: string }) {
-  return (
-    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-      {children}
-    </h3>
-  );
+  return <h3 className="text-sm font-medium text-foreground">{children}</h3>;
 }
 
 const NO_SKILLS: string[] = [];
@@ -234,10 +229,13 @@ export function SkillsField({
   value,
   onChange,
   inherited = NO_SKILLS,
+  fill = false,
 }: {
   value: string[];
   onChange: (skills: string[]) => void;
   inherited?: string[];
+  /** Grow the picker into the parent's free height instead of a fixed cap. */
+  fill?: boolean;
 }) {
   const t = useT();
   const catalog = useOrgFsSkillCatalog();
@@ -248,35 +246,31 @@ export function SkillsField({
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={cn("flex flex-col gap-2", fill && "min-h-0 flex-1")}>
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {value.map((id) => (
-            <span
-              key={id}
-              className="flex items-center gap-1 rounded-md border py-0.5 pr-0.5 pl-2 text-xs"
-            >
+            <Badge key={id} variant="outline" className="py-0 pr-0 pl-2">
               {nameOf(id)}
-              <button
-                type="button"
-                aria-label={t("taskBoard.columnRules.removeSkill", {
+              <IconButton
+                label={t("taskBoard.columnRules.removeSkill", {
                   skill: nameOf(id),
                 })}
                 onClick={() => onChange(value.filter((s) => s !== id))}
-                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="size-5 text-muted-foreground"
               >
                 <XClose size={12} />
-              </button>
-            </span>
+              </IconButton>
+            </Badge>
           ))}
         </div>
       )}
-      <Command className="h-auto rounded-lg border">
+      <Command className={cn("h-auto border", fill && "min-h-0 flex-1")}>
         <CommandInput
           placeholder={t("taskBoard.columnRules.searchSkills")}
           className="h-9"
         />
-        <CommandList className="max-h-56">
+        <CommandList className={cn(fill ? "max-h-none flex-1" : "max-h-56")}>
           <CommandEmpty>{t("taskBoard.columnRules.noSkills")}</CommandEmpty>
           <CommandGroup>
             {options.map((s) => (
@@ -289,7 +283,7 @@ export function SkillsField({
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-sm">{s.name}</span>
                   {s.description && (
-                    <span className="line-clamp-1 text-xs text-muted-foreground">
+                    <span className="text-meta line-clamp-1">
                       {s.description}
                     </span>
                   )}
@@ -301,17 +295,14 @@ export function SkillsField({
       </Command>
       {inherited.length > 0 && (
         <>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-meta">
             {t("taskBoard.columnRules.inheritedHint")}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {inherited.map((id) => (
-              <span
-                key={id}
-                className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-              >
+              <Badge key={id} variant="muted">
                 {nameOf(id)}
-              </span>
+              </Badge>
             ))}
           </div>
         </>
