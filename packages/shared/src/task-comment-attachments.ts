@@ -56,12 +56,18 @@ export function commentAttachmentFolder(path: string): string {
   return path.slice(0, path.lastIndexOf("/"));
 }
 
-/** Whether a path is one of this task's uploads, exactly as `commentAttachmentPath` writes it. */
+/** The task an upload belongs to, when its path is exactly as `commentAttachmentPath` writes it. */
+export function commentAttachmentTaskOf(path: string): string | null {
+  const [root, taskId, ...rest] = path.split("/");
+  if (root !== COMMENT_ATTACHMENT_ROOT || !taskId || rest.length !== 2) {
+    return null;
+  }
+  return [taskId, ...rest].every(isSafeSegment) ? taskId : null;
+}
+
+/** Whether a path is one of this task's uploads. */
 export function isCommentAttachmentPath(path: string, taskId: string): boolean {
-  const folder = `${commentAttachmentDir(taskId)}/`;
-  if (!path.startsWith(folder)) return false;
-  const segments = path.slice(folder.length).split("/");
-  return segments.length === 2 && segments.every(isSafeSegment);
+  return commentAttachmentTaskOf(path) === taskId;
 }
 
 /** The read URL people's browsers load an attachment from. */

@@ -143,6 +143,9 @@ export function MentionInput({
         submit();
         return true;
       },
+      // Pasted markup brings text only; its images and chips aren't files of ours.
+      transformPastedHTML: (html) =>
+        html.replace(/<img\b[^>]*>/gi, "").replace(/\sdata-attachment\b/gi, ""),
       handlePaste: (view, event) => {
         const files = Array.from(event.clipboardData?.files ?? []);
         if (!attachments || files.length === 0) return false;

@@ -161,6 +161,35 @@ test("a pasted screenshot previews in the draft and can be sent without text", a
   );
 });
 
+test("images in pasted web content are left out, like before attachments", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const input = component.getByRole("textbox", { name: "Leave a comment..." });
+
+  await input.focus();
+  await input.evaluate((el) => {
+    const data = new DataTransfer();
+    data.setData(
+      "text/html",
+      '<p>from the page<img src="https://tracker.example/p.png"></p>',
+    );
+    data.setData("text/plain", "from the page");
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await component.getByLabel("Send").last().click();
+
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify(["from the page"]),
+  );
+});
+
 test("a file dropped on the composer joins the text and stays out of the chat's drop zone", async ({
   mount,
   page,

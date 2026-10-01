@@ -1,7 +1,8 @@
 /**
- * Uploads a task comment's attachments when it is sent, and takes them back
- * when it isn't: a draft that is abandoned, or fails to post, must not leave
- * files behind in the Library.
+ * Uploads a task comment's attachments when it is sent, so an abandoned draft
+ * leaves nothing in the Library, and takes back the rest of a send whose
+ * upload failed. A post that fails keeps its uploads for the retry: it may
+ * have been saved even though the response was lost.
  */
 
 import {

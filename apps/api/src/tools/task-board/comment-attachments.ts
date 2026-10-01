@@ -15,13 +15,16 @@ import {
   commentAttachmentFolder,
   commentAttachmentLinks,
   commentAttachmentPaths,
+  commentAttachmentTaskOf,
   commentAttachmentUrl,
-  isCommentAttachmentPath,
 } from "@decocms/shared/task-comment-attachments";
 import { mapBounded } from "@decocms/shared/std";
 import { getUserId } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
+
+/** A markdown link target on Studio's own origin, the only form the composer writes. */
+const RELATIVE_LINK = /\]\((\/api\/[^)\s]+)\)/g;
 
 /**
  * A comment body as a sandboxed run reads it: this task's attachments point at
@@ -32,14 +35,12 @@ export function attachmentsAsSandboxPaths(
   body: string,
   taskId: string,
 ): string {
-  return commentAttachmentLinks(body, taskId).reduce(
-    (text, link) =>
-      text.replaceAll(
-        link.url,
-        orgFsSandboxPath(COMMENT_ATTACHMENT_VOLUME, link.path),
-      ),
-    body,
-  );
+  return body.replace(RELATIVE_LINK, (link, url: string) => {
+    const [attachment] = commentAttachmentLinks(url, taskId);
+    return attachment?.url === url
+      ? `](${orgFsSandboxPath(COMMENT_ATTACHMENT_VOLUME, attachment.path)})`
+      : link;
+  });
 }
 
 const SANDBOX_LINK = new RegExp(
@@ -47,14 +48,14 @@ const SANDBOX_LINK = new RegExp(
   "g",
 );
 
-/** The inverse, for a body a sandboxed run writes: people get their URLs back. */
+/** The inverse, for a body a sandboxed run writes: people get their URLs back,
+ *  for any task's attachment the run may have read. */
 export function sandboxPathsAsAttachments(
   body: string,
-  taskId: string,
   orgSlug: string,
 ): string {
   return body.replace(SANDBOX_LINK, (link, path: string) =>
-    isCommentAttachmentPath(path, taskId)
+    commentAttachmentTaskOf(path)
       ? `](${commentAttachmentUrl(orgSlug, path)})`
       : link,
   );
@@ -63,10 +64,35 @@ export function sandboxPathsAsAttachments(
 /** A thread full of screenshots must not fan out into that many storage calls at once. */
 const DELETE_CONCURRENCY = 4;
 
+function attachmentFolders(bodies: string[], taskId: string): Set<string> {
+  return new Set(
+    bodies.flatMap((body) =>
+      commentAttachmentPaths(body, taskId).map(commentAttachmentFolder),
+    ),
+  );
+}
+
+/**
+ * The upload folders the removed bodies linked that no remaining body does.
+ * Compared by folder, not file: a folder is what gets deleted, and a link to
+ * any name inside someone's upload folder must not take their file with it.
+ */
+export function foldersToDelete(
+  removedBodies: string[],
+  remainingBodies: string[],
+  taskId: string,
+): string[] {
+  const stillLinked = attachmentFolders(remainingBodies, taskId);
+  return [...attachmentFolders(removedBodies, taskId)].filter(
+    (folder) => !stillLinked.has(folder),
+  );
+}
+
 /**
  * Delete the attachments the given comment bodies linked to, except any the
  * task still links to elsewhere: someone may have copied the link into
- * another comment or the description.
+ * another comment or the description. A link from another task doesn't count;
+ * it is only a link to this task's file.
  */
 export async function deleteCommentAttachments(
   ctx: StudioContext,
@@ -74,12 +100,7 @@ export async function deleteCommentAttachments(
 ): Promise<void> {
   const orgFs = ctx.orgFs;
   if (!orgFs) return;
-  const removed = new Set(
-    params.bodies.flatMap((body) =>
-      commentAttachmentPaths(body, params.taskId),
-    ),
-  );
-  if (removed.size === 0) return;
+  if (attachmentFolders(params.bodies, params.taskId).size === 0) return;
   try {
     const [comments, description] = await Promise.all([
       ctx.storage.taskBoard.listComments(params.taskId, params.organizationId),
@@ -88,19 +109,15 @@ export async function deleteCommentAttachments(
         params.organizationId,
       ),
     ]);
-    const stillLinked = new Set(
-      [...comments.map((c) => c.body), description ?? ""].flatMap((body) =>
-        commentAttachmentPaths(body, params.taskId),
-      ),
-    );
     const actor = getUserId(ctx) ?? "system";
     await mapBounded(
-      [...removed].filter((path) => !stillLinked.has(path)),
+      foldersToDelete(
+        params.bodies,
+        [...comments.map((c) => c.body), description ?? ""],
+        params.taskId,
+      ),
       DELETE_CONCURRENCY,
-      (path) =>
-        orgFs.delete(COMMENT_ATTACHMENT_VOLUME, commentAttachmentFolder(path), {
-          actor,
-        }),
+      (folder) => orgFs.delete(COMMENT_ATTACHMENT_VOLUME, folder, { actor }),
     );
   } catch (err) {
     console.error("[task-comments] failed to delete attachments", {

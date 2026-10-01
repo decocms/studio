@@ -8,7 +8,7 @@
  *      under the name it was uploaded with.
  *   3. Deleting the comment deletes its files — but not one another comment
  *      on the task still links to.
- *   4. An edit that drops a link deletes that file, and deleting the task
+ *   4. An edit that drops a link leaves the file, and deleting the task
  *      deletes whatever its comments still had.
  */
 
@@ -103,12 +103,12 @@ test("a comment's attachments upload on send and go away with it", async ({
   expect(await readStatus(request, pdfUrl!)).toBe(404);
   expect(await readStatus(request, pngUrl!)).toBe(200);
 
-  // Its author edits the link out, so the screenshot goes.
+  // An edit that drops the link leaves the file; it goes with the task.
   await call("TASK_BOARD_COMMENT_UPDATE", {
     id: second.id,
     body: "Never mind the screenshot",
   });
-  expect(await readStatus(request, pngUrl!)).toBe(404);
+  expect(await readStatus(request, pngUrl!)).toBe(200);
 
   // Deleting the task takes what its comments still link to.
   const notes = `task-comments/${item.id}/${crypto.randomUUID()}/notes.txt`;
@@ -124,4 +124,5 @@ test("a comment's attachments upload on send and go away with it", async ({
   });
   await call("TASK_BOARD_ITEM_DELETE", { id: item.id });
   expect(await readStatus(request, notesUrl)).toBe(404);
+  expect(await readStatus(request, pngUrl!)).toBe(404);
 });
