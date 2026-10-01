@@ -165,13 +165,7 @@ function baseArrayItemLabel(
           propertyKeys: Object.keys(b.schema?.properties ?? {}),
         })),
       );
-      const branch = itemSchema.inlineUnionBranches[idx];
-      // The member's own `@titleBy` names its row, same as a plain item's.
-      if (branch?.schema?.titleBy) {
-        const fromTitleBy = readTitleByValue(obj, branch.schema.titleBy);
-        if (fromTitleBy) return fromTitleBy;
-      }
-      const branchTitle = branch?.title;
+      const branchTitle = itemSchema.inlineUnionBranches[idx]?.title;
       if (branchTitle && !isSyntheticBranchTitle(branchTitle)) {
         const rendered = renderMustacheTemplate(branchTitle, obj);
         if (rendered) return rendered;

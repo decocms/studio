@@ -762,20 +762,6 @@ const previewServerUrlMetadataField = z
   );
 
 /**
- * Reusable `metadata.previewDevice` field — the device the preview canvas
- * opens on. Absent/null = automatic: the preview server's
- * `/.well-known/deco-preview.json` hint decides (a mobile app says "mobile"),
- * falling back to desktop. The toolbar toggle still switches per session.
- */
-const previewDeviceMetadataField = z
-  .enum(["mobile", "desktop"])
-  .nullable()
-  .optional()
-  .describe(
-    "Device the CMS preview opens on. Absent/null = automatic (the preview server's /.well-known/deco-preview.json hint, else desktop).",
-  );
-
-/**
  * A named, color-coded release: a working version of the site backed by a git
  * branch. `metadata.releases` is a curated, user-managed list — NOT the full
  * git branch list — so the switcher shows only versions people named, never
@@ -860,7 +846,6 @@ const VirtualMcpMetadataFields = {
     .describe("Linked asset site slug (managed storage tenancy)"),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
-  previewDevice: previewDeviceMetadataField,
   productionUrl: z
     .string()
     .nullable()

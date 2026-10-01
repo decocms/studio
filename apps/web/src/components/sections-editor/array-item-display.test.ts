@@ -221,40 +221,6 @@ describe("getArrayItemLabel", () => {
     ).toBe("Categoria");
   });
 
-  // New Balance "Imagem entre o frete e a descrição": every row read the
-  // member's static title ("Imagem por coleção") although each member
-  // declares `@titleBy label` and every row has one.
-  test("labels a union row by the matched member's titleBy, then its title", () => {
-    const branch = (
-      title: string,
-      key: string,
-    ): NonNullable<SchemaProperty["inlineUnionBranches"]>[number] => ({
-      title,
-      schema: {
-        type: "object",
-        titleBy: "label",
-        properties: { label: { type: "string" }, [key]: { type: "string" } },
-      },
-    });
-    const schema: SchemaProperty = {
-      type: "inline-union",
-      inlineUnionBranches: [
-        branch("Imagem por coleção", "collectionId"),
-        branch("Imagem por produto", "productId"),
-      ],
-    };
-    expect(
-      getArrayItemLabel(
-        { label: "Fresh Foam X More v5 Masculino", collectionId: "348" },
-        0,
-        schema,
-      ),
-    ).toBe("Fresh Foam X More v5 Masculino");
-    expect(getArrayItemLabel({ productId: "1" }, 1, schema)).toBe(
-      "Imagem por produto",
-    );
-  });
-
   test("falls back past a purely-Mustache branch title with empty data", () => {
     const schema: SchemaProperty = {
       type: "inline-union",
