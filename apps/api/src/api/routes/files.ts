@@ -21,6 +21,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 import { isBrowserNavigation } from "../utils/browser-navigation";
+import { sanitizeKey } from "@/object-storage/key-utils";
 
 type Variables = { studioContext: StudioContext };
 
@@ -44,6 +45,8 @@ const FORWARDED_RESPONSE_HEADERS = [
   "last-modified",
 ] as const;
 
+const APP_PREVIEW_PREFIX = "app-preview/";
+
 /** Now that bytes are served same-origin (no more redirect to the storage
  * domain), member-authored active content must not run with studio's origin.
  * CSP-sandbox it so scripts get an opaque origin and can't make credentialed
@@ -55,7 +58,10 @@ function applyContentPolicy(
 ): void {
   // App preview builds (published by the app repo's CI) run with an opaque
   // origin even when opened top-level — never as Studio.
-  if (key.startsWith("app-preview/") && contentType.startsWith("text/html")) {
+  if (
+    key.startsWith(APP_PREVIEW_PREFIX) &&
+    contentType.startsWith("text/html")
+  ) {
     headers.set("Content-Security-Policy", "sandbox allow-scripts");
     return;
   }
@@ -92,7 +98,15 @@ app.get("/:org/files/*", async (c) => {
 
   // Extract the file key from the wildcard segment
   // Full path is /api/:org/files/:key — strip everything up to and including /files/
-  const key = c.req.path.replace(/^.*\/files\//, "");
+  const rawKey = c.req.path.replace(/^.*\/files\//, "");
+  // Storage resolves keys through sanitizeKey, so `app-preview%2F…` or
+  // `/app-preview/…` reach the same object as `app-preview/…`: decide on (and
+  // fetch) the normalized key so an app build never takes the generic branch
+  // of applyContentPolicy. Every other key keeps its raw spelling.
+  const normalizedKey = sanitizeKey(rawKey);
+  const key = normalizedKey.startsWith(APP_PREVIEW_PREFIX)
+    ? normalizedKey
+    : rawKey;
 
   if (!key) {
     throw new HTTPException(400, { message: "Missing file key" });
