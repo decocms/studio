@@ -13,6 +13,7 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -67,7 +68,7 @@ export function useDeleteBlock({
       }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const res = await fetch(
-        `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/unlink`,
+        buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "unlink"),
         {
           method: "POST",
           headers: { "content-type": "application/json" },
