@@ -26,6 +26,7 @@ import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
+import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as SecretsTools from "./secrets";
@@ -175,6 +176,11 @@ export const CORE_TOOLS = [
   UserTools.USER_GET,
   UserTools.USER_MODEL_PREFERENCES_GET,
   UserTools.USER_MODEL_PREFERENCES_UPDATE,
+
+  // Project sidebar: org-wide folders, per-member pins and hides
+  ProjectSidebarTools.SIDEBAR_GET,
+  ProjectSidebarTools.PROJECT_FOLDERS_SET,
+  ProjectSidebarTools.SIDEBAR_PREFERENCES_SET,
 
   // Thread collection tools
   ThreadTools.COLLECTION_THREADS_CREATE,
