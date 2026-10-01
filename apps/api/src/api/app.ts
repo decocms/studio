@@ -114,7 +114,7 @@ import {
   createLegacyWellKnownProtectedResourceRoutes,
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
-  fetchProtectedResourceMetadata,
+  getOriginAuthServer,
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
@@ -454,14 +454,6 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     });
   }
 
-  // Get origin auth server - tries Protected Resource Metadata first, then falls back to origin root
-  const resourceRes = await fetchProtectedResourceMetadata(
-    connection.connection_url,
-  );
-
-  let originAuthServer: string | undefined;
-  const connUrl = new URL(connection.connection_url);
-
   // RFC 8707 resource indicator forwarded to the downstream authorization
   // server on the authorize/token legs. Defaults to the connection's MCP
   // endpoint URL — what most servers validate against (e.g. Supabase requires
@@ -476,20 +468,10 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       : undefined;
   const resourceIndicator = resourceOverride ?? connection.connection_url;
 
-  if (resourceRes.ok) {
-    // Origin has Protected Resource Metadata - use authorization_servers from it
-    const resourceData = (await resourceRes.json()) as {
-      authorization_servers?: string[];
-    };
-    originAuthServer = resourceData.authorization_servers?.[0];
-  }
-
-  // Fall back to origin root if:
-  // - Origin doesn't have Protected Resource Metadata (like Apify)
-  // - Or metadata exists but has empty/missing authorization_servers
-  // Many servers expose /.well-known/oauth-authorization-server at the root even without RFC 9728
+  // Tries Protected Resource Metadata first, falling back to origin root.
+  const originAuthServer = await getOriginAuthServer(connection.connection_url);
   if (!originAuthServer) {
-    originAuthServer = connUrl.origin;
+    return c.json({ error: "Failed to get auth server metadata" }, 502);
   }
 
   // Get OAuth endpoints from auth server metadata - uses shared function that tries all formats
