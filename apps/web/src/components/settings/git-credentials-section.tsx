@@ -28,6 +28,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Plus, Trash01 } from "@untitledui/icons";
 import {
+  GIT_CREDENTIALS_MAX,
   SUBMODULE_HOST_RE,
   type SubmoduleCredential,
 } from "@decocms/shared/organization/schema";
@@ -160,10 +161,19 @@ function GitCredentialsEditor() {
         </p>
       ) : null}
 
+      {rows.length >= GIT_CREDENTIALS_MAX ? (
+        <p className="text-xs text-muted-foreground">
+          {t("settings.gitCredentials.maxReached", {
+            max: GIT_CREDENTIALS_MAX,
+          })}
+        </p>
+      ) : null}
+
       <Button
         type="button"
         variant="outline"
         size="sm"
+        disabled={rows.length >= GIT_CREDENTIALS_MAX}
         onClick={() => setDraft([...rows, { host: "", secretId: "" }])}
         className="w-full"
       >
