@@ -3,6 +3,7 @@ setupComponentTest();
 import { describe, expect, test } from "bun:test";
 import { Editor } from "@tiptap/core";
 import { markdownEditorExtensions } from "./extensions";
+import { escapeLinkText } from "./link-text";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
 import { parseMentions } from "@decocms/shared/mentions";
 
@@ -62,6 +63,21 @@ describe("markdown editor schema", () => {
     expect(JSON.stringify(editor.getJSON())).toContain("q3 [final].pdf");
     expect(markdown).toBe(`[q3 \\[final\\].pdf](${FILE_URL})`);
   });
+
+  for (const name of [
+    "report *final*.pdf",
+    "_draft_ notes.pdf",
+    "a\\b`c`~~d~~.txt",
+    "<b>&amp;.pdf",
+  ]) {
+    test(`a file named ${JSON.stringify(name)} keeps its name, unformatted`, () => {
+      const written = `[${escapeLinkText(name)}](${FILE_URL})`;
+      const { markdown, editor } = roundTrip(written);
+      const [attachment] = editor.$nodes("attachment") ?? [];
+      expect(attachment?.attributes.name).toBe(name);
+      expect(markdown).toBe(written);
+    });
+  }
 
   // The parser drops a list item's wrapped tail; the normalizer is the guard.
   test("a hard-wrapped list item keeps all of its text", () => {
