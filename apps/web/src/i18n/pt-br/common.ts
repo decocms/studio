@@ -145,7 +145,7 @@ export const common = {
     "Criado a partir do template {template}",
   "common.repositoryPicker.addRepo": "Adicionar repositório",
   "common.repositoryPicker.addedRepo": "Adicionado {name}",
-  "common.repositoryPicker.importFromGitHub": "Importar reposit\u00f3rio",
+  "common.repositoryPicker.importFromGitHub": "Importar repositório",
   "common.repositoryPicker.importedRepo": "Importado {name}",
   "common.iconPicker.apply": "Aplicar",
   "common.iconPicker.changeColor": "Alterar cor",
@@ -274,7 +274,7 @@ export const common = {
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
-  "common.createAgentDropdown.importFromGitHub": "Importar reposit\u00f3rio",
+  "common.createAgentDropdown.importFromGitHub": "Importar repositório",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",
