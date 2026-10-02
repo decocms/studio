@@ -1,6 +1,5 @@
 import { type ReactNode, useState } from "react";
 import { Image01, Link01, Monitor01, Phone01 } from "@untitledui/icons";
-import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { FilePickerDialog } from "@/components/file-picker/file-picker-dialog";
@@ -12,6 +11,7 @@ import {
   setQualityOnUrl,
 } from "./media-url-params";
 import { ToolbarButton, ToolbarDivider } from "../toolbar-button";
+import { ImageUrlPopover } from "./image-url-popover";
 import { safeImageSrc } from "./safe-image-url";
 import { useImageUpload } from "./use-image-upload";
 
@@ -61,29 +61,14 @@ export function ResponsiveImageField({
    * made the preview flicker and shift while a new quality loaded.
    */
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const [urlNotice, setUrlNotice] = useState<string | null>(null);
 
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const mobileUrl = str(mobileValue);
   const active = onMobile ? mobileUrl : str(value);
 
-  /**
-   * The URL field is a local draft, committed through `safeImageSrc` — the
-   * text the author types never becomes the preview's source. That is the
-   * point: an `<img src>` fed straight from an input is a DOM-text-to-HTML
-   * path, and no amount of checking AT the sink removes it.
-   */
-  const [urlDraft, setUrlDraft] = useState(active);
-  const [seenActive, setSeenActive] = useState(active);
-  if (seenActive !== active) {
-    setSeenActive(active);
-    setUrlDraft(active);
-    setUrlNotice(null);
-  }
-
-  // Sanitized at the sink too, not only on commit: a value already in the
-  // payload — hand-edited, or written by another editor — never passed
-  // through `commitUrl`.
+  // Sanitized here too, not only where the author types: a value already in
+  // the payload — hand-edited, or written by another editor — never passed
+  // through {@link ImageUrlPopover}.
   const src = safeImageSrc(active);
   const errored = !!active && (failedUrl === active || !src);
   const quality = getQualityFromUrl(active);
@@ -93,18 +78,6 @@ export function ResponsiveImageField({
 
   const setActive = (next: string | undefined) =>
     (onMobile ? onMobileChange : onChange)(next || undefined);
-
-  /** Commit the draft, refusing a scheme that must never reach a `src`. */
-  const commitUrl = () => {
-    const next = safeImageSrc(urlDraft);
-    if (!next && urlDraft.trim()) {
-      setUrlNotice(t("sectionsEditor.imageField.unsafeUrl"));
-      return false;
-    }
-    setUrlNotice(null);
-    if (next !== active) setActive(next);
-    return true;
-  };
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
     siteSlug: sandbox?.siteSlug,
@@ -174,36 +147,12 @@ export function ResponsiveImageField({
           )}
 
           {urlOpen && (
-            <div className="absolute left-0 top-full z-20 mt-1.5 w-96 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-1 shadow-md">
-              <Input
-                // oxlint-disable-next-line no-autofocus -- the panel only opens on an explicit click; focus must land on the input to paste into
-                autoFocus
-                type="url"
-                value={urlDraft}
-                onChange={(e) => {
-                  setUrlNotice(null);
-                  setUrlDraft(e.target.value);
-                }}
-                onBlur={commitUrl}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setUrlDraft(active);
-                    setUrlNotice(null);
-                    setUrlOpen(false);
-                  }
-                  if (e.key === "Enter" && commitUrl()) setUrlOpen(false);
-                }}
-                placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
-                spellCheck={false}
-                aria-label={urlLabel}
-                className="h-8 w-full text-xs"
-              />
-              {urlNotice && (
-                <p className="px-1 pb-0.5 pt-1.5 text-xs text-destructive">
-                  {urlNotice}
-                </p>
-              )}
-            </div>
+            <ImageUrlPopover
+              value={active}
+              label={urlLabel}
+              onCommit={setActive}
+              onDone={() => setUrlOpen(false)}
+            />
           )}
         </div>
       </div>
