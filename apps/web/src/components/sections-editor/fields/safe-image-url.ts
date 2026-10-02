@@ -47,10 +47,16 @@ export function safeImageSrc(url: string): string {
       return "";
     }
   }
-  if (/^data:image\//i.test(value)) return value;
   try {
+    // Every branch returns the PARSED href, never the input string. That is
+    // deliberate: a path that hands back its own argument carries whatever
+    // came in, and one such path is enough to make the whole result suspect.
     const parsed = new URL(value);
-    return SAFE_IMAGE_PROTOCOLS.has(parsed.protocol) ? parsed.href : "";
+    if (SAFE_IMAGE_PROTOCOLS.has(parsed.protocol)) return parsed.href;
+    if (parsed.protocol === "data:" && /^data:image\//i.test(parsed.href)) {
+      return parsed.href;
+    }
+    return "";
   } catch {
     return "";
   }
