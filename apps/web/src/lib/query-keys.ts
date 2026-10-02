@@ -539,6 +539,8 @@ export const KEYS = {
     ["org-fs", orgId, volume, "usage"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
+  orgFsText: (orgId: string, volume: string, path: string, marker: string) =>
+    ["org-fs", orgId, volume, "text", path, marker] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
 
   // The signed-in user's stored profile pictures (instance-level, org-free).

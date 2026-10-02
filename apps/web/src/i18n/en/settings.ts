@@ -332,6 +332,7 @@ export const settings = {
   "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
+  "settings.nav.memory": "Memory",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
@@ -428,6 +429,37 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
+  "settings.memory.pageTitle": "Memory",
+  "settings.memory.tabOrg": "Organization",
+  "settings.memory.tabUser": "Just you",
+  "settings.memory.orgHeading": "Shared with everyone in {org}",
+  "settings.memory.orgDescription":
+    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
+  "settings.memory.userHeading": "Your personal memory",
+  "settings.memory.userDescription":
+    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
+  "settings.memory.orgPlaceholder":
+    "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
+  "settings.memory.userPlaceholder":
+    "Things Deco should remember about you. For example: reply in Portuguese, I own the checkout, keep summaries short.",
+  "settings.memory.saving": "Saving…",
+  "settings.memory.saved": "Saved",
+  "settings.memory.notSaved": "Not saved",
+  "settings.memory.saveError": "Couldn't save. Keep typing to retry.",
+  "settings.memory.updated": "Updated {time}",
+  "settings.memory.notStarted": "Nothing remembered yet",
+  "settings.memory.conflict":
+    "Deco updated this memory while you were editing.",
+  "settings.memory.loadLatest": "Load latest",
+  "settings.memory.keepMine": "Keep my version",
+  "settings.memory.budget": "{percent}% of what chats read",
+  "settings.memory.budgetOver": "Chats only read the beginning",
+  "settings.memory.budgetHint":
+    "Chats load the first 16,000 characters. Keep this a short index and move details into separate notes.",
+  "settings.memory.errorTitle": "Couldn't load memory",
+  "settings.memory.errorDescription":
+    "The organization's files aren't reachable right now.",
+  "settings.memory.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",

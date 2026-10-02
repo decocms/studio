@@ -135,12 +135,13 @@ export async function fetchOrgFsStat(
 export function useOrgFsStat(
   volume: string | null,
   path: string,
-  opts?: { refetchIntervalWhenAbsent?: number },
+  opts?: { refetchIntervalWhenAbsent?: number; staleTime?: number },
 ) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsStat(org.id, volume ?? "", path),
     enabled: volume !== null,
+    staleTime: opts?.staleTime,
     // Optional poll while the entry doesn't exist yet (e.g. the deck tab
     // waiting out the sandbox mount's write-back lag).
     refetchInterval: opts?.refetchIntervalWhenAbsent
