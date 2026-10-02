@@ -3,6 +3,7 @@ import { googleAdapter } from "./adapters/google";
 import { llmapiAdapter } from "./adapters/llmapi";
 import { openaiCompatibleAdapter } from "./adapters/openai-compatible";
 import { openrouterAdapter } from "./adapters/openrouter";
+import { orcarouterAdapter } from "./adapters/orcarouter";
 import type { ProviderId } from "./provider-ids";
 import type { ProviderAdapter } from "./types";
 import { decoAiGatewayAdapter } from "./adapters/deco-ai-gateway";
@@ -17,5 +18,6 @@ export function getProviders(): Partial<Record<ProviderId, ProviderAdapter>> {
     openrouter: openrouterAdapter,
     llmapi: llmapiAdapter,
     "openai-compatible": openaiCompatibleAdapter,
+    orcarouter: orcarouterAdapter,
   };
 }
