@@ -32,6 +32,8 @@ const store = new PushedCredentials();
 const TENANT = { orgId: "o1", userId: "u1" };
 const REPO = { connectionId: "c1", repo: "acme/site" };
 const CLONE = "https://x-access-token:ghs_1@github.com/acme/site.git";
+/** MCP requests the host turns away with 503, as a leaderless follower does. */
+let mcpUnavailable = 0;
 /** Replaces the watch route when set. */
 let watchRoute: ((req: Request) => Response) | null = null;
 const phases: ClaimPhase[] = [
@@ -145,6 +147,13 @@ beforeAll(() => {
           req.signal,
         );
       }
+      if (mcpUnavailable > 0) {
+        mcpUnavailable--;
+        return Response.json(
+          { error: "no sandbox leader; retry shortly" },
+          { status: 503 },
+        );
+      }
       return serveMcp(req);
     },
   });
@@ -236,6 +245,14 @@ describe("RemoteSandboxProvider against the host tools", () => {
     await provider.renewTtl(HANDLE);
     await provider.releaseAfter(HANDLE, 1500.4);
     expect(calls).toEqual(["renew", "release:1500"]);
+  });
+
+  it("retries a call the host turned away with 503", async () => {
+    calls.length = 0;
+    mcpUnavailable = 2;
+    await provider.renewTtl(HANDLE);
+    expect(mcpUnavailable).toBe(0);
+    expect(calls).toEqual(["renew"]);
   });
 
   it("maps capacity and tenant pools", async () => {

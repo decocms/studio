@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pushRecentOrg, railOrgs } from "./recent-orgs";
+import { pushRecentOrg, railOrgLimit, railOrgs } from "./recent-orgs";
 
 const orgs = (...slugs: string[]) => slugs.map((slug) => ({ slug }));
 const slugs = (list: { slug: string }[]) => list.map((o) => o.slug);
@@ -15,6 +15,16 @@ describe("pushRecentOrg", () => {
 
   test("trims to the limit", () => {
     expect(pushRecentOrg(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
+  });
+
+  test("keeps the shown orgs right behind the newest", () => {
+    expect(pushRecentOrg(["a", "x", "y"], "b", 10, ["a", "b", "c"])).toEqual([
+      "b",
+      "a",
+      "c",
+      "x",
+      "y",
+    ]);
   });
 });
 
@@ -57,5 +67,32 @@ describe("railOrgs", () => {
     const all = orgs("a", "b", "c", "d", "e");
     const { shown } = railOrgs(all, ["e"], null, 3);
     expect(slugs(shown)).toEqual(["a", "b", "e"]);
+  });
+});
+
+describe("switching to an org already on the rail", () => {
+  const all = orgs("a", "b", "c", "d", "e", "f", "g");
+
+  test("moves no mark", () => {
+    // `c` was reached by link, so history does not hold it.
+    const recent = ["a", "b", "d", "e", "f"];
+    const before = railOrgs(all, recent, "c", 5);
+    const next = pushRecentOrg(recent, "a", 15, slugs(before.shown));
+    expect(slugs(railOrgs(all, next, "a", 5).shown)).toEqual(
+      slugs(before.shown),
+    );
+  });
+});
+
+describe("railOrgLimit", () => {
+  test("follows the window's height", () => {
+    expect(railOrgLimit(833)).toBe(7);
+    expect(railOrgLimit(700)).toBe(4);
+  });
+
+  test("never fewer than 3, never more than 10", () => {
+    expect(railOrgLimit(0)).toBe(3);
+    expect(railOrgLimit(500)).toBe(3);
+    expect(railOrgLimit(1440)).toBe(10);
   });
 });

@@ -1,4 +1,5 @@
 import type { ConversationCallbacks, VoiceConversation } from "./conversation";
+import { ConnectionWatch } from "./connection-watch";
 import { OpenAIConversationEvents } from "./openai-events";
 
 export async function startOpenAIConversation(
@@ -31,9 +32,13 @@ export async function startOpenAIConversation(
     if (!closed && channel.readyState === "open")
       channel.send(JSON.stringify(event));
   }, callbacks);
+  const connectionWatch = new ConnectionWatch(() => {
+    if (!closed) callbacks.onDisconnect();
+  });
   const close = async () => {
     if (closed) return;
     closed = true;
+    connectionWatch.dispose();
     events.close();
     clearInterval(tick);
     signal.removeEventListener("abort", abort);
@@ -80,11 +85,7 @@ export async function startOpenAIConversation(
     if (!closed && !ending) callbacks.onDisconnect();
   };
   peer.onconnectionstatechange = () => {
-    if (
-      !closed &&
-      ["failed", "disconnected", "closed"].includes(peer.connectionState)
-    )
-      callbacks.onDisconnect();
+    if (!closed) connectionWatch.report(peer.connectionState);
   };
   peer.ontrack = ({ streams, track }) => {
     if (closed) return;

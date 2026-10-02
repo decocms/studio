@@ -6,10 +6,18 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Meter } from "@opentelemetry/api";
 import type { z } from "zod";
-import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
+import {
+  exponentialBackoffWithJitter,
+  retry,
+  RetryError,
+  sleep,
+} from "@decocms/shared/std";
 import { ConfigRequestError } from "../daemon-client";
 import type { SandboxProvider } from "./agent-sandbox";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
@@ -51,6 +59,10 @@ const CONTROL_TIMEOUT_MS = 30_000;
 /** The MCP client always arms a timeout; setTimeout's ceiling never fires. */
 const UNBOUNDED_MS = 2 ** 31 - 1;
 const RECONNECT_BASE_MS = 500;
+/** The host answers 503 before handling a call while it has no leader to serve it. */
+const UNAVAILABLE_ATTEMPTS = 10;
+/** Half jitter keeps the retries spanning a leader election (16s–33s in all), never cut short by luck. */
+const UNAVAILABLE_JITTER = 0.5;
 const RECONNECT_CAP_MS = 5_000;
 /** Same reuse window as the in-process capacity probe. */
 const CAPACITY_TTL_MS = 3_000;
@@ -106,6 +118,10 @@ function textOf(content: unknown): string {
 }
 
 /** A failed call's text as the error it names. */
+function hostUnavailable(err: unknown): boolean {
+  return err instanceof StreamableHTTPError && err.code === 503;
+}
+
 function failure(tool: string, text: string): Error {
   let body: unknown = null;
   try {
@@ -225,15 +241,26 @@ export class RemoteSandboxProvider implements SandboxProvider {
     const { timeoutMs = CONTROL_TIMEOUT_MS, signal } = opts;
     let result: Awaited<ReturnType<Client["callTool"]>>;
     try {
-      result = await (await this.client()).callTool(
-        { name: tool, arguments: { ...args } },
-        undefined,
-        { timeout: timeoutMs ?? UNBOUNDED_MS, signal },
+      result = await retry(
+        async () =>
+          (await this.client()).callTool(
+            { name: tool, arguments: { ...args } },
+            undefined,
+            { timeout: timeoutMs ?? UNBOUNDED_MS, signal },
+          ),
+        {
+          maxAttempts: UNAVAILABLE_ATTEMPTS,
+          minTimeout: RECONNECT_BASE_MS,
+          maxTimeout: RECONNECT_CAP_MS,
+          jitter: UNAVAILABLE_JITTER,
+          isRetriable: hostUnavailable,
+          signal,
+        },
       );
     } catch (err) {
       // The SDK rewords an abort as a timeout; the reason says which it was.
       if (signal?.aborted) throw signal.reason;
-      throw err;
+      throw err instanceof RetryError ? err.cause : err;
     }
     if (result.isError) throw failure(tool, textOf(result.content));
     const parsed = schema.safeParse(result.structuredContent);

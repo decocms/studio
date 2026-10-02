@@ -4546,6 +4546,37 @@ export interface StudioToolIO {
       };
     };
   };
+  SIDEBAR_GET: {
+    input: { [x: string]: never };
+    output: {
+      folders: { id: string; name: string; projectIds: string[] }[];
+      preferences: {
+        pinned: string[];
+        hidden: string[];
+        dismissed: string[];
+        hiddenFolders: string[];
+      };
+      joinedAt: string | null;
+    };
+  };
+  PROJECT_FOLDERS_SET: {
+    input: { folders: { id: string; name: string; projectIds: string[] }[] };
+    output: { folders: { id: string; name: string; projectIds: string[] }[] };
+  };
+  SIDEBAR_PREFERENCES_SET: {
+    input: {
+      pinned: string[];
+      hidden: string[];
+      dismissed: string[];
+      hiddenFolders: string[];
+    };
+    output: {
+      pinned: string[];
+      hidden: string[];
+      dismissed: string[];
+      hiddenFolders: string[];
+    };
+  };
   COLLECTION_THREADS_CREATE: {
     input: {
       data: {
@@ -7037,6 +7068,7 @@ export interface StudioToolIO {
       virtualMcpId: string;
       branch?: string | undefined;
       threadId?: string | undefined;
+      provider?: "kubernetes" | "freestyle" | undefined;
     };
     output: {
       previewUrl: string | null;

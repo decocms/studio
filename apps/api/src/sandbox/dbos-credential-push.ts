@@ -19,6 +19,7 @@ import {
   ORG_FS_CONFIG_LIFETIME_MS,
   planCredentialPush,
 } from "@/sandbox/credential-push";
+import { parseLegacyTenantPools } from "@/sandbox/legacy-tenant-pools";
 import {
   getOrInitSharedRunner,
   readControlPlaneSandboxConfig,
@@ -69,6 +70,9 @@ async function pushSandboxCredentials(): Promise<PushOutcome | null> {
     sandboxes,
     pools,
     records: await credentialRecords(db, sandboxes, pools),
+    legacyPools: parseLegacyTenantPools(
+      process.env.STUDIO_SANDBOX_TENANT_POOLS,
+    ),
     now,
   });
   const { batches, failed } = await mintCredentialPush(

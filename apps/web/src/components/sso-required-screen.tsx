@@ -54,7 +54,7 @@ export function SsoRequiredScreen({
           {t("common.ssoRequiredScreen.signInWithSso")}
         </Button>
         <Button variant="ghost" onClick={handleGoBack}>
-          {t("common.ssoRequiredScreen.goBack")}
+          {t("common.goBack")}
         </Button>
       </div>
     </AccessScreenLayout>

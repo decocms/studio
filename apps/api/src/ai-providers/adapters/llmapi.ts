@@ -74,33 +74,39 @@ export const llmapiAdapter: ProviderAdapter = {
           "LLMAPI listModels",
           res,
         );
-        return data.map((m) => {
-          const arch = m.architecture ?? {};
-          const canReason =
-            !!m.reasoning_levels?.length ||
-            !!m.providers?.some((p) => p.reasoning);
-          return {
-            providerId: "llmapi",
-            modelId: m.id,
-            title: m.name || m.id,
-            description: m.description ?? null,
-            logo: null,
-            capabilities: deriveModalityCapabilities(
-              arch.input_modalities ?? [],
-              arch.output_modalities ?? [],
-              m.supported_parameters,
-              canReason ? ["reasoning"] : [],
-            ),
-            limits: {
-              contextWindow: m.context_length ?? 0,
-              maxOutputTokens: null,
-            },
-            costs: {
-              input: Number(m.pricing?.prompt) || 0,
-              output: Number(m.pricing?.completion) || 0,
-            },
-          };
-        });
+        // Skip a catalog entry missing its id instead of crashing the whole call.
+        return data
+          .filter(
+            (m): m is LlmapiModel & { id: string } =>
+              typeof m.id === "string" && m.id.length > 0,
+          )
+          .map((m) => {
+            const arch = m.architecture ?? {};
+            const canReason =
+              !!m.reasoning_levels?.length ||
+              !!m.providers?.some((p) => p.reasoning);
+            return {
+              providerId: "llmapi",
+              modelId: m.id,
+              title: m.name || m.id,
+              description: m.description ?? null,
+              logo: null,
+              capabilities: deriveModalityCapabilities(
+                arch.input_modalities ?? [],
+                arch.output_modalities ?? [],
+                m.supported_parameters,
+                canReason ? ["reasoning"] : [],
+              ),
+              limits: {
+                contextWindow: m.context_length ?? 0,
+                maxOutputTokens: null,
+              },
+              costs: {
+                input: Number(m.pricing?.prompt) || 0,
+                output: Number(m.pricing?.completion) || 0,
+              },
+            };
+          });
       },
     };
   },

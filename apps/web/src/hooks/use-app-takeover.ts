@@ -22,5 +22,9 @@ export function useAppTakeover(): boolean {
         .mainView,
   });
   if (!projectFirstNav || !mainView) return false;
-  return (LAUNCHABLE_VIEW_IDS as readonly string[]).includes(mainView);
+  /** `app` is a pinned connection app, launched from a tile like the rest. */
+  return (
+    mainView === "app" ||
+    (LAUNCHABLE_VIEW_IDS as readonly string[]).includes(mainView)
+  );
 }

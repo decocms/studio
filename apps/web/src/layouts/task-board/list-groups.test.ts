@@ -2,11 +2,15 @@ import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { buildProjectIndex, NO_PROJECT_FILTER } from "@/lib/project-index";
 import { SUPER_AGENT_ASSIGNEE_ID, type TaskBoardItem } from "./config";
+import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
 import {
   groupLevels,
+  LIST_STATUS_ORDER,
   groupListItems,
   isGroupBy,
-  toggleCollapsed,
+  isGroupOpen,
+  toggleGroupOpen,
+  type ListGroup,
   NO_TAG_GROUP,
   type GroupContext,
 } from "./list-groups";
@@ -66,18 +70,28 @@ describe("groupListItems", () => {
     expect(groupListItems([], ["status"], CONTEXT)).toEqual([]);
   });
 
-  test("status sections follow the board's lanes and keep item order", () => {
+  test("status sections read from review down to done and keep item order", () => {
     const items = [
       item("1", { status: "done" }),
       item("2", { status: "todo" }),
       item("3", { status: "done" }),
       item("4", { status: "triage" }),
+      item("5", { status: "in_progress" }),
+      item("6", { status: "in_review" }),
     ];
     expect(shape(groupListItems(items, ["status"], CONTEXT))).toEqual([
-      ["triage", ["4"]],
+      ["in_review", ["6"]],
+      ["in_progress", ["5"]],
       ["todo", ["2"]],
+      ["triage", ["4"]],
       ["done", ["1", "3"]],
     ]);
+  });
+
+  test("every board lane has a place in the list order", () => {
+    expect([...LIST_STATUS_ORDER].sort()).toEqual(
+      [...CANONICAL_COLUMN_KEYS].sort(),
+    );
   });
 
   test("archived closes the status sections", () => {
@@ -220,24 +234,52 @@ describe("isGroupBy", () => {
   });
 });
 
-describe("toggleCollapsed", () => {
-  const siblings = ["/a", "/b", "/c"];
+describe("group open state", () => {
+  const items = [
+    item("1", { status: "todo" }),
+    item("2", { status: "archived" }),
+    item("3", { status: "done" }),
+  ];
+  const groups = groupListItems(items, ["status"], CONTEXT);
+  const [todo, done, archived] = groups as [ListGroup, ListGroup, ListGroup];
 
-  test("a click flips only the clicked group", () => {
-    expect(toggleCollapsed(new Set(), "/b", siblings, false)).toEqual(
-      new Set(["/b"]),
-    );
-    expect(toggleCollapsed(new Set(["/b"]), "/b", siblings, false)).toEqual(
-      new Set(),
-    );
+  test("archived starts collapsed; every other lane starts open", () => {
+    expect(groups.map((g) => [g.key, isGroupOpen(g, new Map())])).toEqual([
+      ["todo", true],
+      ["done", true],
+      ["archived", false],
+    ]);
+  });
+
+  test("a click flips only the clicked group, from its default", () => {
+    const opened = toggleGroupOpen(new Map(), archived, groups, false);
+    expect(isGroupOpen(archived, opened)).toBe(true);
+    expect(isGroupOpen(todo, opened)).toBe(true);
+    const closed = toggleGroupOpen(opened, archived, groups, false);
+    expect(isGroupOpen(archived, closed)).toBe(false);
   });
 
   test("Alt+click moves every sibling to the clicked group's new state", () => {
-    expect(toggleCollapsed(new Set(["/a"]), "/b", siblings, true)).toEqual(
-      new Set(siblings),
+    const allClosed = toggleGroupOpen(new Map(), todo, groups, true);
+    expect(groups.map((g) => isGroupOpen(g, allClosed))).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    const allOpen = toggleGroupOpen(allClosed, done, groups, true);
+    expect(groups.map((g) => isGroupOpen(g, allOpen))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  test("only a status section collapses by default", () => {
+    const [byAssignee] = groupListItems(
+      [item("1", { status: "archived" })],
+      ["assignee"],
+      CONTEXT,
     );
-    expect(
-      toggleCollapsed(new Set(["/a", "/b", "/other"]), "/b", siblings, true),
-    ).toEqual(new Set(["/other"]));
+    expect(byAssignee?.collapsedByDefault).toBe(false);
   });
 });

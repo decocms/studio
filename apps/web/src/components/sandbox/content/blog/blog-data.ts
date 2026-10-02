@@ -287,10 +287,31 @@ export interface CategoryRef {
   slug: string;
 }
 
-/** A single author reference, denormalized on a post payload. */
+/**
+ * An author denormalized on a post payload. The post carries the author's
+ * FULL record — the blog app renders the author box (type, job title,
+ * company, website, avatar) from the post, never from the Author block — so
+ * extra fields ride along; `name`/`email` are only the identity.
+ */
 export interface AuthorRef {
   name: string;
   email: string;
+  [field: string]: unknown;
+}
+
+/**
+ * The site's authors as the refs a post stores — full record, identity
+ * stringified. Authors without an email are dropped: nothing could reference
+ * them.
+ */
+export function listAuthorRefs(decofile: Record<string, unknown>): AuthorRef[] {
+  return listBlogPayloads(decofile, "authors")
+    .map(({ payload }) => ({
+      ...payload,
+      name: str(payload.name),
+      email: str(payload.email),
+    }))
+    .filter((author) => author.email);
 }
 
 /** Compact metadata for a post, used by the posts list filters/sort. */
@@ -808,6 +829,7 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         email: "",
         jobTitle: "",
         company: "",
+        url: "",
         avatar: "",
       };
     case "categories":
@@ -1872,6 +1894,9 @@ export function buildPostSections(
   return blocks;
 }
 
+/** Longest slug a post may carry, suffix included. */
+const SLUG_MAX_LENGTH = 80;
+
 /** URL-safe slug from a title: accents folded, punctuation dropped. */
 export function slugifyTitle(title: string): string {
   return title
@@ -1880,7 +1905,24 @@ export function slugifyTitle(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+    .slice(0, SLUG_MAX_LENGTH);
+}
+
+/** Slugify as the author types: keeps the trailing "-" `slugifyTitle` trims, or typing "meu-post" would eat the separator. */
+export function maskSlugInput(raw: string): string {
+  return raw
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, SLUG_MAX_LENGTH);
+}
+
+/** `base-suffix`, shortening the base so the whole slug still fits the cap. */
+function suffixSlug(base: string, suffix: string): string {
+  const room = SLUG_MAX_LENGTH - suffix.length - 1;
+  return `${base.slice(0, room).replace(/-+$/, "")}-${suffix}`;
 }
 
 /** `slugifyTitle`, suffixed until it stops colliding with an existing post. */
@@ -1889,10 +1931,10 @@ export function uniquePostSlug(title: string, taken: string[]): string {
   const used = new Set(taken);
   if (!used.has(base)) return base;
   for (let n = 2; n < 100; n++) {
-    const candidate = `${base}-${n}`;
+    const candidate = suffixSlug(base, String(n));
     if (!used.has(candidate)) return candidate;
   }
-  return `${base}-${randomHex(4)}`;
+  return suffixSlug(base, randomHex(4));
 }
 
 /** A freshly generated post: lands in Awaiting review, with no cover image. */

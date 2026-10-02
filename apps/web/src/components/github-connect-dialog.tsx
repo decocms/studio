@@ -416,9 +416,6 @@ function RepositoryGrantPicker({
   ];
   return (
     <div className="p-4 space-y-3">
-      <p className="text-sm text-muted-foreground">
-        {t("settings.repositories.githubSelectHint")}
-      </p>
       {first?.accountVersion && (
         <p className="text-sm text-muted-foreground">
           {t("settings.repositories.githubReplaceHint")}

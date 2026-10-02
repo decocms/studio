@@ -1,6 +1,8 @@
 export const common = {
   "common.copy": "Copy",
   "common.seeAll": "See all {count} {noun}",
+  "common.goBack": "Go back",
+  "common.goHome": "Go to home",
   "common.accountPopover.account": "Account",
   "common.accountPopover.adminDashboard": "Admin Dashboard",
   "common.accountPopover.community": "Community",
@@ -27,7 +29,6 @@ export const common = {
     "This organization has been deleted or is no longer available.",
   "common.archivedOrgScreen.deletedWithName":
     "{orgName} has been deleted or is no longer available.",
-  "common.archivedOrgScreen.goHome": "Go to home",
   "common.archivedOrgScreen.orgUnavailable": "Organization unavailable",
   "common.blockedOrgScreen.goToBilling": "Go to billing",
   "common.blockedOrgScreen.switchOrg": "Switch organization",
@@ -51,7 +52,6 @@ export const common = {
   "common.desktopKeychainUnavailable.title":
     "Unable to access your saved session",
   "common.autoDomainJoinScreen.enterOrg": "Enter {orgName}",
-  "common.autoDomainJoinScreen.goHome": "Go to home",
   "common.autoDomainJoinScreen.joinDescription":
     "Anyone with an @{domain} email can join this organization.",
   "common.autoDomainJoinScreen.joinError": "Failed to join organization",
@@ -136,56 +136,13 @@ export const common = {
   "common.createSite.create": "Create site",
   "common.createSite.created": "Site {name} created",
   "common.createSite.agentDescription": "Created from the {template} template",
-  "common.repositoryPicker.accountNotListed": "Account not listed?",
   "common.repositoryPicker.addRepo": "Add repo",
   "common.repositoryPicker.addedRepo": "Added {name}",
-  "common.repositoryPicker.authenticatingGitHub": "Authenticating with GitHub",
-  "common.repositoryPicker.backToAccounts": "Back to accounts",
-  "common.repositoryPicker.changeConnection": "Change connection",
-  "common.repositoryPicker.checkAgain": "Check again",
-  "common.repositoryPicker.chooseRepositories": "Choose repositories",
-  "common.repositoryPicker.completeOAuthFlow":
-    "Complete the OAuth flow in your browser",
-  "common.repositoryPicker.connectionExpiredMessage":
-    "Your GitHub connection may have expired. Reconnect to restore access.",
-  "common.repositoryPicker.connectionFailed": "Connection failed",
-  "common.repositoryPicker.failedImport": "Failed to import repo: {error}",
-  "common.repositoryPicker.failedImportFork":
-    "Couldn't import the fork {name}. If it isn't shared with the GitHub App, add it under GitHub → Settings → Installations, then try again.",
-  "common.repositoryPicker.failedLoadAccounts":
-    "Failed to load GitHub accounts",
-  "common.repositoryPicker.failedReconnect":
-    "Failed to reconnect GitHub: {error}",
-  "common.repositoryPicker.forkBadge": "Fork",
-  "common.repositoryPicker.githubConnected": "GitHub connected",
   "common.repositoryPicker.importFromGitHub": "Import repository",
   "common.repositoryPicker.importedRepo": "Imported {name}",
-  "common.repositoryPicker.installGitHubApp": "Install the GitHub App",
-  "common.repositoryPicker.installingGitHubConnection":
-    "Installing the GitHub connection...",
-  "common.repositoryPicker.noRepositoriesFound": "No repositories found",
-  "common.repositoryPicker.noRepositoriesShared":
-    "No repositories are shared with Deco yet. Choose what to share on GitHub, then return here to continue.",
-  "common.repositoryPicker.personalAccount": "Personal account",
-  "common.repositoryPicker.private": "Private",
-  "common.repositoryPicker.public": "Public",
-  "common.repositoryPicker.reconnectGitHub": "Reconnect GitHub",
-  "common.repositoryPicker.repositoryAccessNote":
-    "You decide exactly what Deco can access. Choosing “all repositories” is optional.",
-  "common.repositoryPicker.searchRepositories": "Search repositories...",
-  "common.repositoryPicker.select": "Select",
-  "common.repositoryPicker.selectConnection": "Select a connection",
-  "common.repositoryPicker.settingUpGitHub": "Setting up GitHub",
-  "common.repositoryPicker.setupRepositoriesTitle":
-    "Let Deco see your repositories",
-  "common.repositoryPicker.somethingWentWrong":
-    "Something went wrong while connecting to GitHub.",
-  "common.repositoryPicker.tryAgain": "Try again",
-  "common.repositoryPicker.tryDifferentSearchTerm":
-    "Try a different search term",
-  "common.repositoryPicker.unknownError": "Unknown error",
   "common.iconPicker.apply": "Apply",
   "common.iconPicker.changeColor": "Change color",
+  "common.iconPicker.changeIcon": "Change icon",
   "common.iconPicker.failedToReadImage": "Failed to read image file",
   "common.iconPicker.filterPlaceholder": "Filter...",
   "common.iconPicker.iconsTab": "Icons",
@@ -205,7 +162,6 @@ export const common = {
     "Failed to prepare deco.cx import",
   "common.importFromDecoDialog.githubNotConnected":
     "GitHub is not connected. Complete GitHub setup and try again.",
-  "common.importFromDecoDialog.goBack": "Go back",
   "common.importFromDecoDialog.import": "Import",
   "common.importFromDecoDialog.importFailed": "Import failed: {error}",
   "common.importFromDecoDialog.importSuccess": "Imported {slug} from deco.cx",
@@ -227,7 +183,6 @@ export const common = {
     "Selected site is no longer available",
   "common.importFromDecoDialog.title": "Import from deco.cx",
   "common.importFromDecoDialog.unknownError": "Unknown error",
-  "common.index.goBack": "Go back",
   "common.index.pageNotFound": "Page not found",
   "common.index.pageNotFoundDescription":
     "The page you are looking for does not exist or has been moved.",
@@ -258,7 +213,6 @@ export const common = {
   "common.noAccessScreen.askAdminToInvite": "Ask an admin to invite you.",
   "common.noAccessScreen.couldNotFind":
     "We couldn't find an organization called",
-  "common.noAccessScreen.goToHome": "Go to home",
   "common.noAccessScreen.noAccess": "No access",
   "common.noAccessScreen.noAccessTo": "You don't have access to",
   "common.noAccessScreen.organizationNotFound": "Organization not found",
@@ -274,21 +228,15 @@ export const common = {
   "common.pendingInviteScreen.invitedTo": "You've been invited to {orgName}",
   "common.requestPendingScreen.description":
     "Your request to join {orgName} is waiting for an admin to approve it. You'll get access once it's approved.",
-  "common.requestPendingScreen.goHome": "Go to home",
   "common.requestPendingScreen.title": "Request pending",
   "common.requestToJoinScreen.description":
     "An admin must approve requests from @{domain} emails before you can join.",
   "common.requestToJoinScreen.failedToRequest": "Failed to request access",
-  "common.requestToJoinScreen.goToHome": "Go to home",
   "common.requestToJoinScreen.requestButton": "Request to join",
   "common.requestToJoinScreen.requesting": "Requesting…",
   "common.requestToJoinScreen.title": "Request to join {orgName}?",
   "common.signInScreen.configLoadFailed": "Couldn't load sign-in options.",
   "common.signInScreen.tryAgain": "Try again",
-  "common.simpleIconPicker.changeIcon": "Change icon",
-  "common.simpleIconPicker.filterPlaceholder": "Filter...",
-  "common.simpleIconPicker.noIconsFound": "No icons found",
-  "common.ssoRequiredScreen.goBack": "Go back",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "This organization requires SSO authentication to access.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requires SSO authentication",

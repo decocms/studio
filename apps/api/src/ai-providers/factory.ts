@@ -1,12 +1,7 @@
 import type { ModelCapability } from "@decocms/shared/sdk";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import type { ModelListCache } from "./model-list-cache";
-import type {
-  StudioProvider,
-  ModelInfo,
-  OpenRouterAPIModel,
-  ProviderAdapter,
-} from "./types";
+import type { StudioProvider, ModelInfo, OpenRouterAPIModel } from "./types";
 import { getProviders } from "./registry";
 import {
   fetchWithTransientRetry,
@@ -18,6 +13,18 @@ const OR_INDEX_ORG_ID = "_global";
 
 function stripProviderPrefix(id: string): string {
   return id.includes("/") ? id.split("/").slice(1).join("/") : id;
+}
+
+// Skips a model missing the nested metadata mapOpenRouterModel relies on (mirrors adapters/openrouter.ts).
+function isMappableModel(m: OpenRouterAPIModel): boolean {
+  return (
+    typeof m.id === "string" &&
+    !!m.architecture &&
+    Array.isArray(m.architecture.input_modalities) &&
+    Array.isArray(m.architecture.output_modalities) &&
+    !!m.top_provider &&
+    !!m.pricing
+  );
 }
 
 function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
@@ -87,7 +94,7 @@ async function getOpenRouterIndex(
     );
     if (!res.ok) await throwResponseError("OpenRouter enrichment index", res);
     const { data }: { data: OpenRouterAPIModel[] } = await res.json();
-    const models = data.map(mapOpenRouterModel);
+    const models = data.filter(isMappableModel).map(mapOpenRouterModel);
     if (cache) await cache.set(OR_INDEX_ORG_ID, "openrouter", models);
     return buildIndex(models);
   } catch {
@@ -216,7 +223,7 @@ export class AIProviderFactory {
         // Re-apply per-request flags (e.g. asyncResearch) on the cached
         // payload — entries cached before the flag existed otherwise leak
         // through stale.
-        return applyProviderFlags(cached, adapter, apiKey);
+        return applyProviderFlags(cached, adapter.create(apiKey));
       }
     }
 
@@ -249,23 +256,18 @@ export class AIProviderFactory {
       await this.cache.set(organizationId, providerId, result);
     }
 
-    return applyProviderFlags(result, adapter, apiKey);
+    return applyProviderFlags(result, provider);
   }
 }
 
 /**
  * Stamp request-time flags onto a model list. Lets us ship new flags
  * (currently `asyncResearch`) without forcing a cache invalidation.
- *
- * Creates a provider once and reuses it across all models — `adapter.create`
- * is cheap (just closure construction) but worth not repeating per model.
  */
 function applyProviderFlags(
   models: ModelInfo[],
-  adapter: ProviderAdapter,
-  apiKey: string,
+  provider: StudioProvider,
 ): ModelInfo[] {
-  const provider = adapter.create(apiKey);
   const asyncResearch = provider.asyncResearch;
   if (!asyncResearch) return models;
   return models.map((m) =>

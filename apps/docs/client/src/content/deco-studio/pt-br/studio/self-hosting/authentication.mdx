@@ -27,6 +27,7 @@ Implantações self-hosted configuram a autenticação inteiramente por variáve
 
 - `BETTER_AUTH_SECRET` (obrigatório)
 - `BETTER_AUTH_URL` / `BASE_URL` (recomendado definir explicitamente em produção)
+- `ENCRYPTION_KEY` (obrigatório para produção; gerado com `openssl rand -base64 32`)
 
 ## SSO no deployment inteiro (OIDC)
 

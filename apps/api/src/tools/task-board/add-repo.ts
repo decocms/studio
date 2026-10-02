@@ -203,6 +203,32 @@ async function podBash(
   return { stdout: body.stdout ?? "", exitCode: body.exitCode ?? 0 };
 }
 
+/** The clone probe for `dir`; read it with `parseRepoProbe`. */
+function repoProbe(dir: string): string {
+  return `cd ${dir} 2>/dev/null || exit 1; if [ -n "$(git ls-files 2>/dev/null | head -1)" ]; then echo __CLONED__; fi; ls -A 2>/dev/null`;
+}
+
+/**
+ * Whether the checkout at `dir` is complete: cloned, and with the same listing
+ * across two probes, since one non-empty probe can still be mid-clone.
+ */
+async function checkoutSettled(
+  provider: SandboxProvider,
+  handle: string,
+  threadId: string,
+  dir: string,
+): Promise<boolean> {
+  const probe = () =>
+    podBash(provider, handle, threadId, repoProbe(dir))
+      .then((res) => parseRepoProbe(res.stdout))
+      .catch(() => null);
+  const first = await probe();
+  if (!first?.cloned) return false;
+  await sleep(CLONE_POLL_MS);
+  const second = await probe();
+  return !!second?.cloned && second.listing === first.listing;
+}
+
 /**
  * Interpret the clone probe (`__CLONED__` marker + `ls -A`).
  *
@@ -584,26 +610,39 @@ export const TASK_ADD_REPO = defineTool({
     const isPrimaryRepo =
       repository && sameRepositoryBinding(repository, candidate);
 
+    const provider = await getAgentSandboxProvider(ctx);
+    // The binding is written before the clone is delivered, so a call that
+    // failed after it leaves a primary that is bound but not checked out.
+    // Only a real checkout ends here; anything else is delivered again.
     if (
-      repository &&
-      (isPrimaryRepo ||
-        secondaryRepoCapExceeded(existingSecondaries, candidate))
+      isPrimaryRepo &&
+      (await checkoutSettled(provider, record.sandboxHandle, threadId, "."))
     ) {
       return {
         success: false,
         repo: `${repo.owner}/${repo.name}`,
         cloned: false,
-        message: isPrimaryRepo
-          ? `${repo.label} is already checked out at your working directory.`
-          : `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
-            `which is the limit. Work with what's already checked out instead of adding another.`,
+        message: `${repo.label} is already checked out at your working directory.`,
+      };
+    }
+    if (
+      repository &&
+      !isPrimaryRepo &&
+      secondaryRepoCapExceeded(existingSecondaries, candidate)
+    ) {
+      return {
+        success: false,
+        repo: `${repo.owner}/${repo.name}`,
+        cloned: false,
+        message:
+          `This run already has ${MAX_SECONDARY_REPOS} additional repositories checked out, ` +
+          `which is the limit. Work with what's already checked out instead of adding another.`,
       };
     }
 
     // Fresh credential BEFORE anything is written: a clone URL is only useful
     // with a live token behind it, and this is the failure worth reporting
     // as "could not add the repo" rather than half-binding one.
-    const provider = await getAgentSandboxProvider(ctx);
     const { cloneUrl, gitUserName, gitUserEmail } = await cloneInfoForChoice(
       ctx,
       organization.id,
@@ -628,11 +667,11 @@ export const TASK_ADD_REPO = defineTool({
     // package-manager probe, dev server and preview, and a second call must not
     // move that out from under a running dev server. Later ones accumulate in
     // `additionalRepositories` and land as secondary checkouts.
-    const isPrimary = !repository;
+    const isPrimary = !repository || !!isPrimaryRepo;
     const secondaries = isPrimary
       ? []
       : await ctx.storage.threads.appendThreadRepository(threadId, bound);
-    if (isPrimary) {
+    if (!repository) {
       await ctx.storage.threads.update(threadId, {
         metadata: { ...(thread.metadata ?? {}), repository: bound },
         updated_by: userId,
@@ -744,7 +783,7 @@ export const TASK_ADD_REPO = defineTool({
         // stages `.deco` and mounts `org` into it before the clone starts), so
         // neither HEAD nor the listing can tell a checkout from scaffolding. A
         // non-empty index can only come from one. See `parseRepoProbe`.
-        `cd ${checkoutDir} 2>/dev/null || exit 1; if [ -n "$(git ls-files 2>/dev/null | head -1)" ]; then echo __CLONED__; fi; ls -A 2>/dev/null`,
+        repoProbe(checkoutDir),
       ).catch(() => null);
       if (!probe) {
         if (++failures >= CLONE_MAX_CONSECUTIVE_FAILURES) break;

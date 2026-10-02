@@ -18,6 +18,10 @@ import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
+  ProjectFolder,
+  SidebarPreferences,
+} from "@decocms/shared/project-sidebar";
+import type {
   OrgFlags,
   SubmoduleCredential,
   UserModelPreferences,
@@ -166,6 +170,21 @@ export interface UserModelPreferencesTable {
   tiers: JsonObject<UserModelPreferences["tiers"]>;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** An org's sidebar folders, one JSON document — see migration 230. */
+export interface OrgProjectFoldersTable {
+  organization_id: string;
+  folders: JsonObject<ProjectFolder[]>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One member's pins and hides in one org — see migration 230. */
+export interface UserSidebarPreferencesTable {
+  user_id: string;
+  organization_id: string;
+  preferences: JsonObject<SidebarPreferences>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 export interface DefaultHomeAgentsConfig {
@@ -2400,6 +2419,8 @@ export interface Database {
   thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
+  org_project_folders: OrgProjectFoldersTable; // Org-wide sidebar folders
+  user_sidebar_preferences: UserSidebarPreferencesTable; // Per-user pins / hides
   api_keys: ApiKeyTable; // Better Auth API keys
 
   // OAuth tables (for MCP OAuth server)

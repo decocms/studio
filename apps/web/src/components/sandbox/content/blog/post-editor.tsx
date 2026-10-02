@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   AlertCircle,
@@ -30,12 +31,16 @@ import {
   buildPostBlock,
   getBlogPayload,
   listBlogPayloads,
+  maskSlugInput,
   missingPostFields,
+  normalizeTitleKey,
   POST_STATUSES,
   type PostStatus,
   postStatus,
   relationPickerState,
+  slugifyTitle,
   stampPostModified,
+  uniquePostSlug,
 } from "./blog-data";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
@@ -160,6 +165,16 @@ export function PostEditor({
     draftPointer,
   });
 
+  // Two posts sharing a title is legal but bad for search; warn, never block.
+  const titleKey = normalizeTitleKey(str(post.title));
+  const hasDuplicateTitle =
+    titleKey.length > 0 &&
+    listBlogPayloads(decofile, "posts").some(
+      (entry) =>
+        entry.key !== blockKey &&
+        normalizeTitleKey(str(entry.payload.title)) === titleKey,
+    );
+
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
   const missingLabel =
@@ -238,6 +253,12 @@ export function PostEditor({
             placeholder={t("sandbox.postEditor.postTitlePlaceholder")}
             className="py-1 text-4xl font-bold text-foreground"
           />
+          {hasDuplicateTitle && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+              <AlertCircle size={14} className="mt-px shrink-0" />
+              {t("sandbox.postEditor.duplicateTitleWarning")}
+            </p>
+          )}
 
           {/* Content and Settings are sibling tabs; the body is the default. The
               tab row also carries the save state + preview, so no top chrome. */}
@@ -398,6 +419,47 @@ function PostSettings({
   const status = postStatus(post);
   const isScheduled = supportsScheduling(support) && status === "scheduled";
 
+  // Committed on blur, not per keystroke: a half-typed slug must not autosave.
+  const committedSlug = str(post.slug);
+  const [slugDraft, setSlugDraft] = useState(committedSlug);
+  const [slugNotice, setSlugNotice] = useState<string | null>(null);
+  // Re-seed when the slug changes under us (AI generation, another session).
+  const [seenSlug, setSeenSlug] = useState(committedSlug);
+  if (seenSlug !== committedSlug) {
+    setSeenSlug(committedSlug);
+    setSlugDraft(committedSlug);
+  }
+
+  /** Blur handler: normalize, then suffix the slug if another post owns it. */
+  const commitSlugFromDraft = () => {
+    const normalized = slugifyTitle(slugDraft);
+    setSlugDraft(normalized);
+    // Blurring without having touched the field must not queue a write.
+    if (normalized === committedSlug) return;
+    // Stays empty: `missingPostFields` flags it, inventing one hides the gap.
+    if (!normalized) {
+      setSlugNotice(null);
+      onChange("slug", "");
+      return;
+    }
+    const taken = listBlogPayloads(decofile, "posts")
+      .filter((entry) => entry.key !== blockKey)
+      .map((entry) => str(entry.payload.slug))
+      .filter(Boolean);
+    if (!taken.includes(normalized)) {
+      setSlugNotice(null);
+      onChange("slug", normalized);
+      return;
+    }
+    const fixed = uniquePostSlug(normalized, taken);
+    const message = t("sandbox.postEditor.slugDeduped", { slug: fixed });
+    setSlugDraft(fixed);
+    // Inline too: a dismissed toast would hide that the URL changed.
+    setSlugNotice(message);
+    toast.info(message);
+    onChange("slug", fixed);
+  };
+
   return (
     <div className="space-y-5">
       <div className="space-y-4 border-b pb-4">
@@ -441,11 +503,22 @@ function PostSettings({
           <Label htmlFor="post-slug">{t("sandbox.postEditor.slugLabel")}</Label>
           <Input
             id="post-slug"
-            value={str(post.slug)}
-            onChange={(e) => onChange("slug", e.target.value)}
+            value={slugDraft}
+            onChange={(e) => {
+              setSlugNotice(null);
+              setSlugDraft(maskSlugInput(e.target.value));
+            }}
+            onBlur={commitSlugFromDraft}
             placeholder={t("sandbox.postEditor.slugPlaceholder")}
+            maxLength={80}
             className="h-10"
           />
+          {slugNotice && (
+            <p className="flex items-start gap-1.5 text-xs text-warning">
+              <AlertCircle size={14} className="mt-px shrink-0" />
+              {slugNotice}
+            </p>
+          )}
         </div>
         <StringField
           schema={{

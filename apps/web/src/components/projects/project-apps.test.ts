@@ -58,4 +58,37 @@ describe("launchableApps", () => {
       }),
     ).toEqual([]);
   });
+
+  test("reads the deprecated ui.layout location while agents migrate", () => {
+    expect(
+      launchableApps({
+        metadata: {
+          ui: { layout: { sidebarViews: ["automations"] } },
+          sidebarViewsVersion: 1,
+        },
+      }),
+    ).toEqual(["automations"]);
+  });
+
+  test("a native panel without its resource is not a tile", () => {
+    const native = {
+      assets: false,
+      hosting: true,
+      e2e: false,
+      analytics: false,
+      cdn: false,
+      experiments: false,
+    };
+    expect(
+      launchableApps(
+        {
+          metadata: {
+            sidebarViews: ["assets", "hosting", "automations"],
+            sidebarViewsVersion: 1,
+          },
+        },
+        native,
+      ),
+    ).toEqual(["hosting", "automations"]);
+  });
 });

@@ -62,23 +62,49 @@ export type BoardView = {
   sortDirection: SortDirection;
 };
 
-/** Anything unrecognized in the URL is dropped, not trusted. `defaultLayout`
- *  is the landing view when the URL names none — Board everywhere, except the
- *  project overview's inline tabs, where the board's horizontal columns are the
- *  wrong shape for a strip under a header and Feed reads top to bottom. */
+/**
+ * What a board opens on when the URL says nothing. `layout` is Board
+ * everywhere except the project overview's inline tabs, where the board's
+ * horizontal columns are the wrong shape for a strip under a header and Feed
+ * reads top to bottom. `assignee` is the viewer, so the board opens on their
+ * own work.
+ */
+export type BoardDefaults = {
+  layout: Layout;
+  assignee: string | null;
+  groupBy: GroupBy | null;
+};
+
+export const NO_DEFAULTS: BoardDefaults = {
+  layout: "board",
+  assignee: null,
+  groupBy: null,
+};
+
+/** URL values for "cleared" where the default is not empty, so removing the
+ *  default filter or grouping sticks instead of coming straight back. */
+const ANY_ASSIGNEE = "any";
+const NO_GROUP = "none";
+
+/** Anything unrecognized in the URL is dropped, not trusted. */
 export function parseBoardSearch(
   search: BoardSearch,
-  defaultLayout: Layout = "board",
+  defaults: BoardDefaults = NO_DEFAULTS,
 ): BoardView {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
-  const groupBy = isGroupBy(search.group) ? search.group : null;
+  const groupBy =
+    search.group === undefined
+      ? defaults.groupBy
+      : isGroupBy(search.group)
+        ? search.group
+        : null;
   const sortBy = isSortBy(search.sort) ? search.sort : null;
   return {
     layout: LAYOUTS.includes(search.view as Layout)
       ? (search.view as Layout)
-      : defaultLayout,
+      : defaults.layout,
     groupBy,
     subgroupBy:
       groupBy !== null &&
@@ -95,7 +121,12 @@ export function parseBoardSearch(
           : "asc",
     filters: {
       search: str(search.q) ?? "",
-      assignee: str(search.assignee),
+      assignee:
+        search.assignee === undefined
+          ? defaults.assignee
+          : search.assignee === ANY_ASSIGNEE
+            ? null
+            : str(search.assignee),
       priority: PRIORITIES.includes(priority as TaskBoardItemPriority)
         ? (priority as TaskBoardItemPriority)
         : null,
@@ -109,11 +140,11 @@ export function parseBoardSearch(
 /** Defaults are written as `undefined` so they drop out of the URL entirely. */
 export function boardSearchParams(
   { filters, layout, groupBy, subgroupBy, sortBy, sortDirection }: BoardView,
-  defaultLayout: Layout = "board",
+  defaults: BoardDefaults = NO_DEFAULTS,
 ): Record<keyof BoardSearch, string | undefined> {
   return {
-    view: layout === defaultLayout ? undefined : layout,
-    group: groupBy ?? undefined,
+    view: layout === defaults.layout ? undefined : layout,
+    group: groupBy === defaults.groupBy ? undefined : (groupBy ?? NO_GROUP),
     subgroup: groupBy !== null ? (subgroupBy ?? undefined) : undefined,
     sort: sortBy ?? undefined,
     dir:
@@ -121,7 +152,10 @@ export function boardSearchParams(
         ? sortDirection
         : undefined,
     q: filters.search === "" ? undefined : filters.search,
-    assignee: filters.assignee ?? undefined,
+    assignee:
+      filters.assignee === defaults.assignee
+        ? undefined
+        : (filters.assignee ?? ANY_ASSIGNEE),
     priority: filters.priority ?? undefined,
     due: filters.due ?? undefined,
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
@@ -155,10 +189,10 @@ export function visibleSelection(
 }
 
 /** `useState`-shaped replacement for the board's view state. */
-export function useBoardSearch(defaultLayout: Layout = "board") {
+export function useBoardSearch(defaults: BoardDefaults) {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const view = parseBoardSearch(search, defaultLayout);
+  const view = parseBoardSearch(search, defaults);
   const { groupBy, subgroupBy } = view;
 
   const write = (patch: Partial<BoardView>) =>
@@ -166,7 +200,7 @@ export function useBoardSearch(defaultLayout: Layout = "board") {
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...boardSearchParams({ ...view, ...patch }, defaultLayout),
+        ...boardSearchParams({ ...view, ...patch }, defaults),
       }),
       // Typing in the search box would otherwise push a history entry per key.
       replace: true,

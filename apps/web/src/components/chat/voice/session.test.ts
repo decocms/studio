@@ -132,6 +132,32 @@ test("background subtasks report their reaction, not the start notice", async ()
   session.stop();
 });
 
+test("delegate_to_agent rejects once a call reaches its request cap", async () => {
+  const { callbacks } = await connect();
+  for (let index = 0; index < 40; index++) {
+    const receipt = await callbacks.onDelegate({
+      request: `request ${index}`,
+      delegationId: `delegation-${index}`,
+    });
+    expect(receipt.status).toBe("accepted");
+  }
+  const receipt = await callbacks.onDelegate({
+    request: "one too many",
+    delegationId: "delegation-40",
+  });
+  expect(receipt.status).toBe("rejected");
+});
+
+test("delegate_to_agent rejects a request failing the delegation schema", async () => {
+  const { callbacks, sent } = await connect();
+  const receipt = await callbacks.onDelegate({
+    request: "",
+    delegationId: "delegation-empty",
+  });
+  expect(receipt.status).toBe("rejected");
+  expect(sent).toEqual([]);
+});
+
 test("only tasks created in the call are announced", async () => {
   const { session, bindings, sent, callbacks } = await connect();
   await callbacks.onDelegate({ request: "Cria a task", delegationId: "d1" });

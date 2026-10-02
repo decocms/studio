@@ -60,6 +60,12 @@ const FIELDS: Record<RecordKind, FieldDef[]> = {
       widget: "text",
     },
     {
+      key: "url",
+      labelKey: "sandbox.recordEditor.fieldUrl",
+      widget: "text",
+      placeholderKey: "sandbox.recordEditor.placeholderUrl",
+    },
+    {
       key: "avatar",
       labelKey: "sandbox.recordEditor.fieldAvatar",
       widget: "image",
