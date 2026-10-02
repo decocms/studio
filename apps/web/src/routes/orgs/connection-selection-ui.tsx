@@ -396,8 +396,13 @@ export function AddToAgentDialog({
   const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setSelected(null);
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>
@@ -444,7 +449,7 @@ export function AddToAgentDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             {t("orgs.connectionSelectionUi.cancel")}
           </Button>
           <Button
@@ -452,8 +457,7 @@ export function AddToAgentDialog({
             onClick={() => {
               if (selected) {
                 onConfirm(selected);
-                onOpenChange(false);
-                setSelected(null);
+                handleOpenChange(false);
               }
             }}
           >
