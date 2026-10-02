@@ -369,6 +369,8 @@ export interface PostMeta {
   authorEmails: string[];
   /** Required fields the post is missing (empty when valid). */
   missing: string[];
+  /** Another post carries this same title — a warning, never a block. */
+  duplicateTitle?: boolean;
   /** Publication state — see `postStatus`. */
   status: PostStatus;
   /** Which physical block backs this post — see {@link PostForm}. */
@@ -547,8 +549,10 @@ export function setPostStatus(
 export function listPostsWithMeta(
   decofile: Record<string, unknown>,
 ): PostMeta[] {
+  const duplicates = duplicateTitleKeys(decofile);
   return listBlogPayloads(decofile, "posts").map(({ key, payload }) => ({
     key,
+    duplicateTitle: duplicates.has(key),
     title: str(payload.title) || "Untitled post",
     slug: str(payload.slug),
     date: str(payload.date),
@@ -691,9 +695,11 @@ export function listPlanningPosts(
 export function listAllPostsWithMeta(
   decofile: Record<string, unknown>,
 ): PostMeta[] {
+  const duplicates = duplicateTitleKeys(decofile);
   const planning: PostMeta[] = listPlanningPosts(decofile).map(
     ({ key, payload }) => ({
       key,
+      duplicateTitle: duplicates.has(key),
       title: str(payload.title) || "Untitled post",
       slug: str(payload.slug),
       date: str(payload.date),
@@ -1596,12 +1602,51 @@ export function hasDuplicateName(
 ): boolean {
   const key = normalizeTitleKey(name);
   if (!key) return false;
-  const field = kind === "posts" ? "title" : "name";
-  return listBlogPayloads(decofile, kind).some(
-    (entry) =>
-      entry.key !== blockKey &&
-      normalizeTitleKey(str(entry.payload[field])) === key,
+  return namedRecords(decofile, kind).some(
+    (record) =>
+      record.key !== blockKey && normalizeTitleKey(record.name) === key,
   );
+}
+
+/**
+ * Every record of `kind` paired with its RAW name — no "Untitled" fallback,
+ * which would make two nameless records look like a collision.
+ *
+ * Posts come in two physical forms and both count: a planning draft carries no
+ * `__resolveType`, so `listBlogPayloads` alone misses the whole board.
+ */
+function namedRecords(
+  decofile: Record<string, unknown>,
+  kind: BlogKind,
+): Array<{ key: string; name: string }> {
+  if (kind !== "posts") {
+    return listBlogPayloads(decofile, kind).map(({ key, payload }) => ({
+      key,
+      name: str(payload.name),
+    }));
+  }
+  return [
+    ...listPlanningPosts(decofile),
+    ...listBlogPayloads(decofile, "posts"),
+  ].map(({ key, payload }) => ({ key, name: str(payload.title) }));
+}
+
+/** Block keys of posts whose non-empty title collides with another post's. */
+export function duplicateTitleKeys(
+  decofile: Record<string, unknown>,
+): Set<string> {
+  const byKey = new Map<string, string[]>();
+  for (const { key, name } of namedRecords(decofile, "posts")) {
+    const normalized = normalizeTitleKey(name);
+    if (!normalized) continue;
+    const keys = byKey.get(normalized);
+    keys ? keys.push(key) : byKey.set(normalized, [key]);
+  }
+  const duplicates = new Set<string>();
+  for (const keys of byKey.values()) {
+    if (keys.length > 1) for (const key of keys) duplicates.add(key);
+  }
+  return duplicates;
 }
 
 /**

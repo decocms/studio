@@ -8,6 +8,7 @@
 import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
   AlertCircle,
+  Copy01,
   CalendarDate,
   CheckCircle,
   ChevronDown,
@@ -1068,6 +1069,14 @@ function PostRow({
               {post.missing.length}
             </span>
           )}
+          {post.duplicateTitle && (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-warning"
+              title={t("sandbox.postBoard.duplicateTitle")}
+            >
+              <Copy01 size={12} />
+            </span>
+          )}
           {hasDate && (
             <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
               <CalendarDate size={12} />
@@ -1165,6 +1174,12 @@ function PostCard({
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <CalendarDate size={12} />
               {(post.scheduledDatetime || post.date || "").slice(0, 10)}
+            </span>
+          )}
+          {post.duplicateTitle && (
+            <span className="inline-flex items-center gap-1 text-xs text-warning">
+              <Copy01 size={12} />
+              {t("sandbox.postBoard.duplicateTitle")}
             </span>
           )}
         </div>

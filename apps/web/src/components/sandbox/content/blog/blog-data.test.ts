@@ -12,6 +12,7 @@ import {
   postStatus,
   relationPickerState,
   removeCategoryFromPost,
+  duplicateTitleKeys,
   hasDuplicateName,
   missingCategoryFields,
   renameCategoryOnPost,
@@ -321,6 +322,7 @@ describe("listPostsWithMeta", () => {
     expect(listPostsWithMeta(decofile)).toEqual([
       {
         key: "collections/blog/posts/a",
+        duplicateTitle: false,
         title: "Hello",
         slug: "hello",
         date: "2024-01-02",
@@ -1098,6 +1100,57 @@ describe("hasDuplicateName", () => {
 
   test("does not cross kinds", () => {
     expect(hasDuplicateName(decofile, "posts", "new-key", "Dicas")).toBe(false);
+  });
+});
+
+/** A planning draft: no `__resolveType`, so the site never resolves it. */
+function planningPost(id: string, title: string) {
+  return { [`blog-manager/posts/${id}`]: { post: { title } } };
+}
+
+describe("duplicate titles across both post forms", () => {
+  const decofile = {
+    ...planningPost("a", "Receitas"),
+    ...planningPost("b", "receitas"),
+    ...planningPost("c", "Dicas"),
+    "collections/blog/posts/d": postBlock("RECEÍTAS"),
+  };
+
+  test("a planning draft counts — it carries no __resolveType", () => {
+    expect(
+      hasDuplicateName(decofile, "posts", "blog-manager/posts/c", "Receitas"),
+    ).toBe(true);
+  });
+
+  test("flags every colliding key, planning and live alike", () => {
+    expect([...duplicateTitleKeys(decofile)].sort()).toEqual([
+      "blog-manager/posts/a",
+      "blog-manager/posts/b",
+      "collections/blog/posts/d",
+    ]);
+  });
+
+  test("leaves a unique title alone", () => {
+    expect(duplicateTitleKeys(decofile).has("blog-manager/posts/c")).toBe(
+      false,
+    );
+  });
+
+  test("does not flag two untitled drafts via the label fallback", () => {
+    const untitled = { ...planningPost("x", ""), ...planningPost("y", "") };
+    expect(duplicateTitleKeys(untitled).size).toBe(0);
+  });
+
+  test("listAllPostsWithMeta carries the flag onto both forms", () => {
+    const flagged = listAllPostsWithMeta(decofile)
+      .filter((p) => p.duplicateTitle)
+      .map((p) => p.key)
+      .sort();
+    expect(flagged).toEqual([
+      "blog-manager/posts/a",
+      "blog-manager/posts/b",
+      "collections/blog/posts/d",
+    ]);
   });
 });
 

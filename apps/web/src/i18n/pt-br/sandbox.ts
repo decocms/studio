@@ -540,6 +540,7 @@ export const sandbox = {
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
+  "sandbox.postBoard.duplicateTitle": "Título duplicado",
   "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.expandLane": "Expandir {lane}",
   "sandbox.postBoard.generateIdeas": "Gerar ideias",

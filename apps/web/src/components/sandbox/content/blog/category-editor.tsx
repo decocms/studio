@@ -244,6 +244,18 @@ export function CategoryEditor({
     const name = str(category.name);
     setIsRenaming(true);
     try {
+      // Persist the category itself FIRST and await it. The cascade's writes
+      // replace the cached decofile, and a name still sitting in the autosave
+      // debounce would be re-seeded away by the echo — the heading would snap
+      // back to the old name. Same ordering `runRename` uses.
+      if (name !== str(initial.name)) {
+        const nextCategory = { ...category, name };
+        await save.mutateAsync({
+          blockKey,
+          data: buildBlogBlock(blockKey, "categories", nextCategory),
+        });
+        syncCategory(nextCategory);
+      }
       const changed = await cascadeToPosts(committedSlug, {
         name,
         slug: committedSlug,
