@@ -27,7 +27,7 @@ export function SsoRequiredScreen({
 
   return (
     <AccessScreenLayout>
-      <div className="bg-primary/10 p-3 rounded-full">
+      <div className="bg-primary/10 p-3 rounded-full" aria-hidden="true">
         <Lock01 className="h-6 w-6 text-primary" />
       </div>
       <div className="space-y-2">

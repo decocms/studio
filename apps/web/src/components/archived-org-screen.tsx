@@ -15,7 +15,7 @@ export function ArchivedOrgScreen({ orgName }: ArchivedOrgScreenProps) {
 
   return (
     <AccessScreenLayout>
-      <div className="bg-muted p-3 rounded-full">
+      <div className="bg-muted p-3 rounded-full" aria-hidden="true">
         <Archive className="h-6 w-6 text-muted-foreground" />
       </div>
       <div className="space-y-2">
