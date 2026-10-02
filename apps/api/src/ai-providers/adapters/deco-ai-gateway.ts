@@ -1,6 +1,9 @@
 import type { PlanEntitlements, ProviderAdapter } from "../types";
 import { openrouterAdapter } from "./openrouter";
-import { throwResponseError } from "./fetch-transient-retry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 import { getSettings } from "../../settings";
 
 function getBase(): string {
@@ -187,7 +190,8 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     // token most users have never minted. The service key says "mesh's server
     // is asking about an org it owns" and skips that callback.
     const serviceKey = getSettings().studioProvisionSecretKey;
-    const res = await fetch(
+    const res = await fetchWithTransientRetry(
+      "Failed to fetch credits balance",
       `${getBase()}/api/teams/${organizationId}/balance`,
       {
         headers: {
@@ -211,7 +215,8 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     // and this request is the one caller that is not the org. Absent on a
     // self-hosted deployment, which then simply gets no pins.
     const serviceKey = getSettings().studioProvisionSecretKey;
-    const res = await fetch(
+    const res = await fetchWithTransientRetry(
+      "Failed to fetch plan entitlements",
       `${getBase()}/api/teams/${organizationId}/entitlements`,
       {
         headers: {
@@ -246,13 +251,17 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     // forever. Optional, like the other reads: a self-hosted deployment with no
     // key simply falls back to the membership check.
     const serviceKey = getSettings().studioProvisionSecretKey;
-    const res = await fetch(`${getBase()}/api/teams/${organizationId}/plans`, {
-      headers: {
-        Authorization: `Bearer ${studioJwt}`,
-        ...(serviceKey ? { "X-Provision-Key": serviceKey } : {}),
+    const res = await fetchWithTransientRetry(
+      "Failed to fetch plans",
+      `${getBase()}/api/teams/${organizationId}/plans`,
+      {
+        headers: {
+          Authorization: `Bearer ${studioJwt}`,
+          ...(serviceKey ? { "X-Provision-Key": serviceKey } : {}),
+        },
+        signal: AbortSignal.timeout(10_000),
       },
-      signal: AbortSignal.timeout(10_000),
-    });
+    );
     if (!res.ok) throw await refusal(res, "Failed to fetch plans");
     const data = (await res.json()) as {
       plans: { id: string; name: string; features: Record<string, boolean> }[];
