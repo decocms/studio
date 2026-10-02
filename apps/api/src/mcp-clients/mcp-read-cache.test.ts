@@ -408,6 +408,58 @@ describe("InMemoryMcpReadCache", () => {
     ).toEqual({ calls: 2 });
   });
 
+  test("invalidate cancels in-flight revalidations for that connection", async () => {
+    const { cache, advance } = newCache({ revalidateAfterMs: 10_000 });
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fetchLive = async () => {
+      calls++;
+      if (calls > 1) await gate;
+      return { calls };
+    };
+
+    await cache.fetch({
+      type: TOOL,
+      connectionId: CONN,
+      scope: ORG,
+      params: {},
+      fetchLive,
+    });
+    expect(calls).toBe(1);
+
+    advance(11_000);
+
+    let revalidationPromise: Promise<void> | undefined;
+    const staleResult = await cache.fetch({
+      type: TOOL,
+      connectionId: CONN,
+      scope: ORG,
+      params: {},
+      fetchLive,
+      onRevalidation: (p) => {
+        revalidationPromise = p;
+      },
+    });
+    expect(staleResult).toEqual({ calls: 1 });
+    expect(calls).toBe(2);
+    expect(revalidationPromise).toBeDefined();
+
+    cache.invalidate(CONN);
+    release();
+    await revalidationPromise;
+
+    expect(
+      await cache.fetch({
+        type: TOOL,
+        connectionId: CONN,
+        scope: ORG,
+        params: {},
+        fetchLive,
+      }),
+    ).toEqual({ calls: 3 });
+  });
+
   test("config is per-type: one type can be stale while another is fresh", async () => {
     let now = 1_000;
     const cache = new InMemoryMcpReadCache(

@@ -121,6 +121,8 @@ export class InMemoryMcpReadCache {
   private readonly revalidating = new Set<string>();
   // Running sum of cached entry bytes, kept in lockstep with the store.
   private totalBytes = 0;
+  // Timestamp when each connection was invalidated (guard in-flight revalidations).
+  private readonly invalidatedAt = new Map<string, number>();
 
   constructor(
     private readonly config: Record<
@@ -164,6 +166,20 @@ export class InMemoryMcpReadCache {
     now: number,
     maxValueBytes: number,
   ): void {
+    // Skip if connection was recently invalidated (guard against in-flight revalidations).
+    const connectionId = key.split(":")[0]!;
+    const invalidationTime = this.invalidatedAt.get(connectionId);
+    if (
+      invalidationTime !== undefined &&
+      now - invalidationTime < 5000 // 5 second window
+    ) {
+      debug("SKIP invalidated connection", key);
+      return;
+    }
+    if (invalidationTime !== undefined) {
+      this.invalidatedAt.delete(connectionId); // cleanup after window
+    }
+
     // Skip oversized results so a single large payload can't pin memory.
     let bytes: number;
     try {
@@ -274,6 +290,12 @@ export class InMemoryMcpReadCache {
     for (const key of [...this.store.keys()]) {
       if (key.startsWith(prefix)) this.deleteKey(key);
     }
+    // Cancel in-flight revalidations for this connection (prevent stale re-caching).
+    for (const key of [...this.revalidating]) {
+      if (key.startsWith(prefix)) this.revalidating.delete(key);
+    }
+    // Track invalidation to guard against in-flight revalidations re-adding entries.
+    this.invalidatedAt.set(connectionId, this.now());
   }
 }
 
