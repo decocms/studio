@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  sandboxPathsAsUploads,
   sandboxUploadHint,
   uploadsAsSandboxPaths,
 } from "./description-uploads";
@@ -56,44 +55,6 @@ describe("uploadsAsSandboxPaths", () => {
     const md =
       "See ![x](https://example.com/a.png) and /api/o/fs/uploads/read (no path)";
     expect(uploadsAsSandboxPaths(md)).toBe(md);
-  });
-});
-
-describe("sandboxPathsAsUploads", () => {
-  it("undoes the rewrite, so a body a run reads and writes back still renders", () => {
-    const stored =
-      "see [spec.pdf](/api/acme/fs/uploads/read?path=editor-files%2Fspec.pdf)\n\n" +
-      "![shot.png](/api/acme/fs/uploads/read?path=editor-images%2Fshot.png)";
-    expect(sandboxPathsAsUploads(uploadsAsSandboxPaths(stored), "acme")).toBe(
-      stored,
-    );
-  });
-
-  it("maps the hidden outputs mount back to its volume", () => {
-    expect(
-      sandboxPathsAsUploads("![a](org/.outputs/t1/qa/a.png)", "acme"),
-    ).toBe("![a](/api/acme/fs/outputs/read?path=t1%2Fqa%2Fa.png)");
-  });
-
-  it("leaves paths with an existing meaning alone", () => {
-    for (const md of [
-      "[notes](org/home/notes.md)",
-      "![run shot](org/output/qa/a.png)",
-      "[thread upload](org/upload/a.pdf)",
-      "a bare org/.uploads/editor-files/a.pdf in prose",
-      "[external](https://example.com/org/.uploads/a.pdf)",
-    ]) {
-      expect(sandboxPathsAsUploads(md, "acme")).toBe(md);
-    }
-  });
-
-  it("leaves a target that climbs out of the mount alone", () => {
-    for (const md of [
-      "[x](org/.uploads/../home/secret.md)",
-      "[x](org/.uploads/)",
-    ]) {
-      expect(sandboxPathsAsUploads(md, "acme")).toBe(md);
-    }
   });
 });
 

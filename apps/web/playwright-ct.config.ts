@@ -80,7 +80,7 @@ export default defineConfig({
             find: /^@\/hooks\/use-new-blocks-editor$/,
             replacement: stub("use-new-blocks-editor.ts"),
           },
-          // Editor uploads PUT to the org filesystem via useProjectContext(); specs assert what lands in the field.
+          // Editor uploads PUT to the org filesystem via useProjectContext(), which a bare mount lacks.
           {
             find: /^@\/components\/markdown-editor\/use-file-upload$/,
             replacement: stub("use-file-upload.ts"),

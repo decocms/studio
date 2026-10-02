@@ -14,7 +14,7 @@ import { isImageFile } from "./uploads";
  * insert: a block image splits the paragraph it lands in, a mapped position
  * snaps back above it, and the next file then went in before the image.
  */
-export function insertUpload(
+function insertUpload(
   view: EditorView,
   at: number,
   typeName: "image" | "attachment",
@@ -73,7 +73,7 @@ export function insertUpload(
  * of the selection beside its text and markup: the text is what was copied, so
  * none of its files are. A copied file or image comes without both.
  */
-export function pastedAttachments(
+function pastedAttachments(
   data: { files: ArrayLike<File>; getData(format: string): string } | null,
 ): File[] {
   if (!data || data.files.length === 0) return [];
