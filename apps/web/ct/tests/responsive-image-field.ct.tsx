@@ -90,6 +90,10 @@ test("an unsafe scheme is refused at the field, never stored", async ({
 
   const field = component.getByPlaceholder("https://...");
   await field.fill("javascript:alert(1)");
+  // While the draft is live: binding it straight to `src` is the bug this
+  // guards, and only an assertion BEFORE the commit can catch it.
+  await expect(component.locator("img")).toHaveAttribute("src", PNG);
+
   await field.press("Enter");
 
   await expect(
@@ -119,4 +123,16 @@ test("an inline image payload still renders", async ({ mount }) => {
     <ResponsiveImageHarness initial={{ image: PNG }} />,
   );
   await expect(component.locator("img")).toHaveCount(1);
+});
+
+test("an unsafe value already in the payload never reaches the src", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: "javascript:alert(1)" }} />,
+  );
+
+  // A hand-edited decofile never went through the field's commit path.
+  await expect(component.locator("img")).toHaveCount(0);
+  await expect(component.getByText("Preview unavailable")).toBeVisible();
 });

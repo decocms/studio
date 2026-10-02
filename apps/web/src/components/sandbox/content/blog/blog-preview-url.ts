@@ -147,9 +147,27 @@ export function applyBlogPageSlug(
 const HAS_CATEGORY_PARAM = /:(?:categorySlug|categoria|category|slug)[*?]?/;
 const ALL_CATEGORY_PARAMS = /:(?:categorySlug|categoria|category|slug)[*?]?/g;
 
+/**
+ * Whether `template` can hold a multi-segment category. Only a catch-all can:
+ * substituting `pai/filho` into a plain `:category` invents a segment the
+ * router will not match, so a nested category previews at its leaf there —
+ * the same URL the site serves.
+ */
+function routeTakesCategoryPath(template: string): boolean {
+  return /:(?:categorySlug|categoria|category|slug)\*|\/\*/.test(template);
+}
+
 /** Percent-encode each segment, so a nested path keeps its separators. */
 function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
+  return (
+    path
+      .split("/")
+      // A `.` or `..` segment is resolved away by `new URL`, walking the
+      // preview out of the blog route. Legacy slugs can still hold one.
+      .filter((segment) => segment !== "." && segment !== "..")
+      .map(encodeURIComponent)
+      .join("/")
+  );
 }
 
 /**
@@ -177,6 +195,9 @@ export function applyBlogCategorySlug(
   template: string,
   path: string,
 ): string | null {
+  if (/\/\*$/.test(template) && !HAS_CATEGORY_PARAM.test(template)) {
+    return path ? template.replace(/\/\*$/, `/${encodePath(path)}`) : null;
+  }
   if (!HAS_CATEGORY_PARAM.test(template)) return template;
   if (!path) return null;
   return template.replace(ALL_CATEGORY_PARAMS, encodePath(path));
@@ -203,9 +224,10 @@ export function buildBlogCategoryPreviewUrl({
   const template = findBlogCategorySlug(decofile);
   if (!template) return null;
 
+  const slug = str(category.slug);
   const path = applyBlogCategorySlug(
     template,
-    categoryPath(decofile, str(category.slug)),
+    routeTakesCategoryPath(template) ? categoryPath(decofile, slug) : slug,
   );
   if (!path) return null;
 
@@ -236,8 +258,11 @@ export function buildBlogPostPreviewUrl({
   const template = findBlogPageSlug(decofile);
   if (!template) return null;
 
+  const leaf = firstCategorySlug(post);
   const path = applyBlogPageSlug(template, {
-    category: categoryPath(decofile, firstCategorySlug(post)),
+    category: routeTakesCategoryPath(template)
+      ? categoryPath(decofile, leaf)
+      : leaf,
     slug: str(post.slug),
   });
   if (!path) return null;

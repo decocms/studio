@@ -395,6 +395,7 @@ export const sandbox = {
   "sandbox.itemActions.rename": "Rename",
   "sandbox.itemActions.viewJson": "View JSON",
   "sandbox.itemRow.duplicateName": "Another record uses this name",
+  "sandbox.itemRow.missingFields": "Missing: {fields}",
   "sandbox.itemRow.selectItem": "Select {title}",
   "sandbox.itemRow.variantCount": "{count} variants",
   "sandbox.listBlocks.addCard": "Add card",

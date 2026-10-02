@@ -791,7 +791,12 @@ export function renameCategoryOnPost(
     changed = true;
     return { name: category.name, slug: category.slug };
   });
-  if (!changed) return payload;
+  // Only skip the rest when there is also nothing to collapse: a post can
+  // already carry the fresh ref twice, which the dedupe below is what fixes.
+  if (!changed) {
+    const slugs = categories.map(categorySlugOf).filter(Boolean);
+    if (new Set(slugs).size === slugs.length) return payload;
+  }
   // A post that listed both the old and the new slug would now name the new
   // slug twice — keep the first occurrence. Only dedupe real slugs so we never
   // silently drop malformed (slug-less) entries.

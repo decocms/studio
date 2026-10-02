@@ -20,6 +20,19 @@ describe("isSafeImageUrl", () => {
     );
   });
 
+  it("rejects a scheme hidden behind characters the browser strips", () => {
+    // A browser deletes these before parsing, so `java\nscript:` would load.
+    expect(isSafeImageUrl("java\nscript:alert(1)")).toBe(false);
+    expect(isSafeImageUrl("java\tscript:alert(1)")).toBe(false);
+    expect(isSafeImageUrl("java\rscript:alert(1)")).toBe(false);
+    expect(isSafeImageUrl("\u0000javascript:alert(1)")).toBe(false);
+  });
+
+  it("survives malformed UTF-16 instead of throwing", () => {
+    expect(isSafeImageUrl("\uD800")).toBe(false);
+    expect(safeImageSrc("a\uD800.png")).toBe("");
+  });
+
   it("rejects the schemes that can execute", () => {
     expect(isSafeImageUrl("javascript:alert(1)")).toBe(false);
     expect(isSafeImageUrl("JaVaScRiPt:alert(1)")).toBe(false);

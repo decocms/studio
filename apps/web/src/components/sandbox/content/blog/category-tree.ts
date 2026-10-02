@@ -95,7 +95,10 @@ export function descendantSlugs(
   const seen = new Set<string>([slug]);
   let frontier = [slug];
 
-  for (let depth = 0; depth < MAX_CATEGORY_DEPTH && frontier.length; depth++) {
+  // No depth cap here, unlike the layout walk: a descendant past the cap is
+  // still a descendant, and leaving it out of the set lets the parent picker
+  // offer it and close a cycle. The visited set already bounds the walk.
+  while (frontier.length) {
     const next: string[] = [];
     for (const parent of frontier) {
       for (const child of children.get(parent) ?? []) {

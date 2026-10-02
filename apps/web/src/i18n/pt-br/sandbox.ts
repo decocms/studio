@@ -116,7 +116,7 @@ export const sandbox = {
   "sandbox.categoryEditor.noContentEmpty":
     "Esta categoria ainda não possui conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
   "sandbox.categoryEditor.parentDescription":
-    "Aninha esta categoria sob outra. Deixe vazio para uma categoria raiz.",
+    "Aninhe esta categoria sob outra. Deixe vazio para uma categoria raiz.",
   "sandbox.categoryEditor.parentLabel": "Categoria pai",
   "sandbox.categoryEditor.parentNone": "Nenhuma (categoria raiz)",
   "sandbox.categoryEditor.pickPostsTooltip":
@@ -404,6 +404,7 @@ export const sandbox = {
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
   "sandbox.itemRow.duplicateName": "Outro registro usa esse nome",
+  "sandbox.itemRow.missingFields": "Faltando: {fields}",
   "sandbox.itemRow.selectItem": "Selecionar {title}",
   "sandbox.itemRow.variantCount": "{count} variantes",
   "sandbox.listBlocks.addCard": "Adicionar card",

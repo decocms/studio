@@ -428,6 +428,50 @@ describe("subcategory routes", () => {
     );
   });
 
+  it("uses only the leaf slug on a route that cannot hold a path", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            categorySlug: "/blog/:category",
+          },
+        },
+        category: { slug: "filho" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/filho");
+  });
+
+  it("uses only the leaf slug for a post on a non-catch-all route", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            pageSlug: "/blog/:category/:slug",
+          },
+        },
+        post: { slug: "my-post", categories: [{ slug: "filho" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/filho/my-post");
+  });
+
+  it("fills a standalone /* catch-all, the shape generic Pages use", () => {
+    expect(applyBlogCategorySlug("/blog/*", "pai/filho")).toBe(
+      "/blog/pai/filho",
+    );
+  });
+
+  it("drops a dot segment that would walk out of the blog route", () => {
+    expect(applyBlogCategorySlug("/blog/:category*", "pai/../etc")).toBe(
+      "/blog/pai/etc",
+    );
+  });
+
   it("builds a category preview at its full path", () => {
     expect(
       buildBlogCategoryPreviewUrl({

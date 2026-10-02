@@ -1794,7 +1794,9 @@ function ItemList({
                     invalid={entry.missing.length > 0}
                     invalidReason={
                       entry.missing.length > 0
-                        ? `Missing: ${entry.missing.join(", ")}`
+                        ? t("sandbox.itemRow.missingFields", {
+                            fields: entry.missing.join(", "),
+                          })
                         : undefined
                     }
                     warning={entry.duplicateName}

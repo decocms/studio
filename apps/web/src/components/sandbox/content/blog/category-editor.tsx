@@ -237,11 +237,16 @@ export function CategoryEditor({
       writes[key] = buildBlogBlock(key, "posts", stampPostModified(next));
       posts += 1;
     }
-    for (const { key, payload } of listBlogPayloads(decofile, "categories")) {
-      if (key === blockKey) continue;
-      const next = reparentCategory(payload, oldSlug, ref.slug);
-      if (next === payload) continue;
-      writes[key] = buildBlogBlock(key, "categories", next);
+    // Children only move when the slug itself changed; a name-only save would
+    // otherwise rewrite every child block with an identical payload, and each
+    // rewrite is a chance to clobber a concurrent edit.
+    if (oldSlug !== ref.slug) {
+      for (const { key, payload } of listBlogPayloads(decofile, "categories")) {
+        if (key === blockKey) continue;
+        const next = reparentCategory(payload, oldSlug, ref.slug);
+        if (next === payload) continue;
+        writes[key] = buildBlogBlock(key, "categories", next);
+      }
     }
     return { writes, posts };
   };

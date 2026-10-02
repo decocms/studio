@@ -729,7 +729,6 @@ export function PostsWorkspace({
                 className={cn(
                   "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
                   isCollapsed ? "w-11" : "w-72",
-                  // Dimmed, not hidden: the lane still explains why it's out of reach.
                   dragOverLane === status && "border-primary bg-primary/5",
                 )}
               >
@@ -1070,11 +1069,11 @@ function PostRow({
             </span>
           )}
           {post.duplicateTitle && (
-            <span
-              className="inline-flex items-center gap-1 text-xs text-warning"
-              title={t("sandbox.postBoard.duplicateTitle")}
-            >
-              <Copy01 size={12} />
+            <span className="inline-flex items-center gap-1 text-xs text-warning">
+              <Copy01 size={12} aria-hidden />
+              <span className="sr-only">
+                {t("sandbox.postBoard.duplicateTitle")}
+              </span>
             </span>
           )}
           {hasDate && (

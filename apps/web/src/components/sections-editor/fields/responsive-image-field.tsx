@@ -81,7 +81,11 @@ export function ResponsiveImageField({
     setUrlNotice(null);
   }
 
-  const errored = !!active && failedUrl === active;
+  // Sanitized at the sink too, not only on commit: a value already in the
+  // payload — hand-edited, or written by another editor — never passed
+  // through `commitUrl`.
+  const src = safeImageSrc(active);
+  const errored = !!active && (failedUrl === active || !src);
   const quality = getQualityFromUrl(active);
   const urlLabel = onMobile
     ? t("sectionsEditor.imageField.mobileUrlLabel")
@@ -109,7 +113,7 @@ export function ResponsiveImageField({
   });
 
   return (
-    <div className="group/image relative space-y-2">
+    <div {...dropProps} className="group/image relative space-y-2">
       {label && <Label className="text-muted-foreground">{label}</Label>}
 
       {/* Over the image, not above it: a bar placed above is clipped when the
@@ -206,7 +210,6 @@ export function ResponsiveImageField({
 
       <button
         type="button"
-        {...dropProps}
         onClick={() => setPickerOpen(true)}
         aria-label={t("sectionsEditor.imageField.replaceImage")}
         className={cn(
@@ -217,9 +220,9 @@ export function ResponsiveImageField({
           isPending && "pointer-events-none opacity-60",
         )}
       >
-        {active && !errored ? (
+        {src && !errored ? (
           <img
-            src={active}
+            src={src}
             alt={alt ?? ""}
             onError={() => setFailedUrl(active)}
             className="block h-auto w-full"

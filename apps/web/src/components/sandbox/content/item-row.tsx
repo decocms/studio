@@ -166,12 +166,7 @@ export function ItemRow({
         {warning && !invalid && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span
-                className={cn(
-                  "flex shrink-0 items-center",
-                  active ? "text-accent-foreground" : "text-warning",
-                )}
-              >
+              <span className="flex shrink-0 items-center text-warning">
                 <AlertCircle size={14} />
               </span>
             </TooltipTrigger>
