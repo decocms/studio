@@ -3,14 +3,20 @@
  * qa-screenshot — capture a page screenshot from inside the sandbox.
  *
  * The sandbox-hosted claude-code harness has no Decopilot `take_screenshot`
- * built-in, so this is its equivalent: headless Chromium via playwright-core,
- * both baked into the image. Unlike the hosted tool it can also reach the
- * sandbox's OWN dev server on localhost, which is the reason a browser lives
- * here at all.
+ * built-in, so this is its equivalent: headless Chromium or WebKit via
+ * playwright-core, all baked into the image. Unlike the hosted tool it can also
+ * reach the sandbox's OWN dev server on localhost, which is the reason a
+ * browser lives here at all.
  *
  * Usage:
- *   qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>]
- *                [--console] [--flutter] [--label=<text>]
+ *   qa-screenshot <url> <outfile> [--engine=chromium|webkit] [--mobile] [--full]
+ *                [--selector=<css>] [--console] [--flutter] [--label=<text>]
+ *
+ * `--engine=webkit` renders in Playwright's WebKit, the engine behind Safari.
+ * Chromium alone passes bugs that exist only on iOS Safari: WebKit does not
+ * re-align a smooth programmatic scroll to its `scroll-snap` points, so a
+ * carousel that steps with `scrollBy(clientWidth)` leaves a slide cut in half
+ * there and looks right in Chromium.
  *
  * Default framing is the top viewport. `--full` captures the whole scrollable
  * page (clipped at a height ceiling). `--selector=<css>` captures just that one
@@ -21,7 +27,9 @@
  * pick their layout from the UA server-side, so a narrowed desktop returns
  * desktop markup and a plausible but WRONG "mobile" shot. Playwright's
  * `userAgent` sets both the request header and `navigator.userAgent`, so
- * server- and client-side sniffing both see the phone.
+ * server- and client-side sniffing both see the phone. With
+ * `--engine=webkit` the phone is Playwright's own iPhone descriptor, whose
+ * shorter viewport leaves room for Safari's toolbars as a real one does.
  *
  * `--flutter` captures a Flutter web build. Flutter renders the entire app
  * into ONE <canvas>: the DOM holds no text and no widgets, so a plain capture
@@ -41,16 +49,24 @@
  */
 const path = require("node:path");
 
-// playwright-core is installed globally in the image (API only — the browser is
-// Debian's `chromium` package, at QA_CHROMIUM). Resolve it from the global
+// playwright-core is installed globally in the image. Chromium is Debian's
+// `chromium` package, at QA_CHROMIUM; WebKit is Playwright's own build, found
+// through PLAYWRIGHT_BROWSERS_PATH. Resolve playwright-core from the global
 // module root rather than relative to this script — and lazily, so the pure
-// label-matching below is requirable (and testable) off the image, where that
-// global module root does not exist.
+// helpers below are requirable (and testable) off the image, where that global
+// module root does not exist.
 const GLOBAL_MODULES =
   process.env.QA_SCREENSHOT_MODULES || "/usr/local/lib/node_modules";
-const chromium = () =>
-  require(path.join(GLOBAL_MODULES, "playwright-core")).chromium;
+const playwright = () => require(path.join(GLOBAL_MODULES, "playwright-core"));
 const CHROMIUM_PATH = process.env.QA_CHROMIUM || "/usr/bin/chromium";
+
+const ENGINES = ["chromium", "webkit"];
+/** The descriptor `--mobile --engine=webkit` emulates: the same 390px width as
+ *  the Chromium phone below, so a pair of shots stays comparable. */
+const WEBKIT_PHONE = "iPhone 13";
+
+const USAGE =
+  "usage: qa-screenshot <url> <outfile> [--engine=chromium|webkit] [--mobile] [--full] [--selector=<css>] [--console] [--flutter] [--label=<text>]";
 
 const MOBILE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
@@ -93,6 +109,78 @@ const DEVICES = {
     userAgent: MOBILE_USER_AGENT,
   },
 };
+
+/**
+ * Read the command line into options, or into the usage error to print. Pure,
+ * so the flag handling is testable off the image.
+ */
+function parseArgs(argv) {
+  const opts = {};
+  const positional = [];
+  for (const a of argv) {
+    if (a.startsWith("--")) {
+      const [k, ...v] = a.slice(2).split("=");
+      opts[k] = v.length ? v.join("=") : true;
+    } else positional.push(a);
+  }
+  const [url, outfile] = positional;
+  if (!url || !outfile) return { error: USAGE };
+  const engine = opts.engine === undefined ? "chromium" : opts.engine;
+  if (!ENGINES.includes(engine)) {
+    return {
+      error: `--engine must be one of ${ENGINES.join(", ")}, got ${JSON.stringify(engine)}\n${USAGE}`,
+    };
+  }
+  // Flutter-only: frame one widget from the semantics tree by its text.
+  const label = typeof opts.label === "string" ? opts.label : null;
+  return {
+    url,
+    outfile,
+    engine,
+    mobile: opts.mobile === true,
+    fullPage: opts.full === true,
+    // Target a specific element (e.g. `--selector='[data-section=hero]'`) for
+    // a focused before/after of just the affected component instead of the
+    // whole page or the top viewport.
+    selector: typeof opts.selector === "string" ? opts.selector : null,
+    wantsConsole: opts.console === true,
+    label,
+    // `--label` needs the semantics tree, which only `--flutter` builds. Imply
+    // it rather than failing: without this the run reports "no semantics tree
+    // — is this a Flutter web build?" and points the agent at the build
+    // instead of at the missing flag.
+    flutter: opts.flutter === true || label !== null,
+    type: /\.jpe?g$/i.test(outfile) ? "jpeg" : "png",
+  };
+}
+
+/** The browser context to open: the shared desktop or phone framing, except a
+ *  phone in WebKit, which is Playwright's iPhone descriptor. */
+function contextOptions({ engine, mobile }, devices) {
+  if (!mobile) return DEVICES.desktop;
+  return engine === "webkit" ? devices[WEBKIT_PHONE] : DEVICES.mobile;
+}
+
+/**
+ * --no-sandbox: the container drops all capabilities, so Chromium's own setuid
+ * sandbox can't initialize; the pod is the isolation boundary here.
+ *
+ * CanvasKit needs WebGL, and a headless container has no GPU. Chromium's
+ * automatic software fallback is deprecated and already warns; opting in
+ * explicitly is what keeps a Flutter capture from going blank when that
+ * fallback is finally removed.
+ *
+ * WebKit takes neither flag: it runs Playwright's bundled build as is.
+ */
+function launchOptions({ engine, flutter }) {
+  if (engine === "webkit") return {};
+  return {
+    executablePath: CHROMIUM_PATH,
+    args: flutter
+      ? ["--no-sandbox", "--enable-unsafe-swiftshader"]
+      : ["--no-sandbox"],
+  };
+}
 
 /**
  * Scroll the whole page so lazy / IntersectionObserver-driven sections mount
@@ -226,52 +314,26 @@ function findSemanticsByLabel(nodes, label) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const opts = {};
-  const positional = [];
-  for (const a of args) {
-    if (a.startsWith("--")) {
-      const [k, ...v] = a.slice(2).split("=");
-      opts[k] = v.length ? v.join("=") : true;
-    } else positional.push(a);
-  }
-  const [url, outfile] = positional;
-  if (!url || !outfile) {
-    console.error(
-      "usage: qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>] [--console] [--flutter] [--label=<text>]",
-    );
+  const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.error) {
+    console.error(parsed.error);
     process.exit(2);
   }
-  const mobile = opts.mobile === true;
-  const device = mobile ? DEVICES.mobile : DEVICES.desktop;
-  const fullPage = opts.full === true;
-  // Target a specific element (e.g. `--selector='[data-section=hero]'`) for a
-  // focused before/after of just the affected component instead of the whole
-  // page or the top viewport.
-  const selector = typeof opts.selector === "string" ? opts.selector : null;
-  const wantsConsole = opts.console === true;
-  // Flutter-only: frame one widget from the semantics tree by its text.
-  const label = typeof opts.label === "string" ? opts.label : null;
-  // `--label` needs the semantics tree, which only `--flutter` builds. Imply it
-  // rather than failing: without this the run reports "no semantics tree — is
-  // this a Flutter web build?" and points the agent at the build instead of at
-  // the missing flag.
-  const flutter = opts.flutter === true || label !== null;
-  const type = /\.jpe?g$/i.test(outfile) ? "jpeg" : "png";
-
-  // --no-sandbox: the container drops all capabilities, so Chromium's own
-  // setuid sandbox can't initialize; the pod is the isolation boundary here.
-  //
-  // CanvasKit needs WebGL, and a headless container has no GPU. Chromium's
-  // automatic software fallback is deprecated and already warns; opting in
-  // explicitly is what keeps a Flutter capture from going blank when that
-  // fallback is finally removed.
-  const browser = await chromium().launch({
-    executablePath: CHROMIUM_PATH,
-    args: flutter
-      ? ["--no-sandbox", "--enable-unsafe-swiftshader"]
-      : ["--no-sandbox"],
-  });
+  const {
+    url,
+    outfile,
+    engine,
+    mobile,
+    fullPage,
+    selector,
+    wantsConsole,
+    label,
+    flutter,
+    type,
+  } = parsed;
+  const pw = playwright();
+  const device = contextOptions(parsed, pw.devices);
+  const browser = await pw[engine].launch(launchOptions(parsed));
   try {
     const context = await browser.newContext(device);
     const page = await context.newPage();
@@ -406,7 +468,7 @@ async function main() {
         ? "full page"
         : "viewport";
     console.log(
-      `saved ${outfile} (${mobile ? "mobile" : "desktop"} ${scale}, ${framed})` +
+      `saved ${outfile} (${engine} ${mobile ? "mobile" : "desktop"} ${scale}, ${framed})` +
         (truncated
           ? `\nNOTE: clipped — ${truncated}px of page height omitted to stay under the ${MAX_IMAGE_HEIGHT}px image limit.`
           : ""),
@@ -441,7 +503,7 @@ async function main() {
   }
 }
 
-// Only when run as a command — `require`ing this file gets the pure helper
+// Only when run as a command — `require`ing this file gets the pure helpers
 // exported below without launching a browser.
 if (require.main === module) {
   main().catch((err) => {
@@ -450,4 +512,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { findSemanticsByLabel };
+module.exports = {
+  contextOptions,
+  findSemanticsByLabel,
+  launchOptions,
+  parseArgs,
+};

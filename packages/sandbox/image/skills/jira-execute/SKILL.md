@@ -43,6 +43,12 @@ Nobody else will. Do not hand over on a green test suite.
 - Capture evidence with `qa-screenshot <url> <path>.png [--mobile]`, on desktop
   AND mobile, and `Read` each file. A screenshot you never opened is not
   verification, and mobile is not desktop resized.
+- A mobile change to how something looks or moves (scrolling, a carousel, a
+  modal, a sticky element, an animation) is measured in WebKit too, Safari's
+  engine: repeat the mobile capture with `--engine=webkit`, and drive the
+  interaction there with `webkit.launch()` and `devices["iPhone 13"]` from
+  `/usr/local/lib/node_modules/playwright-core`. Chromium passing is not iOS
+  passing.
 
 ## Report on the ISSUE
 
@@ -53,8 +59,9 @@ report — the issue is the only place your work becomes visible.
   (`key: "pull-request"`), and the deploy preview as another (`key: "preview"`).
   Do both — a URL buried in a comment is not something a person clicks.
 - `JIRA_COMMENT_ADD` posts your report (markdown, tables included). Say what you
-  changed, what you MEASURED on the preview, and what you deliberately left
-  alone. Name anything the issue asked for that you did not do.
+  changed, what you MEASURED on the preview and in which engines, and what you
+  deliberately left alone. Name anything the issue asked for that you did not
+  do.
 - To show evidence, write each screenshot to `org/output/<name>.png` and
   reference it in that comment as `![what it shows](org/output/<name>.png)` — it
   is uploaded to the issue and rendered inline. A before/after table of two
