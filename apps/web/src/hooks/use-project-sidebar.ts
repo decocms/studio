@@ -58,6 +58,7 @@ export function useProjectSidebar(): Sidebar {
 
 /** Write through the cache, then send the cache's document. */
 function useSidebarWrite<T>(
+  field: string,
   pick: (sidebar: Sidebar) => T,
   put: (sidebar: Sidebar, value: T) => Sidebar,
   send: (value: T) => Promise<T>,
@@ -65,22 +66,28 @@ function useSidebarWrite<T>(
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const key = KEYS.projectSidebar(org.id);
+  const mutationKey = [...key, "write", field];
   const read = () => queryClient.getQueryData<Sidebar>(key) ?? EMPTY_SIDEBAR;
 
   return useMutation({
-    mutationKey: [...key, "write"],
+    mutationKey,
     mutationFn: async (_update: (value: T) => T) => send(pick(read())),
     onMutate: (update) => {
-      const prev = queryClient.getQueryData<Sidebar>(key);
-      const base = prev ?? EMPTY_SIDEBAR;
-      queryClient.setQueryData<Sidebar>(key, put(base, update(pick(base))));
-      return { prev };
+      const base = read();
+      const prevValue = pick(base);
+      queryClient.setQueryData<Sidebar>(key, put(base, update(prevValue)));
+      return { prevValue };
     },
     onError: (_error, _update, context) => {
-      queryClient.setQueryData(key, context?.prev ?? EMPTY_SIDEBAR);
+      // This field's last write reverts its own slice onto the current cache.
+      if (context && queryClient.isMutating({ mutationKey }) === 1) {
+        queryClient.setQueryData<Sidebar>(key, (sidebar) =>
+          put(sidebar ?? EMPTY_SIDEBAR, context.prevValue),
+        );
+      }
     },
     onSettled: () => {
-      // Only the last write refetches, so a sibling's optimistic value survives.
+      // Only the last write of either field refetches, so a sibling's optimistic value survives.
       if (queryClient.isMutating({ mutationKey: [...key, "write"] }) === 1) {
         queryClient.invalidateQueries({ queryKey: key });
       }
@@ -92,6 +99,7 @@ function useSidebarWrite<T>(
 export function useUpdateSidebarPreferences() {
   const studio = useStudioTools();
   return useSidebarWrite<SidebarPreferences>(
+    "preferences",
     (sidebar) => sidebar.preferences,
     (sidebar, preferences) => ({ ...sidebar, preferences }),
     async (preferences) =>
@@ -106,6 +114,7 @@ export function useUpdateSidebarPreferences() {
 export function useUpdateProjectFolders() {
   const studio = useStudioTools();
   return useSidebarWrite<ProjectFolder[]>(
+    "folders",
     (sidebar) => sidebar.folders,
     (sidebar, folders) => ({ ...sidebar, folders }),
     async (folders) =>
