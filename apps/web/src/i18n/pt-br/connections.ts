@@ -6,6 +6,7 @@ export const connections = {
   "connections.createConnectionDialog.argumentsPlaceholder":
     "arg1 arg2 --flag value",
   "connections.createConnectionDialog.cancelButton": "Cancelar",
+  "connections.createConnectionDialog.closeButton": "Fechar",
   "connections.createConnectionDialog.commandLabel": "Comando *",
   "connections.createConnectionDialog.commandPlaceholder":
     "node, bun, python...",
