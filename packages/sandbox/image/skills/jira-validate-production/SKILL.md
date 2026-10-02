@@ -59,6 +59,12 @@ change has actually reached production:
 - Where the issue is visual or interactive, capture evidence with
   `qa-screenshot <url> <path>.png [--mobile]` on desktop AND mobile and `Read`
   each file. A screenshot you never opened is not verification.
+- A mobile change to how something looks or moves (scrolling, a carousel, a
+  modal, a sticky element, an animation) is measured in WebKit too, Safari's
+  engine: repeat the mobile capture with `--engine=webkit`, and drive the
+  interaction there with `webkit.launch()` and `devices["iPhone 13"]` from
+  `/usr/local/lib/node_modules/playwright-core`. Chromium passing is not iOS
+  passing.
 - Check the page next to it too: the most common post-deploy defect is not
   "the fix is missing" but "the fix broke the thing beside it" — a duplicated
   tag, a page that now 500s, a layout that shifted. One quick look at the
@@ -72,8 +78,8 @@ Per issue, as soon as that issue is settled — not one summary at the end, whic
 a run that dies on the tenth issue never writes:
 
 - `JIRA_COMMENT_ADD` with `issueKey` — open with the verdict in ONE line
-  (validated in production, or not), then what you checked, on which URLs, and
-  what you observed. Screenshots go to `/app/org/output/<name>.png` and are
+  (validated in production, or not), then what you checked, on which URLs and in
+  which engines, and what you observed. Screenshots go to `/app/org/output/<name>.png` and are
   referenced as `![what it shows](/app/org/output/<name>.png)` so they render inline.
   This comment is the record that someone looked at the live site.
 - `JIRA_ISSUE_TRANSITION` with `issueKey` — on a pass, the column your team

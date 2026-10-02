@@ -52,6 +52,12 @@ above, web links included.
   on desktop AND mobile, and `Read` each file. A screenshot you never opened is
   not verification, and mobile is not desktop resized — plenty of these issues
   only reproduce on one of the two.
+- A mobile change to how something looks or moves (scrolling, a carousel, a
+  modal, a sticky element, an animation) is measured in WebKit too, Safari's
+  engine: repeat the mobile capture with `--engine=webkit`, and drive the
+  interaction there with `webkit.launch()` and `devices["iPhone 13"]` from
+  `/usr/local/lib/node_modules/playwright-core`. Chromium passing is not iOS
+  passing.
 
 ## Record the verdict on the ISSUE
 
@@ -61,8 +67,8 @@ report.
 - `JIRA_COMMENT_ADD` posts your review (markdown, tables included). Open with
   the verdict in ONE line — approved, or changes requested — naming the pull
   request and the head commit you reviewed (`gh pr view <n> --json
-  headRefOid`), then the evidence, then the findings, each naming a file and
-  line or a screenshot. The commit is what tells the next reader whether
+  headRefOid`), then the evidence and the engines it was measured in, then the
+  findings, each naming a file and line or a screenshot. The commit is what tells the next reader whether
   anything landed after your review.
 - A finding is a defect you OBSERVED, not a preference. Say what you did, what
   you expected, and what happened instead. If you found nothing, say that
