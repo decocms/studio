@@ -134,6 +134,11 @@ export async function triggerRunForSettledMove(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
   target: { issueId: string; changelogId?: string; now?: number },
+  // Lets a caller looping over many issues on the same board memoize this fetch.
+  getBoardColumns?: (
+    client: JiraClient,
+    boardId: string,
+  ) => Promise<string[][]>,
 ): Promise<TriggerOutcome> {
   if (!integration.enabled) return "disabled";
   const orgId = integration.organizationId;
@@ -153,7 +158,10 @@ export async function triggerRunForSettledMove(
   const direction =
     needsDirection(rules) && integration.boardId
       ? directionOf(
-          await client.getBoardColumnStatusIds(integration.boardId),
+          await (
+            getBoardColumns ??
+            ((c, boardId) => c.getBoardColumnStatusIds(boardId))
+          )(client, integration.boardId),
           from.id,
           change.toId,
         )
