@@ -85,7 +85,9 @@ function boundedJsonRecord(fieldName: string) {
     .nullable()
     .refine(
       (value) =>
-        value === null || JSON.stringify(value).length <= MAX_JSON_FIELD_BYTES,
+        value === null ||
+        new TextEncoder().encode(JSON.stringify(value)).length <=
+          MAX_JSON_FIELD_BYTES,
       {
         message: `${fieldName} must serialize to at most ${MAX_JSON_FIELD_BYTES} bytes`,
       },
