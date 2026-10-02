@@ -3,7 +3,6 @@ import {
   type StudioContext,
   getOrganizationId,
   getUserId,
-  hasOrganization,
   isAuthenticated,
   requireAuth,
   requireOrganization,
@@ -97,20 +96,6 @@ const createMockContext = (
 });
 
 describe("StudioContext Utilities", () => {
-  describe("hasOrganization", () => {
-    it("should return true when organization is defined", () => {
-      const ctx = createMockContext({
-        organization: { id: "org_1", slug: "test-org", name: "Test Org" },
-      });
-      expect(hasOrganization(ctx)).toBe(true);
-    });
-
-    it("should return false when organization is undefined", () => {
-      const ctx = createMockContext();
-      expect(hasOrganization(ctx)).toBe(false);
-    });
-  });
-
   describe("getOrganizationId", () => {
     it("should return organization ID when defined", () => {
       const ctx = createMockContext({
