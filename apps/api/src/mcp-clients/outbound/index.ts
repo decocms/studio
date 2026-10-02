@@ -23,6 +23,7 @@ import {
   AuthTransport,
   MonitoringTransport,
 } from "./transports";
+import { createNoRedirectFetch, guardAgainstPrivateUrl } from "../url-security";
 
 // Singleton pool for STDIO connections — child processes must persist across requests.
 // Separate from the per-request pool on StudioContext (used by HTTP/SSE).
@@ -99,17 +100,29 @@ export async function createOutboundClient(
         throw new Error(`${connection.connection_type} connection missing URL`);
       }
       const connectionUrl = connection.connection_url;
+      // Transports follow redirects by default — refuse them, closing the same SSRF bypass the test/discovery paths already close.
+      const noRedirectFetch = createNoRedirectFetch();
       const makeBaseTransport =
         connection.connection_type === "SSE"
           ? (url: URL, headers: Record<string, string>) =>
-              new SSEClientTransport(url, { requestInit: { headers } })
+              new SSEClientTransport(url, {
+                requestInit: { headers },
+                fetch: noRedirectFetch,
+              })
           : (url: URL, headers: Record<string, string>) =>
               new StreamableHTTPClientTransport(url, {
                 requestInit: { headers },
+                fetch: noRedirectFetch,
               });
 
       // Deferred: only builds headers (DB lookup + JWT issuance) on a cache miss.
       return ctx.getOrCreateClient(async () => {
+        // A URL safe at create/update time can resolve privately by connect time (DNS rebinding) — vet it on every connect.
+        const guardError = await guardAgainstPrivateUrl(connectionUrl);
+        if (guardError) {
+          throw new Error(guardError);
+        }
+
         const headers = await buildRequestHeaders(connection, ctx, superUser);
 
         const httpParams = connection.connection_headers;
