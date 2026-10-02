@@ -359,6 +359,8 @@ export const createTaskBoardImportRoutes = () => {
           .select(["id", "key_seq", "external_key", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
           .where("external_key", "in", keys)
+          // A Jira run's anchor is not a board card.
+          .where("source", "is", null)
           .where((eb) =>
             eb.or([
               eb("dismissed_at", "is not", null),
@@ -393,6 +395,8 @@ export const createTaskBoardImportRoutes = () => {
           .selectFrom("task_board_items")
           .select(["id", "key_seq", "title", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
+          // A Jira run's anchor is not a board card.
+          .where("source", "is", null)
           .where((eb) =>
             eb.or([
               eb("dismissed_at", "is not", null),

@@ -838,6 +838,42 @@ describe("Task Board Import Route", () => {
     expect(activity).toHaveLength(0);
   });
 
+  it("a Jira run's anchor sharing a title or key is never matched, updated, or claimed", async () => {
+    const anchor = await new TaskBoardStorage(database.db).create({
+      organizationId: "org_board",
+      title: "LCP acima de 4s",
+      status: "in_progress",
+      source: "jira",
+      externalKey: "diag:perf:lcp",
+      by: "user_1",
+    });
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "LCP acima de 4s",
+            description: "v2",
+            externalKey: "diag:perf:lcp",
+          },
+        ],
+      }),
+    );
+    const card = await cardTitled("LCP acima de 4s");
+    expect(card.id).not.toBe(anchor.id);
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      items: [entry(0, "created", card)],
+    });
+    const unchanged = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("id", "=", anchor.id)
+      .executeTakeFirstOrThrow();
+    expect(unchanged.description).toBeNull();
+  });
+
   it("a title repeated in one request folds into the card its first item created", async () => {
     const res = await app.fetch(
       post("org_board", "svc-secret", {
