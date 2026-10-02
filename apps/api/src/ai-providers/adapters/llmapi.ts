@@ -16,7 +16,7 @@ function fetchModelsWithRetry(apiKey: string): Promise<Response> {
     "LLMAPI listModels",
     `${LLMAPI_BASE_URL}/models`,
     {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      headers: { Authorization: `Bearer ${apiKey || "not-needed"}` },
       signal: AbortSignal.timeout(15_000),
     },
   );
