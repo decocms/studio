@@ -74,3 +74,19 @@ test("clearing the mobile URL drops the key instead of storing an empty string",
   await expect.poll(() => value(component)).toMatchObject({ image: PNG });
   await expect.poll(() => value(component)).not.toHaveProperty("mobileImage");
 });
+
+test("a javascript: URL never reaches the img src", async ({ mount }) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: "javascript:alert(1)" }} />,
+  );
+
+  await expect(component.locator("img")).toHaveCount(0);
+  await expect(component.getByText("Preview unavailable")).toBeVisible();
+});
+
+test("an inline image payload still renders", async ({ mount }) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await expect(component.locator("img")).toHaveCount(1);
+});

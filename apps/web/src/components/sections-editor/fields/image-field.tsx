@@ -11,6 +11,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
+import { isSafeImageUrl } from "./safe-image-url";
 import { useImageUpload } from "./use-image-upload";
 
 export function ImageField({
@@ -27,6 +28,8 @@ export function ImageField({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageErrored, setImageErrored] = useState(false);
+  // An author types this field, so an unsafe scheme must never reach `src`.
+  const unsafe = !!strValue && !isSafeImageUrl(strValue);
   const fileName = strValue ? basename(strValue) : "";
   const ext = fileName ? extension(fileName) : "";
 
@@ -88,7 +91,7 @@ export function ImageField({
                 compact ? "h-28" : "h-40",
               )}
             >
-              {!imageErrored && (
+              {!imageErrored && !unsafe && (
                 <img
                   // Remount whenever the URL changes so onLoad/onError
                   // wire up fresh for the new src — without this the
@@ -104,7 +107,7 @@ export function ImageField({
                   onError={() => setImageErrored(true)}
                 />
               )}
-              {imageErrored && (
+              {(imageErrored || unsafe) && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
                   <Image01 size={20} />
                   <p className="text-xs">
@@ -112,7 +115,7 @@ export function ImageField({
                   </p>
                 </div>
               )}
-              {!imageLoaded && !imageErrored && (
+              {!imageLoaded && !imageErrored && !unsafe && (
                 <div className="absolute inset-0 animate-pulse bg-muted/60" />
               )}
               <ClickToReplaceOverlay />

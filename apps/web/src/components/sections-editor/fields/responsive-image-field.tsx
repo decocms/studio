@@ -12,6 +12,7 @@ import {
   setQualityOnUrl,
 } from "./media-url-params";
 import { ToolbarButton, ToolbarDivider } from "../toolbar-button";
+import { isSafeImageUrl } from "./safe-image-url";
 import { useImageUpload } from "./use-image-upload";
 
 /**
@@ -65,7 +66,9 @@ export function ResponsiveImageField({
   const mobileUrl = str(mobileValue);
   const active = onMobile ? mobileUrl : str(value);
 
-  const errored = !!active && failedUrl === active;
+  // An unsafe scheme is treated as an unrenderable source, not just an
+  // unloadable one: the author typed it, so it must never reach `src`.
+  const errored = !!active && (failedUrl === active || !isSafeImageUrl(active));
   const quality = getQualityFromUrl(active);
   const urlLabel = onMobile
     ? t("sectionsEditor.imageField.mobileUrlLabel")
