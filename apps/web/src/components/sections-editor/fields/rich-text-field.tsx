@@ -102,9 +102,12 @@ export function RichTextField({
       },
     },
     onUpdate: ({ editor }) => {
+      if (editor.isEmpty) {
+        onChangeRef.current("");
+        return;
+      }
       const html = editor.getHTML();
-      const next = inline ? toInlineHtml(html) : html;
-      onChangeRef.current(next === "<p></p>" || next === "" ? "" : next);
+      onChangeRef.current(inline ? toInlineHtml(html) : html);
     },
   });
 
