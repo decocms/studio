@@ -11,8 +11,8 @@ export const ReadInputSchema = z.object({
     .describe(
       "File path. Prefer relative paths — they resolve against the project " +
         "root (e.g. 'src/index.ts'). Absolute paths are accepted but only " +
-        "for files you already know exist outside the project; do not guess " +
-        "one.",
+        "for org files under `/app/org/` and files you already know exist " +
+        "outside the project; do not guess one.",
     ),
   offset: z
     .number()
@@ -25,12 +25,20 @@ export const ReadInputSchema = z.object({
 });
 
 export const WriteInputSchema = z.object({
-  path: z.string().describe("File path relative to project root"),
+  path: z
+    .string()
+    .describe(
+      "File path relative to project root, or an absolute `/app/org/...` path",
+    ),
   content: z.string().describe("The full file content to write"),
 });
 
 export const EditInputSchema = z.object({
-  path: z.string().describe("File path relative to project root"),
+  path: z
+    .string()
+    .describe(
+      "File path relative to project root, or an absolute `/app/org/...` path",
+    ),
   old_string: z.string().describe("The exact text to find and replace"),
   new_string: z
     .string()
@@ -112,12 +120,12 @@ export const WRITE_DESCRIPTION =
   // (durable, Library-visible, deck editing).
   "Viewable HTML artifacts get a LIVE PREVIEW in the chat side panel " +
   "and persist in the org's shared folder when written under " +
-  "`org/home/` (lowercase-kebab names):\n" +
-  "- Presentation decks / slides → `org/home/decks/<name>.html` " +
+  "`/app/org/home/` (lowercase-kebab names):\n" +
+  "- Presentation decks / slides → `/app/org/home/decks/<name>.html` " +
   "— load the slides skill (`skill({ id: 'core/slides' })`) FIRST " +
   "and create the deck with its CLI.\n" +
   "- Standalone pages (landing pages, brand kits, one-pagers) → " +
-  "`org/home/pages/<name>.html` — single self-contained " +
+  "`/app/org/home/pages/<name>.html` — single self-contained " +
   "HTML file.\n" +
   "HTML written anywhere else will not render a preview.";
 
@@ -145,17 +153,20 @@ export const BASH_DESCRIPTION =
   "the agent has a repo. Never `cd` to an absolute path you guessed " +
   "(there is no `/home/sandbox` project dir); run git and build commands " +
   "as-is from the default cwd. Timeout default 30s, max 2min.\n\n" +
-  "The organization filesystem is mounted at `org/`:\n" +
-  "- `org/home/` — the org's shared home folder (editable, " +
+  "The organization filesystem is mounted at `/app/org/` (use these " +
+  "absolute paths; `org/...` in older messages or skills means " +
+  "`/app/org/...`):\n" +
+  "- `/app/org/home/` — the org's shared home folder (editable, " +
   "shared across runs). Organize it " +
   "freely; check it before non-trivial work and record durable facts, " +
   "decisions, and learnings as small markdown files.\n" +
-  "- `org/public/<set>/` — curated read-only skill sets, mounted here. Your " +
+  "- `/app/org/public/<set>/` — curated read-only skill sets, mounted here. Your " +
   "skills are listed in the <available-skills> catalog; load one with the " +
-  "`skill` tool before applying it (don't `ls org/public/` to discover them).\n" +
-  "- `org/upload/` — files the user attached to this conversation are " +
+  "`skill` tool before applying it (don't `ls /app/org/public/` to discover " +
+  "them).\n" +
+  "- `/app/org/upload/` — files the user attached to this conversation are " +
   "already here; read them directly.\n" +
-  "- `org/output/` — write deliverables here; they are shared back to the " +
+  "- `/app/org/output/` — write deliverables here; they are shared back to the " +
   "organization under this run's folder.\n\n" +
   "To make a presentation/slides/deck, ALWAYS use the `slides` skill " +
   "(HTML decks with a live editable preview) — load it with " +

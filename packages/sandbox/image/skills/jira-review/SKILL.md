@@ -68,8 +68,8 @@ report.
   you expected, and what happened instead. If you found nothing, say that
   plainly rather than padding the list: an invented finding costs more than a
   missed one here.
-- To show evidence, write each screenshot to `org/output/<name>.png` and
-  reference it in that comment as `![what it shows](org/output/<name>.png)` — it
+- To show evidence, write each screenshot to `/app/org/output/<name>.png` and
+  reference it in that comment as `![what it shows](/app/org/output/<name>.png)` — it
   is uploaded to the issue and rendered inline. A before/after table of two
   images reads best.
 - `JIRA_REMOTE_LINK_ADD` adds the preview you reviewed (`key: "preview"`) if the

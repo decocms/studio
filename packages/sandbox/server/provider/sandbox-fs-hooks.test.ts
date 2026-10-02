@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { createSandboxFsHooks, opDeadlineMs } from "./sandbox-fs-hooks";
 
 type SandboxFsProvider = Parameters<typeof createSandboxFsHooks>[0];
@@ -103,9 +104,9 @@ describe("createSandboxFsHooks", () => {
   });
 
   test("stamps x-thread-id on every daemon call when the lifecycle carries a threadId", async () => {
-    // The daemon's `linked()` middleware repoints `org/output` at the thread's
-    // org-fs subtree keyed on this header. Without it, the fs write's MkdirAll
-    // materializes `org/output` as a real dir on ephemeral disk and every
+    // The daemon's `linked()` middleware repoints `/app/org/output` at the
+    // thread's org-fs subtree keyed on this header. Without it, the fs write's
+    // MkdirAll materializes it as a real dir on ephemeral disk and every
     // deliverable written there dies with the pod (silently: the write reports
     // success, the Library shows "no longer available").
     let sawThreadHeader: string | null = null;
@@ -124,7 +125,7 @@ describe("createSandboxFsHooks", () => {
       threadId: "thread-42",
     });
     await hooks.onProxy("/_sandbox/write", {
-      path: "org/output/plan.md",
+      path: `${SANDBOX_ORG_ROOT}/output/plan.md`,
       content: "hi",
     });
     expect(sawThreadHeader).toBe("thread-42" as never);
@@ -132,7 +133,7 @@ describe("createSandboxFsHooks", () => {
     // Without a threadId (e.g. a threadless probe) the header is absent.
     const bare = createSandboxFsHooks(provider, lifecycle);
     await bare.onProxy("/_sandbox/write", {
-      path: "org/output/plan.md",
+      path: `${SANDBOX_ORG_ROOT}/output/plan.md`,
       content: "hi",
     });
     expect(sawThreadHeader).toBe(null);

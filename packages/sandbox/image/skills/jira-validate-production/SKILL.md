@@ -73,8 +73,8 @@ a run that dies on the tenth issue never writes:
 
 - `JIRA_COMMENT_ADD` with `issueKey` — open with the verdict in ONE line
   (validated in production, or not), then what you checked, on which URLs, and
-  what you observed. Screenshots go to `org/output/<name>.png` and are
-  referenced as `![what it shows](org/output/<name>.png)` so they render inline.
+  what you observed. Screenshots go to `/app/org/output/<name>.png` and are
+  referenced as `![what it shows](/app/org/output/<name>.png)` so they render inline.
   This comment is the record that someone looked at the live site.
 - `JIRA_ISSUE_TRANSITION` with `issueKey` — on a pass, the column your team
   closes work in. On a fail, BACK to the column the implementing run works in,

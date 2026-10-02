@@ -1126,7 +1126,7 @@ export function ActiveTaskProvider({
           });
         }
         // Refresh download chips only when sandbox file work could have written
-        // into `org/output/`. AI SDK v5 surfaces tool invocations as
+        // into `/app/org/output/`. AI SDK v5 surfaces tool invocations as
         // `tool-<name>` parts; `output-available` skips denied/cancelled calls.
         const fileWork = message.parts?.some((p) => {
           const part = p as { type: string; state?: string };
@@ -1137,7 +1137,7 @@ export function ActiveTaskProvider({
         });
         if (cb.taskId && fileWork) {
           const key = KEYS.threadOutputs(cb.taskId);
-          // org/output files reach the manifest ~5s after the sandbox closes
+          // /app/org/output files reach the manifest ~5s after the sandbox closes
           // them (rclone write-back), so a file written in the turn's last
           // seconds misses an immediate refresh. Sweep a few times across a
           // generous flush window; each sweep is one indexed query.

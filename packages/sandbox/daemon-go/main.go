@@ -550,22 +550,21 @@ func (d *daemon) authed(fn http.HandlerFunc) http.HandlerFunc {
 // harnesses drive the sandbox through fs/exec without a /dispatch envelope, so
 // the links must be ensured here too, keyed on x-thread-id. Applied to the fs
 // and exec routes only: gating /orgfs-config would deadlock provisioning on
-// mounts that appear only after that POST, and gating /setup/clone would create
-// `repo/org` ahead of the clone.
+// mounts that appear only after that POST.
 func (d *daemon) linked(fn http.HandlerFunc) http.HandlerFunc {
 	return d.authed(func(w http.ResponseWriter, r *http.Request) {
 		if threadId := r.Header.Get("x-thread-id"); threadId != "" {
 			d.orgFsLinks.RepointForRun(threadId)
 		} else {
-			d.orgFsLinks.EnsureRepoLink()
+			d.orgFsLinks.EnsureLinks()
 		}
 		fn(w, r)
 	})
 }
 
 // The workspace-touching routes. One list because it is also the set that
-// resolves relative `org/...` paths: registration and the org-fs link hook are
-// the same loop below, so they cannot drift apart.
+// needs this run's org-fs links: registration and the org-fs link hook are the
+// same loop below, so they cannot drift apart.
 var fsRouteNames = []string{
 	"read", "write", "unlink", "mkdir", "rename", "edit", "grep", "glob",
 	"bash",
@@ -1138,9 +1137,9 @@ func main() {
 			return env
 		},
 		// Everything the harness needs from the org, in place before it starts:
-		// `org/output` pointed at this run's thread subtree, the org's skills
-		// linked where the SDK scans, this thread's Claude Code session restored,
-		// and `.deco/tools/` refreshed from the run's MCP endpoint.
+		// `<appRoot>/org/output` pointed at this run's thread subtree, the org's
+		// skills linked where the SDK scans, this thread's Claude Code session
+		// restored, and `.deco/tools/` refreshed from the run's MCP endpoint.
 		//
 		// `WaitHomeReady` BLOCKS (bounded) rather than degrading to no link. A run
 		// that starts before its skills and its transcript are there does not

@@ -93,7 +93,7 @@ export type VmContext = {
   userId: string;
   /**
    * Current thread id. Sent with sandbox filesystem calls so the daemon can
-   * point `org/output/` at this thread's subtree. Required because one
+   * point `/app/org/output/` at this thread's subtree. Required because one
    * ephemeral sandbox can serve multiple threads of the same (user, agent).
    */
   threadId: string;

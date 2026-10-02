@@ -1,7 +1,7 @@
 /**
  * Public skill sets: readonly org-fs volumes shared by EVERY organization,
  * each synced from a public GitHub repo (see skill-set-sync.ts) and mounted
- * into every sandbox at `org/public/<set>`.
+ * into every sandbox at `/app/org/public/<set>`.
  *
  * Mechanics: the shared content lives under a dedicated system organization
  * row (`org_fs_entry.organization_id` FKs `organization.id`, so the scope is
@@ -38,7 +38,8 @@ const sourcePathSchema = z.object({
 });
 
 const setSchema = z.object({
-  /** Set name — becomes volume `public-<set>` mounted at `org/public/<set>`. */
+  /** Set name — becomes volume `public-<set>` mounted at
+   *  `/app/org/public/<set>`. */
   set: z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/),
   /** GitHub `owner/repo` (public). */
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
@@ -55,7 +56,7 @@ export type PublicSkillSetSource = z.infer<typeof setSchema>;
  * skills automatically. `core` is the canonical skill source: the
  * file-handling skills (pptx/docx/xlsx/pdf/file-reading) plus slides +
  * templating, synced from the studio repo and mounted read-only at
- * `org/public/core`. This is what replaces the image-baked
+ * `/app/org/public/core`. This is what replaces the image-baked
  * `/mnt/skills/public`.
  *
  * `ORGFS_PUBLIC_SETS` does NOT replace these — it overrides by set name

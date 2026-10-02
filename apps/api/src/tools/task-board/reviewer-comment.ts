@@ -118,7 +118,7 @@ function followUpPrompt(kind: ReviewerKind): string {
     `Your ${REVIEWER_LABEL[kind]} comment carries no screenshots and does not declare the change free of any visual surface. One of the two is required — a pass on a visual change nobody can SEE is not a pass.`,
     "",
     "Do exactly ONE thing in this run and then stop:",
-    "- Post a comment with `TASK_BOARD_COMMENT_CREATE` carrying the before/after screenshots you captured, embedded as markdown images referencing their `org/output/...` path, each pair in a two-column table.",
+    "- Post a comment with `TASK_BOARD_COMMENT_CREATE` carrying the before/after screenshots you captured, embedded as markdown images referencing their `/app/org/output/...` path, each pair in a two-column table.",
     "- If the change genuinely has none, or you could not capture it (no deploy preview, the page would not render), write the exact words `" +
       NO_VISUAL_SURFACE +
       "` in the comment instead, followed by one sentence naming why. That literal is what the check looks for — no paraphrase and no translation of it counts.",

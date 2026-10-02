@@ -55,8 +55,8 @@ report — the issue is the only place your work becomes visible.
 - `JIRA_COMMENT_ADD` posts your report (markdown, tables included). Say what you
   changed, what you MEASURED on the preview, and what you deliberately left
   alone. Name anything the issue asked for that you did not do.
-- To show evidence, write each screenshot to `org/output/<name>.png` and
-  reference it in that comment as `![what it shows](org/output/<name>.png)` — it
+- To show evidence, write each screenshot to `/app/org/output/<name>.png` and
+  reference it in that comment as `![what it shows](/app/org/output/<name>.png)` — it
   is uploaded to the issue and rendered inline. A before/after table of two
   images reads best.
 - `JIRA_ISSUE_GET` re-reads the issue. Worth doing before you report: a person

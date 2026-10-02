@@ -12,28 +12,28 @@ with inline editing, and exports PDF by printing (the deck ships print CSS
 
 ## Quick reference
 
-| Task                      | How                                                                   |
-| ------------------------- | --------------------------------------------------------------------- |
-| Create a deck             | `slides-create --data @deck.json --output org/home/decks/<name>.html`   |
-| List themes / templates   | `slides-create --help`                                                 |
-| See a full data example   | `cat org/public/core/slides/examples/deck.json`                     |
-| Edit an existing deck     | `read` the HTML, edit the `<section>` slides, write it back            |
-| Org brand templates       | add `--templates-dir org/home/templates/slides`                        |
-| PDF export                | user prints from the preview — no action needed                        |
+| Task                    | How                                                                        |
+| ----------------------- | -------------------------------------------------------------------------- |
+| Create a deck           | `slides-create --data @deck.json --output /app/org/home/decks/<name>.html` |
+| List themes / templates | `slides-create --help`                                                     |
+| See a full data example | `cat /app/org/public/core/slides/examples/deck.json`                       |
+| Edit an existing deck   | `read` the HTML, edit the `<section>` slides, write it back                |
+| Org brand templates     | add `--templates-dir /app/org/home/templates/slides`                       |
+| PDF export              | user prints from the preview — no action needed                            |
 
 ## Path convention
 
-Decks live at `org/home/decks/<name>.html` (`<name>` is lowercase kebab).
+Decks live at `/app/org/home/decks/<name>.html` (`<name>` is lowercase kebab).
 Files written there sync to Studio near-instantly and the user sees a live
 preview that updates as you work.
 
 ## Creating a deck
 
-1. Read `org/public/core/slides/examples/deck.json` once to learn the
+1. Read `/app/org/public/core/slides/examples/deck.json` once to learn the
    data shapes.
 2. Author your own deck JSON (a file is easier to iterate than inline):
    `{ "title": …, "theme": …, "slides": [ { "template": …, "data": … } ] }`
-3. Render: `slides-create --data @deck.json --output org/home/decks/<name>.html`
+3. Render: `slides-create --data @deck.json --output /app/org/home/decks/<name>.html`
 4. Iterate content by editing the **HTML output** (see lifecycle below),
    or re-render with `-f` only while the user hasn't touched the deck.
 
@@ -44,7 +44,7 @@ amber accents), `bold-gradient` (vivid full-bleed gradient, glass cards).
 `--theme` also accepts a **path to a custom theme file**, in either shape:
 
 1. A **shell** with a `{{{slides}}}` insertion point (copy a built-in from
-   `org/public/core/slides/themes/` and retune its CSS custom properties).
+   `/app/org/public/core/slides/themes/` and retune its CSS custom properties).
 2. A **real deck** ("deck-as-theme") — a complete deck whose `<deck-viewer>`
    holds example slides. On render, `{{title}}` is filled and the
    `<deck-viewer>` body is replaced with the generated slides. So one file is
@@ -56,15 +56,15 @@ Keep org brand themes in org-fs so they persist, e.g.:
 
 ```sh
 slides-create --data @deck.json \
-  --theme org/home/templates/slides/brand-theme.html \
-  --templates-dir org/home/templates/slides \
-  --output org/home/decks/q3.html
+  --theme /app/org/home/templates/slides/brand-theme.html \
+  --templates-dir /app/org/home/templates/slides \
+  --output /app/org/home/decks/q3.html
 ```
 
 ### Brand folders
 
-If the org has a brand at `org/home/brands/<name>/` (check with
-`ls org/home/brands/`), honor it before any built-in theme (to *create* or
+If the org has a brand at `/app/org/home/brands/<name>/` (check with
+`ls /app/org/home/brands/`), honor it before any built-in theme (to *create* or
 edit a brand, use the `brand` skill):
 
 - **`tokens.css`** — the brand's `--brand-*` CSS custom properties. Inline
@@ -72,7 +72,7 @@ edit a brand, use the `brand` skill):
   org-fs file by URL — preview iframes carry no cookies). A brand theme shell
   maps deck variables onto them, e.g. `--deck-accent: var(--brand-primary);`.
 - **`slides-theme.html`** — if present it's a ready deck shell for this brand;
-  pass it as `--theme org/home/brands/<name>/slides-theme.html`.
+  pass it as `--theme /app/org/home/brands/<name>/slides-theme.html`.
 - **`brand.md`** — voice, tone, do's and don'ts; read it and follow it when
   writing slide copy.
 - **`logo.*`** — the brand logo; place it on the title/closing slides.
@@ -93,9 +93,9 @@ edit a brand, use the `brand` skill):
 | `closing`         | `heading`, `subheading?`, `cta?`                                           |
 
 This skill is built on the `templating` skill
-(`org/public/core/templating/SKILL.md`). For a one-off custom slide
+(`/app/org/public/core/templating/SKILL.md`). For a one-off custom slide
 or deck template, render it directly with `create-from-template`; for an
-org's own slide layouts, keep them in `org/home/templates/slides/` and
+org's own slide layouts, keep them in `/app/org/home/templates/slides/` and
 pass `--templates-dir` — they resolve before the built-ins.
 
 ## Lifecycle — templates create, edits go to the HTML

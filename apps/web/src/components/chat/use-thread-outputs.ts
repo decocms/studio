@@ -47,7 +47,7 @@ async function fetchThreadOutputs(
 
 /**
  * True when any message has a tool part that could have produced a file:
- * sandbox bash/write work can place results in `org/output/`.
+ * sandbox bash/write work can place results in `/app/org/output/`.
  */
 export function useThreadHasFileWork(): boolean {
   const messages = useOptionalChatStream()?.messages ?? [];

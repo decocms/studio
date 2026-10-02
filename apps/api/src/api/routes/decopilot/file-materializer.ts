@@ -9,7 +9,7 @@
  *   Bytes land in the `uploads` volume under the thread's folder
  *   (`uploads/<threadId>/<filename>`) — the Library lists them and, on
  *   deployments that mount org-fs into sandboxes, the agent sees them at
- *   `org/upload/<filename>` via the per-run symlink (no copy step). The
+ *   `/app/org/upload/<filename>` via the per-run symlink (no copy step). The
  *   studio-storage URI points at the volume's object key (`_fs/uploads/...`),
  *   so the presign pipeline below works unchanged. The legacy
  *   `chat-uploads/<uuid>` keyspace is read-only legacy: old threads' keys
@@ -22,6 +22,7 @@
  *   to downstream MCP tools.
  */
 
+import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { isLocalMode } from "@/auth/local-mode";
 import type { StudioContext } from "@/core/studio-context";
 import { fsObjectKey } from "@/file-storage/org-fs-path";
@@ -40,7 +41,7 @@ import {
  * the sandbox skills (pptx-extract, docx, xlsx) consistently produce
  * better results than any provider's native parser. The model picks
  * these up from the annotation text emitted by uploadFileParts — they
- * are already at `org/upload/<name>` in the mounted org filesystem.
+ * are already at `/app/org/upload/<name>` in the mounted org filesystem.
  *
  * PDFs stay on the native path — every provider with a `file` capability
  * handles them fine and going through the sandbox would be a regression.
@@ -214,7 +215,7 @@ function dedupeFilename(name: string, used: Set<string>): string {
 /**
  * Store one attachment's bytes in the org-fs `uploads` volume under the
  * thread's folder — visible in the Library and (where sandboxes mount
- * org-fs) already inside the sandbox at `org/upload/<filename>` via the
+ * org-fs) already inside the sandbox at `/app/org/upload/<filename>` via the
  * per-run symlink. The legacy `chat-uploads/<uuid>` keyspace is write-dead:
  * old threads' keys stay readable through the same presign pipeline, but
  * nothing new lands there. Same filename re-attached on a later turn
@@ -246,7 +247,7 @@ async function storeAttachment(
       key: fsObjectKey("uploads", path),
       // org-fs is mounted into every sandbox, so the upload is always
       // reachable at this in-sandbox path.
-      sandboxPath: `org/upload/${filename}`,
+      sandboxPath: `${SANDBOX_ORG_ROOT}/upload/${filename}`,
     };
   } catch (err) {
     console.error("[file-materializer] uploads-volume write failed:", err);
@@ -453,7 +454,7 @@ export async function resolveStorageRefs(
   if (!ctx.organization) return messages;
 
   // First pass: drop sandbox-only file parts (Office formats). The model
-  // reads these directly from `org/upload/<name>` (the uploads volume is
+  // reads these directly from `/app/org/upload/<name>` (the uploads volume is
   // mounted in the sandbox); the annotation text from uploadFileParts
   // points at the path.
   const filtered = messages.map((msg) => {

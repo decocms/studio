@@ -83,7 +83,8 @@ export async function buildAgentSandboxFs(
      *  `syncToolsCatalog`. */
     syncTools?: boolean;
     /** Stamped as `x-thread-id` on every daemon call so the daemon repoints
-     *  `org/output`/`org/upload` at this thread's org-fs subtree. */
+     *  `/app/org/output` and `/app/org/upload` at this thread's org-fs
+     *  subtree. */
     threadId?: string;
   },
 ): Promise<SandboxFsHooks> {

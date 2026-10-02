@@ -13,7 +13,7 @@ import { syncAllPublicSets } from "../../file-storage/skill-set-sync";
 export const ORG_FS_PUBLIC_SETS_SYNC = defineTool({
   name: "ORG_FS_PUBLIC_SETS_SYNC",
   description:
-    "Re-sync the shared public skill-set volumes (org/public/*) from their configured GitHub repos. Returns per-set written/deleted/unchanged counts.",
+    "Re-sync the shared public skill-set volumes (/app/org/public/*) from their configured GitHub repos. Returns per-set written/deleted/unchanged counts.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     results: z.array(

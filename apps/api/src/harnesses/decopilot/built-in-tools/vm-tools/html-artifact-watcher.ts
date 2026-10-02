@@ -5,7 +5,7 @@
  * side panel opens/refreshes the live preview.
  *
  * Detection is change-feed based rather than tool-based: every sandbox
- * write to the mounted `org/home/` path flows through the WebDAV serve
+ * write to the mounted `/app/org/home/` path flows through the WebDAV serve
  * layer into `OrgFs.write` and the manifest change feed, so artifacts
  * created via bash (the `slides-create` CLI) are caught the same as
  * `write`-tool edits. The cursor snapshots at run start; `sweep()` is hooked
@@ -18,7 +18,10 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import {
+  HOME_MOUNT_PATH,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
 import { matchOwnHtmlArtifact } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/html-artifact-paths";
 import type { UIMessageStreamWriter } from "ai";
 
@@ -36,7 +39,7 @@ export interface HtmlArtifactUpdatedData {
   name: string;
   /** `deck` (decks/) or `page` (pages/) — drives chip icons. */
   kind: "deck" | "page";
-  /** Mount-relative path the agent sees, for chat-row display. */
+  /** Absolute sandbox path the agent sees, for chat-row display. */
   mountPath: string;
 }
 
@@ -99,7 +102,7 @@ export function createHtmlArtifactWatcher(
             path: deck.path,
             name: deck.name,
             kind: deck.kind,
-            mountPath: `org/${mountDir}/${deck.path}`,
+            mountPath: `${SANDBOX_ORG_ROOT}/${mountDir}/${deck.path}`,
           });
         }
         cursor = page.cursor;
