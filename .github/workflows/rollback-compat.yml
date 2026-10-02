@@ -39,6 +39,11 @@ jobs:
       - name: Start MinIO
         uses: ./.github/actions/start-minio
 
+      - name: Pull NATS
+        uses: ./.github/actions/pull-image
+        with:
+          image: library/nats:2.14.2
+
       - name: Start NATS with JetStream
         run: |
           docker run -d --name nats -p 4222:4222 library/nats:2.14.2 -js

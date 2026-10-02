@@ -181,7 +181,9 @@ async function migrationsFromNewerReleases(
   const { rows } = await sql<{ name: string }>`
     SELECT name FROM kysely_migration
   `.execute(db);
-  const unknown = rows.map((r) => r.name).filter((n) => !(n in migrations));
+  const unknown = rows
+    .map((r) => r.name)
+    .filter((n) => !Object.hasOwn(migrations, n));
   if (unknown.length > 0) {
     console.warn(
       `Database has migrations this build does not know, assuming a newer release applied them: ${unknown.join(", ")}`,
