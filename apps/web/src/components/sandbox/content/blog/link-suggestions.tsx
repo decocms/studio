@@ -158,6 +158,7 @@ export function SuggestLinksButton({
                     <button
                       type="button"
                       onClick={() => toggle(index)}
+                      aria-pressed={on}
                       className="flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors hover:bg-muted/50"
                     >
                       <span
