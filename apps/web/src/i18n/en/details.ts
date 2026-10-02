@@ -8,6 +8,7 @@ export const details = {
   "details.connection.deleteButton": "Delete",
   "details.connection.descriptionLabel": "Description",
   "details.connection.failedRemoveOAuth": "Failed to remove OAuth: {error}",
+  "details.connection.failedAddInstance": "Failed to add instance",
   "details.connection.failedRemoveOAuthError": "Failed to remove OAuth",
   "details.connection.failedUpdateConnection": "Failed to update connection",
   "details.connection.nameLabel": "Name",

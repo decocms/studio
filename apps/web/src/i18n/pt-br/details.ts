@@ -9,6 +9,7 @@ export const details = {
   "details.connection.connectionEnabled": "Conexão habilitada",
   "details.connection.deleteButton": "Excluir",
   "details.connection.descriptionLabel": "Descrição",
+  "details.connection.failedAddInstance": "Falha ao adicionar instância",
   "details.connection.failedRemoveOAuth": "Falha ao remover OAuth: {error}",
   "details.connection.failedRemoveOAuthError": "Falha ao remover OAuth",
   "details.connection.failedUpdateConnection": "Falha ao atualizar conexão",
