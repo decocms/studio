@@ -53,6 +53,15 @@ Use the storage adapters under `src/storage/`. Database schema changes use
 Kysely migrations; auth schema setup also needs Better Auth migrations.
 Commands and local database access are documented in [README.md](README.md).
 
+Every migration must leave a schema the previous release still runs on, so a
+rollback never needs `down()`. Add tables, and columns that are nullable or
+have a default. To drop, rename, or tighten something, ship the code that
+stops using it first and the migration in a later release. A reverted
+migration that lands again needs a new name; its old name is already recorded
+as applied. The Rollback Compatibility workflow runs the previous release's
+integration tests against the new schema. Releases built before the migrator
+accepted unknown migrations cannot boot on a newer schema at all.
+
 Keep synchronous I/O and large CPU-bound work off Bun's request path. Use
 async filesystem APIs, stream large payloads, and bound concurrency.
 
