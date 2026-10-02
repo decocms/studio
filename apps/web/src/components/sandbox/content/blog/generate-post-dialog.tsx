@@ -19,7 +19,8 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   type AuthorRef,
-  BRAND_BLOCK_KEY,
+  contextForTools,
+  readBlogContext,
   type BrandRequirement,
   type CategoryRef,
   FORMATS_BLOCK_KEY,
@@ -106,20 +107,9 @@ export function GeneratePostDialog({
   const [extra, setExtra] = useState("");
   const [suggesting, setSuggesting] = useState(false);
 
-  const brandBlock = decofile[BRAND_BLOCK_KEY] as
-    | Record<string, unknown>
-    | undefined;
-  const missingBrand = missingBrandForGeneration(brandBlock);
-  const brandForTools = {
-    companyName: str(brandBlock?.companyName),
-    description: str(brandBlock?.description),
-    language: str(brandBlock?.language),
-    tone: str(brandBlock?.tone),
-    targetAudience: str(brandBlock?.targetAudience),
-    values: filledBrandRules(normalizeBrandRules(brandBlock?.values)),
-    dos: filledBrandRules(normalizeBrandRules(brandBlock?.dos)),
-    avoid: filledBrandRules(normalizeBrandRules(brandBlock?.avoid)),
-  };
+  const { merged } = readBlogContext(decofile);
+  const missingBrand = missingBrandForGeneration(merged);
+  const brandForTools = contextForTools(merged);
 
   const ideas = scanIdeas(decofile);
   const pickedIdea = ideas.find((entry) => entry.key === ideaKey);

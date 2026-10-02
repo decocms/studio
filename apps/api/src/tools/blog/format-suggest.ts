@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { resolveTier } from "../../core/resolve-tier";
-import { BlogBrandSchema } from "./schema";
+import { BlogContextSchema } from "./schema";
 
 /**
  * A post format: a name plus a markdown brief that gets injected into the
@@ -55,7 +55,9 @@ function renderRules(
 }
 
 /** The brand profile as prose, skipping whatever the human hasn't filled in. */
-function renderBrand(brand: Partial<z.infer<typeof BlogBrandSchema>>): string {
+function renderBrand(
+  brand: Partial<z.infer<typeof BlogContextSchema>>,
+): string {
   return (
     [
       brand.companyName && `## Brand\n${brand.companyName}`,
@@ -83,7 +85,7 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    brand: BlogBrandSchema.partial().describe(
+    brand: BlogContextSchema.partial().describe(
       "The site's editorial brand context. Every field is optional — a half-filled profile is the normal case.",
     ),
     sections: z

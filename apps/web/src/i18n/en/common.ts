@@ -1,7 +1,6 @@
 export const common = {
   "common.copy": "Copy",
   "common.seeAll": "See all {count} {noun}",
-  "common.soon": "Soon",
   "common.goBack": "Go back",
   "common.goHome": "Go to home",
   "common.accountPopover.account": "Account",

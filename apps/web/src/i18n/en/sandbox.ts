@@ -43,6 +43,61 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instructions every generated post must follow. Write instructions, not adjectives.",
   "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
+  "sandbox.blogBrand.addDifferentiator": "Add differentiator",
+  "sandbox.blogBrand.addKeyword": "Add keyword",
+  "sandbox.blogBrand.addPolicy": "Add policy",
+  "sandbox.blogBrand.addSpecialDate": "Add date",
+  "sandbox.blogBrand.addVocabulary": "Add word",
+  "sandbox.blogBrand.differentiatorsBodyPlaceholder":
+    "The claim, and what backs it",
+  "sandbox.blogBrand.differentiatorsHint":
+    "What this brand has that a competitor cannot claim. If a rival could copy it onto their own site, it is not one.",
+  "sandbox.blogBrand.differentiatorsLabel": "Differentiators",
+  "sandbox.blogBrand.differentiatorsNamePlaceholder":
+    "What the differentiator is",
+  "sandbox.blogBrand.keywordsBodyPlaceholder":
+    "Who searches for it, and what they are after",
+  "sandbox.blogBrand.keywordsHint":
+    "The terms this brand should be found by — what someone types looking for what it sells.",
+  "sandbox.blogBrand.keywordsLabel": "Brand keywords",
+  "sandbox.blogBrand.keywordsNamePlaceholder":
+    "The term, as someone searches it",
+  "sandbox.blogBrand.phaseResearching": "Researching the brand on the web…",
+  "sandbox.blogBrand.policiesBodyPlaceholder":
+    "The terms, with their actual numbers and conditions",
+  "sandbox.blogBrand.policiesHint":
+    "Exchanges, shipping, warranty. Facts a post may need to state — copy the numbers exactly.",
+  "sandbox.blogBrand.policiesLabel": "Commercial policies",
+  "sandbox.blogBrand.policiesNamePlaceholder": "Which policy",
+  "sandbox.blogBrand.specialDatesBodyPlaceholder":
+    "What this date means for this brand — what it sells then, what it says then",
+  "sandbox.blogBrand.specialDatesHint":
+    "The commercial moments this brand's year turns around — its own and the retail calendar it runs on. Not a calendar pin: these move year to year.",
+  "sandbox.blogBrand.specialDatesLabel": "Special dates",
+  "sandbox.blogBrand.specialDatesNamePlaceholder": "The date's name",
+  "sandbox.blogBrand.vocabularyBodyPlaceholder":
+    "What it names, and which word it replaces",
+  "sandbox.blogBrand.vocabularyHint":
+    "The brand's own words, and the ordinary ones they displace. A post using the displaced word reads as an impostor.",
+  "sandbox.blogBrand.vocabularyLabel": "Vocabulary",
+  "sandbox.blogBrand.vocabularyNamePlaceholder": "The word to use",
+  "sandbox.blogBrand.extractReplaced": "{count} field(s) rewritten",
+  "sandbox.blogBrand.fillDialogDescription":
+    "Some of this is already written. Choose what the fill may touch.",
+  "sandbox.blogBrand.fillDialogTitle": "Fill the context",
+  "sandbox.blogBrand.fillOnlyEmpty": "Only what's empty",
+  "sandbox.blogBrand.fillOnlyEmptyHint":
+    "Leaves everything you wrote exactly as it is, and fills the blanks around it.",
+  "sandbox.blogBrand.fillReplace": "Start over",
+  "sandbox.blogBrand.fillReplaceHint":
+    "Rewrites every field the model has an answer for. What you wrote there is lost; a field it can't answer keeps its current value.",
+  "sandbox.blogBrand.addVoiceExample": "Add phrase",
+  "sandbox.blogBrand.voiceExamplesDoesNotSound": "Doesn't sound like it",
+  "sandbox.blogBrand.voiceExamplesHint":
+    "A voice is faster to show than to describe. Paste real sentences and mark each one: the ones that sound like the brand are what a generated post should match, and the ones that don't are what pins down how far the first ones go.",
+  "sandbox.blogBrand.voiceExamplesLabel": "Example phrases",
+  "sandbox.blogBrand.voiceExamplesPlaceholder": "Paste a sentence",
+  "sandbox.blogBrand.voiceExamplesSounds": "Sounds like the brand",
   "sandbox.blogBrand.extractButton": "Fill",
   "sandbox.blogBrand.extractFailed":
     "Could not read the brand from this site's content",
@@ -58,7 +113,6 @@ export const sandbox = {
     "No competitors found. Add them by hand, or configure a web search model for this organization.",
   "sandbox.blogBrand.phaseInferring": "Inferring the voice and the rules…",
   "sandbox.blogBrand.phaseReading": "Reading this site's content…",
-  "sandbox.blogBrand.phaseSearching": "Searching the web for competitors…",
   "sandbox.blogBrand.removeItem": "Remove item",
   "sandbox.blogBrand.tabBasics": "Basics",
   "sandbox.blogBrand.tabDos": "Generation rules",
@@ -87,8 +141,6 @@ export const sandbox = {
   "sandbox.blogContext.categoriesHint":
     "The topics your posts are filed under. Add one, then open it to edit.",
   "sandbox.blogContext.removeEntry": "Remove",
-  "sandbox.blogContext.soonDescription": "And a whole lot more…",
-  "sandbox.blogContext.soonTitle": "Your brand context lands soon!",
   "sandbox.blogContext.subtitle":
     "The brand context your blog is written from — voice, formats and the pillars it keeps returning to.",
   "sandbox.blogContext.tabAuthors": "Authors",

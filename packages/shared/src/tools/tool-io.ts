@@ -1286,20 +1286,52 @@ export interface StudioToolIO {
     };
   };
   BLOG_BRAND_EXTRACT: {
-    input: { blocks: { key: string; content: string }[] };
+    input: {
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+      catalog?: string | undefined;
+    };
     output: {
       companyName: string;
       description: string;
       language: string;
-      tone: string;
       targetAudience: string;
       values: { name: string; value: string }[];
+      competitors: { name: string; value: string }[];
+      keywords: { name: string; value: string }[];
+      differentiators: { name: string; value: string }[];
+      commercialPolicies: { name: string; value: string }[];
+      specialDates: { name: string; value: string }[];
+      sources: string[];
+      researchSources: string[];
+      searched: boolean;
+    };
+  };
+  BLOG_CONTEXT_EXTRACT: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: { name: string; value: string }[] | undefined;
+        differentiators?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+      };
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+    };
+    output: {
+      tone: string;
       dos: { name: string; value: string }[];
       avoid: { name: string; value: string }[];
       categories: string[];
-      competitors: { name: string; value: string }[];
+      vocabulary: { name: string; value: string }[];
+      voiceExamples: { text: string; sounds: boolean }[];
       sources: string[];
-      searchedCompetitors: boolean;
     };
   };
   BLOG_PILLAR_SUGGEST: {
@@ -1308,13 +1340,19 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
-        tone?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: { name: string; value: string }[] | undefined;
+        differentiators?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
         categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
       };
       existingPillars?: string[] | undefined;
       categories?: string[] | undefined;
@@ -1329,13 +1367,19 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
-        tone?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: { name: string; value: string }[] | undefined;
+        differentiators?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
         categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
       };
       existingTitles?: string[] | undefined;
       categories?: string[] | undefined;
@@ -1352,13 +1396,19 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
-        tone?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: { name: string; value: string }[] | undefined;
+        differentiators?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
         categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
       };
       sections?:
         | { name: string; title: string; description?: string | undefined }[]
@@ -1374,13 +1424,19 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
-        tone?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: { name: string; value: string }[] | undefined;
+        differentiators?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
         categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
       };
       theme: { title: string; body: string };
       format: { name: string; value: string };

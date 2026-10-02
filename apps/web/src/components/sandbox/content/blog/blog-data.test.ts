@@ -16,7 +16,7 @@ import {
   extractBlockProse,
   filledBrandRules,
   normalizeBrandRules,
-  selectBrandEvidenceBlocks,
+  selectBrandEvidence,
   setPostStatus,
   stampPostModified,
   dedupeSuggestedThemes,
@@ -42,6 +42,18 @@ import {
   citedSections,
   defaultFormatSections,
   missingBrandForGeneration,
+  splitBlogContext,
+  applyExtractResult,
+  normalizeVoiceExamples,
+  filledVoiceExamples,
+  asBlock,
+  pickBlogFields,
+  BRAND_FIELDS,
+  CONTEXT_FIELDS,
+  readBlogContext,
+  contextForTools,
+  BRAND_BLOCK_KEY,
+  CONTEXT_BLOCK_KEY,
   postStructures,
   sectionResolveTypes,
   maskSlugInput,
@@ -1114,7 +1126,12 @@ describe("extractBlockProse", () => {
   });
 });
 
-describe("selectBrandEvidenceBlocks", () => {
+/** The sampler takes PageEntry[] now; tests name pages by key and path. */
+function pagesOf(...entries: [string, string][]) {
+  return entries.map(([key, path]) => ({ key, name: key, path }));
+}
+
+describe("selectBrandEvidence", () => {
   test("ranks a prose-heavy page above a url-heavy one", () => {
     const decofile = {
       "pages/plp": {
@@ -1128,9 +1145,10 @@ describe("selectBrandEvidenceBlocks", () => {
     };
 
     expect(
-      selectBrandEvidenceBlocks(decofile, ["pages/plp", "pages/sobre"]).map(
-        (b) => b.key,
-      ),
+      selectBrandEvidence(
+        decofile,
+        pagesOf(["pages/plp", "/roupas"], ["pages/sobre", "/sobre"]),
+      ).blocks.map((b) => b.key),
     ).toEqual(["pages/sobre", "pages/plp"]);
   });
 
@@ -1138,15 +1156,19 @@ describe("selectBrandEvidenceBlocks", () => {
     // Short prose stays far under the character budget, so the count is the
     // only thing that stops this — and the tool's schema rejects the call
     // outright if it arrives over the cap.
-    const pageKeys = Array.from({ length: 300 }, (_, i) => `pages/p${i}`);
+    const pages = Array.from({ length: 300 }, (_, i) => ({
+      key: `pages/p${i}`,
+      name: `p${i}`,
+      path: `/p${i}`,
+    }));
     const decofile = Object.fromEntries(
-      pageKeys.map((key, i) => [
-        key,
-        { path: `/p${i}`, sections: [{ text: `uma frase curta ${i}` }] },
+      pages.map((page, i) => [
+        page.key,
+        { path: page.path, sections: [{ text: `uma frase curta ${i}` }] },
       ]),
     );
 
-    const selected = selectBrandEvidenceBlocks(decofile, pageKeys);
+    const selected = selectBrandEvidence(decofile, pages).blocks;
 
     expect(selected.length).toBe(BRAND_EVIDENCE_MAX_BLOCKS);
     expect(
@@ -1168,7 +1190,9 @@ describe("selectBrandEvidenceBlocks", () => {
     };
 
     expect(
-      selectBrandEvidenceBlocks(decofile, ["pages/home"]).map((b) => b.key),
+      selectBrandEvidence(decofile, pagesOf(["pages/home", "/"])).blocks.map(
+        (b) => b.key,
+      ),
     ).toEqual([
       "collections/blog/posts/a",
       "collections/blog/categories/c",
@@ -1182,7 +1206,7 @@ describe("selectBrandEvidenceBlocks", () => {
       "collections/blog/posts/long": { content: "prosa da marca ".repeat(50) },
     });
 
-    expect(selectBrandEvidenceBlocks(decofile, []).map((b) => b.key)).toEqual([
+    expect(selectBrandEvidence(decofile, []).blocks.map((b) => b.key)).toEqual([
       "collections/blog/posts/long",
       "collections/blog/posts/short",
     ]);
@@ -1196,7 +1220,7 @@ describe("selectBrandEvidenceBlocks", () => {
       };
     }
 
-    const selected = selectBrandEvidenceBlocks(decofileWithPosts(posts), []);
+    const selected = selectBrandEvidence(decofileWithPosts(posts), []).blocks;
     const total = selected.reduce((sum, b) => sum + b.content.length, 0);
 
     expect(selected.length).toBeLessThan(20);
@@ -1204,11 +1228,13 @@ describe("selectBrandEvidenceBlocks", () => {
   });
 
   test("returns nothing for a site with no content", () => {
-    expect(selectBrandEvidenceBlocks({}, [])).toEqual([]);
+    expect(selectBrandEvidence({}, []).blocks).toEqual([]);
   });
 
   test("skips page keys the decofile doesn't have", () => {
-    expect(selectBrandEvidenceBlocks({}, ["pages/ghost"])).toEqual([]);
+    expect(
+      selectBrandEvidence({}, pagesOf(["pages/ghost", "/ghost"])).blocks,
+    ).toEqual([]);
   });
 });
 
@@ -1785,5 +1811,321 @@ describe("buildGeneratedPostPayload", () => {
         takenSlugs: ["por-que-o-linho-amassa"],
       }).slug,
     ).toBe("por-que-o-linho-amassa-2");
+  });
+});
+
+describe("splitBlogContext", () => {
+  const brandFields = {
+    companyName: "Marca",
+    description: "Vende roupa",
+    language: "pt-BR",
+    targetAudience: "Quem procura linho",
+    values: [{ name: "Origem", value: "Tecido nacional" }],
+    competitors: [{ name: "Outra", value: "Fala de preço" }],
+  };
+  const contextFields = {
+    tone: "Segunda pessoa, sem humor",
+    dos: [{ name: "Abertura", value: "Comece pelo leitor" }],
+    avoid: [{ name: "Preço", value: "Nunca em bloco de texto" }],
+    categories: ["Moda"],
+  };
+
+  test("splits a block written after the split", () => {
+    const { brand, context } = splitBlogContext(brandFields, contextFields);
+    expect(brand).toEqual(brandFields);
+    expect(context).toEqual(contextFields);
+  });
+
+  test("a legacy brand block seeds the writing rules", () => {
+    const legacy = { ...brandFields, ...contextFields };
+    const { brand, context } = splitBlogContext(legacy, undefined);
+    expect(brand).toEqual(brandFields);
+    expect(context).toEqual(contextFields);
+  });
+
+  test("the context block wins over the legacy copies in the brand block", () => {
+    const legacy = { ...brandFields, tone: "Tom antigo", dos: [], avoid: [] };
+    const { brand, context } = splitBlogContext(legacy, contextFields);
+    expect(context).toEqual(contextFields);
+    expect(brand).not.toHaveProperty("tone");
+  });
+
+  test("the brand half never carries a writing-rule field", () => {
+    const legacy = { ...brandFields, ...contextFields };
+    const { brand } = splitBlogContext(legacy, contextFields);
+    for (const field of ["tone", "dos", "avoid", "categories"]) {
+      expect(brand).not.toHaveProperty(field);
+    }
+  });
+
+  test("an empty context block is a real answer, not a reason to fall back", () => {
+    const legacy = { ...brandFields, ...contextFields };
+    const { context } = splitBlogContext(legacy, {});
+    expect(context).toEqual({});
+  });
+
+  test("absent blocks give two empty halves", () => {
+    expect(splitBlogContext(undefined, undefined)).toEqual({
+      brand: {},
+      context: {},
+      merged: {},
+    });
+  });
+
+  test("merged holds both halves", () => {
+    const { merged } = splitBlogContext(brandFields, contextFields);
+    expect(merged).toEqual({ ...brandFields, ...contextFields });
+  });
+
+  test("readBlogContext reads both keys off the decofile", () => {
+    const { merged } = readBlogContext({
+      [BRAND_BLOCK_KEY]: brandFields,
+      [CONTEXT_BLOCK_KEY]: contextFields,
+      "site/pages/home": { path: "/" },
+    });
+    expect(merged).toEqual({ ...brandFields, ...contextFields });
+  });
+});
+
+describe("contextForTools", () => {
+  test("spans both halves and drops the blank editor rows", () => {
+    const { merged } = splitBlogContext(
+      { companyName: "Marca", values: [{ name: "", value: "" }] },
+      { tone: "Seco", dos: [{ name: "Abertura", value: "Pelo leitor" }] },
+    );
+    expect(contextForTools(merged)).toEqual({
+      companyName: "Marca",
+      description: "",
+      language: "",
+      tone: "Seco",
+      targetAudience: "",
+      values: [],
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+      avoid: [],
+      keywords: [],
+      commercialPolicies: [],
+      vocabulary: [],
+      voiceExamples: [],
+    });
+  });
+});
+
+describe("missingBrandForGeneration, across the two blocks", () => {
+  test("is satisfied by the merged view, never by one half alone", () => {
+    const brandBlock = {
+      companyName: "Marca",
+      language: "pt-BR",
+      description: "Vende roupa",
+      targetAudience: "Quem procura linho",
+    };
+    const contextBlock = {
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+      avoid: [{ name: "Preço", value: "Nunca em texto" }],
+    };
+    const { brand, merged } = splitBlogContext(brandBlock, contextBlock);
+    expect(missingBrandForGeneration(brand)).toEqual(["tone", "dos", "avoid"]);
+    expect(missingBrandForGeneration(merged)).toEqual([]);
+  });
+});
+
+describe("asBlock", () => {
+  test("an absent block is the SAME reference every call", () => {
+    // What keeps the editor's `useAutosave` from re-seeding forever.
+    expect(asBlock(undefined)).toBe(asBlock(null));
+    expect(asBlock(undefined)).toBe(asBlock("not a block"));
+  });
+
+  test("a stored block is passed through by reference", () => {
+    const block = { companyName: "Marca" };
+    expect(asBlock(block)).toBe(block);
+  });
+});
+
+describe("pickBlogFields", () => {
+  test("a legacy block saved as brand sheds the writing rules", () => {
+    const legacy = {
+      companyName: "Marca",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    };
+    expect(pickBlogFields(legacy, BRAND_FIELDS)).toEqual({
+      companyName: "Marca",
+    });
+  });
+
+  test("the same legacy block saved as context keeps only the rules", () => {
+    const legacy = {
+      companyName: "Marca",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    };
+    expect(pickBlogFields(legacy, CONTEXT_FIELDS)).toEqual({
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    });
+  });
+
+  test("a field the block never had stays absent, rather than becoming undefined", () => {
+    expect(pickBlogFields({ tone: "Seco" }, CONTEXT_FIELDS)).toEqual({
+      tone: "Seco",
+    });
+  });
+});
+
+describe("applyExtractResult", () => {
+  const opts = (mode: "empty" | "replace") => ({
+    mode,
+    textFields: ["tone"] as const,
+    ruleFields: ["dos"] as const,
+  });
+  const result = {
+    tone: "Seco e direto",
+    dos: [{ name: "Abertura", value: "Pelo leitor" }],
+  };
+
+  test("empty mode fills a blank", () => {
+    const target: Record<string, unknown> = {};
+    expect(applyExtractResult(target, result, opts("empty"))).toEqual([
+      "tone",
+      "dos",
+    ]);
+    expect(target.tone).toBe("Seco e direto");
+  });
+
+  test("empty mode never touches what a person wrote", () => {
+    const target: Record<string, unknown> = {
+      tone: "Meu tom",
+      dos: [{ name: "Minha regra", value: "" }],
+    };
+    expect(applyExtractResult(target, result, opts("empty"))).toEqual([]);
+    expect(target.tone).toBe("Meu tom");
+    expect(target.dos).toEqual([{ name: "Minha regra", value: "" }]);
+  });
+
+  test("empty mode treats whitespace and a blank editor row as empty", () => {
+    const target: Record<string, unknown> = {
+      tone: "   ",
+      dos: [{ name: "", value: "" }],
+    };
+    expect(applyExtractResult(target, result, opts("empty"))).toEqual([
+      "tone",
+      "dos",
+    ]);
+  });
+
+  test("replace mode overwrites what a person wrote", () => {
+    const target: Record<string, unknown> = {
+      tone: "Meu tom",
+      dos: [{ name: "Minha regra", value: "corpo" }],
+    };
+    expect(applyExtractResult(target, result, opts("replace"))).toEqual([
+      "tone",
+      "dos",
+    ]);
+    expect(target.tone).toBe("Seco e direto");
+    expect(target.dos).toEqual([{ name: "Abertura", value: "Pelo leitor" }]);
+  });
+
+  test("replace keeps a field the model could not answer, rather than wiping it", () => {
+    const target: Record<string, unknown> = { tone: "Meu tom", dos: [] };
+    expect(
+      applyExtractResult(target, { tone: "", dos: [] }, opts("replace")),
+    ).toEqual([]);
+    expect(target.tone).toBe("Meu tom");
+  });
+
+  test("a rule list of only blank rows is not an answer", () => {
+    const target: Record<string, unknown> = {};
+    expect(
+      applyExtractResult(
+        target,
+        { dos: [{ name: "", value: "" }] },
+        opts("replace"),
+      ),
+    ).toEqual([]);
+    expect(target.dos).toBeUndefined();
+  });
+});
+
+describe("normalizeVoiceExamples", () => {
+  test("reads the stored shape", () => {
+    expect(
+      normalizeVoiceExamples([
+        { text: "do rio pro mundo", sounds: true },
+        { text: "Adquira já o seu produto", sounds: false },
+      ]),
+    ).toEqual([
+      { text: "do rio pro mundo", sounds: true },
+      { text: "Adquira já o seu produto", sounds: false },
+    ]);
+  });
+
+  test("tolerates the `{ name, value }` shape this field briefly had", () => {
+    expect(
+      normalizeVoiceExamples([
+        { name: "collections/blog/posts/a", value: "do rio pro mundo" },
+      ]),
+    ).toEqual([{ text: "do rio pro mundo", sounds: true }]);
+  });
+
+  test("a bare string is a sentence to imitate", () => {
+    expect(normalizeVoiceExamples(["do rio pro mundo"])).toEqual([
+      { text: "do rio pro mundo", sounds: true },
+    ]);
+  });
+
+  test("defaults to `sounds` — only an explicit false is a counter-example", () => {
+    expect(normalizeVoiceExamples([{ text: "oi" }])).toEqual([
+      { text: "oi", sounds: true },
+    ]);
+  });
+
+  test("keeps the blank row the add button just created", () => {
+    expect(normalizeVoiceExamples([{ text: "", sounds: true }])).toHaveLength(
+      1,
+    );
+    expect(filledVoiceExamples([{ text: "", sounds: true }])).toEqual([]);
+  });
+
+  test("anything that is not a list is no examples", () => {
+    expect(normalizeVoiceExamples(undefined)).toEqual([]);
+    expect(normalizeVoiceExamples("nope")).toEqual([]);
+  });
+});
+
+describe("applyExtractResult, example fields", () => {
+  const opts = (mode: "empty" | "replace") => ({
+    mode,
+    textFields: [] as const,
+    ruleFields: [] as const,
+    exampleFields: ["voiceExamples"] as const,
+  });
+
+  test("fills a blank with what the extract found", () => {
+    const target: Record<string, unknown> = {};
+    expect(
+      applyExtractResult(
+        target,
+        { voiceExamples: [{ text: "do rio pro mundo", sounds: true }] },
+        opts("empty"),
+      ),
+    ).toEqual(["voiceExamples"]);
+  });
+
+  test("empty mode leaves the counter-examples a human marked", () => {
+    const target: Record<string, unknown> = {
+      voiceExamples: [{ text: "Adquira já", sounds: false }],
+    };
+    expect(
+      applyExtractResult(
+        target,
+        { voiceExamples: [{ text: "do rio pro mundo", sounds: true }] },
+        opts("empty"),
+      ),
+    ).toEqual([]);
+    expect(target.voiceExamples).toEqual([
+      { text: "Adquira já", sounds: false },
+    ]);
   });
 });

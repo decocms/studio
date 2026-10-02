@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { resolveTier } from "../../core/resolve-tier";
-import { BlogBrandSchema } from "./schema";
+import { BlogContextSchema } from "./schema";
 
 /** Section kinds a draft may be built from. */
 const SECTION_TYPES = [
@@ -102,6 +102,33 @@ function renderRules(
     .join("\n")}`;
 }
 
+/**
+ * Example sentences as two lists. Splitting them is the whole value: a model
+ * handed a flat list of sentences imitates all of them, including the ones
+ * marked as what the brand never sounds like.
+ */
+function renderVoiceExamples(
+  examples: { text: string; sounds: boolean }[] | undefined,
+): string | null {
+  const written = (examples ?? []).filter((example) => example.text.trim());
+  if (written.length === 0) return null;
+  const render = (sounds: boolean) =>
+    written
+      .filter((example) => example.sounds === sounds)
+      .map((example) => `- "${example.text.trim()}"`)
+      .join("\n");
+  const like = render(true);
+  const unlike = render(false);
+  return [
+    like &&
+      `## Sounds like this brand — match the register, never copy them\n${like}`,
+    unlike &&
+      `## Does NOT sound like this brand — never write like this\n${unlike}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export const BLOG_POST_DRAFT = defineTool({
   name: "BLOG_POST_DRAFT",
   description:
@@ -114,7 +141,7 @@ export const BLOG_POST_DRAFT = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    brand: BlogBrandSchema.partial().describe(
+    brand: BlogContextSchema.partial().describe(
       "The site's editorial brand context. companyName, language, description, tone, targetAudience, dos and avoid are all required here — a post written without them is generic.",
     ),
     pillar: z
@@ -247,6 +274,16 @@ export const BLOG_POST_DRAFT = defineTool({
       renderRules("Values", brand.values),
       renderRules("Editorial instructions — follow these", brand.dos),
       renderRules("Guardrails — never do these", brand.avoid),
+      renderRules(
+        "The brand's own words — use these, not the words they displace",
+        brand.vocabulary,
+      ),
+      renderVoiceExamples(brand.voiceExamples),
+      renderRules("Subjects this brand keeps returning to", brand.keywords),
+      renderRules(
+        "Commercial policies — state these only if the post needs them, and copy the numbers exactly",
+        brand.commercialPolicies,
+      ),
       input.pillar
         ? `## Pillar: ${input.pillar.title}\n${input.pillar.body}`
         : null,

@@ -15,6 +15,13 @@ import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
+import type { PageEntry } from "@/components/sections-editor/page-list";
+import {
+  type PageRole,
+  pageRole,
+  type SeoEvidenceEntry,
+  selectSeoEvidence,
+} from "./seo-evidence";
 
 const BLOG_LOADER_RESOLVE_TYPES = {
   post: "blog/loaders/Blogpost.ts",
@@ -1101,6 +1108,143 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
 /** Where the editorial brand context lives, as Spire named it. */
 export const BRAND_BLOCK_KEY = "blog-manager-brand";
 
+/** Where the blog's writing rules live, apart from the brand's identity. */
+export const CONTEXT_BLOCK_KEY = "blog-manager-context";
+
+/**
+ * The split between the two blocks, in one place.
+ *
+ * Who the brand IS outlives any one channel and is worth stating once;
+ * how the blog is WRITTEN belongs to the blog and changes with it. Keeping them
+ * in separate files means a rewrite of the editorial rules never risks the
+ * company's own facts, and each half is inferred by its own pass.
+ */
+export const BRAND_FIELDS = [
+  "companyName",
+  "description",
+  "language",
+  "targetAudience",
+  "values",
+  "competitors",
+  "keywords",
+  "differentiators",
+  "commercialPolicies",
+  "specialDates",
+] as const;
+
+export const CONTEXT_FIELDS = [
+  "tone",
+  "dos",
+  "avoid",
+  "categories",
+  "vocabulary",
+  "voiceExamples",
+] as const;
+
+/**
+ * A stored block as a record, or the shared empty one.
+ *
+ * The identity matters: {@link EMPTY_PAYLOAD}'s note applies here too — an
+ * editor seeding a draft from an absent block must get the same reference every
+ * render, or `useAutosave` re-seeds forever.
+ */
+export function asBlock(value: unknown): Record<string, unknown> {
+  return asRecord(value) ?? EMPTY_PAYLOAD;
+}
+
+/**
+ * A draft narrowed to the fields its block owns.
+ *
+ * The editor seeds each draft from a whole stored block — which, on a site
+ * written before the split, is the one block holding both halves. Narrowing on
+ * the way out is what keeps a save from writing a field into the wrong file,
+ * and what makes the legacy block shed the rules it no longer owns.
+ */
+export function pickBlogFields(
+  source: Record<string, unknown>,
+  fields: readonly string[],
+): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field in source) picked[field] = source[field];
+  }
+  return picked;
+}
+
+export interface BlogContextBlocks {
+  brand: Record<string, unknown>;
+  context: Record<string, unknown>;
+  /** Both halves together — what every generation tool is fed. */
+  merged: Record<string, unknown>;
+}
+
+/**
+ * Both halves of the editorial context, from the two raw blocks. The one place
+ * either is interpreted.
+ *
+ * Sites written before the split hold everything in `blog-manager-brand`, so
+ * the writing rules fall back to it while `blog-manager-context` is absent —
+ * the same tolerance {@link normalizeBrandRules} gives the older `string[]`
+ * rule lists, and for the same reason: a read that copes costs one function,
+ * a migration costs a pass over every site's repository. Once the context block
+ * exists it wins outright, and the brand half is read by its own fields only,
+ * so the legacy copies are ignored from then on and the brand block sheds them
+ * on its next save.
+ *
+ * Takes the blocks rather than the decofile so a caller holding them as state
+ * can memoize on their identity: it returns fresh objects, and the editor's
+ * autosave re-seeds on reference change.
+ */
+export function splitBlogContext(
+  brandBlock: unknown,
+  contextBlock: unknown,
+): BlogContextBlocks {
+  const stored = asRecord(brandBlock) ?? {};
+  const storedContext = asRecord(contextBlock);
+  const brand = pickBlogFields(stored, BRAND_FIELDS);
+  const context = storedContext ?? pickBlogFields(stored, CONTEXT_FIELDS);
+  return { brand, context, merged: { ...brand, ...context } };
+}
+
+/** {@link splitBlogContext} for the callers that hold the whole decofile. */
+export function readBlogContext(
+  decofile: Record<string, unknown>,
+): BlogContextBlocks {
+  return splitBlogContext(
+    decofile[BRAND_BLOCK_KEY],
+    decofile[CONTEXT_BLOCK_KEY],
+  );
+}
+
+/**
+ * The editorial context as every generation tool takes it: one `brand` input
+ * spanning both blocks, with blank rule rows dropped — those are editor state,
+ * not something to spend a prompt on.
+ *
+ * Takes `merged` from {@link splitBlogContext}. The tools' schema is partial,
+ * so a field the human never filled simply arrives empty.
+ */
+export function contextForTools(merged: Record<string, unknown>) {
+  return {
+    companyName: str(merged.companyName),
+    description: str(merged.description),
+    language: str(merged.language),
+    tone: str(merged.tone),
+    targetAudience: str(merged.targetAudience),
+    values: filledBrandRules(normalizeBrandRules(merged.values)),
+    dos: filledBrandRules(normalizeBrandRules(merged.dos)),
+    avoid: filledBrandRules(normalizeBrandRules(merged.avoid)),
+    keywords: filledBrandRules(normalizeBrandRules(merged.keywords)),
+    commercialPolicies: filledBrandRules(
+      normalizeBrandRules(merged.commercialPolicies),
+    ),
+    vocabulary: filledBrandRules(normalizeBrandRules(merged.vocabulary)),
+    voiceExamples: filledVoiceExamples(
+      normalizeVoiceExamples(merged.voiceExamples),
+    ),
+  };
+}
+
 /**
  * One editorial rule: a short name plus a markdown body. Replaces the flat
  * strings these fields used to hold — a rule worth writing down needs more
@@ -1110,6 +1254,99 @@ export const BRAND_BLOCK_KEY = "blog-manager-brand";
 export interface BrandRule {
   name: string;
   value: string;
+}
+
+/**
+ * One example sentence, with the side of the line it sits on. Not a
+ * {@link BrandRule}: there is no rule to name here, only the sentence and
+ * whether it is one to imitate or one to avoid.
+ */
+export interface VoiceExample {
+  text: string;
+  sounds: boolean;
+}
+
+/**
+ * Read example sentences from a block, tolerating the `{ name, value }` shape
+ * this field briefly had — those rows carried the sentence in `value`, so they
+ * survive as sentences to imitate rather than being dropped.
+ */
+export function normalizeVoiceExamples(value: unknown): VoiceExample[] {
+  if (!Array.isArray(value)) return [];
+  const examples: VoiceExample[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      if (entry.trim()) examples.push({ text: entry, sounds: true });
+      continue;
+    }
+    const record = asRecord(entry);
+    if (!record) continue;
+    const text = str(record.text) || str(record.value);
+    examples.push({ text, sounds: record.sounds !== false });
+  }
+  return examples;
+}
+
+/** Examples a reader would consider written — a blank row is editor state. */
+export function filledVoiceExamples(examples: VoiceExample[]): VoiceExample[] {
+  return examples.filter((example) => example.text.trim());
+}
+
+/** Whether a fill may overwrite what a person already wrote. */
+export type FillMode = "empty" | "replace";
+
+/**
+ * Write an extract's answer into a draft, returning the fields it touched.
+ *
+ * `empty` fills blanks only. `replace` overwrites a field the model answered —
+ * but a field it left empty keeps its current value, because deleting someone's
+ * sentence to put nothing in its place is never what "start over" is asking
+ * for. Mutates `target`, which the caller owns as a fresh copy.
+ */
+export function applyExtractResult(
+  target: Record<string, unknown>,
+  result: Record<string, unknown>,
+  options: {
+    mode: FillMode;
+    textFields: readonly string[];
+    ruleFields: readonly string[];
+    /** Fields holding {@link VoiceExample}s, which normalize differently. */
+    exampleFields?: readonly string[];
+  },
+): string[] {
+  const touched: string[] = [];
+  for (const field of options.textFields) {
+    const proposed = str(result[field]).trim();
+    if (!proposed) continue;
+    if (options.mode === "empty" && str(target[field]).trim()) continue;
+    target[field] = proposed;
+    touched.push(field);
+  }
+  for (const field of options.ruleFields) {
+    const proposed = filledBrandRules(normalizeBrandRules(result[field]));
+    if (proposed.length === 0) continue;
+    if (
+      options.mode === "empty" &&
+      filledBrandRules(normalizeBrandRules(target[field])).length > 0
+    ) {
+      continue;
+    }
+    target[field] = proposed;
+    touched.push(field);
+  }
+  for (const field of options.exampleFields ?? []) {
+    const proposed = filledVoiceExamples(normalizeVoiceExamples(result[field]));
+    if (proposed.length === 0) continue;
+    if (
+      options.mode === "empty" &&
+      filledVoiceExamples(normalizeVoiceExamples(target[field])).length > 0
+    ) {
+      continue;
+    }
+    target[field] = proposed;
+    touched.push(field);
+  }
+  return touched;
 }
 
 /**
@@ -1213,22 +1450,19 @@ export function extractBlockProse(block: unknown): string {
   return lines.join("\n");
 }
 
+export interface BrandEvidence {
+  blocks: BrandEvidenceBlock[];
+  seo: SeoEvidenceEntry[];
+}
+
 /**
- * The blocks that show how this brand writes, most telling first: existing
- * posts (the brand writing blogposts), then categories (the topics it owns),
- * then pages (marketing copy — weaker voice evidence, and all a site with no
- * blog has; Farm Rio has 1018 pages and zero posts).
- *
- * Within each tier, most prose first — a product-listing page serializes to
- * almost nothing once URLs are dropped, an institutional page to paragraphs.
- *
- * `pageKeys` comes from the caller's `extractPages`, keeping this independent
- * of the page-list module.
+ * Everything the extract reads, most telling first: posts, then categories, then pages — home, institutional, commerce. A PDP is a template with a product name substituted in, so the thousandth teaches nothing the first did not; an institutional page is written once, by hand, about the brand. SEO travels in its own array because folded into `blocks` it could trip `BRAND_EVIDENCE_MAX_BLOCKS`, which rejects the whole call. `catalogChars` reserves room for the caller's catalog sample: without it the loop below, which stops at the first block that overflows, would eat the new sections on exactly the large sites they are for.
  */
-export function selectBrandEvidenceBlocks(
+export function selectBrandEvidence(
   decofile: Record<string, unknown>,
-  pageKeys: string[],
-): BrandEvidenceBlock[] {
+  pages: PageEntry[],
+  catalogChars = 0,
+): BrandEvidence {
   const prose = new Map<string, string>();
   const proseFor = (key: string) => {
     const cached = prose.get(key);
@@ -1243,17 +1477,32 @@ export function selectBrandEvidenceBlocks(
   const byProseDesc = (a: string, b: string) =>
     proseFor(b).length - proseFor(a).length;
 
+  const seo = selectSeoEvidence(decofile, pages);
+  const seoChars = seo.reduce((sum, entry) => sum + entry.content.length, 0);
+
+  const byRole: Record<PageRole, string[]> = {
+    home: [],
+    institutional: [],
+    commerce: [],
+  };
+  for (const page of pages) byRole[pageRole(decofile, page)].push(page.key);
+
   const ordered = [
     ...listBlogPayloads(decofile, "posts")
       .map((p) => p.key)
       .sort(byProseDesc),
     ...listBlogPayloads(decofile, "categories").map((c) => c.key),
-    ...[...pageKeys].sort(byProseDesc),
+    ...byRole.home,
+    ...byRole.institutional.sort(byProseDesc),
+    ...byRole.commerce.sort(byProseDesc),
   ];
 
   const selected: BrandEvidenceBlock[] = [];
   const seen = new Set<string>();
-  let remaining = BRAND_EVIDENCE_MAX_CHARS;
+  let remaining = Math.max(
+    0,
+    BRAND_EVIDENCE_MAX_CHARS - seoChars - catalogChars,
+  );
 
   for (const key of ordered) {
     if (selected.length >= BRAND_EVIDENCE_MAX_BLOCKS) break;
@@ -1266,7 +1515,7 @@ export function selectBrandEvidenceBlocks(
     remaining -= content.length;
   }
 
-  return selected;
+  return { blocks: selected, seo };
 }
 
 // ------------------ Ideas (the editorial planning queue) ---------------------
@@ -1538,7 +1787,7 @@ const REQUIRED_BRAND_TEXT = [
 ] as const satisfies readonly BrandRequirement[];
 
 /**
- * What the brand block still lacks before anything may be generated.
+ * What the merged context ({@link readBlogContext}) still lacks before anything may be generated.
  *
  * These are the three tabs that decide how a post reads — the basics, the
  * generation instructions and the guardrails. Without them the model falls back
