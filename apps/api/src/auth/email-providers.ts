@@ -8,6 +8,7 @@
  */
 
 import { Resend, SendGrid } from "./known-email-providers";
+import { getConfig } from "@/core/config";
 
 // Provider-specific config types
 interface ResendConfig {
@@ -77,4 +78,19 @@ export function findEmailProvider(
   id: string,
 ): EmailProviderConfig | undefined {
   return providers.find((p) => p.id === id);
+}
+
+/**
+ * Resolve the configured email sender from the auth config.
+ * Null when the deployment has no email provider configured.
+ */
+export function resolveEmailSender():
+  | ((params: SendEmailParams) => Promise<void>)
+  | null {
+  const auth = getConfig().auth;
+  const providers = auth.emailProviders ?? [];
+  const provider = auth.inviteEmailProviderId
+    ? findEmailProvider(providers, auth.inviteEmailProviderId)
+    : providers[0];
+  return provider ? createEmailSender(provider) : null;
 }

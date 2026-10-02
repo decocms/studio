@@ -9,7 +9,7 @@
   "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",
   "jira/dbos-jira-trigger-sweep.ts": "fd1628a5b8f871903b0f0169aae9f51fac1af8af77ef7cdb2256e14926d5782a",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
-  "notifications/dbos-digest.ts": "467276350cefc479263b7bfafc34002b3fbe54546bc8b246c4dba016a9f961ee",
+  "notifications/dbos-digest.ts": "a47e41ceb10b0d8c3a8cd6f7d9f557c87bf60ceb9ec5234170ba0165e3712d3e",
   "sandbox/dbos-credential-push.ts": "e18fd34c40dd5cdd3287a3132dfe954c07fbdc295e023c3e35e7ba88ccbb459a",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",
   "tools/task-board/dbos-github-read.ts": "02f8d9e13cdca01a7e7a6ad00767229b7bf83443a4d773e836fad6aca95020f5",
