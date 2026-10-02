@@ -34,6 +34,8 @@ const REPO = { connectionId: "c1", repo: "acme/site" };
 const CLONE = "https://x-access-token:ghs_1@github.com/acme/site.git";
 /** MCP requests the host turns away with 503, as a leaderless follower does. */
 let mcpUnavailable = 0;
+/** MCP requests the host fails outright, as a dropped connection would. */
+let mcpBroken = 0;
 /** Replaces the watch route when set. */
 let watchRoute: ((req: Request) => Response) | null = null;
 const phases: ClaimPhase[] = [
@@ -154,6 +156,10 @@ beforeAll(() => {
           { status: 503 },
         );
       }
+      if (mcpBroken > 0) {
+        mcpBroken--;
+        return new Response(null, { status: 500 });
+      }
       return serveMcp(req);
     },
   });
@@ -169,6 +175,7 @@ afterEach(() => {
   watchRoute = null;
   ensureWaitMs = 0;
   ensureFails = null;
+  mcpBroken = 0;
 });
 
 const STALL_MS = 400;
@@ -253,6 +260,18 @@ describe("RemoteSandboxProvider against the host tools", () => {
     await provider.renewTtl(HANDLE);
     expect(mcpUnavailable).toBe(0);
     expect(calls).toEqual(["renew"]);
+  });
+
+  it("drops the connected client on a non-503 failure so the next call reconnects", async () => {
+    await provider.alive(HANDLE);
+    const withClient = provider as unknown as { connecting: unknown };
+    expect(withClient.connecting).not.toBeNull();
+
+    mcpBroken = 1;
+    await expect(provider.alive(HANDLE)).rejects.toThrow();
+    expect(withClient.connecting).toBeNull();
+
+    expect(await provider.alive(HANDLE)).toBe(true);
   });
 
   it("maps capacity and tenant pools", async () => {
