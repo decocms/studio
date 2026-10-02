@@ -1,0 +1,79 @@
+name: Rollback Compatibility
+
+# A rollback runs the previous release against the schema this PR's migrations
+# leave behind. Prove that works by running the previous release's storage
+# integration tests against that schema. A migration that drops, renames, or
+# tightens something the previous release still uses fails here; split it into
+# a code-only release first and the destructive migration in the next one.
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/api/migrations/**"
+      - "apps/api/src/database/migrate.ts"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  previous-release-on-new-schema:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      NATS_URL: nats://localhost:4222
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Start Postgres
+        uses: ./.github/actions/start-postgres
+
+      - name: Start MinIO
+        uses: ./.github/actions/start-minio
+
+      - name: Start NATS with JetStream
+        run: |
+          docker run -d --name nats -p 4222:4222 library/nats:2.14.2 -js
+          for _ in $(seq 1 10); do nc -z localhost 4222 && break; sleep 1; done
+          nc -z localhost 4222
+
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Migrate to this PR's schema
+        run: bun run --cwd=apps/api migrate
+
+      - name: Check out the previous release
+        id: previous
+        run: |
+          tag=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+          echo "Previous release: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          git worktree add ../previous "$tag"
+          cd ../previous && bun install
+
+      # Migration tests exercise their own up() against an empty table, which
+      # says nothing about rollback. Each failing file is retried once because
+      # a few suites time out under sequential load.
+      - name: Run the previous release's storage integration tests
+        working-directory: ../previous
+        run: |
+          failed=()
+          while IFS= read -r f; do
+            echo "::group::$f"
+            bun test "$f" || bun test "$f" || failed+=("$f")
+            echo "::endgroup::"
+          done < <(find apps/api packages -name '*.integration.test.ts' \
+            -not -path '*/node_modules/*' -not -path 'apps/api/migrations/*' | sort)
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::${{ steps.previous.outputs.tag }} breaks on this PR's schema, so rolling back to it would fail: ${failed[*]}"
+            exit 1
+          fi
