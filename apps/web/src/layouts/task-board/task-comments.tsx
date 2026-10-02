@@ -41,9 +41,10 @@ import {
   MentionInput,
   type MentionInputHandle,
 } from "@/components/markdown-editor/mention-input";
-import { isImageFile, maxUploadMb } from "@/components/markdown-editor/uploads";
+import { maxUploadMb } from "@/components/markdown-editor/uploads";
 import {
   admitAttachments,
+  attachmentStorage,
   commentBodyWithAttachments,
   MAX_COMMENT_ATTACHMENTS,
   type AttachmentLink,
@@ -274,7 +275,9 @@ function CommentComposer({
       ...accepted.map((file) => ({
         id: crypto.randomUUID(),
         file,
-        previewUrl: isImageFile(file) ? URL.createObjectURL(file) : null,
+        previewUrl: attachmentStorage(file).inlineImage
+          ? URL.createObjectURL(file)
+          : null,
         link: null,
       })),
     ]);

@@ -2,10 +2,8 @@ import {
   TASK_COMMENT_ATTACHMENT_VOLUME,
   taskCommentAttachmentDir,
 } from "@decocms/shared/task-comment-attachments";
-import { isImageFile } from "@/components/markdown-editor/uploads";
-import { fileExtension } from "@/components/markdown-editor/use-file-upload";
 import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
-import type { AttachmentLink } from "./comment-attachments";
+import { attachmentStorage, type AttachmentLink } from "./comment-attachments";
 
 /**
  * Stores a comment's files in the task's attachment folder. Each upload gets a
@@ -19,7 +17,8 @@ export function useCommentAttachmentUpload(taskId: string) {
 
   return {
     store: async (file: File): Promise<AttachmentLink> => {
-      const name = `${crypto.randomUUID()}${fileExtension(file)}`;
+      const { extension, inlineImage } = attachmentStorage(file);
+      const name = `${crypto.randomUUID()}${extension}`;
       await upload.mutateAsync({
         dir,
         files: [new File([file], name, { type: file.type })],
@@ -27,7 +26,7 @@ export function useCommentAttachmentUpload(taskId: string) {
       return {
         name: file.name,
         url: fileUrl(`${dir}/${name}`),
-        isImage: isImageFile(file),
+        isImage: inlineImage,
       };
     },
   };

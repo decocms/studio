@@ -191,6 +191,31 @@ test("pasting a screenshot attaches it, but text that carries a picture pastes a
   ).toBeVisible();
 });
 
+test("an SVG is attached as a file, never shown or posted as an image", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+
+  const chooser = page.waitForEvent("filechooser");
+  await component.getByRole("button", { name: "Attach file" }).click();
+  await (await chooser).setFiles([
+    {
+      name: "logo.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"),
+    },
+  ]);
+  const attachments = component.getByRole("list", { name: "Attachments" });
+  await expect(attachments.getByText("logo.svg")).toBeVisible();
+  await expect(attachments.getByRole("img")).toHaveCount(0);
+
+  await component.getByLabel("Send").last().click();
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`[logo.svg](${link("logo.svg")})`]),
+  );
+});
+
 test("a removed preview is not posted", async ({ mount, page }) => {
   const component = await mount(<TaskCommentsHarness />);
 

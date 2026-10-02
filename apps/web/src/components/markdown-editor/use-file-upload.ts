@@ -4,30 +4,12 @@ import { useOrgFsDownloadUrl, useOrgFsMutations } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
 import {
   FILE_DIR,
+  fileExtension,
   IMAGE_DIR,
   isImageFile,
   maxUploadMb,
   UPLOAD_VOLUME,
 } from "./uploads";
-
-const EXT_BY_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/avif": ".avif",
-  "image/svg+xml": ".svg",
-};
-
-export function fileExtension(file: File): string {
-  return (
-    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
-    EXT_BY_MIME[file.type] ??
-    // Nothing to go on: an image still needs an extension for the read route to
-    // serve it back as one, while an attachment is only ever downloaded.
-    (isImageFile(file) ? ".png" : "")
-  );
-}
 
 /**
  * Uploads editor files to the org filesystem and hands back a same-origin

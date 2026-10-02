@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   admitAttachments,
+  attachmentStorage,
   commentBodyWithAttachments,
 } from "./comment-attachments";
 
@@ -90,5 +91,36 @@ describe("commentBodyWithAttachments names", () => {
     expect(commentBodyWithAttachments("", [odd])).toBe(
       "[my\\_notes \\*v2\\* \\`final\\`.pdf](/u/d4.pdf)",
     );
+  });
+});
+
+describe("attachmentStorage", () => {
+  it("keeps an inert file's extension, and shows a raster image inline", () => {
+    expect(attachmentStorage(fileOf("shot.png", "image/png", 1))).toEqual({
+      extension: ".png",
+      inlineImage: true,
+    });
+    expect(attachmentStorage(fileOf("spec.pdf", "application/pdf", 1))).toEqual(
+      { extension: ".pdf", inlineImage: false },
+    );
+  });
+
+  it("stores what the read route would serve as a live document as plain text, shown as a chip", () => {
+    const live = [
+      fileOf("report.html", "text/html", 1),
+      fileOf("page.HTM", "text/html", 1),
+      fileOf("logo.svg", "image/svg+xml", 1),
+      fileOf("feed.xml", "application/xml", 1),
+      fileOf("doc.xhtml", "application/xhtml+xml", 1),
+      // No extension in the name: the type alone would have named it `.svg`.
+      fileOf("pasted", "image/svg+xml", 1),
+    ];
+
+    for (const file of live) {
+      expect(attachmentStorage(file)).toEqual({
+        extension: ".txt",
+        inlineImage: false,
+      });
+    }
   });
 });

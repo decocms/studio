@@ -25,6 +25,25 @@ export function isImageFile(file: File): boolean {
   return file.type.startsWith("image/");
 }
 
+const EXT_BY_MIME: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/avif": ".avif",
+  "image/svg+xml": ".svg",
+};
+
+/** The extension an upload is stored under — the read route picks its content type from it. */
+export function fileExtension(file: File): string {
+  return (
+    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
+    EXT_BY_MIME[file.type] ??
+    // An image still needs an extension to be served back as one; any other file is only downloaded.
+    (isImageFile(file) ? ".png" : "")
+  );
+}
+
 /** The upload cap for this file, in MB. */
 export function maxUploadMb(file: File): number {
   return isImageFile(file) ? MAX_IMAGE_MB : MAX_FILE_MB;

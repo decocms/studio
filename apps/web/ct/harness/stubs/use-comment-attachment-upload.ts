@@ -8,7 +8,10 @@
  */
 
 import { taskCommentAttachmentDir } from "@decocms/shared/task-comment-attachments";
-import type { AttachmentLink } from "@/layouts/task-board/comment-attachments";
+import {
+  attachmentStorage,
+  type AttachmentLink,
+} from "@/layouts/task-board/comment-attachments";
 
 export function useCommentAttachmentUpload(taskId: string) {
   return {
@@ -18,7 +21,7 @@ export function useCommentAttachmentUpload(taskId: string) {
       return {
         name: file.name,
         url: `/api/acme/fs/uploads/read?path=${encodeURIComponent(path)}`,
-        isImage: file.type.startsWith("image/"),
+        isImage: attachmentStorage(file).inlineImage,
       };
     },
   };

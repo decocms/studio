@@ -17,6 +17,15 @@ export function taskCommentAttachmentDir(taskId: string): string {
   return `${TASK_COMMENT_ATTACHMENT_ROOT}/${taskId}`;
 }
 
+/**
+ * The only file name a comment attachment has: the UUID the composer gives it,
+ * plus the file's extension. Matching that exact shape, rather than ruling out
+ * bad names, keeps anything the file store would decode or resolve further —
+ * `\`, `%2e`, `.`, `..`, control characters — from ever being treated as one.
+ */
+const ATTACHMENT_NAME =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[a-z0-9]{1,8})?$/i;
+
 /** A relative markdown link target on the read route — `](/api/<org>/fs/<volume>/read?path=<path>)`. */
 const READ_LINK_TARGET =
   /\]\(\/api\/[^/\s)]+\/fs\/([^/\s)]+)\/read\?path=([^)\s]+)\)/g;
@@ -45,9 +54,7 @@ export function taskCommentAttachmentPaths(
     }
     if (volume !== TASK_COMMENT_ATTACHMENT_VOLUME) continue;
     if (!path.startsWith(dir)) continue;
-    // Checked on the decoded value, where `%2F` has become a real slash.
-    const name = path.slice(dir.length);
-    if (name === "" || name.includes("/") || name === "..") continue;
+    if (!ATTACHMENT_NAME.test(path.slice(dir.length))) continue;
     paths.add(path);
   }
   return [...paths];
