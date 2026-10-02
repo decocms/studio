@@ -5,6 +5,7 @@
  * and hidden defaulting across all thread tools.
  */
 
+import { hasAdminRole } from "@decocms/shared/auth/roles";
 import type { Thread, ThreadStatus } from "../../storage/types";
 import type { VirtualMCPStoragePort } from "../../storage/ports";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
@@ -37,6 +38,36 @@ export async function requireOwnedVirtualMcp(
     throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
   }
   return vmcp;
+}
+
+/**
+ * Guard thread WRITES (update/delete) to the thread's creator or an org
+ * admin/owner. Thread READS are org-wide by design — teammates can view each
+ * other's chats — but mutations are owner-only ("teammates' threads must be
+ * read-only unless owned", CLAUDE.md / PR #4230).
+ *
+ * This is a tenant-ownership check, NOT an RBAC check: `ctx.access.check()`
+ * only proves the caller holds the tool's action, and the thread collection
+ * tools are basic-usage (granted to every org member regardless of role). So
+ * without this guard any member could delete or rename a teammate's thread by
+ * id. Admin/owner bypass mirrors the role bypass in AccessControl.
+ *
+ * Throws (rather than returning a boolean) so a caller can't forget to act on
+ * a `false`.
+ */
+export function assertThreadWritable(
+  thread: Pick<Thread, "created_by">,
+  caller: { userId: string | undefined; role: string | undefined },
+): void {
+  if (caller.userId && thread.created_by === caller.userId) {
+    return;
+  }
+  if (hasAdminRole(caller.role)) {
+    return;
+  }
+  throw new Error(
+    "Forbidden: only the chat's owner or an organization admin can modify this chat",
+  );
 }
 
 /**
