@@ -26,6 +26,8 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:draft:${locator}:${taskKey}`,
   /** One entry per locator holding that org's recently-viewed task PR cards. */
   taskBoardPrs: (locator: ProjectLocator) => `studio:task-board-prs:${locator}`,
+  /** The assignee filter the org's task board opens on. */
+  taskBoardAssignee: (orgId: string) => `studio:task-board-assignee:${orgId}`,
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,

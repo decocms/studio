@@ -79,8 +79,7 @@ test.describe("task board live updates", () => {
       title: "Seed card",
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
-    await page.goto(`/${orgSlug}/tasks?assignee=any`);
+    await page.goto(`/${orgSlug}/tasks`);
     await expect(page.locator('button:has-text("Seed card")')).toBeVisible();
 
     await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {

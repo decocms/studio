@@ -32,9 +32,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
-import { BoardOrgProvider, useBoardOrgSlug } from "./board-org";
-import { authClient } from "@/lib/auth-client";
+import { BoardOrgProvider } from "./board-org";
 import { getInitials } from "@/lib/get-initials";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
@@ -946,6 +947,7 @@ function TaskBoardBody({
   taskInSearch?: boolean;
 }) {
   const t = useT();
+  const { org, locator } = useProjectContext();
   const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
@@ -1033,8 +1035,10 @@ function TaskBoardBody({
    *  a `?view=feed` link shared from a colleague who HAS the flag has to land
    *  on the board rather than on a view with no tab to leave it by. */
   const feedEnabled = useProjectFirstNav();
-  const { data: session } = authClient.useSession();
-  const foreignBoardOrg = useBoardOrgSlug() !== null;
+  const [savedAssignee, setSavedAssignee] = useLocalStorage<string | null>(
+    LOCALSTORAGE_KEYS.taskBoardAssignee(org.id),
+    null,
+  );
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const {
     filters,
@@ -1049,12 +1053,17 @@ function TaskBoardBody({
     sortDirection,
     setSortBy,
     setSortDirection,
-  } = useBoardSearch({
-    layout: inlineTabs && feedEnabled ? "feed" : "board",
-    // Another org's board (admin view) has none of the viewer's own tasks.
-    assignee: foreignBoardOrg ? null : (session?.user?.id ?? null),
-    groupBy: "status",
-  });
+  } = useBoardSearch(
+    {
+      layout: inlineTabs && feedEnabled ? "feed" : "board",
+      assignee:
+        typeof savedAssignee === "string" && savedAssignee !== ""
+          ? savedAssignee
+          : null,
+      groupBy: "status",
+    },
+    setSavedAssignee,
+  );
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
@@ -1115,7 +1124,6 @@ function TaskBoardBody({
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
-  const { org, locator } = useProjectContext();
   const navigate = useNavigate();
   /** Scoped, the gear opens the PROJECT's settings; only the org-wide board
    *  has board settings of its own. */

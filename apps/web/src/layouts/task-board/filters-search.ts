@@ -66,8 +66,9 @@ export type BoardView = {
  * What a board opens on when the URL says nothing. `layout` is Board
  * everywhere except the project overview's inline tabs, where the board's
  * horizontal columns are the wrong shape for a strip under a header and Feed
- * reads top to bottom. `assignee` is the viewer, so the board opens on their
- * own work.
+ * reads top to bottom. `assignee` is the last assignee filter this browser
+ * picked on the org's board, so someone who only follows their own tasks sets
+ * that once.
  */
 export type BoardDefaults = {
   layout: Layout;
@@ -81,8 +82,8 @@ export const NO_DEFAULTS: BoardDefaults = {
   groupBy: null,
 };
 
-/** URL values for "cleared" where the default is not empty, so removing the
- *  default filter or grouping sticks instead of coming straight back. */
+/** URL values for "cleared" where the default is not empty, so a link or a
+ *  reload without the filter or grouping does not bring the default back. */
 const ANY_ASSIGNEE = "any";
 const NO_GROUP = "none";
 
@@ -188,8 +189,15 @@ export function visibleSelection(
   return new Set([...selection].filter((id) => visible.has(id)));
 }
 
-/** `useState`-shaped replacement for the board's view state. */
-export function useBoardSearch(defaults: BoardDefaults) {
+/**
+ * `useState`-shaped replacement for the board's view state. `saveAssignee`
+ * remembers an assignee change for the next visit; the URL is still written
+ * against the current default, so it carries the choice until then.
+ */
+export function useBoardSearch(
+  defaults: BoardDefaults,
+  saveAssignee: (assignee: string | null) => void,
+) {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
   const view = parseBoardSearch(search, defaults);
@@ -208,7 +216,11 @@ export function useBoardSearch(defaults: BoardDefaults) {
 
   return {
     ...view,
-    setFilters: (filters: TaskFilters) => write({ filters }),
+    setFilters: (filters: TaskFilters) => {
+      if (filters.assignee !== view.filters.assignee)
+        saveAssignee(filters.assignee);
+      write({ filters });
+    },
     setLayout: (layout: Layout) => write({ layout }),
     /** Picking the sub-group's criterion as the group swaps the two. */
     setGroupBy: (next: GroupBy | null) =>

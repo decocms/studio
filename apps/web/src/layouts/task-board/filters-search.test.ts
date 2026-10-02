@@ -30,50 +30,58 @@ const filters: TaskFilters = {
 
 const FEED_DEFAULTS: BoardDefaults = { ...NO_DEFAULTS, layout: "feed" };
 
-/** The tasks page: the viewer's own work, grouped by status. */
-const VIEWER_DEFAULTS: BoardDefaults = {
+/** The tasks page grouped by status, in a browser that last filtered it to
+ *  one assignee. */
+const SAVED_DEFAULTS: BoardDefaults = {
   layout: "board",
   assignee: "me-1",
   groupBy: "status",
 };
 
-describe("the board opens on the viewer's work, grouped by status", () => {
+describe("the board opens on the saved assignee, grouped by status", () => {
+  test("with nothing saved, an empty URL shows every task", () => {
+    const view = parseBoardSearch({}, { ...SAVED_DEFAULTS, assignee: null });
+    expect(view.filters.assignee).toBeNull();
+    expect(view.groupBy).toBe("status");
+  });
+
   test("an empty URL takes the defaults and writes nothing back", () => {
-    const view = parseBoardSearch({}, VIEWER_DEFAULTS);
+    const view = parseBoardSearch({}, SAVED_DEFAULTS);
     expect(view.filters.assignee).toBe("me-1");
     expect(view.groupBy).toBe("status");
-    const params = boardSearchParams(view, VIEWER_DEFAULTS);
+    const params = boardSearchParams(view, SAVED_DEFAULTS);
     expect(params.assignee).toBeUndefined();
     expect(params.group).toBeUndefined();
   });
 
   test("clearing either default sticks across a reload", () => {
     const cleared = {
-      ...parseBoardSearch({}, VIEWER_DEFAULTS),
+      ...parseBoardSearch({}, SAVED_DEFAULTS),
       filters: EMPTY_FILTERS,
       groupBy: null,
     };
-    const params = boardSearchParams(cleared, VIEWER_DEFAULTS);
+    const params = boardSearchParams(cleared, SAVED_DEFAULTS);
     expect(params.assignee).toBe("any");
     expect(params.group).toBe("none");
-    const reloaded = parseBoardSearch(params, VIEWER_DEFAULTS);
+    const reloaded = parseBoardSearch(params, SAVED_DEFAULTS);
     expect(reloaded.filters.assignee).toBeNull();
     expect(reloaded.groupBy).toBeNull();
   });
 
-  test("an explicit choice beats the defaults", () => {
+  test("a link's assignee beats the saved one", () => {
     const view = parseBoardSearch(
       { assignee: "user-2", group: "priority" },
-      VIEWER_DEFAULTS,
+      SAVED_DEFAULTS,
     );
     expect(view.filters.assignee).toBe("user-2");
     expect(view.groupBy).toBe("priority");
-    expect(parseBoardSearch({ group: "bogus" }, VIEWER_DEFAULTS).groupBy).toBe(
+    expect(boardSearchParams(view, SAVED_DEFAULTS).assignee).toBe("user-2");
+    expect(parseBoardSearch({ group: "bogus" }, SAVED_DEFAULTS).groupBy).toBe(
       null,
     );
   });
 
-  test("with no viewer yet, the cleared markers stay out of the URL", () => {
+  test("with no defaults, the cleared markers stay out of the URL", () => {
     const params = boardSearchParams(parseBoardSearch({}), NO_DEFAULTS);
     expect(params.assignee).toBeUndefined();
     expect(params.group).toBeUndefined();
