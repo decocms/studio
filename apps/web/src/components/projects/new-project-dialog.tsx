@@ -167,6 +167,7 @@ export function NewProjectDialog({
   }
 
   const create = async () => {
+    if (actions.create.isPending) return;
     const title = name.trim();
     if (!title) {
       setError(t("projects.new.nameRequired"));
