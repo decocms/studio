@@ -25,7 +25,7 @@ export function RequestPendingScreen({
           className="h-12 w-12"
         />
       ) : (
-        <div className="bg-primary/10 p-3 rounded-full">
+        <div className="bg-primary/10 p-3 rounded-full" aria-hidden="true">
           <Clock className="h-6 w-6 text-primary" />
         </div>
       )}
