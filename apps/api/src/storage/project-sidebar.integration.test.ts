@@ -81,6 +81,22 @@ describe("ProjectSidebarStorage", () => {
     );
   });
 
+  it("rejects a stored folders row that no longer matches the schema", async () => {
+    await sql`
+      INSERT INTO "org_project_folders" (organization_id, folders, updated_at)
+      VALUES ('org_1', '[{"id": "a"}]', now())
+    `.execute(database.db);
+    await expect(storage.getFolders("org_1")).rejects.toThrow();
+  });
+
+  it("rejects a stored preferences row that no longer matches the schema", async () => {
+    await sql`
+      INSERT INTO "user_sidebar_preferences" (user_id, organization_id, preferences, updated_at)
+      VALUES ('user_1', 'org_1', '{"pinned": "p1"}', now())
+    `.execute(database.db);
+    await expect(storage.getPreferences("user_1", "org_1")).rejects.toThrow();
+  });
+
   it("joinedAt is the membership's creation, null for a non-member", async () => {
     expect(await storage.joinedAt("user_1", "org_1")).toBe(
       "2026-01-01T00:00:00.000Z",
