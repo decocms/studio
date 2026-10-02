@@ -100,10 +100,10 @@ spec:
               # the nginx image's STOPSIGNAL (SIGQUIT) drains open connections.
               exec:
                 command: ["sleep", "{{ .Values.nginx.preStopSleepSeconds | default 15 }}"]
-          {{- with .Values.nginx.apiMaxConns }}
+          {{- if not (kindIs "invalid" .Values.nginx.apiMaxConns) }}
           env:
             - name: STUDIO_NGINX_API_MAX_CONNS
-              value: {{ . | quote }}
+              value: {{ .Values.nginx.apiMaxConns | quote }}
           {{- end }}
           {{- with .Values.nginx.resources }}
           resources:

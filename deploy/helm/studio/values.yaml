@@ -373,7 +373,7 @@ nginx:
     readOnlyRootFilesystem: false
   preStopSleepSeconds: 15
   # Upstream max_conns per in-pod API process; null keeps the image default
-  # (128). Held long-polls/streams count; keep 4 x apiMaxConns <= 4096.
+  # (128); 0 = unlimited. Held long-polls/streams count; keep 4 x apiMaxConns <= 4096.
   apiMaxConns: null
   # Labels stamped onto the combo (nginx + API) pods so a front-door
   # LoadBalancer (e.g. the deco-apps-cd NLB) can select them by a stable label
