@@ -254,6 +254,15 @@ func Write(deps FsDeps) http.HandlerFunc {
 	}
 }
 
+func containsGitSegment(normalized string) bool {
+	for _, seg := range strings.Split(normalized, "/") {
+		if seg == ".git" {
+			return true
+		}
+	}
+	return false
+}
+
 func assertUnlinkAllowed(normalized string, recursive bool) string {
 	if normalized == "" || strings.Contains(normalized, "..") {
 		return "Invalid path"
@@ -261,10 +270,8 @@ func assertUnlinkAllowed(normalized string, recursive bool) string {
 	if recursive && (normalized == "." || normalized == "") {
 		return "Refusing to recursively delete the repository root"
 	}
-	for _, seg := range strings.Split(normalized, "/") {
-		if seg == ".git" {
-			return "Refusing to delete .git"
-		}
+	if containsGitSegment(normalized) {
+		return "Refusing to delete .git"
 	}
 	return ""
 }
@@ -380,6 +387,10 @@ func Rename(deps FsDeps) http.HandlerFunc {
 		toNorm := strings.ReplaceAll(body.To, "\\", "/")
 		if fromNorm == "" || toNorm == "" || strings.Contains(fromNorm, "..") || strings.Contains(toNorm, "..") {
 			httpx.Error(w, 400, "Invalid path")
+			return
+		}
+		if containsGitSegment(fromNorm) || containsGitSegment(toNorm) {
+			httpx.Error(w, 400, "Refusing to rename .git")
 			return
 		}
 		fromPath, okFrom := paths.SafePath(deps.AppRoot, deps.RepoDir, body.From)
