@@ -759,6 +759,11 @@ export const TASK_ADD_REPO = defineTool({
     const secondaryDirName = isPrimary
       ? null
       : secondaryRepoDirName(secondaries, bound);
+    if (!isPrimary && !secondaryDirName) {
+      throw new Error(
+        "Could not determine directory name for secondary repository",
+      );
+    }
     const checkoutDir =
       isPrimary || !secondaryDirName
         ? "."
