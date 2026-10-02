@@ -14,6 +14,7 @@ export { COLLECTION_VIRTUAL_MCP_DELETE } from "./delete";
 // Virtual MCP plugin config and pinned views tools
 export { VIRTUAL_MCP_PINNED_VIEWS_UPDATE } from "./pinned-views-update";
 export { VIRTUAL_MCP_LAST_USED_LIST } from "./last-used-list";
+export { PROJECT_FOLDER_ENSURE } from "./project-folder-ensure";
 
 // Re-export schema types (only types, not runtime schemas)
 export type {

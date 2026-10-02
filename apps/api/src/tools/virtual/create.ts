@@ -17,6 +17,7 @@ import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
+import { ensureProjectFolder } from "../../file-storage/project-folder";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 /**
  * Random icon+color for new agents (server-side, no React deps).
@@ -149,6 +150,16 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     // over a prompt write.
     if (prompts?.length && ctx.orgFs && virtualMcp.id) {
       await writeAgentPrompts(ctx.orgFs, virtualMcp.id, userId, prompts);
+    }
+
+    // Best-effort too: opening the project's files re-runs this.
+    if (ctx.orgFs && virtualMcp.id) {
+      await ensureProjectFolder(ctx.orgFs, virtualMcp, userId).catch((err) =>
+        console.error("[project-folder] scaffold failed", {
+          projectId: virtualMcp.id,
+          err,
+        }),
+      );
     }
 
     // Return virtual MCP entity directly (already in correct format)

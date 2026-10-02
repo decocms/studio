@@ -5670,6 +5670,7 @@ export interface StudioToolIO {
       }[];
     };
   };
+  PROJECT_FOLDER_ENSURE: { input: { id: string }; output: { path: string } };
   AI_PROVIDERS_LIST: {
     input: { [x: string]: never };
     output: {

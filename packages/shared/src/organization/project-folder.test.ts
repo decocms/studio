@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   folderNameFor,
+  projectFolderDir,
   projectFolderName,
   projectFolderPath,
 } from "./project-folder";
@@ -63,5 +64,13 @@ describe("projectFolderPath", () => {
         metadata: { project: { folder: "clientes" } },
       }),
     ).toBe("home/projects/clientes/farm-br");
+  });
+});
+
+describe("projectFolderDir", () => {
+  test("is the browse path without the volume", () => {
+    expect(projectFolderDir({ id: "vir_1", title: "Farm BR" })).toBe(
+      "projects/farm-br",
+    );
   });
 });
