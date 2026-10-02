@@ -8,12 +8,13 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
  * `apps/web/src/components/markdown-editor/uploads.ts`). That URL is relative
  * and cookie-authenticated, so it means nothing inside a sandbox: an agent
  * handed the raw description sees `![image.png](/api/…)` and has no way to
- * fetch it. It reads as text and gets treated as one — the DANI-19 run
+ * fetch it. It reads as text and gets treated as one — an earlier run
  * described an image it had never seen.
  *
  * The same bytes are already mounted in the pod (`org/.uploads/…`), so the fix
  * is to rewrite the URL to that path. `Read` renders a PNG visually, so the
  * model actually looks at the screenshot the task is about.
+ * Comment bodies a run lists get the same rewrite (`TASK_BOARD_COMMENT_LIST`).
  *
  * Sandboxed runs ONLY — a hosted harness has no org-fs mount, and there the
  * original URL is at least a link a human can click.
@@ -33,12 +34,37 @@ export function uploadsAsSandboxPaths(description: string): string {
         return url;
       }
       // Checked on the DECODED value: `%2F` hides a climb-out slash from the capture.
-      const climbsOut = (part: string) =>
-        part.startsWith("/") || part.split("/").includes("..");
       if (climbsOut(volume) || climbsOut(path)) return url;
       return orgFsSandboxPath(volume, path);
     },
   );
+}
+
+function climbsOut(part: string): boolean {
+  return part.startsWith("/") || part.split("/").includes("..");
+}
+
+/** The hidden mounts nothing but `uploadsAsSandboxPaths` writes into a body. */
+const HIDDEN_MOUNTS = ["uploads", "outputs"].map((volume) => ({
+  volume,
+  prefix: `${orgFsSandboxPath(volume, "")}/`,
+}));
+
+/**
+ * The inverse, for a body a run writes back. A run that lists a comment, edits
+ * it and saves it would otherwise store `org/.uploads/…` — a path no browser
+ * can load. Only markdown link and image targets under the hidden mounts are
+ * touched: no person types those, and `org/home/…` or the run's own
+ * `org/output/…` keep their existing meaning.
+ */
+export function sandboxPathsAsUploads(body: string, orgSlug: string): string {
+  return body.replace(/\]\((org\/[^)\s]+)\)/g, (ref, target: string) => {
+    const mount = HIDDEN_MOUNTS.find((m) => target.startsWith(m.prefix));
+    if (!mount) return ref;
+    const path = target.slice(mount.prefix.length);
+    if (!path || climbsOut(path)) return ref;
+    return `](/api/${encodeURIComponent(orgSlug)}/fs/${mount.volume}/read?path=${encodeURIComponent(path)})`;
+  });
 }
 
 /**

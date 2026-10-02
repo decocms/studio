@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/experimental-ct-react";
 import {
   TaskCommentsDialogHarness,
@@ -58,12 +59,257 @@ test("existing agent replies share the single task composer", async ({
   await expect(component.getByText(/^On it\./)).toBeVisible();
 });
 
-test("the composer offers no attach control until attachments exist", async ({
+const uploadUrl = (path: string) =>
+  `/api/acme/fs/uploads/read?path=${encodeURIComponent(path)}`;
+
+test("the paperclip attaches a file as a chip, posted as a link", async ({
   mount,
 }) => {
   const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
 
-  await expect(component.getByLabel("Attach")).toHaveCount(0);
+  await expect(
+    component.getByRole("button", { name: "Attach file" }),
+  ).toBeVisible();
+  await component.locator('input[type="file"]').setInputFiles({
+    name: "spec.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4"),
+  });
+  await expect(
+    component.getByRole("link", { name: "Download spec.pdf" }),
+  ).toBeVisible();
+
+  await composer.press("Enter");
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`[spec.pdf](${uploadUrl("editor-files/spec.pdf")})`]),
+  );
+  await expect(
+    component.getByRole("link", { name: "Download spec.pdf" }),
+  ).toHaveCount(0);
+});
+
+test("files are posted in the order they were attached, image first", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const picker = component.locator('input[type="file"]');
+
+  await picker.setInputFiles({
+    name: "shot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("png"),
+  });
+  await expect(component.getByRole("img", { name: "shot.png" })).toBeVisible();
+  await picker.setInputFiles({
+    name: "spec.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4"),
+  });
+  await expect(
+    component.getByRole("link", { name: "Download spec.pdf" }),
+  ).toBeVisible();
+
+  await component.getByLabel("Send").last().click();
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      `![shot.png](${uploadUrl("editor-images/shot.png")})\n\n[spec.pdf](${uploadUrl("editor-files/spec.pdf")})`,
+    ]),
+  );
+});
+
+test("an image on its own is a comment you can send", async ({ mount }) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const send = component.getByLabel("Send").last();
+
+  await expect(send).toBeDisabled();
+  await component.locator('input[type="file"]').setInputFiles({
+    name: "shot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("png"),
+  });
+  await expect(component.getByRole("img", { name: "shot.png" })).toBeVisible();
+  await expect(send).toBeEnabled();
+
+  await send.click();
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([`![shot.png](${uploadUrl("editor-images/shot.png")})`]),
+  );
+});
+
+test("a file dropped on the card, outside the text, is attached", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const card = component.getByTestId("new-comment-composer");
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File(["notes"], "notes.txt", { type: "text/plain" }),
+    );
+    return transfer;
+  });
+
+  await card.dispatchEvent("dragenter", { dataTransfer });
+  await expect(component.getByText("Drop to attach")).toBeVisible();
+  await card.dispatchEvent("dragover", { dataTransfer });
+  await card.dispatchEvent("drop", { dataTransfer });
+
+  await expect(component.getByText("Drop to attach")).toHaveCount(0);
+  await expect(
+    component.getByRole("link", { name: "Download notes.txt" }),
+  ).toBeVisible();
+});
+
+/** Dispatches a real paste on the field, carrying what a copy put on the clipboard. */
+async function paste(
+  field: Locator,
+  clip: { text?: string; html?: string; file?: boolean },
+) {
+  await field.click();
+  await field.evaluate((el, { text, html, file }) => {
+    const data = new DataTransfer();
+    if (text) data.setData("text/plain", text);
+    if (html) data.setData("text/html", html);
+    if (file) {
+      data.items.add(new File(["png"], "image.png", { type: "image/png" }));
+    }
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, clip);
+}
+
+test("a spreadsheet copy pastes its text, not the picture beside it", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  await paste(composer, {
+    text: "Q3\t1200",
+    html: "<table><tr><td>Q3</td><td>1200</td></tr></table>",
+    file: true,
+  });
+  await expect(composer).toContainText("Q3");
+  await expect(composer).toContainText("1200");
+  await expect(component.locator('img[alt="image.png"]')).toHaveCount(0);
+  await expect(component.getByRole("status")).toHaveCount(0);
+});
+
+test("a pasted screenshot, with no text beside it, is attached", async ({
+  mount,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  await paste(composer, { file: true });
+  await expect(component.getByRole("img", { name: "image.png" })).toBeVisible();
+});
+
+test("a posted attachment reads as a chip, while other links stay links", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <TaskCommentsHarness
+      rootBody={`Spec: [spec.pdf](${uploadUrl("editor-files/spec.pdf")}) and [the docs](https://example.com/spec.pdf)`}
+    />,
+  );
+
+  const download = component.getByRole("link", { name: "Download spec.pdf" });
+  await expect(download).toBeVisible();
+  await expect(download).toHaveAttribute("download", "spec.pdf");
+  await expect(
+    component.getByRole("link", { name: "spec.pdf", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    component.getByRole("link", { name: "the docs" }),
+  ).toHaveAttribute("href", "https://example.com/spec.pdf");
+});
+
+test("a comment can't be sent while its attachment is still uploading", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+  const send = component.getByLabel("Send").last();
+
+  await composer.fill("see attached");
+  await component.locator('input[type="file"]').setInputFiles({
+    name: "hold-deck.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4"),
+  });
+  await expect(component.getByRole("status")).toHaveText("Uploading file…");
+  await expect(send).toBeDisabled();
+
+  // Enter is the other way to send, and it has to wait too.
+  await composer.press("Enter");
+  await expect(component.getByTestId("posted")).toHaveText("[]");
+
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("ct:release-uploads")),
+  );
+  await expect(component.getByRole("status")).toHaveCount(0);
+  await expect(send).toBeEnabled();
+  await send.click();
+  // The chip lands at the caret, set off from the typed text by a space.
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      `see attached [hold-deck.pdf](${uploadUrl("editor-files/hold-deck.pdf")})`,
+    ]),
+  );
+});
+
+test("clearing the text mid-batch still lets the rest of it land, and send", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+  const send = component.getByLabel("Send").last();
+  const file = (name: string) => ({
+    name,
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4"),
+  });
+
+  await composer.fill("a line long enough to leave a stale caret behind");
+  await component
+    .locator('input[type="file"]')
+    .setInputFiles([file("hold-a.pdf"), file("b.pdf"), file("c.pdf")]);
+  await expect(component.getByRole("status")).toHaveText("Uploading 3 files…");
+
+  // The caret the batch started from is now past the end of the document.
+  await composer.press("ControlOrMeta+a");
+  await composer.press("Backspace");
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("ct:release-uploads")),
+  );
+
+  await expect(component.getByRole("status")).toHaveCount(0);
+  await expect(send).toBeEnabled();
+  for (const name of ["hold-a.pdf", "b.pdf", "c.pdf"]) {
+    await expect(
+      component.getByRole("link", { name: `Download ${name}` }),
+    ).toBeVisible();
+  }
 });
 
 test("the send button still submits, despite the card-wide focus click", async ({

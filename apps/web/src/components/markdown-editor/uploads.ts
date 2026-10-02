@@ -7,14 +7,17 @@
  * parser needs that to turn a file link back into an attachment chip.
  */
 
-/** Same volume the Library writes user uploads to. */
-export const UPLOAD_VOLUME = "uploads";
-/** Kept out of the Library root so pasted screenshots don't clutter it. */
-export const IMAGE_DIR = "editor-images";
-/** Attachments shown as a download chip instead of a preview (pdf, docx, …). */
-export const FILE_DIR = "editor-files";
+import {
+  EDITOR_FILE_DIR,
+  EDITOR_UPLOAD_VOLUME,
+} from "@decocms/shared/editor-uploads";
 
-const FS_READ_PATH = new RegExp(`^/api/[^/]+/fs/${UPLOAD_VOLUME}/read$`);
+/** An image is inlined as a preview; anything else becomes a download chip. */
+export function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
+const FS_READ_PATH = new RegExp(`^/api/[^/]+/fs/${EDITOR_UPLOAD_VOLUME}/read$`);
 /** Only satisfies the URL parser — uploads are stored as relative paths. */
 const RELATIVE_BASE = "http://relative.invalid";
 
@@ -34,5 +37,7 @@ export function isEditorFileUrl(url: string): boolean {
   // looks like ours — don't dress it up as an org attachment.
   if (parsed.origin !== RELATIVE_BASE) return false;
   if (!FS_READ_PATH.test(parsed.pathname)) return false;
-  return (parsed.searchParams.get("path") ?? "").startsWith(`${FILE_DIR}/`);
+  return (parsed.searchParams.get("path") ?? "").startsWith(
+    `${EDITOR_FILE_DIR}/`,
+  );
 }

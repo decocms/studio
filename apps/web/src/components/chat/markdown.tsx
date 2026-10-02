@@ -20,6 +20,8 @@ import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { mentionIdFromHref } from "@decocms/shared/mentions";
+import { AttachmentChip } from "@/components/markdown-editor/attachment-chip";
+import { isEditorFileUrl } from "@/components/markdown-editor/uploads";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -275,6 +277,15 @@ function MarkdownAnchor({
       <span className="rounded bg-primary/10 px-1 font-medium text-primary">
         {label}
       </span>
+    );
+  }
+  // An editor upload reads as the chip it was when attached, not a bare link.
+  if (href && isEditorFileUrl(href)) {
+    return (
+      <AttachmentChip
+        href={href}
+        name={typeof children === "string" ? children : ""}
+      />
     );
   }
   if (ctx && browsePath) {

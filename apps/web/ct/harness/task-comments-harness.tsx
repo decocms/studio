@@ -42,11 +42,15 @@ const THREAD: TaskComment = {
  */
 export function TaskCommentsHarness({
   resolved = false,
+  rootBody = THREAD.body,
 }: {
   resolved?: boolean;
+  /** The root comment's markdown, for specs about how a posted body renders. */
+  rootBody?: string;
 }) {
   const [thread, setThread] = useState<TaskComment | null>({
     ...THREAD,
+    body: rootBody,
     resolved,
   });
   const [posted, setPosted] = useState<string[]>([]);

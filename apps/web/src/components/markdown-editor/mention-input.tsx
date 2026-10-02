@@ -1,5 +1,5 @@
 /**
- * A one-field composer that understands `@`-mentions and nothing else.
+ * A one-field composer that understands `@`-mentions and, given `uploads`, files.
  *
  * Tiptap, not a textarea, only because a mention needs a chip and an id — so
  * this stays as close to the textarea it replaced as it can: no toolbar, no
@@ -13,6 +13,9 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { MarkdownAttachment } from "./attachment-node";
+import type { EditorUploads } from "./editor-uploads";
+import { MarkdownImage } from "./image-node";
 import { MarkdownMention } from "./mention-node";
 import {
   MENTION_SUGGESTION_KEY,
@@ -25,6 +28,8 @@ import {
 export interface MentionInputHandle {
   submit: () => void;
   focus: () => void;
+  /** Uploads files dropped or picked outside the text, at the caret. */
+  attach: (files: File[]) => void;
 }
 
 const PLACEHOLDER_CLASS = [
@@ -39,6 +44,7 @@ export function MentionInput({
   placeholder,
   onSubmit,
   onEmptyChange,
+  uploads,
   ref,
   className,
 }: {
@@ -47,6 +53,8 @@ export function MentionInput({
   onSubmit: (markdown: string) => void | boolean | Promise<void | boolean>;
   /** Drives the send button's disabled state. */
   onEmptyChange: (empty: boolean) => void;
+  /** Turns on pasted, dropped and attached files. Read at creation time. */
+  uploads?: EditorUploads;
   /** Submit and focus, for the send button and the click-anywhere-to-type
    *  surface the composer wraps this in. */
   ref?: Ref<MentionInputHandle>;
@@ -76,6 +84,7 @@ export function MentionInput({
       mentionSuggestionExtension(mentionStore),
       Placeholder.configure({ placeholder }),
       Markdown,
+      ...(uploads ? [MarkdownImage, MarkdownAttachment] : []),
     ],
     editorProps: {
       attributes: {
@@ -100,12 +109,15 @@ export function MentionInput({
         submit();
         return true;
       },
+      handlePaste: uploads?.handlePaste,
+      handleDrop: uploads?.handleDrop,
     },
     onUpdate: ({ editor }) => onEmptyChange(editor.isEmpty),
   });
 
   async function submit() {
-    if (!editor || sending.current) return;
+    // A file still uploading isn't in the markdown yet; sending now would drop it.
+    if (!editor || sending.current || uploads?.uploading()) return;
     const markdown = editor.getMarkdown().trim();
     if (!markdown) return;
     sending.current = true;
@@ -124,6 +136,11 @@ export function MentionInput({
   useImperativeHandle(ref, () => ({
     submit,
     focus: () => editor?.commands.focus(),
+    attach: (files) => {
+      // Not while a send is in flight: its success clears the field, and the file with it.
+      if (!editor?.isEditable || !uploads) return;
+      uploads.uploadInto(editor.view, files, editor.state.selection.to);
+    },
   }));
 
   return (
