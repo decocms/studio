@@ -21,11 +21,13 @@ const LEGACY_ORG_PREFIX = "org/";
 
 /** An agent-written org path (`/app/org/output/x.png`, or the legacy
  *  `org/output/x.png`) relative to the org root (`output/x.png`); null when
- *  the path isn't under org-fs. */
+ *  the path isn't under org-fs or climbs out with `..`. */
 export function orgRelativePath(path: string): string | null {
   const p = path.startsWith("./") ? path.slice(2) : path;
   for (const prefix of [`${SANDBOX_ORG_ROOT}/`, LEGACY_ORG_PREFIX]) {
-    if (p.startsWith(prefix)) return p.slice(prefix.length);
+    if (!p.startsWith(prefix)) continue;
+    const rel = p.slice(prefix.length);
+    return rel.split("/").includes("..") ? null : rel;
   }
   return null;
 }

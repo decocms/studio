@@ -1,8 +1,8 @@
 /**
  * Which markdown image refs become Jira attachments.
  *
- * Only the run's own `/app/org/output/…` outputs are ours to upload; anything else
- * is somebody's URL and stays a link. The traversal guard matters because the
+ * Only the run's own outputs (`/app/org/output/…`, or legacy `org/output/…`)
+ * are ours to upload; anything else is somebody's URL and stays a link. The traversal guard matters because the
  * subpath is joined onto the run's thread prefix — `..` would read another
  * run's screenshots onto this customer's issue.
  */

@@ -20,4 +20,10 @@ describe("orgRelativePath", () => {
     expect(orgRelativePath("https://example.com/org/output/x.png")).toBeNull();
     expect(orgRelativePath("")).toBeNull();
   });
+
+  it("rejects parent segments", () => {
+    expect(orgRelativePath("/app/org/output/../other/x.png")).toBeNull();
+    expect(orgRelativePath("org/output/../../etc/passwd")).toBeNull();
+    expect(orgRelativePath("/app/org/output/a..b.png")).toBe("output/a..b.png");
+  });
 });

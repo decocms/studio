@@ -125,7 +125,7 @@ Uma AgentSandbox hosted clona o repo, roda o dev server e expõe um **daemon** i
 
 ### Org filesystem (org-fs)
 
-Cada sandbox pode montar o **org filesystem** em `/app/org/<volume>`, para que o agent e o dev server leiam e escrevam arquivos da org como paths absolutos comuns. O mount propositalmente não é linkado dentro do repositório, para que os file watchers do dev server nunca o percorram. A stack de mount é `rclone (NFS/FUSE) → o WebDAV de loopback do daemon → /api/:org/fs/* → S3` — o mesmo object store das rotas de arquivo, exposto como um volume montado. É o mesmo filesystem que você navega na [Library](/pt-br/studio/library).
+Cada sandbox pode montar o **org filesystem**, para que o agent e o dev server leiam e escrevam arquivos da org como paths absolutos comuns: `/app/org/<volume>` em um sandbox na nuvem, e um diretório `org/` ao lado da worktree em um sandbox desktop. Em ambos os casos ele fica fora do repositório, para que os file watchers do dev server nunca o percorram. A stack de mount é `rclone (NFS/FUSE) → o WebDAV de loopback do daemon → /api/:org/fs/* → S3` — o mesmo object store das rotas de arquivo, exposto como um volume montado. É o mesmo filesystem que você navega na [Library](/pt-br/studio/library).
 
 Ele é conectado em **ambas** as superfícies, com mecânicas de mount diferentes:
 
