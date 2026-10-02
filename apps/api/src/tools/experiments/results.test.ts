@@ -21,4 +21,24 @@ describe("EXPERIMENT_RESULTS", () => {
 
     expect(result.success).toBe(true);
   });
+
+  it("rejects a reversed since/until range", () => {
+    const result = EXPERIMENT_RESULTS.inputSchema.safeParse({
+      ...base,
+      since: "2026-02-01",
+      until: "2026-01-01",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an in-order since/until range", () => {
+    const result = EXPERIMENT_RESULTS.inputSchema.safeParse({
+      ...base,
+      since: "2026-01-01",
+      until: "2026-02-01",
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
