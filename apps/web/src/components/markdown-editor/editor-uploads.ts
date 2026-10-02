@@ -1,14 +1,15 @@
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { Selection } from "@tiptap/pm/state";
 import type { EditorProps, EditorView } from "@tiptap/pm/view";
 // Aliased rather than `./`, so component tests can swap the network out.
 import { useEditorFileUpload } from "@/components/markdown-editor/use-file-upload";
+import { useT } from "@/i18n/use-t.ts";
+import { placeUploadSlot, uploadSlotPos } from "./upload-slots";
 import { isImageFile } from "./uploads";
 
 /**
- * Insert an uploaded file's node and put the caret right after it, so a batch
- * of pasted files stacks in the order they were picked instead of every insert
- * landing on the same stale offset.
+ * Insert an uploaded file's node at `pos`; `slot`, and a caret still waiting there, move past it.
  *
  * The node is found in the new document rather than `pos` mapped through the
  * insert: a block image splits the paragraph it lands in, a mapped position
@@ -16,16 +17,16 @@ import { isImageFile } from "./uploads";
  */
 function insertUpload(
   view: EditorView,
-  at: number,
+  pos: number,
   typeName: "image" | "attachment",
   attrs: Record<string, string>,
-): number {
+  slot?: symbol,
+): void {
   const { schema } = view.state;
   const type = schema.nodes[typeName];
-  if (!type) return at;
+  if (!type) return;
   const node = type.create(attrs);
-  // A batch holds its caret across awaits; the text under it can be gone by now.
-  const pos = Math.min(at, Selection.atEnd(view.state.doc).to);
+  const following = view.state.selection.to === pos;
   const $pos = view.state.doc.resolve(pos);
   const charBefore = $pos.parent.textBetween(
     Math.max(0, $pos.parentOffset - 1),
@@ -63,9 +64,10 @@ function insertUpload(
     }
     caret = after + 1;
   }
-  tr.setSelection(Selection.near(tr.doc.resolve(caret)));
+  const next = Selection.near(tr.doc.resolve(caret));
+  if (following) tr.setSelection(next);
+  if (slot) placeUploadSlot(tr, slot, next.to);
   view.dispatch(tr);
-  return view.state.selection.to;
 }
 
 /**
@@ -93,6 +95,7 @@ function pastedAttachments(
  * creation too, the same as the editor's other options.
  */
 export function useEditorUploads(enabled = true) {
+  const t = useT();
   const { uploadFile } = useEditorFileUpload();
   const uploadRef = useRef(uploadFile);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
@@ -110,23 +113,34 @@ export function useEditorUploads(enabled = true) {
   const uploadInto = (view: EditorView, files: File[], at: number) => {
     if (!enabled || files.length === 0) return false;
     track(files.length);
+    const slot = Symbol("upload");
+    view.dispatch(placeUploadSlot(view.state.tr, slot, at));
     void (async () => {
-      let pos = at;
       for (const file of files) {
         try {
           const url = await uploadRef.current(file);
           // The field can unmount while the bytes are in flight.
           if (!url || view.isDestroyed) continue;
-          // The file name is the only description there is: it becomes the alt text or the chip's link text.
-          pos = isImageFile(file)
-            ? insertUpload(view, pos, "image", { src: url, alt: file.name })
-            : insertUpload(view, pos, "attachment", {
-                href: url,
-                name: file.name,
-              });
+          const image = isImageFile(file);
+          insertUpload(
+            view,
+            uploadSlotPos(view.state, slot) ?? view.state.selection.to,
+            image ? "image" : "attachment",
+            // The file name is the only description there is: it becomes the alt text or the chip's link text.
+            image
+              ? { src: url, alt: file.name }
+              : { href: url, name: file.name },
+            slot,
+          );
+        } catch {
+          // Uploaded, but not in the field: as good as a failed upload. The rest of the batch still lands.
+          toast.error(t("markdownEditor.uploadFailed", { name: file.name }));
         } finally {
           track(-1);
         }
+      }
+      if (!view.isDestroyed) {
+        view.dispatch(placeUploadSlot(view.state.tr, slot, null));
       }
     })();
     return true;

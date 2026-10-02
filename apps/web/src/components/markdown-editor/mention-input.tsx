@@ -17,6 +17,7 @@ import { MarkdownAttachment } from "./attachment-node";
 import type { EditorUploads } from "./editor-uploads";
 import { MarkdownImage } from "./image-node";
 import { MarkdownMention } from "./mention-node";
+import { UploadSlots } from "./upload-slots";
 import {
   MENTION_SUGGESTION_KEY,
   MentionMenu,
@@ -44,6 +45,7 @@ export function MentionInput({
   placeholder,
   onSubmit,
   onEmptyChange,
+  onSendingChange,
   uploads,
   ref,
   className,
@@ -53,6 +55,8 @@ export function MentionInput({
   onSubmit: (markdown: string) => void | boolean | Promise<void | boolean>;
   /** Drives the send button's disabled state. */
   onEmptyChange: (empty: boolean) => void;
+  /** For the composer's own file controls, which `attach` ignores while a send is in flight. */
+  onSendingChange?: (sending: boolean) => void;
   /** Turns on pasted, dropped and attached files. Read at creation time. */
   uploads?: EditorUploads;
   /** Submit and focus, for the send button and the click-anywhere-to-type
@@ -84,7 +88,7 @@ export function MentionInput({
       mentionSuggestionExtension(mentionStore),
       Placeholder.configure({ placeholder }),
       Markdown,
-      ...(uploads ? [MarkdownImage, MarkdownAttachment] : []),
+      ...(uploads ? [MarkdownImage, MarkdownAttachment, UploadSlots] : []),
     ],
     editorProps: {
       attributes: {
@@ -121,6 +125,7 @@ export function MentionInput({
     const markdown = editor.getMarkdown().trim();
     if (!markdown) return;
     sending.current = true;
+    onSendingChange?.(true);
     editor.setEditable(false);
     try {
       if ((await onSubmit(markdown)) !== false) {
@@ -129,6 +134,7 @@ export function MentionInput({
       }
     } finally {
       sending.current = false;
+      onSendingChange?.(false);
       if (!editor.isDestroyed) editor.setEditable(true);
     }
   }

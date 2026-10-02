@@ -9,12 +9,13 @@
 
 import {
   EDITOR_FILE_DIR,
+  EDITOR_IMAGE_TYPES,
   EDITOR_UPLOAD_VOLUME,
 } from "@decocms/shared/editor-uploads";
 
-/** An image is inlined as a preview; anything else becomes a download chip. */
+/** An image the API serves for one is inlined as a preview; anything else becomes a download chip. */
 export function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/");
+  return EDITOR_IMAGE_TYPES.includes(file.type);
 }
 
 const FS_READ_PATH = new RegExp(`^/api/[^/]+/fs/${EDITOR_UPLOAD_VOLUME}/read$`);

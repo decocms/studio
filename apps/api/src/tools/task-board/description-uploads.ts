@@ -14,25 +14,45 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
  * The same bytes are already mounted in the pod (`org/.uploads/…`), so the fix
  * is to rewrite the URL to that path. `Read` renders a PNG visually, so the
  * model actually looks at the screenshot the task is about.
- * Comment bodies a run lists get the same rewrite (`TASK_BOARD_COMMENT_LIST`).
  *
  * Sandboxed runs ONLY — a hosted harness has no org-fs mount, and there the
  * original URL is at least a link a human can click.
  */
 export function uploadsAsSandboxPaths(description: string): string {
-  return description.replace(
-    // The editor writes `?path=` as the whole query, so everything up to the
-    // closing paren (or whitespace) is the encoded path.
-    /\/api\/[^/\s)]+\/fs\/([^/\s)]+)\/read\?path=([^)\s]+)/g,
-    (url, encodedVolume: string, encodedPath: string) => {
+  return readUrlsAsSandboxPaths(description, READ_URL, () => true);
+}
+
+/**
+ * An org-fs read URL, capturing its org, volume and path still encoded. The
+ * editor writes `?path=` as the whole query, so everything up to the closing
+ * paren (or whitespace) is the path.
+ */
+const READ_URL = /\/api\/([^/\s)]+)\/fs\/([^/\s)]+)\/read\?path=([^)\s]+)/g;
+/** The same URL as a markdown link or image target, all `sandboxPathsAsUploads` restores. */
+const LINKED_READ_URL = new RegExp(
+  String.raw`(?<=\]\()${READ_URL.source}(?=\))`,
+  "g",
+);
+
+function readUrlsAsSandboxPaths(
+  markdown: string,
+  pattern: RegExp,
+  include: (org: string, volume: string, path: string) => boolean,
+): string {
+  return markdown.replace(
+    pattern,
+    (url, encodedOrg: string, encodedVolume: string, encodedPath: string) => {
+      let org: string;
       let volume: string;
       let path: string;
       try {
+        org = decodeURIComponent(encodedOrg);
         volume = decodeURIComponent(encodedVolume);
         path = decodeURIComponent(encodedPath);
       } catch {
         return url;
       }
+      if (!include(org, volume, path)) return url;
       // Checked on the DECODED value: `%2F` hides a climb-out slash from the capture.
       if (climbsOut(volume) || climbsOut(path)) return url;
       return orgFsSandboxPath(volume, path);
@@ -44,22 +64,35 @@ function climbsOut(part: string): boolean {
   return part.startsWith("/") || part.split("/").includes("..");
 }
 
-/** The hidden mounts nothing but `uploadsAsSandboxPaths` writes into a body. */
-const HIDDEN_MOUNTS = ["uploads", "outputs"].map((volume) => ({
+/**
+ * The mounts a comment's links move into for a run, and back out of when it
+ * writes one. Hidden, so no person types their paths; and each names its
+ * volume, where `org/<volume>` could be the run's own `org/output` or `org/upload`.
+ */
+const COMMENT_MOUNTS = ["uploads", "outputs"].map((volume) => ({
   volume,
   prefix: `${orgFsSandboxPath(volume, "")}/`,
 }));
 
-/**
- * The inverse, for a body a run writes back. A run that lists a comment, edits
- * it and saves it would otherwise store `org/.uploads/…` — a path no browser
- * can load. Only markdown link and image targets under the hidden mounts are
- * touched: no person types those, and `org/home/…` or the run's own
- * `org/output/…` keep their existing meaning.
- */
+/** A comment as a run lists it: only this org's links that `sandboxPathsAsUploads` restores, since a run may post it back. */
+export function commentUploadsAsSandboxPaths(
+  body: string,
+  orgSlug: string,
+): string {
+  return readUrlsAsSandboxPaths(
+    body,
+    LINKED_READ_URL,
+    (org, volume, path) =>
+      org === orgSlug &&
+      COMMENT_MOUNTS.some((m) => m.volume === volume) &&
+      !/[\s)]/.test(path),
+  );
+}
+
+/** The inverse, for a body a run writes back: no browser can load `org/.uploads/…`. */
 export function sandboxPathsAsUploads(body: string, orgSlug: string): string {
   return body.replace(/\]\((org\/[^)\s]+)\)/g, (ref, target: string) => {
-    const mount = HIDDEN_MOUNTS.find((m) => target.startsWith(m.prefix));
+    const mount = COMMENT_MOUNTS.find((m) => target.startsWith(m.prefix));
     if (!mount) return ref;
     const path = target.slice(mount.prefix.length);
     if (!path || climbsOut(path)) return ref;

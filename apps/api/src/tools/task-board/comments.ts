@@ -10,8 +10,8 @@ import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
+  commentUploadsAsSandboxPaths,
   sandboxPathsAsUploads,
-  uploadsAsSandboxPaths,
 } from "./description-uploads";
 import { taskRunContextStore } from "./task-run-context";
 
@@ -65,26 +65,16 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       requireOrg(ctx),
     );
     // A run's endpoint is sandbox-hosted (task-run-mcp.ts): there an upload's `/api/…` URL can't be fetched, its mounted path can.
-    if (!taskRunContextStore.getStore()) return { comments };
+    const orgSlug = ctx.organization?.slug;
+    if (!taskRunContextStore.getStore() || !orgSlug) return { comments };
     return {
       comments: comments.map((comment) => ({
         ...comment,
-        body: uploadsAsSandboxPaths(comment.body),
+        body: commentUploadsAsSandboxPaths(comment.body, orgSlug),
       })),
     };
   },
 });
-
-/**
- * A body a run wrote, made renderable: its `org/output/…` screenshots, and any
- * mounted path it read through `TASK_BOARD_COMMENT_LIST` and wrote back.
- */
-function bodyFromRun(body: string, threadId: string, orgSlug: string): string {
-  return sandboxPathsAsUploads(
-    embedOrgOutputImages(body, threadId, orgSlug),
-    orgSlug,
-  );
-}
 
 /**
  * A task-run agent (the QA reviewer) writes screenshots to `org/output/…` and
@@ -107,6 +97,17 @@ export function embedOrgOutputImages(
     const path = encodeURIComponent(`${threadId}/${subpath}`);
     return `${pre}/api/${encodeURIComponent(orgSlug)}/fs/outputs/read?path=${path}${post}`;
   });
+}
+
+/**
+ * A body a run wrote, made renderable: its `org/output/…` screenshots, and any
+ * mounted path it read through `TASK_BOARD_COMMENT_LIST` and wrote back.
+ */
+function bodyFromRun(body: string, threadId: string, orgSlug: string): string {
+  return sandboxPathsAsUploads(
+    embedOrgOutputImages(body, threadId, orgSlug),
+    orgSlug,
+  );
 }
 
 export const TASK_BOARD_COMMENT_CREATE = defineTool({
@@ -200,7 +201,8 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
         : null;
     const taskRun = taskRunContextStore.getStore();
     const orgSlug = ctx.organization?.slug;
-    // Unreachable while `updateComment` takes a body only from its author.
+    // A run acts under its assigner's credential, so it can edit that person's
+    // comments, which it listed with sandbox paths.
     const body =
       input.body !== undefined && taskRun?.threadId && orgSlug
         ? bodyFromRun(input.body, taskRun.threadId, orgSlug)

@@ -22,13 +22,10 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/svg+xml": ".svg",
 };
 
+/** The read route types a file by its extension, so an image needs one: `EXT_BY_MIME` covers every type `isImageFile` takes. */
 function fileExtension(file: File): string {
   return (
-    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ??
-    EXT_BY_MIME[file.type] ??
-    // Nothing to go on: an image still needs an extension for the read route to
-    // serve it back as one, while an attachment is only ever downloaded.
-    (isImageFile(file) ? ".png" : "")
+    file.name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ?? EXT_BY_MIME[file.type] ?? ""
   );
 }
 

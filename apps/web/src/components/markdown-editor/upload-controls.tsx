@@ -7,8 +7,10 @@ import { useT } from "@/i18n/use-t.ts";
 /** The paperclip and the file picker it opens. */
 export function AttachFileButton({
   onFiles,
+  disabled,
 }: {
   onFiles: (files: File[]) => void;
+  disabled?: boolean;
 }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -18,6 +20,7 @@ export function AttachFileButton({
       <IconButton
         type="button"
         label={t("markdownEditor.attachFile")}
+        disabled={disabled}
         onClick={() => inputRef.current?.click()}
       >
         <Attachment01 size={16} />

@@ -22,10 +22,21 @@ describe("downloadsOnly", () => {
     expect(downloadsOnly("uploads", "editor-images/shot.html")).toBe(true);
   });
 
+  it("holds an archive, or a file of no type it knows, to download", () => {
+    for (const path of [
+      "editor-files/report.zip",
+      "editor-files/installer.exe",
+      "editor-files/notes",
+    ]) {
+      expect(downloadsOnly("uploads", path)).toBe(true);
+    }
+  });
+
   it("lets raster images and PDFs open in a tab", () => {
     for (const path of [
       "editor-images/shot.png",
       "editor-images/photo.jpeg",
+      "editor-images/photo.avif",
       "editor-files/spec.pdf",
     ]) {
       expect(downloadsOnly("uploads", path)).toBe(false);
@@ -47,13 +58,11 @@ describe("downloadsOnly", () => {
 });
 
 describe("fsByteResponse", () => {
-  it("serves a download-only file as an inert attachment under its name", async () => {
+  it("serves a download-only file as an inert attachment, named by the chip", async () => {
     const headers = await headersFor("editor-files/report.html", {
       downloadOnly: true,
     });
-    expect(headers.get("content-disposition")).toBe(
-      "attachment; filename*=UTF-8''report.html",
-    );
+    expect(headers.get("content-disposition")).toBe("attachment");
     expect(headers.get("content-security-policy")).toBe(
       "sandbox; default-src 'none'",
     );

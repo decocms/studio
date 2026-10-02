@@ -26,7 +26,10 @@ export function AttachmentChipContent({
   return (
     <>
       <File02 size={14} className="shrink-0 text-muted-foreground" />
-      <span className="min-w-0 truncate">{label}</span>
+      {/* The download link's label names the file for assistive tech; read here too, it would be said twice. */}
+      <span aria-hidden className="min-w-0 truncate">
+        {label}
+      </span>
       {/* The stored name is a UUID; `download` restores the uploaded one. */}
       <a
         href={href}

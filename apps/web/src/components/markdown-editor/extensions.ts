@@ -13,6 +13,7 @@ import {
   type MentionMenuStore,
 } from "./mention-suggestion";
 import { MarkdownImage } from "./image-node";
+import { UploadSlots } from "./upload-slots";
 import { isEditorFileUrl } from "./uploads";
 
 const LINK_OPTIONS = {
@@ -73,6 +74,7 @@ export function markdownEditorExtensions(
     TaskItem.configure({ nested: true }),
     MarkdownImage,
     MarkdownAttachment,
+    UploadSlots,
     MarkdownMention,
     ...(mentionStore ? [mentionSuggestionExtension(mentionStore)] : []),
     Markdown.configure({

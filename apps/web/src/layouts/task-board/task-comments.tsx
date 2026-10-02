@@ -201,6 +201,7 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
   const [empty, setEmpty] = useState(true);
+  const [sending, setSending] = useState(false);
   const uploads = useEditorUploads();
   const [dragging, setDragging] = useState(false);
   /** Enter and leave fire for every child the pointer crosses; this counts
@@ -215,6 +216,7 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
       placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
+      onSendingChange={setSending}
       uploads={uploads}
       // A full-height screenshot would push the conversation out of the way; the posted comment shows it whole.
       className={cn(
@@ -263,6 +265,8 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
         // Without it, a file dropped on the card's padding opens in the tab.
         e.preventDefault();
         e.stopPropagation();
+        // Mid-send the field takes no file, so the drop is refused rather than lost.
+        if (sending) e.dataTransfer.dropEffect = "none";
       }}
       onDragLeave={(e) => {
         if (!carriesFiles(e)) return;
@@ -286,12 +290,15 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
       {textarea}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <AttachFileButton onFiles={(files) => ref.current?.attach(files)} />
+          <AttachFileButton
+            onFiles={(files) => ref.current?.attach(files)}
+            disabled={sending}
+          />
           <UploadStatus pending={uploads.pending} />
         </div>
         {actions}
       </div>
-      {dragging && (
+      {dragging && !sending && (
         // Visual only: the drop itself lands on the text or the card beneath.
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/40 bg-muted text-sm font-medium text-primary/70">
           <Upload01 size={16} />

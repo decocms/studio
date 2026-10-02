@@ -9,6 +9,7 @@ import type { Context } from "hono";
 import {
   EDITOR_FILE_DIR,
   EDITOR_IMAGE_DIR,
+  EDITOR_IMAGE_TYPES,
   EDITOR_UPLOAD_VOLUME,
 } from "@decocms/shared/editor-uploads";
 import { normalizeFsPath } from "@/file-storage/org-fs-path";
@@ -19,10 +20,7 @@ const SCRIPTABLE_TYPES = new Set(["image/svg+xml", "application/xml"]);
 
 /** No script of the file's own runs on our origin in these, so an editor attachment of one may still open in a tab. */
 const INLINE_ATTACHMENT_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
+  ...EDITOR_IMAGE_TYPES,
   "application/pdf",
 ]);
 
@@ -72,9 +70,8 @@ export function fsByteResponse(
       : "private, max-age=0",
   };
   if (downloadOnly) {
-    const name = path.split("/").at(-1) ?? "";
-    headers["Content-Disposition"] =
-      `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
+    // No filename: a browser prefers the header's over the chip's `download`, and the stored one is a UUID.
+    headers["Content-Disposition"] = "attachment";
     headers["Content-Security-Policy"] = "sandbox; default-src 'none'";
   } else if (SCRIPTABLE_TYPES.has(contentType)) {
     // An <img> ignores this, and never ran the file's script; opened as a page, the file can't run it now either.
