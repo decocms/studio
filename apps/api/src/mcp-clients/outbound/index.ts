@@ -28,6 +28,34 @@ import {
 // Separate from the per-request pool on StudioContext (used by HTTP/SSE).
 const stdioPool = createClientPool();
 
+// Shared by every outbound transport: auth first, then monitoring.
+function withAuthAndMonitoring(
+  transport: Transport,
+  opts: {
+    ctx: StudioContext;
+    connection: ConnectionEntity;
+    superUser: boolean;
+    connectionId: string;
+    virtualMcpId: string | undefined;
+  },
+): Transport {
+  return composeTransport(
+    transport,
+    (t) =>
+      new AuthTransport(t, {
+        ctx: opts.ctx,
+        connection: opts.connection,
+        superUser: opts.superUser,
+      }),
+    (t) =>
+      new MonitoringTransport(t, {
+        ctx: opts.ctx,
+        connectionId: opts.connectionId,
+        virtualMcpId: opts.virtualMcpId,
+      }),
+  );
+}
+
 /**
  * Create an MCP client for outbound connections (STDIO, HTTP, Websocket, SSE)
  *
@@ -75,17 +103,13 @@ export async function createOutboundClient(
         cwd: maybeParams.cwd,
       });
 
-      // Compose with auth and monitoring transports
-      transport = composeTransport(
-        transport,
-        (t) => new AuthTransport(t, { ctx, connection, superUser }),
-        (t) =>
-          new MonitoringTransport(t, {
-            ctx,
-            connectionId,
-            virtualMcpId,
-          }),
-      );
+      transport = withAuthAndMonitoring(transport, {
+        ctx,
+        connection,
+        superUser,
+        connectionId,
+        virtualMcpId,
+      });
 
       // STDIO uses a singleton pool — child processes must persist across requests.
       // NOT the per-request pool on ctx (that one is for HTTP/SSE with fresh auth headers).
@@ -122,17 +146,13 @@ export async function createOutboundClient(
           headers,
         );
 
-        // Compose with auth and monitoring transports
-        transport = composeTransport(
-          transport,
-          (t) => new AuthTransport(t, { ctx, connection, superUser }),
-          (t) =>
-            new MonitoringTransport(t, {
-              ctx,
-              connectionId,
-              virtualMcpId,
-            }),
-        );
+        transport = withAuthAndMonitoring(transport, {
+          ctx,
+          connection,
+          superUser,
+          connectionId,
+          virtualMcpId,
+        });
 
         return transport;
       }, connectionId);
