@@ -224,14 +224,21 @@ test("choose one account, show its Studio connector, and manage that installatio
     path: testInfo.outputPath("github-connected-account.png"),
     animations: "disabled",
   });
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
+  const moreActions = page.getByRole("button", {
+    name: "More actions",
+    exact: true,
+  });
+  const rightEdge = async (control: typeof manage) => {
+    const bounds = await control.boundingBox();
+    return bounds ? bounds.x + bounds.width : Infinity;
+  };
+  await expect.poll(() => rightEdge(moreActions)).toBeLessThanOrEqual(390);
+  await moreActions.click();
   await expect(manage).toBeVisible();
-  await expect
-    .poll(async () => {
-      const bounds = await manage.boundingBox();
-      return bounds ? bounds.x + bounds.width : Infinity;
-    })
-    .toBeLessThanOrEqual(390);
+  await expect.poll(() => rightEdge(manage)).toBeLessThanOrEqual(390);
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("heading", { name: "Connected accounts" }),
   ).toBeVisible();
