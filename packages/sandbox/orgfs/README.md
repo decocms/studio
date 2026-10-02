@@ -143,7 +143,8 @@ image next to the sandbox image.
 - **External writes.** WebDAV has no change notification. For each volume,
   `invalidator.ts` long-polls `/changes?wait=1` and calls rclone's
   `vfs/refresh` on the parent directory of each changed path. The first drain
-  only primes the cursor. `--dir-cache-time 10s` is the fallback bound.
+  only primes the cursor. A failed poll retries with exponential backoff and
+  jitter, from 1 s up to 30 s. `--dir-cache-time 10s` is the fallback bound.
   `vfs/refresh` is used instead of `vfs/forget`, because forget kills open
   handles, including the mount's own in-flight writes.
 - **Own writes.** `--vfs-write-back 1s` uploads closed files about a second

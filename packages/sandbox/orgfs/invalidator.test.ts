@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { runInvalidator } from "./invalidator";
+import { errorBackoffMs, runInvalidator } from "./invalidator";
 
 type Page = { entries: { parent: string }[]; cursor: string; hasMore: boolean };
 
@@ -73,5 +73,53 @@ describe("runInvalidator", () => {
       { entries: [{ parent: "new" }], cursor: "3", hasMore: false },
     ]);
     expect(refreshed).toEqual(["new"]);
+  });
+
+  it("keeps polling from the same cursor after failed polls", async () => {
+    const ac = new AbortController();
+    const seen: string[] = [];
+    const refreshed: string[] = [];
+    const script: Array<Page | Error> = [
+      { entries: [], cursor: "7", hasMore: false },
+      new Error("502"),
+      new Error("502"),
+      { entries: [{ parent: "d" }], cursor: "8", hasMore: false },
+    ];
+    await runInvalidator({
+      changes: async (since) => {
+        seen.push(since);
+        const next = script.shift();
+        if (!next) {
+          ac.abort();
+          return { entries: [], cursor: since, hasMore: false };
+        }
+        if (next instanceof Error) throw next;
+        return next;
+      },
+      refresh: async (dir) => {
+        refreshed.push(dir);
+      },
+      signal: ac.signal,
+      pollMs: 0,
+    });
+    expect(seen.slice(0, 4)).toEqual(["0", "7", "7", "7"]);
+    expect(refreshed).toEqual(["d"]);
+  });
+});
+
+describe("errorBackoffMs", () => {
+  it("grows from the poll floor and stays within equal-jitter bounds", () => {
+    for (let failures = 1; failures <= 4; failures++) {
+      const full = 1000 * 2 ** (failures - 1);
+      const delay = errorBackoffMs(failures, 1000);
+      expect(delay).toBeGreaterThanOrEqual(full / 2);
+      expect(delay).toBeLessThanOrEqual(full);
+    }
+  });
+
+  it("caps at 30s however long the outage lasts", () => {
+    const delay = errorBackoffMs(50, 1000);
+    expect(delay).toBeGreaterThanOrEqual(15_000);
+    expect(delay).toBeLessThanOrEqual(30_000);
   });
 });
