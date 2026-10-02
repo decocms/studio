@@ -88,6 +88,8 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.replaceImage": "Replace image",
   "sectionsEditor.imageField.supportedFormatsAndSize":
     "PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB",
+  "sectionsEditor.imageField.unsafeUrl":
+    "That address can't be used as an image source.",
   "sectionsEditor.imageField.uploadFailed": "Upload failed",
   "sectionsEditor.imageField.uploadedWithExtraFilesIgnored":
     "Uploaded {fileName}; extra files were ignored (single-select field).",

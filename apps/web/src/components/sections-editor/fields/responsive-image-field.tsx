@@ -61,15 +61,27 @@ export function ResponsiveImageField({
    * made the preview flicker and shift while a new quality loaded.
    */
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [urlNotice, setUrlNotice] = useState<string | null>(null);
 
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const mobileUrl = str(mobileValue);
   const active = onMobile ? mobileUrl : str(value);
 
-  // The author types this field, so the value is untrusted until it has been
-  // through `safeImageSrc`; an unsafe scheme reduces to "".
-  const src = safeImageSrc(active);
-  const errored = !!active && (failedUrl === active || !src);
+  /**
+   * The URL field is a local draft, committed through `safeImageSrc` — the
+   * text the author types never becomes the preview's source. That is the
+   * point: an `<img src>` fed straight from an input is a DOM-text-to-HTML
+   * path, and no amount of checking AT the sink removes it.
+   */
+  const [urlDraft, setUrlDraft] = useState(active);
+  const [seenActive, setSeenActive] = useState(active);
+  if (seenActive !== active) {
+    setSeenActive(active);
+    setUrlDraft(active);
+    setUrlNotice(null);
+  }
+
+  const errored = !!active && failedUrl === active;
   const quality = getQualityFromUrl(active);
   const urlLabel = onMobile
     ? t("sectionsEditor.imageField.mobileUrlLabel")
@@ -77,6 +89,18 @@ export function ResponsiveImageField({
 
   const setActive = (next: string | undefined) =>
     (onMobile ? onMobileChange : onChange)(next || undefined);
+
+  /** Commit the draft, refusing a scheme that must never reach a `src`. */
+  const commitUrl = () => {
+    const next = safeImageSrc(urlDraft);
+    if (!next && urlDraft.trim()) {
+      setUrlNotice(t("sectionsEditor.imageField.unsafeUrl"));
+      return false;
+    }
+    setUrlNotice(null);
+    if (next !== active) setActive(next);
+    return true;
+  };
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
     siteSlug: sandbox?.siteSlug,
@@ -151,18 +175,30 @@ export function ResponsiveImageField({
                 // oxlint-disable-next-line no-autofocus -- the panel only opens on an explicit click; focus must land on the input to paste into
                 autoFocus
                 type="url"
-                value={active}
-                onChange={(e) => setActive(e.target.value)}
+                value={urlDraft}
+                onChange={(e) => {
+                  setUrlNotice(null);
+                  setUrlDraft(e.target.value);
+                }}
+                onBlur={commitUrl}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") {
+                  if (e.key === "Escape") {
+                    setUrlDraft(active);
+                    setUrlNotice(null);
                     setUrlOpen(false);
                   }
+                  if (e.key === "Enter" && commitUrl()) setUrlOpen(false);
                 }}
                 placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
                 spellCheck={false}
                 aria-label={urlLabel}
                 className="h-8 w-full text-xs"
               />
+              {urlNotice && (
+                <p className="px-1 pb-0.5 pt-1.5 text-xs text-destructive">
+                  {urlNotice}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -181,9 +217,9 @@ export function ResponsiveImageField({
           isPending && "pointer-events-none opacity-60",
         )}
       >
-        {src && !errored ? (
+        {active && !errored ? (
           <img
-            src={src}
+            src={active}
             alt={alt ?? ""}
             onError={() => setFailedUrl(active)}
             className="block h-auto w-full"

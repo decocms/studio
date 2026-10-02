@@ -70,7 +70,9 @@ test("the mobile slot reuses the one preview instead of stacking a second", asyn
   ).toBeVisible();
 
   await component.getByRole("button", { name: "Mobile URL" }).click();
-  await component.getByPlaceholder("https://...").fill("https://x.test/m.png");
+  const mobileField = component.getByPlaceholder("https://...");
+  await mobileField.fill("https://x.test/m.png");
+  await mobileField.press("Enter");
   await expect
     .poll(() => value(component))
     .toMatchObject({ url: PNG, mobileUrl: "https://x.test/m.png" });
@@ -90,7 +92,9 @@ test("the toolbar's URL field edits the active slot, and clearing it drops only 
     .getByRole("button", { name: "Mobile image (below 768px)" })
     .click();
   await component.getByRole("button", { name: "Mobile URL" }).click();
-  await component.getByPlaceholder("https://...").fill("");
+  const clearField = component.getByPlaceholder("https://...");
+  await clearField.fill("");
+  await clearField.press("Enter");
 
   await expect.poll(() => value(component)).toMatchObject({ url: PNG });
   await expect.poll(() => value(component)).not.toHaveProperty("mobileUrl");

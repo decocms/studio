@@ -48,7 +48,9 @@ test("mobile shares the one preview and writes mobileImage", async ({
   await expect(component.locator("img")).toHaveCount(0);
 
   await component.getByRole("button", { name: "Mobile URL" }).click();
-  await component.getByPlaceholder("https://...").fill("https://x.test/m.png");
+  const mobileField = component.getByPlaceholder("https://...");
+  await mobileField.fill("https://x.test/m.png");
+  await mobileField.press("Enter");
 
   await expect
     .poll(() => value(component))
@@ -69,19 +71,47 @@ test("clearing the mobile URL drops the key instead of storing an empty string",
     .getByRole("button", { name: "Mobile image (below 768px)" })
     .click();
   await component.getByRole("button", { name: "Mobile URL" }).click();
-  await component.getByPlaceholder("https://...").fill("");
+  const clearField = component.getByPlaceholder("https://...");
+  await clearField.fill("");
+  await clearField.press("Enter");
 
   await expect.poll(() => value(component)).toMatchObject({ image: PNG });
   await expect.poll(() => value(component)).not.toHaveProperty("mobileImage");
 });
 
-test("a javascript: URL never reaches the img src", async ({ mount }) => {
+test("an unsafe scheme is refused at the field, never stored", async ({
+  mount,
+}) => {
   const component = await mount(
-    <ResponsiveImageHarness initial={{ image: "javascript:alert(1)" }} />,
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
   );
+  await showToolbar(component);
+  await component.getByRole("button", { name: "URL", exact: true }).click();
 
-  await expect(component.locator("img")).toHaveCount(0);
-  await expect(component.getByText("Preview unavailable")).toBeVisible();
+  const field = component.getByPlaceholder("https://...");
+  await field.fill("javascript:alert(1)");
+  await field.press("Enter");
+
+  await expect(
+    component.getByText("That address can't be used as an image source."),
+  ).toBeVisible();
+  // Refused, so the previously-good image is still what is stored and shown.
+  await expect.poll(() => value(component)).toMatchObject({ image: PNG });
+  await expect(component.locator("img")).toHaveCount(1);
+});
+
+test("a safe URL commits on Enter", async ({ mount }) => {
+  const component = await mount(<ResponsiveImageHarness />);
+  await showToolbar(component);
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+
+  const field = component.getByPlaceholder("https://...");
+  await field.fill("https://cdn.example.com/a.png");
+  await field.press("Enter");
+
+  await expect
+    .poll(() => value(component))
+    .toMatchObject({ image: "https://cdn.example.com/a.png" });
 });
 
 test("an inline image payload still renders", async ({ mount }) => {
