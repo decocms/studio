@@ -229,6 +229,13 @@ describe("buildOptions", () => {
     expect(append).toContain("This run ends when your turn ends");
   });
 
+  test("names the absolute org-fs root", () => {
+    // The checkout no longer links org-fs in, so a relative `org/...` path
+    // from an older message or skill resolves inside the repo.
+    const { append } = options().systemPrompt as { append: string };
+    expect(append).toContain("mounted at `/app/org/`");
+  });
+
   test("points skill authoring at the org-fs mount, instructions or not", () => {
     // Without this the model writes a reusable skill into the checkout, where it
     // dies with the branch instead of syncing to the org.

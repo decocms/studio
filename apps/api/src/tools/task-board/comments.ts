@@ -8,6 +8,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
+import { orgRelativePath } from "@decocms/shared/organization/home-mount";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskRunContextStore } from "./task-run-context";
 
@@ -64,23 +65,29 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
 });
 
 /**
- * A task-run agent (the QA reviewer) writes screenshots to `org/output/…` and
- * references them in its comment as markdown images `![alt](org/output/x.png)`.
- * `org/output` materializes into the org-fs `outputs` volume under the run's
- * thread id, served at `/api/<org>/fs/outputs/read?path=<threadId>/<subpath>` —
- * the same URL the thread Outputs panel builds. Rewrite those refs to that URL
- * here (the agent can't know its own thread id) so the image renders inline in
- * the comment. Only `org/output/…` image refs are touched; every other URL is
- * left as-is. `outputs` is a member-readable volume, so the browser's session
- * loads the same-origin `<img>`.
+ * A task-run agent (the QA reviewer) writes screenshots to `/app/org/output/…`
+ * and references them in its comment as markdown images
+ * `![alt](/app/org/output/x.png)` (older runs wrote the relative
+ * `org/output/…`). That dir materializes into the org-fs `outputs` volume
+ * under the run's thread id, served at
+ * `/api/<org>/fs/outputs/read?path=<threadId>/<subpath>` — the same URL the
+ * thread Outputs panel builds. Rewrite those refs to that URL here (the agent
+ * can't know its own thread id) so the image renders inline in the comment.
+ * Only output image refs are touched; every other URL is left as-is.
+ * `outputs` is a member-readable volume, so the browser's session loads the
+ * same-origin `<img>`.
  */
-const ORG_OUTPUT_IMG_RE = /(!\[[^\]]*\]\()org\/output\/([^)\s]+)(\))/g;
+const MARKDOWN_IMG_RE = /(!\[[^\]]*\]\()([^)\s]+)(\))/g;
+const OUTPUT_PREFIX = "output/";
 export function embedOrgOutputImages(
   body: string,
   threadId: string,
   orgSlug: string,
 ): string {
-  return body.replace(ORG_OUTPUT_IMG_RE, (_m, pre, subpath, post) => {
+  return body.replace(MARKDOWN_IMG_RE, (match, pre, target, post) => {
+    const rel = orgRelativePath(target);
+    if (!rel?.startsWith(OUTPUT_PREFIX)) return match;
+    const subpath = rel.slice(OUTPUT_PREFIX.length);
     const path = encodeURIComponent(`${threadId}/${subpath}`);
     return `${pre}/api/${encodeURIComponent(orgSlug)}/fs/outputs/read?path=${path}${post}`;
   });
@@ -110,7 +117,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
     // A comment from a task run is the Super Agent's, not the user's whose
     // credential the run acts under (the assigner) — see authorId below. The
     // store also carries the run's thread id, which is what turns the agent's
-    // `org/output/…` screenshot refs into renderable image URLs.
+    // `/app/org/output/…` screenshot refs into renderable image URLs.
     const taskRun = taskRunContextStore.getStore();
     const orgSlug = ctx.organization?.slug;
     const body =

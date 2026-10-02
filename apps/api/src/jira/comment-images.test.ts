@@ -1,8 +1,8 @@
 /**
  * Which markdown image refs become Jira attachments.
  *
- * Only the run's own `org/output/…` outputs are ours to upload; anything else
- * is somebody's URL and stays a link. The traversal guard matters because the
+ * Only the run's own outputs (`/app/org/output/…`, or legacy `org/output/…`)
+ * are ours to upload; anything else is somebody's URL and stays a link. The traversal guard matters because the
  * subpath is joined onto the run's thread prefix — `..` would read another
  * run's screenshots onto this customer's issue.
  */
@@ -10,7 +10,14 @@ import { describe, expect, it } from "bun:test";
 import { attachmentNameFor, outputSubpath } from "./comment-images";
 
 describe("outputSubpath", () => {
-  it("takes the subpath of an org/output ref", () => {
+  it("takes the subpath of an absolute /app/org/output ref", () => {
+    expect(outputSubpath("/app/org/output/qa/before.png")).toBe(
+      "qa/before.png",
+    );
+    expect(outputSubpath("/app/org/output/a.png")).toBe("a.png");
+  });
+
+  it("still takes the legacy relative org/output ref", () => {
     expect(outputSubpath("org/output/qa/before.png")).toBe("qa/before.png");
     expect(outputSubpath("org/output/a.png")).toBe("a.png");
   });
@@ -23,6 +30,9 @@ describe("outputSubpath", () => {
       "org/outputs/a.png",
       "org/output/",
       "org/output/   ",
+      "/app/org/output/",
+      "/app/org/outputs/a.png",
+      "/app/repo/org/output/a.png",
     ]) {
       expect(outputSubpath(target)).toBeNull();
     }
@@ -33,6 +43,7 @@ describe("outputSubpath", () => {
   it("refuses traversal out of the run's own prefix", () => {
     expect(outputSubpath("org/output/../../secrets.png")).toBeNull();
     expect(outputSubpath("org/output/qa/../../../x.png")).toBeNull();
+    expect(outputSubpath("/app/org/output/../../secrets.png")).toBeNull();
   });
 });
 

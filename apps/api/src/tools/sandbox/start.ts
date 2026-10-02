@@ -724,8 +724,8 @@ async function provisionSandbox(params: StartParams): Promise<{
   // DISABLE_ORGFS_MOUNTS is a debug escape hatch (opt-out, default off): it
   // skips provisioning the mount so a sandbox boots without org-fs, for
   // low-level mount debugging. NOT a supported "org-fs-off" product mode —
-  // the prompt/tools still assume org-fs, so the agent's `org/` paths just
-  // won't exist while it's set.
+  // the prompt/tools still assume org-fs, so the agent's `/app/org/` paths
+  // just won't exist while it's set.
   const wantsOrgFs = !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row

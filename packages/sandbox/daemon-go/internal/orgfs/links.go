@@ -1,12 +1,14 @@
 package orgfs
 
 // Org-fs links: a privileged sidecar mounts the org volumes at
-// `<appRoot>/org/<volume>`; this daemon only links them so relative `org/...`
-// paths resolve — `<repoDir>/org → ../org`, plus `org/output` and `org/upload`
-// repointed per run at the running thread's subtree. Every step is gated on the
-// sidecar's status file, not on directory existence: a mount-point dir exists
-// even when the mount failed, and linking into that strands the user's files on
-// ephemeral disk. Fails open — org-fs is additive and must never break a call.
+// `<appRoot>/org/<volume>`, which agents address by absolute path; this daemon
+// repoints `org/output` and `org/upload` per run at the running thread's subtree
+// and links the org's skills where the harness looks. Nothing org-fs is linked
+// into the repo: dev-server file watchers rooted there would crawl the whole
+// network mount before binding. Every step is gated on the sidecar's status
+// file, not on directory existence: a mount-point dir exists even when the mount
+// failed, and linking into that strands the user's files on ephemeral disk.
+// Fails open — org-fs is additive and must never break a call.
 //
 // Mounting itself (rclone/WebDAV) runs in the hosted pod's sidecar.
 
@@ -132,15 +134,15 @@ func (l *Links) mountsOrWait() []Mount {
 	return l.ActiveMounts()
 }
 
-// EnsureRepoLink makes the prompts' relative `org/...` paths resolve from the
-// harness cwd. Idempotent and cheap after the first call (one lstat).
-func (l *Links) EnsureRepoLink() {
+// EnsureLinks puts the org's skills where the harness looks for them, for calls
+// that carry no thread. Idempotent and cheap after the first call.
+func (l *Links) EnsureLinks() {
 	if !l.Expected() || len(l.mountsOrWait()) == 0 {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.ensureRepoLinkLocked()
+	l.ensureLinksLocked()
 }
 
 // How long a dispatch waits for the org's content to be in place, and how often
@@ -249,8 +251,7 @@ func (l *Links) RepointForRun(threadId string) bool {
 	}
 	l.mu.Lock()
 	if threadId != "" && threadId == l.lastOutputThread {
-		// Already pointing here; keep the repo link fresh (one lstat).
-		l.ensureRepoLinkLocked()
+		l.ensureLinksLocked()
 		l.mu.Unlock()
 		return true
 	}
@@ -269,10 +270,10 @@ func (l *Links) RepointForRun(threadId string) bool {
 	defer l.mu.Unlock()
 	// Re-check: another call may have repointed this thread while we waited.
 	if threadId != "" && threadId == l.lastOutputThread {
-		l.ensureRepoLinkLocked()
+		l.ensureLinksLocked()
 		return true
 	}
-	l.ensureRepoLinkLocked()
+	l.ensureLinksLocked()
 	mounted := func(dir string) bool {
 		want := filepath.Join(l.AppRoot, "org", dir)
 		for _, m := range mounts {
@@ -299,26 +300,43 @@ func (l *Links) RepointForRun(threadId string) bool {
 	return true
 }
 
-// ensureRepoLinkLocked drops `<repoDir>/org → ../org` and excludes it so the
-// shutdown `git add -A` never commits it. At dispatch time, not boot — a link in
-// place first makes `git clone` refuse the non-empty dir. Also links the org's
-// skills folder into the pod's Claude config dir (same job: make org content
-// resolve where the harness looks for it).
-func (l *Links) ensureRepoLinkLocked() {
+// ensureLinksLocked makes org content resolve where the harness looks for it:
+// the org's skills folder in the pod's Claude config dir, and the read-only
+// skill sets as a local plugin.
+func (l *Links) ensureLinksLocked() {
+	l.ensureRepoOrgMarker()
 	l.ensureSkillsLinkLocked()
-	defer l.ensurePublicSkillLinksLocked()
+	l.ensurePublicSkillLinksLocked()
+}
+
+// staleRepoLinkTarget is the `<repoDir>/org` link older daemons created.
+const staleRepoLinkTarget = "../org"
+
+// ensureRepoOrgMarker puts a plain file at `<repoDir>/org` naming where org-fs
+// really is. A link there gets crawled by dev-server watchers; an empty path
+// would let a legacy relative `org/...` write create a real directory that the
+// shutdown `git add -A` commits into the user's branch. A file makes that write
+// fail with ENOTDIR instead. Replaces the link older daemons left; anything
+// else at that path is the repo's own and stays.
+func (l *Links) ensureRepoOrgMarker() {
 	if l.RepoDir == "" {
 		return
 	}
-	link := filepath.Join(l.RepoDir, "org")
-	st, err := os.Lstat(link)
-	if err == nil {
-		// A real `org/` tracked by the repo wins; never shadow user content.
-		if st.Mode()&os.ModeSymlink == 0 {
+	marker := filepath.Join(l.RepoDir, "org")
+	if target, err := os.Readlink(marker); err == nil {
+		if target != staleRepoLinkTarget {
 			return
 		}
-	} else if err := os.Symlink("../org", link); err != nil {
-		slog.Warn("org-fs repo link failed", "err", err)
+		if err := os.Remove(marker); err != nil {
+			slog.Warn("org-fs stale repo link not removed", "err", err)
+			return
+		}
+	} else if _, err := os.Lstat(marker); err == nil {
+		return
+	}
+	body := "Org files live at " + filepath.Join(l.AppRoot, "org") + "/ — use that absolute path.\n"
+	if err := os.WriteFile(marker, []byte(body), 0o444); err != nil {
+		slog.Warn("org-fs repo marker failed", "err", err)
 		return
 	}
 	gitx.EnsureExclude(l.RepoDir, "/org")
