@@ -25,9 +25,8 @@
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Kysely } from "kysely";
-import { getConfig } from "@/core/config";
 import { getBaseUrl } from "@/core/server-constants";
-import { createEmailSender, findEmailProvider } from "@/auth/email-providers";
+import { resolveEmailSender } from "@/auth/email-providers";
 import type { Database } from "@/storage/types";
 import { buildDigestEmail, type DigestRow } from "./digest-email";
 import { NotificationDataSchema } from "./schema";
@@ -164,20 +163,6 @@ function groupByRecipient(rows: PendingRow[]): PendingRow[][] {
   return [...byUser.values()];
 }
 
-/** Null when the deployment has no email provider — nothing is loaded, nothing
- *  is stamped, so the rows go out whenever one is configured.
- *
- *  The digest reuses the invitation provider — one configured sender, no new
- *  provider abstraction and no new env var. */
-function resolveSender() {
-  const auth = getConfig().auth;
-  const providers = auth.emailProviders ?? [];
-  const provider = auth.inviteEmailProviderId
-    ? findEmailProvider(providers, auth.inviteEmailProviderId)
-    : providers[0];
-  return provider ? createEmailSender(provider) : null;
-}
-
 /** Validates an email address has basic format correctness. */
 export function isValidEmail(email: string): boolean {
   if (email.length > 254) return false;
@@ -191,7 +176,7 @@ export function isValidEmail(email: string): boolean {
 }
 
 async function sendOne(rows: PendingRow[]): Promise<void> {
-  const sender = resolveSender();
+  const sender = resolveEmailSender();
   if (!sender) throw new Error("no email provider configured");
   const email = rows[0]!.email;
   if (!isValidEmail(email)) {
@@ -248,7 +233,7 @@ async function userDigestWorkflowFn(
 ): Promise<void> {
   const wait = dueAtMs - Date.now();
   if (wait > 0) await DBOS.sleep(wait);
-  if (!resolveSender()) return;
+  if (!resolveEmailSender()) return;
   const rows = await DBOS.runStep(() => loadPendingForUser(userId), {
     name: "loadPendingForUser",
   });
@@ -273,7 +258,7 @@ async function digestSweepWorkflowFn(
   const orphanedBefore = new Date(
     scheduledTime.getTime() - DEBOUNCE_MS - SWEEP_GRACE_MS,
   );
-  const pending = resolveSender()
+  const pending = resolveEmailSender()
     ? await DBOS.runStep(() => loadOrphaned(orphanedBefore), {
         name: "loadOrphanedNotifications",
       })
