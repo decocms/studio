@@ -375,6 +375,7 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | `replicaCount` | API pod replicas | `1` |
 | `image.repository` / `image.tag` | Studio API/worker image ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio)) | `ghcr.io/decocms/studio/studio` / unset |
 | `nginx.image.repository` / `nginx.image.tag` | Front-door image ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio-nginx)) | `ghcr.io/decocms/studio/studio-nginx` / unset |
+| `nginx.apiMaxConns` | Concurrent requests the front door sends to each API process (upstream `max_conns`); long-polls and streams hold a slot while open | unset (image default `128`) |
 | `service.type` / `service.port` | Service exposure | `ClusterIP` / `80` |
 | `ingress.enabled` / `ingress.className` / `ingress.hosts` | Optional chart-managed Ingress | `false` / `""` / `[]` |
 | `database.engine` | Database engine | `postgresql` |
