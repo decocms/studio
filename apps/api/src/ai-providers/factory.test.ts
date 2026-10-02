@@ -172,6 +172,46 @@ describe("AIProviderFactory.listModels", () => {
     expect(models[0]?.costs?.output).toBe(0);
   });
 
+  test("defaults OpenRouter enrichment contextWindow to 0 when context_length is missing, not undefined", async () => {
+    globalThis.fetch = (async (url: unknown): Promise<Response> => {
+      const u = String(url);
+      const parsed = new URL(u);
+      if (parsed.hostname === "api.anthropic.com") {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: "gemini-2.5-flash", display_name: "Gemini" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (
+        parsed.hostname === "openrouter.ai" &&
+        parsed.pathname === "/api/v1/models"
+      ) {
+        const { context_length: _omitted, ...rest } =
+          OPENROUTER_MODELS_BODY.data[0]!;
+        const body = { data: [rest] };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    }) as unknown as typeof fetch;
+
+    const anthropicStorage = {
+      resolve: async () => ({
+        keyInfo: { id: "key-1", providerId: "anthropic" } as never,
+        apiKey: "secret",
+      }),
+    } as unknown as AIProviderKeyStorage;
+
+    const factory = new AIProviderFactory(anthropicStorage);
+    const models = await factory.listModels("key-1", "org-1");
+
+    expect(models[0]?.limits?.contextWindow).toBe(0);
+  });
+
   test("skips an OpenRouter entry missing architecture instead of losing the whole enrichment index", async () => {
     globalThis.fetch = (async (url: unknown): Promise<Response> => {
       const u = String(url);
