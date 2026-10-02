@@ -540,6 +540,9 @@ export const KEYS = {
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+  /** Keyed on the folder too, so a renamed project scaffolds its new one. */
+  projectFolderEnsure: (orgId: string, projectId: string, dir: string) =>
+    ["project-folder-ensure", orgId, projectId, dir] as const,
 
   // The signed-in user's stored profile pictures (instance-level, org-free).
   userAvatars: () => ["user-avatars"] as const,

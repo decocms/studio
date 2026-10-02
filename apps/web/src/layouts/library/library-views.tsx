@@ -50,7 +50,10 @@ import { AgentAvatar } from "@/components/agent-icon";
 import { useVirtualMCPsNonBlocking } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { scopableProjects } from "@/hooks/use-project-scope";
-import { PROJECTS_FOLDER, projectFolderName } from "./project-folder";
+import {
+  PROJECTS_FOLDER,
+  projectFolderName,
+} from "@decocms/shared/organization/project-folder";
 import {
   type LibraryEntry,
   type LibrarySort,
