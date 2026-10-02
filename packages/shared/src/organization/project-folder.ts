@@ -6,11 +6,11 @@
  * reserved set would change on every rename.
  *
  * `metadata.project.folder` names the PARENT a project sits in, not its own
- * folder. `lib/project-tree.ts` groups on the same value, so nav and files
- * cannot disagree. Nothing writes the key yet.
+ * folder. The web app's `lib/project-tree.ts` groups on the same value, so nav
+ * and files cannot disagree. Nothing writes the key yet.
  */
 
-import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import { HOME_MOUNT_PATH } from "./home-mount";
 
 /** The drive-root folder holding one folder per project. */
 export const PROJECTS_FOLDER = "projects";
@@ -51,12 +51,28 @@ export function projectFolderName(project: ProjectLike): string {
   return folderNameFor(project.title ?? "") || project.id;
 }
 
-/** The Library browse path that is the top of a project's tree, under its
- *  parent folder when it has one. */
-export function projectFolderPath(project: ProjectLike): string {
+/** The top of a project's tree inside the `home` volume, under its parent
+ *  folder when it has one. */
+export function projectFolderDir(project: ProjectLike): string {
   const parent = pinnedProjectFolder(project);
-  const segments = [PROJECTS_FOLDER, parent, projectFolderName(project)].filter(
-    (segment): segment is string => !!segment,
-  );
-  return `${HOME_MOUNT_PATH}/${segments.join("/")}`;
+  return [PROJECTS_FOLDER, parent, projectFolderName(project)]
+    .filter((segment): segment is string => !!segment)
+    .join("/");
 }
+
+/** The same folder as a Library browse path. */
+export function projectFolderPath(project: ProjectLike): string {
+  return `${HOME_MOUNT_PATH}/${projectFolderDir(project)}`;
+}
+
+/** What every project folder holds, recreated when missing so the shape is
+ *  the same in every project. */
+export const PROJECT_SUBFOLDERS = [
+  "Meetings",
+  "Documents",
+  "Research",
+  "Reports",
+  "Contracts",
+] as const;
+
+export const PROJECT_MEMORY_FILE = "memory.md";

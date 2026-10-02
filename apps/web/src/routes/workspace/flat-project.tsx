@@ -20,8 +20,9 @@ import { ProjectApps } from "@/components/projects/project-apps";
 import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
 import { TaskBoardPage } from "@/layouts/task-board";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
-import { projectFolderPath } from "@/layouts/library/project-folder";
+import { projectFolderPath } from "@decocms/shared/organization/project-folder";
 import { useCapability } from "@/hooks/use-capability";
+import { useEnsureProjectFolder } from "@/hooks/use-ensure-project-folder";
 import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
@@ -71,6 +72,7 @@ function ProjectViewToggle({ files }: { files: boolean }) {
 /** The same Library every other surface uses, rooted at the project's folder.
  *  `filePreview="dialog"` because this screen has no main-panel tabs. */
 function ProjectFiles({ project }: { project: VirtualMCPEntity }) {
+  useEnsureProjectFolder(project);
   return (
     <LibraryTab
       key={project.id}

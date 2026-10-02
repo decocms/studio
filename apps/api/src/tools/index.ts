@@ -221,6 +221,7 @@ export const CORE_TOOLS = [
 
   VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_LAST_USED_LIST,
+  VirtualMCPTools.PROJECT_FOLDER_ENSURE,
 
   // Ai providers tools
   AiProvidersTools.AI_PROVIDERS_LIST,
