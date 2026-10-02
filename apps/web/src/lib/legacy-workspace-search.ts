@@ -22,20 +22,20 @@ export const siteEditorContentSearchShape = contentSearchParams;
 
 /** Task board view/filter state that has to survive legacy workspace hops. */
 export const taskBoardSearchShape = {
-  view: z.string().optional(),
-  group: z.string().optional(),
-  subgroup: z.string().optional(),
-  sort: z.string().optional(),
-  dir: z.string().optional(),
-  q: z.string().optional(),
-  assignee: z.string().optional(),
-  priority: z.string().optional(),
-  due: z.string().optional(),
-  tags: z.string().optional(),
-  repo: z.string().optional(),
+  view: z.string().max(100).optional(),
+  group: z.string().max(100).optional(),
+  subgroup: z.string().max(100).optional(),
+  sort: z.string().max(100).optional(),
+  dir: z.string().max(100).optional(),
+  q: z.string().max(500).optional(),
+  assignee: z.string().max(100).optional(),
+  priority: z.string().max(100).optional(),
+  due: z.string().max(100).optional(),
+  tags: z.string().max(500).optional(),
+  repo: z.string().max(100).optional(),
   /** Another tenant's board, shown WITHOUT leaving this org. Admin-org only;
    *  ignored when the caller cannot read it. See `board-org.tsx`. */
-  boardOrg: z.string().optional(),
+  boardOrg: z.string().max(100).optional(),
 };
 
 /** Library-owned browse, preview, and catalog state. `layout` and `sort` are
@@ -46,26 +46,26 @@ export const librarySearchShape = {
   fileView: z.enum(["all", "documents", "media"]).catch("all").optional(),
   layout: z.enum(["list", "grid"]).catch("list").optional(),
   sort: z.enum(["name", "updated", "size"]).catch("name").optional(),
-  path: z.string().optional(),
-  preview: z.string().optional(),
-  skill: z.string().optional(),
-  brand: z.string().optional(),
+  path: z.string().max(2048).optional(),
+  preview: z.string().max(2048).optional(),
+  skill: z.string().max(100).optional(),
+  brand: z.string().max(100).optional(),
 };
 
 /** Exact payload accepted by the retired `/agents/{-$panel}` route. */
 const legacyAgentViewSearchShape = {
-  file: z.string().optional(),
-  key: z.string().optional(),
-  deck: z.string().optional(),
-  path: z.string().optional(),
-  connection: z.string().optional(),
-  tool: z.string().optional(),
-  automation: z.string().optional(),
-  section: z.string().optional(),
-  preview: z.string().optional(),
-  autosend: z.string().optional(),
+  file: z.string().max(100).optional(),
+  key: z.string().max(100).optional(),
+  deck: z.string().max(100).optional(),
+  path: z.string().max(2048).optional(),
+  connection: z.string().max(100).optional(),
+  tool: z.string().max(100).optional(),
+  automation: z.string().max(100).optional(),
+  section: z.string().max(100).optional(),
+  preview: z.string().max(2048).optional(),
+  autosend: z.string().max(100).optional(),
   connect: z.coerce.string().optional(),
-  siteUrl: z.string().optional(),
+  siteUrl: z.string().max(2048).optional(),
   ...siteEditorContentSearchShape,
 };
 
@@ -77,11 +77,11 @@ const legacyAgentViewSearchShape = {
 export const legacyWorkspaceCompatibilitySearchShape = {
   ...legacyAgentViewSearchShape,
   /** A retired board link carried the selected card in search. */
-  task: z.string().optional(),
+  task: z.string().max(100).optional(),
   /** The flat shape's project pointer (`lib/flat-projects.ts`). On the shared
    *  payload rather than its own route: it has to survive the workspace's
    *  navigations, and one more route breaks search inference. */
-  project: z.string().optional(),
+  project: z.string().max(100).optional(),
   ...taskBoardSearchShape,
   /** `path` and `preview` already come from the agent-view payload above. */
   skill: librarySearchShape.skill,
