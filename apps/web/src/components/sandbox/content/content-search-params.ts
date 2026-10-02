@@ -17,11 +17,11 @@ import { z } from "zod";
  * — a blog collection plus the decofile block key of the record to open.
  */
 export const contentSearchParams = {
-  contentPageId: z.string().optional(),
-  contentPath: z.string().optional(),
-  contentPathTemplate: z.string().optional(),
-  contentCollection: z.string().optional(),
-  contentItem: z.string().optional(),
+  contentPageId: z.string().max(100).optional(),
+  contentPath: z.string().max(2048).optional(),
+  contentPathTemplate: z.string().max(2048).optional(),
+  contentCollection: z.string().max(100).optional(),
+  contentItem: z.string().max(100).optional(),
 } as const;
 
 export type ContentSearchParams = z.infer<
