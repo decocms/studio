@@ -8,14 +8,6 @@
 import type { Context } from "hono";
 import { detectContentType } from "@/object-storage/key-utils";
 
-/** `encodeURIComponent` leaves `'()*` bare; RFC 5987 values can't hold them. */
-function encodeRfc5987(value: string): string {
-  return encodeURIComponent(value).replace(
-    /['()*]/g,
-    (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-}
-
 /**
  * Stream file bytes with the right content-type and, for user-authored HTML
  * (deck previews, generated pages), a sandbox CSP so the top-level document
@@ -43,10 +35,6 @@ export function fsByteResponse(
     "Cache-Control": isPublic
       ? "public, max-age=0, must-revalidate"
       : "private, max-age=0",
-    // The URL ends in `/read`, so without this a saved file is named "read".
-    "Content-Disposition": `inline; filename*=UTF-8''${encodeRfc5987(
-      path.split("/").pop() || "file",
-    )}`,
   };
   if (contentType.startsWith("text/html")) {
     /**
