@@ -498,13 +498,6 @@ export interface StudioContext {
 // ============================================================================
 
 /**
- * Check if context has organization scope
- */
-export function hasOrganization(ctx: StudioContext): boolean {
-  return ctx.organization !== undefined;
-}
-
-/**
  * Get organization ID or null
  */
 export function getOrganizationId(ctx: StudioContext): string | null {
