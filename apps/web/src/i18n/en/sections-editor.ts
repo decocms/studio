@@ -67,13 +67,10 @@ export const sectionsEditor = {
   "sectionsEditor.fileField.videoFileError":
     "Please drop a video file (mp4, webm, …).",
   "sectionsEditor.generalSeoForm.useDefault": "Use default",
-  "sectionsEditor.imageField.addMobileVersion": "Add mobile version",
   "sectionsEditor.imageField.browse": "Browse",
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Drop an image or click to browse",
   "sectionsEditor.imageField.dropToUpload": "Drop to upload",
-  "sectionsEditor.imageField.mobileVersionHint": "Served below 768px",
-  "sectionsEditor.imageField.mobileVersionLabel": "Mobile version",
   "sectionsEditor.imageField.desktopSlot": "Desktop image",
   "sectionsEditor.imageField.dropMobileImage":
     "Drop the mobile image or click to browse",
@@ -84,7 +81,6 @@ export const sectionsEditor = {
     "Only image files are accepted here.",
   "sectionsEditor.imageField.previewUnavailable": "Preview unavailable",
   "sectionsEditor.imageField.removeImage": "Remove image",
-  "sectionsEditor.imageField.removeMobileVersion": "Remove mobile version",
   "sectionsEditor.imageField.replaceImage": "Replace image",
   "sectionsEditor.imageField.supportedFormatsAndSize":
     "PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB",

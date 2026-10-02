@@ -690,6 +690,21 @@ export function listPlanningPosts(
 }
 
 /**
+ * Every post with its payload, both physical forms. A cascade that touches
+ * what posts denormalize has to use this and not `listBlogPayloads`: a
+ * planning draft carries no `__resolveType`, so matching on one skips the
+ * whole board in silence. `buildPostBlock` writes each back in its own form.
+ */
+export function listAllPostPayloads(
+  decofile: Record<string, unknown>,
+): Array<{ key: string; payload: Record<string, unknown> }> {
+  return [
+    ...listPlanningPosts(decofile),
+    ...listBlogPayloads(decofile, "posts"),
+  ];
+}
+
+/**
  * Every post the board shows: planning posts first, then live posts. `form`
  * distinguishes them so the board can pick the right key on a lane move.
  */
@@ -1631,10 +1646,10 @@ function namedRecords(
       name: str(payload.name),
     }));
   }
-  return [
-    ...listPlanningPosts(decofile),
-    ...listBlogPayloads(decofile, "posts"),
-  ].map(({ key, payload }) => ({ key, name: str(payload.title) }));
+  return listAllPostPayloads(decofile).map(({ key, payload }) => ({
+    key,
+    name: str(payload.title),
+  }));
 }
 
 /** Block keys of posts whose non-empty title collides with another post's. */

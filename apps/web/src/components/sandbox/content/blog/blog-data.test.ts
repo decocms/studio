@@ -36,6 +36,7 @@ import {
   buildPlanningPostBlock,
   listAuthorRefs,
   listPlanningPosts,
+  listAllPostPayloads,
   listAllPostsWithMeta,
   movePostToStatus,
   planningPostKey,
@@ -1183,6 +1184,29 @@ describe("scanBlogEntries duplicate names", () => {
     });
     expect(scanned.categories[0]?.duplicateName).toBeUndefined();
     expect(scanned.posts[0]?.duplicateName).toBeUndefined();
+  });
+});
+
+describe("listAllPostPayloads", () => {
+  test("includes a planning draft, which carries no __resolveType", () => {
+    const decofile = {
+      ...planningPost("a", "Draft"),
+      "collections/blog/posts/b": postBlock("Live"),
+    };
+    expect(
+      listAllPostPayloads(decofile)
+        .map(({ key }) => key)
+        .sort(),
+    ).toEqual(["blog-manager/posts/a", "collections/blog/posts/b"]);
+  });
+});
+
+describe("renameCategoryOnPost reaches a draft", () => {
+  test("a planning payload is rewritten like a live one", () => {
+    const draft = { title: "D", categories: [{ name: "Old", slug: "old" }] };
+    expect(
+      renameCategoryOnPost(draft, "old", { name: "New", slug: "new" }),
+    ).toEqual({ title: "D", categories: [{ name: "New", slug: "new" }] });
   });
 });
 

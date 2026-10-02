@@ -37,6 +37,9 @@ function parentOf(
   index: Map<string, BlogEntry>,
 ): BlogEntry | undefined {
   const parentSlug = entry.parentSlug;
+  // A record with no slug of its own cannot be addressed, so it cannot be
+  // nested either — `scanBlogEntries` still gives it a `parentSlug`.
+  if (!entry.slug) return undefined;
   if (!parentSlug || parentSlug === entry.slug) return undefined;
   const parent = index.get(parentSlug);
   return parent === entry ? undefined : parent;

@@ -11,7 +11,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
-import { safeImageSrc } from "./safe-image-url";
+import { isSafeImageUrl, safeImageSrc } from "./safe-image-url";
 import { useImageUpload } from "./use-image-upload";
 
 export function ImageField({
@@ -47,6 +47,16 @@ export function ImageField({
     setImageLoaded(false);
     setImageErrored(false);
     onChange(next);
+  }
+
+  /**
+   * Keep what the author types, but never persist a scheme that must not
+   * reach a `src` — the payload feeds the site, not only this preview. An
+   * empty field is allowed through; `missingPostFields` is what flags it.
+   */
+  function setTypedValue(next: string) {
+    if (next.trim() && !isSafeImageUrl(next)) return;
+    setValue(next);
   }
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
@@ -172,7 +182,7 @@ export function ImageField({
           id={path}
           type="url"
           value={strValue}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => setTypedValue(e.target.value)}
           placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
           className="h-9 min-w-0 flex-1"
         />

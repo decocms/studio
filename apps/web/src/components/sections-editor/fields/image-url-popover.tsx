@@ -62,7 +62,7 @@ export function ImageUrlPopover({
           setNotice(null);
           setDraft(e.target.value);
         }}
-        onBlur={commit}
+        onBlur={() => commit() && onDone()}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             setDraft(value);
@@ -77,7 +77,9 @@ export function ImageUrlPopover({
         className="h-8 w-full text-xs"
       />
       {notice && (
-        <p className="px-1 pb-0.5 pt-1.5 text-xs text-destructive">{notice}</p>
+        <p role="alert" className="px-1 pb-0.5 pt-1.5 text-xs text-destructive">
+          {notice}
+        </p>
       )}
     </div>
   );

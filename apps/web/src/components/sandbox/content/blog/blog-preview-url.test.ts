@@ -460,6 +460,22 @@ describe("subcategory routes", () => {
     ).toBe("https://abc.preview.example.com/blog/filho/my-post");
   });
 
+  it("does not treat a catch-all POST slug as a catch-all category", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            pageSlug: "/blog/:category/:slug*",
+          },
+        },
+        post: { slug: "my-post", categories: [{ slug: "filho" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/filho/my-post");
+  });
+
   it("fills a standalone /* catch-all, the shape generic Pages use", () => {
     expect(applyBlogCategorySlug("/blog/*", "pai/filho")).toBe(
       "/blog/pai/filho",

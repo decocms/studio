@@ -33,11 +33,13 @@ import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   buildBlogBlock,
+  buildPostBlock,
   type CategoryRef,
   getBlogPayload,
   listBlogPayloads,
   hasDuplicateName,
-  listPostsWithMeta,
+  listAllPostPayloads,
+  listAllPostsWithMeta,
   maskSlugInput,
   missingCategoryFields,
   renameCategoryOnPost,
@@ -162,7 +164,7 @@ export function CategoryEditor({
   const [isRenaming, setIsRenaming] = useState(false);
 
   const posts = committedSlug
-    ? listPostsWithMeta(decofile).filter((p) =>
+    ? listAllPostsWithMeta(decofile).filter((p) =>
         p.categorySlugs.includes(committedSlug),
       )
     : [];
@@ -231,10 +233,12 @@ export function CategoryEditor({
       [blockKey]: buildBlogBlock(blockKey, "categories", nextCategory),
     };
     let posts = 0;
-    for (const { key, payload } of listBlogPayloads(decofile, "posts")) {
+    // Both forms: a draft denormalizes the category exactly like a live post
+    // does, and writing it back as a live block would publish it.
+    for (const { key, payload } of listAllPostPayloads(decofile)) {
       const next = renameCategoryOnPost(payload, oldSlug, ref);
       if (next === payload) continue;
-      writes[key] = buildBlogBlock(key, "posts", stampPostModified(next));
+      writes[key] = buildPostBlock(key, stampPostModified(next));
       posts += 1;
     }
     // Children only move when the slug itself changed; a name-only save would
@@ -318,6 +322,7 @@ export function CategoryEditor({
       // The cache rolled back; the working tree may not have. Put the input
       // back on the persisted slug so retrying re-applies the whole plan.
       setSlugDraft(oldSlug);
+      setSlugNotice(null);
       setPendingRename(null);
       toast.error(
         err instanceof Error
@@ -475,6 +480,13 @@ export function CategoryEditor({
                   <SelectItem value={NO_PARENT}>
                     {t("sandbox.categoryEditor.parentNone")}
                   </SelectItem>
+                  {/* A dangling or over-deep parent matches no option, which
+                      would render the trigger blank and hide the value the
+                      record actually holds. */}
+                  {parentSlug &&
+                    !parentOptions.some((o) => o.slug === parentSlug) && (
+                      <SelectItem value={parentSlug}>{parentSlug}</SelectItem>
+                    )}
                   {parentOptions.map((option) => (
                     <SelectItem key={option.slug} value={option.slug}>
                       <span style={{ paddingLeft: option.depth * 12 }}>
@@ -587,6 +599,7 @@ export function CategoryEditor({
           if (open || isRenaming) return;
           // Cancelled: revert the input to the persisted slug.
           setSlugDraft(committedSlug);
+          setSlugNotice(null);
           setPendingRename(null);
         }}
       >

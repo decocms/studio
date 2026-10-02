@@ -102,8 +102,9 @@ import {
   uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
-  listBlogPayloads,
+  listAllPostPayloads,
   postIdOfKey,
+  buildPostBlock,
   removeCategoryFromPost,
   scanBlogEntries,
   stampPostModified,
@@ -867,7 +868,8 @@ function ContentBrowserReady({
       ...structuredClone(getBlogPayload(source, entry.kind)),
       [labelKey]: `${entry.label} (copy)`,
     };
-    // A clone keeping the slug would answer for the original everywhere.
+    // A clone keeping the slug would answer for the original. Categories
+    // only: a duplicated post still carries the source slug.
     if (entry.kind === "categories") {
       const taken = allBlogEntries.categories
         .map((c) => c.slug ?? "")
@@ -912,15 +914,16 @@ function ContentBrowserReady({
           ).slug;
           const slug = typeof slugValue === "string" ? slugValue : "";
           if (slug) {
-            for (const { key: postKey, payload } of listBlogPayloads(
+            // Both forms: a draft denormalizes the category too, and
+            // writing it back as a live block would publish it.
+            for (const { key: postKey, payload } of listAllPostPayloads(
               decofile,
-              "posts",
             )) {
               const next = removeCategoryFromPost(payload, slug);
               if (next === payload) continue;
               await saveBlock.mutateAsync({
                 blockKey: postKey,
-                data: buildBlogBlock(postKey, "posts", stampPostModified(next)),
+                data: buildPostBlock(postKey, stampPostModified(next)),
               });
             }
           }

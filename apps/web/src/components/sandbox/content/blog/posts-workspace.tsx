@@ -1180,7 +1180,7 @@ function PostCard({
           )}
           {post.duplicateTitle && (
             <span className="inline-flex items-center gap-1 text-xs text-warning">
-              <Copy01 size={12} />
+              <Copy01 size={12} aria-hidden />
               {t("sandbox.postBoard.duplicateTitle")}
             </span>
           )}

@@ -154,7 +154,10 @@ const ALL_CATEGORY_PARAMS = /:(?:categorySlug|categoria|category|slug)[*?]?/g;
  * the same URL the site serves.
  */
 function routeTakesCategoryPath(template: string): boolean {
-  return /:(?:categorySlug|categoria|category|slug)\*|\/\*/.test(template);
+  // Only a catch-all on the CATEGORY parameter counts. `/blog/:category/:slug*`
+  // is a catch-all post slug, and feeding it a path would push `parent/child`
+  // into the plain `:category` beside it.
+  return /:(?:categorySlug|categoria|category)\*|\/\*$/.test(template);
 }
 
 /** Percent-encode each segment, so a nested path keeps its separators. */

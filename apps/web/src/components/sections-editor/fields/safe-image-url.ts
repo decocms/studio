@@ -1,4 +1,8 @@
-const SAFE_IMAGE_PROTOCOLS = new Set(["http:", "https:", "blob:"]);
+/**
+ * No `blob:` — it resolves only in the browsing context that minted it, so a
+ * committed one is a broken image for every other reader.
+ */
+const SAFE_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
 
 /** C0 controls plus DEL — what a browser deletes from a URL before parsing. */
 // oxlint-disable-next-line no-control-regex -- matching them is the point

@@ -12,8 +12,9 @@ import { InlineText, str } from "./primitives";
 /**
  * The post body's image block, edited in place. The desktop/mobile preview,
  * the URL field and the quality control come from {@link ResponsiveImageField},
- * shared with the post cover; this adds the two props only a body image has —
- * width and fetch priority — plus the caption and alt lines.
+ * shared with the post cover; this adds the two props only a body
+ * image has — its `normal`/`full` width and the fetch-priority flag — plus
+ * the caption and alt lines.
  */
 export function BlockImageBlock({
   block,

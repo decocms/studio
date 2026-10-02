@@ -122,8 +122,10 @@ export function ResponsiveImageField({
           </ToolbarButton>
 
           {/* Quality is a `?quality=` param on the slot's own URL, so it is
-              only offered once that slot has one. */}
-          {active && (
+              offered only for a URL that has a query string to carry it. On a
+              `data:` image everything after the first comma is payload, and
+              appending to it corrupts the picture. */}
+          {active && !active.startsWith("data:") && (
             <>
               <ToolbarDivider />
               {QUALITY_OPTIONS.map((option) => (

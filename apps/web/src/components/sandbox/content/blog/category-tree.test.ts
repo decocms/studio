@@ -71,6 +71,19 @@ describe("orderCategoryTree", () => {
     ).toEqual(["dup@0", "dup@0"]);
   });
 
+  it("never nests an entry with no slug of its own", () => {
+    const nameless: BlogEntry = {
+      key: "collections/blog/categories/x",
+      kind: "categories",
+      label: "Unnamed",
+      subtitle: "",
+      parentSlug: "recipes",
+      missing: ["Slug"],
+    };
+    const rows = orderCategoryTree([cat("recipes"), nameless]);
+    expect(rows.find((r) => r.entry === nameless)?.depth).toBe(0);
+  });
+
   it("keeps an entry with no slug at all", () => {
     const nameless: BlogEntry = {
       key: "collections/blog/categories/x",
