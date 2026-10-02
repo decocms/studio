@@ -33,6 +33,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
+import { authClient } from "@/lib/auth-client";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -178,6 +179,7 @@ import {
 import { UNASSIGNED_FILTER } from "./task-filters-core";
 import {
   enabledLayout,
+  savedAssigneeDefault,
   useBoardSearch,
   visibleSelection,
 } from "./filters-search";
@@ -1026,6 +1028,7 @@ function TaskBoardBody({
     setRerunTargets([]);
     clearSelection();
   };
+  const { data: session } = authClient.useSession();
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -1035,8 +1038,9 @@ function TaskBoardBody({
    *  a `?view=feed` link shared from a colleague who HAS the flag has to land
    *  on the board rather than on a view with no tab to leave it by. */
   const feedEnabled = useProjectFirstNav();
+  const viewerId = session?.user?.id ?? null;
   const [savedAssignee, setSavedAssignee] = useLocalStorage<string | null>(
-    LOCALSTORAGE_KEYS.taskBoardAssignee(org.id),
+    LOCALSTORAGE_KEYS.taskBoardAssignee(org.id, viewerId ?? ""),
     null,
   );
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
@@ -1057,12 +1061,17 @@ function TaskBoardBody({
     {
       layout: inlineTabs && feedEnabled ? "feed" : "board",
       assignee:
-        typeof savedAssignee === "string" && savedAssignee !== ""
-          ? savedAssignee
-          : null,
+        viewerId === null
+          ? null
+          : savedAssigneeDefault(
+              savedAssignee,
+              membersData ? new Set(memberByUserId.keys()) : null,
+            ),
       groupBy: "status",
     },
-    setSavedAssignee,
+    (assignee) => {
+      if (viewerId !== null) setSavedAssignee(assignee);
+    },
   );
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {

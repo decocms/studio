@@ -7,8 +7,16 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { DueFilter, TaskFilters } from "./task-filters-core";
-import { PRIORITIES, type TaskBoardItemPriority } from "./config";
+import {
+  UNASSIGNED_FILTER,
+  type DueFilter,
+  type TaskFilters,
+} from "./task-filters-core";
+import {
+  PRIORITIES,
+  SUPER_AGENT_ASSIGNEE_ID,
+  type TaskBoardItemPriority,
+} from "./config";
 import { isGroupBy, type GroupBy } from "./list-groups";
 import {
   defaultSortDirection,
@@ -86,6 +94,21 @@ export const NO_DEFAULTS: BoardDefaults = {
  *  reload without the filter or grouping does not bring the default back. */
 const ANY_ASSIGNEE = "any";
 const NO_GROUP = "none";
+
+/**
+ * The saved assignee filter the board opens on. An id that no longer names a
+ * member is dropped, since the URL does not show the default and the board
+ * would just look empty. `memberIds` is null until the members load.
+ */
+export function savedAssigneeDefault(
+  saved: unknown,
+  memberIds: ReadonlySet<string> | null,
+): string | null {
+  if (typeof saved !== "string" || saved === "") return null;
+  if (saved === UNASSIGNED_FILTER || saved === SUPER_AGENT_ASSIGNEE_ID)
+    return saved;
+  return memberIds === null || memberIds.has(saved) ? saved : null;
+}
 
 /** Anything unrecognized in the URL is dropped, not trusted. */
 export function parseBoardSearch(

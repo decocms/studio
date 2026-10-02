@@ -6,9 +6,15 @@ import {
   enabledLayout,
   type BoardView,
   parseBoardSearch,
+  savedAssigneeDefault,
   visibleSelection,
 } from "./filters-search";
-import { EMPTY_FILTERS, type TaskFilters } from "./task-filters-core";
+import { SUPER_AGENT_ASSIGNEE_ID } from "./config";
+import {
+  EMPTY_FILTERS,
+  UNASSIGNED_FILTER,
+  type TaskFilters,
+} from "./task-filters-core";
 
 const EMPTY_VIEW: BoardView = {
   filters: EMPTY_FILTERS,
@@ -85,6 +91,31 @@ describe("the board opens on the saved assignee, grouped by status", () => {
     const params = boardSearchParams(parseBoardSearch({}), NO_DEFAULTS);
     expect(params.assignee).toBeUndefined();
     expect(params.group).toBeUndefined();
+  });
+});
+
+describe("the saved assignee", () => {
+  const members = new Set(["me-1", "user-2"]);
+
+  test("a current member, Unassigned or the Super Agent is kept", () => {
+    expect(savedAssigneeDefault("user-2", members)).toBe("user-2");
+    expect(savedAssigneeDefault(UNASSIGNED_FILTER, members)).toBe(
+      UNASSIGNED_FILTER,
+    );
+    expect(savedAssigneeDefault(SUPER_AGENT_ASSIGNEE_ID, new Set())).toBe(
+      SUPER_AGENT_ASSIGNEE_ID,
+    );
+  });
+
+  test("someone who left the org is dropped once members load", () => {
+    expect(savedAssigneeDefault("gone-1", members)).toBeNull();
+    expect(savedAssigneeDefault("gone-1", null)).toBe("gone-1");
+  });
+
+  test("an empty or malformed value is no filter", () => {
+    expect(savedAssigneeDefault(null, members)).toBeNull();
+    expect(savedAssigneeDefault("", members)).toBeNull();
+    expect(savedAssigneeDefault(42, members)).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * The board opens on every task, and an assignee filter picked from the UI is
- * what it opens on next time in this browser. A link that names an assignee
- * still shows that assignee.
+ * what it opens on next time in this browser. A link that names an assignee,
+ * or says `any`, still shows what it names.
  */
 
 import type { Page } from "@playwright/test";
@@ -45,6 +45,10 @@ test("the board reopens on the last assignee filter picked", async ({
   await expect(card(page, "Nobody's")).toBeVisible({ timeout: 30_000 });
   await expect(card(page, "Mine")).toBeHidden();
   expect(assigneeParam(page)).toBeNull();
+
+  await page.goto(`/${orgSlug}/tasks?assignee=any`);
+  await expect(card(page, "Mine")).toBeVisible({ timeout: 30_000 });
+  await expect(card(page, "Nobody's")).toBeVisible();
 
   await page.goto(`/${orgSlug}/tasks?assignee=${user.userId}`);
   await expect(card(page, "Mine")).toBeVisible({ timeout: 30_000 });
