@@ -87,8 +87,8 @@ services:
       - BASE_URL=${BASE_URL:-http://localhost:3000}
       # Auth signing secret. Set a strong value for anything shared.
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
-      # Credential-vault key — must stay stable across restarts.
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-local-dev-encryption-key-change-me}
+      # Credential-vault key — must stay stable across restarts. Required.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env (openssl rand -base64 32)}
       # External services (Studio provisions nothing itself in this mode).
       - DATABASE_URL=postgresql://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio}@postgres:5432/${POSTGRES_DB:-studio}
       - NATS_URL=nats://nats:4222

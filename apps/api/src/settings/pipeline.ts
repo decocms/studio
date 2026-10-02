@@ -10,7 +10,11 @@
  */
 
 import type { CliFlags, Settings } from "./types";
-import { describeEncryptionKeyForLog, resolveConfig } from "./resolve-config";
+import {
+  assertEncryptionKeyConfigured,
+  describeEncryptionKeyForLog,
+  resolveConfig,
+} from "./resolve-config";
 import { resolveLocalAuthSecret } from "./local-secret";
 import { setGlobalSettings } from "./index";
 
@@ -30,6 +34,7 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
 
   // Log encryption key status on startup (masked — never the raw secret)
   console.log(describeEncryptionKeyForLog(config.settings.encryptionKey));
+  assertEncryptionKeyConfigured(config.settings);
 
   // In local mode with no explicit BETTER_AUTH_SECRET, persist a random secret
   // under the data dir and reuse it across restarts. Otherwise Better Auth would
