@@ -26,8 +26,6 @@ export const sidebar = {
   "sidebar.myThreadsSection.noChatsMatchFilters": "No chats match your filters",
   "sidebar.projectNav.automations": "Automations",
   "sidebar.projectNav.siteEditor": "Site Editor",
-  "sidebar.projects.folderCode": "Code",
-  "sidebar.projects.folderOther": "Other",
   "sidebar.projects.pinned": "Pinned",
   "sidebar.projects.suggested": "Suggested",
   "sidebar.projects.newBadge": "New",
