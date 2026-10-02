@@ -54,6 +54,7 @@ import {
 } from "./category-tree";
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -113,6 +114,7 @@ export function CategoryEditor({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const move = useMoveBlocks({ orgSlug, virtualMcpId, branch });
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
 
@@ -124,7 +126,7 @@ export function CategoryEditor({
         data: buildBlogBlock(blockKey, "categories", next),
       });
     },
-    { isSaving: save.isPending },
+    { isSaving: save.isPending || move.isPending },
   );
 
   const setField = (key: string, value: unknown) =>
@@ -212,24 +214,36 @@ export function CategoryEditor({
   const commitSlug = (newSlug: string) => setField("slug", newSlug);
 
   /**
-   * Rewrite every post that references `oldSlug` to carry `ref`, and report
-   * how many changed. Sequential: each mutation's optimistic patch lands on
-   * the shared decofile cache key, so parallel writes would lose updates.
-   * `renameCategoryOnPost` is identity-stable, so a post already carrying
-   * `ref` costs no write.
+   * Every block a rename touches, as one write map: the category itself, the
+   * posts carrying a denormalized copy of it, and the child categories
+   * pointing at its slug. `renameCategoryOnPost` and `reparentCategory` are
+   * identity-stable, so a record already in agreement contributes nothing.
    */
-  const cascadeToPosts = async (oldSlug: string, ref: CategoryRef) => {
-    let changed = 0;
+  const renamePlan = (
+    oldSlug: string,
+    nextCategory: Record<string, unknown>,
+  ) => {
+    const ref: CategoryRef = {
+      name: str(nextCategory.name),
+      slug: str(nextCategory.slug),
+    };
+    const writes: Record<string, unknown> = {
+      [blockKey]: buildBlogBlock(blockKey, "categories", nextCategory),
+    };
+    let posts = 0;
     for (const { key, payload } of listBlogPayloads(decofile, "posts")) {
       const next = renameCategoryOnPost(payload, oldSlug, ref);
       if (next === payload) continue;
-      await save.mutateAsync({
-        blockKey: key,
-        data: buildBlogBlock(key, "posts", stampPostModified(next)),
-      });
-      changed += 1;
+      writes[key] = buildBlogBlock(key, "posts", stampPostModified(next));
+      posts += 1;
     }
-    return changed;
+    for (const { key, payload } of listBlogPayloads(decofile, "categories")) {
+      if (key === blockKey) continue;
+      const next = reparentCategory(payload, oldSlug, ref.slug);
+      if (next === payload) continue;
+      writes[key] = buildBlogBlock(key, "categories", next);
+    }
+    return { writes, posts };
   };
 
   /**
@@ -242,28 +256,20 @@ export function CategoryEditor({
   const commitName = async () => {
     if (!committedSlug || isRenaming) return;
     const name = str(category.name);
+    const nextCategory = { ...category, name };
+    const { writes, posts } = renamePlan(committedSlug, nextCategory);
+    // A blur that changed nothing must not write.
+    if (posts === 0 && name === str(initial.name)) return;
     setIsRenaming(true);
     try {
-      // Persist the category itself FIRST and await it. The cascade's writes
-      // replace the cached decofile, and a name still sitting in the autosave
-      // debounce would be re-seeded away by the echo — the heading would snap
-      // back to the old name. Same ordering `runRename` uses.
-      if (name !== str(initial.name)) {
-        const nextCategory = { ...category, name };
-        await save.mutateAsync({
-          blockKey,
-          data: buildBlogBlock(blockKey, "categories", nextCategory),
-        });
-        syncCategory(nextCategory);
-      }
-      const changed = await cascadeToPosts(committedSlug, {
-        name,
-        slug: committedSlug,
-      });
-      if (changed > 0) {
+      // Cancels the pending debounce, which would otherwise fire mid-write
+      // and persist the same payload a second time.
+      syncCategory(nextCategory);
+      await move.move({ writes, deletes: [] });
+      if (posts > 0) {
         toast.success(
           t("sandbox.categoryEditor.renameNameSuccess", {
-            count: String(changed),
+            count: String(posts),
           }),
         );
       }
@@ -279,50 +285,30 @@ export function CategoryEditor({
   };
 
   /**
-   * Rewrite every post that referenced `oldSlug` to the new slug + name, then
-   * persist the category. Sequential writes: each mutation's optimistic patch
-   * lands on the shared decofile cache key, so parallel writes would lose
-   * updates (same reasoning as the bulk-category apply).
+   * Commit a new slug, carrying posts and child categories with it, as ONE
+   * transition. Sequential `useSaveBlock` calls meant the UI settled a
+   * round-trip at a time — the list showing the old value until the last post
+   * landed, and navigating away mid-cascade leaving it half-applied.
+   * `useMoveBlocks` patches the cache synchronously and sends a single commit.
    */
   const runRename = async (oldSlug: string, newSlug: string) => {
-    const name = str(category.name);
+    const nextCategory = { ...category, slug: newSlug };
+    const { writes, posts } = renamePlan(oldSlug, nextCategory);
     setIsRenaming(true);
     try {
-      const changed = await cascadeToPosts(oldSlug, { name, slug: newSlug });
-      // Children hold a slug copy too, so the rename has to follow them.
-      for (const { key, payload } of listBlogPayloads(decofile, "categories")) {
-        const next = reparentCategory(payload, oldSlug, newSlug);
-        if (next === payload) continue;
-        await save.mutateAsync({
-          blockKey: key,
-          data: buildBlogBlock(key, "categories", next),
-        });
-      }
-      // Persist the category block with its new slug and AWAIT it before
-      // reporting success — routing this through the debounced autosave would
-      // let the toast fire (and the user navigate away) before the write is
-      // even dispatched, leaving posts renamed but the category slug possibly
-      // never persisted. `nextCategory` carries the full current draft, so the
-      // write captures any name/description edits made before the rename.
-      const nextCategory = { ...category, slug: newSlug };
-      await save.mutateAsync({
-        blockKey,
-        data: buildBlogBlock(blockKey, "categories", nextCategory),
-      });
-      // Draft-only catch-up (no extra write): keeps future name/description
-      // edits on the new slug instead of spreading the stale one back in.
       syncCategory(nextCategory);
+      await move.move({ writes, deletes: [] });
       toast.success(
-        changed > 0
+        posts > 0
           ? t("sandbox.categoryEditor.renameSuccessWithPosts", {
-              count: String(changed),
+              count: String(posts),
             })
           : t("sandbox.categoryEditor.renameSuccessNoPosts"),
       );
       setPendingRename(null);
     } catch (err) {
-      // Posts may be half-migrated. Reset the input to the persisted slug so
-      // the user can retry the rename cleanly.
+      // The write is atomic, so nothing landed. Put the input back on the
+      // persisted slug so the user can retry cleanly.
       setSlugDraft(oldSlug);
       setPendingRename(null);
       toast.error(
@@ -389,7 +375,10 @@ export function CategoryEditor({
             {str(category.name) || t("sandbox.categoryEditor.untitledCategory")}
           </span>
           <div className="flex shrink-0 items-center gap-3">
-            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            <SaveStatus
+              isPending={save.isPending || move.isPending}
+              isError={save.isError}
+            />
             {missing.length > 0 && (
               <Tooltip>
                 <TooltipTrigger asChild>
