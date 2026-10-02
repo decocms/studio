@@ -33,15 +33,28 @@ import {
 } from "@/hooks/use-task-board-prompts";
 import { useT } from "@/i18n/use-t.ts";
 
+/** Whether the column has rules; an unconfigured one is added from the lane header instead. */
+export function useColumnConfigured(columnKey: string) {
+  const prompts = useTaskBoardPrompts();
+  const automations = useTaskBoardColumnAutomations();
+  return (
+    !!automations.data?.some((a) => a.columnKey === columnKey) ||
+    !!prompts.data?.some((p) => p.columnKey === columnKey)
+  );
+}
+
 export function ColumnRulesStrip({
   columnKey,
   label,
+  open,
+  onOpenChange: setOpen,
 }: {
   columnKey: string;
   label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
   const prompts = useTaskBoardPrompts();
   const automations = useTaskBoardColumnAutomations();
   const scope = prompts.data?.find((p) => p.columnKey === columnKey);
@@ -59,39 +72,28 @@ export function ColumnRulesStrip({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label={t("taskBoard.columnRules.editAriaLabel", { lane: label })}
-        // Same px-2 / gap-2 / 15px glyph as the lane header, so the icon and text line up with it.
-        className={cn(
-          "flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-          !configured &&
-            "opacity-0 group-hover/lane:opacity-100 focus-visible:opacity-100",
-        )}
-      >
-        {configured ? (
-          <>
-            {automation ? (
-              <Zap size={15} className="shrink-0 fill-current text-special" />
-            ) : (
-              <Stars02 size={15} className="shrink-0" />
-            )}
-            <span className="min-w-0 flex-1 truncate">{summary}</span>
-            {showSkillCount && (
-              <span className="flex shrink-0 items-center gap-0.5 text-2xs font-medium">
-                <Stars02 size={11} />
-                {skillCount}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            <Plus size={15} className="shrink-0" />
-            <span className="truncate">{t("taskBoard.columnRules.add")}</span>
-          </>
-        )}
-      </button>
+      {configured && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={t("taskBoard.columnRules.editAriaLabel", { lane: label })}
+          // Same px-2 / gap-2 / 15px glyph as the lane header, so the icon and text line up with it.
+          className="flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {automation ? (
+            <Zap size={15} className="shrink-0 fill-current text-special" />
+          ) : (
+            <Stars02 size={15} className="shrink-0" />
+          )}
+          <span className="min-w-0 flex-1 truncate">{summary}</span>
+          {showSkillCount && (
+            <span className="flex shrink-0 items-center gap-0.5 text-2xs font-medium">
+              <Stars02 size={11} />
+              {skillCount}
+            </span>
+          )}
+        </button>
+      )}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           className="w-full gap-0 sm:max-w-md"

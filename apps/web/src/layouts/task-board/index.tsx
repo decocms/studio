@@ -35,7 +35,7 @@ import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import { ColumnRulesStrip } from "./column-rules";
+import { ColumnRulesStrip, useColumnConfigured } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -62,6 +62,7 @@ import {
   Lightning01,
   Plus,
   RefreshCw01,
+  Stars02,
   User01,
   UserPlus01,
   X,
@@ -2605,6 +2606,8 @@ function Lane({
   const t = useT();
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const rulesConfigured = useColumnConfigured(status);
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
@@ -2621,7 +2624,12 @@ function Lane({
         isTarget && "bg-muted/50",
       )}
     >
-      <ColumnRulesStrip columnKey={status} label={label} />
+      <ColumnRulesStrip
+        columnKey={status}
+        label={label}
+        open={rulesOpen}
+        onOpenChange={setRulesOpen}
+      />
       {/* Sticky so the column header stays visible while the cards scroll
           vertically under it — needs an opaque bg for that to hide scrolled-
           under cards, so it tracks the lane's own highlight color (solid,
@@ -2648,17 +2656,24 @@ function Lane({
           {items.length}
         </span>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                lane: label,
-              })}
-              className={cn(LANE_ACTION, "ml-auto")}
-            >
-              <DotsHorizontal size={15} />
-            </button>
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                    lane: label,
+                  })}
+                  className={cn(LANE_ACTION, "ml-auto")}
+                >
+                  <DotsHorizontal size={15} />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+            </TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
               {t("taskBoard.taskBoard.selectAllInLane")}
@@ -2670,17 +2685,40 @@ function Lane({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-            lane: label,
-          })}
-          title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-          onClick={() => onCreate(status)}
-          className={LANE_ACTION}
-        >
-          <Plus size={15} />
-        </button>
+        {!rulesConfigured && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("taskBoard.columnRules.add")}
+                onClick={() => setRulesOpen(true)}
+                className={LANE_ACTION}
+              >
+                <Stars02 size={15} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t("taskBoard.columnRules.add")}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                lane: label,
+              })}
+              onClick={() => onCreate(status)}
+              className={LANE_ACTION}
+            >
+              <Plus size={15} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
+          </TooltipContent>
+        </Tooltip>
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-
