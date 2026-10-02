@@ -110,31 +110,32 @@ func Read(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, "Path escapes project root")
 			return
 		}
+		// Decofile: `.deco/blocks/*.json` is the source of truth and
+		// `.deco/blocks.gen.json` only a build artifact — commonly gitignored,
+		// and stale on disk whenever block sources change without a dev-server
+		// rebuild (a pull, "Get latest", a crashed dev script). Merge the sources
+		// on every read so the CMS always sees the branch's current blocks; the
+		// on-disk artifact is served only when there is no blocks dir. Returned
+		// un-numbered: the decofile is consumed as one blob and the client's
+		// line-number strip is a no-op on content that lacks the `^\d+\t` prefix.
+		//
+		// Only for relative paths: those are SafePath-confined to appRoot by
+		// resolveReadPath, so the sibling `blocks` dir can't escape the
+		// project. An absolute `body.Path` bypasses SafePath, so refuse to
+		// turn it into a directory glob (the CMS only ever sends relative).
+		if !filepath.IsAbs(body.Path) && filepath.Base(filePath) == decofile.GenBasename {
+			blocksDir := filepath.Join(filepath.Dir(filePath), decofile.BlocksDirname)
+			if merged, ok := decofile.GenerateFromBlocksDeduped(blocksDir); ok {
+				httpx.JSON(w, 200, map[string]any{
+					"kind":      "text",
+					"content":   merged,
+					"lineCount": 1,
+				})
+				return
+			}
+		}
 		stat, err := os.Stat(filePath)
 		if err != nil {
-			// Decofile fallback: `.deco/blocks.gen.json` is commonly gitignored
-			// (a multi-MB single line the runtime regenerates on dev cold-start),
-			// so a fresh sandbox has the block sources but not the merged file.
-			// Rebuild it on the fly from the sibling `.deco/blocks/*.json` so the
-			// CMS is readable before the dev server boots. Returned un-numbered:
-			// the decofile is consumed as one blob and the client's line-number
-			// strip is a no-op on content that lacks the `^\d+\t` prefix.
-			//
-			// Only for relative paths: those are SafePath-confined to appRoot by
-			// resolveReadPath, so the sibling `blocks` dir can't escape the
-			// project. An absolute `body.Path` bypasses SafePath, so refuse to
-			// turn it into a directory glob (the CMS only ever sends relative).
-			if !filepath.IsAbs(body.Path) && filepath.Base(filePath) == decofile.GenBasename {
-				blocksDir := filepath.Join(filepath.Dir(filePath), decofile.BlocksDirname)
-				if merged, ok := decofile.GenerateFromBlocksDeduped(blocksDir); ok {
-					httpx.JSON(w, 200, map[string]any{
-						"kind":      "text",
-						"content":   merged,
-						"lineCount": 1,
-					})
-					return
-				}
-			}
 			httpx.Error(w, 400, fmt.Sprintf("File not found: %s", body.Path))
 			return
 		}

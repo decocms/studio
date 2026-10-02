@@ -170,6 +170,41 @@ func TestReadDecofileFallbackRelative(t *testing.T) {
 	}
 }
 
+// A stale on-disk gen artifact (block sources changed without a dev-server
+// rebuild) must not shadow the sources: the read reflects the current blocks.
+func TestReadDecofilePrefersBlocksOverStaleGen(t *testing.T) {
+	deps := seedBlocks(t)
+	stale := filepath.Join(deps.RepoDir, ".deco", "blocks.gen.json")
+	if err := os.WriteFile(stale, []byte(`{"a":{"n":0}}`), 0o644); err != nil {
+		t.Fatalf("write stale gen: %v", err)
+	}
+	rec := readReq(t, deps, ".deco/blocks.gen.json")
+	var got struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Content != `{"a":{"n":1},"b":{"n":2}}` {
+		t.Fatalf("content = %q, want merge of current blocks", got.Content)
+	}
+}
+
+// Without a blocks dir, the committed gen artifact is the only source.
+func TestReadDecofileServesGenWithoutBlocksDir(t *testing.T) {
+	repoDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoDir, ".deco"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".deco", "blocks.gen.json"), []byte(`{"x":1}`), 0o644); err != nil {
+		t.Fatalf("write gen: %v", err)
+	}
+	rec := readReq(t, FsDeps{AppRoot: filepath.Dir(repoDir), RepoDir: repoDir}, ".deco/blocks.gen.json")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `{\"x\":1}`) {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 // The fallback must refuse an ABSOLUTE path even when it points straight at the
 // real repo's gen artifact — an absolute path bypasses SafePath, so allowing it
 // would turn the merge into an arbitrary sibling-`blocks/` directory glob. This
