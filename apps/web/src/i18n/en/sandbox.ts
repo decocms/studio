@@ -106,10 +106,16 @@ export const sandbox = {
   "sandbox.categoryEditor.categoryNamePlaceholder": "Category name",
   "sandbox.categoryEditor.contentTitle": "Content",
   "sandbox.categoryEditor.descriptionLabel": "Description",
+  "sandbox.categoryEditor.duplicateNameWarning":
+    "Another category already uses this name. Duplicate names are hard to tell apart when tagging a post.",
   "sandbox.categoryEditor.descriptionPlaceholder":
     "Short description for this category",
   "sandbox.categoryEditor.noContentEmpty":
     "This category has no content yet. Use ⊕ to add your first block.",
+  "sandbox.categoryEditor.parentDescription":
+    "Nests this category under another one. Leave empty for a root category.",
+  "sandbox.categoryEditor.parentLabel": "Parent category",
+  "sandbox.categoryEditor.parentNone": "None (root category)",
   "sandbox.categoryEditor.pickPostsTooltip":
     "Pick posts to add to this category",
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) in this category",
@@ -118,8 +124,12 @@ export const sandbox = {
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',
+  "sandbox.categoryEditor.renameDialogChildren":
+    "{count} subcategory(ies) will be re-pointed at the new slug.",
   "sandbox.categoryEditor.renameDialogTitle": "Rename category slug?",
   "sandbox.categoryEditor.renameFailed": "Rename failed",
+  "sandbox.categoryEditor.renameNameSuccess":
+    "Updated the category name on {count} post(s)",
   "sandbox.categoryEditor.renameSuccessNoPosts": "Renamed slug",
   "sandbox.categoryEditor.renameSuccessWithPosts":
     "Renamed slug and updated {count} post(s)",
@@ -127,6 +137,8 @@ export const sandbox = {
   "sandbox.categoryEditor.seeCategoryPreview": "See category preview",
   "sandbox.categoryEditor.setSlugTooltip":
     "Set a slug to add posts to this category",
+  "sandbox.categoryEditor.slugDeduped":
+    "That slug was already taken — saved as \u201c{slug}\u201d.",
   "sandbox.categoryEditor.slugLabel": "Slug",
   "sandbox.categoryEditor.slugPlaceholder": "my-category",
   "sandbox.categoryEditor.untitledCategory": "Untitled category",
@@ -382,6 +394,7 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "More actions",
   "sandbox.itemActions.rename": "Rename",
   "sandbox.itemActions.viewJson": "View JSON",
+  "sandbox.itemRow.duplicateName": "Another record uses this name",
   "sandbox.itemRow.selectItem": "Select {title}",
   "sandbox.itemRow.variantCount": "{count} variants",
   "sandbox.listBlocks.addCard": "Add card",
@@ -407,6 +420,7 @@ export const sandbox = {
   "sandbox.listBlocks.stepsTitle": "Steps title (optional)",
   "sandbox.mediaBlocks.addCaption": "Add a caption…",
   "sandbox.mediaBlocks.altText": "Alt text (accessibility)",
+  "sandbox.mediaBlocks.altLabel": "Alt",
   "sandbox.mediaBlocks.buttonLabel": "Button label",
   "sandbox.mediaBlocks.calloutText": "Callout text…",
   "sandbox.mediaBlocks.calloutTitle": "Callout title",
@@ -433,6 +447,9 @@ export const sandbox = {
   "sandbox.mediaBlocks.divider": "Divider",
   "sandbox.mediaBlocks.fullWidth": "Full width",
   "sandbox.mediaBlocks.image": "Image",
+  "sandbox.mediaBlocks.highPriority": "Priority",
+  "sandbox.mediaBlocks.highPriorityHint":
+    "Loads eagerly with high fetch priority. Use for images above the fold.",
   "sandbox.mediaBlocks.label": "Label",
   "sandbox.mediaBlocks.normal": "Normal",
   "sandbox.mediaBlocks.optionalDescription": "Optional description",
@@ -538,14 +555,8 @@ export const sandbox = {
     "This post is missing required fields — open it to finish before scheduling.",
   "sandbox.postBoard.moveFailed": "Could not move this post",
   "sandbox.postBoard.moveInFlight": "Still moving this post…",
-  "sandbox.postBoard.moveUnknownApp":
-    "Still reading this site's blog app version.",
-  "sandbox.postBoard.moveNoBlogApp":
-    "This site doesn't run the deco blog app, so nothing here can put a post live.",
   "sandbox.postBoard.moveNotATarget":
     "Generating is set by the generation run, not by hand.",
-  "sandbox.postBoard.moveUnsupported":
-    "This site's blog app is older than {required} — run `{command}` to enable this.",
   "sandbox.postBoard.nIssues": "{count} to fix before scheduling",
   "sandbox.postBoard.newPost": "New post",
   "sandbox.postBoard.newPostGenerate": "Generate",
@@ -579,21 +590,12 @@ export const sandbox = {
   "sandbox.postCalendar.next": "Next month",
   "sandbox.postCalendar.onlyScheduledCanMove":
     "Only scheduled posts can be moved.",
-  "sandbox.postCalendar.outdatedAppsDescription":
-    "Scheduling needs deco apps {required} or newer. Update this site's pin by running:",
-  "sandbox.postCalendar.outdatedAppsTitle": "Update this site's apps version",
   "sandbox.postCalendar.previous": "Previous month",
   "sandbox.postCalendar.schedulePostOn": "Schedule a post on {date}",
   "sandbox.postCalendar.today": "Today",
   "sandbox.postCalendar.unscheduledHint":
     "Dashed posts aren't scheduled — they sit on their display date, and nothing will publish them.",
   "sandbox.postCalendar.undatedEmpty": "Every post has a date.",
-  "sandbox.postCalendar.unknownAppDescription":
-    "The calendar stays read-only until the repo's manifests can be read — the sandbox may still be starting.",
-  "sandbox.postCalendar.unknownAppTitle": "Still reading this site's blog app",
-  "sandbox.postCalendar.unsupportedRuntimeDescription":
-    "This site doesn't install the deco blog app, so nothing here can publish a post on a schedule. The calendar below is read-only.",
-  "sandbox.postCalendar.unsupportedRuntimeTitle": "No blog app on this site",
   "sandbox.postCalendar.undatedLabel": "No date · {count}",
   "sandbox.postEditor.addPropLabel": "Add prop",
   "sandbox.postEditor.authorsLabel": "Authors",

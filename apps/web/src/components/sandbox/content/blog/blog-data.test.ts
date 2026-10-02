@@ -12,7 +12,10 @@ import {
   postStatus,
   relationPickerState,
   removeCategoryFromPost,
+  hasDuplicateName,
+  missingCategoryFields,
   renameCategoryOnPost,
+  reparentCategory,
   extractBlockProse,
   filledBrandRules,
   normalizeBrandRules,
@@ -45,7 +48,10 @@ import {
   postStructures,
   sectionResolveTypes,
   maskSlugInput,
+  scanBlogEntries,
   slugifyTitle,
+  uniqueCategorySlug,
+  uniqueSlug,
   uniquePostSlug,
   unknownCitations,
 } from "./blog-data";
@@ -1012,6 +1018,208 @@ describe("removeCategoryFromPost", () => {
     const payload = { categories: [{ name: "Old", slug: "old" }] };
     removeCategoryFromPost(payload, "old");
     expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+/** A category block, as the decofile stores it. */
+function categoryBlock(name: string, slug = "") {
+  return {
+    __resolveType: "blog/loaders/Category.ts",
+    category: { name, slug },
+  };
+}
+
+/** A post block, as the decofile stores it. */
+function postBlock(title: string) {
+  return { __resolveType: "blog/loaders/Blogpost.ts", post: { title } };
+}
+
+describe("uniqueSlug", () => {
+  test("names the random fallback after the caller's collection", () => {
+    expect(uniqueSlug("!!! ???", [], "category")).toMatch(
+      /^category-[0-9a-f]{6}$/,
+    );
+  });
+
+  test("suffixes until it stops colliding", () => {
+    expect(uniqueCategorySlug("news", ["news", "news-2"])).toBe("news-3");
+  });
+
+  test("leaves a free slug alone", () => {
+    expect(uniqueCategorySlug("news", ["tips"])).toBe("news");
+  });
+
+  test("normalizes before comparing, so an accented input still collides", () => {
+    expect(uniqueCategorySlug("Notícias", ["noticias"])).toBe("noticias-2");
+  });
+
+  test("shortens the base so the suffix still fits the 80-char cap", () => {
+    const long = "a".repeat(80);
+    const result = uniqueCategorySlug(long, [long]);
+    expect(result.length).toBeLessThanOrEqual(80);
+    expect(result.endsWith("-2")).toBe(true);
+  });
+});
+
+describe("hasDuplicateName", () => {
+  const decofile = {
+    "collections/blog/categories/a": categoryBlock("Receitas", "receitas"),
+    "collections/blog/categories/b": categoryBlock("Dicas", "dicas"),
+    "collections/blog/posts/p": postBlock("Receitas"),
+  };
+
+  test("ignores the record asking the question", () => {
+    expect(
+      hasDuplicateName(
+        decofile,
+        "categories",
+        "collections/blog/categories/a",
+        "Receitas",
+      ),
+    ).toBe(false);
+  });
+
+  test("folds casing, accents and spacing", () => {
+    expect(
+      hasDuplicateName(
+        decofile,
+        "categories",
+        "collections/blog/categories/b",
+        "  RECEÍTAS  ",
+      ),
+    ).toBe(true);
+  });
+
+  test("an empty name is never a duplicate", () => {
+    expect(hasDuplicateName(decofile, "categories", "new-key", "   ")).toBe(
+      false,
+    );
+  });
+
+  test("does not cross kinds", () => {
+    expect(hasDuplicateName(decofile, "posts", "new-key", "Dicas")).toBe(false);
+  });
+});
+
+describe("scanBlogEntries duplicate names", () => {
+  test("marks both sides of a collision", () => {
+    const entries = scanBlogEntries({
+      a: categoryBlock("Receitas", "receitas"),
+      b: categoryBlock("receitas", "receitas-2"),
+      c: categoryBlock("Dicas", "dicas"),
+    }).categories;
+    const marked = entries
+      .filter((e) => e.duplicateName)
+      .map((e) => e.slug)
+      .sort();
+    expect(marked).toEqual(["receitas", "receitas-2"]);
+  });
+
+  test("does not mark two unnamed records sharing the label fallback", () => {
+    const entries = scanBlogEntries({
+      a: categoryBlock("", "one"),
+      b: categoryBlock("", "two"),
+    }).categories;
+    expect(entries.every((e) => !e.duplicateName)).toBe(true);
+  });
+
+  test("does not cross kinds", () => {
+    const scanned = scanBlogEntries({
+      a: categoryBlock("Receitas", "receitas"),
+      p: postBlock("Receitas"),
+    });
+    expect(scanned.categories[0]?.duplicateName).toBeUndefined();
+    expect(scanned.posts[0]?.duplicateName).toBeUndefined();
+  });
+});
+
+describe("missingCategoryFields", () => {
+  test("is empty for a complete category", () => {
+    expect(missingCategoryFields({ name: "News", slug: "news" })).toEqual([]);
+  });
+
+  test("names both fields when the payload is bare", () => {
+    expect(missingCategoryFields({})).toEqual(["Name", "Slug"]);
+  });
+
+  test("treats whitespace as absent", () => {
+    expect(missingCategoryFields({ name: "  ", slug: "news" })).toEqual([
+      "Name",
+    ]);
+  });
+
+  test("ignores non-string values", () => {
+    expect(missingCategoryFields({ name: 7, slug: null })).toEqual([
+      "Name",
+      "Slug",
+    ]);
+  });
+});
+
+describe("renameCategoryOnPost (name-only pass)", () => {
+  test("refreshes a stale denormalized name", () => {
+    const payload = { categories: [{ name: "Old", slug: "news" }] };
+    expect(
+      renameCategoryOnPost(payload, "news", { name: "New", slug: "news" }),
+    ).toEqual({ categories: [{ name: "New", slug: "news" }] });
+  });
+
+  test("is a no-op (same reference) when the name already matches", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    expect(
+      renameCategoryOnPost(payload, "news", { name: "News", slug: "news" }),
+    ).toBe(payload);
+  });
+
+  test("leaves sibling categories untouched", () => {
+    const payload = {
+      categories: [
+        { name: "Old", slug: "news" },
+        { name: "Tips", slug: "tips" },
+      ],
+    };
+    const next = renameCategoryOnPost(payload, "news", {
+      name: "New",
+      slug: "news",
+    }) as { categories: unknown[] };
+    expect(next.categories).toEqual([
+      { name: "New", slug: "news" },
+      { name: "Tips", slug: "tips" },
+    ]);
+  });
+
+  test("upgrades a plain-string reference to the full ref", () => {
+    const payload = { categories: ["news"] };
+    expect(
+      renameCategoryOnPost(payload, "news", { name: "News", slug: "news" }),
+    ).toEqual({ categories: [{ name: "News", slug: "news" }] });
+  });
+});
+
+describe("reparentCategory", () => {
+  test("repoints a child at the parent's new slug", () => {
+    const payload = { name: "Desserts", slug: "desserts", parentSlug: "food" };
+    expect(reparentCategory(payload, "food", "recipes")).toEqual({
+      name: "Desserts",
+      slug: "desserts",
+      parentSlug: "recipes",
+    });
+  });
+
+  test("is a no-op (same reference) for a different parent", () => {
+    const payload = { slug: "news", parentSlug: "home" };
+    expect(reparentCategory(payload, "food", "recipes")).toBe(payload);
+  });
+
+  test("is a no-op (same reference) for a root category", () => {
+    const payload = { slug: "news" };
+    expect(reparentCategory(payload, "food", "recipes")).toBe(payload);
+  });
+
+  test("does not mutate the input payload", () => {
+    const payload = { slug: "desserts", parentSlug: "food" };
+    reparentCategory(payload, "food", "recipes");
+    expect(payload.parentSlug).toBe("food");
   });
 });
 

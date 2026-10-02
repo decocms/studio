@@ -68,6 +68,14 @@ export interface BlogEntry {
   label: string;
   /** Secondary line (slug, email, …). */
   subtitle: string;
+  /** Categories only — the record's own slug, for nesting. */
+  slug?: string;
+  /** Categories only — the slug of the parent category, when nested. */
+  parentSlug?: string;
+  /** Required fields this record is missing; empty when it is complete. */
+  missing: string[];
+  /** Another record of the same kind carries this same name/title. */
+  duplicateName?: boolean;
 }
 
 function kindOfResolveType(resolveType: unknown): BlogKind | null {
@@ -89,22 +97,27 @@ function str(value: unknown): string {
 function entryLabelAndSubtitle(
   kind: BlogKind,
   payload: Record<string, unknown>,
-): { label: string; subtitle: string } {
+): Omit<BlogEntry, "key" | "kind" | "duplicateName"> {
   switch (kind) {
     case "posts":
       return {
         label: str(payload.title) || "Untitled post",
         subtitle: str(payload.slug),
+        missing: missingPostFields(payload),
       };
     case "authors":
       return {
         label: str(payload.name) || "Unnamed author",
         subtitle: str(payload.email),
+        missing: [],
       };
     case "categories":
       return {
         label: str(payload.name) || "Unnamed category",
         subtitle: str(payload.slug),
+        slug: str(payload.slug),
+        parentSlug: str(payload.parentSlug),
+        missing: missingCategoryFields(payload),
       };
     default: {
       const _exhaustive: never = kind;
@@ -125,19 +138,47 @@ export function scanBlogEntries(
     authors: [],
     categories: [],
   };
+  const nameKeys: Array<{ entry: BlogEntry; key: string }> = [];
   for (const [key, value] of Object.entries(decofile)) {
     const obj = asRecord(value);
     if (!obj) continue;
     const kind = kindOfResolveType(obj.__resolveType);
     if (!kind) continue;
     const payload = asRecord(obj[WRAPPER_KEY[kind]]) ?? {};
-    const { label, subtitle } = entryLabelAndSubtitle(kind, payload);
-    result[kind].push({ key, kind, label, subtitle });
+    const entry: BlogEntry = {
+      key,
+      kind,
+      ...entryLabelAndSubtitle(kind, payload),
+    };
+    result[kind].push(entry);
+    // The RAW name, not the label: two untitled records share its fallback.
+    nameKeys.push({
+      entry,
+      key: normalizeTitleKey(str(payload[kind === "posts" ? "title" : "name"])),
+    });
   }
+  markDuplicateNames(nameKeys);
   for (const kind of BLOG_KINDS) {
     result[kind].sort((a, b) => a.label.localeCompare(b.label));
   }
   return result;
+}
+
+/** Flag every entry whose non-empty name key is shared within its own kind. */
+function markDuplicateNames(
+  entries: Array<{ entry: BlogEntry; key: string }>,
+): void {
+  const counts = new Map<string, number>();
+  for (const { entry, key } of entries) {
+    if (!key) continue;
+    const scoped = `${entry.kind}:${key}`;
+    counts.set(scoped, (counts.get(scoped) ?? 0) + 1);
+  }
+  for (const { entry, key } of entries) {
+    if (key && (counts.get(`${entry.kind}:${key}`) ?? 0) > 1) {
+      entry.duplicateName = true;
+    }
+  }
 }
 
 /** Extract all blog records of a given kind, sorted by label. */
@@ -709,9 +750,12 @@ export function movePostToStatus(
 /**
  * Rewrite a post's reference to `oldSlug` so it points at `category` (its new
  * slug + name), preserving the post's other categories and their order. If the
- * post already carried the new slug too, the duplicate is collapsed. Pure:
- * returns the SAME object when the post doesn't reference `oldSlug`, so callers
- * skip no-ops by identity. Used by the category slug-rename cascade.
+ * post already carried the new slug too, the duplicate is collapsed.
+ *
+ * Identity-stable: returns the SAME object when the post doesn't reference
+ * `oldSlug` or already carries exactly this `{ name, slug }`. That is what
+ * lets the name-edit cascade run `oldSlug === newSlug` without rewriting
+ * every post.
  */
 export function renameCategoryOnPost(
   payload: Record<string, unknown>,
@@ -726,12 +770,22 @@ export function renameCategoryOnPost(
   // `{ name, slug }`. Refreshing the pre-existing one matters when it sits
   // before the old slug: the dedupe below keeps the first occurrence, so
   // without this the stale denormalized name would win over the rename.
+  let changed = false;
   const mapped = categories.map((c) => {
     const slug = categorySlugOf(c);
-    return slug === oldSlug || slug === category.slug
-      ? { name: category.name, slug: category.slug }
-      : c;
+    if (slug !== oldSlug && slug !== category.slug) return c;
+    const rec = asRecord(c);
+    if (
+      rec &&
+      str(rec.slug) === category.slug &&
+      str(rec.name) === category.name
+    ) {
+      return c;
+    }
+    changed = true;
+    return { name: category.name, slug: category.slug };
   });
+  if (!changed) return payload;
   // A post that listed both the old and the new slug would now name the new
   // slug twice — keep the first occurrence. Only dedupe real slugs so we never
   // silently drop malformed (slug-less) entries.
@@ -744,6 +798,21 @@ export function renameCategoryOnPost(
     return true;
   });
   return { ...payload, categories: deduped };
+}
+
+/**
+ * Which required fields a category payload is missing (empty ⇒ valid). A
+ * category with no name or slug resolves to nothing on the site: the slug is
+ * its URL and the name is what every post denormalizes. Mirrors
+ * {@link missingPostFields}.
+ */
+export function missingCategoryFields(
+  payload: Record<string, unknown>,
+): string[] {
+  const missing: string[] = [];
+  if (!str(payload.name).trim()) missing.push("Name");
+  if (!str(payload.slug).trim()) missing.push("Slug");
+  return missing;
 }
 
 /**
@@ -762,6 +831,21 @@ export function removeCategoryFromPost(
     ...payload,
     categories: categories.filter((c) => categorySlugOf(c) !== slug),
   };
+}
+
+/**
+ * Point a child category at its parent's new slug. Pure: returns the SAME
+ * object when this category isn't a child of `oldSlug`. Used by the category
+ * slug-rename cascade — nesting is stored as a slug copy, so a rename that
+ * skipped the children would orphan them.
+ */
+export function reparentCategory(
+  payload: Record<string, unknown>,
+  oldSlug: string,
+  newSlug: string,
+): Record<string, unknown> {
+  if (str(payload.parentSlug) !== oldSlug) return payload;
+  return { ...payload, parentSlug: newSlug };
 }
 
 /**
@@ -1497,6 +1581,30 @@ export function normalizeTitleKey(title: string): string {
 }
 
 /**
+ * Whether another record of `kind` already carries `name`, comparing on
+ * {@link normalizeTitleKey} so casing, accents and spacing don't hide a clash.
+ * An empty name is never a duplicate — that is the "missing field" guard's job.
+ *
+ * Takes the name separately from the decofile so an editor can ask about the
+ * draft the author is still typing, not the last autosaved value.
+ */
+export function hasDuplicateName(
+  decofile: Record<string, unknown>,
+  kind: BlogKind,
+  blockKey: string,
+  name: string,
+): boolean {
+  const key = normalizeTitleKey(name);
+  if (!key) return false;
+  const field = kind === "posts" ? "title" : "name";
+  return listBlogPayloads(decofile, kind).some(
+    (entry) =>
+      entry.key !== blockKey &&
+      normalizeTitleKey(str(entry.payload[field])) === key,
+  );
+}
+
+/**
  * Drop suggestions whose title already exists, and duplicates within the batch.
  * The tool is told not to repeat, but it is a model — and running "suggest"
  * twice is the normal way to use the button, so the second run must not double
@@ -1676,9 +1784,17 @@ function suffixSlug(base: string, suffix: string): string {
   return `${base.slice(0, room).replace(/-+$/, "")}-${suffix}`;
 }
 
-/** `slugifyTitle`, suffixed until it stops colliding with an existing post. */
-export function uniquePostSlug(title: string, taken: string[]): string {
-  const base = slugifyTitle(title) || `post-${randomHex(6)}`;
+/**
+ * `slugifyTitle(source)`, suffixed until it stops colliding with `taken`.
+ * `fallbackPrefix` names the random slug minted when `source` slugifies to
+ * nothing at all (`"!!!"`), so each collection gets its own readable shape.
+ */
+export function uniqueSlug(
+  source: string,
+  taken: string[],
+  fallbackPrefix: string,
+): string {
+  const base = slugifyTitle(source) || `${fallbackPrefix}-${randomHex(6)}`;
   const used = new Set(taken);
   if (!used.has(base)) return base;
   for (let n = 2; n < 100; n++) {
@@ -1686,6 +1802,16 @@ export function uniquePostSlug(title: string, taken: string[]): string {
     if (!used.has(candidate)) return candidate;
   }
   return suffixSlug(base, randomHex(4));
+}
+
+/** {@link uniqueSlug} for a post title. */
+export function uniquePostSlug(title: string, taken: string[]): string {
+  return uniqueSlug(title, taken, "post");
+}
+
+/** {@link uniqueSlug} for a category name. */
+export function uniqueCategorySlug(source: string, taken: string[]): string {
+  return uniqueSlug(source, taken, "category");
 }
 
 /** A freshly generated post: lands in Awaiting review, with no cover image. */

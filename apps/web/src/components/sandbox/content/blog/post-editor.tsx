@@ -24,6 +24,7 @@ import {
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
+import { ResponsiveImageField } from "@/components/sections-editor/fields/responsive-image-field";
 import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -33,7 +34,7 @@ import {
   listBlogPayloads,
   maskSlugInput,
   missingPostFields,
-  normalizeTitleKey,
+  hasDuplicateName,
   POST_STATUSES,
   type PostStatus,
   postStatus,
@@ -48,8 +49,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
-import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
@@ -117,7 +116,6 @@ export function PostEditor({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
@@ -166,14 +164,12 @@ export function PostEditor({
   });
 
   // Two posts sharing a title is legal but bad for search; warn, never block.
-  const titleKey = normalizeTitleKey(str(post.title));
-  const hasDuplicateTitle =
-    titleKey.length > 0 &&
-    listBlogPayloads(decofile, "posts").some(
-      (entry) =>
-        entry.key !== blockKey &&
-        normalizeTitleKey(str(entry.payload.title)) === titleKey,
-    );
+  const hasDuplicateTitle = hasDuplicateName(
+    decofile,
+    "posts",
+    blockKey,
+    str(post.title),
+  );
 
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
@@ -326,7 +322,6 @@ export function PostEditor({
                 <PostSettings
                   post={post}
                   decofile={decofile}
-                  support={support}
                   onChange={setField}
                   blockKey={blockKey}
                   move={move}
@@ -400,7 +395,6 @@ function StatusPicker({
 function PostSettings({
   post,
   decofile,
-  support,
   onChange,
   blockKey,
   move,
@@ -408,8 +402,6 @@ function PostSettings({
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
-  /** Gates the scheduled go-live field — see {@link supportsScheduling}. */
-  support: BlogSupport;
   onChange: (key: string, value: unknown) => void;
   blockKey: string;
   move: PostStatusMove;
@@ -417,7 +409,7 @@ function PostSettings({
 }) {
   const t = useT();
   const status = postStatus(post);
-  const isScheduled = supportsScheduling(support) && status === "scheduled";
+  const isScheduled = status === "scheduled";
 
   // Committed on blur, not per keystroke: a half-typed slug must not autosave.
   const committedSlug = str(post.slug);
@@ -547,15 +539,12 @@ function PostSettings({
       {/* Cover image + its alt text: `alt` is the blog app's alt for `image`,
           and the front falls back to the title when it is empty. */}
       <div className="space-y-2">
-        <ImageField
-          schema={{
-            type: "string",
-            format: "image-uri",
-            title: t("sandbox.postEditor.coverImageLabel"),
-          }}
+        <ResponsiveImageField
           value={post.image}
+          mobileValue={post.mobileImage}
           onChange={(v) => onChange("image", v)}
-          path="post-image"
+          onMobileChange={(v) => onChange("mobileImage", v)}
+          alt={str(post.alt)}
           label={t("sandbox.postEditor.coverImageLabel")}
         />
         <StringField

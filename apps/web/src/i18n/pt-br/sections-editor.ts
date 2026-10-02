@@ -71,14 +71,24 @@ export const sectionsEditor = {
   "sectionsEditor.fileField.videoFileError":
     "Por favor, solte um arquivo de vídeo (mp4, webm, …).",
   "sectionsEditor.generalSeoForm.useDefault": "Usar padrão",
+  "sectionsEditor.imageField.addMobileVersion": "Adicionar versão mobile",
   "sectionsEditor.imageField.browse": "Procurar",
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Solte uma imagem ou clique para procurar",
   "sectionsEditor.imageField.dropToUpload": "Solte para enviar",
+  "sectionsEditor.imageField.mobileVersionHint": "Servida abaixo de 768px",
+  "sectionsEditor.imageField.mobileVersionLabel": "Versão mobile",
+  "sectionsEditor.imageField.desktopSlot": "Imagem desktop",
+  "sectionsEditor.imageField.dropMobileImage":
+    "Solte a imagem mobile ou clique para procurar",
+  "sectionsEditor.imageField.mobileSlot": "Imagem mobile (abaixo de 768px)",
+  "sectionsEditor.imageField.mobileUrlLabel": "URL mobile",
+  "sectionsEditor.imageField.urlLabel": "URL",
   "sectionsEditor.imageField.onlyImageFilesAccepted":
     "Apenas arquivos de imagem são aceitos aqui.",
   "sectionsEditor.imageField.previewUnavailable": "Visualização indisponível",
   "sectionsEditor.imageField.removeImage": "Remover imagem",
+  "sectionsEditor.imageField.removeMobileVersion": "Remover versão mobile",
   "sectionsEditor.imageField.replaceImage": "Substituir imagem",
   "sectionsEditor.imageField.supportedFormatsAndSize":
     "PNG, JPEG, WebP, GIF, SVG, AVIF — até 100 MB",
