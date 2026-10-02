@@ -143,7 +143,15 @@ function baseArrayItemLabel(
   if (item && typeof item === "object" && !Array.isArray(item)) {
     // Hidden items (`{ __resolveType: ".../multivariate.ts", variants: [{ value, rule: never }] }`)
     // should be labelled by the value they hide, not "Multivariate".
-    let obj = arrayItemDisplayValue(item) as Record<string, unknown>;
+    const unwrapped = arrayItemDisplayValue(item);
+    // The hidden value can itself be a primitive array entry.
+    if (typeof unwrapped === "string") {
+      return unwrapped.trim() ? unwrapped : `Item ${index + 1}`;
+    }
+    if (typeof unwrapped === "number" || typeof unwrapped === "boolean") {
+      return String(unwrapped);
+    }
+    let obj = unwrapped as Record<string, unknown>;
     // Lazy-wrapped section items (`{ __resolveType: ".../Lazy.tsx", section: {...} }`)
     // should be labelled by the inner section, not "Lazy".
     const inner = lazyWrappedInner(obj);
