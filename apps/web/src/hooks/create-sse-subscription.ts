@@ -150,7 +150,7 @@ export function createSSESubscription(
       BASE_RECONNECT_DELAY_MS,
       conn.reconnectAttempt,
       2,
-      0,
+      0.5,
     );
     conn.reconnectAttempt++;
 
