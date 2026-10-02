@@ -85,17 +85,26 @@ async function pushSandboxCredentials(): Promise<PushOutcome | null> {
   );
   let pushed = 0;
   let kept = 0;
+  let pushFailures = 0;
   for (const batch of batches) {
-    const result = await runner.pushCredentials(batch);
-    pushed += result.stored;
-    kept += result.kept;
+    try {
+      const result = await runner.pushCredentials(batch);
+      pushed += result.stored;
+      kept += result.kept;
+    } catch (err) {
+      // One batch's failure must not cost the others their already-minted credentials.
+      pushFailures++;
+      console.warn(
+        `[sandbox-credential-push] a push batch failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
   return {
     sandboxes: sandboxes.length,
     pushed,
     kept,
     refused: plan.refused,
-    failed,
+    failed: failed + pushFailures,
   };
 }
 
