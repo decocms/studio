@@ -12,27 +12,16 @@
  */
 import { useState } from "react";
 import {
-  AlertCircle,
   CalendarDate,
   ChevronLeft,
   ChevronRight,
   Plus,
 } from "@untitledui/icons";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@decocms/ui/components/alert.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
-import {
-  type BlogSupport,
-  postStatusUnsupported,
-  supportsScheduling,
-} from "./blog-capabilities";
 import {
   addMonths,
   buildMonthWeeks,
@@ -56,55 +45,8 @@ const SCHEDULED_CHIP =
 const UNSCHEDULED_CHIP =
   "border-dashed border-border bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground";
 
-/**
- * Sits over the blurred grid when the site can't back scheduling. Never a CTA
- * — the fix is a command in the repo, not a button here.
- *
- * Always says something: the grid behind it is blurred and inert, so a silent
- * overlay is a dead calendar with no reason given. "Still reading" is a reason.
- */
-function SupportOverlay({ support }: { support: BlogSupport }) {
-  const t = useT();
-  const gate = postStatusUnsupported(support, "scheduled");
-  if (!gate) return null;
-  const title =
-    gate.reason === "outdated"
-      ? "sandbox.postCalendar.outdatedAppsTitle"
-      : gate.reason === "no-app"
-        ? "sandbox.postCalendar.unsupportedRuntimeTitle"
-        : "sandbox.postCalendar.unknownAppTitle";
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-background/30 p-6">
-      <Alert
-        variant="warning"
-        className="max-w-md bg-background/95 shadow-lg backdrop-blur"
-      >
-        <AlertCircle />
-        <div>
-          <AlertTitle>{t(title)}</AlertTitle>
-          <AlertDescription>
-            {gate.reason === "outdated"
-              ? t("sandbox.postCalendar.outdatedAppsDescription", {
-                  required: gate.required,
-                })
-              : gate.reason === "no-app"
-                ? t("sandbox.postCalendar.unsupportedRuntimeDescription")
-                : t("sandbox.postCalendar.unknownAppDescription")}
-          </AlertDescription>
-          {gate.reason === "outdated" && (
-            <code className="mt-2 block rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
-              {gate.command}
-            </code>
-          )}
-        </div>
-      </Alert>
-    </div>
-  );
-}
-
 export function PostCalendar({
   decofile,
-  support,
   selectedKey,
   onSelect,
   onCreate,
@@ -112,8 +54,6 @@ export function PostCalendar({
   isCreating = false,
 }: {
   decofile: Record<string, unknown>;
-  /** Gates the "+" affordance — see {@link supportsScheduling}. */
-  support: BlogSupport;
   /** Decofile key of the post currently open in the editor, if any. */
   selectedKey?: string | null;
   onSelect: (key: string) => void;
@@ -124,7 +64,6 @@ export function PostCalendar({
   isCreating?: boolean;
 }) {
   const t = useT();
-  const canSchedule = supportsScheduling(support);
   // Set on dragstart so a day cell can highlight only for a real drop.
   const [dragging, setDragging] = useState<string | null>(null);
   const [preferences] = usePreferences();
@@ -186,10 +125,7 @@ export function PostCalendar({
       </div>
 
       <div className="relative flex-1 min-h-0">
-        <ScrollArea
-          className={cn("h-full", !canSchedule && "blur-[2px] select-none")}
-          inert={!canSchedule}
-        >
+        <ScrollArea className="h-full">
           <div className="flex min-w-[880px] gap-4 p-4">
             <div className="flex-1 min-w-0">
               <div className="grid grid-cols-7 mb-2">
@@ -237,30 +173,25 @@ export function PostCalendar({
                         >
                           {day.getDate()}
                         </div>
-                        {canSchedule && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
-                            disabled={isCreating}
-                            onClick={() => onCreate(day)}
-                            aria-label={t(
-                              "sandbox.postCalendar.schedulePostOn",
-                              {
-                                date: dayLabel.format(day),
-                              },
-                            )}
-                          >
-                            <Plus size={14} />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
+                          disabled={isCreating}
+                          onClick={() => onCreate(day)}
+                          aria-label={t("sandbox.postCalendar.schedulePostOn", {
+                            date: dayLabel.format(day),
+                          })}
+                        >
+                          <Plus size={14} />
+                        </Button>
                       </div>
                       {entries.map((entry) => (
                         <PostChip
                           key={entry.post.key}
                           entry={entry}
                           active={entry.post.key === selectedKey}
-                          draggable={canSchedule && entry.scheduled}
+                          draggable={entry.scheduled}
                           onSelect={onSelect}
                           onDragStateChange={setDragging}
                         />
@@ -306,7 +237,6 @@ export function PostCalendar({
             </div>
           </div>
         </ScrollArea>
-        {!canSchedule && <SupportOverlay support={support} />}
       </div>
     </div>
   );

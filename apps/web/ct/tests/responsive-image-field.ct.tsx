@@ -1,0 +1,138 @@
+import type { MountResult } from "@playwright/experimental-ct-react";
+import { expect, test } from "@playwright/experimental-ct-react";
+import { ResponsiveImageHarness } from "../harness/responsive-image-harness";
+
+/**
+ * The post cover's use of the shared field: desktop + mobile over one
+ * preview, with no block-only width/priority buttons.
+ */
+const value = (component: MountResult) =>
+  component
+    .getByTestId("cover-value")
+    .textContent()
+    .then((text) => JSON.parse(text ?? "{}") as Record<string, unknown>);
+
+const showToolbar = (component: MountResult) =>
+  component.getByRole("button", { name: "Replace image" }).hover();
+
+const PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+test("a cover gets no width or priority buttons", async ({ mount }) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await showToolbar(component);
+
+  await expect(component.getByRole("button", { name: "full" })).toHaveCount(0);
+  await expect(component.getByRole("button", { name: "Priority" })).toHaveCount(
+    0,
+  );
+  await expect(
+    component.getByRole("button", { name: "Desktop image" }),
+  ).toBeVisible();
+});
+
+test("mobile shares the one preview and writes mobileImage", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await showToolbar(component);
+  await expect(component.locator("img")).toHaveCount(1);
+
+  await component
+    .getByRole("button", { name: "Mobile image (below 768px)" })
+    .click();
+  await expect(component.locator("img")).toHaveCount(0);
+
+  await component.getByRole("button", { name: "Mobile URL" }).click();
+  const mobileField = component.getByPlaceholder("https://...");
+  await mobileField.fill("https://x.test/m.png");
+  await mobileField.press("Enter");
+
+  await expect
+    .poll(() => value(component))
+    .toMatchObject({ image: PNG, mobileImage: "https://x.test/m.png" });
+});
+
+test("clearing the mobile URL drops the key instead of storing an empty string", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness
+      initial={{ image: PNG, mobileImage: "https://x.test/m.png" }}
+    />,
+  );
+  await showToolbar(component);
+
+  await component
+    .getByRole("button", { name: "Mobile image (below 768px)" })
+    .click();
+  await component.getByRole("button", { name: "Mobile URL" }).click();
+  const clearField = component.getByPlaceholder("https://...");
+  await clearField.fill("");
+  await clearField.press("Enter");
+
+  await expect.poll(() => value(component)).toMatchObject({ image: PNG });
+  await expect.poll(() => value(component)).not.toHaveProperty("mobileImage");
+});
+
+test("an unsafe scheme is refused at the field, never stored", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await showToolbar(component);
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+
+  const field = component.getByPlaceholder("https://...");
+  await field.fill("javascript:alert(1)");
+  // While the draft is live: binding it straight to `src` is the bug this
+  // guards, and only an assertion BEFORE the commit can catch it.
+  await expect(component.locator("img")).toHaveAttribute("src", PNG);
+
+  await field.press("Enter");
+
+  await expect(
+    component.getByText("That address can't be used as an image source."),
+  ).toBeVisible();
+  // Refused, so the previously-good image is still what is stored and shown.
+  await expect.poll(() => value(component)).toMatchObject({ image: PNG });
+  await expect(component.locator("img")).toHaveCount(1);
+});
+
+test("a safe URL commits on Enter", async ({ mount }) => {
+  const component = await mount(<ResponsiveImageHarness />);
+  await showToolbar(component);
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+
+  const field = component.getByPlaceholder("https://...");
+  await field.fill("https://cdn.example.com/a.png");
+  await field.press("Enter");
+
+  await expect
+    .poll(() => value(component))
+    .toMatchObject({ image: "https://cdn.example.com/a.png" });
+});
+
+test("an inline image payload still renders", async ({ mount }) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await expect(component.locator("img")).toHaveCount(1);
+});
+
+test("an unsafe value already in the payload never reaches the src", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: "javascript:alert(1)" }} />,
+  );
+
+  // A hand-edited decofile never went through the field's commit path.
+  await expect(component.locator("img")).toHaveCount(0);
+  await expect(component.getByText("Preview unavailable")).toBeVisible();
+});
