@@ -84,7 +84,10 @@ func Exec(deps ExecDeps) http.HandlerFunc {
 			TimeoutMs int               `json:"timeoutMs"`
 			Env       map[string]string `json:"env"`
 		}
-		decodeBody(r, &body)
+		if err := decodeBody(r, &body); err != nil {
+			httpx.Error(w, 400, err.Error())
+			return
+		}
 		mode := "background"
 		if body.Mode == "await" {
 			mode = "await"
