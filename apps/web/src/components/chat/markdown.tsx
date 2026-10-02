@@ -20,6 +20,7 @@ import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { mentionIdFromHref } from "@decocms/shared/mentions";
+import { isEditorFileUrl } from "@/components/markdown-editor/uploads";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -286,6 +287,19 @@ function MarkdownAnchor({
       >
         {label}
       </button>
+    );
+  }
+  // An editor attachment is stored under a UUID; the link text is the name it
+  // was uploaded with. Non-string text falls back to the server's filename.
+  if (href && isEditorFileUrl(href)) {
+    return (
+      <a
+        {...p}
+        download={typeof children === "string" ? children : ""}
+        className="text-primary-dark hover:underline break-all font-medium"
+      >
+        {label}
+      </a>
     );
   }
   return (
