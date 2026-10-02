@@ -37,6 +37,9 @@ export class OrgSsoSessionStorage {
   }
 
   async upsert(userId: string, organizationId: string): Promise<OrgSsoSession> {
+    // Prunes stale sessions — nothing else deletes expired rows from this table.
+    await this.deleteExpired();
+
     const now = new Date();
     const expiresAt = new Date(now.getTime() + SSO_SESSION_DURATION_MS);
     const id = crypto.randomUUID();
