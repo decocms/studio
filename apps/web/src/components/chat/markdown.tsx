@@ -1,5 +1,5 @@
 /* eslint-disable ban-memoization/ban-memoization */
-import { marked } from "marked";
+import { marked, type Token } from "marked";
 import React, {
   memo,
   useCallback,
@@ -16,6 +16,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@decocms/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
+import { groupImageRuns } from "./markdown-image-runs.ts";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
@@ -413,16 +414,19 @@ interface MemoizedMarkdownProps {
   text: string;
   /** Fade newly streamed words in — set only for the in-progress message. */
   animate?: boolean;
+  /** Lay images that follow one another side by side, wrapping, instead of stacked. */
+  imageGallery?: boolean;
 }
 
 export const MemoizedMarkdown = ({
   id,
   text,
   animate,
+  imageGallery,
 }: MemoizedMarkdownProps) => {
   const blocks = useMemo(() => marked.lexer(text), [text]);
 
-  return blocks.map((block, index) => {
+  const renderBlock = (block: Token, index: number) => {
     if (block.type === "code") {
       return (
         <CodeBlock
@@ -440,7 +444,23 @@ export const MemoizedMarkdown = ({
         key={`${id}-block_${index}`}
       />
     );
-  });
+  };
+
+  if (!imageGallery) return blocks.map(renderBlock);
+
+  return groupImageRuns(blocks).map((run) =>
+    run.kind === "block" ? (
+      renderBlock(run.block, run.index)
+    ) : (
+      // `contents` lifts each image out of its paragraph, so all of them wrap as one row.
+      <div
+        key={`${id}-gallery_${run.index}`}
+        className="mb-2 flex flex-wrap items-start gap-2 last:mb-0 [&>p]:contents"
+      >
+        {run.images.map(renderBlock)}
+      </div>
+    ),
+  );
 };
 
 MemoizedMarkdown.displayName = "MemoizedMarkdown";

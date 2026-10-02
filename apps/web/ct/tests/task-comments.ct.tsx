@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/experimental-ct-react";
 import {
   TaskCommentsDialogHarness,
@@ -236,6 +236,97 @@ test("a posted attachment reads as a chip, while other links stay links", async 
   await expect(
     component.getByRole("link", { name: "the docs" }),
   ).toHaveAttribute("href", "https://example.com/spec.pdf");
+});
+
+/** Serves each editor image as an SVG of the size in its name, e.g. `tall-1200x1800.png`. */
+async function serveSizedImages(page: Page) {
+  await page.route(/\/api\/acme\/fs\/uploads\/read\?/, (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    const [, width, height] = /(\d+)x(\d+)/.exec(path ?? "") ?? [];
+    return route.fulfill({
+      contentType: "image/svg+xml",
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#9c9"/></svg>`,
+    });
+  });
+}
+
+/** The image's laid-out box, once its bytes have arrived and given it a size. */
+async function loadedBox(image: Locator) {
+  await expect
+    .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+    .toBeGreaterThan(0);
+  return (await image.boundingBox())!;
+}
+
+const editorImage = (name: string, size: string) =>
+  `![${name}](${uploadUrl(`editor-images/${name.replace(".png", `-${size}.png`)}`)})`;
+
+test("a tall posted image is a thumbnail, and opens whole", async ({
+  mount,
+  page,
+}) => {
+  await serveSizedImages(page);
+  const component = await mount(
+    <TaskCommentsHarness rootBody={editorImage("tall.png", "1200x1800")} />,
+  );
+
+  const thumbnail = component.getByRole("img", { name: "tall.png" });
+  const box = await loadedBox(thumbnail);
+  expect(box.height).toBeLessThanOrEqual(320);
+  // Scaled down, not cropped.
+  expect(box.width / box.height).toBeCloseTo(1200 / 1800, 1);
+
+  await thumbnail.click();
+  const full = page.getByRole("dialog").getByRole("img", { name: "tall.png" });
+  expect((await loadedBox(full)).height).toBeGreaterThan(box.height);
+});
+
+test("a wide posted image fits the comment's width", async ({
+  mount,
+  page,
+}) => {
+  await serveSizedImages(page);
+  const component = await mount(
+    <TaskCommentsHarness rootBody={editorImage("pano.png", "4000x500")} />,
+  );
+
+  const box = await loadedBox(component.getByRole("img", { name: "pano.png" }));
+  const comment = (await component
+    .getByTestId("task-message")
+    .first()
+    .boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(comment.x + comment.width);
+  expect(box.width / box.height).toBeCloseTo(4000 / 500, 0);
+});
+
+test("images posted together wrap side by side, and text stays below them", async ({
+  mount,
+  page,
+}) => {
+  await serveSizedImages(page);
+  const component = await mount(
+    <TaskCommentsHarness
+      rootBody={[
+        editorImage("a.png", "1200x1800"),
+        editorImage("b.png", "1200x1800"),
+        editorImage("c.png", "1200x1800"),
+        "after the images",
+      ].join("\n\n")}
+    />,
+  );
+
+  const [a, b, c] = await Promise.all(
+    ["a.png", "b.png", "c.png"].map((name) =>
+      loadedBox(component.getByRole("img", { name })),
+    ),
+  );
+  // Two thumbnails fit the 640px harness; the third wraps under the first.
+  expect(b!.y).toBe(a!.y);
+  expect(b!.x).toBeGreaterThan(a!.x + a!.width);
+  expect(c!.x).toBe(a!.x);
+  expect(c!.y).toBeGreaterThan(a!.y + a!.height);
+  const text = (await component.getByText("after the images").boundingBox())!;
+  expect(text.y).toBeGreaterThan(c!.y + c!.height);
 });
 
 test("a comment can't be sent while its attachment is still uploading", async ({
