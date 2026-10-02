@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { experimentSchema, variantsInputSchema } from "./schema";
+import {
+  experimentSchema,
+  goalsInputSchema,
+  variantsInputSchema,
+} from "./schema";
 import { assertOwnsSite } from "./ownership";
 
 export const EXPERIMENT_CREATE = defineTool({
@@ -26,7 +30,7 @@ export const EXPERIMENT_CREATE = defineTool({
         "The random matcher block's name (e.g. `Cross Sell Bag`) — the deco runtime records the split as `event:props:<that name>`, so results only populate when the key equals it.",
       ),
     name: z.string().min(1),
-    goals: z.array(z.string()).optional(),
+    goals: goalsInputSchema.optional(),
     variants: variantsInputSchema.optional(),
   }),
   outputSchema: z.object({ experiment: experimentSchema }),

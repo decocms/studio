@@ -23,6 +23,9 @@ export const experimentSchema = z.object({
   updatedAt: z.string(),
 });
 
+/** Goals for create/update: bounded count and length (stored as JSON). */
+export const goalsInputSchema = z.array(z.string().min(1).max(200)).max(20);
+
 /** Variants for create/update: unique ids, integer weights summing to 100. */
 export const variantsInputSchema = z
   .array(experimentVariantSchema)
