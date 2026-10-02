@@ -206,3 +206,25 @@ func TestWriteEscapesRootNamesTheRoot(t *testing.T) {
 		t.Fatalf("error must name AppRoot %q and RepoDir %q; got %s", deps.AppRoot, deps.RepoDir, msg)
 	}
 }
+
+// Unlink already refuses to touch .git (even recursively). Rename had no
+// equivalent guard: renaming ".git" away silently destroys the sandbox's
+// version control with no safety net, the same destructive-mistake class
+// Unlink's guard exists for.
+func TestRenameRefusesGitSegment(t *testing.T) {
+	deps := seedBlocks(t)
+	if err := os.MkdirAll(filepath.Join(deps.RepoDir, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"from": ".git", "to": "git-backup"})
+	req := httptest.NewRequest(http.MethodPost, "/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Rename(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(deps.RepoDir, ".git")); err != nil {
+		t.Fatalf(".git must still exist at its original path: %v", err)
+	}
+}
