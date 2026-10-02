@@ -15,7 +15,8 @@ export const PROJECT_FOLDER_NAME_MAX = 60;
 const MAX_FOLDERS = 100;
 const MAX_IDS = 2000;
 
-const ids = z.array(z.string().min(1)).max(MAX_IDS);
+/** Project ids are UUIDs; 64 bounds a single entry the way folder ids already are. */
+const ids = z.array(z.string().min(1).max(64)).max(MAX_IDS);
 
 export const ProjectFolderSchema = z.object({
   /** Minted by the client; folders are written as a whole list. */

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeProjectFolders,
   normalizeSidebarPreferences,
+  SidebarPreferencesSchema,
 } from "./project-sidebar";
 
 describe("normalizeProjectFolders", () => {
@@ -51,5 +52,17 @@ describe("normalizeSidebarPreferences", () => {
     });
     expect(prefs.pinned).toEqual(["p3", "p1"]);
     expect(prefs.hiddenFolders).toEqual(["f"]);
+  });
+});
+
+describe("SidebarPreferencesSchema", () => {
+  test("rejects an oversized project id", () => {
+    const result = SidebarPreferencesSchema.safeParse({
+      pinned: ["p".repeat(65)],
+      hidden: [],
+      dismissed: [],
+      hiddenFolders: [],
+    });
+    expect(result.success).toBe(false);
   });
 });
