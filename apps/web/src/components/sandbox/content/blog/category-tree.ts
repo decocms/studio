@@ -4,11 +4,15 @@
  * parent picker need.
  *
  * Records come from a decofile a human edits, so a `parentSlug` may point at
- * nothing, at itself, or around a cycle. Every walk below is bounded twice —
- * by a visited set and by {@link MAX_CATEGORY_DEPTH} — and treats a broken
- * link as a root instead of throwing. A category must never disappear from the
- * list because its parent reference is wrong; that is exactly when the author
- * needs to find it and fix it.
+ * nothing, at itself, or around a cycle. Every walk is bounded by a visited
+ * set and treats a broken link as a root instead of throwing: a category must
+ * never disappear from the list because its parent reference is wrong, which
+ * is exactly when the author needs to find it and fix it.
+ *
+ * {@link MAX_CATEGORY_DEPTH} bounds the walks that mirror what the site
+ * renders — the layout and the breadcrumb. `descendantSlugs` deliberately has
+ * no cap: it answers "may this be a parent", and a descendant past the cap is
+ * still a descendant.
  */
 import type { BlogEntry } from "./blog-data";
 

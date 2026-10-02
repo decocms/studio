@@ -1069,7 +1069,10 @@ function PostRow({
             </span>
           )}
           {post.duplicateTitle && (
-            <span className="inline-flex items-center gap-1 text-xs text-warning">
+            <span
+              className="inline-flex items-center gap-1 text-xs text-warning"
+              title={t("sandbox.postBoard.duplicateTitle")}
+            >
               <Copy01 size={12} aria-hidden />
               <span className="sr-only">
                 {t("sandbox.postBoard.duplicateTitle")}

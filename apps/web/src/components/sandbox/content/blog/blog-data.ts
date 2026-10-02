@@ -548,8 +548,9 @@ export function setPostStatus(
  */
 export function listPostsWithMeta(
   decofile: Record<string, unknown>,
+  /** Shared by `listAllPostsWithMeta` so the board scans the decofile once. */
+  duplicates: Set<string> = duplicateTitleKeys(decofile),
 ): PostMeta[] {
-  const duplicates = duplicateTitleKeys(decofile);
   return listBlogPayloads(decofile, "posts").map(({ key, payload }) => ({
     key,
     duplicateTitle: duplicates.has(key),
@@ -713,7 +714,7 @@ export function listAllPostsWithMeta(
       form: "planning",
     }),
   );
-  return [...planning, ...listPostsWithMeta(decofile)];
+  return [...planning, ...listPostsWithMeta(decofile, duplicates)];
 }
 
 /** A promote/demote plan: blocks to write, keys to delete, applied atomically. */

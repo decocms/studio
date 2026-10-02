@@ -290,11 +290,14 @@ export function CategoryEditor({
   };
 
   /**
-   * Commit a new slug, carrying posts and child categories with it, as ONE
-   * transition. Sequential `useSaveBlock` calls meant the UI settled a
-   * round-trip at a time — the list showing the old value until the last post
-   * landed, and navigating away mid-cascade leaving it half-applied.
-   * `useMoveBlocks` patches the cache synchronously and sends a single commit.
+   * Commit a new slug, carrying posts and child categories with it.
+   *
+   * `useMoveBlocks` patches the cache synchronously, so the rename is visible
+   * at once instead of settling a round-trip at a time, and Fast Preview
+   * sends it as a single commit. Sandbox mode still writes a file per block —
+   * the daemon has no batch endpoint — so a failure part-way leaves the
+   * working tree partially renamed even though the cache rolls back. Retrying
+   * re-applies the whole plan, which is idempotent.
    */
   const runRename = async (oldSlug: string, newSlug: string) => {
     const nextCategory = { ...category, slug: newSlug };
@@ -312,8 +315,8 @@ export function CategoryEditor({
       );
       setPendingRename(null);
     } catch (err) {
-      // The write is atomic, so nothing landed. Put the input back on the
-      // persisted slug so the user can retry cleanly.
+      // The cache rolled back; the working tree may not have. Put the input
+      // back on the persisted slug so retrying re-applies the whole plan.
       setSlugDraft(oldSlug);
       setPendingRename(null);
       toast.error(
@@ -382,7 +385,7 @@ export function CategoryEditor({
           <div className="flex shrink-0 items-center gap-3">
             <SaveStatus
               isPending={save.isPending || move.isPending}
-              isError={save.isError}
+              isError={save.isError || move.isError}
             />
             {missing.length > 0 && (
               <Tooltip>
