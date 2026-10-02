@@ -22,3 +22,24 @@ export function isSafeImageUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * `url` reduced to something an `<img src>` may receive: the parsed href for
+ * an absolute URL on a safe scheme, the value itself for a relative path or
+ * an inline image, and an empty string for everything else.
+ *
+ * Returning the sanitized value rather than a boolean keeps the check ON the
+ * dataflow path, so nothing downstream can forget to consult it.
+ */
+export function safeImageSrc(url: string): string {
+  const value = url.trim();
+  if (!value) return "";
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) return encodeURI(value);
+  if (/^data:image\//i.test(value)) return value;
+  try {
+    const parsed = new URL(value);
+    return SAFE_IMAGE_PROTOCOLS.has(parsed.protocol) ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}

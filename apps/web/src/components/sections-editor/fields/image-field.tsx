@@ -11,7 +11,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
-import { isSafeImageUrl } from "./safe-image-url";
+import { safeImageSrc } from "./safe-image-url";
 import { useImageUpload } from "./use-image-upload";
 
 export function ImageField({
@@ -28,8 +28,10 @@ export function ImageField({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageErrored, setImageErrored] = useState(false);
-  // An author types this field, so an unsafe scheme must never reach `src`.
-  const unsafe = !!strValue && !isSafeImageUrl(strValue);
+  // An author types this field, so the value is untrusted until it has been
+  // through `safeImageSrc`; an unsafe scheme reduces to "".
+  const src = safeImageSrc(strValue);
+  const unsafe = !!strValue && !src;
   const fileName = strValue ? basename(strValue) : "";
   const ext = fileName ? extension(fileName) : "";
 
@@ -97,7 +99,7 @@ export function ImageField({
                   // wire up fresh for the new src — without this the
                   // load/error tracking can stick to the prior value.
                   key={strValue}
-                  src={strValue}
+                  src={src}
                   alt={label}
                   className={cn(
                     "h-full w-full object-contain transition-opacity",
