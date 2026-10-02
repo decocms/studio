@@ -767,12 +767,6 @@ export const KEYS = {
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
-  // The repo's committed `deno.json`, read for its pinned deco-apps version.
-  denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["deno-json", orgSlug, virtualMcpId, branch] as const,
-  // The repo's committed `package.json`, read for its pinned blog-app version.
-  packageJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["package-json", orgSlug, virtualMcpId, branch] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions

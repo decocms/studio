@@ -2,6 +2,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState } from "react";
 import {
+  AlertCircle,
   ArrowRight,
   File02,
   LinkExternal01,
@@ -21,24 +22,55 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   buildBlogBlock,
+  buildPostBlock,
+  type CategoryRef,
   getBlogPayload,
   listBlogPayloads,
-  listPostsWithMeta,
+  hasDuplicateName,
+  listAllPostPayloads,
+  listAllPostsWithMeta,
+  maskSlugInput,
+  missingCategoryFields,
   renameCategoryOnPost,
+  reparentCategory,
+  scanBlogEntries,
+  slugifyTitle,
   stampPostModified,
+  uniqueCategorySlug,
 } from "./blog-data";
+import {
+  descendantSlugs,
+  MAX_CATEGORY_DEPTH,
+  orderCategoryTree,
+} from "./category-tree";
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
 import { CollapsibleSection } from "./editor-section";
 import { EditableText, str } from "./blocks/primitives";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+
+/** Radix Select rejects "" as an item value, so "no parent" needs a sentinel. */
+const NO_PARENT = "__none__";
 
 /**
  * Category editor: an editable name heading, slug / description inputs, the
@@ -84,6 +116,7 @@ export function CategoryEditor({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const move = useMoveBlocks({ orgSlug, virtualMcpId, branch });
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
 
@@ -95,7 +128,7 @@ export function CategoryEditor({
         data: buildBlogBlock(blockKey, "categories", next),
       });
     },
-    { isSaving: save.isPending },
+    { isSaving: save.isPending || move.isPending },
   );
 
   const setField = (key: string, value: unknown) =>
@@ -115,72 +148,181 @@ export function CategoryEditor({
   // cascade and turn a half-typed slug into the match key for the next edit).
   const committedSlug = str(category.slug);
   const [slugDraft, setSlugDraft] = useState(committedSlug);
+  const [slugNotice, setSlugNotice] = useState<string | null>(null);
+  // Re-seed when the slug changes under us (another session, or `runRename`).
+  const [seenSlug, setSeenSlug] = useState(committedSlug);
+  if (seenSlug !== committedSlug) {
+    setSeenSlug(committedSlug);
+    setSlugDraft(committedSlug);
+  }
   const [pendingRename, setPendingRename] = useState<{
     oldSlug: string;
     newSlug: string;
     count: number;
+    children: number;
   } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
 
   const posts = committedSlug
-    ? listPostsWithMeta(decofile).filter((p) =>
+    ? listAllPostsWithMeta(decofile).filter((p) =>
         p.categorySlugs.includes(committedSlug),
       )
     : [];
   const postCount = posts.length;
 
+  const categoryEntries = scanBlogEntries(decofile).categories;
+  const children = committedSlug
+    ? categoryEntries.filter((c) => c.parentSlug === committedSlug)
+    : [];
+  const childCount = children.length;
+
+  // Own subtree would close a cycle; a parent at the cap has no room.
+  const forbidden = committedSlug
+    ? descendantSlugs(committedSlug, categoryEntries).add(committedSlug)
+    : new Set<string>();
+  const parentOptions = orderCategoryTree(categoryEntries)
+    .filter(
+      ({ entry, depth }) =>
+        entry.slug &&
+        !forbidden.has(entry.slug) &&
+        depth + 1 < MAX_CATEGORY_DEPTH,
+    )
+    .map(({ entry, depth }) => ({
+      slug: entry.slug as string,
+      label: entry.label,
+      depth,
+    }));
+  const parentSlug = str(category.parentSlug);
+
+  // Two categories sharing a name is legal but confusing; warn, never block.
+  const duplicateName = hasDuplicateName(
+    decofile,
+    "categories",
+    blockKey,
+    str(category.name),
+  );
+
+  const missing = missingCategoryFields(category);
+  const missingLabel =
+    missing.length === 1
+      ? t("sandbox.postEditor.missingFieldSingular", {
+          fields: missing.join(", "),
+        })
+      : t("sandbox.postEditor.missingFieldPlural", {
+          fields: missing.join(", "),
+        });
+
   /** Persist the new slug on the category block itself (no cascade). */
   const commitSlug = (newSlug: string) => setField("slug", newSlug);
 
   /**
-   * Rewrite every post that referenced `oldSlug` to the new slug + name, then
-   * persist the category. Sequential writes: each mutation's optimistic patch
-   * lands on the shared decofile cache key, so parallel writes would lose
-   * updates (same reasoning as the bulk-category apply).
+   * Every block a rename touches, as one write map: the category itself, the
+   * posts carrying a denormalized copy of it, and the child categories
+   * pointing at its slug. `renameCategoryOnPost` and `reparentCategory` are
+   * identity-stable, so a record already in agreement contributes nothing.
    */
-  const runRename = async (oldSlug: string, newSlug: string) => {
+  const renamePlan = (
+    oldSlug: string,
+    nextCategory: Record<string, unknown>,
+  ) => {
+    const ref: CategoryRef = {
+      name: str(nextCategory.name),
+      slug: str(nextCategory.slug),
+    };
+    const writes: Record<string, unknown> = {
+      [blockKey]: buildBlogBlock(blockKey, "categories", nextCategory),
+    };
+    let posts = 0;
+    // Both forms: a draft denormalizes the category exactly like a live post
+    // does, and writing it back as a live block would publish it.
+    for (const { key, payload } of listAllPostPayloads(decofile)) {
+      const next = renameCategoryOnPost(payload, oldSlug, ref);
+      if (next === payload) continue;
+      writes[key] = buildPostBlock(key, stampPostModified(next));
+      posts += 1;
+    }
+    // Children only move when the slug itself changed; a name-only save would
+    // otherwise rewrite every child block with an identical payload, and each
+    // rewrite is a chance to clobber a concurrent edit.
+    if (oldSlug !== ref.slug) {
+      for (const { key, payload } of listBlogPayloads(decofile, "categories")) {
+        if (key === blockKey) continue;
+        const next = reparentCategory(payload, oldSlug, ref.slug);
+        if (next === payload) continue;
+        writes[key] = buildBlogBlock(key, "categories", next);
+      }
+    }
+    return { writes, posts };
+  };
+
+  /**
+   * Posts denormalize the category's name, so an edit to it has to reach them
+   * or they keep rendering the old one on the site. On blur, not per
+   * keystroke: typing a name would otherwise rewrite every post per character.
+   * No confirm dialog, unlike a slug rename — this changes no URL, it only
+   * repairs copies that are already meant to agree.
+   */
+  const commitName = async () => {
+    if (!committedSlug || isRenaming) return;
     const name = str(category.name);
+    const nextCategory = { ...category, name };
+    const { writes, posts } = renamePlan(committedSlug, nextCategory);
+    // A blur that changed nothing must not write.
+    if (posts === 0 && name === str(initial.name)) return;
     setIsRenaming(true);
     try {
-      let changed = 0;
-      for (const { key, payload } of listBlogPayloads(decofile, "posts")) {
-        const next = renameCategoryOnPost(payload, oldSlug, {
-          name,
-          slug: newSlug,
-        });
-        if (next === payload) continue;
-        await save.mutateAsync({
-          blockKey: key,
-          data: buildBlogBlock(key, "posts", stampPostModified(next)),
-        });
-        changed += 1;
-      }
-      // Persist the category block with its new slug and AWAIT it before
-      // reporting success — routing this through the debounced autosave would
-      // let the toast fire (and the user navigate away) before the write is
-      // even dispatched, leaving posts renamed but the category slug possibly
-      // never persisted. `nextCategory` carries the full current draft, so the
-      // write captures any name/description edits made before the rename.
-      const nextCategory = { ...category, slug: newSlug };
-      await save.mutateAsync({
-        blockKey,
-        data: buildBlogBlock(blockKey, "categories", nextCategory),
-      });
-      // Draft-only catch-up (no extra write): keeps future name/description
-      // edits on the new slug instead of spreading the stale one back in.
+      // Cancels the pending debounce, which would otherwise fire mid-write
+      // and persist the same payload a second time.
       syncCategory(nextCategory);
+      await move.move({ writes, deletes: [] });
+      if (posts > 0) {
+        toast.success(
+          t("sandbox.categoryEditor.renameNameSuccess", {
+            count: String(posts),
+          }),
+        );
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.categoryEditor.renameFailed"),
+      );
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  /**
+   * Commit a new slug, carrying posts and child categories with it.
+   *
+   * `useMoveBlocks` patches the cache synchronously, so the rename is visible
+   * at once instead of settling a round-trip at a time, and Fast Preview
+   * sends it as a single commit. Sandbox mode still writes a file per block —
+   * the daemon has no batch endpoint — so a failure part-way leaves the
+   * working tree partially renamed even though the cache rolls back. Retrying
+   * re-applies the whole plan, which is idempotent.
+   */
+  const runRename = async (oldSlug: string, newSlug: string) => {
+    const nextCategory = { ...category, slug: newSlug };
+    const { writes, posts } = renamePlan(oldSlug, nextCategory);
+    setIsRenaming(true);
+    try {
+      syncCategory(nextCategory);
+      await move.move({ writes, deletes: [] });
       toast.success(
-        changed > 0
+        posts > 0
           ? t("sandbox.categoryEditor.renameSuccessWithPosts", {
-              count: String(changed),
+              count: String(posts),
             })
           : t("sandbox.categoryEditor.renameSuccessNoPosts"),
       );
       setPendingRename(null);
     } catch (err) {
-      // Posts may be half-migrated. Reset the input to the persisted slug so
-      // the user can retry the rename cleanly.
+      // The cache rolled back; the working tree may not have. Put the input
+      // back on the persisted slug so retrying re-applies the whole plan.
       setSlugDraft(oldSlug);
+      setSlugNotice(null);
       setPendingRename(null);
       toast.error(
         err instanceof Error
@@ -192,23 +334,50 @@ export function CategoryEditor({
     }
   };
 
-  /** Blur handler: decide between a plain slug edit and a cascading rename. */
+  /**
+   * Blur handler: normalize the slug, suffix it when another category owns it,
+   * then decide between a plain edit and a cascading rename. The cascade must
+   * receive the deduped slug — it is the one that gets written everywhere.
+   */
   const commitSlugFromDraft = () => {
-    const newSlug = slugDraft.trim();
-    if (newSlug === committedSlug) {
-      if (slugDraft !== newSlug) setSlugDraft(newSlug);
-      return;
-    }
-    // An empty slug would orphan every post — refuse and revert.
-    if (!newSlug) {
+    const normalized = slugifyTitle(slugDraft);
+    setSlugDraft(normalized);
+    if (normalized === committedSlug) return;
+    // Refuse: unlike a post's, this slug is the cascades' match key.
+    if (!normalized) {
       setSlugDraft(committedSlug);
+      setSlugNotice(null);
       return;
     }
-    if (postCount === 0) {
+    const taken = categoryEntries
+      .filter((entry) => entry.key !== blockKey)
+      .map((entry) => str(entry.slug))
+      .filter(Boolean);
+
+    let newSlug = normalized;
+    if (taken.includes(normalized)) {
+      newSlug = uniqueCategorySlug(normalized, taken);
+      const message = t("sandbox.categoryEditor.slugDeduped", {
+        slug: newSlug,
+      });
+      setSlugDraft(newSlug);
+      // Inline too: a dismissed toast would hide that the URL changed.
+      setSlugNotice(message);
+      toast.info(message);
+    } else {
+      setSlugNotice(null);
+    }
+
+    if (postCount === 0 && childCount === 0) {
       commitSlug(newSlug);
       return;
     }
-    setPendingRename({ oldSlug: committedSlug, newSlug, count: postCount });
+    setPendingRename({
+      oldSlug: committedSlug,
+      newSlug,
+      count: postCount,
+      children: childCount,
+    });
   };
 
   return (
@@ -219,7 +388,24 @@ export function CategoryEditor({
             {str(category.name) || t("sandbox.categoryEditor.untitledCategory")}
           </span>
           <div className="flex shrink-0 items-center gap-3">
-            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            <SaveStatus
+              isPending={save.isPending || move.isPending}
+              isError={save.isError || move.isError}
+            />
+            {missing.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                    <AlertCircle size={14} />
+                    {missing.length}{" "}
+                    {missing.length === 1
+                      ? t("sandbox.postEditor.issueSingular")
+                      : t("sandbox.postEditor.issuePlural")}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{missingLabel}</TooltipContent>
+              </Tooltip>
+            )}
             {previewUrl && (
               <Button
                 type="button"
@@ -242,9 +428,16 @@ export function CategoryEditor({
             <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
+              onBlur={() => void commitName()}
               placeholder={t("sandbox.categoryEditor.categoryNamePlaceholder")}
               className="py-1 text-3xl font-bold text-foreground"
             />
+            {duplicateName && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+                <AlertCircle size={14} className="mt-px shrink-0" />
+                {t("sandbox.categoryEditor.duplicateNameWarning")}
+              </p>
+            )}
 
             <div className="mt-4 space-y-2">
               <Label htmlFor="category-slug">
@@ -253,11 +446,59 @@ export function CategoryEditor({
               <Input
                 id="category-slug"
                 value={slugDraft}
-                onChange={(e) => setSlugDraft(e.target.value)}
+                onChange={(e) => {
+                  setSlugNotice(null);
+                  setSlugDraft(maskSlugInput(e.target.value));
+                }}
                 onBlur={commitSlugFromDraft}
                 placeholder={t("sandbox.categoryEditor.slugPlaceholder")}
+                maxLength={80}
                 className="h-10"
               />
+              {slugNotice && (
+                <p className="flex items-start gap-1.5 text-xs text-warning">
+                  <AlertCircle size={14} className="mt-px shrink-0" />
+                  {slugNotice}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <Label htmlFor="category-parent">
+                {t("sandbox.categoryEditor.parentLabel")}
+              </Label>
+              <Select
+                value={parentSlug || NO_PARENT}
+                onValueChange={(v) =>
+                  setField("parentSlug", v === NO_PARENT ? undefined : v)
+                }
+              >
+                <SelectTrigger id="category-parent" className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PARENT}>
+                    {t("sandbox.categoryEditor.parentNone")}
+                  </SelectItem>
+                  {/* A dangling or over-deep parent matches no option, which
+                      would render the trigger blank and hide the value the
+                      record actually holds. */}
+                  {parentSlug &&
+                    !parentOptions.some((o) => o.slug === parentSlug) && (
+                      <SelectItem value={parentSlug}>{parentSlug}</SelectItem>
+                    )}
+                  {parentOptions.map((option) => (
+                    <SelectItem key={option.slug} value={option.slug}>
+                      <span style={{ paddingLeft: option.depth * 12 }}>
+                        {option.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.categoryEditor.parentDescription")}
+              </p>
             </div>
 
             <div className="mt-4 space-y-2">
@@ -358,6 +599,7 @@ export function CategoryEditor({
           if (open || isRenaming) return;
           // Cancelled: revert the input to the persisted slug.
           setSlugDraft(committedSlug);
+          setSlugNotice(null);
           setPendingRename(null);
         }}
       >
@@ -373,6 +615,11 @@ export function CategoryEditor({
                     newSlug: pendingRename.newSlug,
                     count: String(pendingRename.count),
                   })
+                : null}
+              {pendingRename && pendingRename.children > 0
+                ? ` ${t("sandbox.categoryEditor.renameDialogChildren", {
+                    count: String(pendingRename.children),
+                  })}`
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -23,6 +23,8 @@ export function ItemRow({
   selected,
   invalid,
   invalidReason,
+  warning,
+  warningReason,
   onToggleSelect,
   onClick,
   menu,
@@ -48,6 +50,14 @@ export function ItemRow({
   invalid?: boolean;
   /** Tooltip on the warning icon, e.g. "Missing: Slug, Excerpt". */
   invalidReason?: string;
+  /**
+   * A non-blocking problem — a duplicate name. Amber, and separate from
+   * `invalid`: a missing required field is an error, this is advice, and one
+   * colour for both would erase the difference the editors draw.
+   */
+  warning?: boolean;
+  /** Tooltip on the amber icon. */
+  warningReason?: string;
   onToggleSelect?: () => void;
   onClick: () => void;
   menu?: React.ReactNode;
@@ -151,6 +161,18 @@ export function ItemRow({
             <TooltipContent side="bottom">
               {t("sandbox.itemRow.variantCount", { count: variantCount })}
             </TooltipContent>
+          </Tooltip>
+        )}
+        {warning && !invalid && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex shrink-0 items-center text-warning">
+                <AlertCircle size={14} />
+              </span>
+            </TooltipTrigger>
+            {warningReason && (
+              <TooltipContent side="bottom">{warningReason}</TooltipContent>
+            )}
           </Tooltip>
         )}
         {invalid && (

@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
@@ -55,13 +57,23 @@ export function useMoveBlocks({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const packagePath = usePackagePath(virtualMcpId);
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
-  const queryKey = KEYS.decofile(`${orgSlug}/${virtualMcpId}/${branch}`);
+  /**
+   * Local mode keys the decofile by preview URL and has no daemon behind it,
+   * exactly as `useSaveBlock` does. Without this the move patched a cache key
+   * nothing reads AND tried a real write against the branch.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const queryKey = KEYS.decofile(
+    decofileCacheKey({ orgSlug, virtualMcpId, branch, localPreviewUrl }),
+  );
 
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
       const writes = sanitizeSecretsForPersistence(rawWrites);
+      // Local: no persistence — the optimistic cache write is the save.
+      if (localPreviewUrl) return { ok: true as const };
       if (fastPreviewActive) {
         // One PATCH, one commit — the server applies set and delete together.
         const draft = await patchDecofile(
@@ -151,7 +163,7 @@ export function useMoveBlocks({
     }
   };
 
-  return { move, isPending: mutation.isPending };
+  return { move, isPending: mutation.isPending, isError: mutation.isError };
 }
 
 /** Apply a move to a decofile snapshot. Pure — exported for its unit test. */
