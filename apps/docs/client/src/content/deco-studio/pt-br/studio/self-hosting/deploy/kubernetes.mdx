@@ -51,7 +51,7 @@ Em produção, agende pods de sandbox em um node pool dedicado e com taint. Esse
 Os comandos abaixo fixam versões de chart explicitamente. Fixe também no seu deployment, em vez de acompanhar a versão mais recente.
 
 ```bash
-export STUDIO_CHART_VERSION=0.16.1
+export STUDIO_CHART_VERSION=0.16.2
 export SANDBOX_OPERATOR_CHART_VERSION=0.1.4
 export SANDBOX_ENV_CHART_VERSION=0.17.3
 ```
@@ -375,6 +375,7 @@ Estes padrões vêm de `deploy/helm/studio/values.yaml`:
 | `replicaCount` | Réplicas de pods de API | `1` |
 | `image.repository` / `image.tag` | Imagem de API/worker do Studio ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio)) | `ghcr.io/decocms/studio/studio` / não definido |
 | `nginx.image.repository` / `nginx.image.tag` | Imagem do front door ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio-nginx)) | `ghcr.io/decocms/studio/studio-nginx` / não definido |
+| `nginx.apiMaxConns` | Requisições simultâneas que o front door envia a cada processo da API (`max_conns` do upstream); long-polls e streams ocupam um slot enquanto abertos | não definido (padrão da imagem `128`) |
 | `service.type` / `service.port` | Exposição do Service | `ClusterIP` / `80` |
 | `ingress.enabled` / `ingress.className` / `ingress.hosts` | Ingress opcional gerenciado pelo chart | `false` / `""` / `[]` |
 | `database.engine` | Engine do banco | `postgresql` |
