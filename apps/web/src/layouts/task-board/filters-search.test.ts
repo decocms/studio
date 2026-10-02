@@ -6,9 +6,15 @@ import {
   enabledLayout,
   type BoardView,
   parseBoardSearch,
+  savedAssigneeDefault,
   visibleSelection,
 } from "./filters-search";
-import { EMPTY_FILTERS, type TaskFilters } from "./task-filters-core";
+import { SUPER_AGENT_ASSIGNEE_ID } from "./config";
+import {
+  EMPTY_FILTERS,
+  UNASSIGNED_FILTER,
+  type TaskFilters,
+} from "./task-filters-core";
 
 const EMPTY_VIEW: BoardView = {
   filters: EMPTY_FILTERS,
@@ -30,53 +36,86 @@ const filters: TaskFilters = {
 
 const FEED_DEFAULTS: BoardDefaults = { ...NO_DEFAULTS, layout: "feed" };
 
-/** The tasks page: the viewer's own work, grouped by status. */
-const VIEWER_DEFAULTS: BoardDefaults = {
+/** The tasks page grouped by status, in a browser that last filtered it to
+ *  one assignee. */
+const SAVED_DEFAULTS: BoardDefaults = {
   layout: "board",
   assignee: "me-1",
   groupBy: "status",
 };
 
-describe("the board opens on the viewer's work, grouped by status", () => {
+describe("the board opens on the saved assignee, grouped by status", () => {
+  test("with nothing saved, an empty URL shows every task", () => {
+    const view = parseBoardSearch({}, { ...SAVED_DEFAULTS, assignee: null });
+    expect(view.filters.assignee).toBeNull();
+    expect(view.groupBy).toBe("status");
+  });
+
   test("an empty URL takes the defaults and writes nothing back", () => {
-    const view = parseBoardSearch({}, VIEWER_DEFAULTS);
+    const view = parseBoardSearch({}, SAVED_DEFAULTS);
     expect(view.filters.assignee).toBe("me-1");
     expect(view.groupBy).toBe("status");
-    const params = boardSearchParams(view, VIEWER_DEFAULTS);
+    const params = boardSearchParams(view, SAVED_DEFAULTS);
     expect(params.assignee).toBeUndefined();
     expect(params.group).toBeUndefined();
   });
 
   test("clearing either default sticks across a reload", () => {
     const cleared = {
-      ...parseBoardSearch({}, VIEWER_DEFAULTS),
+      ...parseBoardSearch({}, SAVED_DEFAULTS),
       filters: EMPTY_FILTERS,
       groupBy: null,
     };
-    const params = boardSearchParams(cleared, VIEWER_DEFAULTS);
+    const params = boardSearchParams(cleared, SAVED_DEFAULTS);
     expect(params.assignee).toBe("any");
     expect(params.group).toBe("none");
-    const reloaded = parseBoardSearch(params, VIEWER_DEFAULTS);
+    const reloaded = parseBoardSearch(params, SAVED_DEFAULTS);
     expect(reloaded.filters.assignee).toBeNull();
     expect(reloaded.groupBy).toBeNull();
   });
 
-  test("an explicit choice beats the defaults", () => {
+  test("a link's assignee beats the saved one", () => {
     const view = parseBoardSearch(
       { assignee: "user-2", group: "priority" },
-      VIEWER_DEFAULTS,
+      SAVED_DEFAULTS,
     );
     expect(view.filters.assignee).toBe("user-2");
     expect(view.groupBy).toBe("priority");
-    expect(parseBoardSearch({ group: "bogus" }, VIEWER_DEFAULTS).groupBy).toBe(
+    expect(boardSearchParams(view, SAVED_DEFAULTS).assignee).toBe("user-2");
+    expect(parseBoardSearch({ group: "bogus" }, SAVED_DEFAULTS).groupBy).toBe(
       null,
     );
   });
 
-  test("with no viewer yet, the cleared markers stay out of the URL", () => {
+  test("with no defaults, the cleared markers stay out of the URL", () => {
     const params = boardSearchParams(parseBoardSearch({}), NO_DEFAULTS);
     expect(params.assignee).toBeUndefined();
     expect(params.group).toBeUndefined();
+  });
+});
+
+describe("the saved assignee", () => {
+  const members = new Set(["me-1", "user-2"]);
+
+  test("a current member, Unassigned or the Super Agent is kept", () => {
+    expect(savedAssigneeDefault("user-2", members)).toBe("user-2");
+    expect(savedAssigneeDefault(UNASSIGNED_FILTER, members)).toBe(
+      UNASSIGNED_FILTER,
+    );
+    expect(savedAssigneeDefault(SUPER_AGENT_ASSIGNEE_ID, new Set())).toBe(
+      SUPER_AGENT_ASSIGNEE_ID,
+    );
+  });
+
+  test("someone who left the org is dropped once members load", () => {
+    expect(savedAssigneeDefault("gone-1", members)).toBeNull();
+    expect(savedAssigneeDefault("gone-1", null)).toBe("gone-1");
+  });
+
+  test("an empty or malformed value is no filter", () => {
+    expect(savedAssigneeDefault(null, members)).toBeNull();
+    expect(savedAssigneeDefault("", members)).toBeNull();
+    expect(savedAssigneeDefault(42, members)).toBeNull();
   });
 });
 
