@@ -134,12 +134,22 @@ export function getRedirectPayload(
   return readRedirect(block);
 }
 
-/** Build the decofile block for a redirect. Omits falsy optional fields. */
+/**
+ * Build the decofile block for a redirect. Omits falsy optional fields. A flat
+ * block keeps the fields of `base` (the stored block) the editor doesn't know.
+ */
 export function buildRedirectBlock(
   payload: RedirectPayload,
+  base?: Record<string, unknown>,
 ): Record<string, unknown> {
   if (payload.flat) {
+    const {
+      status: _status,
+      discardQueryParameters: _discard,
+      ...kept
+    } = base ?? {};
     return {
+      ...kept,
       __resolveType: FLAT_REDIRECT_RESOLVE_TYPE,
       from: payload.from,
       to: payload.to,

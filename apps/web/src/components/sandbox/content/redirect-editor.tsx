@@ -56,7 +56,7 @@ export function RedirectEditor({
   const [payload, setPayload] = useAutosave(
     initial,
     (next) => {
-      save.mutate({ blockKey, data: buildRedirectBlock(next) });
+      save.mutate({ blockKey, data: buildRedirectBlock(next, block) });
     },
     { isSaving: save.isPending },
   );
