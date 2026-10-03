@@ -1,7 +1,5 @@
-import {
-  encryptToCiphertext,
-  SECRET_BLOCK_TYPE,
-} from "@decocms/shared/blocks-protocol";
+import { encryptToCiphertext } from "@decocms/shared/blocks-protocol/ciphertext";
+import { SECRET_BLOCK_TYPE } from "@decocms/shared/blocks-protocol/secrets";
 import { isSecretBlock as isV7SecretBlock } from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
 import { useContentBackend } from "../use-content-backend";

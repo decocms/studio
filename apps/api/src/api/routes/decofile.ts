@@ -544,7 +544,7 @@ export function createDecofileRoutes() {
       {
         server: { name: "studio-github", version: "1" },
         preview: scope.previewServerUrl
-          ? { origin: new URL(scope.previewServerUrl).origin }
+          ? { url: new URL(scope.previewServerUrl).origin }
           : null,
         bodyCacheBytes: 0,
         onError: (error) =>

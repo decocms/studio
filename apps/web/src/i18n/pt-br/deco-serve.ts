@@ -11,11 +11,6 @@ export const decoServe = {
     "Este link do editor de sites está incompleto",
   "decoServe.connect.reaching": "Conectando a {endpoint}…",
   "decoServe.connect.retry": "Tentar novamente",
-  "decoServe.siteEditor.empty": "Escolha uma página ou seção para editar.",
-  "decoServe.siteEditor.openSite": "Abrir site",
-  "decoServe.siteEditor.pages": "Páginas",
-  "decoServe.siteEditor.sections": "Seções",
-  "decoServe.siteEditor.title": "Editor do site",
   "decoServe.status.unauthorized":
     "O servidor local reiniciou com um novo token. Abra o link que o deco serve mostrou para reconectar.",
   "decoServe.status.unreachable":

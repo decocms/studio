@@ -8,11 +8,6 @@ export const decoServe = {
   "decoServe.connect.invalidLinkTitle": "This site editor link is incomplete",
   "decoServe.connect.reaching": "Reaching {endpoint}…",
   "decoServe.connect.retry": "Try again",
-  "decoServe.siteEditor.empty": "Pick a page or a section to edit.",
-  "decoServe.siteEditor.openSite": "Open site",
-  "decoServe.siteEditor.pages": "Pages",
-  "decoServe.siteEditor.sections": "Sections",
-  "decoServe.siteEditor.title": "Site editor",
   "decoServe.status.unauthorized":
     "The local server restarted with a new token. Open the link deco serve printed to reconnect.",
   "decoServe.status.unreachable":

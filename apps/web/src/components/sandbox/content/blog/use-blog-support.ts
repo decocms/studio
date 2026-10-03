@@ -39,6 +39,8 @@ export function useBlogSupport(params: UseBlogSupportParams): BlogSupport {
         decoRepoPath(packagePath, file),
       ),
     staleTime: 300_000,
+    // No org (`/site-editor`): no Studio to read the repo through.
+    enabled: !!params.orgSlug,
   });
   const { data: denoJson } = useQuery({
     queryKey: KEYS.denoJson(params.orgSlug, params.virtualMcpId, params.branch),

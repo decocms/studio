@@ -55,8 +55,8 @@ export const readCases: ConformanceCase[] = [
       assert(d.pollIntervalMs > 0, "pollIntervalMs");
       for (const key of LIMIT_KEYS) assert(d.limits[key] > 0, `limits.${key}`);
       assert(
-        d.preview === null || typeof d.preview.origin === "string",
-        "preview",
+        d.preview === null || /^https?:\/\//.test(String(d.preview?.url)),
+        "preview is null or { url } with an http(s) URL",
       );
       if (d.readOnly)
         assertEqual(d.assets, null, "assets is null when read-only");

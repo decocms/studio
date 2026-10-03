@@ -27,8 +27,8 @@ export interface ContentHandlerOptions extends AuthOptions {
   limits?: Partial<Limits>;
   /** Overrides the poll interval the storage suggests. */
   pollIntervalMs?: number;
-  /** Where "open the real page" points. */
-  preview?: { origin: string } | null;
+  /** The app the site editor previews, reported by `describe` (`{ url }`). */
+  preview?: { url: string } | null;
   /** How many times `blocks.apply` attempts a commit when storage moved meanwhile (default 3). */
   maxCommitAttempts?: number;
   /**

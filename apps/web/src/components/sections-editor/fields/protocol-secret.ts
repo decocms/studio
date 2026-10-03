@@ -1,7 +1,7 @@
 import {
   isWellFormedCiphertext,
   SECRET_BLOCK_TYPE,
-} from "@decocms/shared/blocks-protocol";
+} from "@decocms/shared/blocks-protocol/secrets";
 import type { StoredSecretState } from "./secret-field";
 
 /** What a next-major `Secret` field holds now. */

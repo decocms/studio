@@ -4,6 +4,7 @@ import {
   isProtocolProject,
   mergePolledBlocks,
   selectContentBackend,
+  servePreviewUrl,
 } from "./content-backend";
 
 describe("selectContentBackend", () => {
@@ -134,5 +135,47 @@ describe("blockKeysOfWrite", () => {
     ).toEqual(["b", "c", "a"]);
     expect(blockKeysOfWrite(undefined)).toEqual([]);
     expect(blockKeysOfWrite("nope")).toEqual([]);
+  });
+});
+
+describe("servePreviewUrl", () => {
+  const local = (preview: { url: string } | null) =>
+    ({
+      kind: "protocol",
+      source: "local",
+      client: {},
+      describe: { preview },
+      cacheKeySuffix: "",
+    }) as unknown as Parameters<typeof servePreviewUrl>[0];
+
+  test("loads the app deco serve --preview names, on this machine", () => {
+    expect(servePreviewUrl(local({ url: "http://localhost:8001" }))).toBe(
+      "http://localhost:8001",
+    );
+    expect(servePreviewUrl(local({ url: "http://127.0.0.1:3000/en/" }))).toBe(
+      "http://127.0.0.1:3000/en/",
+    );
+  });
+
+  test("refuses a preview anywhere else", () => {
+    for (const url of [
+      "https://example.com",
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "http://evil.test:80",
+    ]) {
+      expect(servePreviewUrl(local({ url }))).toBeNull();
+    }
+    expect(servePreviewUrl(local(null))).toBeNull();
+  });
+
+  test("only a local deco serve has one", () => {
+    expect(servePreviewUrl({ kind: "legacy" })).toBeNull();
+    expect(
+      servePreviewUrl({
+        ...local({ url: "http://localhost:8001" }),
+        source: "github",
+      } as Parameters<typeof servePreviewUrl>[0]),
+    ).toBeNull();
   });
 });

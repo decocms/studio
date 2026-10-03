@@ -123,7 +123,10 @@ import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { isProtocolProject } from "@/components/sections-editor/content-backend";
+import {
+  isProtocolProject,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -290,7 +293,7 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
       previewUrl={protocolActive ? null : lifecycle.previewUrl}
       sitePreviewUrl={
         contentBackend.kind === "protocol" && contentBackend.source === "local"
-          ? (contentBackend.describe.preview?.origin ?? null)
+          ? servePreviewUrl(contentBackend)
           : fastPreviewActive
             ? previewServerUrl
             : lifecycle.previewUrl

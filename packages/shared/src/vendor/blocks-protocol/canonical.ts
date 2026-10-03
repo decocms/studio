@@ -1,4 +1,10 @@
 /**
+ * Canonical JSON and content hashing. The implementation is a dependency-free
+ * leaf module of the SDK (`src/v8/canonical.ts`), because the runtime checks
+ * content revisions too; the protocol re-exports it so the CLI, the server
+ * and the site editor share one definition.
+ */
+/**
  * Canonical JSON and hashing shared by the protocol's request digests.
  *
  * Canonical form: object keys recursively sorted in JavaScript code-unit

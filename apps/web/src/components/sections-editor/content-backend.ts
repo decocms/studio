@@ -16,6 +16,7 @@ import type {
   ContentClient,
   DescribeResult,
 } from "@decocms/shared/blocks-protocol";
+import { isLoopbackEndpoint } from "./deco-serve-connection";
 
 export type ContentSource = "github" | "local";
 
@@ -47,6 +48,17 @@ export type ContentBackend =
  */
 export function isProtocolProject(backend: ContentBackend): boolean {
   return backend.kind === "protocol" || backend.kind === "unavailable";
+}
+
+/**
+ * The app a connected `deco serve` previews (`describe.preview`, which
+ * `deco serve --preview` sets): its URL when it is on this machine, else
+ * `null`. Anywhere else would put an arbitrary page in the editor's frame.
+ */
+export function servePreviewUrl(backend: ContentBackend): string | null {
+  if (backend.kind !== "protocol" || backend.source !== "local") return null;
+  const url = backend.describe.preview?.url;
+  return url && isLoopbackEndpoint(url) ? url : null;
 }
 
 export type BackendDecision =

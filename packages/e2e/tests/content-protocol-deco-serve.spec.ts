@@ -9,7 +9,7 @@
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
-import { publicKeyPemFromDer } from "@decocms/shared/blocks-protocol";
+import { publicKeyPemFromDer } from "@decocms/shared/blocks-protocol/ciphertext";
 import {
   type DecoServeStub,
   startDecoServeStub,
@@ -193,7 +193,7 @@ async function startStub(publicKey: string) {
     schema,
     secretsPublicKey: publicKey,
     // The dev app; nothing listens, the preview just has nothing to show.
-    previewOrigin: "http://127.0.0.1:9",
+    previewUrl: "http://127.0.0.1:9",
     files: {
       [`${HERO}.json`]: heroFile({
         __resolveType: "hero",
@@ -220,19 +220,27 @@ test.describe("site editor over deco serve", () => {
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
       // The token left the address bar.
       expect(page.url()).not.toContain(stub.token);
-      await expect(page.getByTestId("deco-serve-connect-target")).toContainText(
-        stub.endpoint,
-        { timeout: 30_000 },
-      );
+      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+        timeout: 30_000,
+      });
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
+      // Preview loads the app `deco serve --preview` names.
+      await expect(
+        page.locator('iframe[src^="http://127.0.0.1:9/"]'),
+      ).toBeAttached({ timeout: 30_000 });
 
-      // The saved section, from blocks.list.
-      await page.getByRole("button", { name: "Home Hero" }).click();
+      // The saved section, from blocks.list, on the Content tab.
+      await page.getByRole("link", { name: "Content" }).click();
+      await expect(page).toHaveURL("/site-editor/content");
+      const content = page.getByTestId("main-panel");
+      await content.getByRole("button", { name: "Advanced" }).click();
+      await content.getByRole("button", { name: /^Sections/ }).click();
+      await page.getByText("Home Hero", { exact: true }).click();
       await editHero(page, stub, privateKey);
 
       // A reload keeps the tab's connection.
       await page.reload();
-      await expect(page.getByTestId("deco-serve-connect-target")).toBeVisible({
+      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
         timeout: 30_000,
       });
     } finally {

@@ -311,12 +311,33 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
-// The account-less site editor over `deco serve`, which prints
-// `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in.
+// The site editor over `deco serve`, which prints
+// `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
+// Its tabs carry the project Site Editor's `staticData`: the same app.
 const siteEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/site-editor",
   component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
+});
+
+const siteEditorPreviewRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/",
+  staticData: { mainView: "site-editor", siteEditorView: "preview" },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorPreview",
+  ),
+});
+
+const siteEditorContentRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/content",
+  staticData: { mainView: "content", siteEditorView: "content" },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorContent",
+  ),
 });
 
 // Public report, readable without a session — hence outside the org shell.
@@ -1623,7 +1644,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
-  siteEditorRoute,
+  siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,

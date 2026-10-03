@@ -36,17 +36,7 @@ export {
   type ContentHashFixture,
   contentHashFixtures,
 } from "./content-hash-fixtures";
-export {
-  assert,
-  assertEqual,
-  ConformanceContext,
-  ConformanceFailure,
-  type ConformanceOptions,
-  expectError,
-  type RawResponse,
-  rawErrorCode,
-  SkipCase,
-} from "./context";
+export type { ConformanceOptions } from "./context";
 
 /** Every conformance case, in the order they run. */
 export const conformanceCases: readonly ConformanceCase[] = [
@@ -70,7 +60,7 @@ export interface CaseOutcome {
 }
 
 /** Runs one case with its own names, cleaning them up afterwards. */
-export async function runCase(
+async function runCase(
   testCase: ConformanceCase,
   options: ConformanceOptions,
   prefix: string,

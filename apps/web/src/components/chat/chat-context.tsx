@@ -323,6 +323,18 @@ export function ChatStreamValueProvider({
 }
 
 /**
+ * Installs a task value without a thread store. The account-less
+ * `/site-editor` uses it: the editor surfaces read their project and branch
+ * from here, and there is no chat to open threads in.
+ */
+export function ChatTaskValueProvider({
+  value,
+  children,
+}: PropsWithChildren<{ value: ChatTaskContextValue }>) {
+  return <ChatTaskCtx.Provider value={value}>{children}</ChatTaskCtx.Provider>;
+}
+
+/**
  * Blanks the stream and task contexts for a subtree.
  *
  * For rendering one thread's messages while a *different* thread is the live
