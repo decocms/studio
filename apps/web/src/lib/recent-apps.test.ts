@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   appOpenKey,
+  openAppOf,
   pushAppOpen,
   pushRecentApp,
   type RecentApp,
@@ -73,5 +74,69 @@ describe("pushAppOpen", () => {
 
   test("drops the oldest past the limit", () => {
     expect(pushAppOpen(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
+  });
+});
+
+describe("openAppOf", () => {
+  const isApp = (app: string) =>
+    ["site-editor", "assets", "reports"].includes(app);
+  const match = (
+    staticData: {
+      mainView?: string;
+      siteEditorView?: "preview" | "content" | "code";
+      local?: boolean;
+    },
+    params?: Record<string, string>,
+  ) => ({ staticData, params });
+
+  test("a project's app route is that app in that project", () => {
+    expect(
+      openAppOf(
+        [match({}), match({ mainView: "assets" }, { agentId: "p1" })],
+        isApp,
+      ),
+    ).toEqual({ app: "assets", projectId: "p1" });
+  });
+
+  test("every Site Editor tab is the Site Editor", () => {
+    for (const [mainView, siteEditorView] of [
+      ["site-editor", "preview"],
+      ["content", "content"],
+      ["code", "code"],
+    ] as const) {
+      expect(
+        openAppOf(
+          [match({ mainView, siteEditorView }, { agentId: "p1" })],
+          isApp,
+        ),
+      ).toEqual({ app: "site-editor", projectId: "p1" });
+    }
+  });
+
+  test("the account-less /site-editor is the Site Editor, with no project", () => {
+    expect(
+      openAppOf(
+        [
+          match({}),
+          match({
+            mainView: "content",
+            siteEditorView: "content",
+            local: true,
+          }),
+        ],
+        isApp,
+      ),
+    ).toEqual({ app: "site-editor", projectId: null });
+  });
+
+  test("an org-level route with no project is no open app", () => {
+    expect(openAppOf([match({ mainView: "reports" }, {})], isApp)).toBeNull();
+  });
+
+  test("a place, not an app, is no open app", () => {
+    expect(
+      openAppOf([match({ mainView: "board" }, { agentId: "p1" })], isApp),
+    ).toBeNull();
+    expect(openAppOf([match({})], isApp)).toBeNull();
   });
 });

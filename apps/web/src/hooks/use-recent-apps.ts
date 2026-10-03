@@ -14,6 +14,8 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { PROJECT_APPS } from "@/components/projects/project-apps";
 import {
   appOpenKey,
+  openAppOf,
+  type OpenApp,
   pushAppOpen,
   pushRecentApp,
   type RecentApp,
@@ -81,17 +83,10 @@ export function useRecentApps(orgSlug: string): {
 }
 
 /** The app the current route IS, or null for a route with no launchable
- *  app. */
-export function useOpenApp(): { app: string; projectId: string } | null {
+ *  app. See `openAppOf`. */
+export function useOpenApp(): OpenApp | null {
   return useRouterState({
-    select: (state) => {
-      const match = state.matches.findLast((it) => it.staticData.mainView);
-      const app = match?.staticData.mainView;
-      const projectId = (match?.params as { agentId?: string } | undefined)
-        ?.agentId;
-      if (!app || !projectId) return null;
-      return app in PROJECT_APPS ? { app, projectId } : null;
-    },
+    select: (state) => openAppOf(state.matches, (app) => app in PROJECT_APPS),
     /** Stable across unrelated route state, so the effect fires once per app
      *  rather than once per navigation. */
     structuralSharing: true,
@@ -106,12 +101,15 @@ export function useRememberOpenApp(orgSlug: string): void {
   const opens = useAppOpens(orgSlug);
   const openKey = useOpenAppKey();
   const { project } = useProjectScope();
-  const title = open && project?.id === open.projectId ? project.title : null;
+  /** No project, no entry: the account-less `/site-editor` is never
+   *  recorded. */
+  const title =
+    open?.projectId && project?.id === open.projectId ? project.title : null;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- the event is the navigation itself; a deep link has no click to record on
   useEffect(() => {
     if (openKey) opens.remember(openKey);
-    if (!open || !title) return;
+    if (!open?.projectId || !title) return;
     remember({ app: open.app, projectId: open.projectId, projectTitle: title });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `remember` is a fresh closure each render; the entry is the identity that matters
   }, [orgSlug, openKey, open?.app, open?.projectId, title]);

@@ -1,7 +1,7 @@
 /**
  * The site editor on a developer's machine, over the local content-protocol
- * server: account-less at `/site-editor` (the link `deco serve` prints, which
- * exists only with the New Layout preference on), and signed in through the
+ * server: at `/site-editor` (the link `deco serve` prints, ungated and always
+ * in the New Layout), account-less or signed in, and signed in through the
  * draft selector's "Local" option. Edits land in its
  * working tree through `blocks.apply`.
  *
@@ -209,25 +209,12 @@ async function startStub(publicKey: string) {
 const linkOf = (stub: DecoServeStub, path = "/site-editor") =>
   `${path}#endpoint=${encodeURIComponent(stub.endpoint)}&token=${stub.token}`;
 
-/** Turns on the New Layout preference (`projectFirstNav`), as Settings does:
- *  `/site-editor` only exists with it on. */
-const enableNewLayout = (page: Page) =>
-  page.addInitScript(() => {
-    const key = "studio:user:preferences";
-    const current = JSON.parse(localStorage.getItem(key) ?? "{}");
-    localStorage.setItem(
-      key,
-      JSON.stringify({ ...current, projectFirstNav: true }),
-    );
-  });
-
 test.describe("site editor over deco serve", () => {
   test.setTimeout(120_000);
 
   test("account-less /site-editor edits a field, a Lazy<T> field and a secret", async ({
     page,
   }) => {
-    await enableNewLayout(page);
     const { privateKey, publicKey } = await generateKeyPair();
     const stub = await startStub(publicKey);
     try {
@@ -302,7 +289,6 @@ test.describe("site editor over deco serve", () => {
   });
 
   test("refuses a link to a server off this machine", async ({ page }) => {
-    await enableNewLayout(page);
     await page.goto(
       `/site-editor#endpoint=${encodeURIComponent("https://attacker.example/rpc")}&token=t`,
     );
@@ -313,19 +299,38 @@ test.describe("site editor over deco serve", () => {
     ).toBeVisible();
   });
 
-  test("without the New Layout preference /site-editor is not found", async ({
-    page,
+  test("signed in, /site-editor shows the org rail with the Site Editor active", async ({
+    authedPage,
   }) => {
+    // The New Layout preference is off (the default): this route uses the
+    // New Layout anyway.
+    const { page, orgSlug } = authedPage;
     const stub = await startStub((await generateKeyPair()).publicKey);
     try {
       await page.goto(linkOf(stub));
-      await expect(
-        page.getByRole("heading", { name: "Page not found" }),
-      ).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId("deco-serve-chip")).toHaveCount(0);
-      // The link's token still left the address bar, without connecting.
-      await expect(page).toHaveURL("/site-editor");
+      await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
       expect(page.url()).not.toContain(stub.token);
+      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+        timeout: 30_000,
+      });
+      const rail = page.getByLabel("Organizations", { exact: true });
+      await expect(rail).toBeVisible();
+      await expect(rail.getByRole("button").first()).toBeVisible();
+      const siteEditor = rail.getByTestId("org-rail-local-app");
+      await expect(siteEditor).toHaveAttribute("aria-current", "page");
+      await expect(siteEditor).toHaveAttribute("href", "/site-editor");
+
+      // Still the Site Editor on its Content tab.
+      await page.getByRole("link", { name: "Content" }).click();
+      await expect(page).toHaveURL("/site-editor/content");
+      await expect(siteEditor).toHaveAttribute("aria-current", "page");
+
+      // Nothing was recorded for an org: there is none here.
+      const recorded = await page.evaluate(
+        (slug) => localStorage.getItem(`studio:recent-apps:${slug}`),
+        orgSlug,
+      );
+      expect(recorded ?? "[]").not.toContain("deco-serve");
     } finally {
       await stub.close();
     }

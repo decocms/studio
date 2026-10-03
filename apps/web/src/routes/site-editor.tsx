@@ -2,13 +2,15 @@
  * `/site-editor#endpoint=…&token=…` — the site editor over the `deco serve`
  * on this machine (the link the Blocks CLI prints), without a project.
  *
- * It exists only with the New Layout preference (`projectFirstNav`) on — the
- * router answers not-found otherwise — and it is the Site Editor APP, the same
- * one a project launches (`routes/workspace/agent-site-editor.tsx` and its
- * Preview/Content tabs), in the same app takeover: the org rail (signed in
+ * It is not gated, and it always renders in the New Layout, whatever this
+ * person's preference says (`ForceProjectFirstNav`, scoped to this route). It
+ * is the Site Editor APP, the same one a project launches
+ * (`routes/workspace/agent-site-editor.tsx` and its Preview/Content tabs), in
+ * the same app takeover: the org rail (signed in
  * only, as there are no orgs to list otherwise), no sidebar, the app full
  * screen. What needs Studio's hosting is left out: chat, GitHub, drafts,
- * publishing and Code. There is no org, so no recent app is recorded.
+ * publishing and Code. There is no org, so no recent app is recorded; the
+ * rail still marks the Site Editor as the open app (`staticData.local`).
  *
  * The connection leaves the fragment at once (so the token never stays in
  * the address bar or history) and is kept for this tab only. Only loopback
@@ -47,6 +49,7 @@ import {
   TabDecoServeConnectionContext,
   useDecoServeConnection,
 } from "@/hooks/use-deco-serve-connection";
+import { ForceProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { ContentTab } from "@/layouts/main-panel-tabs/content-tab";
 import { PreviewTab } from "@/layouts/main-panel-tabs/preview-tab";
@@ -233,15 +236,17 @@ export default function SiteEditorRoute() {
     },
   };
   return (
-    <ProjectContextProvider org={NO_ORG} project={LOCAL_PROJECT}>
-      <TabDecoServeConnectionContext.Provider value={state}>
-        <ChatTaskValueProvider value={LOCAL_TASK}>
-          <BlocksPreviewWorkspaceProvider>
-            <LocalSiteEditor />
-          </BlocksPreviewWorkspaceProvider>
-        </ChatTaskValueProvider>
-      </TabDecoServeConnectionContext.Provider>
-    </ProjectContextProvider>
+    <ForceProjectFirstNav value>
+      <ProjectContextProvider org={NO_ORG} project={LOCAL_PROJECT}>
+        <TabDecoServeConnectionContext.Provider value={state}>
+          <ChatTaskValueProvider value={LOCAL_TASK}>
+            <BlocksPreviewWorkspaceProvider>
+              <LocalSiteEditor />
+            </BlocksPreviewWorkspaceProvider>
+          </ChatTaskValueProvider>
+        </TabDecoServeConnectionContext.Provider>
+      </ProjectContextProvider>
+    </ForceProjectFirstNav>
   );
 }
 

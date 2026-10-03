@@ -128,6 +128,44 @@ function RailAppButton({
   );
 }
 
+/** Where an app opens outside any org and project — only the Site Editor,
+ *  over the `deco serve` on this machine. */
+const LOCAL_APP_ROUTES: Partial<Record<string, string>> = {
+  "site-editor": "/site-editor",
+};
+
+/** The app open outside any org (`/site-editor`): marked as the screen you
+ *  are on, like a recent app, but never recorded — there is no org to keep
+ *  it in. */
+function RailLocalAppButton({ app: appId }: { app: string }) {
+  const t = useT();
+  const app = PROJECT_APPS[appId as keyof typeof PROJECT_APPS];
+  const to = LOCAL_APP_ROUTES[appId];
+  if (!app || !to) return null;
+
+  return (
+    <RailItem active label={t(app.labelKey)}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to={to}
+            aria-label={t(app.labelKey)}
+            aria-current="page"
+            data-testid="org-rail-local-app"
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-xl focus-ring opacity-100",
+              app.tone,
+            )}
+          >
+            <app.Icon size={18} />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">{t(app.labelKey)}</TooltipContent>
+      </Tooltip>
+    </RailItem>
+  );
+}
+
 /** Records the app the route is on, by URL as much as by launcher. Mounted
  *  by `Layout` beside the rail but on every viewport, since the org home's
  *  app order reads this history on mobile too. */
@@ -153,6 +191,9 @@ export function OrgRail() {
   /** Which recent is the screen you are on, so the rail marks it the same way
    *  it marks the current org. */
   const openApp = useOpenApp();
+  /** Outside any org there are no recents, only the app on screen. */
+  const localApp = openApp && openApp.projectId === null ? openApp.app : null;
+  const recents = localApp ? [] : recent;
 
   const orgs = (organizations ?? []) as RailOrg[];
   const { recent: recentOrgs, remember } = useRecentOrgs();
@@ -220,7 +261,7 @@ export function OrgRail() {
             </TooltipContent>
           </Tooltip>
         </RailItem>
-        {recent.length > 0 && (
+        {(recents.length > 0 || localApp) && (
           <>
             {/* A rule and not a gap: below it the marks stop meaning "an org
                 you belong to" and start meaning "a thing you had open", and
@@ -229,7 +270,7 @@ export function OrgRail() {
               className="my-2 h-px w-6 shrink-0 bg-sidebar-border"
               aria-hidden
             />
-            {recent.map((entry) => (
+            {recents.map((entry) => (
               <RailAppButton
                 key={`${entry.app}:${entry.projectId}`}
                 entry={entry}
@@ -240,6 +281,7 @@ export function OrgRail() {
                 }
               />
             ))}
+            {localApp && <RailLocalAppButton app={localApp} />}
           </>
         )}
       </div>
