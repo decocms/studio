@@ -44,12 +44,17 @@ function initializeFromStorage<T>(
   return next;
 }
 
+/** The cache entry {@link useLocalStorage} mirrors a key into. */
+export function localStorageQueryKey(key: string) {
+  return ["localStorage", key] as const;
+}
+
 export function useLocalStorage<T>(
   key: string,
   initializer: T | ((existing: T | undefined) => T),
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const queryClientInstance = useQueryClient();
-  const queryKey = ["localStorage", key] as const;
+  const queryKey = localStorageQueryKey(key);
 
   // Use TanStack Query to read from localStorage
   const { data: value } = useQuery({

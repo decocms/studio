@@ -13,6 +13,9 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
@@ -39,11 +42,42 @@ export function useDeleteBlock({
   // Sandbox-less mode: deletes commit through the decofile API and remove every
   // encoding alias of the key server-side.
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const protocolCacheKey = useDecofileCacheKey({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
+  const cacheKey = protocol
+    ? protocolCacheKey
+    : `${orgSlug}/${virtualMcpId}/${branch}`;
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
+      if (protocol) {
+        await applyProtocolPatch(
+          queryClient,
+          protocol,
+          { orgSlug, virtualMcpId, branch },
+          cacheKey,
+          { delete: [blockKey] },
+        );
+        if (protocol.source === "github") {
+          // The commit moved the branch head; refresh the header's branch meta.
+          await queryClient.invalidateQueries({
+            queryKey: sandboxGitStatusQueryKey({
+              orgSlug,
+              virtualMcpId,
+              branch,
+              threadId,
+            }),
+          });
+        }
+        return { ok: true as const, existed: true };
+      }
       if (fastPreviewActive) {
         const draft = await patchDecofile(
           { orgSlug, virtualMcpId, branch },
@@ -79,7 +113,6 @@ export function useDeleteBlock({
       return res.json() as Promise<{ ok: true; existed: boolean }>;
     },
     onMutate: async ({ blockKey }) => {
-      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       const queryKey = KEYS.decofile(cacheKey);
       await queryClient.cancelQueries({ queryKey });
       const previous =

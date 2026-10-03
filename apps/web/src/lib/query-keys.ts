@@ -767,6 +767,12 @@ export const KEYS = {
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
+  // Which content backend (legacy / content protocol) a project's editor uses.
+  contentBackend: (...parts: string[]) =>
+    ["content-backend", ...parts] as const,
+  // Last content-protocol revision/version seen for a decofile or schema read.
+  contentRevision: (cacheKey: string) =>
+    ["content-revision", cacheKey] as const,
   // The repo's committed `deno.json`, read for its pinned deco-apps version.
   denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["deno-json", orgSlug, virtualMcpId, branch] as const,

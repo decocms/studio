@@ -10,6 +10,8 @@ import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
+import { useContentBackend } from "./use-content-backend";
+import { readProtocolBlocks } from "./content-protocol-api";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -32,11 +34,26 @@ export function decofileCacheKey(input: {
   virtualMcpId: string;
   branch: string;
   localPreviewUrl?: string | null;
+  /** A content-protocol backend's suffix (a `deco serve` endpoint), if any. */
+  protocolSuffix?: string | null;
 }): string {
   const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
+  if (input.protocolSuffix) return `${base}${input.protocolSuffix}`;
   return input.localPreviewUrl
     ? `${base}:local:${input.localPreviewUrl}`
     : base;
+}
+
+/** The decofile cache key for a project, given its content backend. */
+export function useDecofileCacheKey(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+): string {
+  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  if (!params) return "";
+  return backend.kind === "protocol"
+    ? decofileCacheKey({ ...params, protocolSuffix: backend.cacheKeySuffix })
+    : decofileCacheKey({ ...params, localPreviewUrl });
 }
 
 export function useDecofile(
@@ -51,7 +68,10 @@ export function useDecofile(
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
-  const key = params ? decofileCacheKey({ ...params, localPreviewUrl }) : "";
+  // Next-major Blocks sites: the content protocol, polled (see content-backend).
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const key = useDecofileCacheKey(params);
   // `fetchEnabled` means the dev server is up, so the live `/.decofile` route is
   // worth hitting. When it's down we read `.deco/blocks.gen.json` straight from
   // the working tree — and if that artifact is absent (it's commonly gitignored)
@@ -82,6 +102,14 @@ export function useDecofile(
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
+      if (protocol) {
+        return readProtocolBlocks(queryClient, protocol, params!, key);
+      }
+      if (backend.kind === "unavailable") {
+        const err = new Error("decofile unavailable (deco serve unreachable)");
+        (err as { status?: number }).status = 502;
+        throw err;
+      }
       if (localOverride) {
         const res = await fetch(
           new URL("/.decofile", localPreviewUrl).toString(),
@@ -142,8 +170,11 @@ export function useDecofile(
       });
       throw err;
     },
-    enabled: !!params,
-    staleTime: 30_000,
+    enabled: !!params && backend.kind !== "pending",
+    staleTime: protocol ? 0 : 30_000,
+    refetchInterval: protocol?.describe.pollIntervalMs,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: protocol ? "always" : undefined,
     // 502 = preview unreachable / nothing available yet. Retrying just hammers
     // a known-down endpoint; sandbox-events-context re-invalidates this query
     // on first daemon contact (and again when the dev server reports
@@ -158,7 +189,9 @@ export function useDecofile(
     // 404 = no decofile route on this repo (not a deco site) — as terminal as
     // 502 for retry purposes.
     retry: (failureCount, error) => {
-      if (fastPreviewActive || localOverride) return failureCount < 3;
+      if (protocol || fastPreviewActive || localOverride) {
+        return failureCount < 3;
+      }
       const status = (error as { status?: number }).status;
       return status !== 502 && status !== 404 && failureCount < 2;
     },
