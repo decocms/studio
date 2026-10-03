@@ -52,6 +52,24 @@ Se você está vindo do deco.cx, o Agentic CMS é a mesma linha de produto — o
 
 Projetos deco.cx existentes continuam funcionando. A migração adiciona a camada de agents; ela não substitui sua base de código.
 
+## Sites em Blocks next-major
+
+Sites construídos com Blocks next-major são editados pelo **protocolo de conteúdo**: o editor do site lê o schema commitado (`.deco/schema.gen.json`, ou `.deco/meta.gen.json`) e os blocos salvos em `.deco/blocks`, e nunca executa o código do site. Isso fica atrás da flag de organização `site_editor_content_protocol`, desligada por padrão.
+
+Com a flag ligada, um projeto usa o protocolo quando:
+
+- **A branch de uma sessão Fast Preview tem um schema commitado.** Cada salvamento é um commit na branch de rascunho, o schema vem dessa branch (ou da branch padrão, quando ela não tem um) e o preview renderiza seu site com um link `?__draft=`.
+- **Ele está conectado ao `deco serve` na sua máquina.** Rode `npx @decocms/blocks serve` ao lado do seu servidor de desenvolvimento e abra o link do editor do site que ele mostra. O Studio pergunta qual projeto conectar; o Chrome pergunta uma vez se o Studio pode acessar um servidor na sua máquina. Os salvamentos escrevem os arquivos da sua working tree e os uploads vão para `public/assets/`, e você mesmo faz o commit. O editor mostra um chip **Servidor local** com **Desconectar**, e pede para reconectar quando o servidor reinicia com um novo token.
+
+Todo o resto, incluindo sessões com sandbox, continua no caminho de edição atual.
+
+Como o código do site nunca roda:
+
+- O preview abre o app de verdade; nada é re-renderizado no lugar, e a galeria de adicionar seção mostra o nome, a descrição e a imagem do schema de cada bloco.
+- Seletores cujas opções vêm de um loader mostram as opções do schema, senão um campo de texto.
+- Campos secretos são somente escrita: o Studio criptografa o que você digita no navegador com a chave pública do site, `.deco/secrets.pub`, e salva só o texto cifrado. Segredos salvos por sites mais antigos não podem ser editados aqui.
+- Executar loaders e actions e instalar apps não está disponível: isso vive no código do site.
+
 ## Primeiros passos
 
 Abra o Studio, encontre o agent **deco Site Editor** e aponte-o para o seu site.
