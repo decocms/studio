@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 
-export const DecoServeConnectionSchema = z.object({
+const DecoServeConnectionSchema = z.object({
   /** The protocol endpoint, such as `http://127.0.0.1:4545/rpc`. */
   endpoint: z
     .string()
