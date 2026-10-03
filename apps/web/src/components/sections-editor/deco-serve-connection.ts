@@ -10,10 +10,7 @@
  * key) to whoever wrote the link.
  */
 
-import {
-  ContentProtocolError,
-  ErrorCode,
-} from "@decocms/shared/blocks-protocol";
+import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import { z } from "zod";
 
 /** `deco serve` listens on this machine only. */

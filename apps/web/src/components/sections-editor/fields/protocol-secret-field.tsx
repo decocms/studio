@@ -1,5 +1,5 @@
-import { encryptToCiphertext } from "@decocms/shared/blocks-protocol/ciphertext";
-import { SECRET_BLOCK_TYPE } from "@decocms/shared/blocks-protocol/secrets";
+import { encryptSecret } from "@decocms/blocks/secrets";
+import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
 import { isSecretBlock as isV7SecretBlock } from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
 import { useContentBackend } from "../use-content-backend";
@@ -72,7 +72,9 @@ function ProtocolSecretField({
         <EncryptedSecretInput
           id={path}
           stored={protocolSecretState(value)}
-          encrypt={(plaintext) => encryptToCiphertext(publicKey, plaintext)}
+          encrypt={async (plaintext) =>
+            (await encryptSecret(publicKey, plaintext)).ciphertext
+          }
           onEncrypted={(ciphertext) =>
             onChange({ __resolveType: SECRET_BLOCK_TYPE, ciphertext })
           }

@@ -57,7 +57,7 @@ import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
-import { createContentClient } from "@decocms/shared/blocks-protocol";
+import { createContentClient } from "@decocms/blocks/protocol";
 import {
   type DecoServeConnection,
   decoServeErrorReason,

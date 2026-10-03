@@ -56,7 +56,7 @@ import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import { createRepoContentStorage } from "@/decofile/repo-content-storage";
-import { createContentHandler } from "@decocms/shared/blocks-protocol/server";
+import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
