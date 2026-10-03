@@ -29,6 +29,7 @@ describe("reserved organization slugs", () => {
       "report",
       "reports-onboarding",
       "reset-password",
+      "site-editor",
     ]);
     expect(isReservedOrganizationSlug(" Report ")).toBe(true);
     expect(isReservedOrganizationSlug("API")).toBe(true);

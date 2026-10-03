@@ -29,6 +29,7 @@ export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
   "report",
   "reports-onboarding",
   "reset-password",
+  "site-editor",
 ]);
 
 export function isReservedOrganizationSlug(slug: unknown): boolean {
