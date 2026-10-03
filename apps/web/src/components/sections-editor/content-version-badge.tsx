@@ -10,7 +10,8 @@ import { useContentBackend } from "./use-content-backend";
 /**
  * Which Blocks generation the editor is talking to: `v8` over the content
  * protocol, `v7` over the running site (`/live/_meta`, `/.decofile`).
- * Nothing until the backend is decided.
+ * Nothing until the backend is decided — including a failed GitHub probe,
+ * which leaves the generation unknown.
  */
 export function ContentVersionBadge({
   virtualMcpId,
@@ -22,6 +23,7 @@ export function ContentVersionBadge({
   const t = useT();
   const backend = useContentBackend(virtualMcpId, branch);
   if (backend.kind === "pending") return null;
+  if (backend.kind === "unavailable" && backend.source !== "local") return null;
   const v8 = isProtocolProject(backend);
   return (
     <Tooltip>
