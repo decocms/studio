@@ -81,6 +81,15 @@ describe("page-sections", () => {
     expect(validateBlockId("MyNewBlock", decofile)).toBeNull();
     // Block keys may contain spaces (see deco-block-key.ts).
     expect(validateBlockId("PLP Air Fryer", decofile)).toBeNull();
+    const meta = {
+      manifest: {
+        blocks: { sections: { hero: { $ref: "#/definitions/aGVybw==" } } },
+      },
+      schema: {},
+    };
+    expect(validateBlockId("hero", decofile, meta)).toContain("block type");
+    expect(validateBlockId("hero", decofile)).toBeNull();
+    expect(validateBlockId("Hero Home", decofile, meta)).toBeNull();
   });
 
   it("canMakeSectionReusable rejects saved, multivariate, and hidden sections", () => {

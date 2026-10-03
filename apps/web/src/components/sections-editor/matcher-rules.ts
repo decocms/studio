@@ -59,7 +59,7 @@ export function listSavedMatcherBlocks(
   const entries: SavedMatcherBlock[] = [];
 
   for (const [key, val] of Object.entries(decofile)) {
-    if (key.includes("/") || !isSavedBlockResolveType(key)) continue;
+    if (key.includes("/") || !isSavedBlockResolveType(key, meta)) continue;
     if (isAutoPreviewBlockKey(key)) continue;
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
 
@@ -85,7 +85,9 @@ export function isSavedMatcherBlockReference(
 ): boolean {
   if (!rule) return false;
   const rt = rule.__resolveType;
-  if (typeof rt !== "string" || !isSavedBlockResolveType(rt)) return false;
+  if (typeof rt !== "string" || !isSavedBlockResolveType(rt, meta)) {
+    return false;
+  }
   if (!Object.hasOwn(decofile, rt)) return false;
 
   const blockData = decofile[rt] as Record<string, unknown>;

@@ -1,5 +1,13 @@
 import { defaultVariantRule } from "../section-types";
 import { isDefaultVariantRule } from "../section-variants";
+import { unwrapLazy, wrapLazy } from "../lazy-value";
+
+/**
+ * Next-major Blocks' built-in `multivariate` keeps each variant's value in a
+ * `lazy` block, so only the chosen one resolves. The legacy names
+ * (`website/flags/multivariate*.ts`) store plain values.
+ */
+const LAZY_VALUES_MULTIVARIATE = "multivariate";
 
 export interface MultivariateVariant {
   rule: Record<string, unknown>;
@@ -25,11 +33,15 @@ export function wrapAsMultivariate(
   value: unknown,
   resolveType: string,
 ): MultivariateWrapper {
+  const stored = () =>
+    resolveType === LAZY_VALUES_MULTIVARIATE
+      ? wrapLazy(structuredClone(value))
+      : structuredClone(value);
   return {
     __resolveType: resolveType,
     variants: [
-      { rule: defaultVariantRule(), value: structuredClone(value) },
-      { rule: defaultVariantRule(), value: structuredClone(value) },
+      { rule: defaultVariantRule(), value: stored() },
+      { rule: defaultVariantRule(), value: stored() },
     ],
   };
 }
@@ -42,9 +54,10 @@ export function flattenMultivariate(wrapper: MultivariateWrapper): unknown {
   const always = variants.find((v) =>
     isDefaultVariantRule(v.rule as Record<string, unknown> | undefined),
   );
-  if (always) return always.value;
-
-  return variants[variants.length - 1]?.value;
+  const picked = always ?? variants[variants.length - 1];
+  return wrapper.__resolveType === LAZY_VALUES_MULTIVARIATE
+    ? unwrapLazy(picked?.value)
+    : picked?.value;
 }
 
 /** Add a variant cloned from last. */

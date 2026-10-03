@@ -122,6 +122,8 @@ import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { contentCapabilities } from "@/components/sections-editor/content-backend";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -254,8 +256,12 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const lifecycle = useSandboxLifecycle();
   const { runtime, previewServerUrl } = useSessionRuntime(virtualMcpId);
   const fastPreviewActive = runtime === "cms";
+  // A content-protocol backend has nothing to boot either.
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const protocolActive =
+    contentBackend.kind === "protocol" || contentBackend.kind === "unavailable";
   const gate = resolveContentSandboxGate({
-    fastPreviewActive,
+    fastPreviewActive: fastPreviewActive || protocolActive,
     previewState: lifecycle.previewState,
     lifecyclePhase: vmEvents.lifecycle.phase,
   });
@@ -281,9 +287,14 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       branch={branch}
-      previewUrl={lifecycle.previewUrl}
+      // The protocol never runs site code: nothing executes against a pod.
+      previewUrl={protocolActive ? null : lifecycle.previewUrl}
       sitePreviewUrl={
-        fastPreviewActive ? previewServerUrl : lifecycle.previewUrl
+        contentBackend.kind === "protocol" && contentBackend.source === "local"
+          ? (contentBackend.describe.preview?.origin ?? null)
+          : fastPreviewActive
+            ? previewServerUrl
+            : lifecycle.previewUrl
       }
       deepLinkPage={deepLinkPage}
       devServerReady={gate.devServerReady}
@@ -343,6 +354,9 @@ function ContentBrowserReady({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
+  const contentCaps = contentCapabilities(
+    useContentBackend(virtualMcpId, branch),
+  );
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
@@ -454,7 +468,7 @@ function ContentBrowserReady({
 
   const { catalog: appCatalog, isLoading: appCatalogLoading } =
     useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
-      enabled: activeCollection === "apps",
+      enabled: contentCaps.installApps && activeCollection === "apps",
     });
 
   const blogSupport = useBlogSupport({
@@ -530,8 +544,12 @@ function ContentBrowserReady({
     ? allBlogEntries[activeCollection]
     : [];
 
-  const loadersCount = countAvailableRunnables(meta, "loaders");
-  const actionsCount = countAvailableRunnables(meta, "actions");
+  const loadersCount = contentCaps.runBlocks
+    ? countAvailableRunnables(meta, "loaders")
+    : 0;
+  const actionsCount = contentCaps.runBlocks
+    ? countAvailableRunnables(meta, "actions")
+    : 0;
 
   // Loader/action-only sites are still editable — don't gate them out.
   if (
@@ -552,7 +570,7 @@ function ContentBrowserReady({
   const counts: CollectionCounts = {
     pages: pages.length,
     sections: globalSections.length,
-    apps: appCatalog.length,
+    apps: contentCaps.installApps ? appCatalog.length : 0,
     loaders: loadersCount,
     actions: actionsCount,
     redirects: redirects.length,
@@ -1747,7 +1765,7 @@ function ItemList({
                     selection?.collection === "redirects" &&
                     selection.key === entry.key
                   }
-                  trailing={<RedirectTypeBadge type={entry.type} />}
+                  trailing={<RedirectTypeBadge redirect={entry} />}
                   onClick={() =>
                     onSelect({ collection: "redirects", key: entry.key })
                   }

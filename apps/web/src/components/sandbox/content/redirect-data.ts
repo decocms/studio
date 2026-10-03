@@ -9,6 +9,14 @@
  * The site's routes include an inline `website/loaders/redirects.ts` (plural)
  * that auto-discovers ALL such blocks via `resolveTypeSelector`, so CRUD here
  * is just create/update/delete of these blocks — no routes/site wiring needed.
+ *
+ * Next-major Blocks also reads a flat shape, the built-in `redirect`:
+ *
+ *   { "__resolveType": "redirect", from, to, permanent, status?, discardQueryParameters? }
+ *
+ * where `status` (301/302/307/308) wins over `permanent` (301, else 302). An
+ * entry keeps the shape it was read in; new redirects use the nested shape,
+ * which every site understands.
  */
 
 export const REDIRECT_RESOLVE_TYPE = "website/loaders/redirect.ts";
@@ -23,6 +31,12 @@ export const REDIRECT_LOADER_RESOLVE_TYPES: ReadonlySet<string> = new Set([
   "website/loaders/redirects.ts",
 ]);
 
+/** The next-major built-in, stored flat. */
+const FLAT_REDIRECT_RESOLVE_TYPE = "redirect";
+
+export const REDIRECT_STATUS_CODES = [301, 302, 307, 308] as const;
+export type RedirectStatusCode = (typeof REDIRECT_STATUS_CODES)[number];
+
 export type RedirectType = "temporary" | "permanent";
 
 /** HTTP status the deco redirect handler emits for each type. */
@@ -31,29 +45,54 @@ export const REDIRECT_STATUS: Record<RedirectType, number> = {
   permanent: 301,
 };
 
-export interface RedirectEntry {
-  key: string;
-  from: string;
-  to: string;
-  type: RedirectType;
-  discardQueryParameters: boolean;
-}
-
 export interface RedirectPayload {
   from: string;
   to: string;
   type: RedirectType;
   discardQueryParameters: boolean;
+  /** Stored in the flat (`redirect`) shape; absent for the nested one. */
+  flat?: true;
+  /** Flat shape only: an explicit status, which wins over `type`. */
+  status?: RedirectStatusCode;
+}
+
+export interface RedirectEntry extends RedirectPayload {
+  key: string;
+}
+
+/** The status code a redirect answers with. A flat temporary one is a 302. */
+export function redirectStatus(payload: RedirectPayload): number {
+  if (!payload.flat) return REDIRECT_STATUS[payload.type];
+  return payload.status ?? (payload.type === "permanent" ? 301 : 302);
 }
 
 const asStr = (v: unknown): string => (typeof v === "string" ? v : "");
 const asType = (v: unknown): RedirectType =>
   v === "permanent" ? "permanent" : "temporary";
 
+const asStatus = (v: unknown): RedirectStatusCode | undefined =>
+  REDIRECT_STATUS_CODES.find((code) => code === v);
+
+/** A flat `redirect` block, defensively narrowed. */
+function readFlatRedirect(block: Record<string, unknown>): RedirectPayload {
+  const status = asStatus(block.status);
+  return {
+    from: asStr(block.from),
+    to: asStr(block.to),
+    type: block.permanent === true ? "permanent" : "temporary",
+    discardQueryParameters: block.discardQueryParameters === true,
+    flat: true,
+    ...(status ? { status } : {}),
+  };
+}
+
 /** The `redirect` sub-object of a redirect block, defensively narrowed. */
 function readRedirect(
   block: Record<string, unknown> | undefined,
 ): RedirectPayload {
+  if (block?.__resolveType === FLAT_REDIRECT_RESOLVE_TYPE) {
+    return readFlatRedirect(block);
+  }
   const raw =
     block &&
     typeof block.redirect === "object" &&
@@ -77,9 +116,13 @@ export function extractRedirects(
   for (const [key, val] of Object.entries(decofile)) {
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
     const obj = val as Record<string, unknown>;
-    if (obj.__resolveType !== REDIRECT_RESOLVE_TYPE) continue;
-    const { from, to, type, discardQueryParameters } = readRedirect(obj);
-    out.push({ key, from, to, type, discardQueryParameters });
+    if (
+      obj.__resolveType !== REDIRECT_RESOLVE_TYPE &&
+      obj.__resolveType !== FLAT_REDIRECT_RESOLVE_TYPE
+    ) {
+      continue;
+    }
+    out.push({ key, ...readRedirect(obj) });
   }
   return out;
 }
@@ -95,6 +138,18 @@ export function getRedirectPayload(
 export function buildRedirectBlock(
   payload: RedirectPayload,
 ): Record<string, unknown> {
+  if (payload.flat) {
+    return {
+      __resolveType: FLAT_REDIRECT_RESOLVE_TYPE,
+      from: payload.from,
+      to: payload.to,
+      permanent: payload.type === "permanent",
+      ...(payload.status ? { status: payload.status } : {}),
+      ...(payload.discardQueryParameters
+        ? { discardQueryParameters: true }
+        : {}),
+    };
+  }
   const redirect: Record<string, unknown> = {
     from: payload.from,
     to: payload.to,

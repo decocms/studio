@@ -226,7 +226,7 @@ function catalogEntryFromSchemaRef(
   meta: LiveMeta,
   ref: { resolveType: string; title: string; description?: string },
 ): SectionCatalogEntry {
-  const isSaved = isSavedBlockResolveType(ref.resolveType);
+  const isSaved = isSavedBlockResolveType(ref.resolveType, meta);
   const metadata = isSaved
     ? {}
     : resolveBlockSchemaMetadata(ref.resolveType, meta);
@@ -257,7 +257,7 @@ export function extractSectionCatalog(
 
   const addEntry = (entry: SectionCatalogEntry) => {
     if (shouldSkipSectionResolveType(entry.resolveType)) return;
-    if (isSavedBlockResolveType(entry.resolveType)) {
+    if (isSavedBlockResolveType(entry.resolveType, meta)) {
       if (!isAutoPreviewBlockKey(entry.resolveType)) {
         byResolveType.set(entry.resolveType, entry);
       }
