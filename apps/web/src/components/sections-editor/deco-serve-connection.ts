@@ -1,8 +1,7 @@
 /**
  * A connection to `deco serve`, the content-protocol server the Blocks CLI
  * runs on the editor's machine. The CLI prints a link,
- * `<studio>/site-editor#endpoint=<url>&token=<token>` (`/connect#…` from older
- * CLIs redirects there); the token travels in the fragment so it never reaches
+ * `<studio>/site-editor#endpoint=<url>&token=<token>`; the token travels in the fragment so it never reaches
  * logs or `Referer` headers. Signed in, the same link pasted into the draft
  * selector's "Local" option connects a project to it.
  *

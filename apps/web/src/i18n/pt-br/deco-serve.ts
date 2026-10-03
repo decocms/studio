@@ -7,7 +7,8 @@ export const decoServe = {
     "Editando os arquivos da sua máquina pelo deco serve. Nada é commitado: revise as mudanças e faça o commit você mesmo.",
   "decoServe.connect.invalidLinkDescription":
     "Rode o deco serve e abra o link do editor do site que ele mostra.",
-  "decoServe.connect.invalidLinkTitle": "Este link de conexão está incompleto",
+  "decoServe.connect.invalidLinkTitle":
+    "Este link do editor de sites está incompleto",
   "decoServe.connect.reaching": "Conectando a {endpoint}…",
   "decoServe.connect.retry": "Tentar novamente",
   "decoServe.siteEditor.empty": "Escolha uma página ou seção para editar.",

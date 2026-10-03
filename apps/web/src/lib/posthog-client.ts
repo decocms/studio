@@ -45,7 +45,7 @@ export function sanitizeAnalyticsUrl(value: string): string {
     }
 
     // deco serve links carry their loopback token in the fragment
-    // (/site-editor#endpoint=…&token=…, /connect#…).
+    // (/site-editor#endpoint=…&token=…).
     if (url.hash.includes("token=")) {
       const hashParams = new URLSearchParams(url.hash.slice(1));
       hashParams.delete("token");

@@ -5,7 +5,7 @@ export const decoServe = {
     "Editing the files on your machine through deco serve. Nothing is committed: review the changes and commit them yourself.",
   "decoServe.connect.invalidLinkDescription":
     "Run deco serve and open the site editor link it prints.",
-  "decoServe.connect.invalidLinkTitle": "This connect link is incomplete",
+  "decoServe.connect.invalidLinkTitle": "This site editor link is incomplete",
   "decoServe.connect.reaching": "Reaching {endpoint}…",
   "decoServe.connect.retry": "Try again",
   "decoServe.siteEditor.empty": "Pick a page or a section to edit.",

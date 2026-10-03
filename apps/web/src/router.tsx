@@ -319,15 +319,6 @@ const siteEditorRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
 });
 
-// Older `deco serve` builds print `/connect#…`: same link, same editor.
-const connectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/connect",
-  beforeLoad: ({ location }) => {
-    throw redirect({ to: "/site-editor", hash: location.hash, replace: true });
-  },
-});
-
 // Public report, readable without a session — hence outside the org shell.
 const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -1633,7 +1624,6 @@ const routeTree = rootRoute.addChildren([
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
   siteEditorRoute,
-  connectRoute,
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,

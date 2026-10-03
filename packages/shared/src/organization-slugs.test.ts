@@ -15,7 +15,6 @@ describe("reserved organization slugs", () => {
       "choose-editor",
       "cli",
       "commerce-onboarding",
-      "connect",
       "dbos-queue-depth",
       "health",
       "hosted-run-pending",
