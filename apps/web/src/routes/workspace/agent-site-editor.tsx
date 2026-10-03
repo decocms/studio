@@ -15,6 +15,9 @@ import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-dra
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
 import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
+import { DecoServeChip } from "@/components/sections-editor/deco-serve-chip";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 
 function SiteEditorActions() {
   const session = useOptionalChatTask();
@@ -23,27 +26,36 @@ function SiteEditorActions() {
   const runtime = useSessionRuntime(entity?.id).runtime;
   // Local mode edits are ephemeral (nothing to promote) → withhold publish.
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
+  // A connected `deco serve` edits the working tree: the developer commits.
+  const { connection: serveConnection } = useDecoServeConnection(entity?.id);
+  const servingLocally =
+    useOrgFlag("site_editor_content_protocol") && !!serveConnection;
   if (!entity) return null;
   return (
     <>
+      {servingLocally && (
+        <DecoServeChip virtualMcpId={entity.id} branch={currentBranch} />
+      )}
       <div className="flex min-w-0 shrink items-center justify-end">
         <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
       </div>
-      {!localPreviewUrl && agentShowsRepositoryHeaderActions(entity) && (
-        <>
-          <Separator
-            orientation="vertical"
-            className="mx-1 data-[orientation=vertical]:h-4"
-          />
-          <div className="flex shrink-0 items-center justify-end gap-1">
-            {runtime === "cms" ? (
-              <CmsHeaderActions virtualMcpId={entity.id} />
-            ) : (
-              <HeaderActions virtualMcpId={entity.id} />
-            )}
-          </div>
-        </>
-      )}
+      {!localPreviewUrl &&
+        !servingLocally &&
+        agentShowsRepositoryHeaderActions(entity) && (
+          <>
+            <Separator
+              orientation="vertical"
+              className="mx-1 data-[orientation=vertical]:h-4"
+            />
+            <div className="flex shrink-0 items-center justify-end gap-1">
+              {runtime === "cms" ? (
+                <CmsHeaderActions virtualMcpId={entity.id} />
+              ) : (
+                <HeaderActions virtualMcpId={entity.id} />
+              )}
+            </div>
+          </>
+        )}
     </>
   );
 }
@@ -55,8 +67,12 @@ function SiteEditorDrawer() {
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
+  const { connection: serveConnection } = useDecoServeConnection(entity?.id);
+  const servingLocally =
+    useOrgFlag("site_editor_content_protocol") && !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
+    !servingLocally &&
     shouldShowTerminalDrawer({
       hasClonableSource:
         agentHasClonableSource(entity?.metadata) ||

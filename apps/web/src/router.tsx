@@ -311,6 +311,14 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
+// `deco serve` connect link: `/connect#endpoint=…&token=…`. Root route so the
+// fragment is read before the login redirect, which would drop it.
+const connectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/connect",
+  component: lazyRouteComponent(() => import("./routes/connect.tsx")),
+});
+
 // Public report, readable without a session — hence outside the org shell.
 const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -1597,7 +1605,15 @@ const threadRouteWithChildren = threadRoute.addChildren([
   threadSessionWithChildren,
 ]);
 
+// Binds a `deco serve` connection to one of the org's projects.
+const orgConnectRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/connect",
+  component: lazyRouteComponent(() => import("./routes/orgs/connect.tsx")),
+});
+
 const orgRouteWithChildren = orgRoute.addChildren([
+  orgConnectRoute,
   threadRouteWithChildren,
   orgMembersRedirectRoute,
   settingsWithChildren,
@@ -1615,6 +1631,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
+  connectRoute,
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,
