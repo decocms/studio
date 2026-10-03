@@ -29,7 +29,7 @@ interface UseDecofileParams {
  * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
  * branch's decofile and vice-versa.
  */
-export function decofileCacheKey(input: {
+function decofileCacheKey(input: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;

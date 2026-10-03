@@ -25,7 +25,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
-import { useDecofile } from "./use-decofile";
+import { useDecofile, useDecofileCacheKey } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import {
@@ -223,9 +223,8 @@ export function SectionsEditor({
   });
   // The content protocol never runs site code: no rendered gallery (cards show
   // the schema's name, description and image) and no loader-backed pickers.
-  const contentCaps = contentCapabilities(
-    useContentBackend(virtualMcpId, branch),
-  );
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const contentCaps = contentCapabilities(contentBackend);
   const galleryAvailable = !!sectionPreviewBase || !contentCaps.livePreviews;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
@@ -328,7 +327,15 @@ export function SectionsEditor({
   );
 
   const queryClient = useQueryClient();
-  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const protocolDecofileCacheKey = useDecofileCacheKey({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
+  const decofileCacheKey =
+    contentBackend.kind === "protocol"
+      ? protocolDecofileCacheKey
+      : `${orgSlug}/${virtualMcpId}/${branch}`;
   const pageBlockSave = useDebouncedSaveBlock({
     orgSlug,
     virtualMcpId,

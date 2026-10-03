@@ -29,7 +29,7 @@ interface Probe {
 }
 
 /** The Studio GitHub backend's endpoint for one project and branch. */
-export function githubContentEndpoint(params: {
+function githubContentEndpoint(params: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
