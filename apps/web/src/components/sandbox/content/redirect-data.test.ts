@@ -162,6 +162,16 @@ describe("flat redirects (next-major `redirect`)", () => {
     expect(buildRedirectBlock(getRedirectPayload(minimal))).toEqual(minimal);
   });
 
+  test("keep the fields the editor doesn't know", () => {
+    const block = { ...flat, name: "Summer sale", status: 308 };
+    const edited = buildRedirectBlock(
+      { ...getRedirectPayload(block), status: undefined },
+      block,
+    );
+    expect(edited.name).toBe("Summer sale");
+    expect(edited).not.toHaveProperty("status");
+  });
+
   test("answer with the status that wins", () => {
     const read = (block: Record<string, unknown>) =>
       redirectStatus(getRedirectPayload(block));
