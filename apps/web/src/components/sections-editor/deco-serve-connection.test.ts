@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isLoopbackEndpoint,
   parseConnectFragment,
+  parseConnectLink,
   parseStoredConnection,
 } from "./deco-serve-connection";
 
@@ -69,5 +70,26 @@ describe("parseStoredConnection", () => {
     expect(parseStoredConnection(null)).toBeNull();
     expect(parseStoredConnection("http://127.0.0.1:1/rpc")).toBeNull();
     expect(parseStoredConnection({ endpoint: "x", token: "" })).toBeNull();
+  });
+});
+
+describe("parseConnectLink", () => {
+  const endpoint = encodeURIComponent("http://127.0.0.1:4545/rpc");
+
+  test("reads a pasted site editor or connect link", () => {
+    for (const path of ["/site-editor", "/connect"]) {
+      expect(
+        parseConnectLink(
+          `  https://studio.decocms.com${path}#endpoint=${endpoint}&token=t1  `,
+        ),
+      ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc", token: "t1" });
+    }
+  });
+
+  test("anything else is not a connect link", () => {
+    expect(parseConnectLink("https://my-tunnel.example.com")).toBeNull();
+    expect(parseConnectLink("http://localhost:8000")).toBeNull();
+    expect(parseConnectLink("localhost:8000")).toBeNull();
+    expect(parseConnectLink("")).toBeNull();
   });
 });

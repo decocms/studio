@@ -773,8 +773,6 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
-  // The org a bare entry (a `deco serve` connect link) lands in.
-  defaultOrgSlug: () => ["default-org-slug"] as const,
   // The `?__draft=` grant of a content-protocol project on GitHub.
   draftGrant: (cacheKey: string) => ["draft-grant", cacheKey] as const,
   // The repo's committed `deno.json`, read for its pinned deco-apps version.

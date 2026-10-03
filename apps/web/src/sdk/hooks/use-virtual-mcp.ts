@@ -5,7 +5,11 @@
  * These hooks offer a reactive interface for accessing and manipulating virtual MCPs.
  */
 
-import { type QueryClient, useQuery } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { useProjectContext } from "../context";
@@ -14,7 +18,6 @@ import {
   collectionItemQueryOptions,
   collectionListQueryOptions,
   useCollectionActions,
-  useCollectionItem,
   useCollectionList,
   type CollectionFilter,
   type UseCollectionListOptions,
@@ -23,6 +26,7 @@ import {
   mcpClientQueryOptions,
   useMCPClient,
   useMCPClientNonBlocking,
+  useMCPClientOptional,
 } from "./use-mcp-client";
 import { SELF_MCP_ALIAS_ID } from "@decocms/shared/sdk/lib/constants";
 import { KEYS } from "@/lib/query-keys";
@@ -111,10 +115,14 @@ export function useVirtualMCPNonBlocking(
   virtualMcpId: string | null | undefined,
 ): VirtualMCPEntity | null {
   const { org } = useProjectContext();
-  const client = useMCPClientNonBlocking({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
+  // No org (`/site-editor`): nothing to connect to.
+  const { data: client = null } = useQuery({
+    ...mcpClientQueryOptions({
+      connectionId: SELF_MCP_ALIAS_ID,
+      orgId: org.id,
+      orgSlug: org.slug,
+    }),
+    enabled: !!org.id,
   });
 
   const { data } = useQuery({
@@ -208,22 +216,25 @@ export function useVirtualMCP(
   virtualMcpId: string | null | undefined,
 ): VirtualMCPEntity | null {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
+  // Outside an org (the account-less `/site-editor`) there's no project to
+  // read: skip the client, and the item reads as null without a request.
+  const client = useMCPClientOptional({
+    connectionId: org.id ? SELF_MCP_ALIAS_ID : undefined,
     orgId: org.id,
     orgSlug: org.slug,
   });
 
   // If null/undefined, return null (use default virtual MCP)
-  // Use collection item hook for database virtual MCPs
-  const dbVirtualMCP = useCollectionItem<VirtualMCPEntity>(
-    org.id,
-    "VIRTUAL_MCP",
-    virtualMcpId ?? undefined,
-    client,
+  const { data } = useSuspenseQuery(
+    collectionItemQueryOptions<VirtualMCPEntity>(
+      org.id,
+      "VIRTUAL_MCP",
+      virtualMcpId ?? undefined,
+      client,
+    ),
   );
 
-  return dbVirtualMCP;
+  return data?.item ?? null;
 }
 
 /**

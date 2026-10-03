@@ -1,8 +1,10 @@
 /**
  * A connection to `deco serve`, the content-protocol server the Blocks CLI
- * runs on the editor's machine. The CLI prints a connect link,
- * `<studio>/connect#endpoint=<url>&token=<token>`; the token travels in the
- * fragment so it never reaches logs or `Referer` headers.
+ * runs on the editor's machine. The CLI prints a link,
+ * `<studio>/site-editor#endpoint=<url>&token=<token>` (`/connect#…` from older
+ * CLIs redirects there); the token travels in the fragment so it never reaches
+ * logs or `Referer` headers. Signed in, the same link pasted into the draft
+ * selector's "Local" option connects a project to it.
  *
  * Only loopback endpoints are accepted: a link pointing anywhere else would
  * send the editor's edits, uploads and secrets (encrypted to that server's
@@ -58,32 +60,44 @@ export function parseStoredConnection(
   return parsed.success ? parsed.data : null;
 }
 
-const PENDING_KEY = "studio:deco-serve-pending";
-
 /**
- * Holds a connect link's connection for this tab until a project is picked,
- * so it survives the login redirect (which keeps no URL fragment).
+ * A whole connect link pasted somewhere (the draft selector's "Local"
+ * option): its fragment's connection, or `null` for any other text.
  */
-export function stashPendingConnection(connection: DecoServeConnection): void {
+export function parseConnectLink(value: string): DecoServeConnection | null {
   try {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify(connection));
+    return parseConnectFragment(new URL(value.trim()).hash);
   } catch {
-    // Storage blocked: the flow then asks for the link again.
+    return null;
   }
 }
 
-export function readPendingConnection(): DecoServeConnection | null {
+const TAB_KEY = "studio:deco-serve-tab";
+
+/**
+ * Holds `/site-editor`'s connection for this tab only, so a reload keeps it
+ * once the token has left the address bar.
+ */
+export function saveTabConnection(connection: DecoServeConnection): void {
   try {
-    const raw = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.setItem(TAB_KEY, JSON.stringify(connection));
+  } catch {
+    // Storage blocked: a reload then asks for the link again.
+  }
+}
+
+export function readTabConnection(): DecoServeConnection | null {
+  try {
+    const raw = sessionStorage.getItem(TAB_KEY);
     return raw ? parseStoredConnection(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 }
 
-export function clearPendingConnection(): void {
+export function clearTabConnection(): void {
   try {
-    sessionStorage.removeItem(PENDING_KEY);
+    sessionStorage.removeItem(TAB_KEY);
   } catch {
     // Nothing to clear.
   }

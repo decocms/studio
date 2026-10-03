@@ -18,8 +18,8 @@ import { useT } from "@/i18n/use-t";
 import * as z from "zod";
 
 import { listOrganizationsCached } from "@/lib/auth-client";
-import { saveLastLocation } from "@/lib/last-location";
-import { resolveDefaultOrgSlug } from "@/lib/default-org";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
+import { readLastLocation, saveLastLocation } from "@/lib/last-location";
 import {
   canonicalProjectPathFromLegacyAgents,
   isCanonicalAgentIdSegment,
@@ -202,12 +202,44 @@ const homeRoute = createRoute({
     // Restore the last ORG the user was in, but always land on its HOME (the
     // Super Agent) — never resume the last conversation. Cold entry / a fresh
     // tab is a "start from home" gesture (ChatGPT-style), so we deliberately
-    // ignore any recorded taskId here.
-    const org = await resolveDefaultOrgSlug();
-    if (org) throw redirect({ to: "/$org", params: { org } });
-    // The list call failed: skip redirect logic rather than misfire on a
-    // transient API failure.
-    if (org === undefined) return;
+    // ignore any recorded taskId here. lastLocation's org is recorded on every
+    // org-scoped navigation (orgRoute.beforeLoad), so it's current even after
+    // an in-app org switch that the queryFn-driven lastOrgSlug can miss. Reads
+    // are synchronous so cold entry stays instant. A stale org self-heals:
+    // OrgAccessGate clears it and bounces back to "/".
+    const lastLocation = readLastLocation();
+    if (lastLocation) {
+      throw redirect({ to: "/$org", params: { org: lastLocation.org } });
+    }
+
+    // Fast path: redirect returning users immediately from the cached slug,
+    // WITHOUT awaiting the org-list network call. This is what keeps a cold
+    // load from blocking on a round-trip (the previous blank/white screen).
+    // The org layout validates membership via getFullOrganization, and a stale
+    // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
+    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (lastOrgSlug) {
+      throw redirect({
+        to: "/$org",
+        params: { org: lastOrgSlug },
+      });
+    }
+
+    // No cached slug — fetch the list (cached) to pick a destination.
+    const { data: orgs } = await listOrganizationsCached();
+
+    // If the list call failed, skip redirect logic to avoid a misfire on a
+    // transient API failure. Archived orgs are already filtered by the helper.
+    if (!orgs) return;
+
+    // Redirect to first available org (every user gets a default org on signup)
+    const firstOrg = orgs[0];
+    if (firstOrg) {
+      throw redirect({
+        to: "/$org",
+        params: { org: firstOrg.slug },
+      });
+    }
 
     // No orgs at all — send to onboarding
     throw redirect({ to: "/onboarding" });
@@ -279,12 +311,21 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
-// `deco serve` connect link: `/connect#endpoint=…&token=…`. Root route so the
-// fragment is read before the login redirect, which would drop it.
+// The account-less site editor over `deco serve`, which prints
+// `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in.
+const siteEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/site-editor",
+  component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
+});
+
+// Older `deco serve` builds print `/connect#…`: same link, same editor.
 const connectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/connect",
-  component: lazyRouteComponent(() => import("./routes/connect.tsx")),
+  beforeLoad: ({ location }) => {
+    throw redirect({ to: "/site-editor", hash: location.hash, replace: true });
+  },
 });
 
 // Public report, readable without a session — hence outside the org shell.
@@ -1573,15 +1614,7 @@ const threadRouteWithChildren = threadRoute.addChildren([
   threadSessionWithChildren,
 ]);
 
-// Binds a `deco serve` connection to one of the org's projects.
-const orgConnectRoute = createRoute({
-  getParentRoute: () => orgRoute,
-  path: "/connect",
-  component: lazyRouteComponent(() => import("./routes/orgs/connect.tsx")),
-});
-
 const orgRouteWithChildren = orgRoute.addChildren([
-  orgConnectRoute,
   threadRouteWithChildren,
   orgMembersRedirectRoute,
   settingsWithChildren,
@@ -1599,6 +1632,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
+  siteEditorRoute,
   connectRoute,
   reportRoute,
   loginRoute,
