@@ -73,6 +73,7 @@ export function useContentBackend(
   const { runtime } = useSessionRuntime(virtualMcpId);
 
   const githubEnabled =
+    !!org.slug &&
     !!flagEnabled &&
     !connection &&
     !tunnel &&
@@ -105,7 +106,8 @@ export function useContentBackend(
       query.state.status === "error" ? PROBE_RETRY_MS : false,
   });
 
-  const localEnabled = !!flagEnabled && !!connection;
+  // No flag: a connection exists only once its link was pasted or opened.
+  const localEnabled = !!connection;
   const local = useQuery({
     queryKey: KEYS.contentBackend(
       org.slug,

@@ -15,20 +15,36 @@ describe("selectContentBackend", () => {
     githubSchema: "present" as const,
   };
 
-  test("waits for the org flag", () => {
+  test("waits for the org flag before the GitHub backend", () => {
     expect(selectContentBackend({ ...base, flagEnabled: undefined })).toBe(
       "pending",
     );
-  });
-
-  test("the flag off is always legacy", () => {
+    // The tunnel and sandbox sessions don't need the flag to be known.
     expect(
       selectContentBackend({
         ...base,
-        flagEnabled: false,
-        hasServeConnection: true,
+        flagEnabled: undefined,
+        hasLocalTunnel: true,
       }),
     ).toBe("legacy");
+  });
+
+  test("the flag off keeps the GitHub backend legacy", () => {
+    expect(selectContentBackend({ ...base, flagEnabled: false })).toBe(
+      "legacy",
+    );
+  });
+
+  test("a connected deco serve needs no flag", () => {
+    for (const flagEnabled of [false, undefined]) {
+      expect(
+        selectContentBackend({
+          ...base,
+          flagEnabled,
+          hasServeConnection: true,
+        }),
+      ).toBe("protocol-local");
+    }
   });
 
   test("a connected deco serve wins, over the tunnel and any runtime", () => {
