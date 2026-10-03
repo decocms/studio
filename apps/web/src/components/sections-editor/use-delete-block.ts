@@ -16,7 +16,7 @@ import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
-import { decofileCacheKey, useDecofileCacheKey } from "./use-decofile";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
@@ -51,14 +51,7 @@ export function useDeleteBlock({
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
   const backend = useContentBackend(virtualMcpId, branch);
   const protocol = backend.kind === "protocol" ? backend : null;
-  const protocolCacheKey = useDecofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const cacheKey = protocol
-    ? protocolCacheKey
-    : decofileCacheKey({ orgSlug, virtualMcpId, branch, localPreviewUrl });
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
@@ -68,21 +61,10 @@ export function useDeleteBlock({
         await applyProtocolPatch(
           queryClient,
           protocol,
-          { orgSlug, virtualMcpId, branch },
+          { orgSlug, virtualMcpId, branch, threadId },
           cacheKey,
           { delete: [blockKey] },
         );
-        if (protocol.source === "github") {
-          // The commit moved the branch head; refresh the header's branch meta.
-          await queryClient.invalidateQueries({
-            queryKey: sandboxGitStatusQueryKey({
-              orgSlug,
-              virtualMcpId,
-              branch,
-              threadId,
-            }),
-          });
-        }
         return { ok: true as const, existed: true };
       }
       // Local: no persistence — the optimistic cache removal is the delete.

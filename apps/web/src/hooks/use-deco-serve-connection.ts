@@ -3,10 +3,7 @@ import {
   parseStoredConnection,
 } from "@/components/sections-editor/deco-serve-connection";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  localStorageQueryKey,
-  useLocalStorage,
-} from "@/hooks/use-local-storage";
+import { useLocalStorage, writeLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
 export interface DecoServeConnectionState {
@@ -36,13 +33,10 @@ export function useDecoServeConnection(
 /** Connects a project picked by its id (the connect flow's project list). */
 export function useSaveDecoServeConnection() {
   const queryClient = useQueryClient();
-  return (virtualMcpId: string, connection: DecoServeConnection) => {
-    const key = LOCALSTORAGE_KEYS.decoServeConnection(virtualMcpId);
-    try {
-      localStorage.setItem(key, JSON.stringify(connection));
-    } catch {
-      // Storage blocked: the connection lasts for this session only.
-    }
-    queryClient.setQueryData(localStorageQueryKey(key), connection);
-  };
+  return (virtualMcpId: string, connection: DecoServeConnection) =>
+    writeLocalStorage(
+      queryClient,
+      LOCALSTORAGE_KEYS.decoServeConnection(virtualMcpId),
+      connection,
+    );
 }

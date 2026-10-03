@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isLoopbackEndpoint,
   parseConnectFragment,
   parseStoredConnection,
 } from "./deco-serve-connection";
@@ -27,6 +28,35 @@ describe("parseConnectFragment", () => {
       parseConnectFragment(
         `#endpoint=http://127.0.0.1/rpc&token=${"x".repeat(2000)}`,
       ),
+    ).toBeNull();
+  });
+});
+
+describe("isLoopbackEndpoint", () => {
+  test("accepts only this machine", () => {
+    for (const endpoint of [
+      "http://127.0.0.1:4545/rpc",
+      "http://localhost:4545/rpc",
+      "http://[::1]:4545/rpc",
+      "https://site.localhost/rpc",
+    ]) {
+      expect(isLoopbackEndpoint(endpoint)).toBe(true);
+    }
+    for (const endpoint of [
+      "https://evil.example/rpc",
+      "http://127.0.0.1.evil.example/rpc",
+      "http://localhost.evil.example/rpc",
+      "http://10.0.0.2:4545/rpc",
+      "ftp://127.0.0.1/rpc",
+      "not a url",
+    ]) {
+      expect(isLoopbackEndpoint(endpoint)).toBe(false);
+    }
+  });
+
+  test("a connect link to another host is refused", () => {
+    expect(
+      parseConnectFragment("#endpoint=https://evil.example/rpc&token=x"),
     ).toBeNull();
   });
 });

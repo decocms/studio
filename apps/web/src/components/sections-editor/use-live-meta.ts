@@ -11,7 +11,12 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
 import { useContentBackend } from "./use-content-backend";
-import { readProtocolMeta } from "./content-protocol-api";
+import { useDecofileCacheKey } from "./use-decofile";
+import {
+  pollProtocolContent,
+  protocolMetaQueryKey,
+  protocolUnavailableError,
+} from "./content-protocol-api";
 
 interface UseLiveMetaParams {
   orgSlug: string;
@@ -121,30 +126,28 @@ export function useLiveMeta(
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   const protocol = backend.kind === "protocol" ? backend : null;
   const queryClient = useQueryClient();
+  const decofileKey = useDecofileCacheKey(params ?? null);
   const queryKey = params
     ? protocol
-      ? liveMetaQueryKey({
-          ...params,
-          previewUrl: `protocol${protocol.cacheKeySuffix}`,
-          productionUrl: null,
-        })
+      ? protocolMetaQueryKey(params, protocol)
       : liveMetaQueryKey({ ...params, previewUrl, productionUrl })
     : KEYS.liveMeta("");
   return useQuery({
     queryKey,
     queryFn: async () => {
       if (protocol) {
-        return readProtocolMeta(
+        // The same batched poll as the decofile's: one request for both.
+        const { meta } = await pollProtocolContent(
           queryClient,
           protocol,
-          queryKey,
-          `schema:${queryKey.join("/")}`,
+          params!,
+          decofileKey,
         );
+        if (meta instanceof Error) throw meta;
+        return meta;
       }
       if (backend.kind === "unavailable") {
-        const err = new Error("live meta unavailable (deco serve unreachable)");
-        (err as { status?: number }).status = 502;
-        throw err;
+        throw protocolUnavailableError("live meta");
       }
       const fetchMeta = async (baseUrl: string): Promise<LiveMeta | null> => {
         const url = new URL("/live/_meta", baseUrl).href;
@@ -200,11 +203,11 @@ export function useLiveMeta(
       throw err;
     },
     enabled: !!params && backend.kind !== "pending",
-    refetchInterval: protocol
-      ? protocol.describe.pollIntervalMs
-      : options?.refetchInterval,
+    // On the protocol, the decofile's poll refreshes the schema too.
+    refetchInterval: protocol ? false : options?.refetchInterval,
     refetchIntervalInBackground: false,
-    staleTime: protocol ? 0 : 300_000,
+    refetchOnWindowFocus: protocol ? false : undefined,
+    staleTime: protocol ? protocol.describe.pollIntervalMs : 300_000,
     // 502 = nothing reachable yet. The sandbox lifecycle re-invalidates this
     // query when the dev server comes up (see sandbox-events-context), so
     // retrying just hammers a known-down endpoint. Sandbox-less Fast Preview

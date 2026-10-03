@@ -11,8 +11,10 @@ export const decoServe = {
   "decoServe.connect.notEnabledDescription":
     "Editing a local server isn't enabled for this organization.",
   "decoServe.connect.notEnabledTitle": "Not available",
+  "decoServe.connect.endpointLabel": "Server",
   "decoServe.connect.pickDescription":
-    "Pick the project for {root}, served at {endpoint}.",
+    "Only connect a server you started on this machine with deco serve, then pick its project.",
+  "decoServe.connect.rootLabel": "Folder",
   "decoServe.connect.pickTitle": "Connect your local server",
   "decoServe.connect.reaching": "Reaching {endpoint}…",
   "decoServe.connect.retry": "Try again",

@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 function safeParse<T>(value: string): T | undefined {
   try {
@@ -44,9 +49,25 @@ function initializeFromStorage<T>(
   return next;
 }
 
-/** The cache entry {@link useLocalStorage} mirrors a key into. */
-export function localStorageQueryKey(key: string) {
+function localStorageQueryKey(key: string) {
   return ["localStorage", key] as const;
+}
+
+/**
+ * Writes a key outside a component that reads it, keeping every
+ * {@link useLocalStorage} reader of that key in step.
+ */
+export function writeLocalStorage<T>(
+  queryClient: QueryClient,
+  key: string,
+  value: T,
+): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage blocked: the value lasts for this session only.
+  }
+  queryClient.setQueryData(localStorageQueryKey(key), value);
 }
 
 export function useLocalStorage<T>(

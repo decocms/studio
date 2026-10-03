@@ -5,7 +5,6 @@ import {
   createContentClient,
   type DescribeResult,
   ErrorCode,
-  type SchemaGetResult,
 } from "@decocms/shared/blocks-protocol";
 import { useProjectContext } from "@/sdk";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
@@ -18,15 +17,17 @@ import {
   type ProtocolBackend,
   selectContentBackend,
 } from "./content-backend";
-import { decoServeErrorReason } from "./deco-serve-status";
-
-type FullSchema = Extract<SchemaGetResult, { notModified: false }>;
+import { decoServeErrorReason } from "./deco-serve-connection";
 
 interface Probe {
   client: ContentClient;
   describe: DescribeResult;
-  schema: FullSchema | null;
+  /** Whether the endpoint has a schema (`schema.get` didn't say NotFound). */
+  hasSchema: boolean;
 }
+
+/** How often a failed probe is retried, so a backend recovers on its own. */
+const PROBE_RETRY_MS = 5_000;
 
 /** The Studio GitHub backend's endpoint for one project and branch. */
 function githubContentEndpoint(params: {
@@ -48,11 +49,9 @@ async function probe(client: ContentClient): Promise<Probe> {
   ]);
   if (!described?.ok) throw described?.error ?? new Error("no describe");
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
-  if (schema?.ok) {
-    return { client, describe, schema: schema.result as FullSchema };
-  }
+  if (schema?.ok) return { client, describe, hasSchema: true };
   if (schema?.error.code === ErrorCode.NotFound) {
-    return { client, describe, schema: null };
+    return { client, describe, hasSchema: false };
   }
   throw schema?.error ?? new Error("no schema.get");
 }
@@ -97,11 +96,13 @@ export function useContentBackend(
       });
       const result = await probe(client);
       // No committed schema: a legacy site.
-      return result.schema ? result : null;
+      return result.hasSchema ? result : null;
     },
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     retry: 2,
+    refetchInterval: (query) =>
+      query.state.status === "error" ? PROBE_RETRY_MS : false,
   });
 
   const localEnabled = !!flagEnabled && !!connection;
@@ -123,9 +124,10 @@ export function useContentBackend(
     enabled: localEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
-    // Reconnects on its own once `deco serve` is (re)started.
+    // Reconnects on its own once `deco serve` is (re)started. A failed read
+    // or write resets this probe (see content-protocol-api).
     refetchInterval: (query) =>
-      query.state.status === "error" ? 5_000 : false,
+      query.state.status === "error" ? PROBE_RETRY_MS : false,
   });
 
   const decision = selectContentBackend({
@@ -135,12 +137,17 @@ export function useContentBackend(
     runtime,
     githubSchema: github.data
       ? "present"
-      : github.data === null || github.isError
+      : github.data === null
         ? "absent"
-        : "loading",
+        : github.isError
+          ? "error"
+          : "loading",
   });
 
   if (decision === "pending") return { kind: "pending" };
+  if (decision === "unavailable-github") {
+    return { kind: "unavailable", source: "github", reason: "unreachable" };
+  }
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
     return toBackend("github", github.data!, "");
@@ -168,7 +175,6 @@ function toBackend(
     source,
     client: probed.client,
     describe: probed.describe,
-    schema: probed.schema,
     cacheKeySuffix,
   };
 }

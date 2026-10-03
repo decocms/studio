@@ -17,7 +17,7 @@ import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
-import { decofileCacheKey, useDecofileCacheKey } from "./use-decofile";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
@@ -67,14 +67,7 @@ export function useMoveBlocks({
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
   const backend = useContentBackend(virtualMcpId, branch);
   const protocol = backend.kind === "protocol" ? backend : null;
-  const protocolCacheKey = useDecofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const cacheKey = protocol
-    ? protocolCacheKey
-    : decofileCacheKey({ orgSlug, virtualMcpId, branch, localPreviewUrl });
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const queryKey = KEYS.decofile(cacheKey);
 
   const mutation = useMutation({
@@ -84,25 +77,13 @@ export function useMoveBlocks({
       const writes = sanitizeSecretsForPersistence(rawWrites);
       if (protocol) {
         // One `blocks.apply`: the write and the delete land together.
-        const applied = await applyProtocolPatch(
+        return applyProtocolPatch(
           queryClient,
           protocol,
-          { orgSlug, virtualMcpId, branch },
+          { orgSlug, virtualMcpId, branch, threadId },
           cacheKey,
           { set: writes, delete: deletes.filter((key) => !(key in writes)) },
         );
-        if (protocol.source === "github") {
-          // The commit moved the branch head; refresh the header's branch meta.
-          await queryClient.invalidateQueries({
-            queryKey: sandboxGitStatusQueryKey({
-              orgSlug,
-              virtualMcpId,
-              branch,
-              threadId,
-            }),
-          });
-        }
-        return applied;
       }
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { ok: true as const };

@@ -192,6 +192,10 @@ test.describe("site editor over deco serve", () => {
       await expect(page).toHaveURL(`/${orgSlug}/connect`, { timeout: 30_000 });
       // The token left the address bar.
       expect(page.url()).not.toContain(stub.token);
+      // What the editor is about to connect to, before picking a project.
+      await expect(page.getByTestId("deco-serve-connect-target")).toContainText(
+        stub.endpoint,
+      );
       await page
         .getByRole("main")
         .getByRole("button", { name: project.title })
@@ -240,5 +244,17 @@ test.describe("site editor over deco serve", () => {
     } finally {
       await stub.close();
     }
+  });
+
+  test("refuses a connect link to a server off this machine", async ({
+    authedPage,
+  }) => {
+    const { page } = authedPage;
+    await page.goto(
+      `/connect#endpoint=${encodeURIComponent("https://attacker.example/rpc")}&token=t`,
+    );
+    await expect(
+      page.getByRole("heading", { name: "This connect link is incomplete" }),
+    ).toBeVisible();
   });
 });

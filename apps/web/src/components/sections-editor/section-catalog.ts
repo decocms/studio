@@ -54,6 +54,8 @@ export function findLivePageResolveType(meta: LiveMeta): string {
       }
     }
   }
+  // Next-major sites: the built-in `page` (or the site's override of it).
+  if (Object.hasOwn(blocks.pages ?? {}, "page")) return "page";
   return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
 }
 

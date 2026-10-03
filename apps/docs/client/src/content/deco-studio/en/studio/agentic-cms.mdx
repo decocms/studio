@@ -59,7 +59,7 @@ Sites built on next-major Blocks are edited through the **content protocol**: th
 With the flag on, a project uses the protocol when:
 
 - **A Fast Preview session's branch has a committed schema.** Each save is one commit on the draft branch, the schema comes from that branch (or the default branch when it has none), and the preview renders your site with a `?__draft=` link.
-- **It's connected to `deco serve` on your machine.** Run `npx @decocms/blocks serve` next to your dev server and open the site editor link it prints. Studio asks which project to connect; Chrome asks once whether Studio may reach a server on your machine. Saves write the files in your working tree and uploads go to `public/assets/`, and you commit them yourself. The site editor shows a **Local server** chip with **Disconnect**, and asks you to reconnect when the server restarts with a new token.
+- **It's connected to `deco serve` on your machine.** Run `npx @decocms/blocks serve` next to your dev server and open the site editor link it prints. Studio only accepts links to a server on your machine (`localhost` or `127.0.0.1`) and asks which project to connect; Chrome asks once whether Studio may reach a server on your machine. Saves write the files in your working tree and uploads go to `public/assets/`, and you commit them yourself. The site editor shows a **Local server** chip with **Disconnect**, and asks you to reconnect when the server restarts with a new token.
 
 Everything else, including sessions with a sandbox, stays on the existing editing path.
 

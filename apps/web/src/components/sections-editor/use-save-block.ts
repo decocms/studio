@@ -70,25 +70,13 @@ export function useSaveBlock({
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
       if (protocol) {
-        const applied = await applyProtocolPatch(
+        return applyProtocolPatch(
           queryClient,
           protocol,
-          { orgSlug, virtualMcpId, branch },
+          { orgSlug, virtualMcpId, branch, threadId },
           cacheKey,
           { set: { [blockKey]: data } },
         );
-        if (protocol.source === "github") {
-          // The commit moved the branch head; refresh the header's branch meta.
-          await queryClient.invalidateQueries({
-            queryKey: sandboxGitStatusQueryKey({
-              orgSlug,
-              virtualMcpId,
-              branch,
-              threadId,
-            }),
-          });
-        }
-        return applied;
       }
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };

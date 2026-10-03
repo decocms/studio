@@ -201,6 +201,10 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Criptografar",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.fileField.tooLarge":
+    "Este arquivo é maior do que o servidor local aceita ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
   "sectionsEditor.secretField.encryptingMessage":
     "Criptografando com a chave do site…",
   "sectionsEditor.secretField.legacySecretUnavailableMessage":

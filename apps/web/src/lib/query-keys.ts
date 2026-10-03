@@ -770,9 +770,13 @@ export const KEYS = {
   // Which content backend (legacy / content protocol) a project's editor uses.
   contentBackend: (...parts: string[]) =>
     ["content-backend", ...parts] as const,
-  // Last content-protocol revision/version seen for a decofile or schema read.
+  // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
+  // The org a bare entry (a `deco serve` connect link) lands in.
+  defaultOrgSlug: () => ["default-org-slug"] as const,
+  // The `?__draft=` grant of a content-protocol project on GitHub.
+  draftGrant: (cacheKey: string) => ["draft-grant", cacheKey] as const,
   // The repo's committed `deno.json`, read for its pinned deco-apps version.
   denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["deno-json", orgSlug, virtualMcpId, branch] as const,

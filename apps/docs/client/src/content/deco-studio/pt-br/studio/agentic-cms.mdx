@@ -59,7 +59,7 @@ Sites construídos com Blocks next-major são editados pelo **protocolo de conte
 Com a flag ligada, um projeto usa o protocolo quando:
 
 - **A branch de uma sessão Fast Preview tem um schema commitado.** Cada salvamento é um commit na branch de rascunho, o schema vem dessa branch (ou da branch padrão, quando ela não tem um) e o preview renderiza seu site com um link `?__draft=`.
-- **Ele está conectado ao `deco serve` na sua máquina.** Rode `npx @decocms/blocks serve` ao lado do seu servidor de desenvolvimento e abra o link do editor do site que ele mostra. O Studio pergunta qual projeto conectar; o Chrome pergunta uma vez se o Studio pode acessar um servidor na sua máquina. Os salvamentos escrevem os arquivos da sua working tree e os uploads vão para `public/assets/`, e você mesmo faz o commit. O editor mostra um chip **Servidor local** com **Desconectar**, e pede para reconectar quando o servidor reinicia com um novo token.
+- **Ele está conectado ao `deco serve` na sua máquina.** Rode `npx @decocms/blocks serve` ao lado do seu servidor de desenvolvimento e abra o link do editor do site que ele mostra. O Studio só aceita links para um servidor na sua máquina (`localhost` ou `127.0.0.1`) e pergunta qual projeto conectar; o Chrome pergunta uma vez se o Studio pode acessar um servidor na sua máquina. Os salvamentos escrevem os arquivos da sua working tree e os uploads vão para `public/assets/`, e você mesmo faz o commit. O editor mostra um chip **Servidor local** com **Desconectar**, e pede para reconectar quando o servidor reinicia com um novo token.
 
 Todo o resto, incluindo sessões com sandbox, continua no caminho de edição atual.
 

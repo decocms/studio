@@ -16,10 +16,9 @@ import {
   readPendingConnection,
   stashPendingConnection,
 } from "@/components/sections-editor/deco-serve-connection";
+import { ConnectCentered as Centered } from "@/components/sections-editor/deco-serve-chip";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
-import { listOrganizationsCached } from "@/lib/auth-client";
-import { readLastLocation } from "@/lib/last-location";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
+import { resolveDefaultOrgSlug } from "@/lib/default-org";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -36,46 +35,25 @@ function takeConnectionFromUrl(): boolean {
   return readPendingConnection() !== null;
 }
 
-function lastOrgSlug(): string | null {
-  try {
-    return (
-      readLastLocation()?.org ??
-      localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug())
-    );
-  } catch {
-    return null;
-  }
-}
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
-      <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
-        {children}
-      </div>
-    </div>
-  );
-}
-
+/** Hands over to the default org's connect screen once signed in. */
 function ToOrg() {
-  const remembered = lastOrgSlug();
-  const orgs = useQuery({
-    queryKey: KEYS.contentBackend("connect", "organizations"),
-    queryFn: listOrganizationsCached,
-    enabled: !remembered,
+  const target = useQuery({
+    queryKey: KEYS.defaultOrgSlug(),
+    queryFn: async () => ({ org: await resolveDefaultOrgSlug() }),
   });
-  const org = remembered ?? orgs.data?.data?.[0]?.slug ?? null;
-  if (org) {
-    return <Navigate to="/$org/connect" params={{ org }} replace />;
-  }
-  if (orgs.isPending) {
+  if (target.isPending) {
     return (
-      <Centered>
+      <Centered fullScreen>
         <Spinner className="size-6 text-muted-foreground" />
       </Centered>
     );
   }
-  return <Navigate to="/" replace />;
+  const org = target.data?.org;
+  return org ? (
+    <Navigate to="/$org/connect" params={{ org }} replace />
+  ) : (
+    <Navigate to="/" replace />
+  );
 }
 
 export default function ConnectRoute() {
@@ -83,7 +61,7 @@ export default function ConnectRoute() {
   const [hasConnection] = useState(takeConnectionFromUrl);
   if (!hasConnection) {
     return (
-      <Centered>
+      <Centered fullScreen>
         <h1 className="text-lg font-medium text-foreground">
           {t("decoServe.connect.invalidLinkTitle")}
         </h1>

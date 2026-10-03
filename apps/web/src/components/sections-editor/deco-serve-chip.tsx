@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -50,6 +51,28 @@ export function DecoServeChip({
       <Button variant="ghost" size="sm" onClick={clear}>
         {t("decoServe.chip.disconnect")}
       </Button>
+    </div>
+  );
+}
+
+/** The connect flow's centered column; `fullScreen` outside the app shell. */
+export function ConnectCentered({
+  children,
+  fullScreen = false,
+}: {
+  children: ReactNode;
+  fullScreen?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex w-full items-center justify-center p-6",
+        fullScreen ? "min-h-screen bg-background" : "h-full",
+      )}
+    >
+      <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
+        {children}
+      </div>
     </div>
   );
 }

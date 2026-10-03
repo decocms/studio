@@ -1,5 +1,8 @@
 import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
 import { useDecofileDraft } from "./decofile-api";
+import { useProtocolDraft } from "./content-protocol-api";
+import { useContentBackend } from "./use-content-backend";
+import { useDecofileCacheKey } from "./use-decofile";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 
 interface DraftParams {
@@ -23,7 +26,14 @@ interface DraftParams {
 export function useDraftPointer(params: DraftParams | null): string | null {
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
-  const draft = useDecofileDraft(params);
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const github = backend.kind === "protocol" && backend.source === "github";
+  const legacyDraft = useDecofileDraft(params);
+  const protocolDraft = useProtocolDraft(
+    github ? params : null,
+    useDecofileCacheKey(params),
+  );
+  const draft = github ? protocolDraft : legacyDraft;
   return params && draft && fastPreviewActive
     ? buildDraftPointer({ ...params, ...draft })
     : null;

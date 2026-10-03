@@ -51,7 +51,7 @@ import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
-import { contentCapabilities } from "./content-backend";
+import { isProtocolProject } from "./content-backend";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -223,9 +223,10 @@ export function SectionsEditor({
   });
   // The content protocol never runs site code: no rendered gallery (cards show
   // the schema's name, description and image) and no loader-backed pickers.
-  const contentBackend = useContentBackend(virtualMcpId, branch);
-  const contentCaps = contentCapabilities(contentBackend);
-  const galleryAvailable = !!sectionPreviewBase || !contentCaps.livePreviews;
+  const protocolProject = isProtocolProject(
+    useContentBackend(virtualMcpId, branch),
+  );
+  const galleryAvailable = !!sectionPreviewBase || protocolProject;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -327,15 +328,10 @@ export function SectionsEditor({
   );
 
   const queryClient = useQueryClient();
-  const protocolDecofileCacheKey = useDecofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const decofileCacheKey =
-    contentBackend.kind === "protocol"
-      ? protocolDecofileCacheKey
-      : `${orgSlug}/${virtualMcpId}/${branch}`;
+  const decofileCacheKey = useDecofileCacheKey(
+    { orgSlug, virtualMcpId, branch },
+    { tunnel: false },
+  );
   const pageBlockSave = useDebouncedSaveBlock({
     orgSlug,
     virtualMcpId,
@@ -450,7 +446,7 @@ export function SectionsEditor({
     );
   }
 
-  const pages = extractPages(decofile);
+  const pages = extractPages(decofile, meta);
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
@@ -740,7 +736,7 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
     threadId,
-    previewUrl: contentCaps.invoke ? (previewUrl ?? undefined) : undefined,
+    previewUrl: protocolProject ? undefined : (previewUrl ?? undefined),
     siteSlug: agentSiteSlug,
   };
 

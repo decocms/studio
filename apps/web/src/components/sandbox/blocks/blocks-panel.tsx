@@ -23,6 +23,7 @@ import {
   BlocksErrorState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 const SectionsEditor = lazy(() =>
@@ -78,8 +79,7 @@ export function BlocksPanel({
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
     fastPreviewActive:
       useSessionRuntime(virtualMcpId).runtime === "cms" ||
-      contentBackend.kind === "protocol" ||
-      contentBackend.kind === "unavailable",
+      isProtocolProject(contentBackend),
   });
 
   const panel = (children: ReactNode) => (
