@@ -13,13 +13,9 @@
  * `resolvedRef`); the first commit creates it at the head it was read from.
  */
 
-import {
-  appendCoAuthorTrailer,
-  type CoAuthorIdentity,
-} from "@decocms/sandbox/shared";
+import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
   blockNameFromFile,
-  type CommitAttempt,
   type CommitResult,
   type ContentStorage,
   type StorageDescription,
@@ -37,7 +33,7 @@ import {
   repoRateLimitRetryAfterMs,
   requireBranchHead,
 } from "@/git-providers";
-import { regenerateGenArtifact } from "./gen-artifact";
+import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 import {
   type BlockSource,
   blockEntriesInTree,
@@ -75,20 +71,6 @@ async function guarded<T>(work: () => Promise<T>): Promise<T> {
     }
     throw error;
   }
-}
-
-function commitMessage(attempt: CommitAttempt): string {
-  const summarize = (files: string[]): string => {
-    const names = files.map(blockNameFromFile);
-    const shown = names.slice(0, 3).join(", ");
-    return names.length > 3 ? `${shown} (+${names.length - 3} more)` : shown;
-  };
-  const parts: string[] = [];
-  const put = Object.keys(attempt.put);
-  if (put.length > 0) parts.push(`update ${summarize(put)}`);
-  if (attempt.delete.length > 0)
-    parts.push(`delete ${summarize(attempt.delete)}`);
-  return `chore(decofile): ${parts.join("; ")}`;
 }
 
 export function createRepoContentStorage(
@@ -282,8 +264,9 @@ export function createRepoContentStorage(
 
           const { sha } = await client.commitFiles({
             branch,
-            message: appendCoAuthorTrailer(
-              commitMessage(attempt),
+            message: decofileCommitMessage(
+              Object.keys(attempt.put).map(blockNameFromFile),
+              attempt.delete.map(blockNameFromFile),
               options.coAuthor,
             ),
             expectedHead: base,
