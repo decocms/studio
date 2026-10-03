@@ -6,13 +6,10 @@
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
  * member before handing it here.
  *
- * No attach affordance: the paperclip belongs with attachment storage. The
- * composer is a Tiptap field rather than a textarea for one reason — an
- * `@`-mention needs a chip and a user id, not the name the user happened to
- * type.
+ * Tiptap, not a textarea: a mention and an attachment both render as a chip.
  */
 
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useRef, useState, type DragEvent } from "react";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   DropdownMenu,
@@ -20,17 +17,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { ArrowUp, DotsHorizontal, Trash03 } from "@untitledui/icons";
+import { ArrowUp, DotsHorizontal, Trash03, Upload01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
 import { TaskMessage } from "./task-message";
 import { useT } from "@/i18n/use-t.ts";
+import { useEditorUploads } from "@/components/markdown-editor/editor-uploads";
 import {
   MentionInput,
   type MentionInputHandle,
 } from "@/components/markdown-editor/mention-input";
+import {
+  AttachFileButton,
+  UploadStatus,
+} from "@/components/markdown-editor/upload-controls";
 
 export type CommentAuthor = {
   id: string;
@@ -190,10 +192,21 @@ export function NewCommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
   return <CommentComposer onSubmit={onSubmit} />;
 }
 
+/** Only an OS file drag; a text or chip dragged inside the field is a move. */
+function carriesFiles(e: DragEvent) {
+  return e.dataTransfer.types.includes("Files");
+}
+
 function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
   const [empty, setEmpty] = useState(true);
+  const [sending, setSending] = useState(false);
+  const uploads = useEditorUploads();
+  const [dragging, setDragging] = useState(false);
+  /** Enter and leave fire for every child the pointer crosses; this counts
+   *  them, so the drop zone hides only when the pointer leaves the card. */
+  const dragDepth = useRef(0);
 
   const submit = () => ref.current?.submit();
 
@@ -203,14 +216,21 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
       placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
-      className={cn("w-full [&_.tiptap]:outline-none", "min-h-10")}
+      onSendingChange={setSending}
+      uploads={uploads}
+      // A full-height screenshot would push the conversation out of the way; the posted comment shows it whole.
+      className={cn(
+        "w-full [&_.tiptap]:outline-none",
+        "min-h-10",
+        "[&_img]:max-h-40",
+      )}
     />
   );
 
   const actions = (
     <button
       type="button"
-      disabled={empty}
+      disabled={empty || uploads.pending > 0}
       onClick={submit}
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
@@ -233,10 +253,58 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
     <div
       data-testid="new-comment-composer"
       onClick={focusInput}
+      // Each drag handler stops propagation so the chat composer's window-level drop zone stays down.
+      onDragEnter={(e) => {
+        if (!carriesFiles(e)) return;
+        e.stopPropagation();
+        dragDepth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (!carriesFiles(e)) return;
+        // Without it, a file dropped on the card's padding opens in the tab.
+        e.preventDefault();
+        e.stopPropagation();
+        // Mid-send the field takes no file, so the drop is refused rather than lost.
+        if (sending) e.dataTransfer.dropEffect = "none";
+      }}
+      onDragLeave={(e) => {
+        if (!carriesFiles(e)) return;
+        e.stopPropagation();
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
+      // Capture: a drop on the text is taken, and stopped, by the editor itself.
+      onDropCapture={() => {
+        dragDepth.current = 0;
+        setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        ref.current?.attach(Array.from(e.dataTransfer.files));
+      }}
       className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
     >
       {textarea}
-      <div className="flex items-center justify-end">{actions}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <AttachFileButton
+            onFiles={(files) => ref.current?.attach(files)}
+            disabled={sending}
+          />
+          <UploadStatus pending={uploads.pending} />
+        </div>
+        {actions}
+      </div>
+      {dragging && !sending && (
+        // Visual only: the drop itself lands on the text or the card beneath.
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/40 bg-muted text-sm font-medium text-primary/70">
+          <Upload01 size={16} />
+          {t("taskBoard.taskDialog.commentDropToAttach")}
+        </div>
+      )}
     </div>
   );
 }

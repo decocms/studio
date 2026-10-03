@@ -10,6 +10,10 @@ import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { orgRelativePath } from "@decocms/shared/organization/home-mount";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  commentUploadsAsSandboxPaths,
+  sandboxPathsAsUploads,
+} from "./description-uploads";
 import { taskRunContextStore } from "./task-run-context";
 
 /** No real comment is this long — caps the row a single POST can write. */
@@ -43,7 +47,8 @@ function requireOrg(ctx: StudioContext): string {
 export const TASK_BOARD_COMMENT_LIST = defineTool({
   name: "TASK_BOARD_COMMENT_LIST",
   description:
-    "List a task board item's comments (flat, oldest first; replies carry parentId).",
+    "List a task board item's comments (flat, oldest first; replies carry parentId). " +
+    "Inside a task run, files attached to a comment appear as sandbox paths (`org/.uploads/…`) you can Read.",
   annotations: {
     title: "List Task Comments",
     readOnlyHint: true,
@@ -60,7 +65,15 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       input.taskBoardItemId,
       requireOrg(ctx),
     );
-    return { comments };
+    // A run's endpoint is sandbox-hosted (task-run-mcp.ts): there an upload's `/api/…` URL can't be fetched, its mounted path can.
+    const orgSlug = ctx.organization?.slug;
+    if (!taskRunContextStore.getStore() || !orgSlug) return { comments };
+    return {
+      comments: comments.map((comment) => ({
+        ...comment,
+        body: commentUploadsAsSandboxPaths(comment.body, orgSlug),
+      })),
+    };
   },
 });
 
@@ -93,6 +106,17 @@ export function embedOrgOutputImages(
   });
 }
 
+/**
+ * A body a run wrote, made renderable: its `org/output/…` screenshots, and any
+ * mounted path it read through `TASK_BOARD_COMMENT_LIST` and wrote back.
+ */
+function bodyFromRun(body: string, threadId: string, orgSlug: string): string {
+  return sandboxPathsAsUploads(
+    embedOrgOutputImages(body, threadId, orgSlug),
+    orgSlug,
+  );
+}
+
 export const TASK_BOARD_COMMENT_CREATE = defineTool({
   name: "TASK_BOARD_COMMENT_CREATE",
   description: "Post a comment on a task board item, or a reply to one.",
@@ -122,7 +146,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
     const orgSlug = ctx.organization?.slug;
     const body =
       taskRun?.threadId && orgSlug
-        ? embedOrgOutputImages(input.body, taskRun.threadId, orgSlug)
+        ? bodyFromRun(input.body, taskRun.threadId, orgSlug)
         : input.body;
     const comment = await ctx.storage.taskBoard.createComment({
       taskBoardItemId: input.taskBoardItemId,
@@ -182,11 +206,19 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
       input.body !== undefined
         ? await ctx.storage.taskBoard.getComment(input.id, organizationId)
         : null;
+    const taskRun = taskRunContextStore.getStore();
+    const orgSlug = ctx.organization?.slug;
+    // A run acts under its assigner's credential, so it can edit that person's
+    // comments, which it listed with sandbox paths.
+    const body =
+      input.body !== undefined && taskRun?.threadId && orgSlug
+        ? bodyFromRun(input.body, taskRun.threadId, orgSlug)
+        : input.body;
     const comment = await ctx.storage.taskBoard.updateComment({
       id: input.id,
       organizationId,
       callerId: getUserId(ctx)!,
-      body: input.body,
+      body,
       resolved: input.resolved,
     });
     if (!comment) {

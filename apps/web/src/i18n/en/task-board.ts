@@ -176,6 +176,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentActionsAriaLabel": "Comment actions",
   "taskBoard.taskDialog.commentCollapseThread": "Collapse",
   "taskBoard.taskDialog.commentDelete": "Delete",
+  "taskBoard.taskDialog.commentDropToAttach": "Drop to attach",
   "taskBoard.taskDialog.commentPlaceholder": "Leave a comment...",
   "taskBoard.taskDialog.commentResolveThread": "Resolve thread",
   "taskBoard.taskDialog.commentResolvedSummaryMany":

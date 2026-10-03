@@ -6,10 +6,10 @@ import {
 
 describe("uploadsAsSandboxPaths", () => {
   it("points an editor image at its sandbox mount", () => {
-    // Verbatim shape the markdown editor writes (DANI-19's description).
+    // Verbatim shape the markdown editor writes.
     expect(
       uploadsAsSandboxPaths(
-        "![image.png](/api/daniela-tombini/fs/uploads/read?path=editor-images%2Fc0aa15c2.png)",
+        "![image.png](/api/acme/fs/uploads/read?path=editor-images%2Fc0aa15c2.png)",
       ),
     ).toBe("![image.png](/app/org/.uploads/editor-images/c0aa15c2.png)");
   });
