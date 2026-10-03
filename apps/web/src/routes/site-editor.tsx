@@ -3,41 +3,37 @@
  * on this machine (the link the Blocks CLI prints), without a project.
  *
  * It exists only with the New Layout preference (`projectFirstNav`) on — the
- * router answers not-found otherwise — and is the Site Editor app as a project
- * launches it in that frame: the org rail (signed in only, as there are no
- * orgs to list otherwise), then the app with its Preview and Content tabs. Preview loads the app `deco serve --preview` names. What needs
- * Studio's hosting is left out: no GitHub backend, drafts, publishing or Code.
+ * router answers not-found otherwise — and it is the Site Editor APP, the same
+ * one a project launches (`routes/workspace/agent-site-editor.tsx` and its
+ * Preview/Content tabs), in the same app takeover: the org rail (signed in
+ * only, as there are no orgs to list otherwise), no sidebar, the app full
+ * screen. What needs Studio's hosting is left out: chat, GitHub, drafts,
+ * publishing and Code. There is no org, so no recent app is recorded.
  *
  * The connection leaves the fragment at once (so the token never stays in
  * the address bar or history) and is kept for this tab only. Only loopback
  * servers are accepted (`parseConnectFragment`).
  *
- * The editor surfaces expect a project and a chat task: they get a
- * placeholder project, in an org with no id (which makes the Studio-backed
- * reads skip themselves), and a task with no thread. The connection reaches
- * every surface through `TabDecoServeConnectionContext`.
+ * The editor expects a project and a chat task: it gets a placeholder project,
+ * in an org with no id (which makes the Studio-backed reads skip themselves),
+ * and a task with no thread. The connection reaches every surface through
+ * `TabDecoServeConnectionContext`.
  */
 
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   ChatTaskValueProvider,
   type ChatTaskContextValue,
 } from "@/components/chat/context";
+import { ChatLayout } from "@/components/chat-layout";
 import { Layout } from "@/components/layout";
 import { Page } from "@/components/page";
-import { Panel } from "@/components/panel";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import { ContentBrowser } from "@/components/sandbox/content/content-browser";
-import { PreviewContent } from "@/components/sandbox/preview/preview";
-import { ContentVersionBadge } from "@/components/sections-editor/content-version-badge";
-import {
-  ConnectCentered as Centered,
-  DecoServeChip,
-} from "@/components/sections-editor/deco-serve-chip";
+import { ConnectCentered as Centered } from "@/components/sections-editor/deco-serve-chip";
 import {
   type DecoServeConnection,
   clearTabConnection,
@@ -49,12 +45,16 @@ import { useContentBackend } from "@/components/sections-editor/use-content-back
 import {
   type DecoServeConnectionState,
   TabDecoServeConnectionContext,
+  useDecoServeConnection,
 } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
+import { ContentTab } from "@/layouts/main-panel-tabs/content-tab";
+import { PreviewTab } from "@/layouts/main-panel-tabs/preview-tab";
 import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
 import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
+import SiteEditorApp from "@/routes/workspace/agent-site-editor";
 import { ProjectContextProvider } from "@/sdk";
 
 /** Stands in for the project id every editor hook is keyed by. */
@@ -94,6 +94,8 @@ function takeConnectionFromUrl(): DecoServeConnection | null {
   return readTabConnection();
 }
 
+/** The app's own Preview/Content tabs, as the project tab bar draws them
+ *  (`MainPanelTabsBar` reads a project's views, and there is none here). */
 const TABS = [
   { id: "site-editor", to: "/site-editor", label: "preview" },
   { id: "content", to: "/site-editor/content", label: "content" },
@@ -134,14 +136,9 @@ function SiteEditorTabs() {
 }
 
 /** Holds the editor until the local server answers its probe. */
-function BackendGate({
-  connection,
-  children,
-}: {
-  connection: DecoServeConnection;
-  children: ReactNode;
-}) {
+function BackendGate({ children }: { children: ReactNode }) {
   const t = useT();
+  const { connection } = useDecoServeConnection(LOCAL_PROJECT_ID);
   const queryClient = useQueryClient();
   const backend = useContentBackend(LOCAL_PROJECT_ID, LOCAL_BRANCH);
   if (backend.kind === "protocol") return children;
@@ -150,7 +147,9 @@ function BackendGate({
       <Centered>
         <Spinner className="size-6 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          {t("decoServe.connect.reaching", { endpoint: connection.endpoint })}
+          {t("decoServe.connect.reaching", {
+            endpoint: connection?.endpoint ?? "",
+          })}
         </p>
       </Centered>
     );
@@ -175,46 +174,33 @@ function BackendGate({
   );
 }
 
-function LocalSiteEditor({ connection }: { connection: DecoServeConnection }) {
-  const t = useT();
+/** Chat stays closed: there is no thread outside a project. */
+const NO_CHAT = {
+  threadOpen: false,
+  contentOpen: true,
+  threadVisibilityExplicit: false,
+  toggleThread: () => {},
+  toggleContent: () => {},
+};
+
+/** The app takeover a project's launched app gets, around the same app. */
+function LocalSiteEditor() {
   const { data: session } = authClient.useSession();
+  const view = useRouterState({
+    select: (state) => state.matches.at(-1)?.staticData.siteEditorView,
+  });
   return (
     <Layout outsideOrg={{ rail: !!session?.user }}>
       <Layout.Content>
-        <div className="flex min-h-0 min-w-0 flex-1 p-1.5">
-          <Panel data-testid="main-panel" className="flex-1">
-            <Page.Breadcrumbs.Provider>
-              <Page.Header
-                breadcrumbs={[
-                  {
-                    key: "page",
-                    label: t("sidebar.projectNav.siteEditor"),
-                  },
-                ]}
-                navigation={<SiteEditorTabs />}
-                actions={
-                  <>
-                    <ContentVersionBadge
-                      virtualMcpId={LOCAL_PROJECT_ID}
-                      branch={LOCAL_BRANCH}
-                    />
-                    <DecoServeChip
-                      virtualMcpId={LOCAL_PROJECT_ID}
-                      branch={LOCAL_BRANCH}
-                    />
-                  </>
-                }
-              />
-              <Panel.Content>
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <BackendGate connection={connection}>
-                    <Outlet />
-                  </BackendGate>
-                </div>
-              </Panel.Content>
-            </Page.Breadcrumbs.Provider>
-          </Panel>
-        </div>
+        <ChatLayout
+          {...NO_CHAT}
+          threadless
+          contentKey={view ?? "preview"}
+          contentNavigation={<SiteEditorTabs />}
+        >
+          <ChatLayout.Thread>{null}</ChatLayout.Thread>
+          <SiteEditorApp />
+        </ChatLayout>
       </Layout.Content>
     </Layout>
   );
@@ -251,7 +237,7 @@ export default function SiteEditorRoute() {
       <TabDecoServeConnectionContext.Provider value={state}>
         <ChatTaskValueProvider value={LOCAL_TASK}>
           <BlocksPreviewWorkspaceProvider>
-            <LocalSiteEditor connection={connection} />
+            <LocalSiteEditor />
           </BlocksPreviewWorkspaceProvider>
         </ChatTaskValueProvider>
       </TabDecoServeConnectionContext.Provider>
@@ -261,10 +247,18 @@ export default function SiteEditorRoute() {
 
 /** The Preview tab: the app `deco serve --preview` names, with Blocks. */
 export function SiteEditorPreview() {
-  return <PreviewContent virtualMcpId={LOCAL_PROJECT_ID} />;
+  return (
+    <BackendGate>
+      <PreviewTab virtualMcpId={LOCAL_PROJECT_ID} />
+    </BackendGate>
+  );
 }
 
 /** The Content tab. */
 export function SiteEditorContent() {
-  return <ContentBrowser />;
+  return (
+    <BackendGate>
+      <ContentTab virtualMcpId={LOCAL_PROJECT_ID} />
+    </BackendGate>
+  );
 }

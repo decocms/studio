@@ -322,6 +322,9 @@ test.describe("site editor over deco serve", () => {
         page.getByRole("heading", { name: "Page not found" }),
       ).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId("deco-serve-chip")).toHaveCount(0);
+      // The link's token still left the address bar, without connecting.
+      await expect(page).toHaveURL("/site-editor");
+      expect(page.url()).not.toContain(stub.token);
     } finally {
       await stub.close();
     }

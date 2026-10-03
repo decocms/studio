@@ -27,19 +27,26 @@ function SiteEditorActions() {
   // Local mode edits are ephemeral (nothing to promote) → withhold publish.
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   // A connected `deco serve` edits the working tree: the developer commits.
-  const { connection: serveConnection } = useDecoServeConnection(entity?.id);
+  // Outside a project (`/site-editor`) it is the only thing behind the editor.
+  const { connection: serveConnection } = useDecoServeConnection(
+    entity?.id ?? session?.virtualMcpId,
+  );
   const servingLocally = !!serveConnection;
-  if (!entity) return null;
+  const virtualMcpId = entity?.id ?? session?.virtualMcpId;
+  if (!virtualMcpId || (!entity && !servingLocally)) return null;
   return (
     <>
-      <ContentVersionBadge virtualMcpId={entity.id} branch={currentBranch} />
+      <ContentVersionBadge virtualMcpId={virtualMcpId} branch={currentBranch} />
       {servingLocally && (
-        <DecoServeChip virtualMcpId={entity.id} branch={currentBranch} />
+        <DecoServeChip virtualMcpId={virtualMcpId} branch={currentBranch} />
       )}
-      <div className="flex min-w-0 shrink items-center justify-end">
-        <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-      </div>
-      {!localPreviewUrl &&
+      {entity && (
+        <div className="flex min-w-0 shrink items-center justify-end">
+          <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
+        </div>
+      )}
+      {entity &&
+        !localPreviewUrl &&
         !servingLocally &&
         agentShowsRepositoryHeaderActions(entity) && (
           <>
@@ -67,7 +74,9 @@ function SiteEditorDrawer() {
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
-  const { connection: serveConnection } = useDecoServeConnection(entity?.id);
+  const { connection: serveConnection } = useDecoServeConnection(
+    entity?.id ?? session?.virtualMcpId,
+  );
   const servingLocally = !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
@@ -82,7 +91,8 @@ function SiteEditorDrawer() {
   return showDrawer ? <PreviewDrawerHost /> : null;
 }
 
-/** Preview, Content and Code share a route-owned topbar and runtime context. */
+/** Preview, Content and Code share a route-owned topbar and runtime context.
+ *  The account-less `/site-editor` mounts this same app over a `deco serve`. */
 export default function SiteEditorRoute() {
   return (
     <ChatLayout.Content
