@@ -5,11 +5,7 @@
  * These hooks offer a reactive interface for accessing and manipulating virtual MCPs.
  */
 
-import {
-  type QueryClient,
-  useQuery,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { useProjectContext } from "../context";
@@ -18,6 +14,7 @@ import {
   collectionItemQueryOptions,
   collectionListQueryOptions,
   useCollectionActions,
+  useCollectionItem,
   useCollectionList,
   type CollectionFilter,
   type UseCollectionListOptions,
@@ -225,16 +222,15 @@ export function useVirtualMCP(
   });
 
   // If null/undefined, return null (use default virtual MCP)
-  const { data } = useSuspenseQuery(
-    collectionItemQueryOptions<VirtualMCPEntity>(
-      org.id,
-      "VIRTUAL_MCP",
-      virtualMcpId ?? undefined,
-      client,
-    ),
+  // Use collection item hook for database virtual MCPs
+  const dbVirtualMCP = useCollectionItem<VirtualMCPEntity>(
+    org.id,
+    "VIRTUAL_MCP",
+    virtualMcpId ?? undefined,
+    client,
   );
 
-  return data?.item ?? null;
+  return dbVirtualMCP;
 }
 
 /**
