@@ -32,6 +32,11 @@ function editorOf(page: Page) {
   return page.getByTestId("task-description").locator(".ProseMirror");
 }
 
+/** The description's file input; the comment composer holds a second one. */
+function fileInputOf(page: Page) {
+  return page.getByTestId("task-description").locator('input[type="file"]');
+}
+
 /** The task rendered in place of the board — `/$org/tasks/DECO-01`. */
 function detailOf(page: Page) {
   return page.getByTestId("task-detail");
@@ -156,12 +161,13 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await detail
-      .locator('input[type="file"]')
-      .setInputFiles({ name: PNG_NAME, mimeType: "image/png", buffer: PNG });
+    await fileInputOf(page).setInputFiles({
+      name: PNG_NAME,
+      mimeType: "image/png",
+      buffer: PNG,
+    });
 
     // Rendered as an actual image, and its URL is nowhere in the visible text.
     // `img[src]`: ProseMirror adds 0×0 `ProseMirror-separator` images of its own.
@@ -241,10 +247,9 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await detail.locator('input[type="file"]').setInputFiles({
+    await fileInputOf(page).setInputFiles({
       name: DOC_NAME,
       mimeType: "text/plain",
       buffer: DOC,
