@@ -1,7 +1,4 @@
-import {
-  appendCoAuthorTrailer,
-  type CoAuthorIdentity,
-} from "@decocms/sandbox/shared";
+import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import { blockKeyToFileStem } from "@decocms/shared/decofile";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import {
@@ -16,7 +13,7 @@ import {
   primeBlobCache,
   resolveOrCreateHead,
 } from "./read-decofile";
-import { regenerateGenArtifact } from "./gen-artifact";
+import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 
 /**
  * Per-(virtualMcpId, branch) commit coalescer. Autosaves arrive every ~700ms
@@ -186,7 +183,11 @@ async function commitBatch(batch: Batch): Promise<string> {
     try {
       const { sha } = await client.commitFiles({
         branch,
-        message: commitMessage(batch),
+        message: decofileCommitMessage(
+          [...batch.set.keys()],
+          [...batch.del],
+          batch.deps.coAuthor,
+        ),
         expectedHead: headSha,
         changes: writes,
       });
@@ -202,17 +203,4 @@ async function commitBatch(batch: Batch): Promise<string> {
       await sleep(exponentialBackoffWithJitter(2_000, 200, attempt, 2, 0.5));
     }
   }
-}
-
-function commitMessage(batch: Batch): string {
-  const summarize = (keys: string[]): string => {
-    const shown = keys.slice(0, 3).join(", ");
-    return keys.length > 3 ? `${shown} (+${keys.length - 3} more)` : shown;
-  };
-  const parts: string[] = [];
-  if (batch.set.size > 0)
-    parts.push(`update ${summarize([...batch.set.keys()])}`);
-  if (batch.del.size > 0) parts.push(`delete ${summarize([...batch.del])}`);
-  const subject = `chore(decofile): ${parts.join("; ")}`;
-  return appendCoAuthorTrailer(subject, batch.deps.coAuthor);
 }

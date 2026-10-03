@@ -19,8 +19,9 @@
  *
  * The two content-protocol routes serve next-major Blocks sites (see
  * `decofile/repo-content-storage.ts`) and exist only behind the
- * `site_editor_content_protocol` org flag. They don't need a preview server:
- * the protocol never renders, and a project without one just has no preview.
+ * `site_editor_content_protocol` org flag. `rpc` doesn't need a preview
+ * server: the protocol never renders, and a project without one just has no
+ * preview (so no `draft-grant` either).
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -228,9 +229,9 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   return next();
 });
 
-/** The content-protocol routes, which work without a preview server. */
+/** The content-protocol route, which works without a preview server. */
 function isContentProtocolPath(path: string): boolean {
-  return /\/(rpc|draft-grant)$/.test(path);
+  return path.endsWith("/rpc");
 }
 
 async function contentProtocolEnabled(
@@ -336,11 +337,7 @@ export function createDecofileRoutes() {
           "content-type": "application/json",
         });
       }
-      const token = signDraftToken({
-        organizationId: scope.organizationId,
-        virtualMcpId: scope.virtualMcpId,
-        branch: scope.branch,
-      });
+      const token = signScopeDraftToken(scope);
       return c.body(
         `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${snapshot.decofile}}`,
         200,
@@ -443,11 +440,7 @@ export function createDecofileRoutes() {
         },
         patch,
       );
-      const token = signDraftToken({
-        organizationId: scope.organizationId,
-        virtualMcpId: scope.virtualMcpId,
-        branch: scope.branch,
-      });
+      const token = signScopeDraftToken(scope);
       return c.json({ version: sha, token, apiHost: requestApiHost(c) });
     } catch (err) {
       return errorResponse(c, err);
