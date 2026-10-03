@@ -52,6 +52,24 @@ If you're coming from deco.cx, the Agentic CMS is the same product line — same
 
 Existing deco.cx projects continue to work. Migration adds the agent layer; it doesn't replace your codebase.
 
+## Next-major Blocks sites
+
+Sites built on next-major Blocks are edited through the **content protocol**: the site editor reads the committed schema (`.deco/schema.gen.json`, or `.deco/meta.gen.json`) and the saved blocks in `.deco/blocks`, and never runs the site's code. This is behind the `site_editor_content_protocol` organization flag, off by default.
+
+With the flag on, a project uses the protocol when:
+
+- **A Fast Preview session's branch has a committed schema.** Each save is one commit on the draft branch, the schema comes from that branch (or the default branch when it has none), and the preview renders your site with a `?__draft=` link.
+- **It's connected to `deco serve` on your machine.** Run `npx @decocms/blocks serve` next to your dev server and open the site editor link it prints. Studio asks which project to connect; Chrome asks once whether Studio may reach a server on your machine. Saves write the files in your working tree and uploads go to `public/assets/`, and you commit them yourself. The site editor shows a **Local server** chip with **Disconnect**, and asks you to reconnect when the server restarts with a new token.
+
+Everything else, including sessions with a sandbox, stays on the existing editing path.
+
+Because the site's code never runs:
+
+- The preview opens the real app; nothing is re-rendered in place, and the add-section gallery shows each block's name, description and schema image.
+- Pickers whose options come from a loader show the schema's options, otherwise a text field.
+- Secret fields are write-only: Studio encrypts what you type in the browser with the site's public key, `.deco/secrets.pub`, and saves only the ciphertext. Secrets saved by older sites can't be edited here.
+- Running loaders and actions and installing apps aren't available: they live in the site's code.
+
 ## Getting started
 
 Open Studio, find the **deco Site Editor** agent and point it at your site.
