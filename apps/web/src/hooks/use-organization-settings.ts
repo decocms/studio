@@ -234,6 +234,19 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
 }
 
 /**
+ * {@link useOrgFlag}, but `undefined` while the org settings load — for
+ * gates that must not act on the pre-load default (routing reads to one
+ * backend, then switching them to another).
+ */
+export function useOrgFlagState(flag: keyof OrgFlags): boolean | undefined {
+  const { data, isError } = useOrganizationSettings((s) =>
+    orgFlagEnabled(s.flags, flag),
+  );
+  // A failed read falls back to the default rather than waiting forever.
+  return data ?? (isError ? DEFAULT_ON_FLAGS.has(flag) : undefined);
+}
+
+/**
  * Writer for the org's blocks editor. Not `useSetOrgFlag`: that goes through
  * ORGANIZATION_SETTINGS_UPDATE (org:manage), while any member may switch the
  * editor through the basic-usage ORGANIZATION_BLOCKS_EDITOR_SET.

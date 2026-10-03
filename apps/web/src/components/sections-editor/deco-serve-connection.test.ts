@@ -1,0 +1,43 @@
+import { describe, expect, test } from "bun:test";
+import {
+  parseConnectFragment,
+  parseStoredConnection,
+} from "./deco-serve-connection";
+
+describe("parseConnectFragment", () => {
+  test("reads the endpoint and token deco serve prints", () => {
+    expect(
+      parseConnectFragment(
+        `#endpoint=${encodeURIComponent("http://127.0.0.1:4545/rpc")}&token=abc123`,
+      ),
+    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc", token: "abc123" });
+  });
+
+  test("refuses incomplete or unsafe links", () => {
+    expect(parseConnectFragment("")).toBeNull();
+    expect(parseConnectFragment("#token=abc")).toBeNull();
+    expect(
+      parseConnectFragment("#endpoint=http://127.0.0.1:4545/rpc"),
+    ).toBeNull();
+    expect(
+      parseConnectFragment("#endpoint=javascript:alert(1)&token=abc"),
+    ).toBeNull();
+    expect(parseConnectFragment("#endpoint=not a url&token=abc")).toBeNull();
+    expect(
+      parseConnectFragment(
+        `#endpoint=http://127.0.0.1/rpc&token=${"x".repeat(2000)}`,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("parseStoredConnection", () => {
+  test("accepts only a well-formed connection", () => {
+    expect(
+      parseStoredConnection({ endpoint: "http://127.0.0.1:1/rpc", token: "t" }),
+    ).toEqual({ endpoint: "http://127.0.0.1:1/rpc", token: "t" });
+    expect(parseStoredConnection(null)).toBeNull();
+    expect(parseStoredConnection("http://127.0.0.1:1/rpc")).toBeNull();
+    expect(parseStoredConnection({ endpoint: "x", token: "" })).toBeNull();
+  });
+});

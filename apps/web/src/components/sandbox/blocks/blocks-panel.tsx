@@ -22,6 +22,7 @@ import {
   BlocksEmptyState,
   BlocksErrorState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 const SectionsEditor = lazy(() =>
@@ -67,6 +68,7 @@ export function BlocksPanel({
         previewUrl,
       }
     : null;
+  const contentBackend = useContentBackend(virtualMcpId, currentBranch);
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
@@ -74,7 +76,10 @@ export function BlocksPanel({
     decofile: toBlocksQueryState(decofile),
     meta: toBlocksQueryState(meta),
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
-    fastPreviewActive: useSessionRuntime(virtualMcpId).runtime === "cms",
+    fastPreviewActive:
+      useSessionRuntime(virtualMcpId).runtime === "cms" ||
+      contentBackend.kind === "protocol" ||
+      contentBackend.kind === "unavailable",
   });
 
   const panel = (children: ReactNode) => (
