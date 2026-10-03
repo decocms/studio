@@ -44,14 +44,10 @@ export function useDeleteBlock({
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
   const backend = useContentBackend(virtualMcpId, branch);
   const protocol = backend.kind === "protocol" ? backend : null;
-  const protocolCacheKey = useDecofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const cacheKey = protocol
-    ? protocolCacheKey
-    : `${orgSlug}/${virtualMcpId}/${branch}`;
+  const cacheKey = useDecofileCacheKey(
+    { orgSlug, virtualMcpId, branch },
+    { tunnel: false },
+  );
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
@@ -61,21 +57,10 @@ export function useDeleteBlock({
         await applyProtocolPatch(
           queryClient,
           protocol,
-          { orgSlug, virtualMcpId, branch },
+          { orgSlug, virtualMcpId, branch, threadId },
           cacheKey,
           { delete: [blockKey] },
         );
-        if (protocol.source === "github") {
-          // The commit moved the branch head; refresh the header's branch meta.
-          await queryClient.invalidateQueries({
-            queryKey: sandboxGitStatusQueryKey({
-              orgSlug,
-              virtualMcpId,
-              branch,
-              threadId,
-            }),
-          });
-        }
         return { ok: true as const, existed: true };
       }
       if (fastPreviewActive) {

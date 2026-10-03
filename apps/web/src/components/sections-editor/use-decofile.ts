@@ -11,7 +11,10 @@ import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
 import { useContentBackend } from "./use-content-backend";
-import { readProtocolBlocks } from "./content-protocol-api";
+import {
+  pollProtocolContent,
+  protocolUnavailableError,
+} from "./content-protocol-api";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -44,16 +47,23 @@ function decofileCacheKey(input: {
     : base;
 }
 
-/** The decofile cache key for a project, given its content backend. */
+/**
+ * The decofile cache key for a project, given its content backend. Pass
+ * `tunnel: false` for writers that never target the Local tunnel's entry.
+ */
 export function useDecofileCacheKey(
   params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  options?: { tunnel?: boolean },
 ): string {
   const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   if (!params) return "";
   return backend.kind === "protocol"
     ? decofileCacheKey({ ...params, protocolSuffix: backend.cacheKeySuffix })
-    : decofileCacheKey({ ...params, localPreviewUrl });
+    : decofileCacheKey({
+        ...params,
+        localPreviewUrl: options?.tunnel === false ? null : localPreviewUrl,
+      });
 }
 
 export function useDecofile(
@@ -103,12 +113,16 @@ export function useDecofile(
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
       if (protocol) {
-        return readProtocolBlocks(queryClient, protocol, params!, key);
+        const content = await pollProtocolContent(
+          queryClient,
+          protocol,
+          params!,
+          key,
+        );
+        return content.blocks;
       }
       if (backend.kind === "unavailable") {
-        const err = new Error("decofile unavailable (deco serve unreachable)");
-        (err as { status?: number }).status = 502;
-        throw err;
+        throw protocolUnavailableError("decofile");
       }
       if (localOverride) {
         const res = await fetch(

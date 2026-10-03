@@ -22,11 +22,27 @@ export function SecretFieldForBackend(props: FieldProps) {
     props.sandbox?.virtualMcpId,
     props.sandbox?.branch,
   );
-  if (backend.kind !== "protocol" || props.schema.format === "password") {
+  // A masked plain string, or a v7 site: the site's own encrypt action.
+  if (backend.kind === "legacy" || props.schema.format === "password") {
     return <SecretField {...props} />;
   }
+  // Undecided or unreachable: the legacy field would post plaintext to a site
+  // that may be a protocol one, so nothing is editable until it's known.
+  if (backend.kind !== "protocol") {
+    return (
+      <SecretMessage
+        {...props}
+        message="sectionsEditor.secretField.backendUnavailableMessage"
+      />
+    );
+  }
   if (isV7SecretBlock(props.value)) {
-    return <V7SecretUnavailable {...props} />;
+    return (
+      <SecretMessage
+        {...props}
+        message="sectionsEditor.secretField.legacySecretUnavailableMessage"
+      />
+    );
   }
   return (
     <ProtocolSecretField
@@ -72,7 +88,17 @@ function ProtocolSecretField({
   );
 }
 
-function V7SecretUnavailable({ schema, label, path, sandbox }: FieldProps) {
+function SecretMessage({
+  schema,
+  label,
+  path,
+  sandbox,
+  message,
+}: FieldProps & {
+  message:
+    | "sectionsEditor.secretField.backendUnavailableMessage"
+    | "sectionsEditor.secretField.legacySecretUnavailableMessage";
+}) {
   const t = useT();
   return (
     <div className="space-y-2">
@@ -82,9 +108,7 @@ function V7SecretUnavailable({ schema, label, path, sandbox }: FieldProps) {
         description={schema.description}
         virtualMcpId={sandbox?.virtualMcpId}
       />
-      <p className="text-xs text-muted-foreground">
-        {t("sectionsEditor.secretField.legacySecretUnavailableMessage")}
-      </p>
+      <p className="text-xs text-muted-foreground">{t(message)}</p>
     </div>
   );
 }

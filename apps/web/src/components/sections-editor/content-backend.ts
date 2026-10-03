@@ -15,7 +15,6 @@
 import type {
   ContentClient,
   DescribeResult,
-  SchemaGetResult,
 } from "@decocms/shared/blocks-protocol";
 
 export type ContentSource = "github" | "local";
@@ -25,8 +24,6 @@ export interface ProtocolBackend {
   source: ContentSource;
   client: ContentClient;
   describe: DescribeResult;
-  /** The first `schema.get`, read while probing, so the editor needn't read it twice. */
-  schema: Extract<SchemaGetResult, { notModified: false }> | null;
   /** Distinguishes cache entries of different endpoints for one project. */
   cacheKeySuffix: string;
 }
@@ -36,54 +33,35 @@ export type ContentBackend =
   | { kind: "pending" }
   | { kind: "legacy" }
   | ProtocolBackend
-  /** A connected `deco serve` that can't be used right now. */
+  /** A protocol endpoint that can't be used right now. */
   | {
       kind: "unavailable";
-      source: "local";
+      source: ContentSource;
       reason: "unauthorized" | "unreachable";
     };
 
-/** What the editor may do on a backend; the protocol never runs site code. */
-export interface ContentCapabilities {
-  /** Re-render the preview in place through `/live/previews`. */
-  inPlaceRender: boolean;
-  /** Gallery thumbnails and block previews rendered by the site. */
-  livePreviews: boolean;
-  /** Pickers whose options come from running a loader. */
-  invoke: boolean;
-  /** The Run button and runnable (saved loader/action) blocks. */
-  runBlocks: boolean;
-  /** Installing commerce apps from the editor. */
-  installApps: boolean;
-  /** Encrypting v7 secrets through the site's encrypt action. */
-  v7Secrets: boolean;
-}
-
-export function contentCapabilities(
-  backend: ContentBackend,
-): ContentCapabilities {
-  // A connected `deco serve` that's down is still a protocol project.
-  const legacy = backend.kind === "legacy" || backend.kind === "pending";
-  return {
-    inPlaceRender: legacy,
-    livePreviews: legacy,
-    invoke: legacy,
-    runBlocks: legacy,
-    installApps: legacy,
-    v7Secrets: legacy,
-  };
+/**
+ * A content-protocol project, usable right now or not. The protocol never
+ * runs site code: no in-place or gallery renders, no invoke-backed pickers,
+ * no Run, no app install.
+ */
+export function isProtocolProject(backend: ContentBackend): boolean {
+  return backend.kind === "protocol" || backend.kind === "unavailable";
 }
 
 export type BackendDecision =
   | "pending"
   | "legacy"
   | "protocol-local"
-  | "protocol-github";
+  | "protocol-github"
+  /** The GitHub probe failed: neither backend is known to be right. */
+  | "unavailable-github";
 
 /**
  * Which backend a project's editor uses. A connected `deco serve` wins, then
  * the legacy Local tunnel; a Fast Preview (`cms`) session uses the GitHub
- * backend when the branch has a committed schema. Sandbox sessions stay
+ * backend when the branch has a committed schema; a failed probe is not "no
+ * schema", so it never falls back to legacy. Sandbox sessions stay
  * legacy: their pod's working tree shares the branch, and commits from here
  * would make the two diverge.
  */
@@ -94,13 +72,14 @@ export function selectContentBackend(input: {
   hasLocalTunnel: boolean;
   runtime: "cms" | "sandbox";
   /** The GitHub probe: does the branch have a committed schema? */
-  githubSchema: "present" | "absent" | "loading";
+  githubSchema: "present" | "absent" | "loading" | "error";
 }): BackendDecision {
   if (input.flagEnabled === undefined) return "pending";
   if (!input.flagEnabled) return "legacy";
   if (input.hasServeConnection) return "protocol-local";
   if (input.hasLocalTunnel || input.runtime !== "cms") return "legacy";
   if (input.githubSchema === "loading") return "pending";
+  if (input.githubSchema === "error") return "unavailable-github";
   return input.githubSchema === "present" ? "protocol-github" : "legacy";
 }
 

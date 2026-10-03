@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
-  contentCapabilities,
+  isProtocolProject,
   mergePolledBlocks,
   selectContentBackend,
 } from "./content-backend";
@@ -60,28 +60,24 @@ describe("selectContentBackend", () => {
     expect(selectContentBackend({ ...base, githubSchema: "loading" })).toBe(
       "pending",
     );
+    // A failed probe never routes a protocol site to the legacy path.
+    expect(selectContentBackend({ ...base, githubSchema: "error" })).toBe(
+      "unavailable-github",
+    );
   });
 });
 
-describe("contentCapabilities", () => {
-  test("the protocol never runs site code", () => {
+describe("isProtocolProject", () => {
+  test("a protocol endpoint, usable or not", () => {
     expect(
-      Object.values(
-        contentCapabilities({
-          kind: "unavailable",
-          source: "local",
-          reason: "unreachable",
-        }),
-      ),
-    ).toEqual([false, false, false, false, false, false]);
-    expect(Object.values(contentCapabilities({ kind: "legacy" }))).toEqual([
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-    ]);
+      isProtocolProject({
+        kind: "unavailable",
+        source: "local",
+        reason: "unreachable",
+      }),
+    ).toBe(true);
+    expect(isProtocolProject({ kind: "legacy" })).toBe(false);
+    expect(isProtocolProject({ kind: "pending" })).toBe(false);
   });
 });
 

@@ -118,6 +118,24 @@ export function useDecofileDraft(
   return data ?? null;
 }
 
+/**
+ * The signed grant a content-protocol project puts in its `?__draft=` pointer
+ * (its version is the revision the protocol reports).
+ */
+export async function fetchDraftGrant(
+  params: DecofileScopeParams,
+): Promise<Omit<DecofileDraft, "version">> {
+  const res = await fetch(`${decofileApiUrl(params)}/draft-grant`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return throwResponseError(res, "Draft grant");
+  const grant = (await res.json()) as { token: string; apiHost?: string };
+  return {
+    token: grant.token,
+    apiHost: grant.apiHost ?? window.location.host,
+  };
+}
+
 /** GET the merged decofile; stashes the draft pointer as a side effect. */
 export async function fetchDecofile(
   queryClient: QueryClient,

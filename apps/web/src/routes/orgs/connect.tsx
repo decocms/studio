@@ -14,8 +14,10 @@ import { createContentClient } from "@decocms/shared/blocks-protocol";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
+import { ConnectCentered as Centered } from "@/components/sections-editor/deco-serve-chip";
 import {
   clearPendingConnection,
+  decoServeErrorReason,
   readPendingConnection,
 } from "@/components/sections-editor/deco-serve-connection";
 import { useSaveDecoServeConnection } from "@/hooks/use-deco-serve-connection";
@@ -25,17 +27,6 @@ import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
-import { decoServeErrorReason } from "@/components/sections-editor/deco-serve-status";
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-full w-full items-center justify-center p-6">
-      <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function ProjectPicker({
   onPick,
@@ -149,12 +140,26 @@ export default function OrgConnectRoute() {
           {t("decoServe.connect.pickTitle")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {t("decoServe.connect.pickDescription", {
-            root: described.data.root,
-            endpoint: pending.endpoint,
-          })}
+          {t("decoServe.connect.pickDescription")}
         </p>
       </div>
+      <dl
+        data-testid="deco-serve-connect-target"
+        className="grid w-full grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg border border-border bg-muted/40 p-3 text-left text-sm"
+      >
+        <dt className="text-muted-foreground">
+          {t("decoServe.connect.endpointLabel")}
+        </dt>
+        <dd className="truncate font-mono text-foreground">
+          {pending.endpoint}
+        </dd>
+        <dt className="text-muted-foreground">
+          {t("decoServe.connect.rootLabel")}
+        </dt>
+        <dd className="truncate font-mono text-foreground">
+          {described.data.root}
+        </dd>
+      </dl>
       <Suspense fallback={<Spinner className="size-5 text-muted-foreground" />}>
         <ProjectPicker
           onPick={(project) => {

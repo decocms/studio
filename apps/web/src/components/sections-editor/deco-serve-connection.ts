@@ -3,23 +3,38 @@
  * runs on the editor's machine. The CLI prints a connect link,
  * `<studio>/connect#endpoint=<url>&token=<token>`; the token travels in the
  * fragment so it never reaches logs or `Referer` headers.
+ *
+ * Only loopback endpoints are accepted: a link pointing anywhere else would
+ * send the editor's edits, uploads and secrets (encrypted to that server's
+ * key) to whoever wrote the link.
  */
 
+import {
+  ContentProtocolError,
+  ErrorCode,
+} from "@decocms/shared/blocks-protocol";
 import { z } from "zod";
+
+/** `deco serve` listens on this machine only. */
+export function isLoopbackEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host === "localhost" ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
 
 const DecoServeConnectionSchema = z.object({
   /** The protocol endpoint, such as `http://127.0.0.1:4545/rpc`. */
-  endpoint: z
-    .string()
-    .max(2048)
-    .refine((value) => {
-      try {
-        const url = new URL(value);
-        return url.protocol === "http:" || url.protocol === "https:";
-      } catch {
-        return false;
-      }
-    }),
+  endpoint: z.string().max(2048).refine(isLoopbackEndpoint),
   token: z.string().min(1).max(1024),
 });
 
@@ -72,4 +87,14 @@ export function clearPendingConnection(): void {
   } catch {
     // Nothing to clear.
   }
+}
+
+/** Why a `deco serve` request failed: a bad token (the server restarted) or no server. */
+export function decoServeErrorReason(
+  error: unknown,
+): "unauthorized" | "unreachable" {
+  return error instanceof ContentProtocolError &&
+    error.code === ErrorCode.Unauthorized
+    ? "unauthorized"
+    : "unreachable";
 }

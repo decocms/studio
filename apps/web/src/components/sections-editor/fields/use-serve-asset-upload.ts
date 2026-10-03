@@ -1,4 +1,5 @@
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { useT } from "@/i18n/use-t.ts";
 import { useContentBackend } from "../use-content-backend";
 import type { SandboxConfig } from "./field-props";
 
@@ -11,6 +12,7 @@ import type { SandboxConfig } from "./field-props";
 export function useServeAssetUpload(
   sandbox: SandboxConfig | null | undefined,
 ): ((file: File) => Promise<string>) | null {
+  const t = useT();
   const backend = useContentBackend(sandbox?.virtualMcpId, sandbox?.branch);
   const { connection } = useDecoServeConnection(sandbox?.virtualMcpId);
   if (
@@ -21,8 +23,16 @@ export function useServeAssetUpload(
   ) {
     return null;
   }
+  const { maxBytes } = backend.describe.assets;
   const origin = new URL(connection.endpoint).origin;
   return async (file) => {
+    if (file.size > maxBytes) {
+      throw new Error(
+        t("sectionsEditor.fileField.tooLarge", {
+          max: `${Math.floor(maxBytes / (1024 * 1024))} MB`,
+        }),
+      );
+    }
     const res = await fetch(
       `${origin}/assets/${encodeURIComponent(file.name)}`,
       {
@@ -46,4 +56,22 @@ export function useServeAssetUpload(
     }
     return body.path;
   };
+}
+
+/**
+ * Where a stored path such as `/assets/logo.png` loads from: on a connected
+ * `deco serve`, the site's own dev app, not Studio's origin.
+ */
+export function useServeAssetSrc(
+  sandbox: SandboxConfig | null | undefined,
+  path: string,
+): string {
+  const backend = useContentBackend(sandbox?.virtualMcpId, sandbox?.branch);
+  const origin =
+    backend.kind === "protocol" && backend.source === "local"
+      ? backend.describe.preview?.origin
+      : undefined;
+  return origin && path.startsWith("/") && !path.startsWith("//")
+    ? new URL(path, origin).href
+    : path;
 }

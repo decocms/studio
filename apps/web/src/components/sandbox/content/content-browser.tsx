@@ -123,7 +123,7 @@ import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { contentCapabilities } from "@/components/sections-editor/content-backend";
+import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -258,8 +258,7 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const fastPreviewActive = runtime === "cms";
   // A content-protocol backend has nothing to boot either.
   const contentBackend = useContentBackend(virtualMcpId, branch);
-  const protocolActive =
-    contentBackend.kind === "protocol" || contentBackend.kind === "unavailable";
+  const protocolActive = isProtocolProject(contentBackend);
   const gate = resolveContentSandboxGate({
     fastPreviewActive: fastPreviewActive || protocolActive,
     previewState: lifecycle.previewState,
@@ -354,7 +353,8 @@ function ContentBrowserReady({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
-  const contentCaps = contentCapabilities(
+  // The protocol never runs site code: no app install, no Run.
+  const runsSiteCode = !isProtocolProject(
     useContentBackend(virtualMcpId, branch),
   );
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
@@ -382,38 +382,6 @@ function ContentBrowserReady({
   );
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
-  // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
-  const hasDeepLink = !!(
-    deepLinkPage?.pageId ||
-    deepLinkPage?.path ||
-    deepLinkPage?.pathTemplate
-  );
-  const [seededDeepLink, setSeededDeepLink] = useState(false);
-  if (hasDeepLink && !seededDeepLink && selection === null && decofile) {
-    setSeededDeepLink(true);
-    const match = resolveDeepLinkPage(
-      extractPages(decofile),
-      deepLinkPage ?? {},
-    );
-    if (match) {
-      setActiveCollection("pages");
-      setSelection({ collection: "pages", key: match.key, path: match.path });
-    }
-  }
-  const [searchQuery, setSearchQuery] = useState("");
-  // Posts workspace view + grouping — lifted so they survive opening a post.
-  const [postsView, setPostsView] = useState<PostsView>("board");
-  const selectItem = (next: Selection) => {
-    setSelection(next);
-    setOpenPageSeoKey(null);
-  };
-  // Reset search when switching collections (derived-state sync pattern).
-  const [prevCollection, setPrevCollection] = useState(activeCollection);
-  if (prevCollection !== activeCollection) {
-    setPrevCollection(activeCollection);
-    setSearchQuery("");
-  }
-
   const {
     data: meta,
     isLoading: metaLoading,
@@ -458,6 +426,44 @@ function ContentBrowserReady({
       return false;
     },
   });
+  // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
+  const hasDeepLink = !!(
+    deepLinkPage?.pageId ||
+    deepLinkPage?.path ||
+    deepLinkPage?.pathTemplate
+  );
+  const [seededDeepLink, setSeededDeepLink] = useState(false);
+  // Waits for the schema too: it says which block types are pages.
+  if (
+    hasDeepLink &&
+    !seededDeepLink &&
+    selection === null &&
+    decofile &&
+    !metaLoading
+  ) {
+    setSeededDeepLink(true);
+    const match = resolveDeepLinkPage(
+      extractPages(decofile, meta),
+      deepLinkPage ?? {},
+    );
+    if (match) {
+      setActiveCollection("pages");
+      setSelection({ collection: "pages", key: match.key, path: match.path });
+    }
+  }
+  const [searchQuery, setSearchQuery] = useState("");
+  // Posts workspace view + grouping — lifted so they survive opening a post.
+  const [postsView, setPostsView] = useState<PostsView>("board");
+  const selectItem = (next: Selection) => {
+    setSelection(next);
+    setOpenPageSeoKey(null);
+  };
+  // Reset search when switching collections (derived-state sync pattern).
+  const [prevCollection, setPrevCollection] = useState(activeCollection);
+  if (prevCollection !== activeCollection) {
+    setPrevCollection(activeCollection);
+    setSearchQuery("");
+  }
 
   const isAppSchemaLoading = (
     resolveType: string | undefined,
@@ -468,7 +474,7 @@ function ContentBrowserReady({
 
   const { catalog: appCatalog, isLoading: appCatalogLoading } =
     useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
-      enabled: contentCaps.installApps && activeCollection === "apps",
+      enabled: runsSiteCode && activeCollection === "apps",
     });
 
   const blogSupport = useBlogSupport({
@@ -525,7 +531,7 @@ function ContentBrowserReady({
     return <EmptyMessage title="Could not load site data." />;
   }
 
-  const pages = extractPages(decofile).sort((a, b) =>
+  const pages = extractPages(decofile, meta).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
   const redirects = extractRedirects(decofile).sort((a, b) =>
@@ -544,10 +550,10 @@ function ContentBrowserReady({
     ? allBlogEntries[activeCollection]
     : [];
 
-  const loadersCount = contentCaps.runBlocks
+  const loadersCount = runsSiteCode
     ? countAvailableRunnables(meta, "loaders")
     : 0;
-  const actionsCount = contentCaps.runBlocks
+  const actionsCount = runsSiteCode
     ? countAvailableRunnables(meta, "actions")
     : 0;
 
@@ -570,7 +576,7 @@ function ContentBrowserReady({
   const counts: CollectionCounts = {
     pages: pages.length,
     sections: globalSections.length,
-    apps: contentCaps.installApps ? appCatalog.length : 0,
+    apps: runsSiteCode ? appCatalog.length : 0,
     loaders: loadersCount,
     actions: actionsCount,
     redirects: redirects.length,

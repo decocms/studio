@@ -147,7 +147,7 @@ import {
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
-import { contentCapabilities } from "@/components/sections-editor/content-backend";
+import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 
@@ -493,7 +493,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * site code, so nothing renders in place: the frame is the real app.
    */
   const contentBackend = useContentBackend(virtualMcpId, branch);
-  const contentCaps = contentCapabilities(contentBackend);
+  const runsSiteCode = !isProtocolProject(contentBackend);
   const servePreviewUrl =
     contentBackend.kind === "protocol" && contentBackend.source === "local"
       ? (contentBackend.describe.preview?.origin ?? null)
@@ -516,7 +516,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const projectDefaultsToCms = session.projectDefault === "cms";
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
-  const sectionPreviewBase = contentCaps.livePreviews
+  const sectionPreviewBase = runsSiteCode
     ? resolveSectionPreviewBase({
         sandboxUrl: previewUrl,
         previewServerUrl,
@@ -548,7 +548,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const decofile = decofileQuery.data;
   const meta = metaQuery.data;
   const pages = decofile
-    ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
+    ? extractPages(decofile, meta).sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -556,7 +556,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
-    contentCaps.runBlocks && decofile && meta
+    runsSiteCode && decofile && meta
       ? listSavedRunnables(meta, decofile, "loaders")
       : [];
   const filteredPages = !pagesSearch
@@ -628,7 +628,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whatever product-search / category loader the running site actually ships.
   // A param with no resolvable source keeps the plain inline input.
   const pathParamSources: Record<string, OptionSource[]> = {};
-  if (contentCaps.invoke && devServerReady && previewUrl && meta && decofile) {
+  if (runsSiteCode && devServerReady && previewUrl && meta && decofile) {
     const manifestLoaders = manifestLoaderResolveTypes(meta, "loaders");
     const pageBlock = currentPageKey ? decofile[currentPageKey] : undefined;
     const pageLoaders = collectPageLoaderResolveTypes(
@@ -794,7 +794,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const inPlaceRenderEnabled =
     agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
   // Local renders fake edits in place against the tunnel's `/live/previews`.
-  const inPlaceRenderActive = !contentCaps.inPlaceRender
+  const inPlaceRenderActive = !runsSiteCode
     ? false
     : localPreviewUrl
       ? display.mode === "sandbox" &&

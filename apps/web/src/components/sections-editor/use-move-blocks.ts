@@ -60,14 +60,10 @@ export function useMoveBlocks({
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
   const backend = useContentBackend(virtualMcpId, branch);
   const protocol = backend.kind === "protocol" ? backend : null;
-  const protocolCacheKey = useDecofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  const cacheKey = protocol
-    ? protocolCacheKey
-    : `${orgSlug}/${virtualMcpId}/${branch}`;
+  const cacheKey = useDecofileCacheKey(
+    { orgSlug, virtualMcpId, branch },
+    { tunnel: false },
+  );
   const queryKey = KEYS.decofile(cacheKey);
 
   const mutation = useMutation({
@@ -77,25 +73,13 @@ export function useMoveBlocks({
       const writes = sanitizeSecretsForPersistence(rawWrites);
       if (protocol) {
         // One `blocks.apply`: the write and the delete land together.
-        const applied = await applyProtocolPatch(
+        return applyProtocolPatch(
           queryClient,
           protocol,
-          { orgSlug, virtualMcpId, branch },
+          { orgSlug, virtualMcpId, branch, threadId },
           cacheKey,
           { set: writes, delete: deletes.filter((key) => !(key in writes)) },
         );
-        if (protocol.source === "github") {
-          // The commit moved the branch head; refresh the header's branch meta.
-          await queryClient.invalidateQueries({
-            queryKey: sandboxGitStatusQueryKey({
-              orgSlug,
-              virtualMcpId,
-              branch,
-              threadId,
-            }),
-          });
-        }
-        return applied;
       }
       if (fastPreviewActive) {
         // One PATCH, one commit — the server applies set and delete together.
