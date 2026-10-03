@@ -58,15 +58,17 @@ export type BackendDecision =
   | "unavailable-github";
 
 /**
- * Which backend a project's editor uses. A connected `deco serve` wins, then
- * the legacy Local tunnel; a Fast Preview (`cms`) session uses the GitHub
- * backend when the branch has a committed schema; a failed probe is not "no
- * schema", so it never falls back to legacy. Sandbox sessions stay
- * legacy: their pod's working tree shares the branch, and commits from here
- * would make the two diverge.
+ * Which backend a project's editor uses. A connected `deco serve` wins, for
+ * every org: it exists only once someone pasted its link into the "Local"
+ * draft option, so a v7 site (a Local tunnel URL) never gets one. Then the
+ * legacy Local tunnel. Behind the org flag, a Fast Preview (`cms`) session
+ * uses the GitHub backend when the branch has a committed schema; a failed
+ * probe is not "no schema", so it never falls back to legacy. Sandbox
+ * sessions stay legacy: their pod's working tree shares the branch, and
+ * commits from here would make the two diverge.
  */
 export function selectContentBackend(input: {
-  /** The org flag; `undefined` while the org settings load. */
+  /** The org flag (GitHub backend only); `undefined` while it loads. */
   flagEnabled: boolean | undefined;
   hasServeConnection: boolean;
   hasLocalTunnel: boolean;
@@ -74,10 +76,10 @@ export function selectContentBackend(input: {
   /** The GitHub probe: does the branch have a committed schema? */
   githubSchema: "present" | "absent" | "loading" | "error";
 }): BackendDecision {
-  if (input.flagEnabled === undefined) return "pending";
-  if (!input.flagEnabled) return "legacy";
   if (input.hasServeConnection) return "protocol-local";
   if (input.hasLocalTunnel || input.runtime !== "cms") return "legacy";
+  if (input.flagEnabled === undefined) return "pending";
+  if (!input.flagEnabled) return "legacy";
   if (input.githubSchema === "loading") return "pending";
   if (input.githubSchema === "error") return "unavailable-github";
   return input.githubSchema === "present" ? "protocol-github" : "legacy";

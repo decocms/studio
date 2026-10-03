@@ -17,7 +17,7 @@ import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
 import { DecoServeChip } from "@/components/sections-editor/deco-serve-chip";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { ContentVersionBadge } from "@/components/sections-editor/content-version-badge";
 
 function SiteEditorActions() {
   const session = useOptionalChatTask();
@@ -28,11 +28,11 @@ function SiteEditorActions() {
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   // A connected `deco serve` edits the working tree: the developer commits.
   const { connection: serveConnection } = useDecoServeConnection(entity?.id);
-  const servingLocally =
-    useOrgFlag("site_editor_content_protocol") && !!serveConnection;
+  const servingLocally = !!serveConnection;
   if (!entity) return null;
   return (
     <>
+      <ContentVersionBadge virtualMcpId={entity.id} branch={currentBranch} />
       {servingLocally && (
         <DecoServeChip virtualMcpId={entity.id} branch={currentBranch} />
       )}
@@ -68,8 +68,7 @@ function SiteEditorDrawer() {
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   const { connection: serveConnection } = useDecoServeConnection(entity?.id);
-  const servingLocally =
-    useOrgFlag("site_editor_content_protocol") && !!serveConnection;
+  const servingLocally = !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
     !servingLocally &&
