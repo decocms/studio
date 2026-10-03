@@ -1038,7 +1038,7 @@ function LocalUrlForm({
     } catch (err) {
       setError(
         decoServeErrorReason(err) === "unauthorized"
-          ? t("decoServe.status.unauthorized")
+          ? t("thread.branchPicker.localServeUnauthorized")
           : t("decoServe.status.unreachable"),
       );
     } finally {
