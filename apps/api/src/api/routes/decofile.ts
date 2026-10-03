@@ -8,12 +8,19 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, flag)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/draft-grant  draft token (session, flag)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
  * session needs to render and to commit. The project's `fastPreview` switch
  * does NOT gate it; that switch only picks the runtime a NEW thread is stamped
  * with, and gating this on it would strand an already-stamped session.
+ *
+ * The two content-protocol routes serve next-major Blocks sites (see
+ * `decofile/repo-content-storage.ts`) and exist only behind the
+ * `site_editor_content_protocol` org flag. They don't need a preview server:
+ * the protocol never renders, and a project without one just has no preview.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -47,6 +54,9 @@ import {
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import { createRepoContentStorage } from "@/decofile/repo-content-storage";
+import { createContentHandler } from "@decocms/shared/blocks-protocol/server";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -59,6 +69,7 @@ interface DecofileScope {
   repository: RepositoryBinding;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
+  previewServerUrl: string | null;
 }
 
 type DecofileEnv = Env & {
@@ -152,7 +163,8 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
+      c.req.method === "GET" &&
+      !c.req.path.match(/\/(publish|status|draft-grant)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -192,7 +204,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
    *  threads, and gating the data plane on it would strand a session already
    *  stamped `cms` the moment someone flips the switch off. */
   const previewServerUrl = resolvePreviewServerUrl(metadata);
-  if (!previewServerUrl) {
+  if (!previewServerUrl && !isContentProtocolPath(c.req.path)) {
     return c.json({ error: "Project has no preview server configured" }, 404);
   }
 
@@ -211,9 +223,33 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     repository,
     userId,
+    previewServerUrl,
   });
   return next();
 });
+
+/** The content-protocol routes, which work without a preview server. */
+function isContentProtocolPath(path: string): boolean {
+  return /\/(rpc|draft-grant)$/.test(path);
+}
+
+async function contentProtocolEnabled(
+  c: Context<DecofileEnv>,
+): Promise<boolean> {
+  const ctx = c.var.studioContext;
+  const settings = await ctx.storage.organizationSettings.get(
+    c.get("decofileScope").organizationId,
+  );
+  return orgFlagEnabled(settings?.flags, "site_editor_content_protocol");
+}
+
+function signScopeDraftToken(scope: DecofileScope): string {
+  return signDraftToken({
+    organizationId: scope.organizationId,
+    virtualMcpId: scope.virtualMcpId,
+    branch: scope.branch,
+  });
+}
 
 /**
  * The authority (host[:port]) the editor should bake into the `?__draft=`
@@ -494,6 +530,52 @@ export function createDecofileRoutes() {
     } catch (err) {
       return errorResponse(c, err);
     }
+  });
+
+  app.post("/:virtualMcpId/:branch/rpc", async (c) => {
+    if (!(await contentProtocolEnabled(c))) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    const scope = c.get("decofileScope");
+    const client = await contentClientForScope(c);
+    // Per request: the storage carries this caller's repository credential.
+    // The body cache is off for the same reason, and the blob cache under
+    // the storage already makes repeated reads cheap.
+    const handler = createContentHandler(
+      createRepoContentStorage({
+        client,
+        packagePath: scope.packagePath,
+        branch: scope.branch,
+        coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+      }),
+      {
+        server: { name: "studio-github", version: "1" },
+        preview: scope.previewServerUrl
+          ? { origin: new URL(scope.previewServerUrl).origin }
+          : null,
+        bodyCacheBytes: 0,
+        onError: (error) =>
+          console.error("content protocol: internal error", {
+            organizationId: scope.organizationId,
+            virtualMcpId: scope.virtualMcpId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      },
+    );
+    return handler(c.req.raw);
+  });
+
+  /** The grant a protocol client puts in its `?__draft=` pointer. */
+  app.get("/:virtualMcpId/:branch/draft-grant", async (c) => {
+    if (!(await contentProtocolEnabled(c))) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    const scope = c.get("decofileScope");
+    return c.json(
+      { token: signScopeDraftToken(scope), apiHost: requestApiHost(c) },
+      200,
+      { "Cache-Control": "no-store" },
+    );
   });
 
   return app;

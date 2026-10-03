@@ -2,8 +2,7 @@ import {
   appendCoAuthorTrailer,
   type CoAuthorIdentity,
 } from "@decocms/sandbox/shared";
-import { blockKeyToFileStem, mergeBlocks } from "@decocms/shared/decofile";
-import { repoIdentityKey } from "@decocms/shared/git-providers";
+import { blockKeyToFileStem } from "@decocms/shared/decofile";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import {
   type FileChange,
@@ -15,9 +14,9 @@ import {
   blockEntriesInTree,
   blocksDirPath,
   primeBlobCache,
-  resolveBlockContents,
   resolveOrCreateHead,
 } from "./read-decofile";
+import { regenerateGenArtifact } from "./gen-artifact";
 
 /**
  * Per-(virtualMcpId, branch) commit coalescer. Autosaves arrive every ~700ms
@@ -174,28 +173,15 @@ async function commitBatch(batch: Batch): Promise<string> {
 
     if (writes.length === 0) return headSha;
 
-    // Repos that track the merged artifact get it regenerated in-commit;
-    // gitignored repos (the common case) never have the tree entry.
-    const genPath = packagePath
-      ? `${packagePath}/.deco/blocks.gen.json`
-      : ".deco/blocks.gen.json";
-    if (tree.some((e) => e.type === "blob" && e.path === genPath)) {
-      const files = await resolveBlockContents(
-        client,
-        nextBlocks.values(),
-        blobMemo,
-      );
-      const { decofile: genContent, skipped } = mergeBlocks(files);
-      if (skipped.length > 0) {
-        console.warn("decofile gen: dropped blocks that were not valid JSON", {
-          repo: repoIdentityKey(client.repo),
-          branch,
-          packagePath,
-          blocks: skipped.map((s) => s.key),
-        });
-      }
-      writes.push({ path: genPath, content: genContent });
-    }
+    const gen = await regenerateGenArtifact({
+      client,
+      tree,
+      packagePath,
+      branch,
+      nextBlocks: nextBlocks.values(),
+      memo: blobMemo,
+    });
+    if (gen) writes.push(gen);
 
     try {
       const { sha } = await client.commitFiles({
