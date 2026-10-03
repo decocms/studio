@@ -111,9 +111,12 @@ const MAX_BUILD_PROPERTY_DEPTH = 8;
 /**
  * Max recursion for plain structural descent — an object's `properties`, an
  * array's `items`, and inline plain-data unions (`A | B`). Unlike union-branch
- * materialization above, this path is cycle-free (a `$ref` cycle is caught by
- * `seen` regardless of depth; inline nesting is a finite tree) and linear in the
- * schema's node count, so it gets a far higher cap. Without it, deeply-nested
+ * materialization above, this path is cycle-free — a property or array item
+ * whose `$ref` is already on the current path (e.g. commerce `Product.isRelatedTo:
+ * Product[]`, or `Product.isVariantOf → ProductGroup.hasVariant → Product[]`) is
+ * emitted without re-expanding its nested properties, and inline nesting is a
+ * finite tree — so it is linear in the schema's node count and gets a far
+ * higher cap. Without it, deeply-nested
  * data structures — e.g. a mega-menu of `departmentMenus → menu → submenuColumns
  * → submenuGroups → submenuGroupItems`, ~5 nested arrays with no `__resolveType`
  * boundary to reset depth — resolve their leaf `items`/`properties` to
@@ -1094,7 +1097,11 @@ export function resolveSchema(
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
     let lazyBlock = false;
-    if (depth < MAX_STRUCTURE_DEPTH) {
+    // A `$ref` already on the current path is a recursive type (commerce
+    // `Product` → `isRelatedTo: Product[]`, …): expanding it again only
+    // repeats the same subtree until MAX_STRUCTURE_DEPTH, which with several
+    // recursive fields per level is exponential and freezes the tab.
+    if (depth < MAX_STRUCTURE_DEPTH && !cyclicUnion) {
       const nestedRaw = collectProps(resolved);
       const rtEnum = (nestedRaw.__resolveType as RawSchema | undefined)?.enum;
       lazyBlock =
@@ -1124,10 +1131,14 @@ export function resolveSchema(
     ) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
+        // Hand buildProperty the un-resolved `$ref` so it records the ref on
+        // the path — resolving it here first hid `Product[]` cycles from the
+        // guard above.
+        const itemsInput = rawItems;
         if (typeof rawItems.$ref === "string") {
           rawItems = resolveRef(rawItems.$ref);
         }
-        itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
+        itemsSchema = buildProperty(itemsInput, depth + 1, unionSeen);
         if (
           typeof rawItems.title === "string" &&
           rawItems.title.includes("{{")

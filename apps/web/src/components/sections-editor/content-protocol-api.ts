@@ -264,6 +264,16 @@ export function useProtocolDraft(
     staleTime: DRAFT_GRANT_STALE_MS,
     refetchInterval: DRAFT_GRANT_STALE_MS,
   });
+  const revision = useContentRevision(cacheKey);
+  return params && grant && revision ? { ...grant, version: revision } : null;
+}
+
+/**
+ * The content revision the last read or write of `cacheKey` saw, or
+ * `undefined` before the first one. A save moves it, and so does a read that
+ * finds the content changed elsewhere.
+ */
+export function useContentRevision(cacheKey: string): string | undefined {
   const { data: seen } = useQuery<ContentRevisions>({
     queryKey: KEYS.contentRevision(cacheKey),
     enabled: false,
@@ -272,7 +282,5 @@ export function useProtocolDraft(
     },
     staleTime: Number.POSITIVE_INFINITY,
   });
-  return params && grant && seen?.revision
-    ? { ...grant, version: seen.revision }
-    : null;
+  return seen?.revision;
 }

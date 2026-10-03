@@ -54,7 +54,10 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { Panel } from "@/components/panel";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useDecofileCacheKey,
+} from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
@@ -152,6 +155,7 @@ import {
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
 
@@ -343,6 +347,11 @@ function reloadIframeOrFallback(
     if (fallbackSrc) iframe.src = fallbackSrc;
   }
 }
+
+/** How long after a `deco serve` save the frame may take to reload itself
+ *  before the editor reloads it: a dev server that reloads pages on content
+ *  changes does so within a few hundred ms of the save. */
+const SERVE_SELF_RELOAD_WAIT_MS = 1500;
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
@@ -1336,6 +1345,37 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Only a moved or restarted dev server; file edits reload the page themselves.
   useSandboxReloadHandler(reloadPreviewPreservingScroll);
+
+  // A connected `deco serve` is the exception: a save rewrites the site's
+  // content module, which only the server imports, so the dev server may
+  // swap it without reloading the page in the frame. A new content revision
+  // (a save here, or a read that found the files changed) waits for the
+  // frame to reload itself, as a dev server that reloads on content changes
+  // does, and reloads it otherwise.
+  const contentCacheKey = useDecofileCacheKey(createPageParams);
+  const contentRevision = useContentRevision(
+    servePreviewUrl(contentBackend) ? contentCacheKey : "",
+  );
+  const shownRevisionRef = useRef(contentRevision);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative iframe reload in response to a content revision the query cache moved
+  useEffect(() => {
+    const shown = shownRevisionRef.current;
+    shownRevisionRef.current = contentRevision;
+    if (!shown || !contentRevision || shown === contentRevision) return;
+    const iframe = previewIframeRef.current;
+    if (!iframe) return;
+    const reloadedItself = () => clearTimeout(timer);
+    iframe.addEventListener("load", reloadedItself, { once: true });
+    const timer = setTimeout(() => {
+      iframe.removeEventListener("load", reloadedItself);
+      reloadPreviewPreservingScroll();
+    }, SERVE_SELF_RELOAD_WAIT_MS);
+    return () => {
+      clearTimeout(timer);
+      iframe.removeEventListener("load", reloadedItself);
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload on a revision change only; the reload reads refs
+  }, [contentRevision]);
 
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);

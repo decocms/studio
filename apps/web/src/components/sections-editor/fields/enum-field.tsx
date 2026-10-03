@@ -40,7 +40,9 @@ export function EnumField({
         virtualMcpId={sandbox?.virtualMcpId}
       />
       <Select
-        value={selectValue}
+        // "" (no selection, the placeholder) rather than undefined keeps the
+        // Select controlled when a value arrives later.
+        value={selectValue ?? ""}
         onValueChange={(v) => onChange(selectValueToFormValue(v, options))}
       >
         <SelectTrigger id={path} className="h-10 w-full min-w-0">

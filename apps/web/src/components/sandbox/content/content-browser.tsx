@@ -551,12 +551,19 @@ function ContentBrowserReady({
     ? allBlogEntries[activeCollection]
     : [];
 
-  const loadersCount = runsSiteCode
-    ? countAvailableRunnables(meta, "loaders")
-    : 0;
-  const actionsCount = runsSiteCode
-    ? countAvailableRunnables(meta, "actions")
-    : 0;
+  // Listed (and their saved blocks edited) on every backend; only Run needs
+  // site code.
+  const loadersCount = countAvailableRunnables(meta, "loaders");
+  const actionsCount = countAvailableRunnables(meta, "actions");
+  // What a content-protocol site has no use for: app installs (no site code
+  // runs), v7's site app block, and an empty Actions folder.
+  const hiddenCollections: CollectionId[] = runsSiteCode
+    ? []
+    : [
+        "apps",
+        ...(siteApp ? [] : (["site"] as const)),
+        ...(actionsCount === 0 ? (["actions"] as const) : []),
+      ];
 
   // Loader/action-only sites are still editable — don't gate them out.
   if (
@@ -985,6 +992,7 @@ function ContentBrowserReady({
       <CollectionsSidebar
         active={activeCollection}
         counts={counts}
+        hidden={hiddenCollections}
         showBlog={showBlog}
         onSelect={(id) => {
           setActiveCollection(id);

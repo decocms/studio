@@ -2448,3 +2448,73 @@ describe("resolveSchema – loaders in the nested non-null return bucket", () =>
     expect(products?.plainSchema?.type).toBe("array");
   });
 });
+
+describe("resolveSchema – recursive object/array types (commerce Product)", () => {
+  /**
+   * Mirrors apps-commerce's `Product`: several `Product[]` fields plus
+   * `isVariantOf → ProductGroup.hasVariant → Product[]`. Object properties and
+   * array items used to recurse to MAX_STRUCTURE_DEPTH (the array path resolved
+   * `items.$ref` before recursing, so the cycle guard never saw it) — ~4
+   * branches per level, effectively never finishing and freezing the tab.
+   */
+  function productMeta(): LiveMeta {
+    const productArray = {
+      type: "array",
+      items: { $ref: "#/definitions/Product" },
+    };
+    return {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Shelf.tsx": {
+              $ref: "#/definitions/Shelf",
+            },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Shelf: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              products: productArray,
+            },
+          },
+          Product: {
+            type: "object",
+            properties: {
+              name: { type: "string", title: "Name" },
+              isRelatedTo: productArray,
+              isSimilarTo: productArray,
+              isAccessoryOrSparePartFor: productArray,
+              isVariantOf: { $ref: "#/definitions/ProductGroup" },
+            },
+          },
+          ProductGroup: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              hasVariant: productArray,
+            },
+          },
+        },
+      },
+    };
+  }
+
+  test("terminates quickly and keeps the first level editable", () => {
+    const start = Date.now();
+    const resolved = resolveSchema("site/sections/Shelf.tsx", productMeta());
+    expect(Date.now() - start).toBeLessThan(1000);
+
+    const item = resolved?.properties?.products?.items;
+    expect(item?.properties?.name?.type).toBe("string");
+    expect(item?.properties?.isRelatedTo?.type).toBe("array");
+    // The recursive Product is not re-expanded.
+    expect(item?.properties?.isRelatedTo?.items?.properties).toBeUndefined();
+    const group = item?.properties?.isVariantOf;
+    expect(group?.properties?.name?.type).toBe("string");
+    expect(group?.properties?.hasVariant?.items?.properties).toBeUndefined();
+  });
+});
