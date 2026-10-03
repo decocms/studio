@@ -19,7 +19,9 @@ import { LocationField } from "./fields/location-field";
 import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock } from "@decocms/shared/decofile";
-import { isSecretField, SecretField } from "./fields/secret-field";
+import { isSecretField } from "./fields/secret-field";
+import { SecretFieldForBackend } from "./fields/protocol-secret-field";
+import { isLazyFieldSchema, unwrapLazy, wrapLazy } from "./lazy-value";
 import {
   isEmptyFieldValue,
   RequiredFieldProvider,
@@ -170,6 +172,21 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
 
 export function renderField(props: FieldProps) {
   const { schema, value } = props;
+
+  // `Lazy<T>`: edit the `T`; the stored value is the `lazy` block around it.
+  if (isLazyFieldSchema(schema)) {
+    const inner = schema.properties.value;
+    return renderField({
+      ...props,
+      schema: {
+        ...inner,
+        title: schema.title ?? inner.title,
+        description: schema.description ?? inner.description,
+      },
+      value: unwrapLazy(value),
+      onChange: (next) => props.onChange(wrapLazy(next)),
+    });
+  }
 
   if (isMultivariateArrayWrapper(value)) {
     const multivariateArray = unwrapMultivariateArrayValue(value);
@@ -332,7 +349,7 @@ export function renderField(props: FieldProps) {
 
   // Deco secrets (loader blocks and their `@format secret` value) must never hit a plain text input.
   if (isSecretField(schema, value)) {
-    return <SecretField key={props.path} {...props} />;
+    return <SecretFieldForBackend key={props.path} {...props} />;
   }
 
   // Resolved block-ref value whose schema lost its picker branch — see renderResolvedBlockRefValue. Skip when a format/enum widget owns the field.
@@ -353,7 +370,13 @@ export function renderField(props: FieldProps) {
   if (effectiveValue === null || effectiveValue === undefined) return null;
 
   if (isSecretBlock(effectiveValue)) {
-    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+    return (
+      <SecretFieldForBackend
+        key={props.path}
+        {...props}
+        value={effectiveValue}
+      />
+    );
   }
 
   const effectiveProps = { ...props, value: effectiveValue };

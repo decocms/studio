@@ -58,6 +58,7 @@ export function AppEditor({
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
     virtualMcpId,
+    branch,
     sandboxUrl: previewBaseUrl,
   });
   const resolveType =
