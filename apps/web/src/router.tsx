@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
   lazyRouteComponent,
+  notFound,
   Outlet,
   redirect,
   retainSearchParams,
@@ -14,6 +15,7 @@ import {
 } from "@/layouts/panel-search";
 import { settingsGroupPendingComponent } from "@/components/settings/settings-group-page";
 import { ChunkErrorBoundary } from "@/components/error-boundary";
+import { readProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t";
 import * as z from "zod";
 
@@ -314,9 +316,13 @@ const chooseEditorRoute = createRoute({
 // The site editor over `deco serve`, which prints
 // `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
 // Its tabs carry the project Site Editor's `staticData`: the same app.
+// Behind the New Layout preference: with it off the route is not found.
 const siteEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/site-editor",
+  beforeLoad: () => {
+    if (!readProjectFirstNav()) throw notFound();
+  },
   component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
 });
 

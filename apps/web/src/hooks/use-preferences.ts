@@ -1,4 +1,3 @@
-import { createContext, use } from "react";
 import type { Locale } from "@/i18n/locale.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useLocalStorage } from "./use-local-storage.ts";
@@ -84,6 +83,21 @@ export function readLanguage(): Locale {
   return detectLocale();
 }
 
+/**
+ * Read the New Layout opt-in directly from localStorage (no React state), for
+ * route guards that run before anything renders — `/site-editor` only exists
+ * with it on.
+ */
+export function readProjectFirstNav(): boolean {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(LOCALSTORAGE_KEYS.preferences()) ?? "{}",
+    );
+    return raw.projectFirstNav === true;
+  } catch {}
+  return false;
+}
+
 export function usePreferences() {
   return useLocalStorage<Preferences>(
     LOCALSTORAGE_KEYS.preferences(),
@@ -114,12 +128,7 @@ export function usePreferences() {
   );
 }
 
-/** Set by `/site-editor`, a route that only exists in the project-first
- *  frame, so it renders there whatever this person's flag says. */
-export const ForceProjectFirstNav = createContext(false);
-
 export function useProjectFirstNav(): boolean {
-  const forced = use(ForceProjectFirstNav);
   const [preferences] = usePreferences();
-  return forced || preferences.projectFirstNav;
+  return preferences.projectFirstNav;
 }
