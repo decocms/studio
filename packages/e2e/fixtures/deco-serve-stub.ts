@@ -17,10 +17,8 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import {
-  createAssetHandler,
-  createContentHandler,
-} from "@decocms/shared/blocks-protocol/server";
+import { createContentHandler } from "@decocms/shared/blocks-protocol/server";
+import { createAssetHandler } from "@decocms/shared/blocks-protocol/server/assets";
 import {
   createMemoryStorage,
   type MemoryStorage,
@@ -74,8 +72,8 @@ export async function startDecoServeStub(params: {
   schema: object;
   files?: Record<string, string>;
   secretsPublicKey?: string;
-  /** What `describe.preview` points at (the dev app). */
-  previewOrigin?: string;
+  /** What `describe.preview` points at (the dev app, `deco serve --preview`). */
+  previewUrl?: string;
 }): Promise<DecoServeStub> {
   const token = randomBytes(16).toString("hex");
   const storage = createMemoryStorage({
@@ -89,7 +87,7 @@ export async function startDecoServeStub(params: {
   const rpc = createContentHandler(storage, {
     token,
     server: { name: "deco-serve-stub", version: "0" },
-    preview: params.previewOrigin ? { origin: params.previewOrigin } : null,
+    preview: params.previewUrl ? { url: params.previewUrl } : null,
   });
   const assets = createAssetHandler(storage, { token });
   const requestBodies: string[] = [];

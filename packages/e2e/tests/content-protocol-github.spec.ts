@@ -13,12 +13,12 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import {
-  publicKeyPemFromDer,
-  type BlocksApplyResult,
-  type BlocksListResult,
-  type DescribeResult,
+import type {
+  BlocksApplyResult,
+  BlocksListResult,
+  DescribeResult,
 } from "@decocms/shared/blocks-protocol";
+import { publicKeyPemFromDer } from "@decocms/shared/blocks-protocol/ciphertext";
 import { runConformance } from "@decocms/shared/blocks-protocol/conformance";
 import { signUpViaApi } from "../fixtures/auth-api";
 import {

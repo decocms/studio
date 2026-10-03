@@ -7,7 +7,8 @@
  *   bun run scripts/sync-blocks-protocol.ts <path-to-blocks-checkout> <commit>
  *
  * Copies the tree at `<commit>` (not the working tree), leaves out the
- * Node-only filesystem storage and the tests, renames files to kebab-case
+ * Node-only filesystem storage and the tests, inlines the SDK leaf modules the
+ * protocol re-exports from outside its folder, renames files to kebab-case
  * (this repo's file-name rule) with their relative imports, formats, and
  * points SYNC.md at the commit.
  */
@@ -39,6 +40,21 @@ function git(cwd: string, args: string[]): string {
     throw new Error(`git ${args.join(" ")}: ${result.stderr.toString()}`);
   }
   return result.stdout.toString();
+}
+
+/**
+ * A top-level protocol file may re-export a dependency-free SDK module from
+ * outside the folder (`export * from "../v8/canonical"`): the module's own
+ * source replaces that line, since the folder above isn't vendored.
+ */
+function inlineOutsideReExports(
+  source: string,
+  read: (srcPath: string) => string,
+): string {
+  return source.replace(
+    /^export \* from "\.\.\/([^"]+)";$/gm,
+    (_match, specifier: string) => read(`packages/blocks/src/${specifier}.ts`),
+  );
 }
 
 /** Rewrites relative import specifiers to the kebab-case file names. */
@@ -74,7 +90,12 @@ async function main() {
   const note = await Bun.file(syncNote).text();
   await rm(targetDir, { recursive: true, force: true });
   for (const path of files) {
-    const source = git(checkout, ["show", `${sha}:${SOURCE_DIR}/${path}`]);
+    const raw = git(checkout, ["show", `${sha}:${SOURCE_DIR}/${path}`]);
+    const source = path.includes("/")
+      ? raw
+      : inlineOutsideReExports(raw, (srcPath) =>
+          git(checkout, ["show", `${sha}:${srcPath}`]),
+        );
     const target = join(targetDir, kebabPath(path));
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, rewriteImports(source));

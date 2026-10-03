@@ -1,5 +1,6 @@
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
+import { servePreviewUrl } from "../content-backend";
 import { useContentBackend } from "../use-content-backend";
 import type { SandboxConfig } from "./field-props";
 
@@ -67,11 +68,8 @@ export function useServeAssetSrc(
   path: string,
 ): string {
   const backend = useContentBackend(sandbox?.virtualMcpId, sandbox?.branch);
-  const origin =
-    backend.kind === "protocol" && backend.source === "local"
-      ? backend.describe.preview?.origin
-      : undefined;
-  return origin && path.startsWith("/") && !path.startsWith("//")
-    ? new URL(path, origin).href
+  const preview = servePreviewUrl(backend);
+  return preview && path.startsWith("/") && !path.startsWith("//")
+    ? new URL(path, preview).href
     : path;
 }

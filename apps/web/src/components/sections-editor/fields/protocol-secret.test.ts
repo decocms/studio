@@ -4,7 +4,7 @@ import {
   encryptToCiphertext,
   parseCiphertext,
   publicKeyPemFromDer,
-} from "@decocms/shared/blocks-protocol";
+} from "@decocms/shared/blocks-protocol/ciphertext";
 import { protocolSecretState } from "./protocol-secret";
 
 async function keyPair() {

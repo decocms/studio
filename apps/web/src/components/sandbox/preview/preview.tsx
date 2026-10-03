@@ -21,7 +21,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef, useEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useChatTask } from "@/components/chat/context";
+import { useChatTask, useOptionalChatStream } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
@@ -147,7 +147,10 @@ import {
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
-import { isProtocolProject } from "@/components/sections-editor/content-backend";
+import {
+  isProtocolProject,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
@@ -351,6 +354,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     taskId: activeTaskId,
     virtualMcpId: sessionAgentId,
   } = useChatTask();
+  /** Visual editing asks the chat about a clicked element: none without one
+   *  (the account-less `/site-editor`). */
+  const hasChat = !!useOptionalChatStream();
   const workspace = useBlocksPreviewWorkspace();
   const agent = useVirtualMCPNonBlocking(
     sessionAgentId === virtualMcpId ? virtualMcpId : null,
@@ -477,11 +483,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    */
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const runsSiteCode = !isProtocolProject(contentBackend);
-  const servePreviewUrl =
-    contentBackend.kind === "protocol" && contentBackend.source === "local"
-      ? (contentBackend.describe.preview?.origin ?? null)
-      : null;
-  const localPreviewUrl = servePreviewUrl ?? tunnelUrl;
+  const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
   const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
   const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
 
@@ -1742,7 +1744,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Desktop composition (portaled into the panel header's centre slot).
 
-  const canVisualEdit = display.mode === "sandbox";
+  const canVisualEdit = hasChat && display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
   const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];

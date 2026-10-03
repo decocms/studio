@@ -10,10 +10,11 @@
  * - `@decocms/blocks/protocol/keys` — the file-name rule (also re-exported here)
  * - `@decocms/blocks/protocol/server` — `createContentHandler(storage)`
  * - `@decocms/blocks/protocol/storage/fs` — the filesystem storage (Node only)
- * - `@decocms/blocks/protocol/storage/memory` — an in-memory storage (tests, reference)
  * - `@decocms/blocks/protocol/conformance` — a black-box test suite over HTTP
  *
- * The SDK's runtime never imports the protocol, so it never reaches an app bundle.
+ * The SDK's runtime never imports the protocol, so it never reaches an app
+ * bundle. The canonical hash it re-exports is the SDK's own dependency-free
+ * leaf module (see ./canonical.ts).
  */
 export {
   APPLY_DIGEST_DOMAIN,
@@ -25,21 +26,6 @@ export {
   sha256Hex,
 } from "./canonical";
 export {
-  CIPHERTEXT_PATTERN,
-  CIPHERTEXT_VERSION,
-  type CiphertextParts,
-  decodeBase64Url,
-  encodeBase64Url,
-  encryptToCiphertext,
-  formatCiphertext,
-  GCM_TAG_BYTES,
-  IV_BYTES,
-  parseCiphertext,
-  publicKeyDerFromPem,
-  publicKeyPemFromDer,
-  WRAPPED_KEY_BYTES,
-} from "./ciphertext";
-export {
   assertSupportedEndpoint,
   type BatchCall,
   type BatchOutcome,
@@ -49,13 +35,5 @@ export {
 } from "./client";
 export * from "./errors";
 export * from "./keys";
-export {
-  checkSecrets,
-  isSecretBlock,
-  isSecretFieldSchema,
-  isWellFormedCiphertext,
-  SECRET_BLOCK_TYPE,
-  SECRET_FORMAT,
-} from "./secrets";
 export * from "./storage";
 export * from "./types";
