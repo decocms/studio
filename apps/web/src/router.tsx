@@ -316,12 +316,22 @@ const chooseEditorRoute = createRoute({
 // The site editor over `deco serve`, which prints
 // `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
 // Its tabs carry the project Site Editor's `staticData`: the same app.
-// Behind the New Layout preference: with it off the route is not found.
+// Behind the New Layout preference: with it off the route is not found, and
+// the link's token leaves the address bar first, without connecting.
 const siteEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/site-editor",
+  staticData: { pageTitle: "sidebar.projectNav.siteEditor" },
   beforeLoad: () => {
-    if (!readProjectFirstNav()) throw notFound();
+    if (readProjectFirstNav()) return;
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    }
+    throw notFound();
   },
   component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
 });
