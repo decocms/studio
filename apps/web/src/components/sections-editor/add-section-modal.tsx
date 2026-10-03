@@ -17,6 +17,7 @@ import {
 } from "./section-catalog";
 import type { LiveMeta } from "./resolve-schema";
 import { buildSectionPreviewUrl } from "./section-preview-url";
+import { resolveSectionGalleryImage } from "./section-preview-image";
 import {
   onPreviewIframeSlotAvailable,
   releasePreviewIframeSlot,
@@ -161,14 +162,36 @@ function LazySectionPreview({
   );
 }
 
+/** A card thumbnail without a render: the schema's `@image`, or a placeholder. */
+function StaticSectionPreview({ image }: { image: string | undefined }) {
+  const PlaceholderIcon = useNewBlocksEditor() ? Cube01 : LayoutAlt01;
+  return (
+    <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden bg-muted/40">
+      {image ? (
+        <img
+          src={image}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <PlaceholderIcon className="h-8 w-8 text-muted-foreground/30" />
+      )}
+    </div>
+  );
+}
+
 function SectionGalleryCard({
   entry,
   previewUrl,
+  image,
   scrollRootRef,
   onSelect,
 }: {
   entry: ReturnType<typeof extractSectionCatalog>[number];
-  previewUrl: string;
+  /** `null` when nothing renders the section (the content protocol). */
+  previewUrl: string | null;
+  image: string | undefined;
   scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: () => void;
 }) {
@@ -191,12 +214,16 @@ function SectionGalleryCard({
           "border-global-section/35 hover:bg-global-section/8",
       )}
     >
-      <LazySectionPreview
-        previewUrl={previewUrl}
-        title={entry.title}
-        scrollRootRef={scrollRootRef}
-        slotId={entry.resolveType}
-      />
+      {previewUrl ? (
+        <LazySectionPreview
+          previewUrl={previewUrl}
+          title={entry.title}
+          scrollRootRef={scrollRootRef}
+          slotId={entry.resolveType}
+        />
+      ) : (
+        <StaticSectionPreview image={image} />
+      )}
       <div className="flex items-center gap-2 border-t px-3 py-2.5">
         <CardIcon
           className="h-4 w-4 shrink-0"
@@ -231,7 +258,8 @@ export function AddSectionModal({
   onOpenChange: (open: boolean) => void;
   meta: LiveMeta | null | undefined;
   decofile: Record<string, unknown> | null | undefined;
-  previewBaseUrl: string;
+  /** `null` when nothing renders sections (the content protocol). */
+  previewBaseUrl: string | null;
   onSelect: (entry: ReturnType<typeof extractSectionCatalog>[number]) => void;
 }) {
   const t = useT();
@@ -250,7 +278,7 @@ export function AddSectionModal({
   const siteTheme = decofile ? findSiteThemeBlock(decofile) : undefined;
 
   const previewUrls = new Map<string, string>();
-  if (open && livePageResolveType) {
+  if (open && livePageResolveType && previewBaseUrl) {
     for (const entry of sections) {
       previewUrls.set(
         entry.resolveType,
@@ -312,13 +340,20 @@ export function AddSectionModal({
                     entry={entry}
                     scrollRootRef={scrollRef}
                     previewUrl={
-                      previewUrls.get(entry.resolveType) ??
-                      buildSectionPreviewUrl(
-                        previewBaseUrl,
-                        livePageResolveType,
-                        entry.previewBlock,
-                        siteTheme,
-                      )
+                      previewBaseUrl
+                        ? (previewUrls.get(entry.resolveType) ??
+                          buildSectionPreviewUrl(
+                            previewBaseUrl,
+                            livePageResolveType,
+                            entry.previewBlock,
+                            siteTheme,
+                          ))
+                        : null
+                    }
+                    image={
+                      previewBaseUrl || !meta
+                        ? undefined
+                        : resolveSectionGalleryImage(entry.resolveType, meta)
                     }
                     onSelect={() => onSelect(entry)}
                   />

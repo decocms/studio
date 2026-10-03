@@ -3,6 +3,7 @@ import { useChatTask } from "@/components/chat/chat-context";
 import { PreviewContent } from "@/components/sandbox/preview/preview";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -14,6 +15,7 @@ import { useTaskMetadata } from "./use-task-metadata";
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const entity = useVirtualMCP(virtualMcpId);
+  const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
   const { activeTask, taskId, currentBranch } = useChatTask();
   const threadMetadata = useTaskMetadata(taskId);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -30,7 +32,8 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
       agentHasClonableSource(activeTask?.metadata),
   });
 
-  if (previewSource === "none") {
+  // A connected `deco serve` is a source of its own (`/site-editor` has no repo).
+  if (previewSource === "none" && !serveConnection) {
     return (
       <>
         <EmptyState

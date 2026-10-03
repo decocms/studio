@@ -1,4 +1,5 @@
 import {
+  isEmbeddedUnionResolveType,
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
 } from "./block-type-utils";
@@ -73,6 +74,11 @@ export interface SchemaProperty {
    * anyOf union.
    */
   plainSchema?: SchemaProperty;
+  /**
+   * A `lazy` block (`Lazy<T>` in next-major Blocks): `properties.value` holds
+   * the form of `T`, and the stored value is `{ __resolveType: "lazy", value }`.
+   */
+  lazy?: boolean;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -888,6 +894,9 @@ export function resolveSchema(
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;
             let title: string | undefined;
+            // A `__resolveType` enum names a real block even without a `/`:
+            // next-major Blocks uses short keys like `hero`.
+            let rtFromEnum = false;
 
             if (typeof def.title === "string") {
               const saved = parseSavedBlockSchemaTitle(def.title);
@@ -904,6 +913,7 @@ export function resolveSchema(
                 const e = rtProp.enum;
                 if (Array.isArray(e) && typeof e[0] === "string") {
                   rt = e[0];
+                  rtFromEnum = true;
                   break;
                 }
               }
@@ -916,19 +926,24 @@ export function resolveSchema(
               const e = rtProp?.enum;
               if (Array.isArray(e) && typeof e[0] === "string") {
                 rt = e[0];
+                rtFromEnum = true;
               }
             }
             if (!rt) {
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
-            // A real module block (rt with `/`) is keyed by its resolveType, not by a `type` input prop; only embedded unions (bare ref key) use the discriminator.
-            const discriminatorValue = rt.includes("/")
+            const isBlock =
+              rt.includes("/") ||
+              (rtFromEnum && !isEmbeddedUnionResolveType(rt));
+            // A real block (a module path, or a short name from a `__resolveType` enum) is keyed by its resolveType, not by a `type` input prop; only embedded unions (bare ref key) use the discriminator.
+            const discriminatorValue = isBlock
               ? undefined
               : typeDiscriminatorFromBranch(branch);
-            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`
-            // so `rt` degrades to the bare ref key (no `/`). All real module
-            // blocks (matchers, loaders, sections) contain `/` in their path.
-            if (!discriminatorValue && !rt.includes("/")) continue;
+            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`,
+            // so `rt` degrades to the bare ref key and isn't a block.
+            if (!discriminatorValue && !isBlock) continue;
+            // `lazy` is only ever written around a `Lazy<T>` value, never picked.
+            if (rtFromEnum && rt === "lazy") continue;
             anyOfRefs.push({
               resolveType: discriminatorValue ?? rt,
               title:
@@ -1044,8 +1059,12 @@ export function resolveSchema(
     // Nested properties for object types (see MAX_STRUCTURE_DEPTH).
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
+    let lazyBlock = false;
     if (depth < MAX_STRUCTURE_DEPTH) {
       const nestedRaw = collectProps(resolved);
+      const rtEnum = (nestedRaw.__resolveType as RawSchema | undefined)?.enum;
+      lazyBlock =
+        Array.isArray(rtEnum) && rtEnum.length === 1 && rtEnum[0] === "lazy";
       const nestedRequired = asStringArray(nestedRaw.__required);
       if (nestedRequired.length > 0) requiredKeys = nestedRequired;
       const nestedEntries = Object.entries(nestedRaw).filter(
@@ -1127,6 +1146,7 @@ export function resolveSchema(
       properties: nestedProperties,
       required: requiredKeys,
       items: itemsSchema,
+      lazy: lazyBlock && !!nestedProperties?.value ? true : undefined,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
         typeof resolved.titleBy === "string"

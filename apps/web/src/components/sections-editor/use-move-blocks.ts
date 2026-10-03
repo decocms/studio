@@ -14,6 +14,9 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
@@ -55,13 +58,29 @@ export function useMoveBlocks({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const packagePath = usePackagePath(virtualMcpId);
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
-  const queryKey = KEYS.decofile(`${orgSlug}/${virtualMcpId}/${branch}`);
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey(
+    { orgSlug, virtualMcpId, branch },
+    { tunnel: false },
+  );
+  const queryKey = KEYS.decofile(cacheKey);
 
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
       const writes = sanitizeSecretsForPersistence(rawWrites);
+      if (protocol) {
+        // One `blocks.apply`: the write and the delete land together.
+        return applyProtocolPatch(
+          queryClient,
+          protocol,
+          { orgSlug, virtualMcpId, branch, threadId },
+          cacheKey,
+          { set: writes, delete: deletes.filter((key) => !(key in writes)) },
+        );
+      }
       if (fastPreviewActive) {
         // One PATCH, one commit — the server applies set and delete together.
         const draft = await patchDecofile(

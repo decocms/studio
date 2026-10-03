@@ -158,8 +158,13 @@ function repoKey(owner: string, name: string): string {
   return `${owner}/${name}`;
 }
 
+/** Git's own blob id, so callers that hash content locally agree with the stub. */
 function putBlob(repo: RepoState, content: string): string {
-  const sha = sha1(`blob:${content}`);
+  const bytes = Buffer.from(content, "utf-8");
+  const sha = createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
   repo.blobs.set(sha, content);
   return sha;
 }

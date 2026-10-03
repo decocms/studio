@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { decofileCacheKey } from "./use-decofile";
+import { useDecofileCacheKey } from "./use-decofile";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
@@ -49,12 +51,10 @@ export function useSaveBlock({
    * in-place render picks the merged decofile up and repaints the tunnel frame.
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const cacheKey = decofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    localPreviewUrl,
-  });
+  // Next-major Blocks sites: one `blocks.apply` per save.
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
@@ -69,6 +69,15 @@ export function useSaveBlock({
     }) => {
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
+      if (protocol) {
+        return applyProtocolPatch(
+          queryClient,
+          protocol,
+          { orgSlug, virtualMcpId, branch, threadId },
+          cacheKey,
+          { set: { [blockKey]: data } },
+        );
+      }
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };
       if (fastPreviewActive) {

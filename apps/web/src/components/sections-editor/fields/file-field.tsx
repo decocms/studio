@@ -12,6 +12,10 @@ import {
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/hooks/use-file-picker";
+import {
+  useServeAssetSrc,
+  useServeAssetUpload,
+} from "./use-serve-asset-upload";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import { FieldLabel } from "./field-label";
@@ -47,6 +51,9 @@ export function FileField({
 
   const configsQuery = useFileConfigsQuery();
   const upload = useFilePickerUpload();
+  // A connected `deco serve` writes uploads into the repository instead.
+  const serveUpload = useServeAssetUpload(sandbox);
+  const previewSrc = useServeAssetSrc(sandbox, strValue);
   const lockedConfig = matchSiteSlugConfig(
     configsQuery.data?.configs ?? [],
     sandbox?.siteSlug,
@@ -62,6 +69,19 @@ export function FileField({
         toast.error(t("sectionsEditor.fileField.videoFileError"));
         return;
       }
+    }
+
+    if (serveUpload) {
+      try {
+        onChange(await serveUpload(list[0]!));
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : t("sectionsEditor.fileField.uploadFailed"),
+        );
+      }
+      return;
     }
 
     const targetConfigId = resolveTargetConfigId(
@@ -152,7 +172,7 @@ export function FileField({
               >
                 <video
                   key={strValue}
-                  src={strValue}
+                  src={previewSrc}
                   preload="metadata"
                   className="h-full w-full object-contain"
                 />

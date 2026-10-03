@@ -25,7 +25,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
-import { useDecofile } from "./use-decofile";
+import { useDecofile, useDecofileCacheKey } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import {
@@ -51,6 +51,8 @@ import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
+import { useContentBackend } from "./use-content-backend";
+import { isProtocolProject } from "./content-backend";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -217,8 +219,15 @@ export function SectionsEditor({
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
     virtualMcpId,
+    branch,
     sandboxUrl: previewUrl,
   });
+  // The content protocol never runs site code: no rendered gallery (cards show
+  // the schema's name, description and image) and no loader-backed pickers.
+  const protocolProject = isProtocolProject(
+    useContentBackend(virtualMcpId, branch),
+  );
+  const galleryAvailable = !!sectionPreviewBase || protocolProject;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -320,7 +329,10 @@ export function SectionsEditor({
   );
 
   const queryClient = useQueryClient();
-  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const decofileCacheKey = useDecofileCacheKey(
+    { orgSlug, virtualMcpId, branch },
+    { tunnel: false },
+  );
   const pageBlockSave = useDebouncedSaveBlock({
     orgSlug,
     virtualMcpId,
@@ -430,7 +442,7 @@ export function SectionsEditor({
     );
   }
 
-  const pages = extractPages(decofile);
+  const pages = extractPages(decofile, meta);
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
@@ -720,7 +732,7 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
     threadId,
-    previewUrl: previewUrl ?? undefined,
+    previewUrl: protocolProject ? undefined : (previewUrl ?? undefined),
     siteSlug: agentSiteSlug,
   };
 
@@ -1402,7 +1414,7 @@ export function SectionsEditor({
   const handleMakeReusableSubmit = async (blockId: string) => {
     if (makeReusableIndex === null || !activePageKey) return;
 
-    const validationError = validateBlockId(blockId, decofile);
+    const validationError = validateBlockId(blockId, decofile, meta);
     if (validationError) {
       toast.error(validationError);
       return;
@@ -1482,7 +1494,7 @@ export function SectionsEditor({
   const availableMatcherGlobals =
     meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
   const canAddSection =
-    !isGlobalBlockMode && !!(sectionPreviewBase && meta && decofile);
+    !isGlobalBlockMode && !!(galleryAvailable && meta && decofile);
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
@@ -2426,7 +2438,7 @@ export function SectionsEditor({
       }
 
       const blockId = suggestBlockId(trimmed);
-      const validationError = validateBlockId(blockId, latestDecofile);
+      const validationError = validateBlockId(blockId, latestDecofile, meta);
       if (validationError) {
         toast.error(validationError);
         return;
@@ -2593,7 +2605,7 @@ export function SectionsEditor({
       }
 
       const blockId = suggestBlockId(trimmed);
-      const validationError = validateBlockId(blockId, latestDecofile);
+      const validationError = validateBlockId(blockId, latestDecofile, meta);
       if (validationError) {
         toast.error(validationError);
         return;
@@ -3618,7 +3630,7 @@ export function SectionsEditor({
           onSubmit={handleMakeReusableSubmit}
         />
 
-        {sectionPreviewBase && (
+        {galleryAvailable && (
           <AddSectionModal
             open={addSectionOpen}
             onOpenChange={(open) => {

@@ -821,6 +821,10 @@ export const sandbox = {
     "O caminho de origem a corresponder. Suporta sintaxe URLPattern (ex. /produto/:slug).",
   "sandbox.redirectEditor.fromLabel": "De",
   "sandbox.redirectEditor.fromPlaceholder": "/caminho-antigo",
+  "sandbox.redirectEditor.statusDescription":
+    "Um código de status explícito prevalece sobre o tipo.",
+  "sandbox.redirectEditor.statusFromType": "Seguir o tipo ({status})",
+  "sandbox.redirectEditor.statusLabel": "Código de status",
   "sandbox.redirectEditor.title": "Redirecionamento",
   "sandbox.redirectEditor.toDescription":
     "O destino — um caminho relativo ou uma URL absoluta.",

@@ -795,6 +795,10 @@ export const sandbox = {
     "The source path to match. Supports URLPattern syntax (e.g. /product/:slug).",
   "sandbox.redirectEditor.fromLabel": "From",
   "sandbox.redirectEditor.fromPlaceholder": "/old-path",
+  "sandbox.redirectEditor.statusDescription":
+    "An explicit status code wins over the type.",
+  "sandbox.redirectEditor.statusFromType": "Follow the type ({status})",
+  "sandbox.redirectEditor.statusLabel": "Status code",
   "sandbox.redirectEditor.title": "Redirect",
   "sandbox.redirectEditor.toDescription":
     "The destination — a relative path or an absolute URL.",

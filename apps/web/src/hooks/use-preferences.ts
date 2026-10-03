@@ -83,6 +83,21 @@ export function readLanguage(): Locale {
   return detectLocale();
 }
 
+/**
+ * Read the New Layout opt-in directly from localStorage (no React state), for
+ * route guards that run before anything renders — `/site-editor` only exists
+ * with it on.
+ */
+export function readProjectFirstNav(): boolean {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(LOCALSTORAGE_KEYS.preferences()) ?? "{}",
+    );
+    return raw.projectFirstNav === true;
+  } catch {}
+  return false;
+}
+
 export function usePreferences() {
   return useLocalStorage<Preferences>(
     LOCALSTORAGE_KEYS.preferences(),

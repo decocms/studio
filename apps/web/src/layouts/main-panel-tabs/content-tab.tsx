@@ -2,6 +2,7 @@ import { ContentBrowser } from "@/components/sandbox/content/content-browser";
 import { useChatTask } from "@/components/chat/chat-context";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useSearch } from "@tanstack/react-router";
 import { useT } from "@/i18n/use-t.ts";
 import { EmptyState } from "@/components/empty-state";
@@ -14,6 +15,7 @@ export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
   const entity = useVirtualMCP(virtualMcpId);
+  const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
   const { activeTask } = useChatTask();
   // Storefront "." deep-link (see /choose-editor): preselect the visited page.
   const search = useSearch({ strict: false }) as {
@@ -28,7 +30,8 @@ export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
 
-  if (!hasClonableSource) {
+  // A connected `deco serve` is a source of its own (`/site-editor` has no repo).
+  if (!hasClonableSource && !serveConnection) {
     return (
       <>
         <EmptyState

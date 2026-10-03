@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
   lazyRouteComponent,
+  notFound,
   Outlet,
   redirect,
   retainSearchParams,
@@ -14,6 +15,7 @@ import {
 } from "@/layouts/panel-search";
 import { settingsGroupPendingComponent } from "@/components/settings/settings-group-page";
 import { ChunkErrorBoundary } from "@/components/error-boundary";
+import { readProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t";
 import * as z from "zod";
 
@@ -308,6 +310,49 @@ const chooseEditorRoute = createRoute({
       path: z.string().optional(),
       pathTemplate: z.string().optional(),
     }),
+  ),
+});
+
+// The site editor over `deco serve`, which prints
+// `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
+// Its tabs carry the project Site Editor's `staticData`: the same app.
+// Behind the New Layout preference: with it off the route is not found, and
+// the link's token leaves the address bar first, without connecting.
+const siteEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/site-editor",
+  staticData: { pageTitle: "sidebar.projectNav.siteEditor" },
+  beforeLoad: () => {
+    if (readProjectFirstNav()) return;
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    }
+    throw notFound();
+  },
+  component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
+});
+
+const siteEditorPreviewRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/",
+  staticData: { mainView: "site-editor", siteEditorView: "preview" },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorPreview",
+  ),
+});
+
+const siteEditorContentRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/content",
+  staticData: { mainView: "content", siteEditorView: "content" },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorContent",
   ),
 });
 
@@ -1615,6 +1660,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
+  siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,

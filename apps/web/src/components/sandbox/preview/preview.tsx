@@ -21,7 +21,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef, useEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useChatTask } from "@/components/chat/context";
+import { useChatTask, useOptionalChatStream } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
@@ -118,7 +118,7 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector } from "./cms-controls";
+import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
@@ -147,6 +147,11 @@ import {
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
+import {
+  isProtocolProject,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
@@ -366,6 +371,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     taskId: activeTaskId,
     virtualMcpId: sessionAgentId,
   } = useChatTask();
+  /** Visual editing asks the chat about a clicked element: none without one
+   *  (the account-less `/site-editor`). */
+  const hasChat = !!useOptionalChatStream();
   const workspace = useBlocksPreviewWorkspace();
   const agent = useVirtualMCPNonBlocking(
     sessionAgentId === virtualMcpId ? virtualMcpId : null,
@@ -484,7 +492,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * iframe, and the editor bridge all target it — and the boot gating is
    * bypassed (the tunnel is already up), so no pod ever boots.
    */
-  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const { url: tunnelUrl } = useLocalPreviewUrl(virtualMcpId);
+  /**
+   * A connected `deco serve` (content protocol) stands in the same way: its
+   * app preview is the dev server on this machine. The protocol never runs
+   * site code, so nothing renders in place: the frame is the real app.
+   */
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const runsSiteCode = !isProtocolProject(contentBackend);
+  const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
   const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
   const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
 
@@ -502,11 +518,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const projectDefaultsToCms = session.projectDefault === "cms";
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
-  const sectionPreviewBase = resolveSectionPreviewBase({
-    sandboxUrl: previewUrl,
-    previewServerUrl,
-    fastPreviewActive: fastPreviewEnabled,
-  });
+  const sectionPreviewBase = runsSiteCode
+    ? resolveSectionPreviewBase({
+        sandboxUrl: previewUrl,
+        previewServerUrl,
+        fastPreviewActive: fastPreviewEnabled,
+      })
+    : null;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -532,7 +550,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const decofile = decofileQuery.data;
   const meta = metaQuery.data;
   const pages = decofile
-    ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
+    ? extractPages(decofile, meta).sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -540,7 +558,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
-    decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
+    runsSiteCode && decofile && meta
+      ? listSavedRunnables(meta, decofile, "loaders")
+      : [];
   const filteredPages = !pagesSearch
     ? pages
     : (() => {
@@ -610,7 +630,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whatever product-search / category loader the running site actually ships.
   // A param with no resolvable source keeps the plain inline input.
   const pathParamSources: Record<string, OptionSource[]> = {};
-  if (devServerReady && previewUrl && meta && decofile) {
+  if (runsSiteCode && devServerReady && previewUrl && meta && decofile) {
     const manifestLoaders = manifestLoaderResolveTypes(meta, "loaders");
     const pageBlock = currentPageKey ? decofile[currentPageKey] : undefined;
     const pageLoaders = collectPageLoaderResolveTypes(
@@ -776,15 +796,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const inPlaceRenderEnabled =
     agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
   // Local renders fake edits in place against the tunnel's `/live/previews`.
-  const inPlaceRenderActive = localPreviewUrl
-    ? display.mode === "sandbox" &&
-      blocksEditingEnabled &&
-      editingMode === "blocks"
-    : display.mode === "production" &&
-      fastPreviewEnabled &&
-      inPlaceRenderEnabled &&
-      blocksEditingEnabled &&
-      editingMode === "blocks";
+  const inPlaceRenderActive = !runsSiteCode
+    ? false
+    : localPreviewUrl
+      ? display.mode === "sandbox" &&
+        blocksEditingEnabled &&
+        editingMode === "blocks"
+      : display.mode === "production" &&
+        fastPreviewEnabled &&
+        inPlaceRenderEnabled &&
+        blocksEditingEnabled &&
+        editingMode === "blocks";
   // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
   const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
   const { pin: nextPinnedDraft, effective: effectiveDraftPreviewUrl } =
@@ -1473,8 +1495,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar =
-    previewSurfaceActive && (daemonReady || display.mode === "production");
+  const showPreviewToolbar = showPreviewToolbarFor({
+    previewSurfaceActive,
+    daemonReady,
+    production: display.mode === "production",
+    localPreviewUrl,
+  });
 
   /** The page selector shares the exact project-level gate used by Content and
    *  Blocks. Session runtime and metadata readiness do not change the topbar's
@@ -1739,7 +1765,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Desktop composition (portaled into the panel header's centre slot).
 
-  const canVisualEdit = display.mode === "sandbox";
+  const canVisualEdit = hasChat && display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
   const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
