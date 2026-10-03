@@ -8,8 +8,8 @@
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts).
  * The cases below it cover what's specific to this backend: the flag, auth,
- * the bound branch, branch creation on first write and the tracked
- * `blocks.gen.json`.
+ * the bound branch, branch creation on first write, the tracked
+ * `blocks.gen.json` and a legacy (v7) site's secret blocks.
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -262,6 +262,64 @@ test.describe("content protocol on GitHub", () => {
         resolvedRef: "draft-1",
         revision: applied.result?.revision,
       });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("saves a legacy site's secret loader blocks", async ({ playwright }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const loader = "website/loaders/secret.ts";
+      // v7 `meta.gen.json`: the loader marks its encrypted string `format: secret`.
+      const legacyMeta = {
+        manifest: {
+          blocks: {
+            loaders: { [loader]: { $ref: "#/definitions/c2VjcmV0" } },
+            apps: { "site/apps/site.ts": { $ref: "#/definitions/c2l0ZQ==" } },
+          },
+        },
+        schema: {
+          definitions: {
+            c2VjcmV0: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                encrypted: { type: "string", format: "secret" },
+              },
+            },
+            "c2l0ZQ==": {
+              type: "object",
+              properties: { apiKey: { $ref: "#/definitions/c2VjcmV0" } },
+            },
+          },
+        },
+      };
+      const project = await setUp(ctx, {
+        ".deco/meta.gen.json": JSON.stringify(legacyMeta),
+        ".deco/blocks/site.json": '{"__resolveType":"site/apps/site.ts"}\n',
+      });
+      await enableContentProtocol(ctx, project.org);
+
+      const applied = await rpc<BlocksApplyResult>(
+        ctx,
+        rpcPath(project, "main"),
+        "blocks.apply",
+        {
+          set: {
+            site: {
+              __resolveType: "site/apps/site.ts",
+              apiKey: {
+                __resolveType: loader,
+                name: "API_KEY",
+                encrypted: "0a1b2c3d",
+              },
+            },
+          },
+        },
+      );
+      expect(applied.error).toBeUndefined();
+      expect(applied.result?.revision).toEqual(expect.any(String));
     } finally {
       await ctx.dispose();
     }
