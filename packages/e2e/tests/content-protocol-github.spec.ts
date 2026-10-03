@@ -17,9 +17,9 @@ import type {
   BlocksApplyResult,
   BlocksListResult,
   DescribeResult,
-} from "@decocms/shared/blocks-protocol";
-import { publicKeyPemFromDer } from "@decocms/shared/blocks-protocol/ciphertext";
-import { runConformance } from "@decocms/shared/blocks-protocol/conformance";
+} from "@decocms/blocks/protocol";
+import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
+import { runConformance } from "../fixtures/blocks-protocol";
 import { signUpViaApi } from "../fixtures/auth-api";
 import {
   createFastPreviewProject,

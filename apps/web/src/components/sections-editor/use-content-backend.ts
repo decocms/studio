@@ -5,7 +5,7 @@ import {
   createContentClient,
   type DescribeResult,
   ErrorCode,
-} from "@decocms/shared/blocks-protocol";
+} from "@decocms/blocks/protocol";
 import { useProjectContext } from "@/sdk";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";

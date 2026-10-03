@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { encryptSecret } from "@decocms/blocks/secrets";
 import {
   decodeBase64Url,
-  encryptToCiphertext,
   parseCiphertext,
   publicKeyPemFromDer,
-} from "@decocms/shared/blocks-protocol/ciphertext";
+} from "@decocms/shared/secret-ciphertext";
 import { protocolSecretState } from "./protocol-secret";
 
 async function keyPair() {
@@ -45,7 +45,7 @@ async function decrypt(privateKey: CryptoKey, ciphertext: string) {
 describe("protocol secrets", () => {
   test("encrypts in the browser so only the private key reads it", async () => {
     const { privateKey, publicKey } = await keyPair();
-    const ciphertext = await encryptToCiphertext(publicKey, "sk_live_123");
+    const { ciphertext } = await encryptSecret(publicKey, "sk_live_123");
     expect(ciphertext).not.toContain("sk_live_123");
     expect(decodeBase64Url(ciphertext.split(".")[1]!)).not.toBeNull();
     expect(await decrypt(privateKey, ciphertext)).toBe("sk_live_123");

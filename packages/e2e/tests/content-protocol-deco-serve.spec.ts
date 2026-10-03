@@ -6,11 +6,12 @@
  * working tree through `blocks.apply`.
  *
  * `deco serve` is played by fixtures/deco-serve-stub.ts (the protocol's own
- * handler over an in-memory "working tree", on 127.0.0.1 with a token).
+ * handler over its filesystem storage in a temporary working tree, on
+ * 127.0.0.1 with a token).
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
-import { publicKeyPemFromDer } from "@decocms/shared/blocks-protocol/ciphertext";
+import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import {
   type DecoServeStub,
   startDecoServeStub,
@@ -150,7 +151,7 @@ async function createProject(api: APIRequestContext, orgSlug: string) {
 }
 
 async function heroOf(stub: DecoServeStub): Promise<Record<string, unknown>> {
-  const text = stub.storage.dump().files[`${HERO}.json`];
+  const text = (await stub.readFiles())[`${HERO}.json`];
   return JSON.parse(text ?? "{}") as Record<string, unknown>;
 }
 
@@ -184,7 +185,7 @@ async function editHero(
     .toMatchObject({ __resolveType: "secret" });
   const stored = (await heroOf(stub)).apiKey as { ciphertext: string };
   expect(await decryptSecret(privateKey, stored.ciphertext)).toBe(secret);
-  expect(JSON.stringify(stub.storage.dump().files)).not.toContain(secret);
+  expect(JSON.stringify(await stub.readFiles())).not.toContain(secret);
   expect(stub.requestBodies.join("\n")).not.toContain(secret);
 }
 

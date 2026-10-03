@@ -16,7 +16,7 @@ import {
   ErrorCode,
   type BlocksListResult,
   type SchemaGetResult,
-} from "@decocms/shared/blocks-protocol";
+} from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import {

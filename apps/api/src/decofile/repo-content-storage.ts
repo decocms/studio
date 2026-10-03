@@ -25,7 +25,7 @@ import {
   StorageNotFoundError,
   StorageUnavailableError,
   unsupported,
-} from "@decocms/shared/blocks-protocol";
+} from "@decocms/blocks/protocol";
 import {
   type FileChange,
   type RepoContentClient,

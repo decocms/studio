@@ -12,10 +12,7 @@
  * Pure: the selection and the poll merge are unit-tested without mocks.
  */
 
-import type {
-  ContentClient,
-  DescribeResult,
-} from "@decocms/shared/blocks-protocol";
+import type { ContentClient, DescribeResult } from "@decocms/blocks/protocol";
 import { isLoopbackEndpoint } from "./deco-serve-connection";
 
 export type ContentSource = "github" | "local";

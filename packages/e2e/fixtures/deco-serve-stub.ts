@@ -1,7 +1,8 @@
 /**
  * A stand-in for `deco serve`, the Blocks CLI's local content-protocol server:
- * the protocol's own handler over an in-memory storage, served over real HTTP
- * on 127.0.0.1 with a token, the way the CLI serves the working tree. It is
+ * the protocol's own handler over its filesystem storage (both public in
+ * `@decocms/blocks`), rooted at a temporary working tree and served over real
+ * HTTP on 127.0.0.1 with a token, the way the CLI serves one. It is
  * the edge of the system under test (a developer's machine), so a spec can
  * drive the site editor against it and assert what the "working tree" holds.
  *
@@ -11,18 +12,23 @@
 
 import { randomBytes } from "node:crypto";
 import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
-import { createContentHandler } from "@decocms/shared/blocks-protocol/server";
-import { createAssetHandler } from "@decocms/shared/blocks-protocol/server/assets";
-import {
-  createMemoryStorage,
-  type MemoryStorage,
-} from "@decocms/shared/blocks-protocol/storage/memory";
+import { createContentHandler, createFsStorage } from "./blocks-protocol";
 
 function toRequest(req: IncomingMessage, origin: string): Request {
   const headers = new Headers();
@@ -59,8 +65,8 @@ export interface DecoServeStub {
   /** The protocol endpoint, `http://127.0.0.1:<port>/rpc`. */
   endpoint: string;
   token: string;
-  /** The "working tree": what the editor saved. */
-  storage: MemoryStorage;
+  /** The "working tree": the saved block files, by file name. */
+  readFiles: () => Promise<Record<string, string>>;
   /** Every request body the server received, in order. */
   requestBodies: string[];
   close: () => Promise<void>;
@@ -76,20 +82,28 @@ export async function startDecoServeStub(params: {
   previewUrl?: string;
 }): Promise<DecoServeStub> {
   const token = randomBytes(16).toString("hex");
-  const storage = createMemoryStorage({
-    state: {
-      schema: JSON.stringify(params.schema),
-      files: params.files ?? {},
-      secretsPublicKey: params.secretsPublicKey ?? null,
-    },
-    description: { kind: "working-tree", idempotency: null },
-  });
+  const root = await mkdtemp(join(tmpdir(), "deco-serve-stub-"));
+  const blocksDir = join(root, ".deco", "blocks");
+  await mkdir(blocksDir, { recursive: true });
+  await writeFile(
+    join(root, ".deco", "schema.gen.json"),
+    JSON.stringify(params.schema),
+  );
+  if (params.secretsPublicKey) {
+    await writeFile(
+      join(root, ".deco", "secrets.pub"),
+      params.secretsPublicKey,
+    );
+  }
+  for (const [file, text] of Object.entries(params.files ?? {})) {
+    await writeFile(join(blocksDir, file), text);
+  }
+  const storage = createFsStorage({ root });
   const rpc = createContentHandler(storage, {
     token,
     server: { name: "deco-serve-stub", version: "0" },
     preview: params.previewUrl ? { url: params.previewUrl } : null,
   });
-  const assets = createAssetHandler(storage, { token });
   const requestBodies: string[] = [];
   const cors = {
     "access-control-allow-origin": params.allowOrigin,
@@ -107,12 +121,9 @@ export async function startDecoServeStub(params: {
       return;
     }
     const request = toRequest(req, origin);
-    const route = new URL(request.url).pathname.startsWith("/assets/")
-      ? assets
-      : rpc;
     void (async () => {
       requestBodies.push(await request.clone().text());
-      const response = await route(request);
+      const response = await rpc(request);
       const headers = new Headers(response.headers);
       for (const [key, value] of Object.entries(cors)) headers.set(key, value);
       await send(
@@ -129,11 +140,21 @@ export async function startDecoServeStub(params: {
   return {
     endpoint: `http://127.0.0.1:${port}/rpc`,
     token,
-    storage,
+    readFiles: async () => {
+      const files: Record<string, string> = {};
+      for (const file of await readdir(blocksDir)) {
+        if (file.endsWith(".json")) {
+          files[file] = await readFile(join(blocksDir, file), "utf8");
+        }
+      }
+      return files;
+    },
     requestBodies,
-    close: () =>
-      new Promise<void>((resolve, reject) =>
+    close: async () => {
+      await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
-      ),
+      );
+      await rm(root, { recursive: true, force: true });
+    },
   };
 }
