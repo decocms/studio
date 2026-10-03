@@ -103,11 +103,11 @@ describe("posthog-client report URL privacy", () => {
 
   test("strips the deco serve token from the URL fragment", () => {
     const sanitized = sanitizeAnalyticsUrl(
-      "https://studio.decocms.com/connect#endpoint=http%3A%2F%2F127.0.0.1%3A4545%2Frpc&token=SECRET",
+      "https://studio.decocms.com/site-editor#endpoint=http%3A%2F%2F127.0.0.1%3A4545%2Frpc&token=SECRET",
     );
     expect(sanitized).not.toContain("SECRET");
     expect(sanitized).toBe(
-      "https://studio.decocms.com/connect#endpoint=http%3A%2F%2F127.0.0.1%3A4545%2Frpc",
+      "https://studio.decocms.com/site-editor#endpoint=http%3A%2F%2F127.0.0.1%3A4545%2Frpc",
     );
     expect(sanitizeAnalyticsUrl("/site-editor#token=SECRET")).not.toContain(
       "SECRET",

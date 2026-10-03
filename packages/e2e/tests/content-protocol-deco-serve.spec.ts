@@ -216,8 +216,7 @@ test.describe("site editor over deco serve", () => {
     const { privateKey, publicKey } = await generateKeyPair();
     const stub = await startStub(publicKey);
     try {
-      // An older CLI's `/connect` link lands on the same editor, signed out.
-      await page.goto(linkOf(stub, "/connect"));
+      await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
       // The token left the address bar.
       expect(page.url()).not.toContain(stub.token);
@@ -284,7 +283,9 @@ test.describe("site editor over deco serve", () => {
       `/site-editor#endpoint=${encodeURIComponent("https://attacker.example/rpc")}&token=t`,
     );
     await expect(
-      page.getByRole("heading", { name: "This connect link is incomplete" }),
+      page.getByRole("heading", {
+        name: "This site editor link is incomplete",
+      }),
     ).toBeVisible();
   });
 });

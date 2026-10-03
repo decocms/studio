@@ -76,14 +76,12 @@ describe("parseStoredConnection", () => {
 describe("parseConnectLink", () => {
   const endpoint = encodeURIComponent("http://127.0.0.1:4545/rpc");
 
-  test("reads a pasted site editor or connect link", () => {
-    for (const path of ["/site-editor", "/connect"]) {
-      expect(
-        parseConnectLink(
-          `  https://studio.decocms.com${path}#endpoint=${endpoint}&token=t1  `,
-        ),
-      ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc", token: "t1" });
-    }
+  test("reads a pasted site editor link", () => {
+    expect(
+      parseConnectLink(
+        `  https://studio.decocms.com/site-editor#endpoint=${endpoint}&token=t1  `,
+      ),
+    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc", token: "t1" });
   });
 
   test("anything else is not a connect link", () => {
