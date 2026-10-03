@@ -18,6 +18,10 @@
     "./sdk/lib/*": "./src/sdk/lib/*.ts",
     "./decofile": "./src/decofile/index.ts",
     "./git-providers": "./src/git-providers/index.ts",
+    "./blocks-protocol": "./src/vendor/blocks-protocol/index.ts",
+    "./blocks-protocol/server": "./src/vendor/blocks-protocol/server/index.ts",
+    "./blocks-protocol/storage/memory": "./src/vendor/blocks-protocol/storage/memory.ts",
+    "./blocks-protocol/conformance": "./src/vendor/blocks-protocol/conformance/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {
