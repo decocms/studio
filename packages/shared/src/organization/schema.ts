@@ -277,6 +277,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Use the redesigned blocks editor for every member of the organization. Off by default — the classic editor stays until an admin opts the org in.",
     ),
+  site_editor_content_protocol: z
+    .boolean()
+    .optional()
+    .describe(
+      "Edit next-major Blocks sites through the content protocol: a project with a committed schema (`.deco/schema.gen.json` or `meta.gen.json`) is edited without running its code, on GitHub or through a connected `deco serve`. Off by default — with it off, every project stays on the legacy editing path.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
