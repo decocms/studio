@@ -1,9 +1,4 @@
-import {
-  type QueryClient,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 function safeParse<T>(value: string): T | undefined {
   try {
@@ -49,33 +44,12 @@ function initializeFromStorage<T>(
   return next;
 }
 
-function localStorageQueryKey(key: string) {
-  return ["localStorage", key] as const;
-}
-
-/**
- * Writes a key outside a component that reads it, keeping every
- * {@link useLocalStorage} reader of that key in step.
- */
-export function writeLocalStorage<T>(
-  queryClient: QueryClient,
-  key: string,
-  value: T,
-): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Storage blocked: the value lasts for this session only.
-  }
-  queryClient.setQueryData(localStorageQueryKey(key), value);
-}
-
 export function useLocalStorage<T>(
   key: string,
   initializer: T | ((existing: T | undefined) => T),
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const queryClientInstance = useQueryClient();
-  const queryKey = localStorageQueryKey(key);
+  const queryKey = ["localStorage", key] as const;
 
   // Use TanStack Query to read from localStorage
   const { data: value } = useQuery({

@@ -111,6 +111,8 @@ function useOrganizationSettings<T = OrganizationSettings>(
   return useQuery({
     ...organizationSettingsQueryOptions(org.slug, org.id),
     select: select as (data: OrganizationSettings) => T,
+    // No org (the account-less `/site-editor`): flags keep their defaults.
+    enabled: !!org.id,
   });
 }
 
