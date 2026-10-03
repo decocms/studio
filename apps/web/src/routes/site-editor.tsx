@@ -113,7 +113,7 @@ function SiteEditorTabs() {
           asChild
           active={(view === "content") === (tab.id === "content")}
         >
-          <Link to={tab.to}>
+          <Link to={tab.to} activeOptions={{ exact: true }}>
             <span
               aria-hidden="true"
               className="flex size-4 shrink-0 items-center justify-center"

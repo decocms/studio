@@ -118,7 +118,7 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector } from "./cms-controls";
+import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
@@ -1495,8 +1495,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar =
-    previewSurfaceActive && (daemonReady || display.mode === "production");
+  const showPreviewToolbar = showPreviewToolbarFor({
+    previewSurfaceActive,
+    daemonReady,
+    production: display.mode === "production",
+    localPreviewUrl,
+  });
 
   /** The page selector shares the exact project-level gate used by Content and
    *  Blocks. Session runtime and metadata readiness do not change the topbar's
