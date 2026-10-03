@@ -54,12 +54,15 @@ Projetos deco.cx existentes continuam funcionando. A migração adiciona a camad
 
 ## Sites em Blocks next-major
 
-Sites construídos com Blocks next-major são editados pelo **protocolo de conteúdo**: o editor do site lê o schema commitado (`.deco/schema.gen.json`, ou `.deco/meta.gen.json`) e os blocos salvos em `.deco/blocks`, e nunca executa o código do site. Isso fica atrás da flag de organização `site_editor_content_protocol`, desligada por padrão.
+Sites construídos com Blocks next-major (v8) são editados pelo **protocolo de conteúdo**: o editor do site lê o schema commitado (`.deco/schema.gen.json`, ou `.deco/meta.gen.json`) e os blocos salvos em `.deco/blocks`, e nunca executa o código do site. O editor mostra um pequeno selo **v8** ou **v7** para você saber em qual caminho o site está.
 
-Com a flag ligada, um projeto usa o protocolo quando:
+Um site usa o protocolo quando:
 
-- **A branch de uma sessão Fast Preview tem um schema commitado.** Cada salvamento é um commit na branch de rascunho, o schema vem dessa branch (ou da branch padrão, quando ela não tem um) e o preview renderiza seu site com um link `?__draft=`.
-- **Ele está conectado ao `deco serve` na sua máquina.** Rode `npx @decocms/blocks serve` ao lado do seu servidor de desenvolvimento e abra o link do editor do site que ele mostra. O Studio só aceita links para um servidor na sua máquina (`localhost` ou `127.0.0.1`) e pergunta qual projeto conectar; o Chrome pergunta uma vez se o Studio pode acessar um servidor na sua máquina. Os salvamentos escrevem os arquivos da sua working tree e os uploads vão para `public/assets/`, e você mesmo faz o commit. O editor mostra um chip **Servidor local** com **Desconectar**, e pede para reconectar quando o servidor reinicia com um novo token.
+- **Você abre o link que o `deco serve` mostra.** Rode `npx @decocms/blocks serve` ao lado do seu servidor de desenvolvimento e abra o link `/site-editor` dele. Não precisa de conta no Studio: é só o editor do site, conectado ao servidor da sua máquina, e a conexão dura enquanto a aba estiver aberta. O Studio só aceita links para um servidor na sua máquina (`localhost` ou `127.0.0.1`); o Chrome pergunta uma vez se o Studio pode acessá-lo.
+- **Você cola esse link na opção de rascunho "Local" de um projeto.** Com login, abra o seletor de rascunhos, depois **Avançado → Local**, e cole o link do `deco serve`. O Studio confere se o servidor responde antes de trocar. Uma URL de túnel ali continua funcionando como antes, para sites v7. O editor mostra um chip **Servidor local** com **Desconectar**, e pede para reconectar quando o servidor reinicia com um novo token.
+- **A branch de uma sessão Fast Preview tem um schema commitado**, atrás da flag de organização `site_editor_content_protocol` (desligada por padrão). Cada salvamento é um commit na branch de rascunho, o schema vem dessa branch (ou da branch padrão, quando ela não tem um) e o preview renderiza seu site com um link `?__draft=`.
+
+Com o `deco serve`, os salvamentos escrevem os arquivos da sua working tree e os uploads vão para `public/assets/`, e você mesmo faz o commit.
 
 Todo o resto, incluindo sessões com sandbox, continua no caminho de edição atual.
 
