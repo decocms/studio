@@ -94,7 +94,13 @@ export function renderMustacheTemplate(
 
 /** Strip HTML tags to extract the text content (e.g. `<h1>Title</h1>` → `Title`). */
 function stripHtmlTags(html: string): string {
-  return html.replace(/<[^>]*>/g, "").trim();
+  let previous: string;
+  let current = html;
+  do {
+    previous = current;
+    current = current.replace(/<[^>]*>/g, "");
+  } while (current !== previous);
+  return current.trim();
 }
 
 /** Drop Mustache tokens from a title, leaving only its static text
