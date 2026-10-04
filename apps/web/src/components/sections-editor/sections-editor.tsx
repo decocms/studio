@@ -2645,7 +2645,7 @@ export function SectionsEditor({
 
   /**
    * Whole-block save for the global-block form. The form renders `formValue`,
-   * so show `data` right away and restore `previous` if the save fails.
+   * so show `data` right away; a failed save restores `previous` if still shown.
    */
   const saveWholeGlobalBlock = async (
     blockKey: string,
@@ -2656,7 +2656,7 @@ export function SectionsEditor({
     try {
       await saveBlock.mutateAsync({ blockKey, data });
     } catch (err) {
-      if (latestRef.current.activePageKey === blockKey) setFormValue(previous);
+      setFormValue((current) => (current === data ? previous : current));
       throw err;
     }
   };
