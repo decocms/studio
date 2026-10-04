@@ -307,7 +307,7 @@ function SortableSectionItem({
   onDuplicate: () => void;
   onMakeReusable: () => void;
   onToggleHidden: () => void;
-  /** Unset where async rendering doesn't exist (v8): no control is offered. */
+  /** Unset where no control is offered (v8, unless the row is already Lazy). */
   onToggleLazy?: () => void;
   onAddVariant: () => void;
   onDetach: () => void;
@@ -593,6 +593,7 @@ export function SectionList({
   onMakeReusable,
   onToggleHidden,
   onToggleLazy,
+  asyncRenderAvailable = true,
   onAddVariant,
   onDetach,
   onAddSection,
@@ -610,8 +611,10 @@ export function SectionList({
   onDuplicate: (index: number) => void;
   onMakeReusable: (index: number) => void;
   onToggleHidden: (index: number) => void;
-  /** Unset where async rendering doesn't exist (v8): no control is offered. */
   onToggleLazy?: (index: number) => void;
+  /** False where async rendering doesn't exist (v8): only rows that already
+   *  carry a Lazy wrapper get the control, and only to remove it. */
+  asyncRenderAvailable?: boolean;
   onAddVariant: (index: number) => void;
   onDetach: (index: number) => void;
   /** Classic only: compact pins the add button to the panel's foot instead. */
@@ -740,7 +743,13 @@ export function SectionList({
                   onMakeReusable={() => onMakeReusable(entry.index)}
                   onToggleHidden={() => onToggleHidden(entry.index)}
                   onToggleLazy={
-                    onToggleLazy ? () => onToggleLazy(entry.index) : undefined
+                    onToggleLazy &&
+                    (asyncRenderAvailable ||
+                      isLazyResolveType(
+                        rawSections[entry.index]?.__resolveType ?? "",
+                      ))
+                      ? () => onToggleLazy(entry.index)
+                      : undefined
                   }
                   onAddVariant={() => onAddVariant(entry.index)}
                   onDetach={() => onDetach(entry.index)}

@@ -229,9 +229,11 @@ export function SectionsEditor({
   });
   // The content protocol never runs site code: no rendered gallery (cards show
   // the schema's name, description and image) and no loader-backed pickers.
-  const protocolProject = isProtocolProject(
-    useContentBackend(virtualMcpId, branch),
-  );
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const protocolProject = isProtocolProject(contentBackend);
+  // v8 has no async rendering: offered only once the site is known to be v7.
+  // On v8 an existing Lazy wrapper can still be removed, never added.
+  const asyncRenderAvailable = contentBackend.kind === "legacy";
   const galleryAvailable = !!sectionPreviewBase || protocolProject;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
@@ -1114,6 +1116,11 @@ export function SectionsEditor({
     const rawSection = rawSections[index];
     const parsed = parsedSections[index];
     if (!rawSection || !parsed || parsed.isMultivariate) return;
+    if (
+      !asyncRenderAvailable &&
+      !isLazyResolveType(rawSection.__resolveType ?? "")
+    )
+      return;
 
     const next = toggleSectionLazyRender(rawSection);
     if (!next) return;
@@ -3247,8 +3254,8 @@ export function SectionsEditor({
         onDuplicate={handleDuplicateSection}
         onMakeReusable={setMakeReusableIndex}
         onToggleHidden={handleToggleHidden}
-        // v8 has no async rendering: never offer it, never write a Lazy wrapper.
-        onToggleLazy={protocolProject ? undefined : handleToggleLazy}
+        onToggleLazy={handleToggleLazy}
+        asyncRenderAvailable={asyncRenderAvailable}
         onAddVariant={handleAddSectionVariant}
         onDetach={handleDetachSection}
         onAddSection={() => setAddSectionOpen(true)}
@@ -3282,7 +3289,7 @@ export function SectionsEditor({
           onInnerChange={handleSeoInnerChange}
           onClearForm={clearSeoForm}
           onBumpFormKey={bumpSeoFormKey}
-          asyncRenderAvailable={!protocolProject}
+          asyncRenderAvailable={asyncRenderAvailable}
         />
       ) : (
         <div className="px-3 py-6 text-center text-xs text-muted-foreground">
@@ -3316,7 +3323,7 @@ export function SectionsEditor({
               onInnerChange={handleSeoInnerChange}
               onClearForm={clearSeoForm}
               onBumpFormKey={bumpSeoFormKey}
-              asyncRenderAvailable={!protocolProject}
+              asyncRenderAvailable={asyncRenderAvailable}
             />
           ) : (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">
