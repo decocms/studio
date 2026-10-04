@@ -3247,7 +3247,8 @@ export function SectionsEditor({
         onDuplicate={handleDuplicateSection}
         onMakeReusable={setMakeReusableIndex}
         onToggleHidden={handleToggleHidden}
-        onToggleLazy={handleToggleLazy}
+        // v8 has no async rendering: never offer it, never write a Lazy wrapper.
+        onToggleLazy={protocolProject ? undefined : handleToggleLazy}
         onAddVariant={handleAddSectionVariant}
         onDetach={handleDetachSection}
         onAddSection={() => setAddSectionOpen(true)}
@@ -3281,6 +3282,7 @@ export function SectionsEditor({
           onInnerChange={handleSeoInnerChange}
           onClearForm={clearSeoForm}
           onBumpFormKey={bumpSeoFormKey}
+          asyncRenderAvailable={!protocolProject}
         />
       ) : (
         <div className="px-3 py-6 text-center text-xs text-muted-foreground">
@@ -3314,6 +3316,7 @@ export function SectionsEditor({
               onInnerChange={handleSeoInnerChange}
               onClearForm={clearSeoForm}
               onBumpFormKey={bumpSeoFormKey}
+              asyncRenderAvailable={!protocolProject}
             />
           ) : (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">

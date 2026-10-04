@@ -14,6 +14,8 @@ import { PageSeoForm } from "./page-seo-form";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, useSeoFormSave } from "./seo-save";
 import { SeoPreview } from "./seo-preview";
+import { isProtocolProject } from "./content-backend";
+import { useContentBackend } from "./use-content-backend";
 
 export type { SeoTarget } from "./seo-block";
 
@@ -47,6 +49,10 @@ export function SeoEditor({
 }: SeoEditorProps) {
   const t = useT();
   const resolved = resolveSeoTarget(decofile, target, meta);
+  // v8 has no async rendering.
+  const asyncRenderAvailable = !isProtocolProject(
+    useContentBackend(virtualMcpId, branch),
+  );
   const seoData = resolved?.seoData;
 
   const targetId = target.kind === "site" ? "site" : target.pageKey;
@@ -212,6 +218,7 @@ export function SeoEditor({
                     }}
                     onClearForm={clearSeoForm}
                     onBumpFormKey={bumpSeoFormKey}
+                    asyncRenderAvailable={asyncRenderAvailable}
                   />
                 </>
               ) : (
