@@ -59,6 +59,11 @@ import {
   useDecofileCacheKey,
 } from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+import {
+  buildServeDraftPointer,
+  withForcedVariantsInDraftUrl,
+} from "@/components/sections-editor/variant-draft-pointer";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -491,6 +496,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * site code, so nothing renders in place: the frame is the real app.
    */
   const contentBackend = useContentBackend(virtualMcpId, branch);
+  const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
   const runsSiteCode = !isProtocolProject(contentBackend);
   const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
   const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
@@ -811,32 +817,51 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- persist the frozen/relatched pin for the next render's decision
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
+  // The selected variant: forced variants in the `?__draft=` pointer on a
+  // content-protocol (v8) site, `x-deco-matchers-override` on a legacy one.
+  const variantOverride = workspace.state.variantOverride ?? [];
+  const matcherOverride = runsSiteCode ? variantOverride : [];
+  const forcedVariants = runsSiteCode ? [] : variantOverride;
+  // A connected `deco serve` has no drafts: a pointer to it carries only the
+  // forced variants. With none, `off` drops a pointer the draft cookie kept.
+  const servePointer =
+    serveConnection && servePreviewUrl(contentBackend)
+      ? (buildServeDraftPointer(serveConnection.endpoint, forcedVariants) ??
+        DRAFT_OFF)
+      : null;
+
   const iframeSrc = withDecoFBT(
     display.mode === "sandbox" && externalOriginReady
       ? withVariantMatcherOverride(
           withDeviceHint(
-            directPreviewUrl ??
-              resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-              display.iframeBase!,
+            withDraftPointer(
+              directPreviewUrl ??
+                resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                display.iframeBase!,
+              servePointer,
+            ),
             previewDeviceSize,
           ),
-          workspace.state.variantOverride ?? [],
+          matcherOverride,
         )
       : display.mode === "production" && externalOriginReady
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              // Waking pill up ⇒ no draft is renderable yet, so ask for published.
-              withDraftPointer(
-                directPreviewUrl ??
-                  effectiveDraftPreviewUrl ??
-                  resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-                  display.iframeBase!,
-                display.showWakingPill ? DRAFT_OFF : null,
+              withForcedVariantsInDraftUrl(
+                // Waking pill up ⇒ no draft is renderable yet, so ask for published.
+                withDraftPointer(
+                  directPreviewUrl ??
+                    effectiveDraftPreviewUrl ??
+                    resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                    display.iframeBase!,
+                  display.showWakingPill ? DRAFT_OFF : null,
+                ),
+                forcedVariants,
               ),
               previewDeviceSize,
             ),
-            workspace.state.variantOverride ?? [],
+            matcherOverride,
           )
         : null,
   );
@@ -887,8 +912,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production"
       ? productionOpenTabBase
         ? withVariantMatcherOverride(
-            productionOpenTabBase,
-            workspace.state.variantOverride ?? [],
+            withForcedVariantsInDraftUrl(productionOpenTabBase, forcedVariants),
+            matcherOverride,
           )
         : null
       : (iframeSrc ?? display.iframeBase);
@@ -1073,10 +1098,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     });
     if (!req) return;
     // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
-    const src = withVariantMatcherOverride(
-      req.src,
-      workspace.state.variantOverride ?? [],
-    );
+    const src = withVariantMatcherOverride(req.src, matcherOverride);
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },
       origin,

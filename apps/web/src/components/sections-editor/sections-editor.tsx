@@ -116,6 +116,10 @@ import {
   buildSectionVariantOverrideParams,
   type PageVariantInfo,
 } from "./variant-matcher-override";
+import {
+  buildPageForcedVariants,
+  buildSectionForcedVariants,
+} from "./variant-draft-pointer";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
 import { formatMatcher } from "./format-matcher";
@@ -190,9 +194,11 @@ export function SectionsEditor({
   onFocusedBlockChange?: (blockKey: string | null) => void;
   /**
    * Called when the selected section variant changes so the host can force the
-   * preview iframe to render that variant via `x-deco-matchers-override`.
-   * Passes `null` when no variant override should be applied (non-multivariate
-   * section, or nothing selected).
+   * preview iframe to render that variant: `x-deco-matchers-override` params on
+   * a legacy (v7) site, forced variants for the `?__draft=` pointer on a
+   * content-protocol (v8) site (see variant-draft-pointer). Passes `null` when
+   * no variant override should be applied (non-multivariate section, or
+   * nothing selected).
    */
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
@@ -588,12 +594,10 @@ export function SectionsEditor({
       onVariantPreviewOverride(null);
       return;
     }
-    const params = buildPageVariantOverrideParams(
-      activePageKey,
-      { multivariate: true, index, variants },
-      decofile,
-      meta,
-    );
+    const page = { multivariate: true, index, variants };
+    const params = protocolProject
+      ? buildPageForcedVariants(activePageKey, page)
+      : buildPageVariantOverrideParams(activePageKey, page, decofile, meta);
     onVariantPreviewOverride(params.length > 0 ? params : null);
   };
 
@@ -627,26 +631,24 @@ export function SectionsEditor({
       return;
     }
     const pageInfo = currentPageVariantInfo();
-    const pageParams = buildPageVariantOverrideParams(
-      activePageKey,
-      pageInfo,
-      decofile,
-      meta,
-    );
+    const pageParams = protocolProject
+      ? buildPageForcedVariants(activePageKey, pageInfo)
+      : buildPageVariantOverrideParams(activePageKey, pageInfo, decofile, meta);
     if (!mvObj || sectionIndex < 0) {
       onVariantPreviewOverride(pageParams.length > 0 ? pageParams : null);
       return;
     }
-    const sectionParams = buildSectionVariantOverrideParams({
+    const section = {
       pageKey: activePageKey,
       page: pageInfo,
       sectionIndex,
       sectionLazy: parsedSections[sectionIndex]?.isLazy ?? false,
       mvObj,
       selectedVariantIndex: variantIndex,
-      decofile,
-      meta,
-    });
+    };
+    const sectionParams = protocolProject
+      ? buildSectionForcedVariants(section)
+      : buildSectionVariantOverrideParams({ ...section, decofile, meta });
     const params = [...pageParams, ...sectionParams];
     onVariantPreviewOverride(params.length > 0 ? params : null);
   };
