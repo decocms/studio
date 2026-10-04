@@ -49,18 +49,27 @@ const auth = (site = "acme") => ({
 });
 
 describe("draft delivery routes", () => {
-  it("serves the granted manifest and its blocks, privately and immutably", async () => {
+  it("serves the granted manifest until its grant expires, and its blocks immutably", async () => {
     const { app, version, heroHash } = await prepared();
-    const { token } = signOverlayGrant({ site: "acme", version });
+    // Signed 20 minutes ago: 40 of its 60 minutes are left.
+    const { token } = signOverlayGrant({
+      site: "acme",
+      version,
+      nowMs: Date.now() - 20 * 60_000,
+    });
 
     const manifest = await app.request(
       `/sites/acme/drafts/${version}.json?token=${token}`,
       { headers: auth() },
     );
     expect(manifest.status).toBe(200);
-    expect(manifest.headers.get("cache-control")).toBe(
-      "private, max-age=31536000, immutable",
+    const maxAge = Number(
+      /^private, max-age=(\d+)$/.exec(
+        manifest.headers.get("cache-control") ?? "",
+      )?.[1],
     );
+    expect(maxAge).toBeGreaterThan(40 * 60 - 5);
+    expect(maxAge).toBeLessThanOrEqual(40 * 60);
     expect(await manifest.json()).toEqual({
       format: 1,
       set: { Hero: heroHash },
@@ -72,6 +81,9 @@ describe("draft delivery routes", () => {
       { headers: auth() },
     );
     expect(hero.status).toBe(200);
+    expect(hero.headers.get("cache-control")).toBe(
+      "private, max-age=31536000, immutable",
+    );
     expect(await hero.json()).toEqual({ title: "draft" });
   });
 

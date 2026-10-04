@@ -32,7 +32,7 @@
  *   POST  /repos/{o}/{r}/merges                       -> 201 {sha} / 204 / 409 / 405
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
- *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
+ *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits } (branch or sha)
  *   GET   /repos/{o}/{r}/commits                      -> [ { sha } ] (default-branch head)
  *   POST  /repos/{o}/{r}/generate                     -> 201 new repo from this template (422 name taken)
  *
@@ -911,8 +911,13 @@ async function handleRepos(
     const [rawBase, rawHead] = rawSpec.split("...");
     const decodePath = (raw: string | undefined): string =>
       (raw ?? "").split("/").map(decodeURIComponent).join("/");
-    const baseSha = repo.refs.get(decodePath(rawBase));
-    const headSha = repo.refs.get(decodePath(rawHead));
+    // A side is a branch or, as on real GitHub, a commit sha.
+    const resolve = (raw: string | undefined): string | undefined => {
+      const name = decodePath(raw);
+      return repo.refs.get(name) ?? (repo.commits.has(name) ? name : undefined);
+    };
+    const baseSha = resolve(rawBase);
+    const headSha = resolve(rawHead);
     if (!baseSha || !headSha) {
       notFound(res);
       return;

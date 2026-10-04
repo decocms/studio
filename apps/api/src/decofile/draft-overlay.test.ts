@@ -172,7 +172,7 @@ describe("prepareDraftOverlay", () => {
     expect(puts).toEqual([
       deliveryKeys.block("acme", manifest.set.Hero),
       deliveryKeys.manifest("acme", version),
-      deliveryKeys.prepared("acme", "draft"),
+      deliveryKeys.prepared("acme", "draft", null),
     ]);
     expect(await computeOverlayVersion(manifest)).toBe(version);
   });
@@ -204,6 +204,31 @@ describe("prepareDraftOverlay", () => {
     // Now from storage, without preparing again.
     expect(await draftOverlayStatus(scope, { store, waitMs: 0 })).toEqual(
       ready,
+    );
+  });
+
+  it("keeps two app roots on one site and commit apart", async () => {
+    const { store } = memoryStorage();
+    const versions = [];
+    for (const [packagePath, title] of [
+      ["apps/a", "a"],
+      ["apps/b", "b"],
+    ] as const) {
+      const { client } = fakeRepo({
+        mergeBase: "base",
+        packagePath,
+        commits: { base: {}, draft: { "Hero.json": block({ title }) } },
+      });
+      const status = await draftOverlayStatus(
+        { client, packagePath, site: "acme", revision: "draft" },
+        { store },
+      );
+      expect(status.status).toBe("ready");
+      versions.push((status as { version: string }).version);
+    }
+    expect(versions[0]).not.toBe(versions[1]);
+    expect(deliveryKeys.prepared("acme", "draft", "apps/a")).not.toBe(
+      deliveryKeys.prepared("acme", "draft", "apps/b"),
     );
   });
 

@@ -96,10 +96,15 @@ async function setup() {
       grant: signOverlayGrant({ site: SITE, version }).token,
     });
 
-  // Every request the site makes, answered by Studio's delivery routes.
+  // Every draft request the site makes, answered by Studio's delivery routes.
+  // (forDraft also schedules the background release check, which never runs
+  // in front of the draft; its channel manifest isn't a draft read.)
   const requested: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname.endsWith("/channels/production.json")) {
+      return new Response("no release yet", { status: 404 });
+    }
     requested.push(`${url.host}${url.pathname}`);
     if (url.host !== "delivery.decocms.com") {
       return new Response("unexpected host", { status: 599 });

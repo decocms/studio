@@ -719,18 +719,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   );
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
-  const { url: draftPreviewUrl, preparing: draftPreparing } =
-    useFastPreviewDraftUrl(
-      fastPreviewEnabled && virtualMcpId && branch
-        ? {
-            orgSlug: org.slug,
-            virtualMcpId,
-            branch,
-            previewServerUrl: previewServerUrl ?? null,
-            path: resolvedPath,
-          }
-        : null,
-    );
+  const {
+    url: draftPreviewUrl,
+    preparing: draftPreparing,
+    failed: draftFailed,
+  } = useFastPreviewDraftUrl(
+    fastPreviewEnabled && virtualMcpId && branch
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          previewServerUrl: previewServerUrl ?? null,
+          path: resolvedPath,
+        }
+      : null,
+  );
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
@@ -746,6 +749,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
+    fastPreviewFailed: !!draftFailed,
     codingSession,
     localPreviewUrl,
   });
@@ -2048,6 +2052,36 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         />
                       </div>
                     )}
+
+                    {fastPreviewEnabled &&
+                      draftFailed &&
+                      !draftPreviewUrl &&
+                      previewState.kind !== "suspended" &&
+                      previewState.kind !== "errored" && (
+                        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background p-6">
+                          <div className="flex max-w-md flex-col items-center gap-1 text-center">
+                            <span className="text-sm font-medium text-foreground">
+                              {t("sandbox.preview.previewUnavailable")}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {draftFailed}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                    {display.mode === "production" &&
+                      !display.showWakingPill &&
+                      draftFailed &&
+                      draftPreviewUrl && (
+                        <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-center gap-2 rounded-full border border-destructive/40 bg-muted px-3 py-1.5 text-xs font-medium text-foreground shadow-md pointer-events-none select-none">
+                          <span className="truncate">
+                            {t("sandbox.preview.previewUnavailableReason", {
+                              reason: draftFailed,
+                            })}
+                          </span>
+                        </div>
+                      )}
 
                     {display.mode === "production" &&
                       !display.showWakingPill &&

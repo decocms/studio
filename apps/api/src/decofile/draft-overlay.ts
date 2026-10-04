@@ -17,7 +17,14 @@
  * the database. Blocks are uploaded before the manifest, and the manifest
  * before the commit's "prepared" marker, so a reader that finds the marker
  * finds everything it names.
+ *
+ * TODO: nothing deletes draft assets yet. A cleanup job must keep every asset
+ * an unexpired grant can still reach (grants last an hour; see
+ * /next/studio-implementation initial limits) before removing manifests,
+ * markers and blocks no live manifest references.
  */
+
+import { createHash } from "node:crypto";
 
 import {
   computeBlockHash,
@@ -62,10 +69,17 @@ export const deliveryKeys = {
     `sites/${site}/drafts/${version}.json`,
   block: (site: string, hash: string) =>
     `sites/${site}/draft-blocks/${hash}.json`,
-  /** Not served: which overlay a saved commit prepared into. */
-  prepared: (site: string, revision: string) =>
-    `draft-commits/${site}/${revision}.json`,
+  /** Not served: which overlay a saved commit, in one app root, prepared into. */
+  prepared: (site: string, revision: string, packagePath: string | null) =>
+    `draft-commits/${site}/${revision}${appRootSuffix(packagePath)}.json`,
 };
+
+/** Tells apart two projects with different app roots on one site and repository. */
+function appRootSuffix(packagePath: string | null): string {
+  return packagePath
+    ? `-${createHash("sha256").update(packagePath).digest("hex").slice(0, 16)}`
+    : "";
+}
 
 let storage: BoundObjectStorage | undefined;
 /** The object storage drafts are prepared into and delivered from. */
@@ -270,7 +284,7 @@ export async function prepareDraftOverlay(
     { contentType: "application/json" },
   );
   await store.put(
-    deliveryKeys.prepared(scope.site, scope.revision),
+    deliveryKeys.prepared(scope.site, scope.revision, scope.packagePath),
     JSON.stringify({ version }),
     { contentType: "application/json" },
   );
@@ -281,7 +295,7 @@ const inflight = new Map<string, Promise<string>>();
 const failures = new Map<string, { error: string; at: number }>();
 
 function jobKey(scope: DraftOverlayScope): string {
-  return `${scope.site}\n${scope.revision}`;
+  return `${scope.site}\n${scope.revision}${appRootSuffix(scope.packagePath)}`;
 }
 
 /** Starts (or joins) this commit's preparation on this replica. */
@@ -320,7 +334,7 @@ async function preparedVersion(
 ): Promise<string | null> {
   try {
     const bytes = await store.getBytes(
-      deliveryKeys.prepared(scope.site, scope.revision),
+      deliveryKeys.prepared(scope.site, scope.revision, scope.packagePath),
     );
     const { version } = JSON.parse(new TextDecoder().decode(bytes)) as {
       version?: unknown;

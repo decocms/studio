@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   DRAFT_TOKEN_TTL_MS,
-  overlayGrantVersion,
+  OVERLAY_GRANT_TTL_MS,
+  overlayGrant,
   signDraftToken,
   signOverlayGrant,
   siteToken,
@@ -65,31 +66,32 @@ describe("draft token", () => {
 describe("overlay grant", () => {
   const version = "a".repeat(64);
 
-  it("authorizes exactly one site's overlay version until it expires", () => {
+  it("authorizes exactly one site's overlay version for one hour", () => {
     const now = Date.now();
     const { token, expiresAt } = signOverlayGrant({
       site: "acme",
       version,
       nowMs: now,
     });
-    expect(overlayGrantVersion(token, { site: "acme", nowMs: now })).toBe(
+    const e = Math.floor((now + OVERLAY_GRANT_TTL_MS) / 1000);
+    expect(OVERLAY_GRANT_TTL_MS).toBe(60 * 60 * 1000);
+    expect(overlayGrant(token, { site: "acme", nowMs: now })).toEqual({
       version,
-    );
-    expect(overlayGrantVersion(token, { site: "other", nowMs: now })).toBe(
-      null,
-    );
+      expiresAt: e,
+    });
+    expect(overlayGrant(token, { site: "other", nowMs: now })).toBe(null);
     expect(
-      overlayGrantVersion(token, {
+      overlayGrant(token, {
         site: "acme",
-        nowMs: now + DRAFT_TOKEN_TTL_MS + 1_000,
+        nowMs: now + OVERLAY_GRANT_TTL_MS + 1_000,
       }),
     ).toBe(null);
-    expect(Date.parse(expiresAt)).toBeGreaterThan(now);
+    expect(Date.parse(expiresAt)).toBe(e * 1000);
   });
 
   it("is not interchangeable with the legacy branch token", () => {
     const legacy = signDraftToken(scope);
-    expect(overlayGrantVersion(legacy, { site: "acme" })).toBe(null);
+    expect(overlayGrant(legacy, { site: "acme" })).toBe(null);
     const { token } = signOverlayGrant({ site: "acme", version });
     expect(verifyDraftToken(token, scope)).toBe(false);
   });
@@ -100,9 +102,7 @@ describe("overlay grant", () => {
     const forged = Buffer.from(
       JSON.stringify({ t: "overlay", s: "acme", v: "b".repeat(64), e: 9e9 }),
     ).toString("base64url");
-    expect(overlayGrantVersion(`${forged}.${mac}`, { site: "acme" })).toBe(
-      null,
-    );
+    expect(overlayGrant(`${forged}.${mac}`, { site: "acme" })).toBe(null);
   });
 });
 

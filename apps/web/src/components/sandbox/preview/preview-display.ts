@@ -64,6 +64,13 @@ export interface PreviewDisplayInput {
    */
   fastPreviewReady?: boolean;
   /**
+   * The draft can't be prepared (e.g. its changes are over the overlay limit).
+   * Only meaningful with `fastPreviewActive`. Without a ready draft URL the
+   * canvas is handed over to the caller's "preview unavailable" card: the
+   * published site must never stand in for a draft that failed.
+   */
+  fastPreviewFailed?: boolean;
+  /**
    * This session is a coding session on a project that otherwise defaults to
    * CMS. Coding sessions boot visibly — the published site is not a truthful
    * stand-in for a checkout the user is actively changing — so the fallback is
@@ -96,6 +103,7 @@ export function resolvePreviewDisplay(
     // the pre-existing behaviour.
     fastPreviewActive = false,
     fastPreviewReady = false,
+    fastPreviewFailed = false,
     codingSession = false,
   } = input;
   /** Withheld for a coding session — see `codingSession`. */
@@ -131,6 +139,9 @@ export function resolvePreviewDisplay(
       showWakingPill: false,
     };
   }
+
+  // A failed draft with nothing ready to show: no published stand-in.
+  if (fastPreviewActive && fastPreviewFailed && previewServerUrl) return NONE;
 
   // The sandbox surface is showable once a previewUrl exists AND boot is no
   // longer in progress: `done` (running) serves the live app, `failed`/`crashed`

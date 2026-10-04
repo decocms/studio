@@ -29,10 +29,11 @@ export function useDraftPointer(params: DraftParams | null): string | null {
   return useDraftPointerState(params).pointer;
 }
 
-/** {@link useDraftPointer}, plus whether a newer saved commit's preview is still preparing. */
+/** {@link useDraftPointer}, plus whether a newer saved commit's preview is still preparing or failed. */
 function useDraftPointerState(params: DraftParams | null): {
   pointer: string | null;
   preparing: boolean;
+  failed: string | null;
 } {
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
@@ -43,13 +44,16 @@ function useDraftPointerState(params: DraftParams | null): {
     github ? params : null,
     useDecofileCacheKey(params),
   );
-  if (!params || !fastPreviewActive) return { pointer: null, preparing: false };
+  if (!params || !fastPreviewActive) {
+    return { pointer: null, preparing: false, failed: null };
+  }
   if (github) return protocolDraft;
   return {
     pointer: legacyDraft
       ? buildDraftPointer({ ...params, ...legacyDraft })
       : null,
     preparing: false,
+    failed: null,
   };
 }
 
@@ -68,6 +72,12 @@ export interface FastPreviewDraftUrl {
   host: string | null;
   /** A newer saved commit's preview is still preparing; `url` is the previous one. */
   preparing: boolean;
+  /**
+   * Why the last saved commit's preview can't be shown (its overlay failed to
+   * prepare), or null. `url` is then the last ready draft, or null: never the
+   * published site in its place.
+   */
+  failed: string | null;
 }
 
 /**
@@ -90,7 +100,11 @@ export function useFastPreviewDraftUrl(
     path: string;
   } | null,
 ): FastPreviewDraftUrl {
-  const { pointer: draftPointer, preparing } = useDraftPointerState(
+  const {
+    pointer: draftPointer,
+    preparing,
+    failed,
+  } = useDraftPointerState(
     params
       ? {
           orgSlug: params.orgSlug,
@@ -118,5 +132,5 @@ export function useFastPreviewDraftUrl(
         )
       : null;
 
-  return { url, host, preparing };
+  return { url, host, preparing, failed };
 }

@@ -92,8 +92,10 @@ export async function throwResponseError(
 export function setDecofileDraft(
   queryClient: QueryClient,
   params: DecofileScopeParams,
-  draft: DecofileDraft,
+  draft: DecofileDraft | null,
 ): void {
+  // A content-protocol project's writes carry no whole-decofile grant.
+  if (!draft) return;
   queryClient.setQueryData(KEYS.decofileDraft(decofileCacheKey(params)), draft);
 }
 
@@ -169,18 +171,25 @@ export async function fetchDecofile(
   return body.decofile;
 }
 
-/** PATCH blocks; resolves with the draft pointer of the carrying commit. */
+/** PATCH blocks; resolves with the draft pointer of the carrying commit (null without a grant). */
 export async function patchDecofile(
   params: DecofileScopeParams,
   patch: DecofilePatchBody,
-): Promise<DecofileDraft> {
+): Promise<DecofileDraft | null> {
   const res = await fetch(decofileApiUrl(params), {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(patch),
   });
   if (!res.ok) return throwResponseError(res, "Save");
-  const body = (await res.json()) as Partial<DecofileDraft> &
-    Pick<DecofileDraft, "version" | "token">;
-  return { ...body, apiHost: body.apiHost ?? window.location.host };
+  const body = (await res.json()) as Partial<DecofileDraft> & {
+    version: string;
+    token: string | null;
+  };
+  if (!body.token) return null;
+  return {
+    ...body,
+    token: body.token,
+    apiHost: body.apiHost ?? window.location.host,
+  };
 }

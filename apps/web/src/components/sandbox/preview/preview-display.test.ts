@@ -32,6 +32,29 @@ function run(overrides: Partial<PreviewDisplayInput>) {
 }
 
 describe("resolvePreviewDisplay", () => {
+  it("never paints the published site for a failed draft with nothing ready", () => {
+    expect(
+      run({
+        fastPreviewActive: true,
+        fastPreviewReady: false,
+        fastPreviewFailed: true,
+      }),
+    ).toEqual({
+      mode: "none",
+      iframeBase: null,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    });
+    // The last ready draft keeps the canvas (the caller marks it unavailable).
+    expect(
+      run({
+        fastPreviewActive: true,
+        fastPreviewReady: true,
+        fastPreviewFailed: true,
+      }).mode,
+    ).toBe("production");
+  });
+
   it("shows the sandbox iframe once boot is done (running)", () => {
     expect(run({ previewState: IFRAME, progressStatus: "done" })).toEqual({
       mode: "sandbox",

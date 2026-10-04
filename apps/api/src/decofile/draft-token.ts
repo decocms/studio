@@ -8,7 +8,11 @@
  *   docs: /next/content-delivery#exact-draft-previews): the site, the overlay
  *   version and an expiry, never a moving branch.
  * - The site token is the bearer a connected site sends on every delivery
- *   request (`DECO_SITE_TOKEN`), derived from the site id.
+ *   request (`DECO_SITE_TOKEN`), derived from the site id. It can't be revoked
+ *   on its own and outlives a transfer or a delete-and-recreate of the slug:
+ *   delivery verifies it without the database. That is accepted because every
+ *   draft read also needs a grant, which only a member of the owning
+ *   organization can mint and which expires within an hour.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -18,6 +22,10 @@ import { getSettings } from "../settings";
  * reissued while it is open), short enough that a leaked preview URL goes
  * stale within a working day. */
 export const DRAFT_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** An overlay grant's life (blocks docs: /next/studio-implementation initial
+ * limits); the editor refreshes its pointer well before that. */
+export const OVERLAY_GRANT_TTL_MS = 60 * 60 * 1000;
 
 let signingKey: Buffer | null = null;
 function getSigningKey(): Buffer {
@@ -69,8 +77,8 @@ function open(token: string): Record<string, unknown> | null {
   }
 }
 
-function expiry(nowMs: number | undefined): number {
-  return Math.floor(((nowMs ?? Date.now()) + DRAFT_TOKEN_TTL_MS) / 1000);
+function expiry(nowMs: number | undefined, ttlMs = DRAFT_TOKEN_TTL_MS): number {
+  return Math.floor(((nowMs ?? Date.now()) + ttlMs) / 1000);
 }
 
 function live(claims: Record<string, unknown>, nowMs?: number): boolean {
@@ -119,25 +127,25 @@ export function signOverlayGrant(scope: {
   version: string;
   nowMs?: number;
 }): { token: string; expiresAt: string } {
-  const e = expiry(scope.nowMs);
+  const e = expiry(scope.nowMs, OVERLAY_GRANT_TTL_MS);
   return {
     token: sign({ t: "overlay", s: scope.site, v: scope.version, e }),
     expiresAt: new Date(e * 1000).toISOString(),
   };
 }
 
-/** The overlay version a live grant for `site` authorizes, or null. */
-export function overlayGrantVersion(
+/** The overlay version a live grant for `site` authorizes and its expiry (epoch seconds), or null. */
+export function overlayGrant(
   token: string,
   expect: { site: string; nowMs?: number },
-): string | null {
+): { version: string; expiresAt: number } | null {
   const claims = open(token);
   return claims !== null &&
     claims.t === "overlay" &&
     claims.s === expect.site &&
     typeof claims.v === "string" &&
     live(claims, expect.nowMs)
-    ? claims.v
+    ? { version: claims.v, expiresAt: claims.e as number }
     : null;
 }
 

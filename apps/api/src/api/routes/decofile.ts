@@ -31,7 +31,10 @@
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
  * self-enforces the signed draft token, mirroring automation-webhooks.ts.
- * That whole-decofile read is the v7 runtime's draft transport only.
+ * That whole-decofile read is the v7 runtime's draft transport only: a project
+ * the editor serves over the content protocol (the org flag on and a committed
+ * schema, the same rule as the editor's backend probe) answers it 404, and its
+ * legacy responses mint no draft token.
  */
 
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
@@ -284,6 +287,42 @@ async function ownedSite(c: Context<DecofileEnv>): Promise<string | null> {
   return owned ? site : null;
 }
 
+/**
+ * Whether the editor serves this project over the content protocol on the
+ * GitHub backend: the org flag, and a committed schema (`schema.get` isn't
+ * NotFound). Its previews are draft overlays, never the whole-decofile read.
+ */
+async function servedOverProtocol(
+  c: Context<DecofileEnv>,
+  client: RepoContentClient,
+): Promise<boolean> {
+  if (!(await contentProtocolEnabled(c))) return false;
+  const scope = c.get("decofileScope");
+  const schema = await createRepoContentStorage({
+    client,
+    packagePath: scope.packagePath,
+    branch: scope.branch,
+  }).readSchema({});
+  return schema !== null;
+}
+
+/**
+ * Whether `revision` is on the branch: its head or an ancestor of it (the
+ * default branch's while the branch doesn't exist yet), so a member can't
+ * mint pointers to, or start preparing, another branch's commits.
+ */
+export async function revisionOnBranch(
+  client: RepoContentClient,
+  branch: string,
+  revision: string,
+): Promise<boolean> {
+  const head = (await client.getBranch(branch))
+    ? branch
+    : await client.getDefaultBranch();
+  const { mergeBaseSha } = await client.compareDetailed(revision, head);
+  return mergeBaseSha === revision;
+}
+
 function signScopeDraftToken(scope: DecofileScope): string {
   return signDraftToken({
     organizationId: scope.organizationId,
@@ -343,6 +382,12 @@ export function createDecofileRoutes() {
     const scope = c.get("decofileScope");
     try {
       const client = await contentClientForScope(c);
+      const overProtocol = await servedOverProtocol(c, client);
+      if (!scope.userId && overProtocol) {
+        return c.json({ error: "Not found" }, 404, {
+          "Cache-Control": "no-store",
+        });
+      }
       const snapshot = await readDecofileSnapshot(
         client,
         scope.branch,
@@ -377,7 +422,8 @@ export function createDecofileRoutes() {
           "content-type": "application/json",
         });
       }
-      const token = signScopeDraftToken(scope);
+      // A protocol project's previews are overlays: no whole-decofile grant.
+      const token = overProtocol ? null : signScopeDraftToken(scope);
       return c.body(
         `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${snapshot.decofile}}`,
         200,
@@ -480,7 +526,9 @@ export function createDecofileRoutes() {
         },
         patch,
       );
-      const token = signScopeDraftToken(scope);
+      const token = (await servedOverProtocol(c, client))
+        ? null
+        : signScopeDraftToken(scope);
       return c.json({ version: sha, token, apiHost: requestApiHost(c) });
     } catch (err) {
       return errorResponse(c, err);
@@ -633,8 +681,14 @@ export function createDecofileRoutes() {
     }
     const noStore = { "Cache-Control": "no-store" };
     try {
+      const client = await contentClientForScope(c);
+      if (
+        !(await revisionOnBranch(client, scope.branch, parsed.data.revision))
+      ) {
+        return c.json({ error: "Not found" }, 404, noStore);
+      }
       const status = await draftOverlayStatus({
-        client: await contentClientForScope(c),
+        client,
         packagePath: scope.packagePath,
         site,
         revision: parsed.data.revision,

@@ -10,6 +10,7 @@
  * someone else wrote.
  */
 
+import { useRef } from "react";
 import {
   keepPreviousData,
   type QueryClient,
@@ -248,16 +249,18 @@ export async function applyProtocolPatch(
   return { revision: result.revision };
 }
 
-/** A grant lives 6 hours; refreshing it hourly keeps the pointer valid. */
-const DRAFT_GRANT_REFRESH_MS = 60 * 60_000;
+/** A grant lives an hour; refreshing it every half hour keeps the pointer valid. */
+const DRAFT_GRANT_REFRESH_MS = 30 * 60_000;
 
-class PreviewPreparing extends Error {}
+export class PreviewPreparing extends Error {}
 
 export interface ProtocolDraft {
   /** The newest ready `?__draft=` pointer: the saved commit's, or the last one while it prepares. */
   pointer: string | null;
   /** The last saved commit's overlay isn't uploaded yet ("preparing preview"). */
   preparing: boolean;
+  /** Why the last saved commit's preview can't be shown, or null ("preview unavailable"). */
+  failed: string | null;
 }
 
 /**
@@ -271,7 +274,7 @@ export function useProtocolDraft(
   cacheKey: string,
 ): ProtocolDraft {
   const revision = useContentRevision(cacheKey);
-  const { data, isPlaceholderData, isPending } = useQuery({
+  const { data, isPlaceholderData, isPending, isError, error } = useQuery({
     queryKey: KEYS.draftPreview(cacheKey, revision ?? ""),
     queryFn: async () => {
       const preview = await fetchDraftPreview(params!, revision!);
@@ -280,18 +283,62 @@ export function useProtocolDraft(
       return preview.pointer;
     },
     enabled: !!params && !!revision,
-    // The route waits on the preparation itself; ask again while it runs.
-    retry: (failures, error) =>
-      error instanceof PreviewPreparing && failures < 20,
+    // The route waits on the preparation itself (and restarts a lost one); ask
+    // again while it runs, until it's ready or reports a failure.
+    retry: (_failures, error) => error instanceof PreviewPreparing,
     retryDelay: 0,
     placeholderData: keepPreviousData,
     staleTime: DRAFT_GRANT_REFRESH_MS,
     refetchInterval: DRAFT_GRANT_REFRESH_MS,
   });
-  if (!params) return { pointer: null, preparing: false };
+  // An error clears `data` (placeholders only cover pending), so the last
+  // ready pointer is kept here: a failed save never swaps in the published site.
+  const lastPointer = useRef<{ cacheKey: string; pointer: string } | null>(
+    null,
+  );
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- remember the last ready pointer across an error
+  if (data) lastPointer.current = { cacheKey, pointer: data };
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the remembered pointer (this project's only)
+  const remembered = lastPointer.current;
+  const fallbackPointer =
+    remembered?.cacheKey === cacheKey ? remembered.pointer : null;
+  if (!params) return { pointer: null, preparing: false, failed: null };
+  return protocolDraftState({
+    revision,
+    data,
+    fallbackPointer,
+    isPlaceholderData,
+    isPending,
+    error: isError ? error : null,
+  });
+}
+
+/**
+ * The editor's draft preview state from its query: a failure (anything but
+ * "still preparing") is reported, never hidden behind the published site,
+ * and the last ready pointer stays while a newer save prepares or fails.
+ */
+export function protocolDraftState(input: {
+  revision: string | undefined;
+  data: string | undefined;
+  /** The last ready pointer this project saw. */
+  fallbackPointer: string | null;
+  isPlaceholderData: boolean;
+  isPending: boolean;
+  error: Error | null;
+}): ProtocolDraft {
+  const stillPreparing = input.error instanceof PreviewPreparing;
+  const failed =
+    input.error && !stillPreparing
+      ? input.error.message || "Preview unavailable"
+      : null;
   return {
-    pointer: data ?? null,
-    preparing: !!revision && (isPlaceholderData || isPending),
+    pointer: input.data ?? input.fallbackPointer,
+    preparing:
+      !!input.revision &&
+      !failed &&
+      (input.isPlaceholderData || input.isPending || stillPreparing),
+    failed,
   };
 }
 
