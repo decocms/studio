@@ -2644,6 +2644,24 @@ export function SectionsEditor({
   };
 
   /**
+   * Whole-block save for the global-block form. The form renders `formValue`,
+   * so show `data` right away and restore `previous` if the save fails.
+   */
+  const saveWholeGlobalBlock = async (
+    blockKey: string,
+    previous: Record<string, unknown>,
+    data: Record<string, unknown>,
+  ) => {
+    setFormValue(data);
+    try {
+      await saveBlock.mutateAsync({ blockKey, data });
+    } catch (err) {
+      if (latestRef.current.activePageKey === blockKey) setFormValue(previous);
+      throw err;
+    }
+  };
+
+  /**
    * Rename a variant's matcher inside a directly-opened section-multivariate
    * flag (global-block mode), where the wrapper value IS the whole block. The
    * awaited whole-block save is authoritative (not the wrapper's debounced
@@ -2677,7 +2695,7 @@ export function SectionsEditor({
       nextVariants: Array<Record<string, unknown>>,
     ): Promise<Record<string, unknown>> => {
       const data = { ...wrapperValue, variants: nextVariants };
-      await saveBlock.mutateAsync({ blockKey, data });
+      await saveWholeGlobalBlock(blockKey, wrapperValue, data);
       return { ...latestDecofile, [blockKey]: data };
     };
 
@@ -2797,7 +2815,7 @@ export function SectionsEditor({
     const projected = { ...latestDecofile, [targetBlockKey]: data };
 
     try {
-      await saveBlock.mutateAsync({ blockKey: targetBlockKey, data });
+      await saveWholeGlobalBlock(targetBlockKey, wrapperValue, data);
       if (prevBlockKey && prevBlockKey !== blockKey) {
         await cleanupOrphanMatcherBlock(prevBlockKey, projected);
       }
@@ -3540,6 +3558,9 @@ export function SectionsEditor({
               sandbox={sandbox}
               previewBaseUrl={sectionPreviewBase}
               onRequestAddSection={handleRequestAddSection}
+              onVariantMatcherOp={
+                isGlobalBlockMode ? fieldVariantMatcherOps : undefined
+              }
             />
           </ScrollArea>
         ) : isGlobalBlockMode ? (
@@ -3564,7 +3585,6 @@ export function SectionsEditor({
               sandbox={sandbox}
               previewBaseUrl={sectionPreviewBase}
               onRequestAddSection={handleRequestAddSection}
-              onVariantMatcherOp={fieldVariantMatcherOps}
             />
           </ScrollArea>
         ) : editingSeo ? (
