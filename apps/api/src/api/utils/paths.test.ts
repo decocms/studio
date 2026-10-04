@@ -28,3 +28,12 @@ describe("DBOS queue-depth path", () => {
     expect(shouldSkipStudioContext("/dbos-queue-depth")).toBe(false);
   });
 });
+
+describe("draft delivery path", () => {
+  test("skips StudioContext: delivery reads object storage only", () => {
+    expect(
+      shouldSkipStudioContext("/api/_delivery/sites/acme/drafts/x.json"),
+    ).toBe(true);
+    expect(shouldSkipStudioContext("/api/_deliveryx/sites")).toBe(false);
+  });
+});

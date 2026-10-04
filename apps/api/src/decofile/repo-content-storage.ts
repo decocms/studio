@@ -51,6 +51,8 @@ export interface RepoContentStorageOptions {
   branch: string;
   /** Acting user, appended as a `Co-authored-by:` trailer when present. */
   coAuthor?: CoAuthorIdentity | null;
+  /** Called with each new commit a write lands. */
+  onCommitted?: (revision: string) => void;
 }
 
 function decoPath(packagePath: string | null, file: string): string {
@@ -272,6 +274,7 @@ export function createRepoContentStorage(
             expectedHead: base,
             changes,
           });
+          options.onCommitted?.(sha);
           return { status: "committed", revision: sha, versions };
         } catch (error) {
           if (error instanceof RepoWriteConflict) return { status: "stale" };

@@ -10,7 +10,11 @@
  * someone else wrote.
  */
 
-import { type QueryClient, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  type QueryClient,
+  useQuery,
+} from "@tanstack/react-query";
 import {
   ContentProtocolError,
   ErrorCode,
@@ -25,11 +29,10 @@ import {
   type ProtocolBackend,
 } from "./content-backend";
 import {
-  type DecofileDraft,
   type DecofilePatchBody,
   type DecofileScopeParams,
   decofileWriteMutationKey,
-  fetchDraftGrant,
+  fetchDraftPreview,
 } from "./decofile-api";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -245,27 +248,51 @@ export async function applyProtocolPatch(
   return { revision: result.revision };
 }
 
-/** A draft token lives 6 hours; refreshing it hourly keeps the pointer valid. */
-const DRAFT_GRANT_STALE_MS = 60 * 60_000;
+/** A grant lives 6 hours; refreshing it hourly keeps the pointer valid. */
+const DRAFT_GRANT_REFRESH_MS = 60 * 60_000;
+
+class PreviewPreparing extends Error {}
+
+export interface ProtocolDraft {
+  /** The newest ready `?__draft=` pointer: the saved commit's, or the last one while it prepares. */
+  pointer: string | null;
+  /** The last saved commit's overlay isn't uploaded yet ("preparing preview"). */
+  preparing: boolean;
+}
 
 /**
- * The `?__draft=` pointer of a project on the GitHub backend: the grant from
- * Studio, the version from the last revision a read or write saw. `params`
- * is `null` for any other backend.
+ * The `?__draft=` pointer of a project on the GitHub backend: the draft
+ * overlay of the last revision a read or write saw. Saving and preview
+ * readiness are separate, so after a save the previous pointer stays while
+ * the new commit's overlay prepares. `params` is `null` for any other backend.
  */
 export function useProtocolDraft(
   params: DecofileScopeParams | null,
   cacheKey: string,
-): DecofileDraft | null {
-  const { data: grant } = useQuery({
-    queryKey: KEYS.draftGrant(cacheKey),
-    queryFn: () => fetchDraftGrant(params!),
-    enabled: !!params,
-    staleTime: DRAFT_GRANT_STALE_MS,
-    refetchInterval: DRAFT_GRANT_STALE_MS,
-  });
+): ProtocolDraft {
   const revision = useContentRevision(cacheKey);
-  return params && grant && revision ? { ...grant, version: revision } : null;
+  const { data, isPlaceholderData, isPending } = useQuery({
+    queryKey: KEYS.draftPreview(cacheKey, revision ?? ""),
+    queryFn: async () => {
+      const preview = await fetchDraftPreview(params!, revision!);
+      if (preview.status === "failed") throw new Error(preview.error);
+      if (preview.status === "preparing") throw new PreviewPreparing();
+      return preview.pointer;
+    },
+    enabled: !!params && !!revision,
+    // The route waits on the preparation itself; ask again while it runs.
+    retry: (failures, error) =>
+      error instanceof PreviewPreparing && failures < 20,
+    retryDelay: 0,
+    placeholderData: keepPreviousData,
+    staleTime: DRAFT_GRANT_REFRESH_MS,
+    refetchInterval: DRAFT_GRANT_REFRESH_MS,
+  });
+  if (!params) return { pointer: null, preparing: false };
+  return {
+    pointer: data ?? null,
+    preparing: !!revision && (isPlaceholderData || isPending),
+  };
 }
 
 /**

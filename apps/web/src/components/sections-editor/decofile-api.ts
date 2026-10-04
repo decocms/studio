@@ -119,21 +119,27 @@ export function useDecofileDraft(
 }
 
 /**
- * The signed grant a content-protocol project puts in its `?__draft=` pointer
- * (its version is the revision the protocol reports).
+ * A content-protocol project's preview of one saved commit: its draft overlay
+ * is `preparing` until uploaded, then `ready` with the signed `?__draft=`
+ * pointer to it (blocks docs: /next/content-delivery#exact-draft-previews).
  */
-export async function fetchDraftGrant(
+export type DraftPreview =
+  | { status: "ready"; pointer: string; expiresAt: string }
+  | { status: "preparing" }
+  | { status: "failed"; error: string };
+
+export async function fetchDraftPreview(
   params: DecofileScopeParams,
-): Promise<Omit<DecofileDraft, "version">> {
-  const res = await fetch(`${decofileApiUrl(params)}/draft-grant`, {
+  revision: string,
+): Promise<DraftPreview> {
+  const res = await fetch(`${decofileApiUrl(params)}/preview`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ revision }),
     cache: "no-store",
   });
-  if (!res.ok) return throwResponseError(res, "Draft grant");
-  const grant = (await res.json()) as { token: string; apiHost?: string };
-  return {
-    token: grant.token,
-    apiHost: grant.apiHost ?? window.location.host,
-  };
+  if (!res.ok) return throwResponseError(res, "Draft preview");
+  return (await res.json()) as DraftPreview;
 }
 
 /** GET the merged decofile; stashes the draft pointer as a side effect. */

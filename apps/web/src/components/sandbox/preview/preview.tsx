@@ -719,17 +719,18 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   );
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
-  const { url: draftPreviewUrl } = useFastPreviewDraftUrl(
-    fastPreviewEnabled && virtualMcpId && branch
-      ? {
-          orgSlug: org.slug,
-          virtualMcpId,
-          branch,
-          previewServerUrl: previewServerUrl ?? null,
-          path: resolvedPath,
-        }
-      : null,
-  );
+  const { url: draftPreviewUrl, preparing: draftPreparing } =
+    useFastPreviewDraftUrl(
+      fastPreviewEnabled && virtualMcpId && branch
+        ? {
+            orgSlug: org.slug,
+            virtualMcpId,
+            branch,
+            previewServerUrl: previewServerUrl ?? null,
+            path: resolvedPath,
+          }
+        : null,
+    );
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —
@@ -2047,6 +2048,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         />
                       </div>
                     )}
+
+                    {display.mode === "production" &&
+                      !display.showWakingPill &&
+                      draftPreparing && (
+                        <div className="absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground shadow-md pointer-events-none select-none">
+                          <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
+                          {t("sandbox.preview.preparingPreview")}
+                        </div>
+                      )}
 
                     {display.showWakingPill && (
                       <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">

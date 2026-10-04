@@ -45,6 +45,7 @@ import {
 } from "@/tools/task-board/dbos-github-read";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
+import { createDraftDeliveryRoutes } from "./routes/draft-delivery";
 import { isDecoHostedMcp } from "@/core/deco-constants";
 import { createDecopilotThreadStatusEvent } from "@decocms/shared/sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
@@ -2291,6 +2292,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     ORGANIZATION_NOTICES_API_PREFIX,
     createOrganizationNoticeSiteResolutionRoutes(),
   );
+
+  // Draft overlay delivery for `cms.forDraft`: site token + signed grant, no session or database.
+  app.route("/api/_delivery", createDraftDeliveryRoutes());
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());

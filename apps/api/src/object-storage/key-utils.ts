@@ -149,3 +149,24 @@ export function isTextContentType(contentType: string): boolean {
   if (mediaType.startsWith("text/")) return true;
   return false;
 }
+
+/**
+ * True for an object-storage "the key isn't there" error: S3 `NoSuchKey`, a 404
+ * from a non-AWS gateway, or ENOENT from the dev filesystem backend: a
+ * not-found, not a server fault.
+ */
+export function isMissingObject(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as {
+    name?: string;
+    code?: string;
+    Code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    e.name === "NoSuchKey" ||
+    e.Code === "NoSuchKey" ||
+    e.code === "ENOENT" ||
+    e.$metadata?.httpStatusCode === 404
+  );
+}

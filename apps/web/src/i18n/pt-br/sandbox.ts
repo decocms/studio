@@ -738,6 +738,7 @@ export const sandbox = {
   "sandbox.preview.pageCreated": 'Página "{name}" criada',
   "sandbox.preview.previewMetadataNotReady":
     "Metadados de visualização não estão prontos ainda",
+  "sandbox.preview.preparingPreview": "Preparando o preview",
   "sandbox.preview.refresh": "Atualizar",
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",

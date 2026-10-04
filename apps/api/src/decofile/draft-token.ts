@@ -1,17 +1,22 @@
 /**
- * Signed grant for the unauthenticated decofile read: the production site
- * fetching a draft cannot carry a Studio session, so the `?token=` query in
- * the `__draft` pointer authorizes exactly one (org, virtualMcpId, branch)
- * scope for a bounded time. Same sign/verify shape as
- * `file-storage/share-password.ts` unlock tokens.
+ * Signed capabilities for readers that cannot carry a Studio session. Same
+ * sign/verify shape as `file-storage/share-password.ts` unlock tokens.
+ *
+ * - The legacy draft token authorizes the anonymous decofile read a v7 site
+ *   makes for its `?__draft=` pointer: one (org, virtualMcpId, branch) scope.
+ * - The overlay grant authorizes one site's immutable draft overlay (blocks
+ *   docs: /next/content-delivery#exact-draft-previews): the site, the overlay
+ *   version and an expiry, never a moving branch.
+ * - The site token is the bearer a connected site sends on every delivery
+ *   request (`DECO_SITE_TOKEN`), derived from the site id.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getSettings } from "../settings";
 
-/** Long enough that an open editor session never sees an expiry (tokens are
- * reissued with every authenticated read/write), short enough that a leaked
- * preview URL goes stale within a working day. */
+/** Long enough that an open editor session never sees an expiry (grants are
+ * reissued while it is open), short enough that a leaked preview URL goes
+ * stale within a working day. */
 export const DRAFT_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 
 let signingKey: Buffer | null = null;
@@ -29,11 +34,50 @@ function getSigningKey(): Buffer {
   return signingKey;
 }
 
-interface DraftClaims {
-  /** org id */ o: string;
-  /** virtual MCP id */ m: string;
-  /** branch */ b: string;
-  /** expiry, epoch seconds */ e: number;
+function mac(payload: string): string {
+  return createHmac("sha256", getSigningKey())
+    .update(payload)
+    .digest("base64url");
+}
+
+function sameString(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function sign(claims: object): string {
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  return `${payload}.${mac(payload)}`;
+}
+
+/** The claims of a token this key signed, or null. */
+function open(token: string): Record<string, unknown> | null {
+  const dot = token.indexOf(".");
+  if (dot < 0) return null;
+  const payload = token.slice(0, dot);
+  if (!sameString(token.slice(dot + 1), mac(payload))) return null;
+  try {
+    const claims: unknown = JSON.parse(
+      Buffer.from(payload, "base64url").toString(),
+    );
+    return typeof claims === "object" && claims !== null
+      ? (claims as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function expiry(nowMs: number | undefined): number {
+  return Math.floor(((nowMs ?? Date.now()) + DRAFT_TOKEN_TTL_MS) / 1000);
+}
+
+function live(claims: Record<string, unknown>, nowMs?: number): boolean {
+  return (
+    typeof claims.e === "number" &&
+    claims.e >= Math.floor((nowMs ?? Date.now()) / 1000)
+  );
 }
 
 export function signDraftToken(scope: {
@@ -42,18 +86,12 @@ export function signDraftToken(scope: {
   branch: string;
   nowMs?: number;
 }): string {
-  const now = scope.nowMs ?? Date.now();
-  const claims: DraftClaims = {
+  return sign({
     o: scope.organizationId,
     m: scope.virtualMcpId,
     b: scope.branch,
-    e: Math.floor((now + DRAFT_TOKEN_TTL_MS) / 1000),
-  };
-  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  const mac = createHmac("sha256", getSigningKey())
-    .update(payload)
-    .digest("base64url");
-  return `${payload}.${mac}`;
+    e: expiry(scope.nowMs),
+  });
 }
 
 export function verifyDraftToken(
@@ -65,28 +103,48 @@ export function verifyDraftToken(
     nowMs?: number;
   },
 ): boolean {
-  const dot = token.indexOf(".");
-  if (dot < 0) return false;
-  const payload = token.slice(0, dot);
-  const mac = Buffer.from(token.slice(dot + 1));
-  const expected = Buffer.from(
-    createHmac("sha256", getSigningKey()).update(payload).digest("base64url"),
-  );
-  if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) {
-    return false;
-  }
-  let claims: DraftClaims;
-  try {
-    claims = JSON.parse(Buffer.from(payload, "base64url").toString());
-  } catch {
-    return false;
-  }
-  const nowSec = Math.floor((expect.nowMs ?? Date.now()) / 1000);
+  const claims = open(token);
   return (
+    claims !== null &&
     claims.o === expect.organizationId &&
     claims.m === expect.virtualMcpId &&
     claims.b === expect.branch &&
-    typeof claims.e === "number" &&
-    claims.e >= nowSec
+    live(claims, expect.nowMs)
   );
+}
+
+/** A grant for one site's overlay version, and when it expires. */
+export function signOverlayGrant(scope: {
+  site: string;
+  version: string;
+  nowMs?: number;
+}): { token: string; expiresAt: string } {
+  const e = expiry(scope.nowMs);
+  return {
+    token: sign({ t: "overlay", s: scope.site, v: scope.version, e }),
+    expiresAt: new Date(e * 1000).toISOString(),
+  };
+}
+
+/** The overlay version a live grant for `site` authorizes, or null. */
+export function overlayGrantVersion(
+  token: string,
+  expect: { site: string; nowMs?: number },
+): string | null {
+  const claims = open(token);
+  return claims !== null &&
+    claims.t === "overlay" &&
+    claims.s === expect.site &&
+    typeof claims.v === "string" &&
+    live(claims, expect.nowMs)
+    ? claims.v
+    : null;
+}
+
+export function siteToken(site: string): string {
+  return `dst_${mac(`site-token:v1:${site}`)}`;
+}
+
+export function verifySiteToken(site: string, token: string): boolean {
+  return sameString(token, siteToken(site));
 }

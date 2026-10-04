@@ -13,7 +13,9 @@ interface DraftParams {
 
 /**
  * This session's `?__draft=` pointer, or `null` when Fast Preview is off or no
- * decofile read/write has stashed a grant yet (KEYS.decofileDraft).
+ * pointer is ready yet: a v7 site's decofile read/write stashes a grant
+ * (KEYS.decofileDraft); a content-protocol site on GitHub waits for its saved
+ * commit's draft overlay ({@link useProtocolDraft}).
  *
  * The Fast Preview gate is load-bearing: a coding session shares the CMS
  * draft's branch, and the grant cache never expires, so without it a
@@ -24,6 +26,14 @@ interface DraftParams {
  * {@link useFastPreviewDraftUrl} for one known path.
  */
 export function useDraftPointer(params: DraftParams | null): string | null {
+  return useDraftPointerState(params).pointer;
+}
+
+/** {@link useDraftPointer}, plus whether a newer saved commit's preview is still preparing. */
+function useDraftPointerState(params: DraftParams | null): {
+  pointer: string | null;
+  preparing: boolean;
+} {
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
@@ -33,10 +43,14 @@ export function useDraftPointer(params: DraftParams | null): string | null {
     github ? params : null,
     useDecofileCacheKey(params),
   );
-  const draft = github ? protocolDraft : legacyDraft;
-  return params && draft && fastPreviewActive
-    ? buildDraftPointer({ ...params, ...draft })
-    : null;
+  if (!params || !fastPreviewActive) return { pointer: null, preparing: false };
+  if (github) return protocolDraft;
+  return {
+    pointer: legacyDraft
+      ? buildDraftPointer({ ...params, ...legacyDraft })
+      : null,
+    preparing: false,
+  };
 }
 
 export interface FastPreviewDraftUrl {
@@ -52,6 +66,8 @@ export interface FastPreviewDraftUrl {
    * the draft grant exists. Null when the URL is absent or unparsable.
    */
   host: string | null;
+  /** A newer saved commit's preview is still preparing; `url` is the previous one. */
+  preparing: boolean;
 }
 
 /**
@@ -74,7 +90,7 @@ export function useFastPreviewDraftUrl(
     path: string;
   } | null,
 ): FastPreviewDraftUrl {
-  const draftPointer = useDraftPointer(
+  const { pointer: draftPointer, preparing } = useDraftPointerState(
     params
       ? {
           orgSlug: params.orgSlug,
@@ -102,5 +118,5 @@ export function useFastPreviewDraftUrl(
         )
       : null;
 
-  return { url, host };
+  return { url, host, preparing };
 }
