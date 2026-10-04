@@ -132,7 +132,8 @@ const server = http.createServer(async (req, res) => {
       writeFileSync(target, payload.content ?? "");
       return send(res, 200, { ok: true });
     } catch (e) {
-      return send(res, 400, { error: String(e?.message ?? e) });
+      process.stderr.write(`[stub-daemon] write failed: ${String(e?.stack ?? e)}\n`);
+      return send(res, 400, { error: "invalid request" });
     }
   }
 
@@ -147,7 +148,8 @@ const server = http.createServer(async (req, res) => {
       const content = lines.map((l, i) => `${i + 1}\t${l}`).join("\n");
       return send(res, 200, { kind: "text", content, lineCount: lines.length });
     } catch (e) {
-      return send(res, 400, { error: String(e?.message ?? e) });
+      process.stderr.write(`[stub-daemon] read failed: ${String(e?.stack ?? e)}\n`);
+      return send(res, 400, { error: "invalid request" });
     }
   }
 
