@@ -110,11 +110,8 @@ function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   return { ...schema, type: "array", items: inferredItems };
 }
 
-function defaultForType(
-  type: string | undefined,
-  defaultVal: unknown,
-): unknown {
-  if (defaultVal !== undefined) return defaultVal;
+// Ignores `@default`: it is saved only at creation (see `schemaDefaults`).
+function emptyValueForType(type: string | undefined): unknown {
   switch (type) {
     case "string":
       return "";
@@ -343,14 +340,14 @@ export function renderField(props: FieldProps) {
     if (blockRefForm) return blockRefForm;
   }
 
-  // Typed default from schema for a missing or mis-seeded (non-object) value.
+  // Typed empty value for a missing or mis-seeded (non-object) value.
   const effectiveValue =
-    value === null || value === undefined
-      ? defaultForType(schema.type, schema.default)
-      : schema.type === "object" &&
-          (typeof value !== "object" || Array.isArray(value))
-        ? defaultForType(schema.type, schema.default)
-        : value;
+    value === null ||
+    value === undefined ||
+    (schema.type === "object" &&
+      (typeof value !== "object" || Array.isArray(value)))
+      ? emptyValueForType(schema.type)
+      : value;
 
   if (effectiveValue === null || effectiveValue === undefined) return null;
 

@@ -40,7 +40,7 @@ import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
-import { applySchemaDefaults } from "./apply-schema-defaults";
+import { schemaDefaults } from "./schema-defaults";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -951,10 +951,7 @@ export function SectionsEditor({
   };
 
   const handleFormChange = (val: unknown) => {
-    const next = applySchemaDefaults(activeSchema, val) as Record<
-      string,
-      unknown
-    >;
+    const next = val as Record<string, unknown>;
     setFormValue(next);
     if (selectedSectionIndex !== null) {
       scheduleAutoSave(next, selectedSectionIndex);
@@ -1115,12 +1112,17 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
+  const newSectionValue = (resolveType: string) => ({
+    __resolveType: resolveType,
+    ...schemaDefaults(meta ? resolveSchema(resolveType, meta) : null),
+  });
+
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
     const updatedSections = [
       ...rawSections,
-      { __resolveType: entry.resolveType } as RawSection,
+      newSectionValue(entry.resolveType) as RawSection,
     ];
     const newIndex = updatedSections.length - 1;
 
@@ -1178,7 +1180,7 @@ export function SectionsEditor({
       handleAddSection(entry);
       return;
     }
-    append({ __resolveType: entry.resolveType });
+    append(newSectionValue(entry.resolveType));
     setAddSectionOpen(false);
     pendingAppendRef.current = null;
   };

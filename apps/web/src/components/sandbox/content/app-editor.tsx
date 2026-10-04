@@ -121,6 +121,7 @@ export function AppEditor({
       const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
         entry,
         decofile,
+        meta,
       );
       await saveBlock.mutateAsync({ blockKey: newKey, data });
       toast.success(t("sandbox.appEditor.createdSection", { name: newKey }));
