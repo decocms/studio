@@ -203,7 +203,7 @@ test.describe("content protocol on GitHub", () => {
         root: ".",
         refs: { default: "main", autoCreate: true },
         assets: null,
-        preview: { origin: "https://site.example.com" },
+        preview: { url: "https://site.example.com" },
       });
       // No site this organization owns: no previews, no site token.
       expect((await ctx.get(sitePath)).status()).toBe(404);
