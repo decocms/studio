@@ -39,6 +39,9 @@ export interface SidebarFolderModel {
 export interface ProjectSidebarModel {
   pinned: VirtualMCPEntity[];
   suggested: SidebarSuggestion[];
+  /** Everything clearing Suggested decides on, including "new" projects past
+   *  the display cap, so the next ones do not slide in. */
+  clearableIds: string[];
   /** Visible folders, org order. An empty folder still shows: it is a place
    *  to move projects into. */
   folders: SidebarFolderModel[];
@@ -102,7 +105,7 @@ export function buildProjectSidebar({
   const needsYouIds = new Set(needsYou.map((s) => s.project.id));
 
   const joined = joinedAt ? Date.parse(joinedAt) : Number.NaN;
-  const fresh: SidebarSuggestion[] = projects
+  const newToYou = projects
     .filter(
       (p) =>
         !Number.isNaN(joined) &&
@@ -112,7 +115,8 @@ export function buildProjectSidebar({
         !hidden(p.id) &&
         !needsYouIds.has(p.id),
     )
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const fresh: SidebarSuggestion[] = newToYou
     .slice(0, MAX_NEW_SUGGESTIONS)
     .map((project) => ({ project, reason: "new" as const, waiting: 0 }));
 
@@ -135,6 +139,10 @@ export function buildProjectSidebar({
   return {
     pinned,
     suggested,
+    clearableIds: [
+      ...needsYou.map((s) => s.project.id),
+      ...newToYou.map((p) => p.id),
+    ],
     folders: visibleFolders,
     loose: projects.filter((p) => !folderOf.has(p.id) && visible(p)),
     hiddenFolders,
