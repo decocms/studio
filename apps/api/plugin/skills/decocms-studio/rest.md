@@ -53,7 +53,7 @@ index, so the file never shows up in the Library or in sandboxes.
 No tool sends messages. The web app's flow:
 
 1. Pick the agent: `COLLECTION_VIRTUAL_MCP_LIST` (ids `vir_...`), or Decopilot
-   at `decopilot_<orgId>` (`organizationId` from `ORGANIZATION_SETTINGS_GET`).
+   at `decopilot_<orgId>` (`id` from `ORGANIZATION_GET`).
 2. Create the thread: `COLLECTION_THREADS_CREATE` with
    `{"data":{"virtual_mcp_id":"<agentId>","title":"..."}}`; keep the returned `id`.
 3. Send the message. It answers `202 {taskId}`; the reply streams separately.
