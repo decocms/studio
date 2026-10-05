@@ -84,6 +84,42 @@ import { track } from "@/lib/posthog-client";
  */
 const EMPTY_ARRAY: never[] = [];
 
+type MonitoringTab = "threads" | "overview" | "audit" | "automations";
+
+/** Chats come first: they are what the monitor is opened for. */
+function useMonitoringTabs(): { id: MonitoringTab; label: string }[] {
+  const t = useT();
+  return [
+    { id: "threads", label: t("orgs.monitoring.chats") },
+    { id: "overview", label: t("orgs.monitoring.overview") },
+    { id: "audit", label: t("orgs.monitoring.audit") },
+    { id: "automations", label: t("orgs.monitoring.automations") },
+  ];
+}
+
+/** Names the open tab after the route's Monitoring segment, which resets to
+ *  the default view. Unknown tabs render Overview, so they are named so. */
+function MonitoringBreadcrumbs({
+  tab,
+}: {
+  tab: NonNullable<MonitoringSearchParams["tab"]>;
+}) {
+  const { org } = useProjectContext();
+  const tabs = useMonitoringTabs();
+  const current =
+    tabs.find((item) => item.id === tab) ??
+    tabs.find((item) => item.id === "overview");
+  return (
+    <Page.Breadcrumbs
+      after="page"
+      parent={{
+        link: { to: "/$org/settings/monitor", params: { org: org.slug } },
+      }}
+      items={current ? [{ key: "monitor-tab", label: current.label }] : []}
+    />
+  );
+}
+
 // ============================================================================
 // Filters Popover Component
 // ============================================================================
@@ -601,7 +637,7 @@ interface MonitoringDashboardContentProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
-  onTabChange: (tab: "overview" | "audit" | "threads" | "automations") => void;
+  onTabChange: (tab: MonitoringTab) => void;
 }
 
 function MonitoringDashboardContent({
@@ -729,28 +765,22 @@ function MonitoringDashboardContent({
     ...propertyApiParams,
   };
 
-  const tabs = [
-    { id: "overview" as const, label: t("orgs.monitoring.overview") },
-    { id: "audit" as const, label: t("orgs.monitoring.audit") },
-    { id: "threads" as const, label: t("orgs.monitoring.chats") },
-    { id: "automations" as const, label: t("orgs.monitoring.automations") },
-  ];
+  const tabs = useMonitoringTabs();
 
   return (
     <>
       <Page.Container className="!pb-4">
         <div className="flex flex-col gap-5">
-          <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
+          <MonitoringBreadcrumbs tab={tab} />
           <div className="flex items-center justify-between gap-4">
             <CollectionTabs
               placement="page"
               tabs={tabs}
               activeTab={tab}
-              onTabChange={(tabId) =>
-                onTabChange(
-                  tabId as "overview" | "audit" | "threads" | "automations",
-                )
-              }
+              onTabChange={(tabId) => {
+                const next = tabs.find((item) => item.id === tabId);
+                if (next) onTabChange(next.id);
+              }}
             />
             <div className="flex items-center gap-2">
               {(tab === "overview" || tab === "audit") && (
@@ -988,6 +1018,7 @@ function MonitoringDashboardContent({
 
 export default function MonitoringDashboard() {
   const t = useT();
+  const tabs = useMonitoringTabs();
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({
@@ -995,7 +1026,7 @@ export default function MonitoringDashboard() {
   });
 
   const {
-    tab = "overview",
+    tab = "threads",
     from,
     to,
     connectionId: connectionIds = [],
@@ -1031,7 +1062,8 @@ export default function MonitoringDashboard() {
   // change the query key and refetch forever.
   const [mountedAt] = useState(() => Date.now());
 
-  const startDate = fromResult.date || new Date(mountedAt - 30 * 60 * 1000);
+  const startDate =
+    fromResult.date || new Date(mountedAt - 24 * 60 * 60 * 1000);
   const originalEndDate = toResult.date || new Date();
 
   const displayDateRange = { startDate, endDate: originalEndDate };
@@ -1060,7 +1092,7 @@ export default function MonitoringDashboard() {
           fallback={
             <>
               <Page.Container className="!pb-3">
-                <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
+                <MonitoringBreadcrumbs tab={tab} />
               </Page.Container>
               <Page.Content>
                 <div className="flex-1 flex items-center justify-center h-full">
@@ -1078,31 +1110,15 @@ export default function MonitoringDashboard() {
               <>
                 <Page.Container className="!pb-3">
                   <div className="flex flex-col gap-4">
-                    <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
+                    <MonitoringBreadcrumbs tab={tab} />
                     <CollectionTabs
                       placement="page"
-                      tabs={[
-                        {
-                          id: "overview",
-                          label: t("orgs.monitoring.overview"),
-                        },
-                        { id: "audit", label: t("orgs.monitoring.audit") },
-                        { id: "threads", label: t("orgs.monitoring.chats") },
-                        {
-                          id: "automations",
-                          label: t("orgs.monitoring.automations"),
-                        },
-                      ]}
+                      tabs={tabs}
                       activeTab={tab}
-                      onTabChange={(tabId) =>
-                        updateFilters({
-                          tab: tabId as
-                            | "overview"
-                            | "audit"
-                            | "threads"
-                            | "automations",
-                        })
-                      }
+                      onTabChange={(tabId) => {
+                        const next = tabs.find((item) => item.id === tabId);
+                        if (next) updateFilters({ tab: next.id });
+                      }}
                     />
                   </div>
                 </Page.Container>
