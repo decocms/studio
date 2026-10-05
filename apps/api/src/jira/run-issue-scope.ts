@@ -75,3 +75,21 @@ export function pickIssue(
   }
   return { key: wanted, inRun: false };
 }
+
+/**
+ * The issue a call made OUTSIDE a Jira run is about: from a chat, where there
+ * is no run issue to default to. It must be named, and the caller still checks
+ * that it is on the connected board.
+ */
+export function requireIssueKey(requested: string | undefined): string {
+  const wanted = requested?.trim().toUpperCase();
+  if (!wanted) {
+    throw new Error(
+      "Pass `issueKey`: outside a Jira run there is no run issue to default to",
+    );
+  }
+  if (!ISSUE_KEY.test(wanted)) {
+    throw new Error(`"${requested}" is not a Jira issue key, e.g. EX-12`);
+  }
+  return wanted;
+}

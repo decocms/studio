@@ -231,6 +231,7 @@ import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
+import { backfillJiraChatAgents } from "../jira/chat-agent";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import { createAutomationsStorage } from "../storage/automations";
@@ -2489,6 +2490,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     // replicas/workers all enqueueing in parallel collapse via OAOO.
     backfillStudioPackForAllOrgs().catch((err) => {
       console.error("[studio-pack-backfill] failed:", err);
+    });
+
+    // Fire-and-forget: the Jira agent for each org with an enabled Jira
+    // integration (`jira/chat-agent.ts`). Idempotent, race-safe across replicas.
+    backfillJiraChatAgents().catch((err) => {
+      console.error("[jira-chat-agent] backfill failed:", err);
     });
 
     // Fire-and-forget immediate public-sets sync (hour-bucketed workflow ID,
