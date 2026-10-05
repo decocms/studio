@@ -2,7 +2,7 @@
  * A connection to `deco serve`, the content-protocol server the Blocks CLI
  * runs on the editor's machine. The CLI prints a link,
  * `<studio>/site-editor#endpoint=<url>`, and nothing else: `deco serve` has
- * no token (it checks the browser's `Origin` and the `Host` header instead).
+ * no token and answers any origin.
  * A `token=` left in an older link is ignored. Signed in, the same link
  * pasted into the draft selector's "Local" option connects a project to it.
  *
@@ -117,25 +117,6 @@ export const SERVE_COMMAND = "npx @decocms/blocks serve";
 /** The command that writes `.deco/schema.gen.json`. */
 export const SCHEMA_COMMAND = "npx @decocms/blocks schema";
 
-/** The origins `deco serve` answers without `--allow-origin`. */
-const DECO_SERVE_DEFAULT_ORIGINS = new Set([
-  "https://studio.decocms.com",
-  "https://admin.decocms.com",
-  "https://admin.deco.cx",
-]);
-
-/** Whether Studio at `origin` needs `deco serve --allow-origin <origin>`. */
-export function needsAllowOrigin(origin: string): boolean {
-  return !DECO_SERVE_DEFAULT_ORIGINS.has(origin);
-}
-
-/** The command to copy: `--allow-origin` only off the official origins. */
-export function serveCommand(origin: string): string {
-  return needsAllowOrigin(origin)
-    ? `${SERVE_COMMAND} --allow-origin ${origin}`
-    : SERVE_COMMAND;
-}
-
 export type ParsedServeAddress =
   | { ok: true; connection: DecoServeConnection }
   | { ok: false; reason: "not-local" | "unrecognized" };
@@ -200,7 +181,7 @@ export function parseServeAddress(input: string): ParsedServeAddress {
  * Why a `deco serve` endpoint can't be used, in the words the site editor
  * explains it with:
  * - `not-answering`: nothing answered (stopped, restarting, another port, or a
- *   refused origin or Chrome permission, which a browser can't tell apart):
+ *   Chrome permission not granted, which a browser can't tell apart):
  *   `/site-editor` shows its guide and keeps looking;
  * - `outdated`: an older `deco serve`, which asked for an access token;
  * - `version-mismatch`: a `deco serve` of another major protocol version;

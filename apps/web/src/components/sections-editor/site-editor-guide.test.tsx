@@ -90,13 +90,13 @@ describe("SiteEditorGuide", () => {
     ]);
     expect(view.queryByRole("textbox")).toBeNull();
     expect(view.queryByRole("button", { name: /disconnect/i })).toBeNull();
-    // Studio runs on localhost:4000 here, so the command allows that origin.
+    // The same command on any Studio origin: deco serve answers them all.
     expect(
       view.getByText(
         (_, element) =>
           element?.tagName === "CODE" &&
           element.textContent?.replace(/^\$\s*/, "") ===
-            "npx @decocms/blocks serve --allow-origin http://localhost:4000",
+            "npx @decocms/blocks serve",
       ),
     ).toBeInTheDocument();
     expect(

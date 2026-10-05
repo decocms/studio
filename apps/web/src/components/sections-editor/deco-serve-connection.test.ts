@@ -6,7 +6,6 @@ import {
   NotDecoServeError,
   parseServeAddress,
   serveCandidates,
-  serveCommand,
   endpointHost,
   isLoopbackEndpoint,
   parseConnectFragment,
@@ -307,17 +306,6 @@ describe("classifyServeProbeError", () => {
         new ContentProtocolError(ErrorCode.InternalError, "disk full"),
       ),
     ).toEqual({ reason: "error", detail: "disk full" });
-  });
-});
-
-describe("serveCommand", () => {
-  test("adds --allow-origin only off the official Studio origins", () => {
-    expect(serveCommand("https://studio.decocms.com")).toBe(
-      "npx @decocms/blocks serve",
-    );
-    expect(serveCommand("http://localhost:4000")).toBe(
-      "npx @decocms/blocks serve --allow-origin http://localhost:4000",
-    );
   });
 });
 

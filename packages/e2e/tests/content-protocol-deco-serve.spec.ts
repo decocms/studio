@@ -263,7 +263,6 @@ async function startStub(
 ) {
   return startDecoServeStub({
     port,
-    allowOrigin: getE2EAppOrigin(),
     schema: siteSchema,
     secretsPublicKey: publicKey,
     // The dev app; nothing listens, the preview just has nothing to show.

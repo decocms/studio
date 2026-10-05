@@ -74,8 +74,6 @@ export interface DecoServeStub {
 }
 
 export async function startDecoServeStub(params: {
-  /** The site editor's origin, allowed for browser requests. */
-  allowOrigin: string;
   schema: object;
   files?: Record<string, string>;
   secretsPublicKey?: string;
@@ -106,16 +104,18 @@ export async function startDecoServeStub(params: {
     preview: params.previewUrl ? { url: params.previewUrl } : null,
   });
   const requestBodies: string[] = [];
-  const cors = {
-    "access-control-allow-origin": params.allowOrigin,
+  // Like deco serve: any Origin is answered, reflected.
+  const corsFor = (req: IncomingMessage) => ({
+    "access-control-allow-origin": req.headers.origin ?? "*",
     "access-control-allow-headers": "content-type",
     "access-control-allow-methods": "POST, PUT, OPTIONS",
     "access-control-allow-private-network": "true",
     vary: "origin",
-  };
+  });
 
   const server = createServer((req, res) => {
     const origin = `http://${req.headers.host ?? "127.0.0.1"}`;
+    const cors = corsFor(req);
     if (req.method === "OPTIONS") {
       res.writeHead(204, cors);
       res.end();
@@ -136,7 +136,9 @@ export async function startDecoServeStub(params: {
       res.end(String(error));
     });
   });
-  await new Promise<void>((resolve) => server.listen(params.port ?? 0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) =>
+    server.listen(params.port ?? 0, "127.0.0.1", resolve),
+  );
   const { port } = server.address() as AddressInfo;
   return {
     endpoint: `http://127.0.0.1:${port}/rpc`,

@@ -21,8 +21,7 @@ import type { ContentBackend } from "./content-backend";
 import {
   type DecoServeConnection,
   endpointHost,
-  needsAllowOrigin,
-  serveCommand,
+  SERVE_COMMAND,
 } from "./deco-serve-connection";
 import {
   CommandSnippet,
@@ -116,7 +115,6 @@ export function SiteEditorGuide({
 }) {
   const t = useT();
   const [{ language }] = usePreferences();
-  const origin = window.location.origin;
   const discovery = useDecoServeDiscovery({
     candidates,
     onFound: (endpoint) => onConnect({ endpoint }),
@@ -200,17 +198,10 @@ export function SiteEditorGuide({
             <p className="text-sm text-muted-foreground">
               <RichCode text={t("decoServe.guide.step1.body")} />
             </p>
-            <CommandSnippet command={serveCommand(origin)} />
+            <CommandSnippet command={SERVE_COMMAND} />
             <p className="text-sm text-muted-foreground">
               <RichCode text={t("decoServe.guide.step1.preview")} />
             </p>
-            {needsAllowOrigin(origin) && (
-              <p className="text-sm text-muted-foreground">
-                <RichCode
-                  text={t("decoServe.guide.step1.origin", { origin })}
-                />
-              </p>
-            )}
           </Step>
 
           <Step index={2} title={t("decoServe.guide.step2.title")}>
