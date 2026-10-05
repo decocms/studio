@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
+import { applySchemaDefaults } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -110,7 +111,7 @@ function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   return { ...schema, type: "array", items: inferredItems };
 }
 
-// Ignores `@default`: it is saved only at creation (see `schemaDefaults`).
+// Ignores `@default`: the root form saves missing defaults first (see `RootSchemaForm`).
 function emptyValueForType(type: string | undefined): unknown {
   switch (type) {
     case "string":
@@ -453,14 +454,25 @@ interface SchemaFormProps {
  * Render a schema-driven form. The outermost instance provides the
  * `ObjectField` expansion store so manually-expanded groups survive breadcrumb
  * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
- * `object-field-expansion.tsx`.
+ * `object-field-expansion.tsx`. It also writes missing `@default`s back through
+ * `onChange`, so the form only shows values that are saved.
  */
 export function SchemaForm(props: SchemaFormProps) {
   const hasExpansionProvider = useHasObjectFieldExpansion();
   if (hasExpansionProvider) return <SchemaFormBody {...props} />;
+  return <RootSchemaForm {...props} />;
+}
+
+function RootSchemaForm(props: SchemaFormProps) {
+  const { schema, value, onChange, meta } = props;
+  const seeded = applySchemaDefaults(schema, value, meta);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- persists missing @defaults to the stored block when the form opens, as the old admin's form did
+  useEffect(() => {
+    if (seeded !== value) onChange(seeded);
+  }, [seeded, value, onChange]);
   return (
     <ObjectFieldExpansionProvider>
-      <SchemaFormBody {...props} />
+      <SchemaFormBody {...props} value={seeded} />
     </ObjectFieldExpansionProvider>
   );
 }

@@ -21,9 +21,7 @@ test("plain string renders a textbox and round-trips typed value", async ({
   await expect.poll(() => readFormValue(component)).toEqual({ title: "Hello" });
 });
 
-test("an unsaved default is not shown as the value or placeholder", async ({
-  mount,
-}) => {
+test("a missing default is saved and shown as the value", async ({ mount }) => {
   const meta = sectionWithProps({
     title: { type: "string", title: "Title", default: "default text" },
   });
@@ -35,10 +33,10 @@ test("an unsaved default is not shown as the value or placeholder", async ({
     />,
   );
 
-  const input = component.getByLabel("Title");
-  await expect(input).toBeVisible();
-  await expect(input).toHaveValue("");
-  await expect(input).not.toHaveAttribute("placeholder", "default text");
+  await expect(component.getByLabel("Title")).toHaveValue("default text");
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ title: "default text" });
 });
 
 test("url format renders input[type=url] and round-trips typed value", async ({

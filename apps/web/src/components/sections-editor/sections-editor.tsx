@@ -40,7 +40,6 @@ import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
-import { schemaDefaults } from "./schema-defaults";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -377,6 +376,11 @@ export function SectionsEditor({
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSectionSaveRef = useRef<{
+    sectionIndex: number;
+    sectionVariantIndex: number;
+    write: () => void;
+  } | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -791,10 +795,22 @@ export function SectionsEditor({
     nextValue: Record<string, unknown>,
     sectionIndex: number,
   ) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     const targetSectionVariantIndex = latestRef.current.sectionVariantIndex;
+    const pending = pendingSectionSaveRef.current;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      // Opening another section writes its defaults; flush the previous section's edit instead of dropping it.
+      if (
+        pending &&
+        (pending.sectionIndex !== sectionIndex ||
+          pending.sectionVariantIndex !== targetSectionVariantIndex)
+      ) {
+        pending.write();
+      }
+    }
 
-    debounceRef.current = setTimeout(() => {
+    const write = () => {
       const {
         rawSections: latestRawSections,
         parsedSections: latestParsedSections,
@@ -912,6 +928,15 @@ export function SectionsEditor({
             ),
         },
       );
+    };
+    pendingSectionSaveRef.current = {
+      sectionIndex,
+      sectionVariantIndex: targetSectionVariantIndex,
+      write,
+    };
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      write();
     }, AUTOSAVE_DELAY);
   };
 
@@ -1112,17 +1137,12 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
-  const newSectionValue = (resolveType: string) => ({
-    __resolveType: resolveType,
-    ...schemaDefaults(meta ? resolveSchema(resolveType, meta) : null),
-  });
-
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
     const updatedSections = [
       ...rawSections,
-      newSectionValue(entry.resolveType) as RawSection,
+      { __resolveType: entry.resolveType } as RawSection,
     ];
     const newIndex = updatedSections.length - 1;
 
@@ -1180,7 +1200,7 @@ export function SectionsEditor({
       handleAddSection(entry);
       return;
     }
-    append(newSectionValue(entry.resolveType));
+    append({ __resolveType: entry.resolveType });
     setAddSectionOpen(false);
     pendingAppendRef.current = null;
   };

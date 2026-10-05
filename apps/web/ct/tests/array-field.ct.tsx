@@ -195,6 +195,40 @@ test("add a boolean item appends the default false", async ({ mount }) => {
   await expect.poll(() => readFormValue(component)).toEqual({ flags: [false] });
 });
 
+test("opening the form saves @default values missing from existing items", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps({
+    links: {
+      type: "array",
+      title: "Links",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string", title: "Label" },
+          display: { type: "boolean", title: "Display", default: true },
+        },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ links: [{ label: "A" }, { label: "B", display: false }] }}
+    />,
+  );
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({
+      links: [
+        { label: "A", display: true },
+        { label: "B", display: false },
+      ],
+    });
+});
+
 test("add an object item saves its @default values", async ({ mount }) => {
   const meta = sectionWithProps({
     links: {

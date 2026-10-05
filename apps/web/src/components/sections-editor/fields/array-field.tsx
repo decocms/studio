@@ -42,7 +42,6 @@ import {
   withItemCrumbLabel,
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
-import { schemaDefaults } from "../schema-defaults";
 import {
   type ArrayEntry,
   createArrayEntries,
@@ -279,17 +278,14 @@ export function ArrayField({
       itemSchema?.default !== undefined
         ? itemSchema.default
         : t === "object"
-          ? schemaDefaults(itemSchema)
+          ? {}
           : t === "block-ref"
             ? (() => {
                 const rt = itemSchema?.anyOfRefs?.[0]?.resolveType;
                 if (typeof rt !== "string" || isEmbeddedUnionResolveType(rt)) {
                   return {};
                 }
-                return {
-                  __resolveType: rt,
-                  ...schemaDefaults(meta ? resolveSchema(rt, meta) : null),
-                };
+                return { __resolveType: rt };
               })()
             : t === "number" || t === "integer"
               ? 0
