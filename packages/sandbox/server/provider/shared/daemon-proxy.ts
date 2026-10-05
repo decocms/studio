@@ -37,7 +37,7 @@ export async function proxyDaemonWithRetry(
     return await send(fresh);
   } catch (err) {
     if (!canRetryBody) throw err;
-    const fresh = await reresolve.unreachable();
+    const fresh = await reresolve.unreachable().catch(() => null);
     if (!fresh) throw err;
     return send(fresh);
   }
