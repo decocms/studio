@@ -48,9 +48,6 @@ export type AddMemberResult = Awaited<ReturnType<BetterAuthApi["addMember"]>>;
 export type RemoveMemberResult = Awaited<
   ReturnType<BetterAuthApi["removeMember"]>
 >;
-export type ListMembersResult = Awaited<
-  ReturnType<BetterAuthApi["listMembers"]>
->;
 export type UpdateMemberRoleResult = Awaited<
   ReturnType<BetterAuthApi["updateMemberRole"]>
 >;
@@ -138,14 +135,6 @@ export interface BoundAuthClient {
       memberIdOrEmail: string;
       organizationId?: string;
     }): Promise<RemoveMemberResult>;
-
-    listMembers(options?: {
-      organizationId?: string;
-      limit?: number;
-      offset?: number;
-      filterField?: string;
-      filterValue?: string;
-    }): Promise<ListMembersResult>;
 
     updateMemberRole(data: {
       memberId: string;

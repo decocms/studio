@@ -440,21 +440,6 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         });
       },
 
-      listMembers: async (options) => {
-        return auth.api.listMembers({
-          headers,
-          query: options
-            ? {
-                organizationId: options.organizationId,
-                limit: options.limit,
-                offset: options.offset,
-                filterField: options.filterField,
-                filterValue: options.filterValue,
-              }
-            : undefined,
-        });
-      },
-
       updateMemberRole: async (data) => {
         return auth.api.updateMemberRole({
           headers,
