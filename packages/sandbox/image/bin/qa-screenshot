@@ -13,10 +13,12 @@
  *                [--selector=<css>] [--console] [--flutter] [--label=<text>]
  *
  * `--engine=webkit` renders in Playwright's WebKit, the engine behind Safari.
- * Chromium alone passes bugs that exist only on iOS Safari: WebKit does not
+ * Some Safari-only bugs reproduce there and not in Chromium: WebKit does not
  * re-align a smooth programmatic scroll to its `scroll-snap` points, so a
  * carousel that steps with `scrollBy(clientWidth)` leaves a slide cut in half
- * there and looks right in Chromium.
+ * there and looks right in Chromium. It is the engine, not Safari on an iPhone
+ * or a Mac (different shell, GPU and memory limits): a pass here is evidence,
+ * not proof.
  *
  * Default framing is the top viewport. `--full` captures the whole scrollable
  * page (clipped at a height ceiling). `--selector=<css>` captures just that one

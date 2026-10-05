@@ -56,16 +56,13 @@ the web links. Read them before anything else.
   change.
 - The review's evidence must cover **every** point the issue asks for, on every
   site, device and surface the issue names. Walk the issue's list and find the
-  evidence for each item. An item with no evidence is unvalidated, and so is a
-  mobile change to how something looks or moves (scrolling, a carousel, a
-  modal, a sticky element, an animation) measured only in Chromium.
+  evidence for each item. An item with no evidence is unvalidated.
 
 ## Spot-check one thing
 
 Open the preview and check the single behaviour the issue is most about:
 measure it, and screenshot it with `qa-screenshot <url> <path>.png [--mobile]`,
-then `Read` the file. If it is a mobile change of that kind, check it with
-`--engine=webkit` too. This confirms the review's evidence still holds. It is
+then `Read` the file. This confirms the review's evidence still holds. It is
 not a second review. If what you see disagrees with the review, leave the card
 for the senior. Do not send it back to the implementing column: whether the
 review was wrong is the senior's call.
@@ -98,8 +95,8 @@ Keep the comment short. The senior reads the review, not you.
 
 - **Forward:** `JIRA_COMMENT_ADD` one short paragraph that opens with where it
   went and why you trusted it ("Sent to <column>: the review validated <items>
-  on the preview at <commit>; spot-check of <behaviour> in <engines> agrees"),
-  plus your spot-check screenshot as `![what it shows](/app/org/output/<name>.png)`. Then
+  on the preview at <commit>; spot-check of <behaviour> agrees"), plus your
+  spot-check screenshot as `![what it shows](/app/org/output/<name>.png)`. Then
   `JIRA_ISSUE_TRANSITION` to the next column. Then **re-read the issue** and
   confirm it landed there, because a transition can fail silently.
 - **Leave it:** `JIRA_COMMENT_ADD` one or two lines that open with "Stays for a
