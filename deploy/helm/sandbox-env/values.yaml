@@ -356,7 +356,7 @@ orgFs:
     repository: ghcr.io/decocms/studio/orgfs-sidecar
     # Bump to ship a new sidecar image — release-orgfs-sidecar.yaml reads
     # this field as the single source of truth (netinit pattern).
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   resources:
     requests:

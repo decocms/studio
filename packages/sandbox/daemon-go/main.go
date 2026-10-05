@@ -1047,6 +1047,10 @@ func main() {
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 	}
+	// Beside the status file: that is where the sidecar looks for it.
+	if p := d.orgFsLinks.StatusPath; p != "" {
+		go activity.Stamp(filepath.Join(filepath.Dir(p), "activity"), 10*time.Second)
+	}
 	// The golden cache's remote tier needs `zstd` in the image; without it every
 	// restore and publish fails into a normal install, silently apart from this.
 	if setup.RemoteEnabled() {
@@ -1094,8 +1098,14 @@ func main() {
 				cfg := d.store.Read()
 				return cfg != nil && cfg.Branch() != ""
 			},
-			RunActive: func() bool { return d.dispatchReg.HasActiveRuns() },
-			Dirty:     func() bool { return gitx.IsDirty(repoDir) },
+			// Also for two ticks after the last request: a VM provider may delete
+			// a paused sandbox without the SIGTERM that runs the shutdown sync, so
+			// edits made outside a run need a checkpoint before it goes quiet.
+			RunActive: func() bool {
+				return d.dispatchReg.HasActiveRuns() ||
+					activity.Idle().IdleMs < (2*gitx.AutosaveInterval).Milliseconds()
+			},
+			Dirty: func() bool { return gitx.IsDirty(repoDir) },
 		})
 		d.autosave.Start()
 	}
