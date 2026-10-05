@@ -25,11 +25,15 @@ import {
 } from "@/components/sections-editor/section-preview-url.ts";
 import { extractPathParams } from "@/components/sections-editor/page-path-utils.ts";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
+import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
   comparePageUrl,
+  compareSectionUrl,
   initialComparePath,
+  isComparePathEditable,
+  isolatedSectionKey,
 } from "./cms-publish-compare-path.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
@@ -74,7 +78,14 @@ export function PublishCompare({
   const [device, setDevice] = useState<CompareDevice>("desktop");
   const [path, setPath] = useState(() => initialComparePath(change, lastPage));
 
-  const url = previewServerUrl ? comparePageUrl(previewServerUrl, path) : null;
+  const sectionKey = isolatedSectionKey(change);
+  const pathEditable = isComparePathEditable(change);
+
+  const url = !previewServerUrl
+    ? null
+    : sectionKey
+      ? compareSectionUrl(previewServerUrl, sectionKey)
+      : comparePageUrl(previewServerUrl, path);
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
   const afterUrl =
     url && draftPointer ? withDraftPointer(url.toString(), draftPointer) : null;
@@ -90,11 +101,15 @@ export function PublishCompare({
   const hasBody = Object.keys(rawDiff.diffs).length > 0;
 
   const pathHint =
-    change.kind === "block"
-      ? t("thread.publishCompare.globalHint")
-      : change.pagePath && extractPathParams(change.pagePath).length > 0
-        ? t("thread.publishCompare.dynamicHint", { template: change.pagePath })
-        : null;
+    sectionKey !== null
+      ? null
+      : change.kind === "block"
+        ? t("thread.publishCompare.globalHint")
+        : change.pagePath && extractPathParams(change.pagePath).length > 0
+          ? t("thread.publishCompare.dynamicHint", {
+              template: change.pagePath,
+            })
+          : null;
 
   const beforePane =
     change.status === "new" ? (
@@ -162,13 +177,19 @@ export function PublishCompare({
         </Tabs>
         {canRender && view !== "code" ? (
           <>
-            <Input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder={change.pagePath ?? "/"}
-              aria-label={t("thread.publishCompare.pathLabel")}
-              className="h-8 w-56 font-mono text-xs"
-            />
+            {sectionKey ? null : pathEditable ? (
+              <Input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder={change.pagePath ?? "/"}
+                aria-label={t("thread.publishCompare.pathLabel")}
+                className="h-8 w-56 font-mono text-xs"
+              />
+            ) : (
+              <span className="max-w-56 truncate px-1 font-mono text-xs text-muted-foreground">
+                {path}
+              </span>
+            )}
             <div className="flex items-center rounded-lg border p-0.5">
               <DeviceButton
                 active={device === "desktop"}
@@ -330,7 +351,7 @@ function CompareFrame({
   missing: string;
 }) {
   const [size, ref] = useElementSize();
-  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
 
   if (!url) {
     return (
@@ -340,6 +361,8 @@ function CompareFrame({
     );
   }
 
+  // Width alone keeps the desktop SSR; the hint makes the site render for the device.
+  const src = withDeviceHint(url, device);
   const logicalWidth = DEVICE_WIDTH[device];
   const scale = size.width > 0 ? Math.min(size.width / logicalWidth, 1) : 1;
   const offsetX =
@@ -350,12 +373,12 @@ function CompareFrame({
       {size.width > 0 ? (
         // Cross-origin site, so `allow-same-origin` keeps ITS origin, not ours.
         <iframe
-          key={url}
-          src={url}
+          key={src}
+          src={src}
           title={title}
           // oxlint-disable-next-line react/iframe-missing-sandbox
           sandbox="allow-scripts allow-same-origin"
-          onLoad={() => setLoadedUrl(url)}
+          onLoad={() => setLoadedSrc(src)}
           className="absolute top-0 border-0 bg-white"
           style={{
             left: offsetX,
@@ -366,7 +389,7 @@ function CompareFrame({
           }}
         />
       ) : null}
-      {loadedUrl !== url ? (
+      {loadedSrc !== src ? (
         <div className="absolute inset-0 flex items-center justify-center bg-background/60">
           <Spinner className="size-5 motion-reduce:animate-none" />
         </div>

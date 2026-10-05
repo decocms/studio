@@ -142,7 +142,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
         <Dialog open={props.open} onOpenChange={handleOpenChange}>
           <DialogContent
             aria-describedby={undefined}
-            className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+            className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-row md:h-[calc(100dvh-6rem)] md:w-[calc(100vw-6rem)] gap-0 overflow-hidden p-0 sm:max-w-none"
             closeButtonClassName="top-3.5 right-3.5"
           >
             <DialogTitle className="sr-only">

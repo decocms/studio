@@ -7,8 +7,8 @@ import {
   resolvePreviewUrl,
   shouldInPlaceRender,
   withDecoFBT,
-  withDeviceHint,
 } from "./preview";
+import { withDeviceHint } from "./device-hint";
 
 describe("withDeviceHint", () => {
   it("sets deviceHint on a well-formed URL", () => {
