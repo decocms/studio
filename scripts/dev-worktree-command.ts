@@ -13,6 +13,17 @@ function hasExplicitHome(args: string[]): boolean {
   return args.some((arg) => arg === "--home" || arg.startsWith("--home="));
 }
 
+/** A DNS label for `<slug>.localhost`: Conductor workspace names may carry spaces and capitals. */
+export function worktreeHostSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 63)
+    .replace(/-$/, "");
+}
+
 function safePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
