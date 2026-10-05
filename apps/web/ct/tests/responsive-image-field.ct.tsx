@@ -158,3 +158,45 @@ test("closing the URL panel with its own button keeps the typed address", async 
     .poll(() => value(component))
     .toMatchObject({ image: "https://x.test/typed.png" });
 });
+
+test("switching slot stores the address typed for the one being left", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await showToolbar(component);
+
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+  await component
+    .getByPlaceholder("https://...")
+    .fill("https://x.test/desktop.png");
+  await component
+    .getByRole("button", { name: "Mobile image (below 768px)" })
+    .click();
+
+  await expect
+    .poll(() => value(component))
+    .toMatchObject({ image: "https://x.test/desktop.png" });
+  // The panel followed the switch and shows the empty mobile slot.
+  await expect(component.getByPlaceholder("https://...")).toHaveValue("");
+});
+
+test("a quality change is not undone by the open URL panel", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: "https://x.test/a.png" }} />,
+  );
+  await showToolbar(component);
+
+  // Both controls write the same slot, and neither blurs the other — the
+  // panel's draft has to follow, or closing it replays the pre-quality URL.
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+  await component.getByRole("button", { name: "high" }).click();
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+
+  await expect
+    .poll(() => value(component))
+    .toMatchObject({ image: "https://x.test/a.png?quality=high" });
+});

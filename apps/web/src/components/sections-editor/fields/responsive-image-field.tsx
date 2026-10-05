@@ -87,24 +87,43 @@ export function ResponsiveImageField({
   const setActive = (next: string | undefined) =>
     (onMobile ? onMobileChange : onChange)(next || undefined);
 
+  /**
+   * Keep an open panel pointed at the address the slot actually holds. The
+   * rest of the toolbar writes that address too — quality, the picker, a
+   * drop — and a draft left behind would undo their write the moment the
+   * panel closed over it.
+   */
+  const [seenActive, setSeenActive] = useState(active);
+  if (seenActive !== active) {
+    setSeenActive(active);
+    if (urlDraft !== null) {
+      setUrlDraft(active);
+      setUrlNotice(null);
+    }
+  }
+
   const closeUrl = () => {
     setUrlDraft(null);
     setUrlNotice(null);
   };
 
   /**
-   * Store the typed address and close, unless its scheme must never reach a
-   * `src` — then the panel stays open carrying the reason.
+   * Store the typed address. Returns false, leaving the panel open with the
+   * reason, for a scheme that must never reach a `src`.
    */
-  const commitUrl = () => {
+  const storeUrlDraft = () => {
     const draft = urlDraft ?? "";
     const next = safeImageSrc(draft);
     if (!next && draft.trim()) {
       setUrlNotice(t("sectionsEditor.imageField.unsafeUrl"));
-      return;
+      return false;
     }
     if (next !== active) setActive(next || undefined);
-    closeUrl();
+    return true;
+  };
+
+  const commitUrl = () => {
+    if (storeUrlDraft()) closeUrl();
   };
 
   const toggleUrl = () => {
@@ -112,13 +131,15 @@ export function ResponsiveImageField({
     else setUrlDraft(active);
   };
 
-  /** Switching breakpoint re-points the panel at the other slot's address. */
+  /**
+   * Switch breakpoint, storing first: these buttons swallow the blur that
+   * would commit, so an address typed for this slot has to be written before
+   * the panel re-points at the other one. A refused address stays put, with
+   * its reason, rather than vanishing on the way across.
+   */
   const showSlot = (mobile: boolean) => {
+    if (urlOpen && !storeUrlDraft()) return;
     setOnMobile(mobile);
-    if (urlOpen) {
-      setUrlDraft(mobile ? mobileUrl : str(value));
-      setUrlNotice(null);
-    }
   };
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
