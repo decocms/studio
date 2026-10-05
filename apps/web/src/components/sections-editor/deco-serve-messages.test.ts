@@ -13,7 +13,7 @@ import { serveProblemCopy, serveProblemShort } from "./deco-serve-notices";
 import { ServeLostError, saveErrorMessage } from "./serve-save-error";
 
 const t: TFunction = (key, vars) => interpolate(en[key], vars);
-const HOST = "127.0.0.1:4545";
+const HOST = "localhost:4545";
 
 /** Every failure a probe meets, and the message it leads to. */
 const CASES: [string, unknown, ServeProblem["reason"], RegExp][] = [
@@ -39,7 +39,7 @@ const CASES: [string, unknown, ServeProblem["reason"], RegExp][] = [
     "another program",
     new NotDecoServeError(),
     "not-deco-serve",
-    /Another program is using 127\.0\.0\.1:4545/,
+    /Another program is using localhost:4545/,
   ],
   [
     "a server error",

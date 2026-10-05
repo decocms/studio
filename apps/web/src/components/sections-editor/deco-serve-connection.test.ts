@@ -20,9 +20,20 @@ describe("parseConnectFragment", () => {
   test("reads the endpoint deco serve prints", () => {
     expect(
       parseConnectFragment(
-        `#endpoint=${encodeURIComponent("http://127.0.0.1:4545/rpc")}`,
+        `#endpoint=${encodeURIComponent("http://localhost:4545/rpc")}`,
       ),
-    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc" });
+    ).toEqual({ endpoint: "http://localhost:4545/rpc" });
+  });
+
+  test("reads an older link's 127.0.0.1 or [::1] endpoint as localhost", () => {
+    for (const legacy of [
+      "http://127.0.0.1:4545/rpc",
+      "http://[::1]:4545/rpc",
+    ]) {
+      expect(
+        parseConnectFragment(`#endpoint=${encodeURIComponent(legacy)}`),
+      ).toEqual({ endpoint: "http://localhost:4545/rpc" });
+    }
   });
 
   test("ignores a token left in an older link", () => {
@@ -30,7 +41,7 @@ describe("parseConnectFragment", () => {
       parseConnectFragment(
         `#endpoint=${encodeURIComponent("http://127.0.0.1:4545/rpc")}&token=abc123`,
       ),
-    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc" });
+    ).toEqual({ endpoint: "http://localhost:4545/rpc" });
   });
 
   test("refuses incomplete or unsafe links", () => {
@@ -70,8 +81,8 @@ describe("isLoopbackEndpoint", () => {
     expect(
       parseConnectFragment("#endpoint=http://127.0.0.1:4545/other"),
     ).toBeNull();
-    expect(parseConnectFragment("#endpoint=http://127.0.0.1:4545/rpc")).toEqual(
-      { endpoint: "http://127.0.0.1:4545/rpc" },
+    expect(parseConnectFragment("#endpoint=http://localhost:4545/rpc")).toEqual(
+      { endpoint: "http://localhost:4545/rpc" },
     );
   });
 
@@ -85,8 +96,8 @@ describe("isLoopbackEndpoint", () => {
 describe("parseStoredConnection", () => {
   test("accepts only a well-formed connection", () => {
     expect(
-      parseStoredConnection({ endpoint: "http://127.0.0.1:1/rpc" }),
-    ).toEqual({ endpoint: "http://127.0.0.1:1/rpc" });
+      parseStoredConnection({ endpoint: "http://localhost:1/rpc" }),
+    ).toEqual({ endpoint: "http://localhost:1/rpc" });
     expect(parseStoredConnection(null)).toBeNull();
     expect(parseStoredConnection("http://127.0.0.1:1/rpc")).toBeNull();
     expect(parseStoredConnection({ endpoint: "x" })).toBeNull();
@@ -94,8 +105,14 @@ describe("parseStoredConnection", () => {
 
   test("drops the token an older Studio stored", () => {
     expect(
-      parseStoredConnection({ endpoint: "http://127.0.0.1:1/rpc", token: "t" }),
-    ).toEqual({ endpoint: "http://127.0.0.1:1/rpc" });
+      parseStoredConnection({ endpoint: "http://localhost:1/rpc", token: "t" }),
+    ).toEqual({ endpoint: "http://localhost:1/rpc" });
+  });
+
+  test("migrates a 127.0.0.1 endpoint an older Studio stored to localhost", () => {
+    expect(
+      parseStoredConnection({ endpoint: "http://127.0.0.1:4547/rpc" }),
+    ).toEqual({ endpoint: "http://localhost:4547/rpc" });
   });
 });
 
@@ -107,12 +124,12 @@ describe("parseConnectLink", () => {
       parseConnectLink(
         `  https://studio.decocms.com/site-editor#endpoint=${endpoint}  `,
       ),
-    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc" });
+    ).toEqual({ endpoint: "http://localhost:4545/rpc" });
     expect(
       parseConnectLink(
         `https://studio.decocms.com/site-editor#endpoint=${endpoint}&token=t1`,
       ),
-    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc" });
+    ).toEqual({ endpoint: "http://localhost:4545/rpc" });
   });
 
   test("anything else is not a connect link", () => {
@@ -146,10 +163,25 @@ describe("last connection", () => {
       configurable: true,
     });
     expect(readLastConnection()).toBeNull();
-    saveLastConnection({ endpoint: "http://127.0.0.1:4545/rpc" });
+    saveLastConnection({ endpoint: "http://localhost:4545/rpc" });
     expect(readLastConnection()).toEqual({
-      endpoint: "http://127.0.0.1:4545/rpc",
+      endpoint: "http://localhost:4545/rpc",
     });
+  });
+
+  test("reads a remembered 127.0.0.1 endpoint as localhost, the same server", () => {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeStorage(),
+      configurable: true,
+    });
+    localStorage.setItem(
+      "studio:deco-serve-last",
+      JSON.stringify({ endpoint: "http://127.0.0.1:4545/rpc" }),
+    );
+    expect(readLastConnection()).toEqual({ endpoint: DEFAULT_SERVE_ENDPOINT });
+    expect(serveCandidates(null, readLastConnection())).toEqual([
+      DEFAULT_SERVE_ENDPOINT,
+    ]);
   });
 
   test("blocked storage reads as nothing remembered", () => {
@@ -168,7 +200,9 @@ describe("last connection", () => {
 
 describe("endpointHost", () => {
   test("names where the server listens", () => {
-    expect(endpointHost("http://127.0.0.1:4545/rpc")).toBe("127.0.0.1:4545");
+    expect(endpointHost("http://localhost:4545/rpc")).toBe("localhost:4545");
+    expect(endpointHost("http://127.0.0.1:4545/rpc")).toBe("localhost:4545");
+    expect(endpointHost("http://[::1]:4545/rpc")).toBe("localhost:4545");
   });
 });
 
@@ -197,27 +231,27 @@ describe("parseServeAddress", () => {
       parseServeAddress(
         `http://localhost:4000/site-editor#endpoint=${encodeURIComponent("http://127.0.0.1:4547/rpc")}`,
       ),
-    ).toEqual(ok("http://127.0.0.1:4547/rpc"));
+    ).toEqual(ok("http://localhost:4547/rpc"));
   });
 
   test("accepts just a port", () => {
     expect(parseServeAddress(" 4547 ")).toEqual(
-      ok("http://127.0.0.1:4547/rpc"),
+      ok("http://localhost:4547/rpc"),
     );
   });
 
   test("accepts an address, with or without the scheme and /rpc", () => {
     expect(parseServeAddress("127.0.0.1:4547")).toEqual(
-      ok("http://127.0.0.1:4547/rpc"),
+      ok("http://localhost:4547/rpc"),
     );
     expect(parseServeAddress("localhost:4548")).toEqual(
       ok("http://localhost:4548/rpc"),
     );
     expect(parseServeAddress("http://127.0.0.1:4550/rpc")).toEqual(
-      ok("http://127.0.0.1:4550/rpc"),
+      ok("http://localhost:4550/rpc"),
     );
-    expect(parseServeAddress("http://127.0.0.1:4550/")).toEqual(
-      ok("http://127.0.0.1:4550/rpc"),
+    expect(parseServeAddress("http://[::1]:4550/")).toEqual(
+      ok("http://localhost:4550/rpc"),
     );
   });
 
@@ -316,14 +350,14 @@ describe("serveCandidates", () => {
         { endpoint: "http://127.0.0.1:4547/rpc" },
         { endpoint: "http://127.0.0.1:4548/rpc" },
       ),
-    ).toEqual(["http://127.0.0.1:4547/rpc"]);
+    ).toEqual(["http://localhost:4547/rpc"]);
   });
 
   test("with no link, the remembered server, then the default port, without repeats", () => {
     expect(serveCandidates(null, null)).toEqual([DEFAULT_SERVE_ENDPOINT]);
     expect(
       serveCandidates(null, { endpoint: "http://127.0.0.1:4547/rpc" }),
-    ).toEqual(["http://127.0.0.1:4547/rpc", DEFAULT_SERVE_ENDPOINT]);
+    ).toEqual(["http://localhost:4547/rpc", DEFAULT_SERVE_ENDPOINT]);
     expect(serveCandidates(null, { endpoint: DEFAULT_SERVE_ENDPOINT })).toEqual(
       [DEFAULT_SERVE_ENDPOINT],
     );

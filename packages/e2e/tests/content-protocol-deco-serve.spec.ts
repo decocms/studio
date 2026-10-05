@@ -7,7 +7,7 @@
  *
  * `deco serve` is played by fixtures/deco-serve-stub.ts (the protocol's own
  * handler over its filesystem storage in a temporary working tree, on
- * 127.0.0.1 with no token).
+ * localhost with no token).
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -466,12 +466,13 @@ test.describe("site editor over deco serve", () => {
     const probe = await startStub(publicKey);
     const port = Number(new URL(probe.endpoint).port);
     await probe.close();
+    // An older link, on 127.0.0.1: it opens, shown as localhost.
     await page.goto(
       `/site-editor#endpoint=${encodeURIComponent(`http://127.0.0.1:${port}/rpc`)}`,
     );
     // Nothing answers: the guide, which keeps looking for the link's server.
     await expect(
-      page.getByText(`Looking for deco serve on 127.0.0.1:${port}…`),
+      page.getByText(`Looking for deco serve on localhost:${port}…`),
     ).toBeVisible({ timeout: 30_000 });
     const stub = await startStub(publicKey, port);
     try {

@@ -2,7 +2,7 @@
  * A stand-in for `deco serve`, the Blocks CLI's local content-protocol server:
  * the protocol's own handler over its filesystem storage (both public in
  * `@decocms/blocks`), rooted at a temporary working tree and served over real
- * HTTP on 127.0.0.1 with no token, the way the CLI serves one. It is
+ * HTTP with no token, the way the CLI serves one, at a `localhost` endpoint. It is
  * the edge of the system under test (a developer's machine), so a spec can
  * drive the site editor against it and assert what the "working tree" holds.
  *
@@ -62,7 +62,7 @@ async function send(response: Response, res: ServerResponse): Promise<void> {
 }
 
 export interface DecoServeStub {
-  /** The protocol endpoint, `http://127.0.0.1:<port>/rpc`. */
+  /** The protocol endpoint, `http://localhost:<port>/rpc`. */
   endpoint: string;
   /** The "working tree": the saved block files, by file name. */
   readFiles: () => Promise<Record<string, string>>;
@@ -141,7 +141,7 @@ export async function startDecoServeStub(params: {
   );
   const { port } = server.address() as AddressInfo;
   return {
-    endpoint: `http://127.0.0.1:${port}/rpc`,
+    endpoint: `http://localhost:${port}/rpc`,
     readFiles: async () => {
       const files: Record<string, string> = {};
       for (const file of await readdir(blocksDir)) {

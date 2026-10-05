@@ -44,7 +44,7 @@ export const decoServe = {
   "decoServe.link.invalidTitle":
     "Este link não aponta para o deco serve no seu computador",
   "decoServe.link.invalidBody":
-    "Links do editor do site só abrem um deco serve rodando neste computador (127.0.0.1 ou localhost). Copie de novo o link do Site editor no terminal, ou siga os passos abaixo.",
+    "Links do editor do site só abrem um deco serve rodando neste computador (localhost). Copie de novo o link do Site editor no terminal, ou siga os passos abaixo.",
   "decoServe.lna.deniedTitle":
     "O Chrome está impedindo o Studio de acessar seu computador",
   "decoServe.lna.deniedBody":

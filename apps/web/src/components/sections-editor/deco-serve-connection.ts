@@ -8,7 +8,10 @@
  *
  * Only loopback endpoints are accepted: a link pointing anywhere else would
  * send the editor's edits, uploads and secrets (encrypted to that server's
- * key) to whoever wrote the link.
+ * key) to whoever wrote the link. `deco serve` listens on 127.0.0.1 and ::1
+ * and prints `localhost`; an endpoint on 127.0.0.1 or [::1] (an older link,
+ * or one remembered by an older Studio) is read as `localhost`, so it shows
+ * and compares the same.
  */
 
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
@@ -26,15 +29,29 @@ export function isLoopbackEndpoint(value: string): boolean {
   }
 }
 
+/** A loopback endpoint on `localhost`: `http://127.0.0.1:4545/rpc` → `http://localhost:4545/rpc`. */
+export function toLocalhost(endpoint: string): string {
+  try {
+    const url = new URL(endpoint);
+    if (url.hostname === "127.0.0.1" || url.hostname === "[::1]") {
+      url.hostname = "localhost";
+    }
+    return url.href;
+  } catch {
+    return endpoint;
+  }
+}
+
 const DecoServeConnectionSchema = z.object({
-  /** The protocol endpoint, such as `http://127.0.0.1:4545/rpc`. */
+  /** The protocol endpoint, such as `http://localhost:4545/rpc`. */
   endpoint: z
     .string()
     .max(2048)
     .refine(
       (value) =>
         isLoopbackEndpoint(value) && new URL(value).pathname === "/rpc",
-    ),
+    )
+    .transform(toLocalhost),
 });
 
 export type DecoServeConnection = z.infer<typeof DecoServeConnectionSchema>;
@@ -94,10 +111,10 @@ export function readLastConnection(): DecoServeConnection | null {
   }
 }
 
-/** `127.0.0.1:4545`: where the endpoint's server listens, for messages. */
+/** `localhost:4545`: where the endpoint's server listens, for messages. */
 export function endpointHost(endpoint: string): string {
   try {
-    return new URL(endpoint).host;
+    return new URL(toLocalhost(endpoint)).host;
   } catch {
     return endpoint;
   }
@@ -109,7 +126,7 @@ export function probeRetryDelay(failures: number, capMs = 10_000): number {
 }
 
 /** Where `deco serve` listens when it isn't given `--port`. */
-export const DEFAULT_SERVE_ENDPOINT = "http://127.0.0.1:4545/rpc";
+export const DEFAULT_SERVE_ENDPOINT = "http://localhost:4545/rpc";
 
 /** The command that starts `deco serve` (the `deco` bin of `@decocms/blocks`). */
 export const SERVE_COMMAND = "npx @decocms/blocks serve";
@@ -123,9 +140,9 @@ export type ParsedServeAddress =
 
 /**
  * What someone pasted into the draft selector's "Local" option: the Site
- * editor link `deco serve` printed, an address (`127.0.0.1:4547`, `localhost:4547`,
- * `http://127.0.0.1:4547/rpc`) or just a port (`4547`). Always resolves to
- * the server's `/rpc` endpoint; only this machine is accepted.
+ * editor link `deco serve` printed, an address (`localhost:4547`, `127.0.0.1:4547`,
+ * `http://localhost:4547/rpc`) or just a port (`4547`). Always resolves to
+ * the server's `/rpc` endpoint on `localhost`; only this machine is accepted.
  */
 export function parseServeAddress(input: string): ParsedServeAddress {
   const value = input.trim();
@@ -137,7 +154,7 @@ export function parseServeAddress(input: string): ParsedServeAddress {
     if (port < 1 || port > 65_535) return { ok: false, reason: "unrecognized" };
     return {
       ok: true,
-      connection: { endpoint: `http://127.0.0.1:${port}/rpc` },
+      connection: { endpoint: `http://localhost:${port}/rpc` },
     };
   }
   let url: URL;
@@ -173,7 +190,7 @@ export function parseServeAddress(input: string): ParsedServeAddress {
   if (!url.port) return { ok: false, reason: "unrecognized" };
   return {
     ok: true,
-    connection: { endpoint: `${url.protocol}//${url.host}/rpc` },
+    connection: { endpoint: toLocalhost(`${url.protocol}//${url.host}/rpc`) },
   };
 }
 
@@ -241,9 +258,9 @@ export function serveCandidates(
   fromLink: DecoServeConnection | null,
   remembered: DecoServeConnection | null,
 ): string[] {
-  if (fromLink) return [fromLink.endpoint];
-  const all = [remembered?.endpoint, DEFAULT_SERVE_ENDPOINT].filter(
-    (endpoint): endpoint is string => !!endpoint,
-  );
+  if (fromLink) return [toLocalhost(fromLink.endpoint)];
+  const all = [remembered?.endpoint, DEFAULT_SERVE_ENDPOINT]
+    .filter((endpoint): endpoint is string => !!endpoint)
+    .map(toLocalhost);
   return [...new Set(all)];
 }

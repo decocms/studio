@@ -3,7 +3,7 @@ import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import { DEFAULT_SERVE_ENDPOINT } from "./deco-serve-connection";
 import { type DiscoveryState, startDiscovery } from "./deco-serve-discovery";
 
-const OTHER = "http://127.0.0.1:4547/rpc";
+const OTHER = "http://localhost:4547/rpc";
 
 /** Timers that run only when the test says, and a tab that can hide. */
 function harness() {

@@ -103,7 +103,7 @@ describe("SiteEditorGuide", () => {
       view.getByRole("button", { name: "Copy command" }),
     ).toBeInTheDocument();
     expect(
-      await view.findByText("Looking for deco serve on 127.0.0.1:4545…"),
+      await view.findByText("Looking for deco serve on localhost:4545…"),
     ).toBeInTheDocument();
     // Docs links open in a new tab, from the one docs base.
     const docs = view.getByRole("navigation", { name: "Learn more" });
@@ -128,7 +128,7 @@ describe("SiteEditorGuide", () => {
     );
     await waitFor(() =>
       expect(onConnect).toHaveBeenCalledWith({
-        endpoint: "http://127.0.0.1:4545/rpc",
+        endpoint: "http://localhost:4545/rpc",
       }),
     );
   });
@@ -233,7 +233,7 @@ describe("LocalServeSwitch", () => {
       />,
     );
     expect(
-      await view.findByText("Editing http://127.0.0.1:4547/rpc"),
+      await view.findByText("Editing http://localhost:4547/rpc"),
     ).toBeInTheDocument();
   });
 });
