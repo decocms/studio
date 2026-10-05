@@ -1281,8 +1281,8 @@ const monitoringRoute = createRoute({
     z.object({
       tab: z
         .enum(["overview", "audit", "dashboards", "threads", "automations"])
-        .default("overview"),
-      from: z.string().default("now-30m"),
+        .default("threads"),
+      from: z.string().default("now-24h"),
       to: z.string().default("now"),
       connectionId: z.array(z.string()).optional().default([]),
       virtualMcpId: z.array(z.string()).optional().default([]),
