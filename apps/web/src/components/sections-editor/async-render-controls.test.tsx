@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 // shared bun:test DOM, so it is checked in a browser instead.
 mock.module("@/hooks/use-new-blocks-editor", () => ({
   useNewBlocksEditor: () => false,
+  useNewBlocksEditorState: () => false,
 }));
 
 import { PageSeoForm } from "./page-seo-form";

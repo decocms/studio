@@ -10,6 +10,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useState } from "react";
+import { NewBlocksEditorProvider } from "@/hooks/use-new-blocks-editor";
 
 export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
@@ -60,12 +61,14 @@ export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
   }
 
   return (
-    <ContentBrowser
-      deepLinkPage={{
-        pageId: search.contentPageId,
-        path: search.contentPath,
-        pathTemplate: search.contentPathTemplate,
-      }}
-    />
+    <NewBlocksEditorProvider>
+      <ContentBrowser
+        deepLinkPage={{
+          pageId: search.contentPageId,
+          path: search.contentPath,
+          pathTemplate: search.contentPathTemplate,
+        }}
+      />
+    </NewBlocksEditorProvider>
   );
 }

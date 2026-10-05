@@ -59,6 +59,7 @@ import {
 import type { AppCatalogEntry } from "./app-catalog";
 import { ListEmpty } from "./list-empty";
 import { useDecoAppsCatalog } from "@/hooks/use-deco-apps-catalog";
+import { useNewBlocksEditorState } from "@/hooks/use-new-blocks-editor";
 import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
 import {
   appendPageVariantSections,
@@ -374,6 +375,9 @@ function ContentBrowserReady({
   const runsSiteCode = !isProtocolProject(
     useContentBackend(virtualMcpId, branch),
   );
+  // Which editor this site gets (v8: the new one): waited on with the data,
+  // so neither editor shows and then swaps to the other.
+  const editorUndecided = useNewBlocksEditorState() === undefined;
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
@@ -528,7 +532,12 @@ function ContentBrowserReady({
   // terminal phase — or the dev server is up but the fetch failed — fall
   // through to the error below instead of spinning forever.
   const dataMissing = !decofile || !meta;
-  if (decofileLoading || metaLoading || (dataMissing && sandboxWarming)) {
+  if (
+    decofileLoading ||
+    metaLoading ||
+    editorUndecided ||
+    (dataMissing && sandboxWarming)
+  ) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />

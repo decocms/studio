@@ -51,6 +51,29 @@ export function isProtocolProject(backend: ContentBackend): boolean {
 }
 
 /**
+ * Whether the site editor shows the redesigned blocks editor. A v8 site (any
+ * content-protocol project) always does; a v7 site follows the org's
+ * `new_blocks_editor` flag. `undefined` while that can't be told yet, so the
+ * editor waits instead of showing one editor and swapping to the other.
+ *
+ * `backend` is `null` outside a site (org settings, say): the flag alone.
+ * `orgFlag` is `undefined` while the org settings load. With no org (the
+ * account-less `/site-editor`) there is no flag to read: nothing opted in.
+ */
+export function newBlocksEditorEnabled(input: {
+  backend: ContentBackend["kind"] | null;
+  hasOrg: boolean;
+  orgFlag: boolean | undefined;
+}): boolean | undefined {
+  const orgFlag = input.hasOrg ? input.orgFlag : false;
+  const { backend } = input;
+  if (backend === "protocol" || backend === "unavailable") return true;
+  // Undecided: either generation gets the new editor when the flag is on.
+  if (backend === "pending") return orgFlag === true ? true : undefined;
+  return orgFlag;
+}
+
+/**
  * The app a connected `deco serve` previews (`describe.preview`, which
  * `deco serve --preview` sets): its URL when it is on this machine, else
  * `null`. Anywhere else would put an arbitrary page in the editor's frame.

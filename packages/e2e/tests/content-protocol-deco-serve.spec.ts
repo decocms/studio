@@ -221,6 +221,13 @@ async function editHero(
   stub: DecoServeStub,
   privateKey: CryptoKey,
 ): Promise<void> {
+  // A v8 site always gets the new blocks editor: with no org, and in an org
+  // that never turned on `new_blocks_editor`.
+  await expect(page.locator("[data-blocks-editor]").first()).toHaveAttribute(
+    "data-blocks-editor",
+    "new",
+    { timeout: 30_000 },
+  );
   const title = page.getByLabel("Title", { exact: true });
   await title.fill("Hello from Studio");
   await expect
@@ -341,7 +348,7 @@ test.describe("site editor over deco serve", () => {
       await page.getByRole("button", { name: "Advanced" }).click();
       await page.getByRole("tab", { name: "Local" }).click();
       await page
-        .getByLabel("deco serve link or tunnel URL")
+        .getByLabel("deco serve address or tunnel URL")
         .fill(`${getE2EAppOrigin()}${linkOf(stub)}`);
       await page.getByRole("button", { name: "Save" }).click();
 
@@ -485,9 +492,7 @@ test.describe("site editor over deco serve", () => {
       `/site-editor#endpoint=${encodeURIComponent("https://attacker.example/rpc")}`,
     );
     await expect(
-      page.getByRole("heading", {
-        name: "This site editor link is incomplete",
-      }),
+      page.getByText("This link doesn't point to deco serve on your computer"),
     ).toBeVisible();
   });
 

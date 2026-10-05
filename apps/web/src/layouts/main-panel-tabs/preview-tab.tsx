@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NewBlocksEditorProvider } from "@/hooks/use-new-blocks-editor";
 import { useChatTask } from "@/components/chat/chat-context";
 import { PreviewContent } from "@/components/sandbox/preview/preview";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
@@ -61,5 +62,9 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  return <PreviewContent virtualMcpId={virtualMcpId} />;
+  return (
+    <NewBlocksEditorProvider>
+      <PreviewContent virtualMcpId={virtualMcpId} />
+    </NewBlocksEditorProvider>
+  );
 }

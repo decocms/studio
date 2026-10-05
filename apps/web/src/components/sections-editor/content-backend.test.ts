@@ -3,6 +3,7 @@ import {
   blockKeysOfWrite,
   isProtocolProject,
   mergePolledBlocks,
+  newBlocksEditorEnabled,
   selectContentBackend,
   servePreviewUrl,
 } from "./content-backend";
@@ -86,9 +87,9 @@ describe("selectContentBackend", () => {
 
 describe("isProtocolProject", () => {
   test("a protocol endpoint, usable or not", () => {
-    expect(
-      isProtocolProject({ kind: "unavailable", source: "local" }),
-    ).toBe(true);
+    expect(isProtocolProject({ kind: "unavailable", source: "local" })).toBe(
+      true,
+    );
     expect(isProtocolProject({ kind: "legacy" })).toBe(false);
     expect(isProtocolProject({ kind: "pending" })).toBe(false);
   });
@@ -173,5 +174,87 @@ describe("servePreviewUrl", () => {
         source: "github",
       } as Parameters<typeof servePreviewUrl>[0]),
     ).toBeNull();
+  });
+});
+
+describe("newBlocksEditorEnabled", () => {
+  const kinds = ["protocol", "unavailable", "legacy", "pending"] as const;
+
+  test("a v8 site gets the new editor whatever the org flag says", () => {
+    for (const backend of ["protocol", "unavailable"] as const) {
+      for (const orgFlag of [true, false, undefined]) {
+        expect(newBlocksEditorEnabled({ backend, hasOrg: true, orgFlag })).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  test("a v7 site follows the org flag, waiting while it loads", () => {
+    for (const orgFlag of [true, false, undefined]) {
+      expect(
+        newBlocksEditorEnabled({ backend: "legacy", hasOrg: true, orgFlag }),
+      ).toBe(orgFlag);
+    }
+  });
+
+  test("outside a site the org flag alone decides", () => {
+    for (const orgFlag of [true, false, undefined]) {
+      expect(
+        newBlocksEditorEnabled({ backend: null, hasOrg: true, orgFlag }),
+      ).toBe(orgFlag);
+    }
+  });
+
+  test("no org (/site-editor): v8 is on, and nothing waits on a flag", () => {
+    for (const orgFlag of [true, false, undefined]) {
+      expect(
+        newBlocksEditorEnabled({ backend: "protocol", hasOrg: false, orgFlag }),
+      ).toBe(true);
+      expect(
+        newBlocksEditorEnabled({
+          backend: "unavailable",
+          hasOrg: false,
+          orgFlag,
+        }),
+      ).toBe(true);
+      // A v7 site can't be reached without an org, but it wouldn't hang.
+      expect(
+        newBlocksEditorEnabled({ backend: "legacy", hasOrg: false, orgFlag }),
+      ).toBe(false);
+    }
+  });
+
+  test("while the version is detected it waits, unless the flag is on", () => {
+    expect(
+      newBlocksEditorEnabled({
+        backend: "pending",
+        hasOrg: true,
+        orgFlag: true,
+      }),
+    ).toBe(true);
+    for (const orgFlag of [false, undefined]) {
+      expect(
+        newBlocksEditorEnabled({ backend: "pending", hasOrg: true, orgFlag }),
+      ).toBeUndefined();
+    }
+    expect(
+      newBlocksEditorEnabled({
+        backend: "pending",
+        hasOrg: false,
+        orgFlag: undefined,
+      }),
+    ).toBeUndefined();
+  });
+
+  test("never the old editor for a site that may be v8", () => {
+    for (const backend of kinds) {
+      const decided = newBlocksEditorEnabled({
+        backend,
+        hasOrg: false,
+        orgFlag: undefined,
+      });
+      if (backend !== "legacy") expect(decided).not.toBe(false);
+    }
   });
 });

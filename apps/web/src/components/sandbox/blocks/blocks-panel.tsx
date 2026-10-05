@@ -25,6 +25,7 @@ import {
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { useNewBlocksEditorState } from "@/hooks/use-new-blocks-editor";
 
 const SectionsEditor = lazy(() =>
   import("@/components/sections-editor/sections-editor").then((m) => ({
@@ -82,13 +83,19 @@ export function BlocksPanel({
       isProtocolProject(contentBackend),
   });
 
+  // Which editor this site gets (v8: the new one) waits on the same
+  // detection, so neither editor shows and then swaps to the other.
+  const editorUndecided = useNewBlocksEditorState() === undefined;
+
   const panel = (children: ReactNode) => (
     <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
       {children}
     </div>
   );
 
-  if (state.kind === "loading") return panel(<PanelLoading />);
+  if (state.kind === "loading" || editorUndecided) {
+    return panel(<PanelLoading />);
+  }
   if (state.kind === "empty") return panel(<BlocksEmptyState />);
   if (state.kind === "error") {
     const retry = () => {
