@@ -84,7 +84,6 @@ describe("createKVRoutes", () => {
     const { storage } = createStorage();
     const app = createApp(
       {
-        user: { id: "user-1" },
         apiKey: { id: "key-1", name: "runtime", userId: "user-1" },
       } as StudioContext["auth"],
       storage,
