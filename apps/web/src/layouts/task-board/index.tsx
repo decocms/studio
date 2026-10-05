@@ -608,7 +608,6 @@ function CardFooter({
   );
 }
 
-/** List-row due date. Cards use {@link FooterDueDate} instead. */
 /** How long the task has sat in its current status. */
 function StatusAgePill({
   status: statusKey,
@@ -641,16 +640,6 @@ function StatusAgePill({
             })}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function DueDatePill({ iso }: { iso: string }) {
-  const { label, overdue } = formatDueDate(iso);
-  return (
-    <span className={cn(META, overdue && "text-destructive")}>
-      <Calendar size={FOOTER_GLYPH} />
-      {label}
-    </span>
   );
 }
 
@@ -1393,6 +1382,20 @@ function TaskBoardBody({
       onOpen={() => openTask(item)}
       onStatusChange={(status) =>
         actions.update.mutate({ id: item.id, status })
+      }
+      onPriorityChange={(priority) =>
+        actions.update.mutate({ id: item.id, priority })
+      }
+      members={members}
+      onAssign={(userId) => {
+        if (blockSuperAgentWithoutRepository(userId)) return;
+        actions.update.mutate(
+          { id: item.id, assigneeId: userId },
+          { onError: onDelegateError },
+        );
+      }}
+      onDueDateChange={(dueDate) =>
+        actions.update.mutate({ id: item.id, dueDate })
       }
     />
   );
@@ -3703,27 +3706,123 @@ function ListRowStatusMenu({
   );
 }
 
+/** The row's due date, which opens a calendar; an unset date shows a calendar glyph on row hover. */
+function ListRowDueDate({
+  iso,
+  onChange,
+}: {
+  iso: string | null;
+  onChange: (iso: string) => void;
+}) {
+  const t = useT();
+  if (iso) return <FooterDueDate iso={iso} onChange={onChange} />;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title={t("taskBoard.taskBoard.dueDateButton")}
+          aria-label={t("taskBoard.taskBoard.dueDateButton")}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/40 opacity-0 transition-[color,opacity] group-hover:opacity-100 hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100"
+        >
+          <Calendar className={PROPERTY_GLYPH_CLASS} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto p-0">
+        <DayPickerCalendar
+          mode="single"
+          onSelect={(date) => date && onChange(toEndOfDayIso(date))}
+          initialFocus
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The row's assignee, which opens the member picker. Unassigned rows show a dashed placeholder on row hover. */
+function ListRowAssigneeMenu({
+  item,
+  assignee,
+  assignedBy,
+  members,
+  onAssign,
+}: {
+  item: TaskBoardItem;
+  assignee?: Member;
+  assignedBy?: Member;
+  members: Member[];
+  onAssign: (userId: string | null) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const assigned = !!item.assigneeId;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={t("taskBoard.taskBoard.assignButton")}
+          aria-label={t("taskBoard.taskBoard.assignButton")}
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-full",
+            assigned
+              ? "hover:ring-2 hover:ring-accent"
+              : "size-6 border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100",
+          )}
+        >
+          {assigned ? (
+            <AssigneeDisplay
+              item={item}
+              assignee={assignee}
+              assignedBy={assignedBy}
+            />
+          ) : (
+            <UserPlus01 size={13} />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="end" side="bottom">
+        <AssigneePickerContent
+          members={members}
+          onSelect={(userId) => {
+            onAssign(userId);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ListRow({
   item,
   assignee,
   assignedBy,
   onOpen,
   onStatusChange,
+  onPriorityChange,
+  members,
+  onAssign,
+  onDueDateChange,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   onOpen: () => void;
   onStatusChange: (status: TaskBoardItemStatus) => void;
+  onPriorityChange: (priority: TaskBoardItemPriority) => void;
+  members: Member[];
+  onAssign: (userId: string | null) => void;
+  onDueDateChange: (iso: string) => void;
 }) {
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
   const runState = agentRunState(item);
   return (
-    <div className="flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent/40">
+    <div className="group flex h-11 items-center gap-3 px-3 transition-colors hover:bg-accent/40">
       <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
       <span className="flex size-4 shrink-0 items-center justify-center">
-        {item.priority !== "none" && <PriorityIcon priority={item.priority} />}
+        <PriorityIcon priority={item.priority} onChange={onPriorityChange} />
       </span>
       {key && (
         <span className="hidden w-16 shrink-0 font-mono text-xs text-muted-foreground sm:inline">
@@ -3755,16 +3854,16 @@ function ListRow({
           <StatusAgePill status={item.status} since={item.statusSince} />
         </span>
       )}
-      {item.dueDate && (
-        <span className="hidden sm:inline-flex">
-          <DueDatePill iso={item.dueDate} />
-        </span>
-      )}
+      <span className="hidden sm:inline-flex">
+        <ListRowDueDate iso={item.dueDate} onChange={onDueDateChange} />
+      </span>
       <span className="flex w-5 shrink-0 justify-center">
-        <AssigneeDisplay
+        <ListRowAssigneeMenu
           item={item}
           assignee={assignee}
           assignedBy={assignedBy}
+          members={members}
+          onAssign={onAssign}
         />
       </span>
       <span className="hidden w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline">
