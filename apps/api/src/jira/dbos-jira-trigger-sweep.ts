@@ -99,6 +99,10 @@ async function sweepOneIntegration(
     );
     const scope = await client.getBoardScopeJql(integration.boardId);
     const jql = `(${scope}) AND status CHANGED AFTER "-${LOOKBACK_MINUTES}m"`;
+    // The board's columns do not change mid-sweep; fetch them at most once.
+    let boardColumns: Promise<string[][]> | undefined;
+    const getBoardColumns = (c: JiraClient, boardId: string) =>
+      (boardColumns ??= c.getBoardColumnStatusIds(boardId));
     let started = 0;
     let nextPageToken: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -106,10 +110,12 @@ async function sweepOneIntegration(
       for (const issue of result.issues) {
         // Only the latest move can still start anything; one younger than
         // the window is the webhook's wait's to decide, or the next tick's.
-        const outcome = await triggerRunForSettledMove(ctx, integration, {
-          issueId: issue.id,
-          now: Date.now(),
-        });
+        const outcome = await triggerRunForSettledMove(
+          ctx,
+          integration,
+          { issueId: issue.id, now: Date.now() },
+          getBoardColumns,
+        );
         if (outcome === "started") started++;
       }
       nextPageToken = result.nextPageToken ?? undefined;
