@@ -8,9 +8,21 @@ import {
   Minimize01,
   Pilcrow01,
   Settings01,
+  Trash01,
   XClose,
 } from "@untitledui/icons";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
@@ -24,16 +36,18 @@ import {
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
+import { ResponsiveImageField } from "@/components/sections-editor/fields/responsive-image-field";
 import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   buildPostBlock,
+  canDeletePost,
   getBlogPayload,
   listBlogPayloads,
   maskSlugInput,
   missingPostFields,
-  normalizeTitleKey,
+  hasDuplicateName,
   POST_STATUSES,
   type PostStatus,
   postStatus,
@@ -48,11 +62,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
-import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
@@ -117,7 +130,7 @@ export function PostEditor({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
+  const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
@@ -166,14 +179,35 @@ export function PostEditor({
   });
 
   // Two posts sharing a title is legal but bad for search; warn, never block.
-  const titleKey = normalizeTitleKey(str(post.title));
-  const hasDuplicateTitle =
-    titleKey.length > 0 &&
-    listBlogPayloads(decofile, "posts").some(
-      (entry) =>
-        entry.key !== blockKey &&
-        normalizeTitleKey(str(entry.payload.title)) === titleKey,
-    );
+  const hasDuplicateTitle = hasDuplicateName(
+    decofile,
+    "posts",
+    blockKey,
+    str(post.title),
+  );
+
+  const canDelete = canDeletePost(post);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const deletePost = async () => {
+    // Cancel the debounce first: a timer that fires after the unlink writes
+    // the block straight back.
+    syncPost(post);
+    try {
+      await remove.mutateAsync({ blockKey });
+      toast.success(
+        t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
+      );
+      setConfirmingDelete(false);
+      onClose?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.postEditor.deletePostFailed"),
+      );
+    }
+  };
 
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
@@ -275,6 +309,25 @@ export function PostEditor({
                 </TabsTrigger>
               </TabsList>
               <div className="flex shrink-0 items-center gap-3">
+                {canDelete && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="px-2 text-muted-foreground hover:text-destructive"
+                        aria-label={t("sandbox.postEditor.deletePost")}
+                        onClick={() => setConfirmingDelete(true)}
+                      >
+                        <Trash01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {t("sandbox.postEditor.deletePost")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <SuggestLinksButton
                   decofile={decofile}
                   sections={asBlocks(post.sections)}
@@ -326,7 +379,6 @@ export function PostEditor({
                 <PostSettings
                   post={post}
                   decofile={decofile}
-                  support={support}
                   onChange={setField}
                   blockKey={blockKey}
                   move={move}
@@ -337,6 +389,48 @@ export function PostEditor({
           </Tabs>
         </div>
       </div>
+
+      <AlertDialog
+        open={confirmingDelete}
+        onOpenChange={(next) => {
+          if (!next && !remove.isPending) setConfirmingDelete(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sandbox.postEditor.deletePostConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sandbox.postEditor.deletePostConfirmBody", {
+                title: str(post.title) || t("sandbox.postBoard.untitled"),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>
+              {t("sandbox.postEditor.deletePostCancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void deletePost();
+              }}
+              disabled={remove.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {remove.isPending ? (
+                <>
+                  <Spinner className="size-3.5" />
+                  {t("sandbox.postEditor.deletingPost")}
+                </>
+              ) : (
+                t("sandbox.postEditor.deletePost")
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -400,7 +494,6 @@ function StatusPicker({
 function PostSettings({
   post,
   decofile,
-  support,
   onChange,
   blockKey,
   move,
@@ -408,8 +501,6 @@ function PostSettings({
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
-  /** Gates the scheduled go-live field — see {@link supportsScheduling}. */
-  support: BlogSupport;
   onChange: (key: string, value: unknown) => void;
   blockKey: string;
   move: PostStatusMove;
@@ -417,7 +508,7 @@ function PostSettings({
 }) {
   const t = useT();
   const status = postStatus(post);
-  const isScheduled = supportsScheduling(support) && status === "scheduled";
+  const isScheduled = status === "scheduled";
 
   // Committed on blur, not per keystroke: a half-typed slug must not autosave.
   const committedSlug = str(post.slug);
@@ -547,15 +638,12 @@ function PostSettings({
       {/* Cover image + its alt text: `alt` is the blog app's alt for `image`,
           and the front falls back to the title when it is empty. */}
       <div className="space-y-2">
-        <ImageField
-          schema={{
-            type: "string",
-            format: "image-uri",
-            title: t("sandbox.postEditor.coverImageLabel"),
-          }}
+        <ResponsiveImageField
           value={post.image}
+          mobileValue={post.mobileImage}
           onChange={(v) => onChange("image", v)}
-          path="post-image"
+          onMobileChange={(v) => onChange("mobileImage", v)}
+          alt={str(post.alt)}
           label={t("sandbox.postEditor.coverImageLabel")}
         />
         <StringField

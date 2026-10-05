@@ -28,13 +28,16 @@ Done when `whoami` prints the user the person expects.
 
 ## 2. Organization slug
 
-Every org-scoped call needs the slug, the first path segment of a studio URL
-(`https://studio.decocms.com/<slug>/...`). Take it from a URL the user pasted,
-or ask. When the user names a project instead, search their orgs for it:
+Every org-scoped call needs the organization's slug, the first path segment
+of a studio URL (`https://studio.decocms.com/<slug>/...`). List the user's
+organizations and pick the one they mean; ask when several fit:
 
 ```bash
-decocms api "/api/_me/projects/search?q=<term>" | jq '.items[] | {title, orgSlug}'
+decocms orgs           # slug<TAB>name per organization; --json adds ids
 ```
+
+When the user names a project instead of an org, search across their orgs:
+`decocms api "/api/_me/projects/search?q=<term>"` returns each match's `orgSlug`.
 
 ## 3. Builtin tools first
 

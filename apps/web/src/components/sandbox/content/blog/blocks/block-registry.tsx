@@ -8,13 +8,13 @@ import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch
 import { RichTextBlock } from "./rich-text-block";
 import { CodeBlock, HeadingBlock, ListBlock, QuoteBlock } from "./plain-blocks";
 import {
-  BlockImageBlock,
   CalloutBlock,
   CtaBlock,
   DividerBlock,
   StatBlock,
   VideoBlock,
 } from "./media-blocks";
+import { BlockImageBlock } from "./image-block";
 import {
   CardGroupBlock,
   ChecklistBlock,

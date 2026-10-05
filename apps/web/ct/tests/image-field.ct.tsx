@@ -288,3 +288,42 @@ test("image ⋮ menu has no Muted switch (muted is video-only)", async ({
   await expect(page.getByRole("radio", { name: "high" })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Muted" })).toHaveCount(0);
 });
+
+test("type URL: an absolute address can be typed, not only pasted", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <FieldHarness schema={IMAGE_SCHEMA} label="Hero" />,
+  );
+
+  // Keystroke by keystroke: `https:` is not a safe URL on its own, and
+  // refusing that character used to snap the field back to the old text.
+  const input = component.getByLabel("Hero");
+  await input.pressSequentially("https://x.test/a.png");
+
+  await expect(input).toHaveValue("https://x.test/a.png");
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual("https://x.test/a.png");
+});
+
+test("type URL: an unsafe scheme is never stored and the box reverts", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={IMAGE_SCHEMA}
+      label="Hero"
+      initialValue="https://x.test/a.png"
+    />,
+  );
+
+  const input = component.getByLabel("Hero");
+  await input.fill("javascript:alert(1)");
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual("https://x.test/a.png");
+
+  await input.blur();
+  await expect(input).toHaveValue("https://x.test/a.png");
+});

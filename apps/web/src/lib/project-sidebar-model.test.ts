@@ -93,6 +93,15 @@ describe("buildProjectSidebar", () => {
     expect(ids(model.hidden)).toEqual(["a"]);
   });
 
+  test("clearing Suggested covers new projects past the display cap", () => {
+    const many = Array.from({ length: 8 }, (_, i) =>
+      project(`n${i}`, `2026-03-0${i + 1}T00:00:00.000Z`),
+    );
+    const model = build({ projects: many });
+    expect(model.suggested).toHaveLength(5);
+    expect(model.clearableIds).toHaveLength(8);
+  });
+
   test("a project created after the member joined is suggested until decided", () => {
     const fresh = build({
       projects: [project("old", OLD), project("new", NEW)],

@@ -5,6 +5,7 @@
  * Archived organizations are invisible to all API and UI surfaces.
  */
 
+import { parseOrgMetadata } from "@decocms/shared/organization/org-archived";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -44,10 +45,7 @@ export const ORGANIZATION_DELETE = defineTool({
 
     // Merge into existing metadata — organization.update replaces it wholesale.
     const existing = await ctx.boundAuth.organization.get(input.id);
-    const existingMetadata = (existing?.metadata ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const existingMetadata = parseOrgMetadata(existing?.metadata);
 
     // Already archived: skip the write, preserving the original archivedAt.
     if (existingMetadata.archived === true) {

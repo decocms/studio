@@ -111,11 +111,11 @@ export interface Settings {
   stripeOrgPriceId: string | undefined;
   /**
    * Which gateway plan each subscription Price grants, parsed from
-   * STRIPE_PLAN_PRICE_IDS (`price_abc=pro,price_def=ultra`).
+   * STRIPE_PLAN_PRICE_IDS (`price_abc=starter,price_def=business`).
    *
    * This is the join between money and entitlement, and without it a plan is
    * something a user simply asks for: `AI_PLAN_SET` takes no payment, so an
-   * org admin could hand itself Ultra by clicking it. A price in this map is
+   * org admin could hand itself Business by clicking it. A price in this map is
    * the only thing that can grant a paid tier, and a subscription leaving
    * `active` takes it away again — see `planIdForStripe`.
    *

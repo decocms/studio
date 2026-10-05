@@ -46,7 +46,7 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.80.3"
+  tag: "1.80.4"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
@@ -356,7 +356,7 @@ orgFs:
     repository: ghcr.io/decocms/studio/orgfs-sidecar
     # Bump to ship a new sidecar image — release-orgfs-sidecar.yaml reads
     # this field as the single source of truth (netinit pattern).
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   resources:
     requests:

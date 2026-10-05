@@ -1,7 +1,7 @@
 {
   "name": "decocms-studio",
   "description": "Operate a deco Studio organization from any agent through the decocms CLI",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "author": { "name": "decocms" },
   "homepage": "https://decocms.com/studio"
 }

@@ -8,6 +8,7 @@
 import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
   AlertCircle,
+  Copy01,
   CalendarDate,
   CheckCircle,
   ChevronDown,
@@ -55,12 +56,7 @@ import {
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { GeneratePostDialog, type IdeaSeed } from "./generate-post-dialog";
 import { useGeneratePost } from "./use-generate-post";
-import { type BlogSupport, postStatusUnsupported } from "./blog-capabilities";
-import {
-  moveUnsupportedText,
-  POST_STATUS_LABEL,
-  type PostStatusMove,
-} from "./use-post-status-move";
+import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   contextForTools,
   readBlogContext,
@@ -142,7 +138,6 @@ export function PostsWorkspace({
   onOpen,
   onClose,
   move,
-  support,
   meta,
   renderDetail,
 }: {
@@ -159,8 +154,6 @@ export function PostsWorkspace({
   onClose?: () => void;
   /** The shared status transition — the same one the editor's control uses. */
   move: PostStatusMove;
-  /** What this site's blog app can honour — gates the live lanes. */
-  support: BlogSupport;
   /** Live schema — which section kinds generation may write. */
   meta: LiveMeta;
   /** Renders the open post — the list's right pane or the board's floating panel. */
@@ -702,7 +695,6 @@ export function PostsWorkspace({
             if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
             const laneLabel = t(POST_STATUS_LABEL[status]);
             const isCollapsed = collapsedLanes.includes(status);
-            const unsupported = postStatusUnsupported(support, status);
             return (
               <div
                 key={status}
@@ -717,14 +709,9 @@ export function PostsWorkspace({
                   e.preventDefault();
                   onDrop(status, e.dataTransfer.getData(DRAG_KEY));
                 }}
-                title={
-                  unsupported ? moveUnsupportedText(t, unsupported) : undefined
-                }
                 className={cn(
                   "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
                   isCollapsed ? "w-11" : "w-72",
-                  // Dimmed, not hidden: the lane still explains why it's out of reach.
-                  unsupported && "opacity-50",
                   dragOverLane === status && "border-primary bg-primary/5",
                 )}
               >
@@ -1064,6 +1051,17 @@ function PostRow({
               {post.missing.length}
             </span>
           )}
+          {post.duplicateTitle && (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-warning"
+              title={t("sandbox.postBoard.duplicateTitle")}
+            >
+              <Copy01 size={12} aria-hidden />
+              <span className="sr-only">
+                {t("sandbox.postBoard.duplicateTitle")}
+              </span>
+            </span>
+          )}
           {hasDate && (
             <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
               <CalendarDate size={12} />
@@ -1161,6 +1159,12 @@ function PostCard({
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <CalendarDate size={12} />
               {(post.scheduledDatetime || post.date || "").slice(0, 10)}
+            </span>
+          )}
+          {post.duplicateTitle && (
+            <span className="inline-flex items-center gap-1 text-xs text-warning">
+              <Copy01 size={12} aria-hidden />
+              {t("sandbox.postBoard.duplicateTitle")}
             </span>
           )}
         </div>

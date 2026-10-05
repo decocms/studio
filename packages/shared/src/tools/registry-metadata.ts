@@ -1781,9 +1781,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_ADD",
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
-      // Seats live on the members page and change who the org pays for —
-      // same trust tier as adding/removing the member itself. Checkout and
-      // preview are the money half of the same surface.
+      // The org's plan subscription and billing — the same trust tier as
+      // adding/removing a member.
       "ORGANIZATION_BILLING_CHECKOUT_START",
       "ORGANIZATION_BILLING_PORTAL",
       "ORGANIZATION_TASK_QUOTA_GET",

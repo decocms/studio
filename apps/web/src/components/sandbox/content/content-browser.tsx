@@ -98,10 +98,12 @@ import {
   buildBlogBlock,
   emptyBlogPayload,
   generateBlogKey,
+  uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
-  listBlogPayloads,
+  listAllPostPayloads,
   postIdOfKey,
+  buildPostBlock,
   removeCategoryFromPost,
   scanBlogEntries,
   stampPostModified,
@@ -111,7 +113,6 @@ import {
   rescheduleToDay,
   scheduledPostPayload,
 } from "./blog/post-calendar-data";
-import { useBlogSupport } from "./blog/use-blog-support";
 import { usePostStatusMove } from "./blog/use-post-status-move";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
@@ -121,6 +122,11 @@ import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
+import {
+  categoryAncestors,
+  type CategoryTreeRow,
+  orderCategoryTree,
+} from "./blog/category-tree";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -456,13 +462,6 @@ function ContentBrowserReady({
       enabled: activeCollection === "apps",
     });
 
-  const blogSupport = useBlogSupport({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    meta,
-  });
-
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
@@ -471,7 +470,6 @@ function ContentBrowserReady({
     virtualMcpId,
     branch,
     decofile: decofile ?? {},
-    support: blogSupport,
     onMoved: (fromKey: string, toKey: string) =>
       setSelection((current) =>
         current?.collection === "posts" && current.key === fromKey
@@ -865,10 +863,18 @@ function ContentBrowserReady({
     }
     const key = generateBlogKey(decofile, entry.kind);
     const labelKey = entry.kind === "posts" ? "title" : "name";
-    const payload = {
+    const payload: Record<string, unknown> = {
       ...structuredClone(getBlogPayload(source, entry.kind)),
       [labelKey]: `${entry.label} (copy)`,
     };
+    // A clone keeping the slug would answer for the original. Categories
+    // only: a duplicated post still carries the source slug.
+    if (entry.kind === "categories") {
+      const taken = allBlogEntries.categories
+        .map((c) => c.slug ?? "")
+        .filter(Boolean);
+      payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
+    }
     try {
       await saveBlock.mutateAsync({
         blockKey: key,
@@ -907,15 +913,16 @@ function ContentBrowserReady({
           ).slug;
           const slug = typeof slugValue === "string" ? slugValue : "";
           if (slug) {
-            for (const { key: postKey, payload } of listBlogPayloads(
+            // Both forms: a draft denormalizes the category too, and
+            // writing it back as a live block would publish it.
+            for (const { key: postKey, payload } of listAllPostPayloads(
               decofile,
-              "posts",
             )) {
               const next = removeCategoryFromPost(payload, slug);
               if (next === payload) continue;
               await saveBlock.mutateAsync({
                 blockKey: postKey,
-                data: buildBlogBlock(postKey, "posts", stampPostModified(next)),
+                data: buildPostBlock(postKey, stampPostModified(next)),
               });
             }
           }
@@ -1051,7 +1058,6 @@ function ContentBrowserReady({
             ) : activeCollection === "post-schedule" ? (
               <PostCalendar
                 decofile={decofile}
-                support={blogSupport}
                 isCreating={saveBlock.isPending}
                 onCreate={(day) => void handleCreateScheduledPost(day)}
                 onReschedule={(key, day) => void handleReschedulePost(key, day)}
@@ -1154,7 +1160,6 @@ function ContentBrowserReady({
                   setOpenPageSeoKey(null);
                 }}
                 move={postMove}
-                support={blogSupport}
                 meta={meta}
                 renderDetail={(key, controls) => (
                   <PostEditor
@@ -1456,6 +1461,7 @@ function ItemList({
   onDuplicateBlog: (entry: BlogEntry) => void;
   onDeleteBlog: (entry: BlogEntry) => void;
 }) {
+  const t = useT();
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
     (p) =>
@@ -1498,6 +1504,11 @@ function ItemList({
       e.label.toLowerCase().includes(q) ||
       e.subtitle.toLowerCase().includes(q),
   );
+  // Flat while searching: a match under a filtered-out parent would hide.
+  const blogRows: CategoryTreeRow[] =
+    activeCollection === "categories" && !q
+      ? orderCategoryTree(filteredBlog)
+      : filteredBlog.map((entry) => ({ entry, depth: 0 }));
 
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
@@ -1761,33 +1772,50 @@ function ItemList({
               }.`}
             />
           ) : (
-            filteredBlog.map((entry) => {
+            blogRows.map(({ entry, depth }) => {
               const isActive =
                 selection?.collection === entry.kind &&
                 selection.key === entry.key;
               return (
-                <ItemRow
-                  key={entry.key}
-                  icon={
-                    entry.kind === "posts"
-                      ? File02
-                      : entry.kind === "authors"
-                        ? Users01
-                        : Tag01
-                  }
-                  title={entry.label}
-                  subtitle={entry.subtitle}
-                  active={isActive}
-                  onClick={() =>
-                    onSelect({ collection: entry.kind, key: entry.key })
-                  }
-                  menu={
-                    <ItemActions
-                      onDuplicate={() => onDuplicateBlog(entry)}
-                      onDelete={() => onDeleteBlog(entry)}
-                    />
-                  }
-                />
+                <div key={entry.key} style={{ paddingLeft: depth * 16 }}>
+                  <ItemRow
+                    icon={
+                      entry.kind === "posts"
+                        ? File02
+                        : entry.kind === "authors"
+                          ? Users01
+                          : Tag01
+                    }
+                    title={entry.label}
+                    invalid={entry.missing.length > 0}
+                    invalidReason={
+                      entry.missing.length > 0
+                        ? t("sandbox.itemRow.missingFields", {
+                            fields: entry.missing.join(", "),
+                          })
+                        : undefined
+                    }
+                    warning={entry.duplicateName}
+                    warningReason={t("sandbox.itemRow.duplicateName")}
+                    subtitle={
+                      depth > 0
+                        ? categoryAncestors(entry.slug ?? "", filteredBlog)
+                            .map((c) => c.slug)
+                            .join(" / ")
+                        : entry.subtitle
+                    }
+                    active={isActive}
+                    onClick={() =>
+                      onSelect({ collection: entry.kind, key: entry.key })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicateBlog(entry)}
+                        onDelete={() => onDeleteBlog(entry)}
+                      />
+                    }
+                  />
+                </div>
               );
             })
           )}

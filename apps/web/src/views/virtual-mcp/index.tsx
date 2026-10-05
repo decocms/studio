@@ -96,6 +96,7 @@ import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields"
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
+import { PublishVisualReviewField } from "@/components/sandbox/runtime-card/publish-visual-review-field";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
 import { PublishPolicyField } from "./publish-policy-field";
@@ -1151,6 +1152,11 @@ function VirtualMcpDetailViewWithData({
                           control={form.control}
                           onCommit={flushAndSave}
                         />
+                      </SettingsCardRow>
+                    )}
+                    {!cmsOff && hasRepository && (
+                      <SettingsCardRow>
+                        <PublishVisualReviewField control={form.control} />
                       </SettingsCardRow>
                     )}
                   </SettingsCard>

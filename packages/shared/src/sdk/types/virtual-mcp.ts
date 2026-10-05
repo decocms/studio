@@ -860,6 +860,13 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
     ),
+  publishVisualReview: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Fast Preview publish: opt in to a fullscreen review that renders each changed page as published and with the draft, side by side, instead of the JSON diff popover.",
+    ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
   fastPreviewInPlace: fastPreviewInPlaceMetadataField,

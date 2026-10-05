@@ -1,9 +1,4 @@
-/**
- * One changed page, block, or file as a card: what it is, what changed under
- * it, and — once expanded — the raw diff. Expansion and the armed discard
- * confirmation are both exclusive across the list, so the popover owns both
- * and drives them through props.
- */
+/** One changed page, block, or file in the publish list; the list owns selection/expansion and the armed discard. */
 
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PublishCardFrame, PublishGhost } from "./cms-publish-frame.tsx";
@@ -27,7 +22,7 @@ import type { GitDiffResult } from "./sandbox-git-api.ts";
  * Stable identity for a card across summary recomputes. Path first: the file
  * path is known from the manifest, while `blockKey` and `name` are derived
  * from content that arrives later — keying on those would remount the card
- * mid-load, collapsing an open diff and disarming a live discard confirmation.
+ * mid-load, dropping the selection or open diff and disarming a live discard.
  */
 export function changeId(change: PublishChange): string {
   return change.filepaths[0] ?? change.blockKey ?? change.name;
@@ -71,7 +66,7 @@ function changeDetail(change: PublishChange, t: TFunction) {
  * How much changed, never a list of what. Section display names come from
  * `__resolveType`, so a page of lazy-loaded sections yielded twenty identical
  * "Lazy — Section" rows that pushed the next card off screen. Counts stay one
- * line; the expanded diff is where names and fields belong.
+ * line; the review pane is where names and fields belong.
  */
 function changeSubLines(change: PublishChange, t: TFunction): string[] {
   const digest = publishChangeDigest(change);
@@ -106,14 +101,22 @@ function changeSubLines(change: PublishChange, t: TFunction): string[] {
   return lines;
 }
 
+export type PublishCardMode =
+  | { kind: "select"; selected: boolean; onSelect: () => void }
+  | {
+      kind: "expand";
+      expanded: boolean;
+      onToggleExpanded: () => void;
+      /** The whole publish diff; the card slices out its own files. */
+      diff: GitDiffResult | null;
+    };
+
 interface PublishChangeCardProps {
   change: PublishChange;
-  /** The whole publish diff; the card slices out its own files. */
-  diff: GitDiffResult | null;
-  /** File bodies are still loading, so an empty slice is "not yet", not "none". */
+  /** File bodies are still loading, so no sub-lines is "not yet", not "none". */
   bodyPending?: boolean;
-  expanded: boolean;
-  onToggleExpanded: () => void;
+  /** `select` drives the visual review pane; `expand` opens the raw diff inline. */
+  mode: PublishCardMode;
   /** Armed = this card shows Cancel/Discard; only one card may be armed. */
   confirming: boolean;
   onConfirmingChange: (confirming: boolean) => void;
@@ -124,10 +127,8 @@ interface PublishChangeCardProps {
 
 export function PublishChangeCard({
   change,
-  diff,
   bodyPending = false,
-  expanded,
-  onToggleExpanded,
+  mode,
   confirming,
   onConfirmingChange,
   onDiscard,
@@ -138,41 +139,53 @@ export function PublishChangeCard({
 
   const detail = changeDetail(change, t);
   const subLines = changeSubLines(change, t);
-  const rawDiff: GitDiffResult = {
-    diffs: Object.fromEntries(
-      change.filepaths.flatMap((p) => {
-        const entry = diff?.diffs[p];
-        return entry ? [[p, entry] as const] : [];
-      }),
-    ),
-  };
-  // Never flips once bodies land: no click target appears under a resting cursor.
-  const hasBody = Object.keys(rawDiff.diffs).length > 0;
-  const canExpand = bodyPending || hasBody;
-  /** Holds the height a sub-line will occupy, so the surface does not grow
-   *  under the cursor when bodies land. Only `edited` cards gain sub-lines
-   *  from bodies — a new page already counts its sections, and new or removed
+  /** Holds the height a sub-line will occupy, so the list does not grow under
+   *  the cursor when bodies land. Only `edited` cards gain sub-lines from
+   *  bodies — a new page already counts its sections, and new or removed
    *  blocks never have any. */
   const reservesSubLine =
     bodyPending && subLines.length === 0 && change.status === "edited";
 
-  // Collapsed card = one big expand target; inner controls stop propagation.
+  const rawDiff: GitDiffResult | null =
+    mode.kind === "expand"
+      ? {
+          diffs: Object.fromEntries(
+            change.filepaths.flatMap((p) => {
+              const entry = mode.diff?.diffs[p];
+              return entry ? [[p, entry] as const] : [];
+            }),
+          ),
+        }
+      : null;
+  const hasBody = rawDiff !== null && Object.keys(rawDiff.diffs).length > 0;
+  const selected = mode.kind === "select" && mode.selected;
+  const expanded = mode.kind === "expand" && mode.expanded;
+  // Never flips once bodies land: no click target appears under a resting cursor.
+  const canActivate = mode.kind === "select" || bodyPending || hasBody;
+  const activate =
+    mode.kind === "select" ? mode.onSelect : mode.onToggleExpanded;
+
+  // Collapsed card = one big target; inner controls stop propagation.
   return (
     <PublishCardFrame
-      className={cn(canExpand && !expanded && "cursor-pointer")}
+      className={cn(
+        canActivate && !expanded && "cursor-pointer",
+        mode.kind === "select" && "transition-colors hover:bg-accent/50",
+        selected && "border-foreground/30 bg-accent hover:bg-accent",
+      )}
       data-change-id={changeId(change)}
-      onClick={canExpand && !expanded ? onToggleExpanded : undefined}
+      onClick={canActivate && !expanded ? activate : undefined}
     >
       <div
         className={cn(
           "flex items-center gap-2.5",
-          canExpand && "cursor-pointer",
+          canActivate && "cursor-pointer",
         )}
         onClick={
-          canExpand
+          canActivate
             ? (e) => {
                 e.stopPropagation();
-                onToggleExpanded();
+                activate();
               }
             : undefined
         }
@@ -181,8 +194,11 @@ export function PublishChangeCard({
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          disabled={!canExpand}
-          aria-expanded={canExpand ? expanded : undefined}
+          disabled={!canActivate}
+          aria-pressed={mode.kind === "select" ? selected : undefined}
+          aria-expanded={
+            mode.kind === "expand" && canActivate ? expanded : undefined
+          }
         >
           <span className="truncate text-sm font-medium">{change.name}</span>
           {detail ? (
@@ -239,7 +255,7 @@ export function PublishChangeCard({
             </Tooltip>
           </TooltipProvider>
         )}
-        {canExpand ? (
+        {mode.kind === "expand" && canActivate ? (
           <ChevronRight
             className={cn(
               "size-3.5 shrink-0 text-muted-foreground transition-transform",
@@ -248,7 +264,7 @@ export function PublishChangeCard({
           />
         ) : null}
       </div>
-      {!expanded && subLines.length > 0 ? (
+      {expanded ? null : subLines.length > 0 ? (
         <div className="mt-1 space-y-0.5 pl-[26px] text-xs text-muted-foreground">
           {subLines.map((line, lineIndex) => (
             <div key={`${lineIndex}-${line}`} className="truncate">
@@ -256,7 +272,7 @@ export function PublishChangeCard({
             </div>
           ))}
         </div>
-      ) : !expanded && reservesSubLine ? (
+      ) : reservesSubLine ? (
         <div className="mt-1 space-y-0.5 pl-[26px]">
           <PublishGhost className="h-4 w-2/3" />
         </div>

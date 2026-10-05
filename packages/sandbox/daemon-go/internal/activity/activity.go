@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"os"
 	"sync"
 	"time"
 )
@@ -10,12 +11,18 @@ var (
 	lastActivityAt = time.Now()
 	claimed        = false
 	prewarmed      = false
+	// poked wakes Stamp; buffered so Bump never blocks on it.
+	poked = make(chan struct{}, 1)
 )
 
 func Bump() {
 	mu.Lock()
 	lastActivityAt = time.Now()
 	mu.Unlock()
+	select {
+	case poked <- struct{}{}:
+	default:
+	}
 }
 
 // MarkClaimed: a user now owns this pod. Only config carrying a user identity
@@ -56,4 +63,36 @@ func Idle() IdleStatus {
 		Claimed:        claimed,
 		Prewarmed:      prewarmed,
 	}
+}
+
+// Stamp mirrors the last activity into the mtime of `path`, for the org-fs
+// sidecar in the next container: it long-polls the change feed only while the
+// daemon is in use, so an idle VM goes quiet on the network and its provider
+// can pause it. Stamps within a second of activity, so a waking sandbox gets
+// its feed back at once; `retry` paces attempts while `path` is unwritable.
+// Runs for the process lifetime.
+func Stamp(path string, retry time.Duration) {
+	var stamped time.Time
+	for {
+		mu.Lock()
+		at := lastActivityAt
+		mu.Unlock()
+		if !at.Equal(stamped) && touch(path, at) == nil {
+			stamped = at
+		}
+		time.Sleep(time.Second)
+		select {
+		case <-poked:
+		case <-time.After(retry):
+		}
+	}
+}
+
+func touch(path string, at time.Time) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return os.Chtimes(path, at, at)
 }

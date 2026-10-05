@@ -4,11 +4,6 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import {
-  type BlogSupport,
-  postStatusUnsupported,
-  type StatusUnsupported,
-} from "./blog-capabilities";
-import {
   blocksPostStatus,
   getBlogPayload,
   movePostToStatus,
@@ -27,33 +22,10 @@ export const POST_STATUS_LABEL: Record<PostStatus, TranslationKey> = {
   archived: "sandbox.postBoard.laneArchived",
 };
 
-/**
- * One wording for the board tooltip and the move toast, so a lane and the
- * toast it produces can't explain the same refusal differently.
- */
-export function moveUnsupportedText(
-  t: ReturnType<typeof useT>,
-  gate: StatusUnsupported,
-): string {
-  switch (gate.reason) {
-    case "unknown":
-      return t("sandbox.postBoard.moveUnknownApp");
-    case "no-app":
-      return t("sandbox.postBoard.moveNoBlogApp");
-    case "outdated":
-      return t("sandbox.postBoard.moveUnsupported", {
-        required: gate.required,
-        command: gate.command,
-      });
-  }
-}
-
 /** Why a target lane is refused, or null when the move may go ahead. */
 export type MoveRefusal =
   /** Required fields are missing — the post can't go live yet. */
   | { kind: "incomplete" }
-  /** The site's blog app can't honour this state — see `StatusUnsupported`. */
-  | ({ kind: "unsupported" } & StatusUnsupported)
   /** A move for this post is already in flight. */
   | { kind: "in-flight" }
   /** `generating` is owned by the generation run, never set by hand. */
@@ -64,7 +36,6 @@ interface UsePostStatusMoveParams {
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
-  support: BlogSupport;
   /**
    * A move across forms renamed the block. Reported as (from, to) rather than
    * just the new key, so a caller only re-points if it was on that post — the
@@ -86,7 +57,6 @@ export function usePostStatusMove({
   virtualMcpId,
   branch,
   decofile,
-  support,
   onMoved,
 }: UsePostStatusMoveParams): PostStatusMove {
   const t = useT();
@@ -107,16 +77,12 @@ export function usePostStatusMove({
   ): MoveRefusal | null => {
     if (next === "generating") return { kind: "not-a-target" };
     if (movingIds.has(postIdOfKey(key))) return { kind: "in-flight" };
-    const unsupported = postStatusUnsupported(support, next);
-    if (unsupported) return { kind: "unsupported", ...unsupported };
     if (blocksPostStatus(payload, next)) return { kind: "incomplete" };
     return null;
   };
 
   const reasonText = (refusal: MoveRefusal): string => {
     switch (refusal.kind) {
-      case "unsupported":
-        return moveUnsupportedText(t, refusal);
       case "incomplete":
         return t("sandbox.postBoard.moveBlocked");
       case "in-flight":
