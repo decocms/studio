@@ -1,6 +1,8 @@
 import { Edit02, Plus, Trash01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
+export { ToolbarButton } from "@/components/sections-editor/toolbar-button";
+
 /**
  * Borderless auto-growing text input shared by the block editors. Grows
  * with content via `field-sizing:content`, with a JS fallback on input.
@@ -126,36 +128,6 @@ export function FloatingToolbar({ children }: { children: React.ReactNode }) {
     <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md">
       {children}
     </div>
-  );
-}
-
-export function ToolbarButton({
-  active,
-  label,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={cn(
-        "flex h-7 min-w-7 items-center justify-center px-1.5 text-sm transition-colors cursor-pointer rounded-lg",
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
