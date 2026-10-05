@@ -239,6 +239,9 @@ const plugins = [
   // Organization plugin for multi-tenant organization management
   // https://www.better-auth.com/docs/plugins/organization
   organization({
+    // Seats are unlimited on every plan; Better Auth otherwise caps at 100. It
+    // is also its default page size for listMembers / getFullOrganization.
+    membershipLimit: Number.MAX_SAFE_INTEGER,
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);

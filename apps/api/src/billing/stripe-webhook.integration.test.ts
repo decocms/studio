@@ -15,6 +15,7 @@ import { applyStripeEvent, type StripeEvent } from "./stripe-webhook";
 // make Stripe's unordered redeliveries unable to resurrect a canceled org.
 const ORG = "org_stripe_1";
 const ORG_BASIL = "org_stripe_basil";
+const ORG_TRIAL = "org_stripe_trial";
 
 // Event-created timeline (epoch seconds).
 const T1 = 1_800_000_010;
@@ -52,7 +53,7 @@ describe("applyStripeEvent", () => {
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    const orgs = [ORG, ORG_BASIL];
+    const orgs = [ORG, ORG_BASIL, ORG_TRIAL];
     await database.db
       .insertInto("organization")
       .values(
@@ -226,6 +227,45 @@ describe("applyStripeEvent", () => {
       }),
     );
     expect(unpaid).toEqual({ handled: false, reason: "payment not confirmed" });
+  });
+
+  it("a no-payment session grants only when it is a trial we opened", async () => {
+    // Not ours: `no_payment_required` without the trial marker is a $0
+    // checkout nobody priced — no plan for it.
+    const unmarked = await applyStripeEvent(
+      storage,
+      checkout({
+        id: "cs_t0",
+        payment_status: "no_payment_required",
+        subscription: "sub_t0",
+        metadata: { orgId: ORG_TRIAL, planId: "starter" },
+      }),
+    );
+    expect(unmarked).toEqual({
+      handled: false,
+      reason: "payment not confirmed",
+    });
+
+    // Starter's free month: card saved, nothing charged, plan granted now —
+    // its $0 first invoice will not grant it later.
+    const trial = await applyStripeEvent(
+      storage,
+      checkout({
+        id: "cs_t1",
+        customer: "cus_t1",
+        payment_status: "no_payment_required",
+        subscription: "sub_t1",
+        metadata: { orgId: ORG_TRIAL, planId: "starter", trial: "1" },
+      }),
+    );
+    expect(trial).toMatchObject({
+      handled: true,
+      organizationId: ORG_TRIAL,
+      planChange: { planId: "starter" },
+    });
+    const billing = await storage.getBilling(ORG_TRIAL);
+    expect(billing?.stripeSubscriptionId).toBe("sub_t1");
+    expect(billing?.stripeCustomerId).toBe("cus_t1");
   });
 
   it("reads Basil (2025-03-31) payload shapes; rebinds are refused", async () => {

@@ -42,11 +42,12 @@ function OrgAiProvidersContent() {
     useState<ProviderSelection | null>(null);
 
   const aiProviders = useAiProviders();
-  // Fails OPEN, so a gateway blip shows the BYO surfaces rather than hiding them.
+  // Bringing your own key is open to every plan; picking the model per tier
+  // is not. Fails OPEN, so a gateway blip shows the picker rather than hiding it.
   const canChooseModels = useFeature("model_choice");
-  // ...but on a COLD cache that same fail-open paints the BYO surfaces for a
-  // frame before the answer arrives and removes them. This page is mostly
-  // plan-gated, so hold the whole body rather than let it rearrange itself.
+  // ...but on a COLD cache that same fail-open paints the picker for a frame
+  // before the answer arrives and removes it. This page is mostly plan-gated,
+  // so hold the whole body rather than let it rearrange itself.
   const settled = useFeaturesSettled();
   // With plans ON, PlanUsageCard owns the balance AND the top-up, so the
   // gateway's own section has nothing left to say: on Free it rendered a
@@ -54,11 +55,7 @@ function OrgAiProvidersContent() {
   // it — that path has no plan card at all.
   const plansEnabled = usePlansEnabled();
   const showGatewaySection = hasDeco && !plansEnabled;
-  const allProviders = aiProviders?.providers ?? [];
-  // Every tile but Deco is a bring-your-own key.
-  const providers = canChooseModels
-    ? allProviders
-    : allProviders.filter((p) => p.id === "deco");
+  const providers = aiProviders?.providers ?? [];
 
   if (!settled) {
     return <Skeleton className="h-64 w-full" />;
@@ -74,7 +71,7 @@ function OrgAiProvidersContent() {
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
-          onShowAll={canChooseModels ? () => setConnectOpen(true) : undefined}
+          onShowAll={() => setConnectOpen(true)}
         />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
@@ -86,7 +83,7 @@ function OrgAiProvidersContent() {
           }}
           initialProvider={pendingProvider ?? undefined}
         />
-        {hasInventory && canChooseModels ? (
+        {hasInventory ? (
           <ConnectedProvidersSection
             onConnectClick={() => setConnectOpen(true)}
           />
@@ -101,21 +98,14 @@ function OrgAiProvidersContent() {
       <PlanCatalog />
       {showGatewaySection ? <DecoCreditsHero /> : null}
       {canChooseModels ? (
-        <>
-          <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-            <SimpleModeSection />
-          </Suspense>
-          {hasDeco ? null : <DecoNudgeCard />}
-          <ClaudeSubscriptionCard />
-          <ConnectedProvidersSection
-            onConnectClick={() => setConnectOpen(true)}
-          />
-          <ConnectProviderDialog
-            open={connectOpen}
-            onOpenChange={setConnectOpen}
-          />
-        </>
+        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+          <SimpleModeSection />
+        </Suspense>
       ) : null}
+      {hasDeco ? null : <DecoNudgeCard />}
+      <ClaudeSubscriptionCard />
+      <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
+      <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>
   );
 }

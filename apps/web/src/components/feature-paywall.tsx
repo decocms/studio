@@ -15,8 +15,8 @@ import { PaywallDialog } from "@/components/paywall/paywall-dialog";
 import {
   PlanPlant,
   planAccent,
-  planPrice,
   formatPlanPrice,
+  isStaffManagedPlan,
   usePlanPrices,
   planUnlocking,
   usePlanCatalog,
@@ -109,12 +109,15 @@ export function FeaturePaywall({
   const name = t(`settings.planUsage.feature.${feature}`);
   /** The rung to climb to. For a missing feature it is the cheapest one that
    *  has it; for a spent allowance nothing is missing, so it is simply the
-   *  next rung up from where the org already is. */
-  const target = copy
-    ? nextRung(plans, entitlements?.plan.id)
-    : planUnlocking(plans, feature);
+   *  next rung up from where the org already is. A contract plan is off the
+   *  ladder, so it is quoted no rung and no price. */
+  const target = isStaffManagedPlan(entitlements?.plan.id)
+    ? null
+    : copy
+      ? nextRung(plans, entitlements?.plan.id)
+      : planUnlocking(plans, feature);
   const accent = target ? planAccent(target.index) : undefined;
-  const price = target ? planPrice(prices, target.plan.id) : undefined;
+  const price = target ? prices?.[target.plan.id] : undefined;
   const bullets = copy
     ? ALLOWANCE_BULLETS
     : feature in FEATURE_BULLETS

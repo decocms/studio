@@ -1475,7 +1475,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // report data and scan operations behind this proxy require a user session.
   app.route("/api/_reports", reportsRoutes);
 
-  // Stripe webhook (per-seat billing): signature-authed, no session — the
+  // Stripe webhook (plan subscriptions): signature-authed, no session — the
   // caller is Stripe. Instance-level namespace, before the /api/:org catch-all.
   app.route("/api/_stripe", stripeWebhookRoutes);
 

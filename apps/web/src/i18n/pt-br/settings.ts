@@ -629,16 +629,16 @@ export const settings = {
   "settings.plans.perMonth": "/ mês",
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
-  "settings.planUsage.oneTimeHint":
-    "Crédito de teste único. Adicione créditos para continuar, ou faça upgrade para uma franquia mensal.",
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
+  "settings.planUsage.noPlan": "Nenhum plano ativo",
+  "settings.planUsage.noPlanDescription":
+    "Esta organização não tem um plano ativo. Escolha um abaixo — o primeiro mês do Starter é grátis.",
   "settings.planUsage.creditsLeft": "restantes",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
     "Não foi possível abrir a cobrança: {message}",
   "settings.planUsage.subscribe": "Assinar",
   "settings.planUsage.changePlan": "Mudar de plano",
-  "settings.planUsage.downgrade": "Voltar ao gratuito",
   "settings.planUsage.changed": "Plano atualizado",
   "settings.planUsage.changeFailed":
     "Não foi possível trocar o plano: {message}",
@@ -647,17 +647,19 @@ export const settings = {
   "settings.planUsage.feature.monitoring": "Analytics do site",
   "settings.planUsage.feature.kanban": "Kanban agêntico",
   "settings.planUsage.feature.model_choice": "Escolher o modelo",
-  "settings.planUsage.feature.trialChat": "Acesso limitado ao chat",
   "settings.planUsage.feature.credits": "Créditos extras",
   "settings.planUsage.feature.diagnostic": "Deco Score",
   "settings.planUsage.feature.diagnostic_enriched": "Deco Score enriquecido",
   "settings.plans.title": "Planos",
   "settings.plans.loadFailed": "Não foi possível carregar os planos.",
   "settings.plans.currentPlan": "Plano atual",
-  "settings.plans.downgradeTitle": "Voltar ao gratuito?",
-  "settings.plans.downgradeDescription":
-    "Os recursos do {plan} param imediatamente.",
-  "settings.plans.downgradeCancel": "Manter meu plano",
+  "settings.plans.firstMonthFree": "1º mês grátis",
+  "settings.plans.startTrial": "Começar teste grátis",
+  "settings.plans.custom.name": "Custom",
+  "settings.plans.custom.description":
+    "Para grandes times com contrato próprio",
+  "settings.plans.custom.cta": "Fale com a gente",
+  "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
   "settings.paywall.bullets.kanban.1":
     "Agentes que fazem o trabalho e movem os cards",
   "settings.paywall.bullets.kanban.2":

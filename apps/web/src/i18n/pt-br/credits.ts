@@ -1,7 +1,7 @@
 import type { credits as creditsEn } from "../en/credits.ts";
 
 export const credits = {
-  "credits.topUp.starter": "Iniciante",
+  "credits.topUp.small": "Pequeno",
   "credits.topUp.popular": "Popular",
   "credits.topUp.bestValue": "Melhor custo",
   "credits.topUp.enterCustom": "Inserir valor personalizado",

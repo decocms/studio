@@ -198,6 +198,35 @@ export function checkoutIdempotencyKey(input: {
   ].join(":");
 }
 
+/** Days of free Starter before the first charge — the floor, see trialEndFor. */
+const STARTER_TRIAL_DAYS = 30;
+
+/** The plan whose first month is free. */
+export const TRIAL_PLAN_ID = "starter";
+
+/**
+ * When a trial started at `now` ends: the first 1st-of-month, 00:00 UTC, at
+ * least STARTER_TRIAL_DAYS away.
+ *
+ * A 1st and not `now + 30d` because the trial end IS the billing anchor, and
+ * the anchor has to be the 1st — the day the gateway renews every allowance
+ * (see the anchor comment below). Checkout refuses `trial_period_days` beside
+ * `billing_cycle_anchor_config`, so the trial carries the anchor instead.
+ *
+ * ponytail: the trial runs 30–61 days depending on the signup day; it never
+ * runs SHORTER than the month we promise. Exact-30 needs a subscription
+ * schedule re-anchoring after the trial, which Checkout cannot create.
+ */
+export function trialEndFor(now: Date): Date {
+  const floor = new Date(now.getTime() + STARTER_TRIAL_DAYS * 86_400_000);
+  const first = new Date(
+    Date.UTC(floor.getUTCFullYear(), floor.getUTCMonth(), 1),
+  );
+  return first.getTime() >= floor.getTime()
+    ? first
+    : new Date(Date.UTC(floor.getUTCFullYear(), floor.getUTCMonth() + 1, 1));
+}
+
 export async function createOrgCheckoutSession(input: {
   organizationId: string;
   successUrl: string;
@@ -208,6 +237,10 @@ export async function createOrgCheckoutSession(input: {
    *  and it rides the session metadata so the webhook can grant the tier on
    *  completion. Omitted → the flat STRIPE_ORG_PRICE_ID and no tier. */
   planId?: string;
+  /** Start with Starter's free month. The card is still collected up front
+   *  (Checkout's default), so the trial converts on its own. The caller owns
+   *  eligibility — once per org. */
+  trial?: boolean;
 }): Promise<{ url: string }> {
   const settings = getSettings();
   // The plan's own price, or the flat subscription price for a deployment
@@ -246,6 +279,9 @@ export async function createOrgCheckoutSession(input: {
       metadata: {
         orgId: input.organizationId,
         ...(input.planId ? { planId: input.planId } : {}),
+        // Tells the webhook a `no_payment_required` session is a trial we
+        // opened, not a payment that failed to arrive.
+        ...(input.trial ? { trial: "1" } : {}),
       },
       subscription_data: {
         /**
@@ -269,12 +305,24 @@ export async function createOrgCheckoutSession(input: {
          * ponytail: monthly prices only — a yearly tier would need its own
          * anchoring story.
          */
-        billing_cycle_anchor_config: {
-          day_of_month: 1,
-          hour: 0,
-          minute: 0,
-          second: 0,
-        },
+        ...(input.trial
+          ? {
+              // The trial end lands on a 1st, so it anchors billing there too.
+              trial_end: Math.floor(trialEndFor(new Date()).getTime() / 1000),
+              // Belt and braces: the card is collected, but a subscription
+              // that somehow reaches the end without one must not linger.
+              trial_settings: {
+                end_behavior: { missing_payment_method: "cancel" },
+              },
+            }
+          : {
+              billing_cycle_anchor_config: {
+                day_of_month: 1,
+                hour: 0,
+                minute: 0,
+                second: 0,
+              },
+            }),
         metadata: {
           orgId: input.organizationId,
           ...(input.planId ? { planId: input.planId } : {}),

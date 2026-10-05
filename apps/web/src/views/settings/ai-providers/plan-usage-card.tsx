@@ -54,8 +54,8 @@ const BAR_STYLES = {
  * The Stripe portal is the ONLY way out of a paid plan — `AI_PLAN_SET` refuses
  * to drop an org while a subscription is bound, precisely so the card is not
  * charged for features the gateway has already taken away. So an org that has
- * a subscription needs a door to that portal on this page, or the refusal it
- * gets from the Free card below is a dead end.
+ * a subscription needs a door to that portal on this page: the catalog below
+ * offers no way out of a plan.
  */
 function ManageBillingButton() {
   const t = useT();
@@ -125,8 +125,7 @@ export function PlanUsageCard() {
 
   const plansEnabled = usePlansEnabled();
   // Whether a credits row belongs on this card at all. Every plan carries
-  // `credits` today, Free included — a spent trial is bought past as well as
-  // upgraded past — so this is the per-org revoke case.
+  // `credits` today, so this is the no-plan and per-org revoke case.
   const canBuyCredits = useFeature("credits");
   const { data, isLoading, isError, refetch } = useEntitlements();
   const { data: plans } = usePlanCatalog();
@@ -179,17 +178,17 @@ export function PlanUsageCard() {
       ? Math.min(100, Math.max(0, rawPercent))
       : null;
   const state = data.usage?.state ?? "ok";
+  // `free` is the absence of a plan: nothing to measure and nothing renews.
+  const noPlan = data.plan.id === "free";
   // A plan with no chat has no AI envelope at all, so a full red bar would
   // read as "you burned through it" on an org that never had any.
-  const hasAiEnvelope = data.features.chat;
+  const hasAiEnvelope = !noPlan && data.features.chat;
   // Dollars, localized. Read only inside the exhausted branch below, so an org
   // that never fills its bar never sees an amount anywhere in the product.
   const creditsUsd = data.credits?.remainingUsd ?? null;
-  // The gateway sends a period_end for free too, and free never refills.
-  const renews = data.plan.id !== "free";
   /** A gateway date as "16 Aug", or null for anything we can't honestly date. */
   const shortDate = (iso: string | null): string | null => {
-    if (!renews || !iso) return null;
+    if (!iso) return null;
     const at = new Date(iso);
     if (Number.isNaN(at.getTime())) return null;
     return at.toLocaleDateString(preferences.language, {
@@ -205,11 +204,6 @@ export function PlanUsageCard() {
       ? { start: periodStartLabel, end: periodEndLabel }
       : null;
 
-  // What the endpoints can't say: an undated plan, and Free's fixed ceiling.
-  const hint = renews
-    ? t("settings.planUsage.periodHint")
-    : t("settings.planUsage.oneTimeHint");
-
   return (
     <Card className="p-0 gap-0 overflow-hidden">
       <div className="px-6 py-6 flex flex-col gap-6">
@@ -221,7 +215,9 @@ export function PlanUsageCard() {
             {planIndex >= 0 && (
               <PlanPlant index={planIndex} className="size-6" />
             )}
-            <span className="text-sm font-medium">{data.plan.name}</span>
+            <span className="text-sm font-medium">
+              {noPlan ? t("settings.planUsage.noPlan") : data.plan.name}
+            </span>
           </div>
           <div className="flex items-center gap-3">
             {hasAiEnvelope && <AiUsageLabel />}
@@ -283,13 +279,17 @@ export function PlanUsageCard() {
                   <span>{periodRange.end}</span>
                 </div>
               ) : (
-                <span className="text-xs text-muted-foreground">{hint}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t("settings.planUsage.periodHint")}
+                </span>
               )}
             </div>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {t("settings.planUsage.noAiIncluded")}
+            {noPlan
+              ? t("settings.planUsage.noPlanDescription")
+              : t("settings.planUsage.noAiIncluded")}
           </p>
         )}
       </div>

@@ -26,20 +26,21 @@ import { useT } from "@/i18n/use-t.ts";
 
 const PRESETS = {
   usd: [
-    { dollars: 10, labelKey: "credits.topUp.starter" },
+    { dollars: 10, labelKey: "credits.topUp.small" },
     { dollars: 20, labelKey: "credits.topUp.popular" },
     { dollars: 100, labelKey: "credits.topUp.bestValue" },
   ],
   brl: [
-    { dollars: 50, labelKey: "credits.topUp.starter" },
+    { dollars: 50, labelKey: "credits.topUp.small" },
     { dollars: 100, labelKey: "credits.topUp.popular" },
     { dollars: 500, labelKey: "credits.topUp.bestValue" },
   ],
 } as const;
 
-/** Stable across surfaces, so one tier reads as one tier in the funnel. */
+/** Stable across surfaces, so one tier reads as one tier in the funnel. The
+ *  first keeps its old `starter` slug so the funnel's history stays one series. */
 const TIER_SLUGS: Record<string, string> = {
-  "credits.topUp.starter": "starter",
+  "credits.topUp.small": "starter",
   "credits.topUp.popular": "popular",
   "credits.topUp.bestValue": "best_value",
 };
