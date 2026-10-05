@@ -6,9 +6,18 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Meter } from "@opentelemetry/api";
 import type { z } from "zod";
-import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
+import {
+  exponentialBackoffWithJitter,
+  retry,
+  RetryError,
+  sleep,
+} from "@decocms/shared/std";
 import { ConfigRequestError } from "../daemon-client";
 import type { SandboxProvider } from "./agent-sandbox";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
@@ -32,12 +41,15 @@ import {
 import { computeHandle } from "./shared";
 import { proxyDaemonWithRetry } from "./shared/daemon-proxy";
 import { proxyPreview } from "./shared/preview-proxy";
+import { tagSandboxProvider } from "./shared/provider-tag";
+import { daemonProxyTimer, RUNNER_KIND } from "./shared/proxy-metrics";
 import type {
   EnsureOptions,
   PodTermination,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
+  SandboxProviderKind,
 } from "./types";
 
 const LOG_LABEL = "RemoteSandboxProvider";
@@ -47,6 +59,10 @@ const CONTROL_TIMEOUT_MS = 30_000;
 /** The MCP client always arms a timeout; setTimeout's ceiling never fires. */
 const UNBOUNDED_MS = 2 ** 31 - 1;
 const RECONNECT_BASE_MS = 500;
+/** The host answers 503 before handling a call while it has no leader to serve it. */
+const UNAVAILABLE_ATTEMPTS = 10;
+/** Half jitter keeps the retries spanning a leader election (16s–33s in all), never cut short by luck. */
+const UNAVAILABLE_JITTER = 0.5;
 const RECONNECT_CAP_MS = 5_000;
 /** Same reuse window as the in-process capacity probe. */
 const CAPACITY_TTL_MS = 3_000;
@@ -71,6 +87,8 @@ export interface RemoteSandboxProviderOptions {
    * missed keepalives.
    */
   stallMs?: number;
+  /** Records daemon request latency by provider; see `daemonProxyTimer`. */
+  meter?: Meter;
 }
 
 /** A failed host call. */
@@ -100,6 +118,10 @@ function textOf(content: unknown): string {
 }
 
 /** A failed call's text as the error it names. */
+function hostUnavailable(err: unknown): boolean {
+  return err instanceof StreamableHTTPError && err.code === 503;
+}
+
 function failure(tool: string, text: string): Error {
   let body: unknown = null;
   try {
@@ -113,10 +135,13 @@ function failure(tool: string, text: string): Error {
   }
   // start.ts words this one for the agent: the pod refused the handshake and
   // a retry gets another pod.
-  if (parsed.data.code === "bootstrap-rejected") {
-    return new ConfigRequestError(parsed.data.status ?? 502, parsed.data.error);
-  }
-  return new SandboxHostError(`${tool}: ${parsed.data.error}`);
+  const err =
+    parsed.data.code === "bootstrap-rejected"
+      ? new ConfigRequestError(parsed.data.status ?? 502, parsed.data.error)
+      : new SandboxHostError(`${tool}: ${parsed.data.error}`);
+  return parsed.data.provider
+    ? tagSandboxProvider(err, parsed.data.provider)
+    : err;
 }
 
 function failedPhase(message: string): ClaimPhase {
@@ -147,6 +172,7 @@ function anySignal(
 interface CachedSandbox {
   daemon: Daemon;
   previewUrl: string | null;
+  provider: SandboxProviderKind;
   at: number;
 }
 
@@ -161,6 +187,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
   private readonly token: string;
   private readonly credentialLifetimeMs: RemoteSandboxProviderOptions["credentialLifetimeMs"];
   private readonly stallMs: number;
+  private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
   private readonly closed = new AbortController();
   private connecting: Promise<Client> | null = null;
   private readonly sandboxes = new Map<string, CachedSandbox>();
@@ -172,6 +199,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
     this.token = opts.token;
     this.credentialLifetimeMs = opts.credentialLifetimeMs;
     this.stallMs = opts.stallMs ?? 4 * SANDBOX_WATCH_KEEPALIVE_MS;
+    this.timeDaemonRequest = daemonProxyTimer(opts.meter);
   }
 
   private headers(): Record<string, string> {
@@ -213,15 +241,26 @@ export class RemoteSandboxProvider implements SandboxProvider {
     const { timeoutMs = CONTROL_TIMEOUT_MS, signal } = opts;
     let result: Awaited<ReturnType<Client["callTool"]>>;
     try {
-      result = await (await this.client()).callTool(
-        { name: tool, arguments: { ...args } },
-        undefined,
-        { timeout: timeoutMs ?? UNBOUNDED_MS, signal },
+      result = await retry(
+        async () =>
+          (await this.client()).callTool(
+            { name: tool, arguments: { ...args } },
+            undefined,
+            { timeout: timeoutMs ?? UNBOUNDED_MS, signal },
+          ),
+        {
+          maxAttempts: UNAVAILABLE_ATTEMPTS,
+          minTimeout: RECONNECT_BASE_MS,
+          maxTimeout: RECONNECT_CAP_MS,
+          jitter: UNAVAILABLE_JITTER,
+          isRetriable: hostUnavailable,
+          signal,
+        },
       );
     } catch (err) {
       // The SDK rewords an abort as a timeout; the reason says which it was.
       if (signal?.aborted) throw signal.reason;
-      throw err;
+      throw err instanceof RetryError ? err.cause : err;
     }
     if (result.isError) throw failure(tool, textOf(result.content));
     const parsed = schema.safeParse(result.structuredContent);
@@ -276,6 +315,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
     handle: string,
     daemon: Daemon | null,
     previewUrl: string | null,
+    provider: SandboxProviderKind,
   ): void {
     this.sandboxes.delete(handle);
     if (!daemon) return;
@@ -283,7 +323,12 @@ export class RemoteSandboxProvider implements SandboxProvider {
       const oldest = this.sandboxes.keys().next();
       if (!oldest.done) this.sandboxes.delete(oldest.value);
     }
-    this.sandboxes.set(handle, { daemon, previewUrl, at: Date.now() });
+    this.sandboxes.set(handle, {
+      daemon,
+      previewUrl,
+      provider,
+      at: Date.now(),
+    });
   }
 
   private async status(
@@ -305,7 +350,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
           opts.signal,
         )
       : await read(opts.signal);
-    this.remember(handle, status.daemon, status.previewUrl);
+    this.remember(handle, status.daemon, status.previewUrl, status.provider);
     return status;
   }
 
@@ -356,12 +401,14 @@ export class RemoteSandboxProvider implements SandboxProvider {
         `host answered ensure with ${out.handle}, expected ${handle}`,
       );
     }
-    this.remember(out.handle, out.daemon, out.previewUrl);
+    this.remember(out.handle, out.daemon, out.previewUrl, out.provider);
     return {
       handle: out.handle,
       workdir: out.workdir,
       previewUrl: out.previewUrl,
       warmPoolAdopted: out.warmPoolAdopted,
+      provider: out.provider,
+      ...(out.placement && { placement: out.placement }),
     };
   }
 
@@ -491,20 +538,23 @@ export class RemoteSandboxProvider implements SandboxProvider {
         headers: { "content-type": "application/json" },
       });
     }
-    return proxyDaemonWithRetry(daemon, path, init, {
-      unauthorized: async () => {
-        const fresh = await this.daemonFor(handle, {
-          refresh: true,
-          signal,
-        }).catch(() => null);
-        // The same bearer again would get the same 401.
-        return fresh &&
-          (fresh.token !== daemon.token || fresh.url !== daemon.url)
-          ? fresh
-          : null;
-      },
-      unreachable: () => this.daemonFor(handle, { refresh: true, signal }),
-    });
+    const kind = this.sandboxes.get(handle)?.provider ?? "kubernetes";
+    return this.timeDaemonRequest(RUNNER_KIND[kind], () =>
+      proxyDaemonWithRetry(daemon, path, init, {
+        unauthorized: async () => {
+          const fresh = await this.daemonFor(handle, {
+            refresh: true,
+            signal,
+          }).catch(() => null);
+          // The same bearer again would get the same 401.
+          return fresh &&
+            (fresh.token !== daemon.token || fresh.url !== daemon.url)
+            ? fresh
+            : null;
+        },
+        unreachable: () => this.daemonFor(handle, { refresh: true, signal }),
+      }),
+    );
   }
 
   /** Always the daemon's port: it strips CSP/X-Frame and injects the HMR bootstrap. */

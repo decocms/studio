@@ -14,6 +14,7 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
   orgSlug: string;
@@ -79,10 +80,10 @@ export function useMoveBlocks({
         });
         return draft;
       }
-      const base = `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}`;
+      const ref = { orgSlug, virtualMcpId, branch, threadId };
       // Write before unlink: a failure between them leaves the old key, not neither.
       for (const [blockKey, data] of Object.entries(writes)) {
-        const res = await fetch(`${base}/write`, {
+        const res = await fetch(buildSandboxUrl(ref, "write"), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -93,7 +94,7 @@ export function useMoveBlocks({
         if (!res.ok) return throwResponseError(res, "Write");
       }
       for (const blockKey of deletes) {
-        const res = await fetch(`${base}/unlink`, {
+        const res = await fetch(buildSandboxUrl(ref, "unlink"), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({

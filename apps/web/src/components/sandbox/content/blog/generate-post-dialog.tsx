@@ -24,6 +24,7 @@ import {
   type CategoryRef,
   FORMATS_BLOCK_KEY,
   filledBrandRules,
+  listAuthorRefs,
   listBlogPayloads,
   missingBrandForGeneration,
   normalizeBrandRules,
@@ -136,12 +137,7 @@ export function GeneratePostDialog({
       slug: str(payload.slug),
     }))
     .filter((category) => category.slug);
-  const authors: AuthorRef[] = listBlogPayloads(decofile, "authors")
-    .map(({ payload }) => ({
-      name: str(payload.name),
-      email: str(payload.email),
-    }))
-    .filter((author) => author.email);
+  const authors: AuthorRef[] = listAuthorRefs(decofile);
 
   const reset = () => {
     setStep(seed ? "format" : "idea");

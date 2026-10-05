@@ -17,6 +17,7 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
 
@@ -99,7 +100,7 @@ export function useSaveBlock({
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const content = JSON.stringify(data, null, 2);
       const res = await fetch(
-        `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,
+        buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "write"),
         {
           method: "POST",
           headers: { "content-type": "application/json" },

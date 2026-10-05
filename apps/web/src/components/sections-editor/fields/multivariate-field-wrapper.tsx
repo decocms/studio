@@ -23,6 +23,7 @@ import { formatMatcher } from "../format-matcher";
 import { crumbLabel } from "../schema-form-breadcrumb";
 import {
   buildMatcherBlockData,
+  buildMatcherBlockReference,
   getSavedMatcherBlockKey,
   isSavedMatcherBlockReference,
   readMatcherRuleFormState,
@@ -252,7 +253,18 @@ export function MultivariateFieldWrapper({
   const wrapperRecord = props.value as Record<string, unknown>;
 
   const handleSelectGlobal = (blockKey: string) => {
-    void onVariantMatcherOp?.selectGlobal(wrapperRecord, safeIndex, blockKey);
+    if (onVariantMatcherOp) {
+      void onVariantMatcherOp.selectGlobal(wrapperRecord, safeIndex, blockKey);
+      return;
+    }
+    // Referencing an existing block creates nothing, so no whole-block save.
+    onChange(
+      updateVariantRule(
+        wrapper,
+        safeIndex,
+        buildMatcherBlockReference(blockKey),
+      ),
+    );
   };
 
   const handleRename = async (index: number, nextName: string) => {

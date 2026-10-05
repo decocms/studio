@@ -18,6 +18,10 @@ import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
+  ProjectFolder,
+  SidebarPreferences,
+} from "@decocms/shared/project-sidebar";
+import type {
   OrgFlags,
   SubmoduleCredential,
   UserModelPreferences,
@@ -168,12 +172,29 @@ export interface UserModelPreferencesTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/** An org's sidebar folders, one JSON document — see migration 230. */
+export interface OrgProjectFoldersTable {
+  organization_id: string;
+  folders: JsonObject<ProjectFolder[]>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One member's pins and hides in one org — see migration 230. */
+export interface UserSidebarPreferencesTable {
+  user_id: string;
+  organization_id: string;
+  preferences: JsonObject<SidebarPreferences>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
 export interface OrganizationSettingsTable {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   // Connection ids a coding-agent run must not mount, even with
   // `coding_agent_org_mcps` on. See migration 212.
@@ -191,6 +212,8 @@ export interface OrganizationSettingsTable {
 
 export interface OrganizationSettings {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: SidebarItem[] | null;
   coding_agent_mcp_excluded: string[] | null;
   simple_mode: SimpleModeConfig | null;
@@ -2180,6 +2203,15 @@ export interface OrgJiraColumnAutomationTable {
   /** Continue the pull request the issue already carries instead of opening
    *  a new one (migration 220). */
   continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Which origins the rule answers, and its identity within the status
+   *  (migration 229, `jira/rule-from.ts`). */
+  from_kind: ColumnType<
+    "any" | "earlier" | "later" | "statuses",
+    "any" | "earlier" | "later" | "statuses" | undefined,
+    "any" | "earlier" | "later" | "statuses"
+  >;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
+  from_key: ColumnType<string, string | undefined, string>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -2387,6 +2419,8 @@ export interface Database {
   thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
+  org_project_folders: OrgProjectFoldersTable; // Org-wide sidebar folders
+  user_sidebar_preferences: UserSidebarPreferencesTable; // Per-user pins / hides
   api_keys: ApiKeyTable; // Better Auth API keys
 
   // OAuth tables (for MCP OAuth server)

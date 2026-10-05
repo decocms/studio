@@ -165,11 +165,13 @@ function connectionToFormValues(
 /**
  * Convert form values back to connection entity update
  */
-function formValuesToConnectionUpdate(
+export function formValuesToConnectionUpdate(
   data: ConnectionFormData,
 ): Partial<ConnectionEntity> {
   let connectionType: "HTTP" | "SSE" | "Websocket" | "STDIO";
   let connectionUrl: string | null = null;
+  // null = untouched (omit, keep stored token); "" = explicitly cleared.
+  let connectionTokenTouched = false;
   let connectionToken: string | null = null;
   let connectionParameters:
     | StdioConnectionParameters
@@ -195,6 +197,8 @@ function formValuesToConnectionUpdate(
   } else {
     connectionType = data.ui_type;
     connectionUrl = data.connection_url || "";
+    connectionTokenTouched =
+      data.connection_token !== null && data.connection_token !== undefined;
     connectionToken = data.connection_token || null;
   }
 
@@ -204,7 +208,7 @@ function formValuesToConnectionUpdate(
     icon: data.icon ?? null,
     connection_type: connectionType,
     connection_url: connectionUrl,
-    ...(connectionToken && { connection_token: connectionToken }),
+    ...(connectionTokenTouched && { connection_token: connectionToken }),
     ...(connectionParameters && { connection_headers: connectionParameters }),
     configuration_state: data.configuration_state ?? null,
     configuration_scopes: data.configuration_scopes ?? null,
@@ -620,7 +624,6 @@ function ConnectionInspectorViewWithConnection({
                         metadata: null,
                         tools: null,
                         bindings: null,
-                        status: "inactive",
                       });
                       const mcpProxyUrl = new URL(
                         `/api/${projectOrg.slug}/mcp/${newId}`,

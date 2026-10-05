@@ -120,7 +120,7 @@ export interface AssembleDecopilotToolsExtras {
    *  the chat provider when the org's `deep_research` tier shares the chat
    *  credential. */
   deepResearchProvider: StudioProvider | null;
-  /** Per-turn HTML-artifact fast-path mirror (`org/home/{decks,pages}/
+  /** Per-turn HTML-artifact fast-path mirror (`/app/org/home/{decks,pages}/
    *  *.html`) — flushed into org-fs at step-end by the dispatch layer. */
   htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
@@ -329,7 +329,7 @@ export async function assembleDecopilotTools(
             pinnedRef,
           }),
           userId: input.user.id,
-          // Scopes org/output and thread-owned artifacts. Cannot be derived
+          // Scopes /app/org/output and thread-owned artifacts. Cannot be derived
           // from the sandbox row since one ephemeral sandbox serves many
           // threads.
           threadId: extras.threadId,

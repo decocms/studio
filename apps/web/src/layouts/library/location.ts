@@ -4,7 +4,7 @@
  * The Library projects the org filesystem as one tree rooted at the org's
  * `home` volume: the first segment is the volume, and the synthetic `public`
  * namespace maps `public/<set>/...` → readonly volume `public-<set>`
- * (mirroring the sandbox's `org/public/<set>` mounts).
+ * (mirroring the sandbox's `/app/org/public/<set>` mounts).
  *
  *   "home"                 → the landing view (the org's home folder)
  *   "uploads/docs"         → volume "uploads", dir "docs"
@@ -15,7 +15,10 @@
  * page falls back to `HOME_MOUNT_PATH`.
  */
 
-import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import {
+  HOME_MOUNT_PATH,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
 
 export interface LibraryLocation {
   /** Raw path segments, as browsed (incl. the `public/<set>` prefix). */
@@ -95,8 +98,8 @@ export function basename(path: string): string {
 
 /**
  * Sandbox mount path for a Library browse path — where the agent's file tools
- * (`read`/`edit`/`grep`) actually reach the file: `org/home/…`,
- * `org/public/<set>/…`, etc.
+ * (`read`/`edit`/`grep`) actually reach the file: `/app/org/home/…`,
+ * `/app/org/public/<set>/…`, etc.
  *
  * Client mirror of the server's `orgFsSandboxPath`
  * (`apps/api/src/file-storage/mount/provisioning.ts`); the browse-path →
@@ -107,12 +110,12 @@ export function orgFsMountPath(browsePath: string): string | null {
   const { volume, dirPath } = parseLibraryPath(browsePath);
   if (!volume) return null;
   let base: string;
-  if (volume === "home") base = "org/home";
-  else if (volume === "outputs") base = "org/.outputs";
-  else if (volume === "uploads") base = "org/.uploads";
+  if (volume === "home") base = `${SANDBOX_ORG_ROOT}/${HOME_MOUNT_PATH}`;
+  else if (volume === "outputs") base = `${SANDBOX_ORG_ROOT}/.outputs`;
+  else if (volume === "uploads") base = `${SANDBOX_ORG_ROOT}/.uploads`;
   else {
     const set = publicSetOf(volume);
-    base = set ? `org/public/${set}` : `org/${volume}`;
+    base = `${SANDBOX_ORG_ROOT}/${set ? `public/${set}` : volume}`;
   }
   return dirPath ? `${base}/${dirPath}` : base;
 }

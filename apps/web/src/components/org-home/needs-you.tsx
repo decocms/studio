@@ -185,17 +185,7 @@ export function NeedsYou({
 
   return (
     <div data-testid="home-needs-you">
-      <HomeCard
-        label={t("home.needsYou.heading")}
-        count={tasks.length}
-        action={
-          tasks.length > 0 ? (
-            <span className="text-xs text-muted-foreground">
-              {t("home.needsYou.oldestFirst")}
-            </span>
-          ) : undefined
-        }
-      >
+      <HomeCard label={t("home.needsYou.heading")}>
         {tasks.length === 0 ? (
           <HomeCardRow>
             <p className="flex items-center gap-2 text-sm text-muted-foreground">

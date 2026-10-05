@@ -80,6 +80,12 @@ Keep real credentials and customer identifiers out of source, fixtures, logs,
 PRs, and other shared artifacts. Use synthetic examples. Redact secrets before
 quoting debugging output.
 
+Never name an organization or customer in commit messages, PR titles or
+descriptions, review comments, or issues. That covers org names and slugs,
+site, repository, and branch names, URLs, people, and IDs of their threads,
+projects, or connections. Describe the case generically, such as "a project
+with Fast Preview on, on a PR branch", even while debugging a reported issue.
+
 Strip embedded credentials at the persistence boundary and fail closed if a
 value cannot be parsed safely. Test the written artifact's bytes, not only an
 intermediate object. Treat pushed credentials as exposed: rotate them first;

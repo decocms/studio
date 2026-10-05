@@ -370,7 +370,7 @@ export function ImportFromDecoDialog({
               type="button"
               onClick={onBack}
               className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={t("common.importFromDecoDialog.goBack")}
+              aria-label={t("common.goBack")}
             >
               <ArrowLeft size={18} />
             </button>

@@ -11,7 +11,7 @@ describe("uploadsAsSandboxPaths", () => {
       uploadsAsSandboxPaths(
         "![image.png](/api/daniela-tombini/fs/uploads/read?path=editor-images%2Fc0aa15c2.png)",
       ),
-    ).toBe("![image.png](org/.uploads/editor-images/c0aa15c2.png)");
+    ).toBe("![image.png](/app/org/.uploads/editor-images/c0aa15c2.png)");
   });
 
   it("rewrites every upload in the description, not just the first", () => {
@@ -20,18 +20,18 @@ describe("uploadsAsSandboxPaths", () => {
         "[spec.pdf](/api/o/fs/uploads/read?path=editor-files%2Fspec.pdf)",
     );
     expect(out).toBe(
-      "![a](org/.uploads/editor-images/a.png)\n\n" +
-        "[spec.pdf](org/.uploads/editor-files/spec.pdf)",
+      "![a](/app/org/.uploads/editor-images/a.png)\n\n" +
+        "[spec.pdf](/app/org/.uploads/editor-files/spec.pdf)",
     );
   });
 
   it("maps each volume to its own mount point", () => {
     expect(uploadsAsSandboxPaths("(/api/o/fs/home/read?path=notes.md)")).toBe(
-      "(org/home/notes.md)",
+      "(/app/org/home/notes.md)",
     );
     expect(
       uploadsAsSandboxPaths("(/api/o/fs/outputs/read?path=t1/x.png)"),
-    ).toBe("(org/.outputs/t1/x.png)");
+    ).toBe("(/app/org/.outputs/t1/x.png)");
   });
 
   it("leaves a path that could climb out of the mount alone", () => {

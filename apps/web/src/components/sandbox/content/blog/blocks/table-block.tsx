@@ -1,14 +1,16 @@
+import { useState } from "react";
 import { Plus, Trash01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { InlineRichCell } from "./inline-rich-cell";
+import { useLinkSources } from "./link-pickers";
 import { AddButton, parseJsonArray, str } from "./primitives";
 
 /**
  * Inline editor for the blog Table block (`blog/sections/blocks/Table.tsx`).
  * The section stores `headers` as a JSON-encoded `string[]` and `rows` as a
  * JSON-encoded `string[][]` (body rows × cells), each tolerant of already
- * being an array. Cells accept inline HTML (the section sanitizes them), but
- * the editor keeps plain text inputs — authors type text and the grid stays
- * legible.
+ * being an array. Cells hold inline HTML, edited as inline rich text.
  *
  * A fresh block (no stored headers/rows) starts from a 2×2 template — two
  * headers and two rows — so authors see a usable grid immediately. Once data
@@ -36,16 +38,30 @@ function emptyRow(cols: number): string[] {
   return Array.from({ length: cols }, () => "");
 }
 
+/** Widest row (or the header row), reduced rather than spread so a huge `body` can't overflow the call stack. */
+export function colCountOf(head: string[], body: string[][]): number {
+  return body.reduce((max, row) => Math.max(max, row.length), head.length) || 1;
+}
+
 export function TableBlock({
   headers,
   rows,
   onChange,
+  decofile,
+  sandboxRef,
 }: {
   headers: string;
   rows: string;
   onChange: (next: { headers: string; rows: string }) => void;
+  /** The site's blocks — enables linking to another post. */
+  decofile?: Record<string, unknown>;
+  /** A running preview — enables linking to a catalog product. */
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
+  const linkSources = useLinkSources({ decofile, sandboxRef });
+  // Shared mount point for the cell marks menus — see `InlineMarksToolbar`.
+  const [menuHost, setMenuHost] = useState<HTMLDivElement | null>(null);
   const head = parseHeaders(headers);
   const body = parseRows(rows);
 
@@ -53,9 +69,7 @@ export function TableBlock({
   // template. Any stored data (even a single blank cell) opts out of it, so
   // the grid can shrink to one column / one row.
   const isEmpty = head.length === 0 && body.length === 0;
-  const colCount = isEmpty
-    ? TEMPLATE_COLS
-    : Math.max(head.length, ...body.map((row) => row.length), 1);
+  const colCount = isEmpty ? TEMPLATE_COLS : colCountOf(head, body);
 
   // Pad the parsed data out to a rectangular grid so every render has a
   // consistent column count regardless of ragged stored rows.
@@ -65,6 +79,9 @@ export function TableBlock({
     : body.map((row) =>
         Array.from({ length: colCount }, (_, c) => row[c] ?? ""),
       );
+
+  // Remount key: an uncontrolled cell editor would survive with stale content.
+  const shapeKey = `${displayBody.length}x${colCount}`;
 
   const commit = (nextHead: string[], nextBody: string[][]) =>
     onChange({
@@ -111,23 +128,25 @@ export function TableBlock({
     );
 
   return (
-    <div className="space-y-2">
+    <div className="relative space-y-2">
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-muted/40">
               {displayHead.map((cell, c) => (
                 <th
-                  key={c}
-                  className="group/col relative border-b border-r p-0 last:border-r-0"
+                  key={`${shapeKey}-h-${c}`}
+                  className="group/col relative border-b border-r p-0 last:border-r-0 text-left align-top"
                 >
-                  <input
+                  <InlineRichCell
                     value={cell}
-                    onChange={(e) => setHeader(c, e.target.value)}
+                    onChange={(v) => setHeader(c, v)}
                     placeholder={t("sandbox.tableBlock.headerPlaceholder", {
                       n: c + 1,
                     })}
-                    className="w-full border-0 bg-transparent py-2 pl-7 pr-3 text-xs font-semibold uppercase tracking-wide outline-none placeholder:text-muted-foreground/40 focus:bg-background focus:ring-0"
+                    className="py-2 pl-7 pr-3 text-xs font-semibold uppercase tracking-wide [&_p]:my-0 focus:bg-background"
+                    menuHost={menuHost}
+                    sources={linkSources}
                   />
                   {colCount > 1 && (
                     <button
@@ -148,14 +167,22 @@ export function TableBlock({
           </thead>
           <tbody>
             {displayBody.map((row, r) => (
-              <tr key={r} className="group/item border-b last:border-b-0">
+              <tr
+                key={`${shapeKey}-${r}`}
+                className="group/item border-b last:border-b-0"
+              >
                 {row.map((cell, c) => (
-                  <td key={c} className="border-r p-0 last:border-r-0">
-                    <input
+                  <td
+                    key={`${shapeKey}-${r}-${c}`}
+                    className="border-r p-0 last:border-r-0 align-top"
+                  >
+                    <InlineRichCell
                       value={cell}
-                      onChange={(e) => setCell(r, c, e.target.value)}
+                      onChange={(v) => setCell(r, c, v)}
                       placeholder="—"
-                      className="w-full border-0 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground/30 focus:bg-muted/30 focus:ring-0"
+                      className="px-3 py-2 text-sm [&_p]:my-0 focus:bg-muted/30"
+                      menuHost={menuHost}
+                      sources={linkSources}
                     />
                   </td>
                 ))}
@@ -199,6 +226,7 @@ export function TableBlock({
           {t("sandbox.tableBlock.addColumn")}
         </button>
       </div>
+      <div ref={setMenuHost} className="absolute z-20" />
     </div>
   );
 }

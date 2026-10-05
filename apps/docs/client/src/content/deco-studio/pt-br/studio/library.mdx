@@ -38,7 +38,7 @@ Você pode arrastar e soltar arquivos diretamente em qualquer pasta editável pa
 
 A Library tem suporte nativo para **org brands** — uma pasta de identidade estruturada que seus agents e a skill de slides usam para produzir outputs on-brand.
 
-Uma brand fica em `org/home/brands/<nome>/` e contém quatro arquivos:
+Uma brand fica em `/app/org/home/brands/<nome>/` e contém quatro arquivos:
 
 | Arquivo | Propósito |
 |---|---|
@@ -84,14 +84,14 @@ Um badge no card reflete o modo de compartilhamento atual. Para nós protegidos 
 
 ## Como ela mapeia para o sandbox
 
-A Library e o sandbox do agent são duas visões do mesmo filesystem. A Library nomeia sua pasta home com o nome da sua org e aninha as pastas de sistema dentro dela, mas os caminhos que os agents usam nunca mudam — eles são montados em `org/`:
+A Library e o sandbox do agent são duas visões do mesmo filesystem. A Library nomeia sua pasta home com o nome da sua org e aninha as pastas de sistema dentro dela, mas os caminhos que os agents usam nunca mudam — eles são montados em `/app/org/`:
 
 | Pasta na Library | Caminho no sandbox |
 |---|---|
-| `<sua-org>` (home) | `org/home/` |
-| `<sua-org>/uploads` | `org/upload` |
-| `<sua-org>/outputs` | `org/output` |
-| `<sua-org>/skills/<set>` | `org/public/<set>` |
+| `<sua-org>` (home) | `/app/org/home/` |
+| `<sua-org>/uploads` | `/app/org/upload` |
+| `<sua-org>/outputs` | `/app/org/output` |
+| `<sua-org>/skills/<set>` | `/app/org/public/<set>` |
 
 Arquivos escritos na sua pasta home e em outputs sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents. Mudanças externas aparecem dentro de um sandbox em execução em cerca de um segundo.
 

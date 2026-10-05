@@ -19,6 +19,7 @@ import {
   ORG_FS_CONFIG_LIFETIME_MS,
   planCredentialPush,
 } from "@/sandbox/credential-push";
+import { parseLegacyTenantPools } from "@/sandbox/legacy-tenant-pools";
 import {
   getOrInitSharedRunner,
   readControlPlaneSandboxConfig,
@@ -50,10 +51,16 @@ async function pushSandboxCredentialsOnce(): Promise<PushOutcome | null> {
 
 async function pushSandboxCredentials(): Promise<PushOutcome | null> {
   if (!readControlPlaneSandboxConfig()) return null;
-  const runner = await getOrInitSharedRunner();
-  const { RemoteSandboxProvider } = await import(
-    "@decocms/sandbox/provider/remote"
-  );
+  const [{ RemoteSandboxProvider }, { SandboxProviderRouter }] =
+    await Promise.all([
+      import("@decocms/sandbox/provider/remote"),
+      import("@decocms/sandbox/provider/router"),
+    ]);
+  const shared = await getOrInitSharedRunner();
+  const runner =
+    shared instanceof SandboxProviderRouter
+      ? shared.providers.kubernetes
+      : shared;
   if (!(runner instanceof RemoteSandboxProvider)) return null;
 
   const { db } = getDb();
@@ -63,6 +70,9 @@ async function pushSandboxCredentials(): Promise<PushOutcome | null> {
     sandboxes,
     pools,
     records: await credentialRecords(db, sandboxes, pools),
+    legacyPools: parseLegacyTenantPools(
+      process.env.STUDIO_SANDBOX_TENANT_POOLS,
+    ),
     now,
   });
   const { batches, failed } = await mintCredentialPush(
@@ -75,17 +85,26 @@ async function pushSandboxCredentials(): Promise<PushOutcome | null> {
   );
   let pushed = 0;
   let kept = 0;
+  let pushFailures = 0;
   for (const batch of batches) {
-    const result = await runner.pushCredentials(batch);
-    pushed += result.stored;
-    kept += result.kept;
+    try {
+      const result = await runner.pushCredentials(batch);
+      pushed += result.stored;
+      kept += result.kept;
+    } catch (err) {
+      // One batch's failure must not cost the others their already-minted credentials.
+      pushFailures++;
+      console.warn(
+        `[sandbox-credential-push] a push batch failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
   return {
     sandboxes: sandboxes.length,
     pushed,
     kept,
     refused: plan.refused,
-    failed,
+    failed: failed + pushFailures,
   };
 }
 

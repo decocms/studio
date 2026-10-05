@@ -117,6 +117,20 @@ describe("resolveOrgFromPath", () => {
     expect(res.status).toBe(404);
   });
 
+  it("resolves a renamed org by its previous slug", async () => {
+    const { sql } = await import("kysely");
+    await sql`
+      UPDATE "organization" SET slug = 'acme-new', metadata = '{"previousSlugs":["acme"]}'
+      WHERE id = 'org-1'
+    `.execute(db.db);
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { orgId: string; orgSlug: string };
+    expect(body.orgId).toBe("org-1");
+    expect(body.orgSlug).toBe("acme-new");
+  });
+
   it("returns 403 when user is not a member", async () => {
     await db.db
       .insertInto("organization")

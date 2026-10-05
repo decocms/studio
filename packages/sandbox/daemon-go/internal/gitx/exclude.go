@@ -94,9 +94,9 @@ func ignoreTracked(repoDir, pathspec string) {
 
 // ReapplyExcludes re-registers every line EnsureExclude was asked for on this
 // repoDir. Call it whenever a `.git` appears: a repo-less pod writes its
-// daemon-managed paths (the org-fs links, the tools catalog) BEFORE any clone,
-// where EnsureExclude has nowhere to write — and `git init` in that non-empty
-// dir then hands the shutdown `git add -A` a clean slate that commits them.
+// daemon-managed paths (the tools catalog) BEFORE any clone, where
+// EnsureExclude has nowhere to write — and `git init` in that non-empty dir
+// then hands the shutdown `git add -A` a clean slate that commits them.
 func ReapplyExcludes(repoDir string) {
 	requestedMu.Lock()
 	lines := append([]string(nil), requested[repoDir]...)

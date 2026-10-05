@@ -120,7 +120,7 @@ describe("optimisticEntry", () => {
       source: "home",
       volume: "home",
       path: "skills/seo-audit",
-      sandboxPath: "org/home/skills/seo-audit",
+      sandboxPath: "/app/org/home/skills/seo-audit",
     });
   });
 

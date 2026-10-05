@@ -3,7 +3,6 @@ import {
   type StudioContext,
   getOrganizationId,
   getUserId,
-  hasOrganization,
   isAuthenticated,
   requireAuth,
   requireOrganization,
@@ -35,6 +34,7 @@ const createMockContext = (
     threads: null as never,
     asyncResearchJobs: null as never,
     tags: null as never,
+    projectSidebar: null as never,
     experiments: null as never,
     aiProviderKeys: null as never,
     secrets: null as never,
@@ -73,7 +73,6 @@ const createMockContext = (
       list: async () => ({ data: [], error: null }),
       addMember: async () => ({ data: null, error: null }),
       removeMember: async () => {},
-      listMembers: async () => ({ data: [], error: null }),
       updateMemberRole: async () => ({ data: null, error: null }),
     },
   } as never,
@@ -96,20 +95,6 @@ const createMockContext = (
 });
 
 describe("StudioContext Utilities", () => {
-  describe("hasOrganization", () => {
-    it("should return true when organization is defined", () => {
-      const ctx = createMockContext({
-        organization: { id: "org_1", slug: "test-org", name: "Test Org" },
-      });
-      expect(hasOrganization(ctx)).toBe(true);
-    });
-
-    it("should return false when organization is undefined", () => {
-      const ctx = createMockContext();
-      expect(hasOrganization(ctx)).toBe(false);
-    });
-  });
-
   describe("getOrganizationId", () => {
     it("should return organization ID when defined", () => {
       const ctx = createMockContext({

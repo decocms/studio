@@ -276,6 +276,20 @@ export class TaskBoardStorage {
     return items;
   }
 
+  /** The reports cards the org dismissed. Off the board, and still what a new
+   *  finding must not come back as (the import's duplicate check). */
+  async listDismissed(organizationId: string): Promise<TaskBoardItem[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is not", null)
+      .where("source", "is", null)
+      .orderBy("dismissed_at", "desc")
+      .execute();
+    return rows.map((row) => this.itemFromDbRow(row));
+  }
+
   /**
    * Title search for the command palette, ordered most-recent-first.
    *
@@ -455,7 +469,19 @@ export class TaskBoardStorage {
         ...(data.previewRoutes !== undefined
           ? { preview_routes: JSON.stringify(data.previewRoutes) }
           : {}),
-        ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
+        // A lane change without an explicit slot lands on top, like a create.
+        ...(data.sortOrder !== undefined
+          ? { sort_order: data.sortOrder }
+          : data.status !== undefined
+            ? {
+                sort_order: sql<number>`case when status = ${data.status} then sort_order else (
+                  select coalesce(min(lane.sort_order), 0) - 1
+                  from task_board_items lane
+                  where lane.organization_id = ${organizationId}
+                  and lane.status = ${data.status}
+                ) end`,
+              }
+            : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
         // Done here rather than at the call sites so it covers every one of
         // them — the ship paths, a human dragging a card back to To Do, the
@@ -559,6 +585,40 @@ export class TaskBoardStorage {
       .where("dismissed_at", "is not", null)
       .execute();
     return new Set(rows.flatMap((r) => r.external_key ?? []));
+  }
+
+  /** The keys among `externalKeys` a card already holds, open or dismissed. */
+  async heldFindingKeys(
+    organizationId: string,
+    externalKeys: string[],
+  ): Promise<Set<string>> {
+    if (externalKeys.length === 0) return new Set();
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select(["external_key"])
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "in", externalKeys)
+      .where((eb) =>
+        eb.or([eb("dismissed_at", "is not", null), eb("status", "!=", "done")]),
+      )
+      .execute();
+    return new Set(rows.flatMap((r) => r.external_key ?? []));
+  }
+
+  /** Give a card without a key the finding key it turned out to track. A card
+   *  that already has a key keeps it. */
+  async adoptExternalKey(
+    id: string,
+    organizationId: string,
+    externalKey: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ external_key: externalKey })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "is", null)
+      .execute();
   }
 
   async listDismissedFindings(

@@ -11,6 +11,7 @@ import {
   type CategoryRef,
   emptyDraftPostPayload,
   filledBrandRules,
+  listAuthorRefs,
   listBlogPayloads,
   listPostsWithMeta,
   mentionableSections,
@@ -132,12 +133,7 @@ export function useGeneratePost({
           .filter((category) => category.slug);
     const authors: AuthorRef[] = briefing.author
       ? [briefing.author]
-      : listBlogPayloads(decofile, "authors")
-          .map(({ payload }) => ({
-            name: str(payload.name),
-            email: str(payload.email),
-          }))
-          .filter((author) => author.email);
+      : listAuthorRefs(decofile);
 
     try {
       const draft = await studio.call("BLOG_POST_DRAFT", {
@@ -163,7 +159,8 @@ export function useGeneratePost({
             purpose: section.description,
           })),
         categories,
-        authors,
+        // The draft tool only attributes the post — identity is enough.
+        authors: authors.map(({ name, email }) => ({ name, email })),
         extraInstructions: briefing.extraInstructions?.trim() || undefined,
       });
 

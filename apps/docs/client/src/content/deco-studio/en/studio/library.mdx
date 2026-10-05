@@ -38,7 +38,7 @@ You can drag and drop files directly into any editable folder to upload them.
 
 The Library has first-class support for **org brands** — a structured identity folder your agents and the slides skill use to produce on-brand output.
 
-A brand lives at `org/home/brands/<name>/` and contains four files:
+A brand lives at `/app/org/home/brands/<name>/` and contains four files:
 
 | File | Purpose |
 |---|---|
@@ -84,14 +84,14 @@ A badge on the card reflects the current share mode. For password-protected node
 
 ## How it maps to the sandbox
 
-The Library and the agent sandbox are two views of the same filesystem. The Library names your home folder after your org and nests the system folders inside it, but the paths agents use never change — they're mounted under `org/`:
+The Library and the agent sandbox are two views of the same filesystem. The Library names your home folder after your org and nests the system folders inside it, but the paths agents use never change — they're mounted under `/app/org/`:
 
 | Library folder | Sandbox path |
 |---|---|
-| `<your-org>` (home) | `org/home/` |
-| `<your-org>/uploads` | `org/upload` |
-| `<your-org>/outputs` | `org/output` |
-| `<your-org>/skills/<set>` | `org/public/<set>` |
+| `<your-org>` (home) | `/app/org/home/` |
+| `<your-org>/uploads` | `/app/org/upload` |
+| `<your-org>/outputs` | `/app/org/output` |
+| `<your-org>/skills/<set>` | `/app/org/public/<set>` |
 
 Files written to your home folder and to outputs sync to your organization's cloud storage and are visible to every member and agent. External changes appear inside a running sandbox within about a second.
 

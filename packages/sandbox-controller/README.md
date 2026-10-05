@@ -38,6 +38,9 @@ which are private, and bundles it into one module with declarations.
   `tenantPoolRepoSchema`), `normalizeRepoUrl`, and
   `renderTenantPoolWarmPools`, which builds a pool's `SandboxWarmPool`
   objects for the host to apply.
+- Export `FreestyleSandboxProvider` (sandboxes as Freestyle VMs) and
+  `SandboxProviderRouter`, which serves Kubernetes and Freestyle behind one
+  provider; see [`packages/sandbox`](../sandbox/README.md).
 - Export the wire contract in `sandbox-api`: tool names and schemas, and the
   watch route.
 - Export host helpers: `sandboxTools` (framework-free tool definitions),

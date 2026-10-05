@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   composeSandboxRef,
+  type SandboxProviderKind,
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
@@ -61,6 +62,7 @@ import {
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { timeProvision } from "../../sandbox/provision-metrics";
 import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
@@ -124,6 +126,12 @@ export const SANDBOX_START = defineTool({
       .optional()
       .describe(
         "The session asking for a sandbox. A thread stamped `cms` is refused — that session reads and writes over the decofile API and a pod would be invisible to it. Optional: an unstamped (legacy) thread is always allowed, and so is a caller with no thread.",
+      ),
+    provider: z
+      .enum(["kubernetes", "freestyle"])
+      .optional()
+      .describe(
+        "Where to run a NEW sandbox, when that provider is configured and can run it; otherwise the other one is used. An existing sandbox stays where it is. Omitted: Kubernetes while it has room, else Freestyle.",
       ),
   }),
   outputSchema: z.object({
@@ -208,6 +216,7 @@ export const SANDBOX_START = defineTool({
       threadRepos: await getThreadAdditionalRepositories(ctx, askingThreadId),
       existing,
       runner,
+      ...(input.provider ? { provider: input.provider } : {}),
     });
     // A pod means a coding session. This is the web's path — `ensureSandbox`'s
     // own drain never runs here — so record it where the id is known.
@@ -363,6 +372,8 @@ type StartParams = {
   runner: SandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
+  /** See SANDBOX_START's `provider`. */
+  provider?: SandboxProviderKind;
 };
 
 /**
@@ -482,6 +493,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     existing,
     runner,
     purpose,
+    provider,
   } = params;
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
@@ -712,8 +724,8 @@ async function provisionSandbox(params: StartParams): Promise<{
   // DISABLE_ORGFS_MOUNTS is a debug escape hatch (opt-out, default off): it
   // skips provisioning the mount so a sandbox boots without org-fs, for
   // low-level mount debugging. NOT a supported "org-fs-off" product mode —
-  // the prompt/tools still assume org-fs, so the agent's `org/` paths just
-  // won't exist while it's set.
+  // the prompt/tools still assume org-fs, so the agent's `/app/org/` paths
+  // just won't exist while it's set.
   const wantsOrgFs = !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
@@ -746,36 +758,49 @@ async function provisionSandbox(params: StartParams): Promise<{
   // timeout this call already tolerates, so it adds no new liveness risk; past
   // the bound the error is phrased for the task-board retry to recognize as
   // infrastructure.
-  await waitForSchedulableCapacity(runner);
-
-  const sandbox = await ensureOrRephrase(
-    runner,
-    { userId: sandboxUserId, projectRef },
+  // Timed with the ensure: the wait is part of what a Kubernetes sandbox costs.
+  const sandbox = await timeProvision(
     {
-      // Annotation only — the handle comes from `projectRef`, which already
-      // carries this branch, so runner and proxy agree without being told.
-      branch,
-      repo: repoOpts,
-      extraRepos,
-      workload,
-      // Explicit, not implied by the absent `workload`: the daemon autodetects a
-      // package manager from the lockfile when the config names none, so an
-      // omitted workload still installed (404 packages, competing with the run
-      // that only wanted the checkout).
-      cloneOnly,
-      ...(purpose ? { purpose } : {}),
-      ...(sandboxImage !== "default" ? { sandboxImage } : {}),
-      tenant: {
-        orgId,
-        // The sandbox's owner, so the pod's `user_id` label/metric matches the
-        // claim handle it answers on.
-        userId: sandboxUserId,
-        ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
-        ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
-        ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
-        ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
-      },
-      ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+      start: existing ? "resume" : "fresh",
+      purpose: purpose ?? "interactive",
+    },
+    async () => {
+      await waitForSchedulableCapacity(runner);
+      return ensureOrRephrase(
+        runner,
+        { userId: sandboxUserId, projectRef },
+        {
+          // Annotation only — the handle comes from `projectRef`, which already
+          // carries this branch, so runner and proxy agree without being told.
+          branch,
+          repo: repoOpts,
+          extraRepos,
+          workload,
+          // Explicit, not implied by the absent `workload`: the daemon autodetects a
+          // package manager from the lockfile when the config names none, so an
+          // omitted workload still installed (404 packages, competing with the run
+          // that only wanted the checkout).
+          cloneOnly,
+          ...(purpose ? { purpose } : {}),
+          ...(provider ? { provider } : {}),
+          ...(sandboxImage !== "default" ? { sandboxImage } : {}),
+          tenant: {
+            orgId,
+            // The sandbox's owner, so the pod's `user_id` label/metric matches the
+            // claim handle it answers on.
+            userId: sandboxUserId,
+            ...(ctx.organization?.slug
+              ? { orgSlug: ctx.organization.slug }
+              : {}),
+            ...(ctx.organization?.name
+              ? { orgName: ctx.organization.name }
+              : {}),
+            ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
+            ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
+          },
+          ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+        },
+      );
     },
   );
 

@@ -48,9 +48,6 @@ export type AddMemberResult = Awaited<ReturnType<BetterAuthApi["addMember"]>>;
 export type RemoveMemberResult = Awaited<
   ReturnType<BetterAuthApi["removeMember"]>
 >;
-export type ListMembersResult = Awaited<
-  ReturnType<BetterAuthApi["listMembers"]>
->;
 export type UpdateMemberRoleResult = Awaited<
   ReturnType<BetterAuthApi["updateMemberRole"]>
 >;
@@ -138,14 +135,6 @@ export interface BoundAuthClient {
       memberIdOrEmail: string;
       organizationId?: string;
     }): Promise<RemoveMemberResult>;
-
-    listMembers(options?: {
-      organizationId?: string;
-      limit?: number;
-      offset?: number;
-      filterField?: string;
-      filterValue?: string;
-    }): Promise<ListMembersResult>;
 
     updateMemberRole(data: {
       memberId: string;
@@ -298,6 +287,7 @@ import type { MonitoringStorage } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
+import type { ProjectSidebarStorage } from "../storage/project-sidebar";
 import type { ExperimentStorage } from "../storage/experiments";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
@@ -363,6 +353,7 @@ export interface StudioStorage {
   threads: OrgScopedThreadStorage;
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
+  projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
   subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
@@ -494,13 +485,6 @@ export interface StudioContext {
 // ============================================================================
 // Utility Functions
 // ============================================================================
-
-/**
- * Check if context has organization scope
- */
-export function hasOrganization(ctx: StudioContext): boolean {
-  return ctx.organization !== undefined;
-}
 
 /**
  * Get organization ID or null

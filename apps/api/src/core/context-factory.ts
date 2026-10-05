@@ -49,11 +49,16 @@ import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
+import { ProjectSidebarStorage } from "../storage/project-sidebar";
 import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import {
+  getFullOrganizationForUser,
+  listOrganizationsForUser,
+} from "./sessionless-organization";
 import { buildWildcardPermission } from "./permission-wildcard";
 import {
   isOrgArchived,
@@ -72,6 +77,10 @@ import type {
 
 import type { MemberRoleCache } from "../auth/member-role-cache";
 import { readStudioHeader } from "./studio-headers";
+import {
+  evictExpiredTtlCacheEntries,
+  refreshTtlCacheEntry,
+} from "./ttl-lru-cache";
 
 // ============================================================================
 // Helper Functions
@@ -210,6 +219,9 @@ type HasPermissionAPI = (params: {
   body: { permission: Permission; organizationId?: string };
 }) => Promise<{ success?: boolean; error?: unknown } | null>;
 
+/** Which credential authenticated the request, set by `authenticateRequest`. */
+type AuthMethod = "session" | "apiKey" | "mcpOAuth" | "studioJwt";
+
 /**
  * Auth context needed to create a bound auth client
  *
@@ -220,6 +232,8 @@ type HasPermissionAPI = (params: {
 export interface AuthContext {
   headers: Headers;
   auth: BetterAuthInstance;
+  /** Omitted when the caller didn't come through `authenticateRequest`. */
+  authMethod?: AuthMethod;
   role?: string; // User's role (for built-in role bypass)
   permissions?: Permission; // Permissions from API key or custom role (MCP OAuth)
   userId?: string; // User ID for server-side API key operations
@@ -246,6 +260,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
     userId,
     apiKeyId,
     organizationId: authOrganizationId,
+    authMethod,
   } = ctx;
 
   // An API key is authorized SOLELY by its own stored allowlist — the owner's
@@ -254,6 +269,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // explicit wildcard. Only genuine API keys (apiKeyId present) are gated this
   // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
+
+  // Better Auth holds no session for these credentials, so its session-gated
+  // organization endpoints reject them; read through its adapter instead.
+  const readsOrgsViaAdapter =
+    authMethod === "mcpOAuth" || authMethod === "studioJwt";
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
   const hasPermissionApi = (auth.api as { hasPermission?: HasPermissionAPI })
@@ -403,6 +423,12 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       get: async (organizationId) => {
+        if (readsOrgsViaAdapter) {
+          const id = organizationId ?? authOrganizationId;
+          return id && userId
+            ? getFullOrganizationForUser(auth, userId, id)
+            : null;
+        }
         return auth.api.getFullOrganization({
           headers,
           query: organizationId ? { organizationId } : undefined,
@@ -414,7 +440,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         // API/UI surface, so filter them here — no caller of this method ever
         // sees them. A future restore flow would read archived orgs from
         // storage directly, not via this method.
-        const orgs = await auth.api.listOrganizations({ headers });
+        const orgs = readsOrgsViaAdapter
+          ? userId
+            ? await listOrganizationsForUser(auth, userId)
+            : []
+          : await auth.api.listOrganizations({ headers });
         return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
@@ -432,21 +462,6 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         return auth.api.removeMember({
           headers,
           body: data,
-        });
-      },
-
-      listMembers: async (options) => {
-        return auth.api.listMembers({
-          headers,
-          query: options
-            ? {
-                organizationId: options.organizationId,
-                limit: options.limit,
-                offset: options.offset,
-                filterField: options.filterField,
-                filterValue: options.filterValue,
-              }
-            : undefined,
         });
       },
 
@@ -599,45 +614,26 @@ export async function fetchRolePermissions(
 const ARCHIVED_CACHE_TTL_MS = 60_000;
 // Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
 const ARCHIVED_CACHE_MAX_SIZE = 10_000;
-const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+type OrgArchivedCacheEntry = { value: boolean; at: number };
+const orgArchivedCache = new Map<string, OrgArchivedCacheEntry>();
 
 /** Write (or refresh) a cache entry, moving it to the most-recently-set
- *  position. `Map.set` on an existing key updates the value in place but
- *  keeps its original iteration position, so a hot org that's refreshed on
- *  every lookup would otherwise sit at the "oldest" end forever and be the
- *  first thing `evictExpiredOrgArchivedEntries` trims once the cache is
- *  full — evicting the entry the cache most needs to keep. Exported for
- *  unit testing. */
+ *  position — see ttl-lru-cache.ts. Exported for unit testing. */
 export function refreshOrgArchivedCacheEntry(
-  cache: Map<string, { archived: boolean; at: number }>,
+  cache: Map<string, OrgArchivedCacheEntry>,
   organizationId: string,
   archived: boolean,
 ): void {
-  cache.delete(organizationId);
-  cache.set(organizationId, { archived, at: Date.now() });
+  refreshTtlCacheEntry(cache, organizationId, archived);
 }
 
 /** Exported for unit testing. */
 export function evictExpiredOrgArchivedEntries(
-  cache: Map<string, { archived: boolean; at: number }>,
+  cache: Map<string, OrgArchivedCacheEntry>,
   maxSize: number,
   ttlMs: number,
 ): void {
-  if (cache.size <= maxSize) return;
-  const now = Date.now();
-  for (const [key, entry] of cache) {
-    if (now - entry.at >= ttlMs) cache.delete(key);
-  }
-  // Trims oldest first (Map iteration order = insertion order).
-  if (cache.size > maxSize) {
-    const excess = cache.size - maxSize;
-    let removed = 0;
-    for (const key of cache.keys()) {
-      if (removed >= excess) break;
-      cache.delete(key);
-      removed++;
-    }
-  }
+  evictExpiredTtlCacheEntries(cache, maxSize, ttlMs);
 }
 
 async function isOrgArchivedCached(
@@ -647,7 +643,7 @@ async function isOrgArchivedCached(
   spanName: string,
 ): Promise<boolean> {
   const hit = orgArchivedCache.get(organizationId);
-  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.archived;
+  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.value;
   const orgRow = await timings.measure(spanName, () =>
     db
       .selectFrom("organization")
@@ -776,6 +772,7 @@ async function authenticateRequest(
   timings: FactoryOptions["timings"] = DEFAULT_TIMINGS,
   memberRoleCache?: MemberRoleCache,
 ): Promise<{
+  method?: AuthMethod;
   user?: AuthenticatedUser;
   role?: string;
   permissions?: Permission; // Permissions from API key or custom role (for non-browser sessions)
@@ -892,6 +889,7 @@ async function authenticateRequest(
       }
 
       return {
+        method: "mcpOAuth",
         user: { id: userId, role },
         role,
         permissions,
@@ -970,6 +968,7 @@ async function authenticateRequest(
         }
 
         return {
+          method: "studioJwt",
           user: {
             id: studioTokenPayload.sub,
             connectionId: studioTokenPayload.metadata?.connectionId,
@@ -1049,6 +1048,7 @@ async function authenticateRequest(
         );
 
         return {
+          method: "apiKey",
           apiKeyId: result.key.id,
           // On-behalf-of fully replaces the principal (id + role) so user/role
           // stay consistent; the actor never inherits the key owner's role.
@@ -1243,6 +1243,7 @@ async function authenticateRequest(
       }
 
       return {
+        method: "session",
         user: {
           id: session.user.id,
           email: session.user.email,
@@ -1459,6 +1460,7 @@ export async function createStudioContextFactory(
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
+    projectSidebar: new ProjectSidebarStorage(config.db),
     experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
@@ -1551,6 +1553,7 @@ export async function createStudioContextFactory(
     // Create bound auth client (encapsulates HTTP headers and auth context)
     const boundAuth = createBoundAuthClient({
       auth: config.auth,
+      authMethod: authResult.method,
       headers: req?.headers ?? new Headers(),
       role: authResult.role,
       permissions: authResult.permissions,

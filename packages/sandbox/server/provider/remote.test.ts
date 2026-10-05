@@ -12,6 +12,10 @@ import {
   sandboxWatchResponse,
 } from "./sandbox-server";
 import { computeHandle } from "./shared";
+import {
+  sandboxProviderOfError,
+  tagSandboxProvider,
+} from "./shared/provider-tag";
 
 // The client against the host helpers it is paired with, over real MCP and
 // SSE, registered the way @decocms/runtime registers tools (by `.shape`).
@@ -28,6 +32,8 @@ const store = new PushedCredentials();
 const TENANT = { orgId: "o1", userId: "u1" };
 const REPO = { connectionId: "c1", repo: "acme/site" };
 const CLONE = "https://x-access-token:ghs_1@github.com/acme/site.git";
+/** MCP requests the host turns away with 503, as a leaderless follower does. */
+let mcpUnavailable = 0;
 /** Replaces the watch route when set. */
 let watchRoute: ((req: Request) => Response) | null = null;
 const phases: ClaimPhase[] = [
@@ -47,6 +53,7 @@ const fake = {
       workdir: "/app",
       previewUrl: null,
       warmPoolAdopted: true,
+      provider: "kubernetes",
     };
   },
   daemonEndpoint: async () => ({ url: "http://127.0.0.1:1", token: "d-tok" }),
@@ -140,6 +147,13 @@ beforeAll(() => {
           req.signal,
         );
       }
+      if (mcpUnavailable > 0) {
+        mcpUnavailable--;
+        return Response.json(
+          { error: "no sandbox leader; retry shortly" },
+          { status: 503 },
+        );
+      }
       return serveMcp(req);
     },
   });
@@ -193,6 +207,7 @@ describe("RemoteSandboxProvider against the host tools", () => {
       workdir: "/app",
       previewUrl: null,
       warmPoolAdopted: true,
+      provider: "kubernetes",
     });
     expect(await provider.resolvePreviewUpstreamUrl(HANDLE)).toBe(
       "http://127.0.0.1:1",
@@ -204,6 +219,13 @@ describe("RemoteSandboxProvider against the host tools", () => {
     const err = await provider.ensure(ID).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConfigRequestError);
     expect((err as ConfigRequestError).status).toBe(409);
+    ensureFails = null;
+  });
+
+  it("carries the host's provider on a failed ensure", async () => {
+    ensureFails = tagSandboxProvider(new Error("vm boot failed"), "freestyle");
+    const err = await provider.ensure(ID).catch((e: unknown) => e);
+    expect(sandboxProviderOfError(err)).toBe("freestyle");
     ensureFails = null;
   });
 
@@ -223,6 +245,14 @@ describe("RemoteSandboxProvider against the host tools", () => {
     await provider.renewTtl(HANDLE);
     await provider.releaseAfter(HANDLE, 1500.4);
     expect(calls).toEqual(["renew", "release:1500"]);
+  });
+
+  it("retries a call the host turned away with 503", async () => {
+    calls.length = 0;
+    mcpUnavailable = 2;
+    await provider.renewTtl(HANDLE);
+    expect(mcpUnavailable).toBe(0);
+    expect(calls).toEqual(["renew"]);
   });
 
   it("maps capacity and tenant pools", async () => {

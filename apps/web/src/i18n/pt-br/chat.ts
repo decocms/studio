@@ -7,6 +7,8 @@ export const chat = {
   "chat.voice.connecting": "Conectando…",
   "chat.voice.listening": "Ouvindo",
   "chat.voice.working": "Trabalhando no seu pedido. Pode continuar falando.",
+  "chat.voice.backgroundWork":
+    "O agente está trabalhando. Pode continuar falando.",
   "chat.voice.speaking": "Falando",
   "chat.voice.error": "Voz indisponível",
   "chat.voice.muted": "Microfone silenciado",

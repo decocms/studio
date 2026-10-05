@@ -6,24 +6,27 @@
  * becomes per-agent configurable. Three volumes (org skills are deliberately
  * NOT a cloud volume — skills belong in versioned repos, surfaced through
  * the read-only public sets):
- *   - `home`    → mounted at `<appRoot>/org/home` (visible, editable):
+ *   - `home`    → mounted at `/app/org/home` (visible, editable):
  *     the org's shared home folder, free-form — members and agents organize
  *     it with whatever subfolders they want, and knowledge accumulates
  *     across every run (no per-thread scoping). Both the volume NAME and the
- *     mount path are the fixed `home`, so `org/home/` is a stable path that
+ *     mount path are the fixed `home`, so `/app/org/home/` is a stable path that
  *     prompts, skills, and code can hardcode. The Library shows the org's
  *     slug as this folder's display label (see `homeDisplayName`).
- *   - `outputs` → mounted at `<appRoot>/org/.outputs` (hidden); the daemon
- *     repoints a per-run symlink `<appRoot>/org/output → .outputs/<threadId>`
+ *   - `outputs` → mounted at `/app/org/.outputs` (hidden); the daemon
+ *     repoints a per-run symlink `/app/org/output → .outputs/<threadId>`
  *     so the agent sees a bare `output/` that is, externally, that thread's
  *     subtree of the org-wide `outputs` volume (the share-files-back flow).
- *   - `uploads` → mounted at `<appRoot>/org/.uploads` (hidden); same per-run
- *     symlink trick (`org/upload → .uploads/<threadId>`) in the inbound
+ *   - `uploads` → mounted at `/app/org/.uploads` (hidden); same per-run
+ *     symlink trick (`/app/org/upload → .uploads/<threadId>`) in the inbound
  *     direction — chat attachments the studio writes to the thread's uploads
  *     folder appear in the sandbox with no copy step.
  */
 
-import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import {
+  HOME_MOUNT_PATH,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
 import type { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
 import { validateSyncVolumeName } from "../org-repo-sync";
 import {
@@ -55,17 +58,18 @@ const DEFAULT_MOUNTS: ReadonlyArray<{ volume: string; path: string }> = [
  * The sandbox path an org-fs (volume, path) is reachable at inside a run —
  * the inverse of the mount table above. Lets server-side code (e.g. the agent
  * knowledge block) tell the agent exactly where to read an attached file.
- * Slug-independent: the home volume always mounts at the fixed `org/home`.
- * `path` "" returns the volume's mount root.
+ * Slug-independent: the home volume always mounts at the fixed
+ * `/app/org/home`. `path` "" returns the volume's mount root.
  */
 export function orgFsSandboxPath(volume: string, path: string): string {
-  let base: string;
-  if (volume === "home") base = `org/${HOME_MOUNT_PATH}`;
-  else if (volume === "outputs") base = `org/${ORG_FS_OUTPUTS_MOUNT_PATH}`;
-  else if (volume === "uploads") base = `org/${ORG_FS_UPLOADS_MOUNT_PATH}`;
+  let mount: string;
+  if (volume === "home") mount = HOME_MOUNT_PATH;
+  else if (volume === "outputs") mount = ORG_FS_OUTPUTS_MOUNT_PATH;
+  else if (volume === "uploads") mount = ORG_FS_UPLOADS_MOUNT_PATH;
   else if (isPublicVolume(volume)) {
-    base = `org/public/${volume.slice("public-".length)}`;
-  } else base = `org/${volume}`;
+    mount = `public/${volume.slice("public-".length)}`;
+  } else mount = volume;
+  const base = `${SANDBOX_ORG_ROOT}/${mount}`;
   return path ? `${base}/${path}` : base;
 }
 
@@ -73,9 +77,9 @@ export function buildOrgFsConfig(opts: {
   baseUrl: string;
   orgSlug: string;
   token: string;
-  /** Public skill sets to mount readonly at `org/public/<set>`. */
+  /** Public skill sets to mount readonly at `/app/org/public/<set>`. */
   publicSets?: string[];
-  /** Org repo-sync volumes to mount readonly at `org/<volume>`. */
+  /** Org repo-sync volumes to mount readonly at `/app/org/<volume>`. */
   syncedVolumes?: string[];
 }): OrgFsProvisionConfig {
   return {
@@ -83,7 +87,7 @@ export function buildOrgFsConfig(opts: {
     orgSlug: opts.orgSlug,
     token: opts.token,
     mounts: [
-      // The org's home folder mounts at the fixed `org/home` (hardcodable path).
+      // The org's home folder mounts at the fixed `/app/org/home` (hardcodable path).
       { volume: "home", path: HOME_MOUNT_PATH },
       ...DEFAULT_MOUNTS.map((m) => ({ ...m })),
       ...(opts.publicSets ?? []).map((set) => ({

@@ -140,8 +140,8 @@ export const JIRA_COMMENT_ADD = defineTool({
     "notified, write `@[Name](accountid:<id>)` — the form people appear in " +
     "when you read an issue (reporter, assignee, comment authors, mentions); " +
     "a plain `@name` is only text. To show evidence, write the " +
-    "image to `org/output/<name>.png` in your working pod and reference it as " +
-    "`![what it shows](org/output/<name>.png)` — it is uploaded to the issue " +
+    "image to `/app/org/output/<name>.png` in your working pod and reference it " +
+    "as `![what it shows](/app/org/output/<name>.png)` — it is uploaded to the issue " +
     "and rendered inline. Any other URL stays a plain link.",
   inputSchema: z.object({
     issueKey: issueKeyInput,

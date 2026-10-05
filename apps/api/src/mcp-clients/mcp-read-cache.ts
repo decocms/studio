@@ -112,6 +112,7 @@ interface CacheEntry {
   value: unknown;
   storedAt: number;
   bytes: number;
+  connectionId: string;
 }
 
 export class InMemoryMcpReadCache {
@@ -121,6 +122,8 @@ export class InMemoryMcpReadCache {
   private readonly revalidating = new Set<string>();
   // Running sum of cached entry bytes, kept in lockstep with the store.
   private totalBytes = 0;
+  // connectionId -> its keys, for an O(1) invalidate() instead of a full scan.
+  private readonly byConnection = new Map<string, Set<string>>();
 
   constructor(
     private readonly config: Record<
@@ -138,12 +141,17 @@ export class InMemoryMcpReadCache {
     return { entries: this.store.size, bytes: this.totalBytes };
   }
 
-  /** Delete a key and keep the byte accounting in sync. */
+  /** Delete a key and keep the byte accounting + connection index in sync. */
   private deleteKey(key: string): void {
     const e = this.store.get(key);
     if (e) {
       this.store.delete(key);
       this.totalBytes -= e.bytes;
+      const forConn = this.byConnection.get(e.connectionId);
+      if (forConn) {
+        forConn.delete(key);
+        if (forConn.size === 0) this.byConnection.delete(e.connectionId);
+      }
     }
   }
 
@@ -160,6 +168,7 @@ export class InMemoryMcpReadCache {
 
   private storeSet(
     key: string,
+    connectionId: string,
     value: unknown,
     now: number,
     maxValueBytes: number,
@@ -188,8 +197,14 @@ export class InMemoryMcpReadCache {
       if (oldest === undefined) break;
       this.deleteKey(oldest);
     }
-    this.store.set(key, { value, storedAt: now, bytes });
+    this.store.set(key, { value, storedAt: now, bytes, connectionId });
     this.totalBytes += bytes;
+    let forConn = this.byConnection.get(connectionId);
+    if (!forConn) {
+      forConn = new Set();
+      this.byConnection.set(connectionId, forConn);
+    }
+    forConn.add(key);
   }
 
   /**
@@ -233,7 +248,7 @@ export class InMemoryMcpReadCache {
       debug(entry ? "EXPIRED" : "MISS", key);
       const value = await fetchLive();
       if (shouldCache?.(value) ?? true) {
-        this.storeSet(key, value, this.now(), cfg.maxValueBytes);
+        this.storeSet(key, connectionId, value, this.now(), cfg.maxValueBytes);
       } else {
         debug("NOT-CACHED (shouldCache=false)", key);
       }
@@ -251,7 +266,13 @@ export class InMemoryMcpReadCache {
       const revalidation = fetchLive()
         .then((value) => {
           if (shouldCache?.(value) ?? true) {
-            this.storeSet(key, value, this.now(), cfg.maxValueBytes);
+            this.storeSet(
+              key,
+              connectionId,
+              value,
+              this.now(),
+              cfg.maxValueBytes,
+            );
           }
         })
         .catch(() => {
@@ -270,10 +291,9 @@ export class InMemoryMcpReadCache {
 
   /** Drop every cached result for a connection (config/auth may have changed). */
   invalidate(connectionId: string): void {
-    const prefix = `${connectionId}:`;
-    for (const key of [...this.store.keys()]) {
-      if (key.startsWith(prefix)) this.deleteKey(key);
-    }
+    const keys = this.byConnection.get(connectionId);
+    if (!keys) return;
+    for (const key of [...keys]) this.deleteKey(key);
   }
 }
 

@@ -11,9 +11,9 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
  * fetch it. It reads as text and gets treated as one — the DANI-19 run
  * described an image it had never seen.
  *
- * The same bytes are already mounted in the pod (`org/.uploads/…`), so the fix
- * is to rewrite the URL to that path. `Read` renders a PNG visually, so the
- * model actually looks at the screenshot the task is about.
+ * The same bytes are already mounted in the pod (`/app/org/.uploads/…`), so
+ * the fix is to rewrite the URL to that path. `Read` renders a PNG visually,
+ * so the model actually looks at the screenshot the task is about.
  *
  * Sandboxed runs ONLY — a hosted harness has no org-fs mount, and there the
  * original URL is at least a link a human can click.
@@ -43,8 +43,8 @@ export function uploadsAsSandboxPaths(description: string): string {
 
 /**
  * The note to append after a rewritten description, so the run knows the
- * `org/.uploads/…` paths `uploadsAsSandboxPaths` just wrote are real files to
- * `Read`, not more prose. Only when the rewrite actually changed something —
+ * `/app/org/.uploads/…` paths `uploadsAsSandboxPaths` just wrote are real
+ * files to `Read`, not more prose. Only when the rewrite actually changed something —
  * an unconditional note about attachments that aren't there is noise the
  * model has to rule out. Shared by every sandboxed prompt that shows a task
  * description (the task run itself and its reviewers).

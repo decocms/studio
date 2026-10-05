@@ -9,11 +9,12 @@
 import { z } from "zod";
 import { SandboxImageSchema } from "@decocms/shared/git-providers";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
-import type {
-  EnsureOptions,
-  PodTermination,
-  Sandbox,
-  SandboxId,
+import {
+  SANDBOX_PLACEMENT_REASONS,
+  type EnsureOptions,
+  type PodTermination,
+  type Sandbox,
+  type SandboxId,
 } from "./types";
 
 export const SANDBOX_TOOLS = {
@@ -71,8 +72,12 @@ const repoSchema = z.object({
 });
 
 /** `image` is left out: the host's template pins it. */
+/** A host that predates Freestyle answers without one: it runs Kubernetes only. */
+const providerKindSchema = z.enum(["kubernetes", "freestyle"]);
+
 export const ensureOptionsSchema: z.ZodType<Omit<EnsureOptions, "image">> =
   z.object({
+    provider: providerKindSchema.optional(),
     purpose: z.enum(["interactive", "harness-run"]).optional(),
     sandboxImage: SandboxImageSchema.optional(),
     branch: z.string().optional(),
@@ -116,6 +121,15 @@ export const ensureOutputSchema = z.object({
   workdir: z.string().min(1),
   previewUrl: z.string().nullable(),
   warmPoolAdopted: z.boolean(),
+  provider: providerKindSchema.default("kubernetes"),
+  // A reason this build doesn't know drops the label, not the ensure.
+  placement: z
+    .object({
+      reason: z.enum(SANDBOX_PLACEMENT_REASONS),
+      fallbackFrom: providerKindSchema.optional(),
+    })
+    .optional()
+    .catch(undefined),
   daemon: daemonSchema,
 }) satisfies z.ZodType<Sandbox & { daemon: Daemon }>;
 
@@ -140,6 +154,7 @@ export const statusOutputSchema = z.object({
   previewUrl: z.string().nullable(),
   daemon: daemonSchema.nullable(),
   lastTermination: podTerminationSchema.nullable(),
+  provider: providerKindSchema.default("kubernetes"),
 });
 
 /** `graceMs` releases the sandbox after it; without it, the idle TTL is renewed. */
@@ -165,6 +180,8 @@ export const toolErrorSchema = z.object({
   code: z.enum(["bootstrap-rejected", "internal"]),
   error: z.string(),
   status: z.number().int().optional(),
+  /** The provider that failed, when the host knows it. */
+  provider: providerKindSchema.optional(),
 });
 export type ToolError = z.infer<typeof toolErrorSchema>;
 

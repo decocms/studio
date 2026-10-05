@@ -266,7 +266,6 @@ export function CreateConnectionDialog({
         metadata: null,
         tools: null,
         bindings: null,
-        status: "inactive",
       });
 
       form.reset();
@@ -636,7 +635,14 @@ export function CreateConnectionDialog({
                 </DrawerDescription>
               </div>
               <DrawerClose asChild>
-                <Button variant="ghost" size="icon" className="shrink-0 -mt-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 -mt-1"
+                  aria-label={t(
+                    "connections.createConnectionDialog.closeButton",
+                  )}
+                >
                   <XClose size={16} />
                 </Button>
               </DrawerClose>

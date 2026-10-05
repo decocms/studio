@@ -2,7 +2,8 @@
  *
  *  It answers what ran, what broke and what is stopped on you before it lists
  *  projects. Everything below the headline derives from the ONE board query it
- *  already makes, plus the automation list for the schedules card. */
+ *  already makes, plus the automation list for the schedules card and this
+ *  browser's app-open history for the order of the Apps card. */
 
 import { usePreferences } from "@/hooks/use-preferences";
 import { ChatInput } from "@/components/chat/input";
@@ -37,11 +38,13 @@ import { useOrgTasksSuspense } from "./use-org-tasks";
 import { ProjectRoster } from "./project-roster";
 import { HomeSplit } from "./section";
 import { WhatMoved } from "./what-moved";
+import { OrgApps } from "@/components/projects/project-apps";
 import { NewProjectButton } from "@/components/projects/new-project-dialog";
 import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
 import { TrainingCard } from "./training-card";
 import { buildProjectIndex } from "@/lib/project-index";
 import { useAutomations } from "@/hooks/use-automations";
+import { useAppOpens } from "@/hooks/use-recent-apps";
 import { useCapability } from "@/hooks/use-capability";
 import { scopableProjects } from "@/hooks/use-project-scope";
 import { authClient } from "@/lib/auth-client";
@@ -96,6 +99,7 @@ function OrgHomeBody({
   /** Non-blocking, read above the empty-state return so hook order matches on
    *  both branches. Says nothing until it lands rather than claiming zero. */
   const automations = useAutomations().data;
+  const { opens: appOpens } = useAppOpens(org.slug);
 
   const projects = scopableProjects(all).filter((p) => p.id !== org.id);
 
@@ -125,7 +129,7 @@ function OrgHomeBody({
   );
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <BriefHeadline
         eyebrow={eyebrow}
         greeting={greeting}
@@ -149,6 +153,7 @@ function OrgHomeBody({
         projectsById={new Map(projects.map((p) => [p.id, p]))}
         orgSlug={org.slug}
       />
+      <OrgApps projects={projects} orgSlug={org.slug} opens={appOpens} />
       {/* The work on the left, the standing readouts on the right: what needs
           answering and what changed are read as sentences; what each project is
           moving and what is running are read as numbers. */}
@@ -162,6 +167,13 @@ function OrgHomeBody({
               tasks={tasks}
               orgSlug={org.slug}
             />
+            {/* Standing OFFERS, so they come after the work. In this column
+                rather than a full-width footer: under What moved they read as
+                part of the brief, and the column is the shorter one. Both
+                self-hide (no site, no diagnostic), so they cost nothing for
+                the orgs without one. */}
+            <TrainingCard />
+            <ReportBanner />
           </>
         }
         aside={
@@ -170,29 +182,11 @@ function OrgHomeBody({
               projects={projects}
               summaries={projectSummaries(index, tasks, session?.user?.id)}
               series={series}
-              action={
-                canManageProjects && (
-                  <NewProjectButton source="org_home" variant="ghost" />
-                )
-              }
             />
             <AgentsRunning agents={runningAgents(tasks)} orgSlug={org.slug} />
           </>
         }
       />
-
-      {/* Standing OFFERS, which is why they are last — and why they are inside
-          this branch. The connect pill is never satisfied by anything the page
-          can see, so above the brief it becomes permanent furniture; on an org
-          with no projects yet it competes with the one invitation that matters.
-          Full width, not the aside: a narrow column stranded the report card
-          off to one side whenever the board had nothing on it. */}
-      <footer className="flex flex-col gap-4 pt-3">
-        <TrainingCard />
-        {/* The store's own diagnostic. Self-hiding and failure-proof, so it
-            costs nothing for the orgs without one. */}
-        <ReportBanner />
-      </footer>
     </div>
   );
 }

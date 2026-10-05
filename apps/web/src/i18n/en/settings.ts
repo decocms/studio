@@ -55,7 +55,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts within seconds.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts once the card has stayed put for a minute.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -67,18 +67,27 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. An issue entering an automated status now starts its run within seconds.",
+    "Save. An issue entering an automated status now starts its run once it has stayed there for a minute.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses, Studio starts an agent run on it. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "When an issue enters one of these statuses and stays there for a minute, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
   "settings.jira.addAutomation": "Add automation",
-  "settings.jira.automationOn": "Automation on",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
     "This is the whole instruction the run gets — there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
   "settings.jira.promptSave": "Save",
   "settings.jira.promptDiscard": "Discard",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
+  "settings.jira.fromAny": "From any column",
+  "settings.jira.fromEarlier": "From an earlier column",
+  "settings.jira.fromLater": "From a later column (sent back)",
+  "settings.jira.fromStatuses": "From {statuses}",
+  "settings.jira.originLabel": "When the card comes from",
+  "settings.jira.originStatusesPlaceholder": "Pick statuses",
+  "settings.jira.originHelp":
+    "A move starts one rule: the one naming where the card came from, else the one for its direction on the board, else the one for any column. Where it came from is the status it last stayed in, not one it was dragged through.",
+  "settings.jira.createRule": "Create rule",
+  "settings.jira.cancelRule": "Cancel",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.jira.testRunLabel": "Run it by hand",
@@ -126,11 +135,7 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Stop syncing "{volume}"?',
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
-  "settings.repositories.pageDescription":
-    "Connect your git provider accounts and link the repositories this organization works with.",
   "settings.repositories.accountsTitle": "Connected accounts",
-  "settings.repositories.accountsDescription":
-    "Accounts Studio uses to read your repositories and push changes on your behalf.",
   "settings.repositories.accountsEmptyTitle": "No accounts connected",
   "settings.repositories.accountsEmptyDescription":
     "Connect a GitHub, GitLab or Bitbucket account to browse your repositories and link private ones.",
@@ -148,8 +153,6 @@ export const settings = {
   "settings.repositories.githubSelectTitle": "Select repositories",
   "settings.repositories.githubSelectedShareHint":
     "Members with repository permissions in {organization} can use the repositories you authorize here.",
-  "settings.repositories.githubSelectHint":
-    "Choose up to 500 repositories for this workspace.",
   "settings.repositories.githubPreselectedHint":
     "Previously authorized or linked repositories are already selected when you have permission to authorize them. Review the selection before saving.",
   "settings.repositories.githubReplaceHint":
@@ -296,18 +299,18 @@ export const settings = {
   "settings.repositories.connecting": "Connecting…",
   "settings.repositories.connected": 'Connected as "{login}"',
   "settings.repositories.reposTitle": "Repositories",
-  "settings.repositories.reposDescription":
-    "Repositories available to this organization's agents and workflows.",
   "settings.repositories.reposEmptyTitle": "No repositories yet",
   "settings.repositories.reposEmptyDescription":
     "Choose a repository from a connected GitHub, GitLab or Bitbucket account.",
   "settings.repositories.addRepository": "Add repository",
+  "settings.repositories.moreActions": "More actions",
+  "settings.repositories.repoAccountNeedsAttention":
+    "Connected through {login}, which needs attention in Connected accounts.",
   "settings.repositories.unlink": "Unlink",
   "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
   "settings.repositories.unlinkDescription":
     "The repository is removed from this organization. Nothing is deleted on the provider.",
   "settings.repositories.unlinked": "Repository unlinked",
-  "settings.repositories.defaultBranch": "Default branch: {branch}",
   "settings.repositories.openInProvider": "Open repository",
   "settings.repositories.visibilityPublic": "Public",
   "settings.repositories.visibilityPrivate": "Private",
@@ -1150,6 +1153,8 @@ export const settings = {
   "settings.gitCredentials.hostInvalidMessage":
     "Bare hostname, e.g. github.com (no scheme or path).",
   "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.maxReached":
+    "You've reached the limit of {max} git credentials. Remove one to add another.",
   "settings.gitCredentials.nameLabel": "Name",
   "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
   "settings.gitCredentials.nameHelperText":
@@ -1170,5 +1175,5 @@ export const settings = {
   "settings.gitCredentials.tokenExposureWarning":
     "The token is installed in the sandbox's git config for the session, so commands and agents running there can use it. Scope it to the repositories it needs.",
   "settings.gitCredentials.tokenLabel": "Personal access token",
-  "settings.gitCredentials.tokenPlaceholder": "ghp_…",
+  "settings.gitCredentials.tokenPlaceholder": "Paste your token",
 } as const;

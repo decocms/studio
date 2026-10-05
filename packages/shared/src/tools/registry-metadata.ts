@@ -128,6 +128,10 @@ const ALL_TOOL_NAMES = [
   "USER_GET",
   "USER_MODEL_PREFERENCES_GET",
   "USER_MODEL_PREFERENCES_UPDATE",
+  // Project sidebar tools
+  "SIDEBAR_GET",
+  "PROJECT_FOLDERS_SET",
+  "SIDEBAR_PREFERENCES_SET",
   // Thread tools
   "COLLECTION_THREADS_CREATE",
   "COLLECTION_THREADS_LIST",
@@ -714,6 +718,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "USER_MODEL_PREFERENCES_UPDATE",
     description: "Set the calling user's chat tier → model overrides",
+    category: "Users",
+  },
+  // Project sidebar tools
+  {
+    name: "SIDEBAR_GET",
+    description:
+      "Get the org's project folders and the caller's pins and hides",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "PROJECT_FOLDERS_SET",
+    description: "Replace the organization's project folders",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "SIDEBAR_PREFERENCES_SET",
+    description: "Set the calling member's pinned and hidden projects",
     category: "Users",
   },
   // Thread tools
@@ -1585,6 +1606,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "VIRTUAL_MCP_LAST_USED_LIST",
+      // Project sidebar: org folders are readable, pins/hides are the caller's own.
+      "SIDEBAR_GET",
+      "SIDEBAR_PREFERENCES_SET",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
@@ -1796,6 +1820,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_UPDATE",
       "COLLECTION_VIRTUAL_MCP_DELETE",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+      // Folders are org-wide structure, so they sit with managing projects.
+      "PROJECT_FOLDERS_SET",
     ],
     dangerous: true,
   },

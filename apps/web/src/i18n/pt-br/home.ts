@@ -47,7 +47,6 @@ export const home = {
   "home.needsYou.evidencePreview": "Preview pronto",
   "home.projects.rhythm":
     "{name}: mudanças entregues por dia, últimas duas semanas",
-  "home.needsYou.oldestFirst": "Mais antigas primeiro",
   "home.needsYou.actionAnswer": "Responder",
   "home.needsYou.actionReview": "Revisar",
   "home.needsYou.actionOpen": "Abrir",

@@ -32,12 +32,14 @@ function excerpt(text: string | null | undefined): string {
 export function buildDuplicateDecisions(
   drafts: readonly Draft[],
   candidates: readonly TaskBoardItem[],
+  /** The drafts asked about. The rest of `drafts` stand only as options. */
+  asked: readonly Draft[] = drafts,
 ) {
   const questions: Record<
     string,
     Experimental_EvaluationQuestion & { type: "choice" }
   > = {};
-  for (const draft of drafts) {
+  for (const draft of asked) {
     const repo = draft.repo?.trim().toLowerCase();
     const inScope = (other: string | null | undefined) =>
       !repo || !other || other.trim().toLowerCase() === repo;
@@ -88,7 +90,7 @@ export function buildDuplicateDecisions(
   };
 }
 
-/** Null means inconclusive: use the existing fast-model check for the batch. */
+/** Null means inconclusive: the fast model settles these drafts instead. */
 export function acceptDecisionDuplicates(
   answers: Record<
     string,
@@ -101,13 +103,14 @@ export function acceptDecisionDuplicates(
   const matches = new Map<number, BatchDuplicate>();
   for (const draft of drafts) {
     const id = draftRef(draft.index);
-    const answer = answers[id];
     const question = questions[id];
+    // Offered as an earlier draft, not asked about.
+    if (!question) continue;
+    const answer = answers[id];
     const choice = answer?.choice;
     if (
       answer?.type !== "choice" ||
       !choice ||
-      !question ||
       !Object.hasOwn(question.criteria, choice)
     )
       return null;

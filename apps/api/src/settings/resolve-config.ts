@@ -221,6 +221,9 @@ export function resolveConfig(
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
 
+  const voiceProvider =
+    envVars.VOICE_CONVERSATION_PROVIDER?.trim() || "elevenlabs";
+
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
     nodeEnv,
@@ -239,9 +242,18 @@ export function resolveConfig(
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
+    voiceConversationProvider:
+      voiceProvider === "elevenlabs" || voiceProvider === "openai"
+        ? voiceProvider
+        : null,
+    openaiLiveApiKey: envVars.OPENAI_LIVE_API_KEY,
+    openaiLiveModel: envVars.OPENAI_LIVE_MODEL?.trim() || "gpt-live-1",
+    openaiLiveVoice: envVars.OPENAI_LIVE_VOICE?.trim() || "marin",
     elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
     elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
     elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",
+    elevenlabsConversationModel:
+      envVars.ELEVENLABS_CONVERSATION_MODEL?.trim() || "gemini-2.5-flash",
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
@@ -266,6 +278,12 @@ export function resolveConfig(
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
+    jiraSettleSeconds: toPositiveIntegerOrDefault(
+      "JIRA_SETTLE_SECONDS",
+      envVars.JIRA_SETTLE_SECONDS,
+      60,
+      3600,
+    ),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
     deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
       .split(",")

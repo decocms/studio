@@ -9,8 +9,8 @@
  *
  * Synced volumes are mirror targets: the sync deletes anything in the volume
  * that isn't in the repo, so CREATE requires an empty volume and users should
- * treat it as read-only (a fresh sandbox mounts it readonly at `org/<volume>`;
- * mounts appear on the next sandbox start).
+ * treat it as read-only (a fresh sandbox mounts it readonly at
+ * `/app/org/<volume>`; mounts appear on the next sandbox start).
  */
 
 import { z } from "zod";
@@ -167,7 +167,7 @@ export const ORG_REPO_SYNC_CREATE = defineTool({
     "EMPTY volume name; the repo is synced every ~10 minutes (and on " +
     "ORG_REPO_SYNC_RUN). The volume is a mirror — files not in the repo are " +
     "deleted on each sync — so never write into it directly. Sandboxes mount " +
-    "it readonly at org/<volume> starting with their next boot.",
+    "it readonly at /app/org/<volume> starting with their next boot.",
   inputSchema: z.object({
     repositoryId: z
       .string()

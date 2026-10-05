@@ -295,6 +295,10 @@ export const KEYS = {
   userModelPreferences: (organizationId: string) =>
     ["user-model-preferences", organizationId] as const,
 
+  /** The org's folders plus the caller's pins and hides — `SIDEBAR_GET`. */
+  projectSidebar: (organizationId: string) =>
+    ["project-sidebar", organizationId] as const,
+
   // API keys (scoped by organization; the LIST tool filters by org server-side)
   apiKeysList: (organizationId: string) =>
     ["api-keys", organizationId] as const,

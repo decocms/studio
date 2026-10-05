@@ -104,6 +104,103 @@ func TestRepointHealsAnEmptyRealOutputDir(t *testing.T) {
 	}
 }
 
+// Nothing org-fs belongs in the checkout: a watcher rooted at the repo follows
+// the link into the network mount. The exact link an older daemon planted is
+// removed; anything else at `<repoDir>/org` is the repo's own.
+func TestRepoOrgLink(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	setup := func(t *testing.T) (*Links, string) {
+		appRoot := t.TempDir()
+		repoDir := filepath.Join(appRoot, "repo")
+		statusPath := filepath.Join(t.TempDir(), "status.json")
+		mountPath := filepath.Join(appRoot, "org", ".outputs")
+		for _, dir := range []string{repoDir, mountPath} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{{Volume: "outputs", MountPath: mountPath}}})
+		if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		l := &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
+		t.Cleanup(func() { l.WaitSkillLinks(time.Second) })
+		return l, filepath.Join(repoDir, "org")
+	}
+
+	// A marker file, not a link: nothing for a watcher to crawl, and a legacy
+	// relative `org/...` write fails instead of landing in the checkout.
+	assertMarker := func(t *testing.T, l *Links, marker string) {
+		t.Helper()
+		st, err := os.Lstat(marker)
+		if err != nil || !st.Mode().IsRegular() {
+			t.Fatalf("repo org = %v (err %v), want a marker file", st, err)
+		}
+		body, _ := os.ReadFile(marker)
+		if !strings.Contains(string(body), filepath.Join(l.AppRoot, "org")) {
+			t.Fatalf("marker = %q, want it to name the org-fs root", body)
+		}
+		if err := os.MkdirAll(filepath.Join(marker, "output"), 0o755); err == nil {
+			t.Fatal("a relative org/... write created a directory in the checkout")
+		}
+		exclude, _ := os.ReadFile(filepath.Join(l.RepoDir, ".git", "info", "exclude"))
+		if !strings.Contains(string(exclude), "/org\n") {
+			t.Fatalf("exclude = %q, want /org", exclude)
+		}
+	}
+	gitInit := func(t *testing.T, repoDir string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("marker written", func(t *testing.T) {
+		l, marker := setup(t)
+		gitInit(t, l.RepoDir)
+		if !l.RepointForRun("t1") {
+			t.Fatal("repoint failed")
+		}
+		l.EnsureLinks()
+		assertMarker(t, l, marker)
+	})
+
+	t.Run("stale link replaced", func(t *testing.T) {
+		l, marker := setup(t)
+		gitInit(t, l.RepoDir)
+		if err := os.Symlink("../org", marker); err != nil {
+			t.Fatal(err)
+		}
+		l.RepointForRun("t1")
+		assertMarker(t, l, marker)
+	})
+
+	t.Run("real dir kept", func(t *testing.T) {
+		l, link := setup(t)
+		if err := os.MkdirAll(link, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(link, "mine.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		l.RepointForRun("t1")
+		if _, err := os.Stat(filepath.Join(link, "mine.txt")); err != nil {
+			t.Fatalf("touched the repo's own org/ dir: %v", err)
+		}
+	})
+
+	t.Run("foreign symlink kept", func(t *testing.T) {
+		l, link := setup(t)
+		if err := os.Symlink("../elsewhere", link); err != nil {
+			t.Fatal(err)
+		}
+		l.RepointForRun("t1")
+		if target, err := os.Readlink(link); err != nil || target != "../elsewhere" {
+			t.Fatalf("org link = %q (err %v), want the repo's own ../elsewhere", target, err)
+		}
+	})
+}
+
 // RepointForRun's grace wait for the sidecar's first mounts can take up to
 // firstMountWait. If it held mu across that wait, every other org-fs call —
 // notably WaitSkillLinks, whose whole job is to bound how long a run waits on

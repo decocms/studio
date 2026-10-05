@@ -22,7 +22,10 @@ import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { openNewProjectDialog } from "@/components/projects/new-project-store";
+import {
+  notifyNewProjectCreated,
+  openNewProjectDialog,
+} from "@/components/projects/new-project-store";
 import { useVirtualMCPActions } from "@/sdk";
 
 /** The intents on the first step. `repository` hands off; `folder` asks a name. */
@@ -153,7 +156,10 @@ export function NewProjectDialog({
           if (!next) close();
         }}
         onImportComplete={({ virtualMcpId }) => {
-          if (virtualMcpId) navigateToAgent(virtualMcpId);
+          if (virtualMcpId) {
+            notifyNewProjectCreated(virtualMcpId);
+            navigateToAgent(virtualMcpId);
+          }
           close();
         }}
       />
@@ -161,6 +167,7 @@ export function NewProjectDialog({
   }
 
   const create = async () => {
+    if (actions.create.isPending) return;
     const title = name.trim();
     if (!title) {
       setError(t("projects.new.nameRequired"));
@@ -188,7 +195,10 @@ export function NewProjectDialog({
       const id = (created as { id?: string } | undefined)?.id;
       track("project_created", { source, path });
       close();
-      if (id) navigateToAgent(id);
+      if (id) {
+        notifyNewProjectCreated(id);
+        navigateToAgent(id);
+      }
       toast.success(t("projects.new.created", { title }));
     } catch {
       setError(t("projects.new.failed"));

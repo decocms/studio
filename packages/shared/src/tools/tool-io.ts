@@ -4490,6 +4490,37 @@ export interface StudioToolIO {
       };
     };
   };
+  SIDEBAR_GET: {
+    input: { [x: string]: never };
+    output: {
+      folders: { id: string; name: string; projectIds: string[] }[];
+      preferences: {
+        pinned: string[];
+        hidden: string[];
+        dismissed: string[];
+        hiddenFolders: string[];
+      };
+      joinedAt: string | null;
+    };
+  };
+  PROJECT_FOLDERS_SET: {
+    input: { folders: { id: string; name: string; projectIds: string[] }[] };
+    output: { folders: { id: string; name: string; projectIds: string[] }[] };
+  };
+  SIDEBAR_PREFERENCES_SET: {
+    input: {
+      pinned: string[];
+      hidden: string[];
+      dismissed: string[];
+      hiddenFolders: string[];
+    };
+    output: {
+      pinned: string[];
+      hidden: string[];
+      dismissed: string[];
+      hiddenFolders: string[];
+    };
+  };
   COLLECTION_THREADS_CREATE: {
     input: {
       data: {
@@ -6118,6 +6149,11 @@ export interface StudioToolIO {
     output: {
       automations: {
         jiraStatus: string;
+        from:
+          | { kind: "any" }
+          | { kind: "earlier" }
+          | { kind: "later" }
+          | { kind: "statuses"; statuses: string[] };
         prompt: string | null;
         continuePr: boolean;
       }[];
@@ -6126,19 +6162,38 @@ export interface StudioToolIO {
   JIRA_AUTOMATION_UPSERT: {
     input: {
       jiraStatus: string;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | { kind: "statuses"; statuses: string[] }
+        | undefined;
       prompt?: string | null | undefined;
       continuePr?: boolean | undefined;
     };
     output: {
       automation: {
         jiraStatus: string;
+        from:
+          | { kind: "any" }
+          | { kind: "earlier" }
+          | { kind: "later" }
+          | { kind: "statuses"; statuses: string[] };
         prompt: string | null;
         continuePr: boolean;
       };
     };
   };
   JIRA_AUTOMATION_DELETE: {
-    input: { jiraStatus: string };
+    input: {
+      jiraStatus: string;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | { kind: "statuses"; statuses: string[] }
+        | undefined;
+    };
     output: { removed: boolean };
   };
   JIRA_RUN_START: {
@@ -6957,6 +7012,7 @@ export interface StudioToolIO {
       virtualMcpId: string;
       branch?: string | undefined;
       threadId?: string | undefined;
+      provider?: "kubernetes" | "freestyle" | undefined;
     };
     output: {
       previewUrl: string | null;
@@ -7331,7 +7387,7 @@ export interface StudioToolIO {
   CHANGE_REQUEST_MERGE: {
     input: {
       number: number;
-      strategy?: "unknown" | "squash" | undefined;
+      strategy?: "any" | "squash" | undefined;
       commitTitle?: string | undefined;
       commitMessage?: string | undefined;
       repositoryId?: string | undefined;

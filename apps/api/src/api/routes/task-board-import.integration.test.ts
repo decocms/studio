@@ -1076,6 +1076,188 @@ describe("Task Board Import Route", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("an item the org dismissed under another wording stays dismissed", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Adicionar alt nas imagens do banner principal da home",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+
+    const res = await withFastModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: dismissed.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+        ],
+      }),
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Adicionar alt de fallback na imagem do banner da home",
+              },
+              { title: "Adicionar H1 na home" },
+            ],
+          }),
+        ),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      dismissed: 1,
+      items: [
+        entry(0, "dismissed", { id: dismissed.id, key_seq: dismissed.keySeq }),
+        entry(1, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .where("dismissed_at", "is", null)
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  /** The card's stored finding key. */
+  const keyOf = async (id: string) =>
+    (
+      await database.db
+        .selectFrom("task_board_items")
+        .select(["external_key"])
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow()
+    ).external_key;
+
+  it("a key no card holds joins the keyless card with its title, then matches by key", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const old = await storage.create({
+      organizationId: "org_board",
+      title: "Adicionar H1 na home",
+      by: "system",
+    });
+    const first = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            description: "v1",
+            externalKey: "diag:shop.com:ONPG-001",
+          },
+        ],
+      }),
+    );
+    expect((await first.json()).items).toEqual([
+      entry(0, "updated", { id: old.id, key_seq: old.keySeq }),
+    ]);
+    expect(await keyOf(old.id)).toBe("diag:shop.com:ONPG-001");
+
+    // Reworded: the key alone finds the card.
+    const second = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Inclua um H1 na página inicial",
+            description: "v2",
+            externalKey: "diag:shop.com:ONPG-001",
+          },
+        ],
+      }),
+    );
+    expect((await second.json()).items).toEqual([
+      entry(0, "updated", { id: old.id, key_seq: old.keySeq }),
+    ]);
+    expect((await cardTitled("Adicionar H1 na home")).description).toBe("v2");
+  });
+
+  it("a key joins the keyless card the semantic pass matches, dismissed ones included", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const open = await storage.create({
+      organizationId: "org_board",
+      title: "Escrever alt text para as imagens da home",
+      by: "system",
+    });
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Liberar o GPTBot no WAF",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+    const res = await withFastModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: open.id,
+            confidence: "high",
+            reason: "Same.",
+          },
+          {
+            draft: 1,
+            duplicateOf: dismissed.id,
+            confidence: "high",
+            reason: "Same.",
+          },
+        ],
+      }),
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Imagens da home sem texto alternativo",
+                externalKey: "diag:shop.com:A11Y-001",
+              },
+              {
+                title: "Permitir o GPTBot no firewall",
+                externalKey: "diag:shop.com:GEO-001",
+              },
+            ],
+          }),
+        ),
+    );
+    expect((await res.json()).items).toEqual([
+      entry(0, "semantic_match", { id: open.id, key_seq: open.keySeq }),
+      entry(1, "dismissed", { id: dismissed.id, key_seq: dismissed.keySeq }),
+    ]);
+    expect(await keyOf(open.id)).toBe("diag:shop.com:A11Y-001");
+    expect(await keyOf(dismissed.id)).toBe("diag:shop.com:GEO-001");
+  });
+
+  it("a card that already has a key keeps it when another finding lands on it", async () => {
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: "diag:shop.com:ONPG-001",
+          },
+        ],
+      }),
+    );
+    const card = await cardTitled("Adicionar H1 na home");
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: "diag:shop.com:ONPG-009",
+          },
+        ],
+      }),
+    );
+    expect((await res.json()).items).toEqual([entry(0, "updated", card)]);
+    expect(await keyOf(card.id)).toBe("diag:shop.com:ONPG-001");
+  });
+
   it("a Super Agent delegation the task quota refuses reports quota_blocked for its card", async () => {
     const settings = getSettings();
     // With no free executions, the claim at dispatch throws TaskQuotaError.

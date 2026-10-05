@@ -461,7 +461,7 @@ export interface AgentSandboxProviderOptions {
    * API key from first provision, and Better Auth deletes that key once it
    * expires — so replaying the persisted config on recovery mounts org-fs with
    * a credential that no longer exists. Every WebDAV call then 401s and the
-   * agent sees `Input/output error` on every `org/` path, silently, for the
+   * agent sees `Input/output error` on every `/app/org/` path, silently, for the
    * life of the sandbox. Returns null when it can't mint (no org slug, mint
    * error); the runner then falls back to the persisted config. Must never
    * throw.
@@ -2633,6 +2633,7 @@ export class AgentSandboxProvider {
       workdir: rec.workdir,
       previewUrl: this.composePreviewUrl(rec),
       warmPoolAdopted: rec.tenantPoolPodBound === true,
+      provider: "kubernetes",
     };
   }
 

@@ -36,7 +36,6 @@ const createMockBoundAuth = (permissions: Permission): BoundAuthClient => {
       list: vi.fn(),
       addMember: vi.fn(),
       removeMember: vi.fn(),
-      listMembers: vi.fn(),
       updateMemberRole: vi.fn(),
     },
   } as unknown as BoundAuthClient;
@@ -407,7 +406,6 @@ describe("AccessControl", () => {
           list: vi.fn(),
           addMember: vi.fn(),
           removeMember: vi.fn(),
-          listMembers: vi.fn(),
           updateMemberRole: vi.fn(),
         },
       } as unknown as BoundAuthClient;

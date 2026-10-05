@@ -98,7 +98,7 @@ export function createVmTools(params: VmToolsParams) {
         input,
         options.abortSignal,
       );
-      // Fast path: mirror `org/home/{decks,pages}/*.html` content into
+      // Fast path: mirror `/app/org/home/{decks,pages}/*.html` content into
       // org-fs server-side at step end (skips the mount's slow vfs write-back)
       // so the live-preview watcher sees the bytes in the same step.
       htmlArtifactBuffer?.enqueue(input.path, input.content);
@@ -188,7 +188,7 @@ export function createVmTools(params: VmToolsParams) {
   });
 
   // org-fs is the universal substrate: chat attachments arrive in
-  // `org/upload/`, and deliverables in `org/output/` surface through the
-  // thread-output chips.
+  // `/app/org/upload/`, and deliverables in `/app/org/output/` surface
+  // through the thread-output chips.
   return { read, write, edit, grep, glob, bash, skill };
 }

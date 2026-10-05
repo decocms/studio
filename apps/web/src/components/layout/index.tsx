@@ -14,7 +14,7 @@ import {
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Panel } from "@/components/panel";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
-import { OrgRail } from "@/components/sidebar/org-rail";
+import { OpenAppRecorder, OrgRail } from "@/components/sidebar/org-rail";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { SidebarThreadButtonProvider } from "@/components/sidebar/thread-button";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -56,6 +56,7 @@ function LayoutRoot({
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
           <div className="flex flex-1 flex-row min-h-0">
+            {projectFirstNav && <OpenAppRecorder />}
             {!isMobile && projectFirstNav && <OrgRail />}
             <SidebarLayout
               ref={resize.wrapperRef}

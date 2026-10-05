@@ -51,7 +51,8 @@ test("account avatars appear in settings and the picker, with fallbacks for miss
   await expect(accounts.getByText("example-user", { exact: true })).toBeVisible(
     { timeout: 15000 },
   );
-  await expect(accounts).toContainText(
+  await accounts.getByText("Provider unavailable", { exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toContainText(
     "GitHub reconnection is unavailable on this deployment. Ask an administrator to configure the GitHub App",
   );
   await expect(

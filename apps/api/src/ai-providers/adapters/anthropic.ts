@@ -26,17 +26,21 @@ export const anthropicAdapter: ProviderAdapter = {
       aiSdk,
 
       async listModels(): Promise<ModelInfo[]> {
-        const res = await nativeClient.models.list();
-        return res.data.map((m: { id: string; display_name: string }) => ({
-          modelId: m.id,
-          providerId: "anthropic",
-          title: m.display_name,
-          description: null,
-          logo: null,
-          capabilities: [],
-          limits: null,
-          costs: null,
-        }));
+        const models: ModelInfo[] = [];
+        // follow every page, not just the first (the API paginates at 20/page)
+        for await (const m of nativeClient.models.list()) {
+          models.push({
+            modelId: m.id,
+            providerId: "anthropic",
+            title: m.display_name,
+            description: null,
+            logo: null,
+            capabilities: [],
+            limits: null,
+            costs: null,
+          });
+        }
+        return models;
       },
 
       async countTokens({ messages, modelId }) {
