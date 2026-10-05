@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"os"
 	"sync"
 	"time"
 )
@@ -56,4 +57,30 @@ func Idle() IdleStatus {
 		Claimed:        claimed,
 		Prewarmed:      prewarmed,
 	}
+}
+
+// Stamp mirrors the last activity into the mtime of `path`, re-checked every
+// `every`, for the org-fs sidecar in the next container: it long-polls the
+// change feed only while the daemon is in use, so an idle VM goes quiet on the
+// network and its provider can pause it. Runs for the process lifetime.
+func Stamp(path string, every time.Duration) {
+	var stamped time.Time
+	for {
+		mu.Lock()
+		at := lastActivityAt
+		mu.Unlock()
+		if !at.Equal(stamped) && touch(path, at) == nil {
+			stamped = at
+		}
+		time.Sleep(every)
+	}
+}
+
+func touch(path string, at time.Time) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return os.Chtimes(path, at, at)
 }

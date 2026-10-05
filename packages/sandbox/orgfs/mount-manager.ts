@@ -22,7 +22,11 @@ import { safePath } from "./safe-path";
 import { OrgFsClient } from "./client";
 import { createWebdavHandler } from "./webdav";
 import type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
-import { makeRcRefresh, runInvalidator } from "./invalidator";
+import {
+  type InvalidatorDeps,
+  makeRcRefresh,
+  runInvalidator,
+} from "./invalidator";
 
 /** A handle to an established OS mount. */
 export interface MountHandle {
@@ -68,22 +72,23 @@ export type InvalidatorFactory = (opts: {
 }) => VolumeInvalidator;
 
 /** Real factory: poll the change feed → rclone `vfs/refresh` (see invalidator.ts). */
-const defaultInvalidatorFactory: InvalidatorFactory = ({
-  client,
-  rcUrl,
-  log,
-}) => {
-  const ac = new AbortController();
-  void runInvalidator({
-    // wait: true → server holds the request open until a write nudge or its
-    // hold timeout, so this is push-driven with the poll floor as a safety net.
-    changes: (since) => client.changes(since, { wait: true }),
-    refresh: makeRcRefresh(rcUrl),
-    signal: ac.signal,
-    log,
-  });
-  return { stop: () => ac.abort() };
-};
+export function changeFeedInvalidator(
+  untilActive?: InvalidatorDeps["untilActive"],
+): InvalidatorFactory {
+  return ({ client, rcUrl, log }) => {
+    const ac = new AbortController();
+    void runInvalidator({
+      // wait: true → server holds the request open until a write nudge or its
+      // hold timeout, so this is push-driven with the poll floor as a safety net.
+      changes: (since) => client.changes(since, { wait: true }),
+      refresh: makeRcRefresh(rcUrl),
+      signal: ac.signal,
+      untilActive,
+      log,
+    });
+    return { stop: () => ac.abort() };
+  };
+}
 
 interface ActiveMount {
   volume: string;
@@ -141,7 +146,7 @@ export class MountManager {
     private readonly mounter: Mounter,
     private readonly log: (msg: string, err?: unknown) => void = (m, e) =>
       e ? console.warn(`[org-fs] ${m}`, e) : console.log(`[org-fs] ${m}`),
-    private readonly startInvalidator: InvalidatorFactory = defaultInvalidatorFactory,
+    private readonly startInvalidator: InvalidatorFactory = changeFeedInvalidator(),
     /**
      * Injectable for tests; defaults to the real OS. Gated here (not just in
      * mounter.ts) so a Windows daemon never calls `mountOne` at all — `active`

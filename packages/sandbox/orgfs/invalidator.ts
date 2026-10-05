@@ -25,6 +25,7 @@
  * Deps are injected so the loop is unit-testable without a real studio or rclone.
  */
 
+import { stat } from "node:fs/promises";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 
 export interface InvalidatorDeps {
@@ -41,6 +42,11 @@ export interface InvalidatorDeps {
   refresh: (dir: string) => Promise<void>;
   /** Aborts the loop (mount teardown). */
   signal: AbortSignal;
+  /**
+   * Resolves once the sandbox is in use; the loop holds no poll open before
+   * that. Default: always in use.
+   */
+  untilActive?: (signal: AbortSignal) => Promise<void>;
   /**
    * Floor between cycles when the long-poll returns fast-empty, and the first
    * delay after a failed poll; default 1s.
@@ -80,6 +86,8 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
   let failures = 0;
 
   while (!deps.signal.aborted) {
+    await deps.untilActive?.(deps.signal);
+    if (deps.signal.aborted) break;
     const startedAt = Date.now();
     let page: Awaited<ReturnType<InvalidatorDeps["changes"]>>;
     try {
@@ -125,6 +133,27 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
     }
     // hasMore → loop immediately to drain the backlog.
   }
+}
+
+/**
+ * `untilActive` over the daemon's activity stamp (the mtime of `path`): in use
+ * while it is younger than `idleMs`. A held poll is network traffic, and a VM
+ * provider that pauses on network silence would otherwise never pause, so an
+ * idle sandbox only checks the local file. The first poll after it wakes
+ * returns the changes it missed at once. No stamp (a daemon that writes none)
+ * counts as in use.
+ */
+export function activityGate(path: string, idleMs: number, checkMs = 1000) {
+  return async (signal: AbortSignal): Promise<void> => {
+    while (!signal.aborted) {
+      const mtime = await stat(path).then(
+        (s) => s.mtimeMs,
+        () => null,
+      );
+      if (mtime === null || Date.now() - mtime < idleMs) return;
+      await sleep(checkMs, { signal }).catch(() => {});
+    }
+  };
 }
 
 /**

@@ -368,11 +368,9 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         .map((k) => `-e ${shellQuote(k)}`)
         .join(" ");
       // The sidecar first: it only polls for the config the daemon relays.
-      // No change feed: its long-poll is network activity, so the VM would
-      // never idle; rclone's dir-cache TTL bounds staleness instead.
       await this.run(
         vm,
-        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -e ORGFS_CHANGE_FEED=off -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
+        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
         { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
       );
       await this.run(
