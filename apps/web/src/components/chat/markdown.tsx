@@ -20,6 +20,7 @@ import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { mentionIdFromHref } from "@decocms/shared/mentions";
+import { isEditorFileUrl } from "@/components/markdown-editor/uploads";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -251,6 +252,16 @@ function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
   );
 }
 
+/** Plain text of rendered markdown children — `*draft*.pdf` arrives as nodes. */
+function childrenText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(childrenText).join("");
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    return childrenText(node.props.children);
+  }
+  return "";
+}
+
 // Markdown links whose href is an org file path open the in-chat preview;
 // all other links keep their external-tab behavior. `animate` routes the label
 // through the streaming word-fade animator. Like MarkdownCode, the in-chat
@@ -286,6 +297,19 @@ function MarkdownAnchor({
       >
         {label}
       </button>
+    );
+  }
+  // An editor attachment is stored under a UUID; the link text is the name it
+  // was uploaded with.
+  if (href && isEditorFileUrl(href)) {
+    return (
+      <a
+        {...p}
+        download={childrenText(children)}
+        className="text-primary-dark hover:underline break-all font-medium"
+      >
+        {label}
+      </a>
     );
   }
   return (
