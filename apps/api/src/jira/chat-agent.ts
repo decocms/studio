@@ -8,22 +8,27 @@
  * and start runs from a chat, through the same credential the automations use:
  * no second Jira login.
  *
- * It exists only while the integration is configured and enabled.
- * `syncJiraChatAgent` creates or refreshes it, or removes it, and is called on
- * every integration write and once per org at startup. Removing a virtual MCP
- * also removes its threads (`VirtualMCPStorage.delete`), so disconnecting Jira
- * drops this agent's chats with it.
+ * It exists only while the integration is configured and enabled:
+ * `syncJiraChatAgent` creates it or removes it on every integration write, and
+ * migration 231 created it for the orgs that already had one. Its row only
+ * marks that it exists — the tools and instructions always come from here, at
+ * run time (`resolveEffectiveStudioPackVirtualMcp`), so the row never needs a
+ * refresh. Removing a virtual MCP also removes its threads
+ * (`VirtualMCPStorage.delete`), so disconnecting Jira drops this agent's chats.
  */
 
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
-import { getDb } from "@/database";
-import { VirtualMCPStorage } from "@/storage/virtual";
+import type { VirtualMCPStorage } from "@/storage/virtual";
 
 const JIRA_CHAT_AGENT_PREFIX = "studio-jira_";
 
 export function jiraChatAgentId(organizationId: string): string {
   return `${JIRA_CHAT_AGENT_PREFIX}${organizationId}`;
+}
+
+export function isJiraChatAgentId(virtualMcpId: string): boolean {
+  return virtualMcpId.startsWith(JIRA_CHAT_AGENT_PREFIX);
 }
 
 export const JIRA_CHAT_AGENT_TOOLS: readonly ToolName[] = [
@@ -39,7 +44,7 @@ export const JIRA_CHAT_AGENT_TOOLS: readonly ToolName[] = [
   "JIRA_RUN_START",
 ];
 
-const INSTRUCTIONS = `<role>
+export const JIRA_CHAT_AGENT_INSTRUCTIONS = `<role>
 You operate the organization's Jira board through Studio's Jira integration:
 read and search issues, comment, move cards, add links, create issues, and
 start agent runs on issues.
@@ -80,8 +85,8 @@ If the org keeps its own Jira skill, tell the run to read that one too.
 </constraints>`;
 
 /**
- * Create, refresh or remove the org's Jira agent to match the integration.
- * Idempotent: safe to call on every write and at every startup.
+ * Create or remove the org's Jira agent to match the integration. Idempotent:
+ * safe to call on every integration write.
  */
 export async function syncJiraChatAgent(
   virtualMcps: VirtualMCPStorage,
@@ -94,29 +99,7 @@ export async function syncJiraChatAgent(
     if (existing) await virtualMcps.delete(id);
     return;
   }
-
-  const connections = [
-    {
-      connection_id: WellKnownOrgMCPId.SELF(input.organizationId),
-      selected_tools: [...JIRA_CHAT_AGENT_TOOLS],
-      selected_resources: null,
-      selected_prompts: [],
-    },
-  ];
-
-  const refresh = (current: { metadata?: unknown }) =>
-    virtualMcps.update(id, input.userId, {
-      metadata: {
-        ...((current.metadata as Record<string, unknown>) ?? {}),
-        instructions: INSTRUCTIONS,
-      },
-      connections,
-    });
-
-  if (existing) {
-    await refresh(existing);
-    return;
-  }
+  if (existing) return;
 
   try {
     await virtualMcps.create(
@@ -129,43 +112,21 @@ export async function syncJiraChatAgent(
         icon: "icon://Ticket01?color=blue",
         status: "active",
         pinned: false,
-        metadata: { instructions: INSTRUCTIONS },
-        connections,
+        metadata: { instructions: JIRA_CHAT_AGENT_INSTRUCTIONS },
+        connections: [
+          {
+            connection_id: WellKnownOrgMCPId.SELF(input.organizationId),
+            selected_tools: [...JIRA_CHAT_AGENT_TOOLS],
+            selected_resources: null,
+            selected_prompts: [],
+          },
+        ],
       },
       { id },
     );
   } catch (err) {
-    // Every replica runs the startup backfill: another one may have created
-    // it between the read above and this write.
-    const raced = await virtualMcps.findById(id, input.organizationId);
-    if (!raced) throw err;
-    await refresh(raced);
-  }
-}
-
-/**
- * Startup pass over the orgs that have an integration: the agent where it is
- * enabled (with the current definition), none where it is disabled. Removal on
- * disconnect happens in `JIRA_INTEGRATION_DELETE`. Idempotent; a handful of
- * orgs, so no workflow.
- */
-export async function backfillJiraChatAgents(): Promise<void> {
-  const { db } = getDb();
-  const virtualMcps = new VirtualMCPStorage(db);
-  const integrations = await db
-    .selectFrom("org_jira_integrations")
-    .select(["organization_id", "created_by", "enabled"])
-    .execute();
-  for (const row of integrations) {
-    await syncJiraChatAgent(virtualMcps, {
-      organizationId: row.organization_id,
-      userId: row.created_by,
-      enabled: row.enabled,
-    }).catch((err) => {
-      console.error(
-        `[jira-chat-agent] backfill failed for ${row.organization_id}:`,
-        err,
-      );
-    });
+    // Two writes of the integration at once: the other one created it.
+    if (await virtualMcps.findById(id, input.organizationId)) return;
+    throw err;
   }
 }

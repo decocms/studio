@@ -2,6 +2,11 @@ import {
   RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES,
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
+import {
+  isJiraChatAgentId,
+  JIRA_CHAT_AGENT_INSTRUCTIONS,
+  JIRA_CHAT_AGENT_TOOLS,
+} from "@/jira/chat-agent";
 import type { VirtualMCPStorage } from "@/storage/virtual";
 import type { StudioContext } from "@/core/studio-context";
 import type { VirtualMCPEntity } from "../schema";
@@ -86,6 +91,22 @@ export async function resolveEffectiveStudioPackVirtualMcp({
   organizationId: string;
   ctx: StudioContext;
 }): Promise<VirtualMCPEntity> {
+  // The org's Jira agent is code-owned the same way, outside the pack: it only
+  // exists while the Jira integration does (`jira/chat-agent.ts`).
+  if (isJiraChatAgentId(agentId)) {
+    return {
+      ...virtualMcp,
+      metadata: {
+        ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
+        instructions: JIRA_CHAT_AGENT_INSTRUCTIONS,
+      },
+      connections: virtualMcp.connections.map((connection) => ({
+        ...connection,
+        selected_tools: [...JIRA_CHAT_AGENT_TOOLS],
+      })),
+    };
+  }
+
   const studioPackAgent = findStudioPackAgentByMcpId(agentId);
   if (!studioPackAgent) return virtualMcp;
 

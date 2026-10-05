@@ -7,6 +7,7 @@ import * as migration226decoscorenames from "./226-deco-score-names";
 import * as migration227taskboardfindingresolvedactivity from "./227-task-board-finding-resolved-activity";
 import * as migration229jiraautomationfrom from "./229-jira-automation-from";
 import * as migration230projectsidebar from "./230-project-sidebar";
+import * as migration231jirachatagent from "./231-jira-chat-agent";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -498,6 +499,7 @@ const migrations: Record<string, Migration> = {
   "228-org-voice-config": migration228orgvoiceconfig,
   "229-jira-automation-from": migration229jiraautomationfrom,
   "230-project-sidebar": migration230projectsidebar,
+  "231-jira-chat-agent": migration231jirachatagent,
 };
 
 export default migrations;

@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { VirtualMCPStorage } from "@/storage/virtual";
 import {
+  JIRA_CHAT_AGENT_INSTRUCTIONS,
   JIRA_CHAT_AGENT_TOOLS,
   jiraChatAgentId,
   syncJiraChatAgent,
@@ -58,21 +59,14 @@ describe("syncJiraChatAgent", () => {
     ]);
   });
 
-  it("refreshes an existing agent's tools and instructions, keeping its other metadata", async () => {
-    const { storage, virtualMcps } = fakeStorage({
-      metadata: { instructions: "old", pinnedNote: "keep" },
-    });
+  it("leaves an existing agent alone: its definition comes from code at run time", async () => {
+    const { storage, virtualMcps } = fakeStorage({ metadata: {} });
 
     await sync(virtualMcps, true);
 
     expect(storage.create).not.toHaveBeenCalled();
-    const [, , patch] = storage.update.mock.calls[0] as unknown as [
-      string,
-      string,
-      { metadata: Record<string, unknown> },
-    ];
-    expect(patch.metadata.pinnedNote).toBe("keep");
-    expect(patch.metadata.instructions).not.toBe("old");
+    expect(storage.update).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("removes the agent when the integration is disabled or gone", async () => {
@@ -92,7 +86,7 @@ describe("syncJiraChatAgent", () => {
     expect(storage.create).not.toHaveBeenCalled();
   });
 
-  it("falls back to a refresh when another replica created it first", async () => {
+  it("accepts a create that lost a race to a concurrent write", async () => {
     const { storage, virtualMcps } = fakeStorage(null);
     storage.findById
       .mockImplementationOnce(async () => null)
@@ -103,7 +97,7 @@ describe("syncJiraChatAgent", () => {
 
     await sync(virtualMcps, true);
 
-    expect(storage.update).toHaveBeenCalledTimes(1);
+    expect(storage.update).not.toHaveBeenCalled();
   });
 
   it("rethrows a create failure that was not a race", async () => {
@@ -113,5 +107,54 @@ describe("syncJiraChatAgent", () => {
     });
 
     await expect(sync(virtualMcps, true)).rejects.toThrow("database is down");
+  });
+});
+
+describe("the agent's definition at run time", () => {
+  it("comes from code, whatever the stored row says", async () => {
+    const { resolveEffectiveStudioPackVirtualMcp } = await import(
+      "@/tools/virtual/studio-pack"
+    );
+    const stored = {
+      id: ID,
+      metadata: { instructions: "", note: "kept" },
+      connections: [
+        {
+          connection_id: `${ORG}_self`,
+          selected_tools: ["JIRA_ISSUE_GET"],
+          selected_resources: null,
+          selected_prompts: [],
+        },
+      ],
+    };
+
+    const effective = await resolveEffectiveStudioPackVirtualMcp({
+      virtualMcp: stored as never,
+      organizationId: ORG,
+      ctx: {} as never,
+    });
+
+    expect(effective.metadata).toMatchObject({
+      instructions: JIRA_CHAT_AGENT_INSTRUCTIONS,
+      note: "kept",
+    });
+    expect(effective.connections[0]?.selected_tools).toEqual([
+      ...JIRA_CHAT_AGENT_TOOLS,
+    ]);
+  });
+
+  it("leaves an ordinary agent untouched", async () => {
+    const { resolveEffectiveStudioPackVirtualMcp } = await import(
+      "@/tools/virtual/studio-pack"
+    );
+    const stored = { id: "vir_other", metadata: {}, connections: [] };
+
+    const effective = await resolveEffectiveStudioPackVirtualMcp({
+      virtualMcp: stored as never,
+      organizationId: ORG,
+      ctx: {} as never,
+    });
+
+    expect(effective).toBe(stored as never);
   });
 });
