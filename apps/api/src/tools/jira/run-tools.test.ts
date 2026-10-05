@@ -31,6 +31,9 @@ function fakeJira(opts: {
 }) {
   const calls: Call[] = [];
   const handle = (method: string, path: string, body: unknown): unknown => {
+    if (path === "/rest/agile/1.0/board/42") {
+      return { location: { projectKey: "EX" } };
+    }
     if (path.startsWith("/rest/agile/1.0/board/42/configuration")) {
       return { filter: { id: "77" } };
     }
@@ -486,5 +489,73 @@ describe("JIRA_ISSUE_SEARCH", () => {
       ],
       truncated: true,
     });
+  });
+});
+
+describe("outside a Jira run (a chat on /mcp/self)", () => {
+  const originalFetch = globalThis.fetch;
+  let jira: ReturnType<typeof fakeJira>;
+  const useJira = (opts: Parameters<typeof fakeJira>[0]) => {
+    jira = fakeJira(opts);
+    globalThis.fetch = jira.fetchMock as unknown as typeof fetch;
+  };
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("needs the issue named: there is no run issue to default to", async () => {
+    useJira({});
+    const { ctx } = makeCtx({});
+
+    await expect(
+      JIRA_ISSUE_TRANSITION.handler({ toStatus: "Doing" }, ctx),
+    ).rejects.toThrow("Pass `issueKey`");
+    expect(jira.calls).toEqual([]);
+  });
+
+  it("moves a named issue that is on the board", async () => {
+    useJira({ onBoard: ["EX-30"] });
+    const { ctx } = makeCtx({});
+
+    const out = await JIRA_ISSUE_TRANSITION.handler(
+      { issueKey: "ex-30", toStatus: "doing" },
+      ctx,
+    );
+
+    expect(out).toEqual({ status: "Doing" });
+  });
+
+  it("does not touch an issue that is not on the board", async () => {
+    useJira({});
+    const { ctx } = makeCtx({});
+
+    await expect(
+      JIRA_ISSUE_TRANSITION.handler(
+        { issueKey: "HR-4", toStatus: "Doing" },
+        ctx,
+      ),
+    ).rejects.toThrow("HR-4 is not on the connected Jira board");
+    expect(jira.calls.some((c) => c.path.includes("/transitions"))).toBe(false);
+  });
+
+  it("creates in the board's project and records nothing on a thread", async () => {
+    useJira({ onBoard: ["EX-7"] });
+    const { ctx, recordJiraIssueCreated } = makeCtx({});
+
+    const out = await JIRA_ISSUE_CREATE.handler(
+      input({ relatesTo: ["ex-7"] }),
+      ctx,
+    );
+
+    const create = jira.calls.find(
+      (c) => c.method === "POST" && c.path === "/rest/api/3/issue",
+    );
+    const body = create?.body as
+      | { fields?: { project?: { key?: string } } }
+      | undefined;
+    expect(body?.fields?.project?.key).toBe("EX");
+    expect(out.created).toBe(true);
+    expect(out.linked).toEqual(["EX-7"]);
+    expect(recordJiraIssueCreated).not.toHaveBeenCalled();
   });
 });
