@@ -69,11 +69,6 @@ export const decoServe = {
   "decoServe.state.error.body":
     'It answered, but with an error: "{detail}". Check the terminal where deco serve runs for details, then try again.',
 
-  "decoServe.schemaMissing.title":
-    "Your site's forms haven't been generated yet",
-  "decoServe.schemaMissing.body":
-    "deco serve found your content, but not the file that describes its forms (`.deco/schema.gen.json`). Generate it in your site's folder. This page picks it up on its own.",
-
   "decoServe.save.conflict":
     "Not saved: this content changed on your computer after you opened it (in your code editor or by git, for example). Studio is loading the latest version. Make your change again on top of it.",
   "decoServe.save.readOnly":

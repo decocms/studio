@@ -962,6 +962,24 @@ export const sandbox = {
     "JSON inválido — as alterações não serão salvas até que seja processado.",
   "sandbox.savedSectionEditor.noEditableFields":
     "Nenhum campo editável para esta seção.",
+  "sandbox.schemaless.back": "Todos os blocos",
+  "sandbox.schemaless.bannerBody":
+    "Até lá, cada bloco abre com campos simples criados a partir dos valores salvos, e salvar mantém todos os outros valores como estão. Gere o schema na pasta do seu site; esta página o detecta sozinha.",
+  "sandbox.schemaless.bannerTitle":
+    "Os formulários ganham os campos certos assim que o schema existir",
+  "sandbox.schemaless.docsLink": "Sobre o deco schema",
+  "sandbox.schemaless.empty": "Vazio",
+  "sandbox.schemaless.item": "Item {n}",
+  "sandbox.schemaless.itemCount": "{count} itens",
+  "sandbox.schemaless.listLabel": "Blocos salvos",
+  "sandbox.schemaless.noBlocks": "Nenhum bloco salvo ainda.",
+  "sandbox.schemaless.noMatches": "Nenhum bloco corresponde à busca.",
+  "sandbox.schemaless.noType": "Sem tipo",
+  "sandbox.schemaless.notANumber":
+    "Digite um número. O valor salvo continua até você digitar.",
+  "sandbox.schemaless.notSet": "Sem valor",
+  "sandbox.schemaless.pickBlock": "Escolha um bloco para ver o conteúdo.",
+  "sandbox.schemaless.searchPlaceholder": "Buscar blocos",
   "sandbox.sectionRenameDialog.cancel": "Cancelar",
   "sandbox.sectionRenameDialog.description":
     "Atualiza o nome de exibição. A chave interna permanece a mesma para que as páginas que referem esta seção continuem funcionando.",

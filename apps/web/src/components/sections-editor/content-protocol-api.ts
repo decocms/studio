@@ -36,6 +36,7 @@ import {
   fetchDraftPreview,
 } from "./decofile-api";
 import type { LiveMeta } from "./resolve-schema";
+import { isSchemaAbsent, noSchemaMeta } from "./schemaless";
 
 /**
  * The read error while a protocol backend can't be used; the 502 keeps the
@@ -119,7 +120,7 @@ async function guarded<T>(
 
 export interface ProtocolContent {
   blocks: Record<string, unknown>;
-  /** The schema, or the error reading it (NotFound when there is none). */
+  /** The schema (`noSchemaMeta()` while there is none), or the error reading it. */
   meta: LiveMeta | ContentProtocolError;
 }
 
@@ -178,7 +179,10 @@ async function readContent(
   if (!listed?.ok) throw listed?.error ?? new Error("no blocks.list");
   if (!schema) throw new Error("no schema.get");
   const list = listed.result as BlocksListResult;
-  const read = schema.ok ? (schema.result as SchemaGetResult) : null;
+  // No schema yet: an empty, marked schema, so the blocks still open (as
+  // plain fields) and the next poll asks again unconditionally.
+  const absent = isSchemaAbsent(schema);
+  const read = schema.ok && !absent ? (schema.result as SchemaGetResult) : null;
   // A version outlived the entry it described: read both whole.
   if (
     (list.notModified && !currentBlocks) ||
@@ -194,18 +198,20 @@ async function readContent(
         currentBlocks,
         savingBlockKeys(queryClient, params),
       );
-  const meta: LiveMeta | ContentProtocolError = !read
-    ? (schema as { error: ContentProtocolError }).error
-    : read.notModified
-      ? currentMeta!
-      : (read.schema as LiveMeta);
+  const meta: LiveMeta | ContentProtocolError = absent
+    ? noSchemaMeta()
+    : !read
+      ? (schema as { error: ContentProtocolError }).error
+      : read.notModified
+        ? currentMeta!
+        : (read.schema as LiveMeta);
   queryClient.setQueryData<ContentRevisions>(revisionsKey, {
     revision: list.notModified ? seen?.revision : list.revision,
     schemaVersion: !read
       ? undefined
       : read.notModified
         ? seen?.schemaVersion
-        : read.version,
+        : (read.version ?? undefined),
   });
   queryClient.setQueryData(blocksKey, blocks);
   if (!(meta instanceof ContentProtocolError)) {

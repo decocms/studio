@@ -68,11 +68,6 @@ export const decoServe = {
   "decoServe.state.error.body":
     'Ele respondeu, mas com um erro: "{detail}". Veja os detalhes no terminal onde o deco serve está rodando e tente de novo.',
 
-  "decoServe.schemaMissing.title":
-    "Os formulários do seu site ainda não foram gerados",
-  "decoServe.schemaMissing.body":
-    "O deco serve encontrou seu conteúdo, mas não o arquivo que descreve os formulários (`.deco/schema.gen.json`). Gere esse arquivo na pasta do seu site. Esta página detecta sozinha.",
-
   "decoServe.save.conflict":
     "Não salvo: este conteúdo mudou no seu computador depois que você o abriu (no editor de código ou pelo git, por exemplo). O Studio está carregando a versão mais recente. Refaça sua mudança sobre ela.",
   "decoServe.save.readOnly":

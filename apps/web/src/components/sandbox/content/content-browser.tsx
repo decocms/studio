@@ -72,6 +72,8 @@ import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
+import { SchemalessEditor } from "./schemaless-editor";
+import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
 import { resolveContentSandboxGate } from "./content-sandbox-gate";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
@@ -547,6 +549,18 @@ function ContentBrowserReady({
 
   if (dataMissing) {
     return <EmptyMessage title="Could not load site data." />;
+  }
+
+  // No schema yet: every block, as plain fields, until it appears.
+  if (isNoSchemaMeta(meta)) {
+    return (
+      <SchemalessEditor
+        orgSlug={orgSlug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
+        decofile={decofile}
+      />
+    );
   }
 
   const pages = extractPages(decofile, meta).sort((a, b) =>

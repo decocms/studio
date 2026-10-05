@@ -46,12 +46,10 @@ import {
   endpointHost,
   parseConnectFragment,
   readLastConnection,
-  SCHEMA_COMMAND,
   saveLastConnection,
   serveCandidates,
 } from "@/components/sections-editor/deco-serve-connection";
 import {
-  CommandSnippet,
   DocsLinks,
   RichCode,
   serveProblemCopy,
@@ -184,7 +182,7 @@ function GateFrame({ children }: { children: ReactNode }) {
 /**
  * Holds the editor until the local server answers its probe, and explains
  * why when it answered but can't be used: out of date, another version,
- * another program on the port, an error, or no schema generated yet. A server
+ * another program on the port, or an error. A server
  * that stops answering takes the route back to its guide (`ServeLostWatcher`).
  */
 function BackendGate({ children }: { children: ReactNode }) {
@@ -193,23 +191,9 @@ function BackendGate({ children }: { children: ReactNode }) {
   const backend = useContentBackend(LOCAL_PROJECT_ID, LOCAL_BRANCH);
   const host = connection ? endpointHost(connection.endpoint) : "";
 
-  if (backend.kind === "protocol") {
-    if (backend.source !== "local" || backend.hasSchema !== false) {
-      return children;
-    }
-    return (
-      <GateFrame>
-        <h2 className="text-base font-medium text-foreground">
-          {t("decoServe.schemaMissing.title")}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          <RichCode text={t("decoServe.schemaMissing.body")} />
-        </p>
-        <CommandSnippet command={SCHEMA_COMMAND} />
-        <DocsLinks links={["schema", "troubleshooting"]} />
-      </GateFrame>
-    );
-  }
+  // With no schema yet, the editor still opens: Content shows every block as
+  // plain fields with a banner on how to generate the forms.
+  if (backend.kind === "protocol") return children;
   if (backend.kind !== "unavailable" || isServeLost(backend)) {
     return (
       <Centered>

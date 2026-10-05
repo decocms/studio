@@ -25,6 +25,8 @@ import {
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
+import { SchemalessEditor } from "@/components/sandbox/content/schemaless-editor";
 import { useNewBlocksEditorState } from "@/hooks/use-new-blocks-editor";
 
 const SectionsEditor = lazy(() =>
@@ -95,6 +97,23 @@ export function BlocksPanel({
 
   if (state.kind === "loading" || editorUndecided) {
     return panel(<PanelLoading />);
+  }
+  // No schema yet: the page (or any block) as plain fields, never an error.
+  if (decofile.data && isNoSchemaMeta(meta.data)) {
+    const target = workspace.state.target;
+    const initialKey =
+      target?.kind === "page" || target?.kind === "section" ? target.key : null;
+    return panel(
+      <SchemalessEditor
+        key={initialKey ?? ""}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? ""}
+        decofile={decofile.data}
+        initialKey={initialKey}
+        compact
+      />,
+    );
   }
   if (state.kind === "empty") return panel(<BlocksEmptyState />);
   if (state.kind === "error") {

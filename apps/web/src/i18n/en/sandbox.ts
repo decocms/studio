@@ -935,6 +935,24 @@ export const sandbox = {
     "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
+  "sandbox.schemaless.back": "All blocks",
+  "sandbox.schemaless.bannerBody":
+    "Until then, each block opens with plain fields built from its saved values, and saving keeps every other value as it is. Generate the schema in your site's folder; this page picks it up on its own.",
+  "sandbox.schemaless.bannerTitle":
+    "Forms get proper fields once the schema exists",
+  "sandbox.schemaless.docsLink": "About deco schema",
+  "sandbox.schemaless.empty": "Empty",
+  "sandbox.schemaless.item": "Item {n}",
+  "sandbox.schemaless.itemCount": "{count} items",
+  "sandbox.schemaless.listLabel": "Saved blocks",
+  "sandbox.schemaless.noBlocks": "No saved blocks yet.",
+  "sandbox.schemaless.noMatches": "No blocks match your search.",
+  "sandbox.schemaless.noType": "Without a type",
+  "sandbox.schemaless.notANumber":
+    "Enter a number. The saved value stays until you do.",
+  "sandbox.schemaless.notSet": "Not set",
+  "sandbox.schemaless.pickBlock": "Pick a block to see its content.",
+  "sandbox.schemaless.searchPlaceholder": "Search blocks",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
   "sandbox.sectionRenameDialog.description":
     "Updates the display name. The internal key stays the same so pages referencing this section keep working.",

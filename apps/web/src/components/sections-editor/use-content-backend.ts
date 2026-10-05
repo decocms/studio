@@ -5,7 +5,6 @@ import {
   ContentProtocolError,
   createContentClient,
   type DescribeResult,
-  ErrorCode,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
 import { useProjectContext } from "@/sdk";
@@ -24,11 +23,12 @@ import {
   NotDecoServeError,
   probeRetryDelay,
 } from "./deco-serve-connection";
+import { isSchemaAbsent } from "./schemaless";
 
 export interface Probe {
   client: ContentClient;
   describe: DescribeResult;
-  /** Whether the endpoint has a schema (`schema.get` didn't say NotFound). */
+  /** Whether the endpoint has a schema (see `isSchemaAbsent`). */
   hasSchema: boolean;
 }
 
@@ -60,11 +60,11 @@ export async function probe(client: ContentClient): Promise<Probe> {
   const result = described.result as Partial<DescribeResult> | null;
   if (result?.protocol !== PROTOCOL_NAME) throw new NotDecoServeError();
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
-  if (schema?.ok) return { client, describe, hasSchema: true };
-  if (schema?.error.code === ErrorCode.NotFound) {
-    return { client, describe, hasSchema: false };
-  }
-  throw schema?.error ?? new Error("no schema.get");
+  if (!schema) throw new Error("no schema.get");
+  // `schema: null`, or NotFound from an older deco serve: no schema yet.
+  if (isSchemaAbsent(schema)) return { client, describe, hasSchema: false };
+  if (schema.ok) return { client, describe, hasSchema: true };
+  throw schema.error;
 }
 
 /**
