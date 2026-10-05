@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { generateClientCode, toolSchemaFiles } from "./codegen.js";
+import { generateClientCode, toolSchemaFiles } from "./codegen";
 
 describe("toolSchemaFiles", () => {
   test("emits one JSON file per tool with name, description and schemas", () => {
@@ -77,7 +77,7 @@ describe("generateClientCode", () => {
     });
 
     // Must export Tools interface
-    expect(output).toContain("export interface Tools");
+    expect(output).toContain("export type Tools = {");
     // Must have the tool key
     expect(output).toContain("SEARCH:");
     // Must have input/output subkeys
@@ -88,6 +88,26 @@ describe("generateClientCode", () => {
     // Must call createStudioClient with the mcpId
     expect(output).toContain("vmc_abc123");
     expect(output).toContain("createStudioClient<Tools>");
+  });
+
+  test("quotes tool names that are not identifiers", async () => {
+    const code = await generateClientCode({
+      mcpId: "vir_1",
+      tools: [
+        {
+          name: "abc123_list-endpoints",
+          inputSchema: {
+            type: "object",
+            properties: { q: { type: "string" } },
+          },
+        },
+        { name: "PLAIN_NAME", inputSchema: { type: "object" } },
+      ],
+    });
+
+    expect(code).toContain('"abc123_list-endpoints": {');
+    expect(code).toContain("PLAIN_NAME: {");
+    expect(code).toContain('mcpId: "vir_1"');
   });
 
   test("uses unknown for missing outputSchema", async () => {

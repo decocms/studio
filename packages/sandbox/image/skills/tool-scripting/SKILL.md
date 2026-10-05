@@ -101,7 +101,7 @@ Determinism rules:
 ## Typed client (optional)
 
 ```bash
-typegen --output client.ts
+decocms typegen --output client.ts
 ```
 
 generates a `client.ts` with one typed method per tool from the same

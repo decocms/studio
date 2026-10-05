@@ -5,7 +5,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { generateClientCode, toolSchemaFiles } from "./codegen.js";
+import {
+  generateClientCode,
+  toolSchemaFiles,
+} from "@decocms/studio-cli/codegen";
 import { discoverEndpoint, mcpIdFromUrl } from "./endpoint.js";
 import { createStudioClient } from "./runtime.js";
 
@@ -194,11 +197,11 @@ async function cmdCall(args: string[]): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const cmd = args[0];
-  if (cmd === "tools" || cmd === "call") {
-    console.error(
-      `typegen ${cmd} is deprecated: use \`decocms tools list|describe|call\` (same package), which also works with your login outside a sandbox.`,
-    );
-  }
+  console.error(
+    cmd === "tools" || cmd === "call"
+      ? `typegen ${cmd} is deprecated: use \`decocms tools list|describe|call\` (same package), which also works with your login outside a sandbox.`
+      : "typegen is deprecated: use `decocms typegen` (same package), which also works with your login outside a sandbox.",
+  );
   if (cmd === "tools") return cmdTools(args);
   if (cmd === "call") return cmdCall(args);
   // Default (no subcommand, or leading `--mcp ...`): generate a client.

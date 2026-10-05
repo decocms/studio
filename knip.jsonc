@@ -53,7 +53,12 @@
         "daemon-e2e/stub-harness.mjs"
       ]
     },
-    "packages/typegen": {},
+    "packages/typegen": {
+      // The code generator lives in @decocms/studio-cli, which tsup bundles
+      // into dist; these stay external there (tsup.config.ts), so the
+      // published package imports them at runtime.
+      "ignoreDependencies": ["json-schema-to-typescript", "prettier"]
+    },
     "packages/e2e": {
       // Standalone mock servers spawned by Playwright's `webServer` via a
       // `bun run fixtures/...` command string — knip can't trace a process

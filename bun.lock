@@ -365,6 +365,8 @@
       "version": "0.0.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.29.0",
+        "json-schema-to-typescript": "^15.0.4",
+        "prettier": "^3.6.2",
         "zod": "4.3.6",
       },
       "devDependencies": {

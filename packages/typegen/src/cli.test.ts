@@ -185,11 +185,11 @@ describe("typegen CLI e2e", () => {
       "--schemas-dir",
       schemasDir,
     ]);
-    expect(stderr).toBe("");
+    expect(stderr).toContain("use `decocms typegen`");
     expect(code).toBe(0);
 
     const clientSrc = await readFile(clientPath, "utf-8");
-    expect(clientSrc).toContain("export interface Tools");
+    expect(clientSrc).toContain("export type Tools = {");
     expect(clientSrc).toContain("LIST_CUSTOMERS:");
     expect(clientSrc).toContain("SEND_EMAIL:");
 
@@ -343,6 +343,17 @@ describe("typegen CLI e2e", () => {
     );
     expect(call.code).toBe(0);
     expect(JSON.parse(call.stdout).customers[0].name).toBe("Grace");
+  });
+
+  test("the decocms binary generates a client for the run's agent", async () => {
+    await using ws = await flaglessWorkspace();
+    const clientPath = join(tmp, "run-client.ts");
+    const gen = await ws.run(["typegen", "--output", clientPath], STUDIO);
+    expect(gen.stderr).toBe("");
+    expect(gen.code).toBe(0);
+    const clientSrc = await readFile(clientPath, "utf-8");
+    expect(clientSrc).toContain("LIST_CUSTOMERS:");
+    expect(clientSrc).toContain('mcpId: "crm"');
   });
 
   test("the decocms binary refuses org-wide commands with only a run's key", async () => {

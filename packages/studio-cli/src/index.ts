@@ -3,7 +3,13 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 /** Top-level commands this package owns. */
-export const STUDIO_CLI_COMMANDS = ["auth", "api", "tools", "orgs"] as const;
+export const STUDIO_CLI_COMMANDS = [
+  "auth",
+  "api",
+  "tools",
+  "orgs",
+  "typegen",
+] as const;
 
 export function isStudioCliCommand(command: string | undefined): boolean {
   return STUDIO_CLI_COMMANDS.some((name) => name === command);
@@ -14,6 +20,7 @@ export const STUDIO_CLI_USAGE = `Studio commands:
   decocms orgs                               List the organizations you belong to
   decocms tools <list|describe|call>         List, inspect, and call tools
   decocms api <path>                         Authenticated request to any Studio route
+  decocms typegen                            Generate a typed TypeScript client for an agent's tools
 
 Credentials, first match wins:
   --target <url>        Your login for that studio (also picks the studio for auth login)
@@ -23,11 +30,14 @@ Credentials, first match wins:
 
 Options:
   --org <slug>          Organization for tools (not needed inside a run)
-  --agent <id>          tools: use this agent's tools instead of the org's builtin tools
+  --agent <id>          tools: use this agent's tools instead of the org's builtin tools;
+                        typegen: the agent to generate a client for
   -X, --method <m>      api: HTTP method (default: POST with --data, else GET)
   -d, --data <body>     Request body or tool arguments: literal, @<file>, or @- for stdin
   -H, --header <h>      api: extra header "Name: value" (repeatable)
   --json                tools list / orgs: print full objects
+  --output <file>       typegen: generated module (default: client.ts)
+  --schemas-dir <dir>   typegen: also write one JSON Schema file per tool
   --home <path>         Where the login is stored (default: ~/deco, or DATA_DIR / DECOCMS_HOME)`;
 
 /**
@@ -98,6 +108,16 @@ export async function runStudioCli(args: string[]): Promise<number> {
         json: values.json,
       });
     }
+    case "typegen": {
+      const { typegenCommand } = await import("./commands/typegen");
+      return typegenCommand({
+        ...common,
+        org: values.org,
+        agent: values.agent,
+        output: values.output,
+        schemasDir: values["schemas-dir"],
+      });
+    }
     case "orgs": {
       const { orgsCommand } = await import("./commands/orgs");
       return orgsCommand({ ...common, json: values.json });
@@ -121,6 +141,8 @@ function parse(args: string[]) {
       data: { type: "string", short: "d" },
       header: { type: "string", short: "H", multiple: true },
       json: { type: "boolean", default: false },
+      output: { type: "string" },
+      "schemas-dir": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });

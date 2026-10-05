@@ -59,7 +59,9 @@ decocms tools call <NAME> --org <slug> -d @args.json          # or -d @- for std
 ```
 
 `--agent <vir_id>` (with `--org`) lists and calls one agent's tools instead,
-connections included: what a run of that agent would see.
+connections included: what a run of that agent would see. For a script that
+calls many of them, `decocms typegen --org <slug> --agent <vir_id>` writes a
+typed `client.ts`; it authenticates with `STUDIO_API_KEY`.
 
 `call` prints the tool's JSON result and exits non-zero on failure, with the
 error body still on stdout:

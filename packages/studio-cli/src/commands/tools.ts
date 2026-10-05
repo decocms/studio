@@ -1,7 +1,10 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import { type CredentialOptions, resolveCredential } from "../lib/credentials";
+import {
+  type ConnectMcp,
+  connectStreamableHttp,
+  type McpToolClient,
+} from "../lib/mcp";
 import {
   errorMessage,
   readDataArg,
@@ -11,16 +14,6 @@ import {
   studioFetch,
   writeResponse,
 } from "../lib/studio-request";
-
-/** The slice of the MCP client `tools` uses. */
-export interface McpToolClient {
-  listTools(): Promise<{ tools: unknown[] }>;
-  callTool(params: {
-    name: string;
-    arguments: Record<string, unknown>;
-  }): Promise<unknown>;
-  close(): Promise<void>;
-}
 
 export interface ToolsOptions extends CredentialOptions, RequestIo {
   subcommand?: string;
@@ -34,10 +27,7 @@ export interface ToolsOptions extends CredentialOptions, RequestIo {
   /** `list` prints the full tool objects instead of one line per tool. */
   json?: boolean;
   /** Injectable for tests. Defaults to an MCP Streamable HTTP client. */
-  connectMcp?: (
-    url: URL,
-    headers: Record<string, string>,
-  ) => Promise<McpToolClient>;
+  connectMcp?: ConnectMcp;
 }
 
 const TOOLS_USAGE = `Usage:
@@ -290,15 +280,4 @@ function printCallResult(result: unknown): number {
   if (isError) console.error("The tool returned an error.");
   console.log(JSON.stringify(value));
   return isError ? 1 : 0;
-}
-
-async function connectStreamableHttp(
-  url: URL,
-  headers: Record<string, string>,
-): Promise<McpToolClient> {
-  const client = new Client({ name: "decocms", version: "1.0.0" });
-  await client.connect(
-    new StreamableHTTPClientTransport(url, { requestInit: { headers } }),
-  );
-  return client;
 }

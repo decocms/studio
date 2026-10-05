@@ -12,9 +12,12 @@ Node.js command line.
 
 ## Overview
 
-`@decocms/typegen` connects to a Studio Virtual MCP, reads its tool schemas, and
-generates a TypeScript client with one typed method per tool. The package also
-provides a lazy runtime client and CLI commands for inspecting or invoking tools.
+`@decocms/typegen` is the runtime for typed Studio clients
+(`createStudioClient()`) and carries the `decocms` binary. `decocms typegen`
+connects to a Studio Virtual MCP, reads its tool schemas, and generates a
+TypeScript client with one typed method per tool; `decocms tools` inspects and
+calls tools. The older `typegen` binary still works and prints a deprecation
+notice.
 
 The generator converts MCP JSON Schemas with `json-schema-to-typescript` and
 formats the emitted source with Prettier. Generated clients call the standard MCP
@@ -28,22 +31,22 @@ Streamable HTTP endpoint through `createStudioClient()`.
 - Generate typed input/output declarations and a configured client.
 - Optionally materialize one JSON Schema document per tool.
 - Provide a lazy, reusable typed client proxy.
-- Expose CLI commands for tool discovery and direct invocation.
+- Ship the `decocms` binary, so a Studio sandbox that installs this package has
+  the same Studio commands as the server CLI.
 - Reconnect cleanly after failure or an explicit `close()`.
 
 ## Usage
 
-Generate `client.ts` for a Virtual MCP:
+Generate `client.ts` for an agent (Virtual MCP), with a login or
+`STUDIO_API_KEY`. Inside a Studio run, drop `--org` and `--agent`: the run's
+agent is the default.
 
 ```bash
-bunx @decocms/typegen \
-  --mcp my-virtual-mcp-id \
-  --key "$STUDIO_API_KEY" \
-  --output client.ts
+decocms typegen --org my-org --agent my-virtual-mcp-id --output client.ts
 ```
 
-The default command is `generate`, so no subcommand is required. The generated
-module exports a `Tools` interface and a ready-to-use `client`:
+The generator now lives in `@decocms/studio-cli`. The generated
+module exports a `Tools` type and a ready-to-use `client`:
 
 ```ts
 import { client } from "./client";
@@ -94,12 +97,14 @@ decocms tools list --org my-org --agent my-virtual-mcp-id   # with a login
 
 The package has four parts:
 
-1. **`typegen` CLI** — resolves connection settings, connects an MCP client, and
-   dispatches the generate operation (plus the deprecated tools and call).
-2. **`decocms` CLI** — the Studio commands from the private
-   `@decocms/studio-cli` workspace, bundled into `dist/studio.js`.
-3. **Code generator** — converts each input and output JSON Schema to an inline
-   TypeScript type, builds a `Tools` map, and formats the generated module.
+1. **`decocms` CLI** — the Studio commands from the private
+   `@decocms/studio-cli` workspace, bundled into `dist/studio.js`, including
+   `decocms typegen`.
+2. **`typegen` CLI** — the deprecated binary: generate, tools, and call with
+   the `--mcp`/`--key`/`--url` flags, printing a pointer to `decocms`.
+3. **Code generator** — owned by `@decocms/studio-cli` and bundled here;
+   converts each input and output JSON Schema to an inline TypeScript type,
+   builds a `Tools` map, and formats the generated module.
 4. **Runtime client** — creates a proxy whose property names are MCP tool names.
    The first call opens one shared connection; concurrent calls reuse the same
    connection promise.
@@ -146,6 +151,9 @@ bun run lint
 
 - Generated types are a snapshot of the remote tool list and JSON Schemas. Rerun
   the generator whenever that Virtual MCP contract changes.
+- Generated clients authenticate with `STUDIO_API_KEY` or the sandbox's
+  `.deco/tools/.endpoint.json`; they don't read the `decocms auth login`
+  session.
 - Type safety is compile-time only. The runtime returns MCP
   `structuredContent`; it does not validate the response against the generated
   output type.
@@ -164,7 +172,7 @@ bun run lint
 
 ## CLI reference
 
-### Generate
+### Generate (deprecated: use `decocms typegen`)
 
 ```text
 typegen [--mcp ID] [--key KEY] [--url BASE_URL]

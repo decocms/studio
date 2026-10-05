@@ -1,7 +1,7 @@
 # @decocms/studio-cli
 
 The Studio commands an agent or a person runs from a shell: `auth`, `orgs`,
-`tools`, and `api`.
+`tools`, `api`, and `typegen`.
 
 | Attribute | Value |
 | --- | --- |
@@ -30,6 +30,8 @@ org-bound key, and a person acts with their own login.
   Virtual MCP's tools (a run's endpoint, or an agent with `--agent`) over MCP.
 - Send authenticated requests to any Studio route (`api`) and list the user's
   organizations (`orgs`).
+- Generate a typed TypeScript client for an agent's tools (`typegen`), built on
+  `createStudioClient()` from `@decocms/typegen`.
 
 ## Usage
 
@@ -41,10 +43,11 @@ decocms tools list --org my-org thread
 decocms tools call COLLECTION_THREADS_LIST --org my-org -d '{"limit":5}'
 decocms tools list --org my-org --agent vir_123   # one agent's tools
 decocms api "/api/my-org/fs/home/list?path="
+decocms typegen --org my-org --agent vir_123 --output client.ts
 ```
 
-Inside a Studio run, `decocms tools list|describe|call` need no flags: the run's
-endpoint decides the tools. `decocms --help` lists every option.
+Inside a Studio run, `decocms tools list|describe|call` and `decocms typegen`
+need no flags: the run's endpoint decides the tools. `decocms --help` lists every option.
 
 Embed the commands in another CLI with `runStudioCli(args)`, which returns the
 exit code, and `isStudioCliCommand(args[0])` to route to it.
@@ -61,10 +64,11 @@ from `src/lib/credentials.ts`, first match wins:
 4. The login from `decocms auth login`, stored as
    `session.<host>.json` under `--home`, `DATA_DIR`, `DECOCMS_HOME`, or `~/deco`.
 
-`tools` reads that credential to pick a source: REST at `/api/:org/tools` for a
-login or API key, or an MCP Streamable HTTP client for a run's endpoint or
-`/api/:org/mcp/virtual-mcp/:id` with `--agent`. `api` and `orgs` need a login
-or an API key; a run's key only covers the run's tools, so they refuse it.
+`tools` reads that credential to pick a source: REST at `/api/:org/tools` for
+a login or API key, or an MCP Streamable HTTP client for a run's endpoint or
+`/api/:org/mcp/virtual-mcp/:id` with `--agent`. `typegen` always uses MCP, the
+same way. `api` and `orgs` need a login or an API key; a run's key only covers
+the run's tools, so they refuse it.
 
 ## Development
 

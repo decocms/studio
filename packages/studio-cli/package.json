@@ -6,7 +6,8 @@
   "description": "Studio client commands (auth, api, tools, orgs) shared by the decocms server CLI and the typegen package",
   "exports": {
     ".": "./src/index.ts",
-    "./endpoint": "./src/lib/endpoint.ts"
+    "./endpoint": "./src/lib/endpoint.ts",
+    "./codegen": "./src/lib/codegen.ts"
   },
   "scripts": {
     "check": "tsc --noEmit",
@@ -14,6 +15,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
+    "json-schema-to-typescript": "^15.0.4",
+    "prettier": "^3.6.2",
     "zod": "4.3.6"
   },
   "devDependencies": {
