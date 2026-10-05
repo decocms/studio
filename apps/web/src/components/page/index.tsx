@@ -115,12 +115,15 @@ function PageActions({
 /** Routes supply identity; feature pages contribute controls through the panel's slots. */
 function PageHeader({
   breadcrumbs,
+  scope,
   leading,
   actions,
   navigation,
   trailingActions,
 }: {
   breadcrumbs: readonly BreadcrumbItem[];
+  /** Follows the breadcrumbs in the browser tab title, e.g. the organization. */
+  scope?: string;
   leading?: ReactNode;
   actions?: ReactNode;
   navigation?: ReactNode;
@@ -138,7 +141,7 @@ function PageHeader({
       >
         <Panel.Topbar.Left className="flex-1 gap-2">
           {leading}
-          <PageHeaderBreadcrumbs items={breadcrumbs} />
+          <PageHeaderBreadcrumbs items={breadcrumbs} scope={scope} />
           <Panel.Topbar.Left.Target />
         </Panel.Topbar.Left>
         <Panel.Topbar.Right className="shrink-0 gap-2">

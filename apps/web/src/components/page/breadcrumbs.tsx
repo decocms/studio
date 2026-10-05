@@ -23,6 +23,7 @@ import {
 import {
   MAX_UNCOLLAPSED_ITEMS,
   collapseBreadcrumbs,
+  documentTitle,
   resolveBreadcrumbs,
 } from "./breadcrumb-model";
 
@@ -176,11 +177,14 @@ function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
   );
 }
 
-/** One renderer owns the complete path, including the only current segment. */
+/** One renderer owns the complete path, including the only current segment,
+ *  and names the browser tab after it. */
 export function PageHeaderBreadcrumbs({
   items,
+  scope,
 }: {
   items: readonly BreadcrumbItem[];
+  scope?: string;
 }) {
   const store = useBreadcrumbStore();
   if (!store) throw new Error("Page.Header requires Page.Breadcrumbs.Provider");
@@ -189,7 +193,15 @@ export function PageHeaderBreadcrumbs({
     store.getSnapshot,
     store.getSnapshot,
   );
-  return <BreadcrumbTrail items={resolveBreadcrumbs(items, extensions)} />;
+  const resolved = resolveBreadcrumbs(items, extensions);
+  const title = documentTitle(resolved, scope);
+  return (
+    <>
+      {/* React hoists this ahead of index.html's static title. */}
+      {title && <title>{title}</title>}
+      <BreadcrumbTrail items={resolved} />
+    </>
+  );
 }
 
 function PageBreadcrumbsRoot(extension: BreadcrumbExtension) {
