@@ -129,6 +129,15 @@ async function commitBatch(batch: Batch): Promise<string> {
    *  a retry that rebuilds on a fresh head re-reads only blocks it has not
    *  already resolved instead of the whole tree again. */
   const blobMemo = new Map<string, string>();
+  /** Serialized content per patched key, primed into the disk cache once: a
+   *  CAS retry writes the same bytes, so redoing this per attempt would be
+   *  pure waste. */
+  const setContents = new Map<string, string>();
+  for (const [key, value] of batch.set) {
+    const content = `${JSON.stringify(value, null, 2)}\n`;
+    setContents.set(key, content);
+    await primeBlobCache(client.repo, content);
+  }
   for (let attempt = 0; ; attempt++) {
     // Writes are session-only, so first-touch of a thread-minted branch may
     // materialize it here (a save can race ahead of the editor's first read).
@@ -143,12 +152,8 @@ async function commitBatch(batch: Batch): Promise<string> {
       { stem: string; sha: string } | { stem: string; content: string }
     >(entries.map((e) => [e.path, { stem: e.stem, sha: e.sha }]));
 
-    for (const [key, value] of batch.set) {
+    for (const [key, content] of setContents) {
       const aliases = aliasPathsForKey(entries, key);
-      const content = `${JSON.stringify(value, null, 2)}\n`;
-      // Write-through to the disk store (fail-open) so the read after this
-      // save never re-fetches content the replica already has in hand.
-      await primeBlobCache(client.repo, content);
       // Land on the existing on-disk spelling (a differently-encoded stem would
       // otherwise become a duplicate sibling); collapse extra aliases.
       const target =
