@@ -140,11 +140,7 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Parar de sincronizar "{volume}"?',
   "settings.syncedRepos.removed": "Sincronização removida",
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
-  "settings.repositories.pageDescription":
-    "Conecte as contas do seu provedor git e vincule os repositórios com os quais esta organização trabalha.",
   "settings.repositories.accountsTitle": "Contas conectadas",
-  "settings.repositories.accountsDescription":
-    "Contas que o Studio usa para ler seus repositórios e enviar alterações em seu nome.",
   "settings.repositories.accountsEmptyTitle": "Nenhuma conta conectada",
   "settings.repositories.accountsEmptyDescription":
     "Conecte uma conta do GitHub, GitLab ou Bitbucket para navegar pelos seus repositórios e vincular os privados.",
@@ -312,18 +308,18 @@ export const settings = {
   "settings.repositories.connecting": "Conectando…",
   "settings.repositories.connected": 'Conectado como "{login}"',
   "settings.repositories.reposTitle": "Repositórios",
-  "settings.repositories.reposDescription":
-    "Repositórios disponíveis para os agentes e automações desta organização.",
   "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
   "settings.repositories.reposEmptyDescription":
     "Escolha um repositório de uma conta conectada do GitHub, GitLab ou Bitbucket.",
   "settings.repositories.addRepository": "Adicionar repositório",
+  "settings.repositories.moreActions": "Mais ações",
+  "settings.repositories.repoAccountNeedsAttention":
+    "Conectado por {login}, que precisa de atenção em Contas conectadas.",
   "settings.repositories.unlink": "Desvincular",
   "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',
   "settings.repositories.unlinkDescription":
     "O repositório é removido desta organização. Nada é apagado no provedor.",
   "settings.repositories.unlinked": "Repositório desvinculado",
-  "settings.repositories.defaultBranch": "Branch padrão: {branch}",
   "settings.repositories.openInProvider": "Abrir repositório",
   "settings.repositories.visibilityPublic": "Público",
   "settings.repositories.visibilityPrivate": "Privado",

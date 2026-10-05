@@ -135,11 +135,7 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Stop syncing "{volume}"?',
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
-  "settings.repositories.pageDescription":
-    "Connect your git provider accounts and link the repositories this organization works with.",
   "settings.repositories.accountsTitle": "Connected accounts",
-  "settings.repositories.accountsDescription":
-    "Accounts Studio uses to read your repositories and push changes on your behalf.",
   "settings.repositories.accountsEmptyTitle": "No accounts connected",
   "settings.repositories.accountsEmptyDescription":
     "Connect a GitHub, GitLab or Bitbucket account to browse your repositories and link private ones.",
@@ -303,18 +299,18 @@ export const settings = {
   "settings.repositories.connecting": "Connecting…",
   "settings.repositories.connected": 'Connected as "{login}"',
   "settings.repositories.reposTitle": "Repositories",
-  "settings.repositories.reposDescription":
-    "Repositories available to this organization's agents and workflows.",
   "settings.repositories.reposEmptyTitle": "No repositories yet",
   "settings.repositories.reposEmptyDescription":
     "Choose a repository from a connected GitHub, GitLab or Bitbucket account.",
   "settings.repositories.addRepository": "Add repository",
+  "settings.repositories.moreActions": "More actions",
+  "settings.repositories.repoAccountNeedsAttention":
+    "Connected through {login}, which needs attention in Connected accounts.",
   "settings.repositories.unlink": "Unlink",
   "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
   "settings.repositories.unlinkDescription":
     "The repository is removed from this organization. Nothing is deleted on the provider.",
   "settings.repositories.unlinked": "Repository unlinked",
-  "settings.repositories.defaultBranch": "Default branch: {branch}",
   "settings.repositories.openInProvider": "Open repository",
   "settings.repositories.visibilityPublic": "Public",
   "settings.repositories.visibilityPrivate": "Private",
