@@ -86,6 +86,15 @@ export function CollectionsSidebar({
           active={active === "seo"}
           onSelect={onSelect}
         />
+        {shown("settings") && (
+          <CollectionRow
+            id="settings"
+            icon={Settings01}
+            label={t("sandbox.collectionsSidebar.settings")}
+            active={active === "settings"}
+            onSelect={onSelect}
+          />
+        )}
         <CollectionRow
           id="calendar"
           icon={Calendar}

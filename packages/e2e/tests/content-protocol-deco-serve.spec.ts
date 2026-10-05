@@ -78,6 +78,66 @@ const schema = {
   },
 };
 
+/** The same schema from a framework with the CMS settings block type. */
+const schemaWithSettings = {
+  ...schema,
+  manifest: {
+    blocks: {
+      ...schema.manifest.blocks,
+      content: {
+        "cms-settings": {
+          $ref: "#/definitions/Y21zLXNldHRpbmdz",
+          namespace: "deco",
+        },
+      },
+    },
+  },
+  schema: {
+    definitions: {
+      ...schema.schema.definitions,
+      Y21zLXNldHRpbmdz: {
+        title: "cms-settings",
+        type: "object",
+        required: ["__resolveType"],
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["cms-settings"],
+            default: "cms-settings",
+          },
+          preview: {
+            type: "object",
+            title: "Preview",
+            properties: {
+              hosts: {
+                type: "array",
+                title: "Hosts",
+                items: { type: "string" },
+              },
+            },
+          },
+          telemetry: {
+            type: "object",
+            title: "Telemetry",
+            properties: {
+              enabled: { type: "boolean", title: "Enabled", default: true },
+              metrics: { type: "boolean", title: "Metrics", default: true },
+            },
+          },
+          analytics: {
+            type: "object",
+            title: "Analytics",
+            properties: {
+              collector: { type: "string", title: "Collector" },
+              enabled: { type: "boolean", title: "Enabled", default: true },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 const HERO = "home-hero";
 const heroFile = (value: object) => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -189,11 +249,15 @@ async function editHero(
   expect(stub.requestBodies.join("\n")).not.toContain(secret);
 }
 
-async function startStub(publicKey: string, port?: number) {
+async function startStub(
+  publicKey: string,
+  port?: number,
+  siteSchema: object = schema,
+) {
   return startDecoServeStub({
     port,
     allowOrigin: getE2EAppOrigin(),
-    schema,
+    schema: siteSchema,
     secretsPublicKey: publicKey,
     // The dev app; nothing listens, the preview just has nothing to show.
     previewUrl: "http://127.0.0.1:9",
@@ -234,6 +298,14 @@ test.describe("site editor over deco serve", () => {
       await page.getByRole("link", { name: "Content" }).click();
       await expect(page).toHaveURL("/site-editor/content");
       const content = page.getByTestId("main-panel");
+      // A schema without the CMS settings type (published 8.1.0-next.3):
+      // no Settings entry.
+      await expect(
+        content.getByRole("button", { name: "Pages" }),
+      ).toBeVisible();
+      await expect(
+        content.getByRole("button", { name: "Settings", exact: true }),
+      ).toHaveCount(0);
       await content.getByRole("button", { name: "Advanced" }).click();
       await content.getByRole("button", { name: /^Sections/ }).click();
       await page.getByText("Home Hero", { exact: true }).click();
@@ -288,6 +360,52 @@ test.describe("site editor over deco serve", () => {
     }
   });
 
+  test("Settings opens the CMS block's form with its defaults and creates CMS.json on the first save", async ({
+    page,
+  }) => {
+    const stub = await startStub(
+      (await generateKeyPair()).publicKey,
+      undefined,
+      schemaWithSettings,
+    );
+    const cmsOf = async () => {
+      const text = (await stub.readFiles())["CMS.json"];
+      return text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    };
+    try {
+      await page.goto(linkOf(stub, "/site-editor/content"));
+      const content = page.getByTestId("main-panel");
+      await content
+        .getByRole("button", { name: "Settings", exact: true })
+        .click({ timeout: 30_000 });
+
+      // No CMS block yet: the form shows the defaults.
+      await expect(
+        page.getByTestId("cms-settings-defaults-notice"),
+      ).toBeVisible();
+      expect(await cmsOf()).toBeNull();
+      await content.getByRole("button", { name: "Telemetry" }).click();
+      const enabled = content.getByRole("switch", { name: "Enabled" });
+      await expect(enabled).toBeChecked();
+
+      // The first change creates CMS.json through blocks.apply.
+      await enabled.click();
+      await expect.poll(cmsOf, { timeout: 15_000 }).toMatchObject({
+        __resolveType: "cms-settings",
+        telemetry: { enabled: false },
+      });
+      expect(
+        stub.requestBodies.some((body) => body.includes("blocks.apply")),
+      ).toBe(true);
+      await expect(
+        page.getByTestId("cms-settings-defaults-notice"),
+      ).toHaveCount(0);
+      await expect(enabled).not.toBeChecked();
+    } finally {
+      await stub.close();
+    }
+  });
+
   test("waits for a stopped deco serve and reconnects when it starts", async ({
     page,
   }) => {
@@ -307,10 +425,9 @@ test.describe("site editor over deco serve", () => {
       await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
         timeout: 30_000,
       });
-      await expect(page.getByTestId("content-version-badge")).toHaveText(
-        "v8",
-        { timeout: 30_000 },
-      );
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 30_000,
+      });
     } finally {
       await stub.close();
     }

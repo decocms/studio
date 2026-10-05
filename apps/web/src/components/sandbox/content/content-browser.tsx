@@ -42,6 +42,7 @@ import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
+import { hasCmsSettingsType } from "./cms-settings";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
@@ -142,6 +143,12 @@ const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
 );
 
+const CmsSettingsEditor = lazy(() =>
+  import("./cms-settings-editor").then((m) => ({
+    default: m.CmsSettingsEditor,
+  })),
+);
+
 const PostEditor = lazy(() =>
   import("./blog/post-editor").then((m) => ({ default: m.PostEditor })),
 );
@@ -192,6 +199,7 @@ export type CollectionId =
   | "apps"
   | "site"
   | "seo"
+  | "settings"
   | "calendar"
   | "post-schedule"
   | "loaders"
@@ -558,11 +566,13 @@ function ContentBrowserReady({
   // What a content-protocol site has no use for: app installs (no site code
   // runs), v7's site app block, and an empty Actions folder.
   const hiddenCollections: CollectionId[] = runsSiteCode
-    ? []
+    ? ["settings"]
     : [
         "apps",
         ...(siteApp ? [] : (["site"] as const)),
         ...(actionsCount === 0 ? (["actions"] as const) : []),
+        // The CMS settings block, when the site's framework has the type.
+        ...(hasCmsSettingsType(meta) ? [] : (["settings"] as const)),
       ];
 
   // Loader/action-only sites are still editable — don't gate them out.
@@ -1002,6 +1012,7 @@ function ContentBrowserReady({
       />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
+        activeCollection !== "settings" &&
         activeCollection !== "context" &&
         activeCollection !== "calendar" &&
         activeCollection !== "post-schedule" &&
@@ -1128,6 +1139,14 @@ function ContentBrowserReady({
                   description="This project doesn't have a site app block (site/apps/site.ts)."
                 />
               )
+            ) : activeCollection === "settings" ? (
+              <CmsSettingsEditor
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+                meta={meta}
+              />
             ) : activeCollection === "context" ? (
               // Behind a veil until the brand context is good enough to ship.
               <SoonOverlay

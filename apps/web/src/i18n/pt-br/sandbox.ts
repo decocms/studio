@@ -124,6 +124,14 @@ export const sandbox = {
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) nesta categoria",
   "sandbox.categoryEditor.previewTooltip":
     "Abra a visualização da categoria em uma nova aba",
+  "sandbox.cmsSettingsBlock.conflictDescription":
+    'Já existe um bloco chamado CMS com o tipo "{type}". Renomeie-o para editar as configurações do CMS aqui.',
+  "sandbox.cmsSettingsBlock.conflictTitle":
+    "Configurações do CMS indisponíveis",
+  "sandbox.cmsSettingsBlock.defaultsNotice":
+    "Ainda não salvo: estes são os valores padrão. Sua primeira alteração cria o bloco CMS.",
+  "sandbox.cmsSettingsBlock.description":
+    "Hosts de preview, telemetria e analytics. O site os lê da versão publicada: as alterações valem após publicar, nunca no preview de um rascunho.",
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
@@ -168,6 +176,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.redirects": "Redirecionamentos",
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
+  "sandbox.collectionsSidebar.settings": "Configurações",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",

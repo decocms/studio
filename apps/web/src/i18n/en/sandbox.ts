@@ -121,6 +121,13 @@ export const sandbox = {
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) in this category",
   "sandbox.categoryEditor.previewTooltip":
     "Open the category preview in a new tab",
+  "sandbox.cmsSettingsBlock.conflictDescription":
+    'A block named CMS already exists with type "{type}". Rename it to edit the CMS settings here.',
+  "sandbox.cmsSettingsBlock.conflictTitle": "CMS settings unavailable",
+  "sandbox.cmsSettingsBlock.defaultsNotice":
+    "Not saved yet: these are the defaults. Your first change creates the CMS block.",
+  "sandbox.cmsSettingsBlock.description":
+    "Preview hosts, telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',
@@ -165,6 +172,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.redirects": "Redirects",
   "sandbox.collectionsSidebar.sections": "Sections",
   "sandbox.collectionsSidebar.seo": "SEO",
+  "sandbox.collectionsSidebar.settings": "Settings",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Created section "{name}"',
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",

@@ -1,7 +1,7 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronRight } from "@untitledui/icons";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
@@ -38,6 +38,7 @@ export function AppEditor({
   excludeFields,
   schemaPending = false,
   previewBaseUrl = null,
+  notice,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -51,6 +52,8 @@ export function AppEditor({
   excludeFields?: readonly string[];
   schemaPending?: boolean;
   previewBaseUrl?: string | null;
+  /** Shown above the form (e.g. that the block is not saved yet). */
+  notice?: ReactNode;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -213,6 +216,7 @@ export function AppEditor({
       <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="px-6 py-6">
           <div className="mx-auto max-w-xl">
+            {notice}
             {hasEditableFields ? (
               <SchemaForm
                 key={`${blockKey}:${formResetKey}`}
