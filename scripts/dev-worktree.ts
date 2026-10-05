@@ -8,11 +8,11 @@
 import { join } from "path";
 import { tmpdir } from "os";
 import { startWorktree } from "worktree-devservers";
-import { buildDevCommand } from "./dev-worktree-command";
+import { buildDevCommand, worktreeHostSlug } from "./dev-worktree-command";
 
-const slug = process.env.WORKTREE_SLUG;
+const slug = worktreeHostSlug(process.env.WORKTREE_SLUG ?? "");
 if (!slug) {
-  console.error("WORKTREE_SLUG environment variable is required.");
+  console.error("WORKTREE_SLUG must contain at least one letter or digit.");
   process.exit(1);
 }
 
