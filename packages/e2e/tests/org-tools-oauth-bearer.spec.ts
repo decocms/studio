@@ -93,4 +93,48 @@ test.describe("organization tools with an MCP OAuth bearer", () => {
     await outsiderCtx.dispose();
     await ownerCtx.dispose();
   });
+
+  test("get answers a bearer exactly as it answers the browser session", async ({
+    playwright,
+  }) => {
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const { accessToken } = await mintMcpAccessToken(ownerCtx);
+
+    // Stored metadata is where the two read paths could diverge.
+    const orgId = (
+      (await (
+        await ownerCtx.post(`/api/${owner.orgSlug}/tools/ORGANIZATION_GET`, {
+          data: {},
+        })
+      ).json()) as { id: string }
+    ).id;
+    const update = await ownerCtx.post(
+      `/api/${owner.orgSlug}/tools/ORGANIZATION_UPDATE`,
+      { data: { id: orgId, description: "parity check" } },
+    );
+    expect(update.status(), await update.text()).toBe(200);
+
+    const viaSession = await ownerCtx.post(
+      `/api/${owner.orgSlug}/tools/ORGANIZATION_GET`,
+      { data: {} },
+    );
+    expect(viaSession.status()).toBe(200);
+
+    const bearerCtx = await newApiContext(playwright);
+    const viaBearer = await callTool(
+      bearerCtx,
+      accessToken,
+      owner.orgSlug,
+      "ORGANIZATION_GET",
+    );
+    expect(viaBearer.status(), await viaBearer.text()).toBe(200);
+
+    const sessionOrg = await viaSession.json();
+    expect(JSON.stringify(sessionOrg.metadata)).toContain("parity check");
+    expect(await viaBearer.json()).toEqual(sessionOrg);
+
+    await bearerCtx.dispose();
+    await ownerCtx.dispose();
+  });
 });

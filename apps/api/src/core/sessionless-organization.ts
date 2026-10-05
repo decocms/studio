@@ -15,9 +15,6 @@ import type {
 type FullOrganization = NonNullable<GetFullOrganizationResult>;
 type MemberWithUser = FullOrganization["members"][number];
 
-/** Better Auth's default `membershipLimit`, which bounds the user lookup. */
-const MEMBERSHIP_LIMIT = 100;
-
 export async function listOrganizationsForUser(
   auth: BetterAuthInstance,
   userId: string,
@@ -79,7 +76,7 @@ export async function getFullOrganizationForUser(
               operator: "in",
             },
           ],
-          limit: MEMBERSHIP_LIMIT,
+          limit: members.length,
         })
       : [];
   const userById = new Map(users.map((user) => [user.id, user]));
