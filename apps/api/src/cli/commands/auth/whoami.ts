@@ -1,6 +1,4 @@
-import { getValidSession } from "../../lib/get-valid-session";
-import { RefreshFailedError } from "../../lib/refresh-session";
-import type { Session } from "../../lib/session";
+import { requireSession } from "../../lib/studio-request";
 
 export interface WhoamiOptions {
   dataDir: string;
@@ -11,27 +9,8 @@ export interface WhoamiOptions {
 }
 
 export async function whoamiCommand(options: WhoamiOptions): Promise<number> {
-  let session: Session | null;
-  try {
-    session = await getValidSession({
-      dataDir: options.dataDir,
-      fetch: options.fetch,
-      now: options.now,
-    });
-  } catch (err) {
-    if (err instanceof RefreshFailedError && err.kind === "transient") {
-      console.error(
-        `Could not refresh session: ${err.message}. Run \`decocms auth login\` to authenticate.`,
-      );
-      return 1;
-    }
-    throw err;
-  }
-
-  if (!session) {
-    console.error("Not logged in. Run `decocms auth login` to authenticate.");
-    return 1;
-  }
+  const session = await requireSession(options);
+  if (!session) return 1;
   console.log(`Target: ${session.target}`);
   console.log(`User:   ${session.user.email ?? session.user.sub}`);
   return 0;
