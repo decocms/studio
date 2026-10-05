@@ -362,6 +362,7 @@
     },
     "packages/studio-cli": {
       "name": "@decocms/studio-cli",
+      "version": "0.0.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.29.0",
         "zod": "4.3.6",

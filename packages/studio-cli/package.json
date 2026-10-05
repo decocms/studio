@@ -1,5 +1,6 @@
 {
   "name": "@decocms/studio-cli",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Studio client commands (auth, api, tools, orgs) shared by the decocms server CLI and the typegen package",
