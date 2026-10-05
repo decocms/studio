@@ -7,6 +7,22 @@ import { useFilePickerUpload } from "@/hooks/use-file-picker";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveTargetConfigId } from "./resolve-target-config-id";
 
+/**
+ * An upload comes back as `<publicUrlBase>/<path>`, and the base is operator
+ * configuration, not a constant: a bucket pointed at something that is not an
+ * origin would hand a scheme straight to a `src` and to the decofile. Anything
+ * but http(s) is a misconfigured bucket, so it is refused rather than stored.
+ */
+function httpUrl(value: string): string {
+  try {
+    const parsed = new URL(value);
+    const ok = parsed.protocol === "http:" || parsed.protocol === "https:";
+    return ok ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -68,7 +84,12 @@ export function useImageUpload({
         configId: targetConfigId,
         file: list[0]!,
       });
-      onUploaded(result.publicUrl);
+      const uploaded = httpUrl(result.publicUrl);
+      if (!uploaded) {
+        toast.error(t("sectionsEditor.imageField.uploadFailed"));
+        return;
+      }
+      onUploaded(uploaded);
       if (list.length > 1) {
         toast.info(
           t("sectionsEditor.imageField.uploadedWithExtraFilesIgnored", {

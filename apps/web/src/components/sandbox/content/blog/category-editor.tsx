@@ -428,6 +428,11 @@ export function CategoryEditor({
             <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
+              // Held while a cascade is in flight: `commitName` refuses to
+              // start a second overlapping rewrite, so an edit made now would
+              // be autosaved onto the category and never reach the posts
+              // carrying a copy of the name.
+              readOnly={isRenaming}
               onBlur={() => void commitName()}
               placeholder={t("sandbox.categoryEditor.categoryNamePlaceholder")}
               className="py-1 text-3xl font-bold text-foreground"

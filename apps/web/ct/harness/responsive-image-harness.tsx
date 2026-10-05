@@ -16,8 +16,10 @@ export function ResponsiveImageHarness({
       <ResponsiveImageField
         value={value.image}
         mobileValue={value.mobileImage}
-        onChange={(v) => setValue({ ...value, image: v })}
-        onMobileChange={(v) => setValue({ ...value, mobileImage: v })}
+        onChange={(v) => setValue((current) => ({ ...current, image: v }))}
+        onMobileChange={(v) =>
+          setValue((current) => ({ ...current, mobileImage: v }))
+        }
         label="Cover image"
       />
       <pre data-testid="cover-value">{JSON.stringify(value)}</pre>

@@ -53,7 +53,15 @@ export function ResponsiveImageField({
   const t = useT();
   const [onMobile, setOnMobile] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [urlOpen, setUrlOpen] = useState(false);
+  /**
+   * The address being typed, or `null` while the panel is closed. Held here
+   * and not in the panel so that closing it — including via the toolbar
+   * button, which swallows the blur that would commit — keeps the text long
+   * enough to store it.
+   */
+  const [urlDraft, setUrlDraft] = useState<string | null>(null);
+  const [urlNotice, setUrlNotice] = useState<string | null>(null);
+  const urlOpen = urlDraft !== null;
   /**
    * The URL whose load failed, rather than a boolean: switching slot or
    * source clears the error on its own, and the <img> below needs no `key`.
@@ -71,13 +79,47 @@ export function ResponsiveImageField({
   // through {@link ImageUrlPopover}.
   const src = safeImageSrc(active);
   const errored = !!active && (failedUrl === active || !src);
-  const quality = getQualityFromUrl(active);
+  const quality = getQualityFromUrl(src);
   const urlLabel = onMobile
     ? t("sectionsEditor.imageField.mobileUrlLabel")
     : t("sectionsEditor.imageField.urlLabel");
 
   const setActive = (next: string | undefined) =>
     (onMobile ? onMobileChange : onChange)(next || undefined);
+
+  const closeUrl = () => {
+    setUrlDraft(null);
+    setUrlNotice(null);
+  };
+
+  /**
+   * Store the typed address and close, unless its scheme must never reach a
+   * `src` — then the panel stays open carrying the reason.
+   */
+  const commitUrl = () => {
+    const draft = urlDraft ?? "";
+    const next = safeImageSrc(draft);
+    if (!next && draft.trim()) {
+      setUrlNotice(t("sectionsEditor.imageField.unsafeUrl"));
+      return;
+    }
+    if (next !== active) setActive(next || undefined);
+    closeUrl();
+  };
+
+  const toggleUrl = () => {
+    if (urlOpen) commitUrl();
+    else setUrlDraft(active);
+  };
+
+  /** Switching breakpoint re-points the panel at the other slot's address. */
+  const showSlot = (mobile: boolean) => {
+    setOnMobile(mobile);
+    if (urlOpen) {
+      setUrlDraft(mobile ? mobileUrl : str(value));
+      setUrlNotice(null);
+    }
+  };
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
     siteSlug: sandbox?.siteSlug,
@@ -99,33 +141,31 @@ export function ResponsiveImageField({
           <ToolbarButton
             active={!onMobile}
             label={t("sectionsEditor.imageField.desktopSlot")}
-            onClick={() => setOnMobile(false)}
+            onClick={() => showSlot(false)}
           >
             <Monitor01 size={14} />
           </ToolbarButton>
           <ToolbarButton
             active={onMobile}
             label={t("sectionsEditor.imageField.mobileSlot")}
-            onClick={() => setOnMobile(true)}
+            onClick={() => showSlot(true)}
           >
             {/* Tinted when a mobile image exists, so its presence reads
                 without opening the slot. */}
             <Phone01 size={14} className={cn(mobileUrl && "text-primary")} />
           </ToolbarButton>
 
-          <ToolbarButton
-            active={urlOpen}
-            label={urlLabel}
-            onClick={() => setUrlOpen((v) => !v)}
-          >
+          <ToolbarButton active={urlOpen} label={urlLabel} onClick={toggleUrl}>
             <Link01 size={14} />
           </ToolbarButton>
 
           {/* Quality is a `?quality=` param on the slot's own URL, so it is
               offered only for a URL that has a query string to carry it. On a
               `data:` image everything after the first comma is payload, and
-              appending to it corrupts the picture. */}
-          {active && !active.startsWith("data:") && (
+              appending to it corrupts the picture — and the scheme test has to
+              run on the parsed `src`, since `DATA:` and a scheme this field
+              refuses outright both slip past a check on the raw text. */}
+          {src && !src.toLowerCase().startsWith("data:") && (
             <>
               <ToolbarDivider />
               {QUALITY_OPTIONS.map((option) => (
@@ -136,7 +176,7 @@ export function ResponsiveImageField({
                   onClick={() =>
                     setActive(
                       setQualityOnUrl(
-                        active,
+                        src,
                         quality === option ? undefined : option,
                       ),
                     )
@@ -148,12 +188,18 @@ export function ResponsiveImageField({
             </>
           )}
 
-          {urlOpen && (
+          {urlDraft !== null && (
             <ImageUrlPopover
-              value={active}
+              draft={urlDraft}
+              notice={urlNotice}
               label={urlLabel}
-              onCommit={setActive}
-              onDone={() => setUrlOpen(false)}
+              placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
+              onDraftChange={(next) => {
+                setUrlNotice(null);
+                setUrlDraft(next);
+              }}
+              onCommit={commitUrl}
+              onCancel={closeUrl}
             />
           )}
         </div>

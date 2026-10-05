@@ -163,7 +163,7 @@ export function ItemRow({
             </TooltipContent>
           </Tooltip>
         )}
-        {warning && !invalid && (
+        {warning && (
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="flex shrink-0 items-center text-warning">

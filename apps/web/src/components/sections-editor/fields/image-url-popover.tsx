@@ -1,56 +1,38 @@
-import { useState } from "react";
 import { Input } from "@decocms/ui/components/input.tsx";
-import { useT } from "@/i18n/use-t.ts";
-import { safeImageSrc } from "./safe-image-url";
 
 /**
  * The "paste an address" panel behind an image field's link button.
  *
- * It owns the draft and hands its parent only a committed, sanitized value —
- * the text being typed never leaves this component. That boundary is the
- * point: a field bound straight to a preview means every half-typed address
- * is already the `<img src>`, and a check at the sink does not undo that.
+ * Presentational on purpose: the draft and the commit live in the field that
+ * opens this, so closing the panel does not destroy what the author typed.
+ * The toolbar button that closes it swallows mousedown to hold the editor's
+ * selection, so the blur that would otherwise commit never fires — the button
+ * would discard exactly what it was opened to collect.
  *
  * Enter and blur commit; Escape reverts. An address on a scheme that must
  * never reach a `src` is refused with a message instead of stored, so it
  * cannot reach the decofile — and therefore the site — either.
  */
 export function ImageUrlPopover({
-  value,
+  draft,
+  notice,
   label,
+  placeholder,
+  onDraftChange,
   onCommit,
-  onDone,
+  onCancel,
 }: {
-  /** The committed URL this panel is editing. */
-  value: string;
+  /** The text being edited, owned by the field. */
+  draft: string;
+  /** Why the last commit was refused, if it was. */
+  notice: string | null;
   /** Names the slot being edited — desktop or mobile. */
   label: string;
-  onCommit: (next: string | undefined) => void;
-  /** Called when a commit succeeds or the author cancels. */
-  onDone: () => void;
+  placeholder: string;
+  onDraftChange: (next: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
 }) {
-  const t = useT();
-  const [draft, setDraft] = useState(value);
-  const [notice, setNotice] = useState<string | null>(null);
-  // Re-seed when the slot changes under the open panel.
-  const [seen, setSeen] = useState(value);
-  if (seen !== value) {
-    setSeen(value);
-    setDraft(value);
-    setNotice(null);
-  }
-
-  const commit = () => {
-    const next = safeImageSrc(draft);
-    if (!next && draft.trim()) {
-      setNotice(t("sectionsEditor.imageField.unsafeUrl"));
-      return false;
-    }
-    setNotice(null);
-    if (next !== value) onCommit(next || undefined);
-    return true;
-  };
-
   return (
     <div className="absolute left-0 top-full z-20 mt-1.5 w-96 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-1 shadow-md">
       <Input
@@ -58,20 +40,13 @@ export function ImageUrlPopover({
         autoFocus
         type="url"
         value={draft}
-        onChange={(e) => {
-          setNotice(null);
-          setDraft(e.target.value);
-        }}
-        onBlur={() => commit() && onDone()}
+        onChange={(e) => onDraftChange(e.target.value)}
+        onBlur={onCommit}
         onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setDraft(value);
-            setNotice(null);
-            onDone();
-          }
-          if (e.key === "Enter" && commit()) onDone();
+          if (e.key === "Escape") onCancel();
+          if (e.key === "Enter") onCommit();
         }}
-        placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
+        placeholder={placeholder}
         spellCheck={false}
         aria-label={label}
         className="h-8 w-full text-xs"

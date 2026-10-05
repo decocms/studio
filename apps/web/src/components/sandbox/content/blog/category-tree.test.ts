@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { BlogEntry } from "./blog-data";
 import {
   categoryAncestors,
+  categoryPathSegments,
   descendantSlugs,
   MAX_CATEGORY_DEPTH,
   orderCategoryTree,
@@ -159,5 +160,56 @@ describe("descendantSlugs", () => {
     expect([...descendantSlugs("a", [cat("a", "b"), cat("b", "a")])]).toEqual([
       "b",
     ]);
+  });
+});
+
+describe("categoryPathSegments", () => {
+  const tree = [
+    cat("recipes"),
+    cat("desserts", "recipes"),
+    cat("cakes", "desserts"),
+  ];
+
+  it("returns the whole chain, root first", () => {
+    expect(categoryPathSegments("cakes", tree)).toEqual([
+      "recipes",
+      "desserts",
+      "cakes",
+    ]);
+  });
+
+  it("returns nothing for an empty slug", () => {
+    expect(categoryPathSegments("", tree)).toEqual([]);
+  });
+
+  it("returns the bare slug for an unknown one", () => {
+    expect(categoryPathSegments("ghost", tree)).toEqual(["ghost"]);
+  });
+
+  it("collapses a cycle to the bare slug, where the layout puts it", () => {
+    expect(categoryPathSegments("a", [cat("a", "b"), cat("b", "a")])).toEqual([
+      "a",
+    ]);
+  });
+
+  it("collapses a chain past the cap, where the layout puts it", () => {
+    const chain = ["a", "b", "c", "d", "e"].map((slug, i, all) =>
+      cat(slug, i === 0 ? undefined : all[i - 1]),
+    );
+    expect(categoryPathSegments("d", chain)).toEqual(["a", "b", "c", "d"]);
+    expect(categoryPathSegments("e", chain)).toEqual(["e"]);
+  });
+});
+
+describe("duplicated slugs", () => {
+  it("nests a child under the parent that actually resolved it", () => {
+    // Two "dup" categories; only the first is addressable, so the child
+    // belongs under it and must not follow the other one.
+    const first = cat("dup", undefined, "A dup");
+    const second = cat("dup", undefined, "B dup");
+    const child = cat("child", "dup");
+    const rows = orderCategoryTree([first, second, child]);
+    const order = rows.map((r) => `${r.entry.label}@${r.depth}`);
+    expect(order).toEqual(["A dup@0", "child@1", "B dup@0"]);
   });
 });

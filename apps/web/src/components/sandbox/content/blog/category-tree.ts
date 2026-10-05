@@ -71,17 +71,24 @@ export function categoryAncestors(
   return chain.reverse();
 }
 
-/** Children indexed by parent slug, name-sorted, skipping roots. */
+/**
+ * Children indexed by the parent ENTRY, name-sorted, skipping roots.
+ *
+ * Keyed by the entry and not by its slug because a slug can repeat: two
+ * categories sharing one would otherwise share a child list, and the child
+ * would be drawn under whichever duplicate the layout reached first rather
+ * than under the one `parentOf` actually resolved.
+ */
 function childrenIndex(
   entries: BlogEntry[],
   index: Map<string, BlogEntry>,
-): Map<string, BlogEntry[]> {
-  const children = new Map<string, BlogEntry[]>();
+): Map<BlogEntry, BlogEntry[]> {
+  const children = new Map<BlogEntry, BlogEntry[]>();
   for (const entry of entries) {
     const parent = parentOf(entry, index);
     if (!parent?.slug) continue;
-    const siblings = children.get(parent.slug);
-    siblings ? siblings.push(entry) : children.set(parent.slug, [entry]);
+    const siblings = children.get(parent);
+    siblings ? siblings.push(entry) : children.set(parent, [entry]);
   }
   for (const siblings of children.values()) {
     siblings.sort((a, b) => a.label.localeCompare(b.label));
@@ -98,20 +105,22 @@ export function descendantSlugs(
   slug: string,
   entries: BlogEntry[],
 ): Set<string> {
-  const children = childrenIndex(entries, indexBySlug(entries));
+  const index = indexBySlug(entries);
+  const children = childrenIndex(entries, index);
   const seen = new Set<string>([slug]);
-  let frontier = [slug];
+  const start = index.get(slug);
+  let frontier = start ? [start] : [];
 
   // No depth cap here, unlike the layout walk: a descendant past the cap is
   // still a descendant, and leaving it out of the set lets the parent picker
   // offer it and close a cycle. The visited set already bounds the walk.
   while (frontier.length) {
-    const next: string[] = [];
+    const next: BlogEntry[] = [];
     for (const parent of frontier) {
       for (const child of children.get(parent) ?? []) {
         if (child.slug && !seen.has(child.slug)) {
           seen.add(child.slug);
-          next.push(child.slug);
+          next.push(child);
         }
       }
     }
@@ -120,6 +129,28 @@ export function descendantSlugs(
 
   seen.delete(slug);
   return seen;
+}
+
+/**
+ * The path segments the site serves for `slug`, root first (`pai/filho`).
+ *
+ * A chain the layout itself would not draw — truncated by a cycle or by
+ * {@link MAX_CATEGORY_DEPTH} — collapses to the bare slug, which is exactly
+ * where {@link orderCategoryTree} puts that category: back at the root. The
+ * preview and the list must not disagree about where a category lives.
+ */
+export function categoryPathSegments(
+  slug: string,
+  entries: BlogEntry[],
+): string[] {
+  if (!slug) return [];
+  const index = indexBySlug(entries);
+  const chain = categoryAncestors(slug, entries);
+  const root = chain[0];
+  // Unknown slug, or a chain whose root still has a parent above it — the
+  // walk stopped early and the segments below it are not the whole path.
+  if (!root || parentOf(root, index)) return [slug];
+  return chain.map((entry) => entry.slug ?? "");
 }
 
 export interface CategoryTreeRow {
@@ -147,7 +178,7 @@ export function orderCategoryTree(entries: BlogEntry[]): CategoryTreeRow[] {
     placed.add(entry);
     rows.push({ entry, depth });
     if (depth + 1 >= MAX_CATEGORY_DEPTH) return;
-    for (const child of children.get(entry.slug ?? "") ?? []) {
+    for (const child of children.get(entry) ?? []) {
       walk(child, depth + 1);
     }
   };

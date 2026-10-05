@@ -136,3 +136,25 @@ test("an unsafe value already in the payload never reaches the src", async ({
   await expect(component.locator("img")).toHaveCount(0);
   await expect(component.getByText("Preview unavailable")).toBeVisible();
 });
+
+test("closing the URL panel with its own button keeps the typed address", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: PNG }} />,
+  );
+  await showToolbar(component);
+
+  // The toolbar button swallows mousedown to hold the editor's selection, so
+  // the blur that normally commits never fires — the panel has to commit on
+  // its way out or the button discards what it was opened to collect.
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+  await component
+    .getByPlaceholder("https://...")
+    .fill("https://x.test/typed.png");
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+
+  await expect
+    .poll(() => value(component))
+    .toMatchObject({ image: "https://x.test/typed.png" });
+});

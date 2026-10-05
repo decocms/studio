@@ -413,6 +413,41 @@ describe("categoryPath", () => {
   it("is empty for an empty slug", () => {
     expect(categoryPath(NESTED_CATEGORIES, "")).toBe("");
   });
+
+  it("falls back to the bare slug on a cycle", () => {
+    const cyclic = {
+      "collections/blog/categories/a": {
+        __resolveType: "blog/loaders/Category.ts",
+        category: { name: "A", slug: "a", parentSlug: "b" },
+      },
+      "collections/blog/categories/b": {
+        __resolveType: "blog/loaders/Category.ts",
+        category: { name: "B", slug: "b", parentSlug: "a" },
+      },
+    };
+    // The list lays `a` out as a root, so `b/a` would be a route nothing
+    // serves.
+    expect(categoryPath(cyclic, "a")).toBe("a");
+  });
+
+  it("falls back to the bare slug past the depth cap", () => {
+    const chain = Object.fromEntries(
+      ["a", "b", "c", "d", "e"].map((slug, i, all) => [
+        `collections/blog/categories/${slug}`,
+        {
+          __resolveType: "blog/loaders/Category.ts",
+          category: {
+            name: slug,
+            slug,
+            ...(i === 0 ? {} : { parentSlug: all[i - 1] }),
+          },
+        },
+      ]),
+    );
+    expect(categoryPath(chain, "d")).toBe("a/b/c/d");
+    // `e` is flattened to a root by the layout; its preview follows.
+    expect(categoryPath(chain, "e")).toBe("e");
+  });
 });
 
 describe("subcategory routes", () => {
@@ -458,6 +493,22 @@ describe("subcategory routes", () => {
         previewBaseUrl: "https://abc.preview.example.com",
       }),
     ).toBe("https://abc.preview.example.com/blog/filho/my-post");
+  });
+
+  it("treats a category route's own `:slug*` as the category path", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            categorySlug: "/blog/:slug*",
+          },
+        },
+        category: { slug: "filho" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/pai/filho");
   });
 
   it("does not treat a catch-all POST slug as a catch-all category", () => {

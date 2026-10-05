@@ -26,7 +26,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "flex h-7 min-w-7 items-center justify-center px-1.5 text-sm transition-colors cursor-pointer rounded-lg",
+        "flex h-7 min-w-7 items-center justify-center px-1.5 text-sm transition-colors cursor-pointer rounded-[var(--studio-control-radius,var(--radius))]",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",

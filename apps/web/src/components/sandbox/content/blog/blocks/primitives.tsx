@@ -17,6 +17,7 @@ export function InlineText({
   onBlur,
   onKeyDown,
   spellCheck = true,
+  readOnly,
   inputRef,
 }: {
   value: string;
@@ -27,6 +28,8 @@ export function InlineText({
   onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   spellCheck?: boolean;
+  /** Visible and focusable, but not editable — a write is in flight. */
+  readOnly?: boolean;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
 }) {
   return (
@@ -44,6 +47,7 @@ export function InlineText({
       onKeyDown={onKeyDown}
       placeholder={placeholder}
       spellCheck={spellCheck}
+      readOnly={readOnly}
       rows={1}
       className={cn(
         "w-full resize-none border-0 bg-transparent p-0 outline-none [field-sizing:content] placeholder:text-muted-foreground/50 focus:ring-0",

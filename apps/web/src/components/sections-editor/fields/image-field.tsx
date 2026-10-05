@@ -50,13 +50,41 @@ export function ImageField({
   }
 
   /**
+   * What the input shows, which is not always what is stored.
+   *
+   * A keystroke that is refused cannot simply be dropped on a controlled
+   * input: `https:` is not yet a safe URL, so rejecting the colon snapped the
+   * field back to the previous text and the address could be pasted but never
+   * typed. The text is kept as a draft and the value commits at each whole,
+   * safe step on the way.
+   */
+  const [urlDraft, setUrlDraft] = useState(strValue);
+  // Re-seed when the value changes elsewhere — picker, drop, trash.
+  const [seenUrl, setSeenUrl] = useState(strValue);
+  if (seenUrl !== strValue) {
+    setSeenUrl(strValue);
+    setUrlDraft(strValue);
+  }
+
+  /**
    * Keep what the author types, but never persist a scheme that must not
    * reach a `src` — the payload feeds the site, not only this preview. An
    * empty field is allowed through; `missingPostFields` is what flags it.
    */
   function setTypedValue(next: string) {
-    if (next.trim() && !isSafeImageUrl(next)) return;
-    setValue(next);
+    setUrlDraft(next);
+    const trimmed = next.trim();
+    if (trimmed && !isSafeImageUrl(trimmed)) return;
+    if (trimmed === strValue) return;
+    // Keep the re-seed from reading this write back as an outside change and
+    // overwriting a draft that is still mid-address.
+    setSeenUrl(trimmed);
+    setValue(trimmed);
+  }
+
+  /** On the way out, stop showing an address that was never stored. */
+  function revertUnsafeDraft() {
+    if (urlDraft.trim() && !isSafeImageUrl(urlDraft)) setUrlDraft(strValue);
   }
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
@@ -181,8 +209,12 @@ export function ImageField({
         <Input
           id={path}
           type="url"
-          value={strValue}
+          value={urlDraft}
           onChange={(e) => setTypedValue(e.target.value)}
+          onBlur={revertUnsafeDraft}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setUrlDraft(strValue);
+          }}
           placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
           className="h-9 min-w-0 flex-1"
         />

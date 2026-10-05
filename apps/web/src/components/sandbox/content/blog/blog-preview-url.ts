@@ -1,7 +1,7 @@
 import { withDraftPointer } from "@/components/sections-editor/section-preview-url";
 import { extractPathParams } from "@/components/sections-editor/page-path-utils";
 import { scanBlogEntries } from "./blog-data";
-import { categoryAncestors } from "./category-tree";
+import { categoryPathSegments } from "./category-tree";
 
 const str = (value: unknown): string =>
   typeof value === "string" ? value : "";
@@ -153,11 +153,24 @@ const ALL_CATEGORY_PARAMS = /:(?:categorySlug|categoria|category|slug)[*?]?/g;
  * router will not match, so a nested category previews at its leaf there —
  * the same URL the site serves.
  */
-function routeTakesCategoryPath(template: string): boolean {
+function routeTakesCategoryPath(
+  template: string,
+  /** The template is a category page's, so its lone param is the category. */
+  isCategoryRoute = false,
+): boolean {
   // Only a catch-all on the CATEGORY parameter counts. `/blog/:category/:slug*`
   // is a catch-all post slug, and feeding it a path would push `parent/child`
   // into the plain `:category` beside it.
-  return /:(?:categorySlug|categoria|category)\*|\/\*$/.test(template);
+  if (/:(?:categorySlug|categoria|category)\*|\/\*$/.test(template)) {
+    return true;
+  }
+  // `:slug*` is the category only on a category route that names it nothing
+  // else. On a post route it is the post's own catch-all.
+  return (
+    isCategoryRoute &&
+    /:slug\*/.test(template) &&
+    !/:(?:categorySlug|categoria|category)[*?]?/.test(template)
+  );
 }
 
 /** Percent-encode each segment, so a nested path keeps its separators. */
@@ -176,16 +189,16 @@ function encodePath(path: string): string {
 /**
  * The URL path a category occupies: its whole ancestor chain, root first
  * (`pai/filho`). Falls back to the bare slug when the chain can't be trusted —
- * an unknown slug, a cycle — which is the flat behaviour the blog app also
- * falls back to.
+ * an unknown slug, a cycle, a chain past the depth cap — which is the flat
+ * behaviour the blog app also falls back to.
  */
 export function categoryPath(
   decofile: Record<string, unknown>,
   slug: string,
 ): string {
   if (!slug) return "";
-  const chain = categoryAncestors(slug, scanBlogEntries(decofile).categories);
-  return chain.length > 0 ? chain.map((c) => c.slug).join("/") : slug;
+  const categories = scanBlogEntries(decofile).categories;
+  return categoryPathSegments(slug, categories).join("/");
 }
 
 /**
@@ -230,7 +243,9 @@ export function buildBlogCategoryPreviewUrl({
   const slug = str(category.slug);
   const path = applyBlogCategorySlug(
     template,
-    routeTakesCategoryPath(template) ? categoryPath(decofile, slug) : slug,
+    routeTakesCategoryPath(template, true)
+      ? categoryPath(decofile, slug)
+      : slug,
   );
   if (!path) return null;
 
