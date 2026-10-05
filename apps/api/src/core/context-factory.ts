@@ -219,6 +219,9 @@ type HasPermissionAPI = (params: {
   body: { permission: Permission; organizationId?: string };
 }) => Promise<{ success?: boolean; error?: unknown } | null>;
 
+/** Which credential authenticated the request, set by `authenticateRequest`. */
+type AuthMethod = "session" | "apiKey" | "mcpOAuth" | "studioJwt";
+
 /**
  * Auth context needed to create a bound auth client
  *
@@ -229,6 +232,8 @@ type HasPermissionAPI = (params: {
 export interface AuthContext {
   headers: Headers;
   auth: BetterAuthInstance;
+  /** Omitted when the caller didn't come through `authenticateRequest`. */
+  authMethod?: AuthMethod;
   role?: string; // User's role (for built-in role bypass)
   permissions?: Permission; // Permissions from API key or custom role (MCP OAuth)
   userId?: string; // User ID for server-side API key operations
@@ -255,6 +260,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
     userId,
     apiKeyId,
     organizationId: authOrganizationId,
+    authMethod,
   } = ctx;
 
   // An API key is authorized SOLELY by its own stored allowlist — the owner's
@@ -264,12 +270,10 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
 
-  // A bearer that isn't an API key (MCP OAuth, Studio JWT) gives Better Auth
-  // no session, so its session-gated organization reads must go around it.
-  const sessionlessUserId =
-    !isApiKeyPrincipal && headers.get("Authorization")?.startsWith("Bearer ")
-      ? userId
-      : undefined;
+  // Better Auth holds no session for these credentials, so its session-gated
+  // organization endpoints reject them; read through its adapter instead.
+  const readsOrgsViaAdapter =
+    authMethod === "mcpOAuth" || authMethod === "studioJwt";
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
   const hasPermissionApi = (auth.api as { hasPermission?: HasPermissionAPI })
@@ -419,10 +423,10 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       get: async (organizationId) => {
-        if (sessionlessUserId) {
+        if (readsOrgsViaAdapter) {
           const id = organizationId ?? authOrganizationId;
-          return id
-            ? getFullOrganizationForUser(auth, sessionlessUserId, id)
+          return id && userId
+            ? getFullOrganizationForUser(auth, userId, id)
             : null;
         }
         return auth.api.getFullOrganization({
@@ -436,8 +440,10 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         // API/UI surface, so filter them here — no caller of this method ever
         // sees them. A future restore flow would read archived orgs from
         // storage directly, not via this method.
-        const orgs = sessionlessUserId
-          ? await listOrganizationsForUser(auth, sessionlessUserId)
+        const orgs = readsOrgsViaAdapter
+          ? userId
+            ? await listOrganizationsForUser(auth, userId)
+            : []
           : await auth.api.listOrganizations({ headers });
         return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
@@ -766,6 +772,7 @@ async function authenticateRequest(
   timings: FactoryOptions["timings"] = DEFAULT_TIMINGS,
   memberRoleCache?: MemberRoleCache,
 ): Promise<{
+  method?: AuthMethod;
   user?: AuthenticatedUser;
   role?: string;
   permissions?: Permission; // Permissions from API key or custom role (for non-browser sessions)
@@ -882,6 +889,7 @@ async function authenticateRequest(
       }
 
       return {
+        method: "mcpOAuth",
         user: { id: userId, role },
         role,
         permissions,
@@ -960,6 +968,7 @@ async function authenticateRequest(
         }
 
         return {
+          method: "studioJwt",
           user: {
             id: studioTokenPayload.sub,
             connectionId: studioTokenPayload.metadata?.connectionId,
@@ -1039,6 +1048,7 @@ async function authenticateRequest(
         );
 
         return {
+          method: "apiKey",
           apiKeyId: result.key.id,
           // On-behalf-of fully replaces the principal (id + role) so user/role
           // stay consistent; the actor never inherits the key owner's role.
@@ -1233,6 +1243,7 @@ async function authenticateRequest(
       }
 
       return {
+        method: "session",
         user: {
           id: session.user.id,
           email: session.user.email,
@@ -1542,6 +1553,7 @@ export async function createStudioContextFactory(
     // Create bound auth client (encapsulates HTTP headers and auth context)
     const boundAuth = createBoundAuthClient({
       auth: config.auth,
+      authMethod: authResult.method,
       headers: req?.headers ?? new Headers(),
       role: authResult.role,
       permissions: authResult.permissions,
