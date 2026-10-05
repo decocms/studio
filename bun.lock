@@ -35,7 +35,7 @@
         "@aws-sdk/s3-request-presigner": "^3.1013.0",
         "@clickhouse/client": "^1.8.1",
         "@dbos-inc/dbos-sdk": "^4.21.6",
-        "@decocms/blocks": "^8.1.0-next.3",
+        "@decocms/blocks": "^8.1.0-next.4",
         "@inkjs/ui": "^2.0.0",
         "@nats-io/jetstream": "3.4.0",
         "@nats-io/kv": "3.4.0",
@@ -131,7 +131,7 @@
         "@better-auth/sso": "1.6.11",
         "@daveyplate/better-auth-ui": "^3.2.7",
         "@decocms/bindings": "workspace:*",
-        "@decocms/blocks": "^8.1.0-next.3",
+        "@decocms/blocks": "^8.1.0-next.4",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -251,7 +251,7 @@
       "name": "@decocms/e2e",
       "version": "1.97.2",
       "dependencies": {
-        "@decocms/blocks": "^8.1.0-next.3",
+        "@decocms/blocks": "^8.1.0-next.4",
         "@decocms/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@playwright/test": "^1.58.2",
@@ -456,9 +456,6 @@
     "@duckdb/node-bindings",
     "@duckdb/node-api",
   ],
-  "patchedDependencies": {
-    "@decocms/blocks@8.1.0-next.3": "patches/@decocms%2Fblocks@8.1.0-next.3.patch",
-  },
   "overrides": {
     "@types/bun": "1.3.14",
     "fast-xml-parser": "5.4.2",
@@ -749,7 +746,7 @@
 
     "@decocms/bindings": ["@decocms/bindings@workspace:packages/bindings"],
 
-    "@decocms/blocks": ["@decocms/blocks@8.1.0-next.3", "", { "dependencies": { "ajv": "^8.20.0", "zod": "^4.4.3" }, "peerDependencies": { "react": "^19.0.0", "typescript": "^5.0.0" }, "bin": { "deco": "bin/deco.js" } }, "sha512-DEJvikUUlniQ0Sd0l1+jevobVQqTcOVrrKlaXkaBm8hVIYnS5B3gQKi1hdU/gNRiWWirWEqOpULLcUpexkw5HA=="],
+    "@decocms/blocks": ["@decocms/blocks@8.1.0-next.4", "", { "dependencies": { "ajv": "^8.20.0", "zod": "^4.4.3" }, "peerDependencies": { "react": "^19.0.0", "typescript": "^5.0.0" }, "bin": { "deco": "bin/deco.js" } }, "sha512-f4AKgck19Ims9G6Eyx94cguIX8UoDCSBNjkjm+IOFoqcWSJncbdsAirssrstwhNFqQ4XWrdgVTWhxznG61quZw=="],
 
     "@decocms/docs": ["@decocms/docs@workspace:apps/docs"],
 
