@@ -608,6 +608,14 @@ export const sandbox = {
   "sandbox.postEditor.coverAltLabel": "Cover image alt text",
   "sandbox.postEditor.coverImageLabel": "Cover image",
   "sandbox.postEditor.dateLabel": "Date",
+  "sandbox.postEditor.deletePost": "Delete post",
+  "sandbox.postEditor.deletePostCancel": "Cancel",
+  "sandbox.postEditor.deletePostConfirmBody":
+    '"{title}" will be removed permanently. This can\'t be undone.',
+  "sandbox.postEditor.deletePostConfirmTitle": "Delete this post?",
+  "sandbox.postEditor.deletePostFailed": "Delete failed",
+  "sandbox.postEditor.deletePostSuccess": 'Deleted "{title}"',
+  "sandbox.postEditor.deletingPost": "Deleting…",
   "sandbox.postEditor.duplicateTitleWarning":
     "Another post already uses this title. Duplicate titles compete with each other in search.",
   "sandbox.postEditor.excerptLabel": "Excerpt",

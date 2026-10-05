@@ -620,6 +620,14 @@ export const sandbox = {
   "sandbox.postEditor.coverAltLabel": "Texto alternativo da capa",
   "sandbox.postEditor.coverImageLabel": "Imagem de capa",
   "sandbox.postEditor.dateLabel": "Data",
+  "sandbox.postEditor.deletePost": "Excluir post",
+  "sandbox.postEditor.deletePostCancel": "Cancelar",
+  "sandbox.postEditor.deletePostConfirmBody":
+    '"{title}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.postEditor.deletePostConfirmTitle": "Excluir este post?",
+  "sandbox.postEditor.deletePostFailed": "Falha ao excluir",
+  "sandbox.postEditor.deletePostSuccess": '"{title}" excluído',
+  "sandbox.postEditor.deletingPost": "Excluindo…",
   "sandbox.postEditor.duplicateTitleWarning":
     "Já existe outro post com esse título. Títulos duplicados competem entre si na busca.",
   "sandbox.postEditor.excerptLabel": "Resumo",

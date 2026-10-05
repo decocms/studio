@@ -9,6 +9,7 @@ import {
   emptyBlogPayload,
   listPostsWithMeta,
   missingPostFields,
+  canDeletePost,
   postStatus,
   relationPickerState,
   removeCategoryFromPost,
@@ -2070,5 +2071,33 @@ describe("buildGeneratedPostPayload", () => {
         takenSlugs: ["por-que-o-linho-amassa"],
       }).slug,
     ).toBe("por-que-o-linho-amassa-2");
+  });
+});
+
+describe("canDeletePost", () => {
+  test("allows an archived post", () => {
+    expect(canDeletePost({ status: "archived" })).toBe(true);
+  });
+
+  test("refuses every other status, including the live ones", () => {
+    for (const status of [
+      "draft",
+      "idea",
+      "generating",
+      "awaiting_review",
+      "in_review",
+      "scheduled",
+      "published",
+    ]) {
+      expect(canDeletePost({ status })).toBe(false);
+    }
+  });
+
+  test("refuses a post with no status — that reads as published", () => {
+    expect(canDeletePost({})).toBe(false);
+  });
+
+  test("refuses an unrecognized status rather than guessing", () => {
+    expect(canDeletePost({ status: "whatever" })).toBe(false);
   });
 });

@@ -498,6 +498,19 @@ export function postStatus(payload: Record<string, unknown>): PostStatus {
 }
 
 /**
+ * Whether this post may be deleted outright.
+ *
+ * Archived only. Every other status still resolves somewhere — a published
+ * post is on the site, a scheduled one is about to be, and a draft is work
+ * someone has not abandoned yet — so archiving is the one state where
+ * dropping the block cannot break a live page. It also keeps a deliberate
+ * step between "I'm done with this" and "it's gone".
+ */
+export function canDeletePost(payload: Record<string, unknown>): boolean {
+  return postStatus(payload) === "archived";
+}
+
+/**
  * Whether missing required fields bar this post from *becoming* live — the
  * gated forward moves are Scheduled and Published. Pulling a post back to
  * review or an earlier planning state is never blocked.

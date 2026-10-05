@@ -8,9 +8,21 @@ import {
   Minimize01,
   Pilcrow01,
   Settings01,
+  Trash01,
   XClose,
 } from "@untitledui/icons";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
@@ -30,6 +42,7 @@ import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   buildPostBlock,
+  canDeletePost,
   getBlogPayload,
   listBlogPayloads,
   maskSlugInput,
@@ -52,6 +65,7 @@ import {
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
@@ -116,6 +130,7 @@ export function PostEditor({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
@@ -170,6 +185,29 @@ export function PostEditor({
     blockKey,
     str(post.title),
   );
+
+  const canDelete = canDeletePost(post);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const deletePost = async () => {
+    // Cancel the debounce first: a timer that fires after the unlink writes
+    // the block straight back.
+    syncPost(post);
+    try {
+      await remove.mutateAsync({ blockKey });
+      toast.success(
+        t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
+      );
+      setConfirmingDelete(false);
+      onClose?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.postEditor.deletePostFailed"),
+      );
+    }
+  };
 
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
@@ -271,6 +309,25 @@ export function PostEditor({
                 </TabsTrigger>
               </TabsList>
               <div className="flex shrink-0 items-center gap-3">
+                {canDelete && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="px-2 text-muted-foreground hover:text-destructive"
+                        aria-label={t("sandbox.postEditor.deletePost")}
+                        onClick={() => setConfirmingDelete(true)}
+                      >
+                        <Trash01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {t("sandbox.postEditor.deletePost")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <SuggestLinksButton
                   decofile={decofile}
                   sections={asBlocks(post.sections)}
@@ -332,6 +389,48 @@ export function PostEditor({
           </Tabs>
         </div>
       </div>
+
+      <AlertDialog
+        open={confirmingDelete}
+        onOpenChange={(next) => {
+          if (!next && !remove.isPending) setConfirmingDelete(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sandbox.postEditor.deletePostConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sandbox.postEditor.deletePostConfirmBody", {
+                title: str(post.title) || t("sandbox.postBoard.untitled"),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>
+              {t("sandbox.postEditor.deletePostCancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void deletePost();
+              }}
+              disabled={remove.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {remove.isPending ? (
+                <>
+                  <Spinner className="size-3.5" />
+                  {t("sandbox.postEditor.deletingPost")}
+                </>
+              ) : (
+                t("sandbox.postEditor.deletePost")
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
