@@ -28,7 +28,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { createContentHandler, createFsStorage } from "./blocks-protocol";
+import { createContentHandler } from "@decocms/blocks/protocol/server";
+import { createFsStorage } from "@decocms/blocks/protocol/storage/fs";
 
 function toRequest(req: IncomingMessage, origin: string): Request {
   const headers = new Headers();

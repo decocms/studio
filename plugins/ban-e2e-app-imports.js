@@ -27,13 +27,11 @@ const ALLOWED_EXACT = new Set(["@playwright/test", "pg", "zod"]);
 // `@decocms/blocks` is the published Blocks framework, not Studio source: its
 // content protocol (server, filesystem storage, conformance suite) is the wire
 // contract the content-protocol specs drive, and the stand-in for `deco serve`
-// is built from it. `tsx` loads its TypeScript sources under Node (see
-// fixtures/blocks-protocol.ts), as the package's own `deco` bin does.
+// is built from it.
 const ALLOWED_SCOPED = [
   "@modelcontextprotocol/sdk",
   "@decocms/shared",
   "@decocms/blocks",
-  "tsx",
 ];
 
 function inE2ePackage(filename) {
