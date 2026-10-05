@@ -70,8 +70,8 @@ decocms api "/api/<slug>/fs/home/list?path="
 decocms api "/api/<slug>/fs/home/file?path=notes/a.md" -X PUT -H "Content-Type: text/markdown" -d @a.md
 ```
 
-`-d` takes a literal, `@file`, or `@-`; with `-d` the method defaults to POST and
-the content type to JSON. Paths must start with `/` on the session's studio.
+`-d` takes a literal, `@file`, or `@-`; with `-d` the method defaults to POST.
+Literals and stdin are sent as JSON and `@file` by its extension; `-H` overrides. Paths must start with `/` on the session's studio.
 Read [rest.md](rest.md) for each route's contract before calling it.
 
 ## Vocabulary

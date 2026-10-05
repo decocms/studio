@@ -1,4 +1,5 @@
 import {
+  errorMessage,
   readDataArg,
   type RequestIo,
   requireSession,
@@ -38,22 +39,26 @@ export async function apiCommand(options: ApiOptions): Promise<number> {
       console.error(`Invalid header "${raw}". Use "Name: value".`);
       return 1;
     }
-    headers.append(
-      raw.slice(0, separator).trim(),
-      raw.slice(separator + 1).trim(),
-    );
+    try {
+      headers.append(
+        raw.slice(0, separator).trim(),
+        raw.slice(separator + 1).trim(),
+      );
+    } catch (err) {
+      console.error(`Invalid header "${raw}": ${errorMessage(err)}`);
+      return 1;
+    }
   }
 
   const session = await requireSession(options);
   if (!session) return 1;
 
-  const body = await readDataArg(options.data, options.readStdin);
-  const method = (options.method ?? (body === undefined ? "GET" : "POST"))
-    .trim()
-    .toUpperCase();
-
   let res: Response;
   try {
+    const body = await readDataArg(options.data, options.readStdin);
+    const method = (options.method ?? (body === undefined ? "GET" : "POST"))
+      .trim()
+      .toUpperCase();
     res = await studioFetch(session, options.path, {
       method,
       headers,
@@ -61,8 +66,8 @@ export async function apiCommand(options: ApiOptions): Promise<number> {
       fetch: options.fetch,
     });
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
+    console.error(errorMessage(err));
     return 1;
   }
-  return writeResponse(res, options.output);
+  return writeResponse(res, session, options.output);
 }

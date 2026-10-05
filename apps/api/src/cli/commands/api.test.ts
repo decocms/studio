@@ -9,11 +9,12 @@ let dir: string;
 let err: string[];
 let errSpy: ReturnType<typeof spyOn>;
 let calls: { url: string; init: RequestInit }[];
-let stdout: string;
+let chunks: Uint8Array[];
 
 const output = async (chunk: Uint8Array) => {
-  stdout += new TextDecoder().decode(chunk);
+  chunks.push(chunk);
 };
+const stdout = () => Buffer.concat(chunks).toString("utf8");
 
 function respondWith(body: string, status = 200) {
   return (async (input: URL | string, init: RequestInit) => {
@@ -26,7 +27,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "deco-api-"));
   err = [];
   calls = [];
-  stdout = "";
+  chunks = [];
   errSpy = spyOn(console, "error").mockImplementation((msg: unknown) => {
     err.push(String(msg));
   });
@@ -54,7 +55,7 @@ describe("apiCommand", () => {
     });
 
     expect(code).toBe(0);
-    expect(stdout).toBe('{"entries":[]}');
+    expect(stdout()).toBe('{"entries":[]}');
     expect(calls[0]!.url).toBe(
       "https://studio.example.com/api/my-org/fs/files/list?path=/",
     );
@@ -106,7 +107,7 @@ describe("apiCommand", () => {
     });
 
     expect(code).toBe(1);
-    expect(stdout).toBe('{"error":"Not found"}');
+    expect(stdout()).toBe('{"error":"Not found"}');
     expect(err.join("\n")).toContain("HTTP 404");
   });
 
@@ -122,6 +123,50 @@ describe("apiCommand", () => {
     expect(code).toBe(1);
     expect(calls).toHaveLength(0);
     expect(err.join("\n")).toContain('Invalid header "no-colon"');
+  });
+
+  it("reports an invalid header name instead of throwing", async () => {
+    const code = await apiCommand({
+      dataDir: dir,
+      path: "/api/x",
+      headers: ["Bad Name: x"],
+      fetch: respondWith("{}"),
+      output,
+    });
+
+    expect(code).toBe(1);
+    expect(calls).toHaveLength(0);
+    expect(err.join("\n")).toContain('Invalid header "Bad Name: x"');
+  });
+
+  it("sends a file with its extension's content type", async () => {
+    const path = join(dir, "notes.md");
+    await Bun.write(path, "# hi");
+    await apiCommand({
+      dataDir: dir,
+      path: "/api/my-org/fs/home/file?path=notes.md",
+      method: "PUT",
+      data: `@${path}`,
+      fetch: respondWith("{}"),
+      output,
+    });
+
+    expect(new Headers(calls[0]!.init.headers).get("content-type")).toStartWith(
+      "text/markdown",
+    );
+  });
+
+  it("exits 1 when the --data file is missing", async () => {
+    const code = await apiCommand({
+      dataDir: dir,
+      path: "/api/x",
+      data: `@${join(dir, "missing.json")}`,
+      fetch: respondWith("{}"),
+      output,
+    });
+
+    expect(code).toBe(1);
+    expect(calls).toHaveLength(0);
   });
 
   it("refuses paths that leave the studio", async () => {

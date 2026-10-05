@@ -277,7 +277,7 @@ if (command === "auth") {
   }
   if (sub === "whoami") {
     const { whoamiCommand } = await import("./cli/commands/auth/whoami");
-    const code = await whoamiCommand({ dataDir });
+    const code = await whoamiCommand({ dataDir, target: values.target });
     process.exit(code);
   }
   if (sub === "token") {

@@ -35,7 +35,7 @@ read-only: writes return 403.
 | `GET fs/recent` | `limit?` (max 200) | `{entries}` across volumes |
 | `GET fs/<vol>/changes` | `since` cursor, `limit?`, `wait=1` long-poll | `{entries, cursor, hasMore}` |
 | `GET fs/<vol>/usage` | | `{files, bytes}` |
-| `GET fs/skills` | | `{skills}` from every volume |
+| `GET fs/skills` | | `{skills}` from `home` (root and `skills/`), synced repos, and public sets |
 
 An entry is `{volume, path, kind:"file"|"dir", size, contentHash, updatedAt,
 shareMode, ...}`.
@@ -71,13 +71,15 @@ No tool sends messages. The web app's flow:
    `toolApprovalLevel` (`auto|readonly`). Resending the same message `id` is
    idempotent; a message sent during a run queues behind it.
 4. Wait for the run. Poll `COLLECTION_THREADS_GET` until `status` leaves
-   `in_progress` (`completed`, `failed`, `requires_action`), or follow the
-   stream: `decocms api /api/<slug>/decopilot/threads/<threadId>/stream` prints
-   AI SDK UI-message chunks (`data: {...}`) and stays open across runs; a
+   `in_progress` (`completed`, `failed`, `requires_action`, or `expired` for a
+   stale run), or follow the stream:
+   `decocms api /api/<slug>/decopilot/threads/<threadId>/stream` prints AI SDK
+   UI-message chunks (`data: {...}`) and stays open across runs; a
    `{"type":"finish"}` chunk ends the run.
 5. Read the reply with `COLLECTION_THREAD_MESSAGES_LIST` `{"thread_id":"..."}`,
    and files it produced with `GET /api/<slug>/threads/<threadId>/outputs`
-   (`{objects:[{filename, size, downloadUrl}]}`; `downloadUrl` is an `fs/outputs/read` path).
+   (`{objects:[{filename, size, downloadUrl}]}`). `downloadUrl` is an absolute
+   URL; pass only its path and query to `decocms api`.
 
 Each message runs the agent and spends the org's AI budget, so send only what
 the user asked for. `POST /api/<slug>/decopilot/cancel/<threadId>` stops a run

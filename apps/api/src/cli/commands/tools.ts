@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  errorMessage,
   readDataArg,
   type RequestIo,
   requireSession,
@@ -60,20 +61,29 @@ export async function toolsCommand(options: ToolsOptions): Promise<number> {
   const base = `/api/${encodeURIComponent(org)}/tools`;
 
   if (subcommand === "call" && arg) {
-    const body = (await readDataArg(options.data, options.readStdin)) ?? "{}";
-    const res = await studioFetch(
-      session,
-      `${base}/${encodeURIComponent(arg)}`,
-      { method: "POST", body, fetch: options.fetch },
-    );
-    return writeResponse(res, options.output);
+    let res: Response;
+    try {
+      const body = (await readDataArg(options.data, options.readStdin)) ?? {
+        bytes: "{}",
+        contentType: "application/json",
+      };
+      res = await studioFetch(session, `${base}/${encodeURIComponent(arg)}`, {
+        method: "POST",
+        body,
+        fetch: options.fetch,
+      });
+    } catch (err) {
+      console.error(errorMessage(err));
+      return 1;
+    }
+    return writeResponse(res, session, options.output);
   }
 
   const res = await studioFetch(session, base, {
     method: "GET",
     fetch: options.fetch,
   });
-  if (!res.ok) return writeResponse(res, options.output);
+  if (!res.ok) return writeResponse(res, session, options.output);
   const parsed = ToolListSchema.safeParse(await res.json());
   if (!parsed.success) {
     console.error("Unexpected response from the tools endpoint.");

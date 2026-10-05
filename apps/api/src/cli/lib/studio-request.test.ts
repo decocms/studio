@@ -35,21 +35,37 @@ describe("readDataArg", () => {
     expect(await readDataArg(undefined)).toBeUndefined();
   });
 
-  it("passes a literal body through", async () => {
-    expect(await readDataArg('{"a":1}')).toBe('{"a":1}');
+  it("passes a literal body through as JSON", async () => {
+    expect(await readDataArg('{"a":1}')).toEqual({
+      bytes: '{"a":1}',
+      contentType: "application/json",
+    });
   });
 
-  it("reads @<file> as bytes", async () => {
-    const path = join(dir, "body.bin");
-    await writeFile(path, new Uint8Array([0, 255, 1]));
-    expect(Array.from((await readDataArg(`@${path}`)) as Uint8Array)).toEqual([
-      0, 255, 1,
-    ]);
+  it("reads @<file> as bytes typed by its extension", async () => {
+    const png = join(dir, "logo.png");
+    await writeFile(png, new Uint8Array([0, 255, 1]));
+    const body = await readDataArg(`@${png}`);
+    expect(Array.from(body!.bytes as Uint8Array)).toEqual([0, 255, 1]);
+    expect(body!.contentType).toBe("image/png");
+
+    const json = join(dir, "args.json");
+    await writeFile(json, "{}");
+    expect((await readDataArg(`@${json}`))!.contentType).toStartWith(
+      "application/json",
+    );
   });
 
-  it("reads @- from stdin", async () => {
+  it("rejects a missing @<file>", async () => {
+    await expect(readDataArg(`@${join(dir, "missing")}`)).rejects.toThrow();
+  });
+
+  it("reads @- from stdin as JSON", async () => {
     const bytes = new TextEncoder().encode("from stdin");
-    expect(await readDataArg("@-", async () => bytes)).toBe(bytes);
+    expect(await readDataArg("@-", async () => bytes)).toEqual({
+      bytes,
+      contentType: "application/json",
+    });
   });
 });
 
@@ -69,16 +85,16 @@ describe("studioFetch", () => {
     expect(headers.has("content-type")).toBe(false);
   });
 
-  it("defaults the content type to JSON only when there is a body", async () => {
+  it("takes the body's content type unless the caller set one", async () => {
     const { calls, fetchImpl } = recordingFetch();
     await studioFetch(session, "/api/x", {
       method: "POST",
-      body: "{}",
+      body: { bytes: "{}", contentType: "application/json" },
       fetch: fetchImpl,
     });
     await studioFetch(session, "/api/x", {
       method: "PUT",
-      body: "raw",
+      body: { bytes: "raw", contentType: "application/json" },
       headers: new Headers({ "Content-Type": "text/plain" }),
       fetch: fetchImpl,
     });
@@ -134,7 +150,7 @@ describe("writeResponse", () => {
 
   async function collect(res: Response) {
     const chunks: Uint8Array[] = [];
-    const code = await writeResponse(res, async (c) => {
+    const code = await writeResponse(res, session, async (c) => {
       chunks.push(c);
     });
     return { code, body: Buffer.concat(chunks).toString("utf8") };
@@ -159,10 +175,12 @@ describe("writeResponse", () => {
     expect(errors.join("\n")).toContain("HTTP 404 Not Found");
   });
 
-  it("hints at logging in again on 401", async () => {
+  it("hints at logging in again to the session's studio on 401", async () => {
     const { code } = await collect(new Response("", { status: 401 }));
     expect(code).toBe(1);
-    expect(errors.join("\n")).toMatch(/decocms auth login/);
+    expect(errors.join("\n")).toContain(
+      "decocms auth login --target https://studio.example.com",
+    );
   });
 
   it("handles an empty body", async () => {

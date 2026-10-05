@@ -23,11 +23,12 @@ let err: string[];
 let logSpy: ReturnType<typeof spyOn>;
 let errSpy: ReturnType<typeof spyOn>;
 let calls: { url: string; init: RequestInit }[];
-let stdout: string;
+let chunks: Uint8Array[];
 
 const output = async (chunk: Uint8Array) => {
-  stdout += new TextDecoder().decode(chunk);
+  chunks.push(chunk);
 };
+const stdout = () => Buffer.concat(chunks).toString("utf8");
 
 function respondWith(body: unknown, status = 200) {
   return (async (input: URL | string, init: RequestInit) => {
@@ -41,7 +42,7 @@ beforeEach(async () => {
   out = [];
   err = [];
   calls = [];
-  stdout = "";
+  chunks = [];
   logSpy = spyOn(console, "log").mockImplementation((msg: unknown) => {
     out.push(String(msg));
   });
@@ -128,7 +129,7 @@ describe("toolsCommand list", () => {
     });
 
     expect(code).toBe(1);
-    expect(stdout).toBe('{"error":"Forbidden"}');
+    expect(stdout()).toBe('{"error":"Forbidden"}');
   });
 });
 
@@ -178,7 +179,7 @@ describe("toolsCommand call", () => {
     );
     expect(calls[0]!.init.method).toBe("POST");
     expect(calls[0]!.init.body).toBe('{"id":"t_1"}');
-    expect(stdout).toBe('{"id":"t_1"}');
+    expect(stdout()).toBe('{"id":"t_1"}');
   });
 
   it("sends {} when no arguments are given", async () => {
@@ -206,7 +207,10 @@ describe("toolsCommand call", () => {
     });
 
     expect(code).toBe(1);
-    expect(JSON.parse(stdout)).toEqual({ error: "Invalid input", issues: [] });
+    expect(JSON.parse(stdout())).toEqual({
+      error: "Invalid input",
+      issues: [],
+    });
   });
 });
 

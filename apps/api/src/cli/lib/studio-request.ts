@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { getValidSession } from "./get-valid-session";
 import { RefreshFailedError } from "./refresh-session";
 import type { Session } from "./session";
@@ -19,6 +18,18 @@ export interface RequestIo {
   output?: (chunk: Uint8Array) => Promise<void>;
 }
 
+/** A request body plus the content type its source implies. */
+export interface RequestBody {
+  bytes: Uint8Array<ArrayBuffer> | string;
+  contentType: string;
+}
+
+function loginHint(target: string | undefined): string {
+  return target
+    ? `decocms auth login --target ${target}`
+    : "decocms auth login";
+}
+
 /**
  * Returns a valid (refreshed if needed) session, or null after telling the
  * user how to log in.
@@ -26,40 +37,48 @@ export interface RequestIo {
 export async function requireSession(
   options: SessionOptions,
 ): Promise<Session | null> {
-  const loginHint = options.target
-    ? `decocms auth login --target ${options.target}`
-    : "decocms auth login";
+  const hint = loginHint(options.target);
   let session: Session | null;
   try {
     session = await getValidSession(options);
   } catch (err) {
     if (err instanceof RefreshFailedError && err.kind === "transient") {
       console.error(
-        `Could not refresh session: ${err.message}. Run \`${loginHint}\` to authenticate.`,
+        `Could not refresh session: ${err.message}. Run \`${hint}\` to authenticate.`,
       );
       return null;
     }
     throw err;
   }
   if (!session) {
-    console.error(`Not logged in. Run \`${loginHint}\` to authenticate.`);
+    console.error(`Not logged in. Run \`${hint}\` to authenticate.`);
   }
   return session;
 }
 
+const JSON_TYPE = "application/json";
+
 /**
- * Resolves a `--data` value: `@-` reads stdin, `@<file>` reads the file,
- * anything else is the literal body.
+ * Resolves a `--data` value: `@-` reads stdin, `@<file>` reads the file and
+ * types it by extension, anything else is the literal body. Literals and
+ * stdin are typed as JSON, the common case for both.
  */
 export async function readDataArg(
   data: string | undefined,
   readStdin: () => Promise<Uint8Array<ArrayBuffer>> = defaultReadStdin,
-): Promise<Uint8Array<ArrayBuffer> | string | undefined> {
+): Promise<RequestBody | undefined> {
   if (data === undefined) return undefined;
-  if (data === "@-") return readStdin();
-  if (data.startsWith("@"))
-    return new Uint8Array(await readFile(data.slice(1)));
-  return data;
+  if (data === "@-") {
+    return { bytes: await readStdin(), contentType: JSON_TYPE };
+  }
+  if (data.startsWith("@")) {
+    const file = Bun.file(data.slice(1));
+    return {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      contentType: file.type,
+    };
+  }
+  return { bytes: data, contentType: JSON_TYPE };
 }
 
 /**
@@ -72,7 +91,7 @@ export async function studioFetch(
   init: {
     method: string;
     headers?: Headers;
-    body?: Uint8Array<ArrayBuffer> | string;
+    body?: RequestBody;
     fetch?: typeof fetch;
   },
 ): Promise<Response> {
@@ -84,14 +103,14 @@ export async function studioFetch(
     );
   }
   const headers = new Headers(init.headers);
-  if (init.body !== undefined && !headers.has("content-type")) {
-    headers.set("content-type", "application/json");
+  if (init.body && !headers.has("content-type")) {
+    headers.set("content-type", init.body.contentType);
   }
   headers.set("authorization", `Bearer ${session.accessToken}`);
   return (init.fetch ?? fetch)(url, {
     method: init.method,
     headers,
-    body: init.body,
+    body: init.body?.bytes,
   });
 }
 
@@ -101,12 +120,15 @@ export async function studioFetch(
  */
 export async function writeResponse(
   res: Response,
+  session: Session,
   output: (chunk: Uint8Array) => Promise<void> = defaultOutput,
 ): Promise<number> {
   if (!res.ok) {
     console.error(`HTTP ${res.status} ${res.statusText}`.trim());
     if (res.status === 401) {
-      console.error("Run `decocms auth login` to authenticate again.");
+      console.error(
+        `Run \`${loginHint(session.target)}\` to authenticate again.`,
+      );
     }
   }
   if (res.body) {
@@ -115,6 +137,10 @@ export async function writeResponse(
     }
   }
   return res.ok ? 0 : 1;
+}
+
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 async function defaultReadStdin(): Promise<Uint8Array<ArrayBuffer>> {
