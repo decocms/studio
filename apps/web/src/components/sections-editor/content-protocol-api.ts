@@ -16,6 +16,7 @@ import {
   type QueryClient,
   useQuery,
 } from "@tanstack/react-query";
+import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
   type BlocksListResult,
@@ -110,6 +111,7 @@ async function guarded<T>(
           "local",
         ),
       });
+      throw new ServeLostError(error);
     }
     throw error;
   }

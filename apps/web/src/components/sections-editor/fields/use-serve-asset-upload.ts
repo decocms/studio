@@ -34,16 +34,21 @@ export function useServeAssetUpload(
         }),
       );
     }
-    const res = await fetch(
-      `${origin}/assets/${encodeURIComponent(file.name)}`,
-      {
+    if (backend.describe.readOnly) {
+      throw new Error(t("decoServe.upload.readOnly", { name: file.name }));
+    }
+    let res: Response;
+    try {
+      res = await fetch(`${origin}/assets/${encodeURIComponent(file.name)}`, {
         method: "PUT",
         headers: {
           "content-type": file.type || "application/octet-stream",
         },
         body: file,
-      },
-    );
+      });
+    } catch {
+      throw new Error(t("decoServe.upload.serverGone", { name: file.name }));
+    }
     const body = (await res.json().catch(() => null)) as {
       path?: unknown;
       error?: { message?: unknown };
@@ -51,7 +56,10 @@ export function useServeAssetUpload(
     if (!res.ok || typeof body?.path !== "string") {
       const message = body?.error?.message;
       throw new Error(
-        typeof message === "string" ? message : `Upload failed (${res.status})`,
+        t("decoServe.upload.failed", {
+          name: file.name,
+          detail: typeof message === "string" ? message : `HTTP ${res.status}`,
+        }),
       );
     }
     return body.path;

@@ -22,6 +22,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
+import { isSaveConflict, saveErrorMessage } from "./serve-save-error";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -161,8 +162,12 @@ export function useSaveBlock({
       return { queryKey, blockKey, hadKey, previousValue };
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
       if (!context) return;
+      // Refused because the content changed on disk: load what is there now.
+      if (isSaveConflict(error)) {
+        void queryClient.invalidateQueries({ queryKey: context.queryKey });
+      }
       queryClient.setQueryData(
         context.queryKey,
         (current: Record<string, unknown> | undefined) => {
@@ -228,12 +233,7 @@ export function useDebouncedSaveBlock(
       { blockKey, data: resolved, guard: opts?.guard },
       {
         onSuccess: () => opts?.onSaved?.(),
-        onError: (err) =>
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
+        onError: (err) => toast.error(saveErrorMessage(t, err)),
       },
     );
   };

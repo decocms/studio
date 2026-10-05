@@ -21,12 +21,12 @@ export const thread = {
   "thread.branchPicker.localTab": "Local",
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
-    "Aponte o editor para a sua máquina. Sites v8: cole o link que o deco serve mostra. Sites v7: cole uma URL de túnel público para o seu dev server (ex.: ngrok, cloudflared).",
+    "Edite o conteúdo no seu computador. Sites Blocks v8: cole o link do Site editor que o deco serve mostrou, ou o endereço dele (127.0.0.1:4545). Sites Blocks v7: cole uma URL pública de túnel para o seu servidor de desenvolvimento (por exemplo ngrok ou cloudflared).",
   "thread.branchPicker.localServeConnected":
-    "Conectado ao deco serve em {endpoint} (v8). Cole outro link para trocar de servidor, ou uma URL de túnel para um site v7.",
-  "thread.branchPicker.localUrlLabel": "Link do deco serve ou URL do túnel",
+    "Conectado ao deco serve em {host} (Blocks v8). Cole outro endereço para trocar, ou uma URL de túnel para um site v7.",
+  "thread.branchPicker.localUrlLabel": "Endereço do deco serve ou URL de túnel",
   "thread.branchPicker.localUrlPlaceholder":
-    "Link do deco serve, ou https://seu-tunel.exemplo.com",
+    "127.0.0.1:4545, link do Site editor ou https://seu-tunel.example.com",
   "thread.branchPicker.localTurnOff": "Desligar",
   "thread.branchPicker.moreActions": "Mais ações",
   "thread.branchPicker.newVersion": "Novo Draft",

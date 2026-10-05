@@ -9,6 +9,7 @@ import {
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
 import { endpointHost } from "./deco-serve-connection";
+import { RichCode, serveProblemShort } from "./deco-serve-notices";
 import { useContentBackend } from "./use-content-backend";
 
 /** The site editor's "Local server" chip: what it edits, its state, Disconnect. */
@@ -25,13 +26,22 @@ export function DecoServeChip({
   if (!connection) return null;
   const problem =
     backend.kind === "unavailable"
-      ? `${t("decoServe.status.waiting", { host: endpointHost(connection.endpoint) })} ${t("decoServe.status.unreachable")}`
+      ? serveProblemShort(
+          t,
+          backend.problem ?? { reason: "not-answering" },
+          endpointHost(connection.endpoint),
+        )
       : null;
+  const readOnly =
+    backend.kind === "protocol" &&
+    backend.source === "local" &&
+    backend.describe.readOnly;
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Tooltip>
         <TooltipTrigger asChild>
           <span
+            tabIndex={0}
             data-testid="deco-serve-chip"
             className={cn(
               "rounded-full px-2 py-0.5 text-xs font-medium",
@@ -47,6 +57,22 @@ export function DecoServeChip({
           {problem ?? t("decoServe.chip.tooltip")}
         </TooltipContent>
       </Tooltip>
+      {readOnly && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              tabIndex={0}
+              data-testid="deco-serve-read-only"
+              className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-foreground"
+            >
+              {t("decoServe.chip.readOnly")}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <RichCode text={t("decoServe.chip.readOnlyTooltip")} />
+          </TooltipContent>
+        </Tooltip>
+      )}
       <Button variant="ghost" size="sm" onClick={clear}>
         {t("decoServe.chip.disconnect")}
       </Button>

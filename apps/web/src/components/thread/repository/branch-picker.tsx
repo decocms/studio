@@ -57,11 +57,15 @@ import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
-import { createContentClient } from "@decocms/blocks/protocol";
 import {
   type DecoServeConnection,
-  parseConnectLink,
+  classifyServeProbeError,
+  endpointHost,
+  parseServeAddress,
 } from "@/components/sections-editor/deco-serve-connection";
+import { serveProblemShort } from "@/components/sections-editor/deco-serve-notices";
+import { DISCOVERY_PROBE_TIMEOUT_MS } from "@/components/sections-editor/deco-serve-discovery";
+import { probeServeEndpoint } from "@/hooks/use-deco-serve-discovery";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
@@ -1023,20 +1027,35 @@ function LocalUrlForm({
   const [error, setError] = useState<string | null>(null);
   const trimmed = value.trim();
   const submit = async () => {
-    const connection = parseConnectLink(trimmed);
-    if (!connection) {
+    // A Site editor link, or an address or port on this machine: deco serve.
+    // Anything else is a v7 tunnel URL.
+    const parsed = parseServeAddress(trimmed);
+    if (!parsed.ok) {
       onSave(productionUrlFromDomain(trimmed));
       return;
     }
+    const { connection } = parsed;
     // The first request is what makes Chrome ask to reach this machine.
     setChecking(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      DISCOVERY_PROBE_TIMEOUT_MS,
+    );
     try {
-      await createContentClient(connection).describe();
+      await probeServeEndpoint(connection.endpoint, controller.signal);
       onSaveServe(connection);
-    } catch {
-      setError(t("decoServe.status.unreachable"));
+    } catch (failure) {
+      setError(
+        serveProblemShort(
+          t,
+          classifyServeProbeError(failure),
+          endpointHost(connection.endpoint),
+        ),
+      );
     } finally {
+      clearTimeout(timeout);
       setChecking(false);
     }
   };
@@ -1045,7 +1064,7 @@ function LocalUrlForm({
       <p className="text-xs text-muted-foreground">
         {serveEndpoint
           ? t("thread.branchPicker.localServeConnected", {
-              endpoint: serveEndpoint,
+              host: endpointHost(serveEndpoint),
             })
           : t("thread.branchPicker.localHint")}
       </p>

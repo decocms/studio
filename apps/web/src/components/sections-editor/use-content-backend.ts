@@ -6,6 +6,7 @@ import {
   createContentClient,
   type DescribeResult,
   ErrorCode,
+  PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
 import { useProjectContext } from "@/sdk";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
@@ -18,9 +19,13 @@ import {
   type ProtocolBackend,
   selectContentBackend,
 } from "./content-backend";
-import { probeRetryDelay } from "./deco-serve-connection";
+import {
+  classifyServeProbeError,
+  NotDecoServeError,
+  probeRetryDelay,
+} from "./deco-serve-connection";
 
-interface Probe {
+export interface Probe {
   client: ContentClient;
   describe: DescribeResult;
   /** Whether the endpoint has a schema (`schema.get` didn't say NotFound). */
@@ -42,13 +47,18 @@ function githubContentEndpoint(params: {
   ).href;
 }
 
-/** `describe` plus the schema, in one request. */
-async function probe(client: ContentClient): Promise<Probe> {
+/**
+ * `describe` plus the schema, in one request. Throws `NotDecoServeError` when
+ * something else answered (see `classifyServeProbeError`).
+ */
+export async function probe(client: ContentClient): Promise<Probe> {
   const [described, schema] = await client.batch([
     { method: "describe" },
     { method: "schema.get" },
   ]);
   if (!described?.ok) throw described?.error ?? new Error("no describe");
+  const result = described.result as Partial<DescribeResult> | null;
+  if (result?.protocol !== PROTOCOL_NAME) throw new NotDecoServeError();
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
   if (schema?.ok) return { client, describe, hasSchema: true };
   if (schema?.error.code === ErrorCode.NotFound) {
@@ -124,10 +134,16 @@ export function useContentBackend(
     // off up to 10s. A server that answers with an error (say, this origin
     // isn't allowed) is polled instead. A failed read or write resets this
     // probe (see content-protocol-api).
-    retry: (_failures, error) => !(error instanceof ContentProtocolError),
+    retry: (_failures, error) =>
+      !(error instanceof ContentProtocolError) &&
+      !(error instanceof NotDecoServeError),
     retryDelay: (failures) => probeRetryDelay(failures + 1),
+    // Also re-probed while there is no schema, so `deco schema` is picked up
+    // on its own.
     refetchInterval: (query) =>
-      query.state.status === "error" ? PROBE_RETRY_MS : false,
+      query.state.status === "error" || query.state.data?.hasSchema === false
+        ? PROBE_RETRY_MS
+        : false,
   });
 
   const decision = selectContentBackend({
@@ -157,7 +173,11 @@ export function useContentBackend(
   }
   // Still retrying after a failure: `deco serve` is down or restarting.
   if (local.isError || local.failureCount > 0) {
-    return { kind: "unavailable", source: "local" };
+    return {
+      kind: "unavailable",
+      source: "local",
+      problem: classifyServeProbeError(local.error ?? local.failureReason),
+    };
   }
   return { kind: "pending" };
 }
@@ -173,5 +193,6 @@ function toBackend(
     client: probed.client,
     describe: probed.describe,
     cacheKeySuffix,
+    hasSchema: probed.hasSchema,
   };
 }

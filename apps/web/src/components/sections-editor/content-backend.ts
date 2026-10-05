@@ -13,7 +13,7 @@
  */
 
 import type { ContentClient, DescribeResult } from "@decocms/blocks/protocol";
-import { isLoopbackEndpoint } from "./deco-serve-connection";
+import { isLoopbackEndpoint, type ServeProblem } from "./deco-serve-connection";
 
 export type ContentSource = "github" | "local";
 
@@ -24,6 +24,8 @@ export interface ProtocolBackend {
   describe: DescribeResult;
   /** Distinguishes cache entries of different endpoints for one project. */
   cacheKeySuffix: string;
+  /** Whether the endpoint has a schema (`deco schema` was run). */
+  hasSchema?: boolean;
 }
 
 export type ContentBackend =
@@ -32,7 +34,12 @@ export type ContentBackend =
   | { kind: "legacy" }
   | ProtocolBackend
   /** A protocol endpoint that can't be reached right now. */
-  | { kind: "unavailable"; source: ContentSource };
+  | {
+      kind: "unavailable";
+      source: ContentSource;
+      /** Why a `deco serve` can't be used (local only). */
+      problem?: ServeProblem;
+    };
 
 /**
  * A content-protocol project, usable right now or not. The protocol never

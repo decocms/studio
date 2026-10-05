@@ -19,12 +19,12 @@ export const thread = {
   "thread.branchPicker.localTab": "Local",
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
-    "Point the editor at your own machine. v8 sites: paste the link deco serve prints. v7 sites: paste a public tunnel URL to your dev server (e.g. ngrok, cloudflared).",
+    "Edit content on your computer. Blocks v8 sites: paste the Site editor link deco serve printed, or its address (127.0.0.1:4545). Blocks v7 sites: paste a public tunnel URL to your dev server (for example ngrok or cloudflared).",
   "thread.branchPicker.localServeConnected":
-    "Connected to deco serve at {endpoint} (v8). Paste another link to switch servers, or a tunnel URL for a v7 site.",
-  "thread.branchPicker.localUrlLabel": "deco serve link or tunnel URL",
+    "Connected to deco serve on {host} (Blocks v8). Paste another address to switch, or a tunnel URL for a v7 site.",
+  "thread.branchPicker.localUrlLabel": "deco serve address or tunnel URL",
   "thread.branchPicker.localUrlPlaceholder":
-    "deco serve link, or https://your-tunnel.example.com",
+    "127.0.0.1:4545, Site editor link, or https://your-tunnel.example.com",
   "thread.branchPicker.localTurnOff": "Turn off",
   "thread.branchPicker.moreActions": "More actions",
   "thread.branchPicker.newVersion": "New draft",
