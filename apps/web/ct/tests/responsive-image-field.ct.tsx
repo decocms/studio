@@ -200,3 +200,35 @@ test("a quality change is not undone by the open URL panel", async ({
     .poll(() => value(component))
     .toMatchObject({ image: "https://x.test/a.png?quality=high" });
 });
+
+test("switching slot does not carry the edit onto a twin address", async ({
+  mount,
+}) => {
+  // Both slots start on the same URL, so a draft tracked by value alone sees
+  // no change across the switch and stays aimed at the slot being left.
+  const SAME = "https://x.test/same.png";
+  const component = await mount(
+    <ResponsiveImageHarness initial={{ image: SAME, mobileImage: SAME }} />,
+  );
+  await showToolbar(component);
+
+  await component.getByRole("button", { name: "URL", exact: true }).click();
+  await component
+    .getByPlaceholder("https://...")
+    .fill("https://x.test/desktop-only.png");
+  await component
+    .getByRole("button", { name: "Mobile image (below 768px)" })
+    .click();
+
+  await expect(component.getByPlaceholder("https://...")).toHaveValue(SAME);
+
+  await component
+    .getByRole("button", { name: "Mobile URL", exact: true })
+    .click();
+  await expect
+    .poll(() => value(component))
+    .toEqual({
+      image: "https://x.test/desktop-only.png",
+      mobileImage: SAME,
+    });
+});

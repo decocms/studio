@@ -92,10 +92,15 @@ export function ResponsiveImageField({
    * rest of the toolbar writes that address too — quality, the picker, a
    * drop — and a draft left behind would undo their write the moment the
    * panel closed over it.
+   *
+   * Which slot is part of the identity, not just the address: the two can
+   * hold the same URL, and watching the value alone would see no change
+   * across a switch and leave the edit meant for one slot aimed at the other.
    */
-  const [seenActive, setSeenActive] = useState(active);
-  if (seenActive !== active) {
-    setSeenActive(active);
+  const slot = `${onMobile ? "mobile" : "desktop"}:${active}`;
+  const [seenSlot, setSeenSlot] = useState(slot);
+  if (seenSlot !== slot) {
+    setSeenSlot(slot);
     if (urlDraft !== null) {
       setUrlDraft(active);
       setUrlNotice(null);
