@@ -183,6 +183,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentActionsAriaLabel": "Ações do comentário",
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
+  "taskBoard.taskDialog.commentDropToAttach": "Solte para anexar",
   "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":

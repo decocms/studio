@@ -64,7 +64,10 @@ import {
   selectSkillFiles,
   streamSkillTar,
 } from "@/file-storage/skill-tar";
-import { fsByteResponse as byteResponse } from "../utils/fs-bytes";
+import {
+  downloadsOnly,
+  fsByteResponse as byteResponse,
+} from "../utils/fs-bytes";
 
 type Variables = { studioContext: StudioContext };
 type Ctx = Context<{ Variables: Variables }>;
@@ -692,6 +695,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             await ctx.orgFs.read(volume, path),
             path,
             access.access === "public",
+            { downloadOnly: downloadsOnly(volume, path) },
           );
         } catch (err) {
           return fsErrorResponse(c, err);
@@ -716,7 +720,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       if (c.req.query("presign")) {
         return c.json({ url: await r.fs.presignRead(volume, path) });
       }
-      return byteResponse(c, await r.fs.read(volume, path), path, false);
+      return byteResponse(c, await r.fs.read(volume, path), path, false, {
+        downloadOnly: downloadsOnly(volume, path),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
