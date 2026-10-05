@@ -35,6 +35,23 @@ export function resolveBreadcrumbs(
   return items.flatMap(visit);
 }
 
+/** Leaf first, so a truncated browser tab still tells pages apart. Only
+ *  string labels can be named; a component label has no text to offer. */
+export function documentTitle(
+  items: readonly BreadcrumbItem[],
+  scope?: string,
+): string {
+  const labels = items
+    .map((item) => item.label)
+    .filter((label): label is string => typeof label === "string")
+    .reverse();
+  if (scope) labels.push(scope);
+  return labels
+    .map((label) => label.trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
 type BreadcrumbEntry<T> =
   | { type: "item"; item: T }
   | { type: "menu"; items: readonly T[] };

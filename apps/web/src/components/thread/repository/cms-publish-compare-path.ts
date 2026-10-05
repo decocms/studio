@@ -2,8 +2,54 @@ import {
   extractPathParams,
   fillPathTemplate,
 } from "@/components/sections-editor/page-path-utils.ts";
+import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
+import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
+import { globalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url.ts";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
+
+/** Block key of a global section, which renders on its own instead of inside a page. */
+export function isolatedSectionKey(
+  change: Pick<
+    PublishChange,
+    "kind" | "blockKey" | "isSiteApp" | "fromJson" | "toJson"
+  >,
+): string | null {
+  if (change.kind !== "block" || change.isSiteApp || !change.blockKey) {
+    return null;
+  }
+  const resolveType = (change.toJson ?? change.fromJson)?.__resolveType;
+  return typeof resolveType === "string" && isSectionResolveType(resolveType)
+    ? change.blockKey
+    : null;
+}
+
+/**
+ * Whether the reviewer chooses the page: a dynamic page needs its params, and
+ * a non-section block can show on any page. A static page is its own path.
+ */
+export function isComparePathEditable(
+  change: Pick<PublishChange, "kind" | "pagePath">,
+): boolean {
+  if (change.kind !== "page") return true;
+  return !change.pagePath || extractPathParams(change.pagePath).length > 0;
+}
+
+/** URL rendering just the global section, on a blank page. */
+export function compareSectionUrl(
+  previewServerUrl: string,
+  blockKey: string,
+): URL | null {
+  try {
+    return globalSectionPreviewUrl(
+      previewServerUrl,
+      DEFAULT_LIVE_PAGE_RESOLVE_TYPE,
+      blockKey,
+    );
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The concrete path to render for a change, or "" when it needs one typed in.

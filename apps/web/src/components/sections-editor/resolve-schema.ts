@@ -392,6 +392,41 @@ export function resolveSchema(
     return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
   };
 
+  const inlineLoaderResolveType = (s: RawSchema): string | undefined => {
+    const rtEnum = (
+      (s.properties as RawSchema | undefined)?.__resolveType as
+        | RawSchema
+        | undefined
+    )?.enum;
+    return Array.isArray(rtEnum) && typeof rtEnum[0] === "string"
+      ? rtEnum[0]
+      : undefined;
+  };
+
+  const isInlineLoaderBranch = (s: RawSchema): boolean =>
+    inlineLoaderResolveType(s) !== undefined;
+
+  /**
+   * deco buckets loaders by return type and nests the plain bucket inside the
+   * nullable one (`[Product]|null` → `$ref [Product]`), so a loader returning
+   * `T` sits one union below a `T | null` prop's own loader branches.
+   */
+  const nestedUnionLoaderBranches = (
+    branch: RawSchema,
+    seen: Set<string> = new Set(),
+  ): RawSchema[] => {
+    if (typeof branch.$ref !== "string") return [];
+    const key = branch.$ref.split("/").pop() ?? "";
+    if (!key || seen.has(key)) return [];
+    const def = resolveRef(branch.$ref);
+    const union = def.anyOf ?? def.oneOf;
+    if (!Array.isArray(union)) return [];
+    const nextSeen = new Set([...seen, key]);
+    return (union as RawSchema[]).flatMap((b) =>
+      isInlineLoaderBranch(b) ? [b] : nestedUnionLoaderBranches(b, nextSeen),
+    );
+  };
+
   const isSchemaHidden = (s: RawSchema): boolean => {
     const hide = s.hide;
     return hide === true || hide === "true";
@@ -609,14 +644,7 @@ export function resolveSchema(
         }
 
         // deco.cx inline loader branches
-        const loaderBranches = nonNull.filter((a) => {
-          const rtEnum = (
-            (a.properties as RawSchema | undefined)?.__resolveType as
-              | RawSchema
-              | undefined
-          )?.enum;
-          return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
-        });
+        const loaderBranches = nonNull.filter(isInlineLoaderBranch);
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
@@ -684,11 +712,17 @@ export function resolveSchema(
         }
 
         if (loaderBranches.length > 0) {
-          const loaderRefs = loaderBranches.map((branch) => {
-            const rtSchema = (branch.properties as RawSchema | undefined)
-              ?.__resolveType as RawSchema | undefined;
-            const rtEnum = (rtSchema?.enum ?? []) as unknown[];
-            const rt = String(rtEnum[0]);
+          const pickerBranches = new Map<string, RawSchema>();
+          for (const branch of [
+            ...loaderBranches,
+            ...nonNull
+              .filter((b) => !loaderBranches.includes(b))
+              .flatMap((b) => nestedUnionLoaderBranches(b)),
+          ]) {
+            const rt = inlineLoaderResolveType(branch);
+            if (rt && !pickerBranches.has(rt)) pickerBranches.set(rt, branch);
+          }
+          const loaderRefs = [...pickerBranches].map(([rt, branch]) => {
             return {
               resolveType: rt,
               title:
@@ -699,7 +733,7 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema: eagerBranchSchema(branch, depth + 1, nonNull.length),
+              schema: eagerBranchSchema(branch, depth + 1, pickerBranches.size),
             };
           });
 

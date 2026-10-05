@@ -132,6 +132,44 @@ RUN apt-get update \
   && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
   && chromium --version
 
+# WebKit, for `qa-screenshot --engine=webkit`: Safari's engine, which Chromium
+# cannot stand in for (it re-aligns a smooth programmatic scroll to scroll-snap
+# points, WebKit does not). Playwright's own build, the revision this
+# playwright-core pins, since Debian ships no WebKit Playwright can drive.
+#
+# Headless WebKit runs the WPE MiniBrowser; the GTK one exists for headed runs,
+# which a pod with no display cannot do, so it is deleted (~120MB). The
+# packages are what the WPE bundle links against, read off its ELF NEEDED
+# entries on this Debian, plus what it loads at runtime: glib-networking for
+# TLS, GStreamer base/good/libav for <video> (libav is H.264, and Playwright
+# refuses to launch without it). Not gstreamer1.0-plugins-bad: Playwright's own
+# list asks for it, but H.264 and MSE play without it, and it costs ~100MB.
+#
+# The download runs under bun, not node: before 1.60, playwright-core hangs
+# extracting the archive on Node 24.16+ (microsoft/playwright#40724). Its host
+# check is skipped there because it would flag the GTK bundle deleted next; the
+# closing launch runs that check, so a missing library fails the build rather
+# than the first QA run.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       glib-networking gstreamer1.0-libav gstreamer1.0-plugins-base \
+       gstreamer1.0-plugins-good libatk-bridge2.0-0t64 libatk1.0-0t64 \
+       libavif16 libbrotli1 libdrm2 libepoxy0 libevent-2.1-7t64 libflite1 \
+       libfontconfig1 libfreetype6 libgbm1 libgcrypt20 libgles2 \
+       libglib2.0-0t64 libgpg-error0 libgstreamer-gl1.0-0 \
+       libgstreamer-plugins-bad1.0-0 libgstreamer-plugins-base1.0-0 \
+       libgstreamer1.0-0 libharfbuzz-icu0 libharfbuzz0b libicu76 \
+       libjpeg62-turbo libjxl0.11 liblcms2-2 libnghttp2-14 libopus0 \
+       libpng16-16t64 libpsl5t64 libsqlite3-0 libtasn1-6 libvpx9 \
+       libwayland-client0 libwayland-egl1 libwayland-server0 libwebp7 \
+       libwebpdemux2 libwebpmux3 libwoff1 libxkbcommon0 libxml2 libxslt1.1 \
+  && rm -rf /var/lib/apt/lists/* \
+  && PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 \
+       bun /usr/local/lib/node_modules/playwright-core/cli.js install webkit \
+  && rm -rf "${PLAYWRIGHT_BROWSERS_PATH}"/webkit-*/minibrowser-gtk \
+  && node -e 'require("/usr/local/lib/node_modules/playwright-core").webkit.launch().then((b) => { console.log("webkit", b.version()); return b.close(); })'
+
 # Install the @decocms/cli build (the `decocms` command) produced from this
 # exact source revision. Installing from npm here would race the post-merge
 # package release and could bake a CLI older than this daemon.

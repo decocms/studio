@@ -2393,3 +2393,58 @@ describe("resolveSchema – loader picker whose loader has a `type` input prop",
     }
   });
 });
+
+describe("resolveSchema – loaders in the nested non-null return bucket", () => {
+  const loader = (rt: string, title: string) => ({
+    title,
+    type: "object",
+    required: ["__resolveType"],
+    properties: {
+      __resolveType: { type: "string", enum: [rt], default: rt },
+    },
+  });
+
+  test("a `T | null` prop also lists loaders that return plain `T`", () => {
+    // deco's `[Product]|null` bucket nests `[Product]` by $ref; a site loader returning `Product[]` (not `| null`) only lives in the nested one.
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        products: { $ref: "#/definitions/ProductArrayOrNull" },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      Product: { type: "object", properties: { name: { type: "string" } } },
+      ProductArray: {
+        anyOf: [
+          { type: "array", items: { $ref: "#/definitions/Product" } },
+          loader("site/loaders/customProductList.ts", "Custom product list"),
+          loader("vtex/loaders/intelligentSearch/productList.ts", "Dup"),
+          { $ref: "#/definitions/ProductArrayOrNull" },
+        ],
+      },
+      ProductArrayOrNull: {
+        anyOf: [
+          { $ref: "#/definitions/ProductArray" },
+          { type: "null" },
+          loader(
+            "vtex/loaders/intelligentSearch/productList.ts",
+            "Product List Intelligent Search",
+          ),
+        ],
+      },
+    };
+
+    const products = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.products;
+
+    expect(products?.type).toBe("block-ref");
+    expect(products?.anyOfRefs?.map((r) => [r.resolveType, r.title])).toEqual([
+      [
+        "vtex/loaders/intelligentSearch/productList.ts",
+        "Product List Intelligent Search",
+      ],
+      ["site/loaders/customProductList.ts", "Custom product list"],
+    ]);
+    expect(products?.plainSchema?.type).toBe("array");
+  });
+});

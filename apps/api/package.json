@@ -1,7 +1,7 @@
 {
   "name": "decocms",
-  "version": "4.434.0",
-  "description": "Deco CMS \u2014 Self-hostable MCP Gateway for managing AI connections and tools",
+  "version": "4.436.1",
+  "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
     "type": "git",
