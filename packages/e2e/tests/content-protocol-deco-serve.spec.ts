@@ -7,7 +7,7 @@
  *
  * `deco serve` is played by fixtures/deco-serve-stub.ts (the protocol's own
  * handler over its filesystem storage in a temporary working tree, on
- * 127.0.0.1 with a token).
+ * 127.0.0.1 with no token).
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -189,8 +189,9 @@ async function editHero(
   expect(stub.requestBodies.join("\n")).not.toContain(secret);
 }
 
-async function startStub(publicKey: string) {
+async function startStub(publicKey: string, port?: number) {
   return startDecoServeStub({
+    port,
     allowOrigin: getE2EAppOrigin(),
     schema,
     secretsPublicKey: publicKey,
@@ -207,7 +208,7 @@ async function startStub(publicKey: string) {
 }
 
 const linkOf = (stub: DecoServeStub, path = "/site-editor") =>
-  `${path}#endpoint=${encodeURIComponent(stub.endpoint)}&token=${stub.token}`;
+  `${path}#endpoint=${encodeURIComponent(stub.endpoint)}`;
 
 test.describe("site editor over deco serve", () => {
   test.setTimeout(120_000);
@@ -220,8 +221,6 @@ test.describe("site editor over deco serve", () => {
     try {
       await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
-      // The token left the address bar.
-      expect(page.url()).not.toContain(stub.token);
       await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
         timeout: 30_000,
       });
@@ -240,8 +239,9 @@ test.describe("site editor over deco serve", () => {
       await page.getByText("Home Hero", { exact: true }).click();
       await editHero(page, stub, privateKey);
 
-      // A reload keeps the tab's connection.
-      await page.reload();
+      // The browser remembers the endpoint: `/site-editor` with no link
+      // reconnects to it.
+      await page.goto("/site-editor");
       await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
         timeout: 30_000,
       });
@@ -288,9 +288,37 @@ test.describe("site editor over deco serve", () => {
     }
   });
 
+  test("waits for a stopped deco serve and reconnects when it starts", async ({
+    page,
+  }) => {
+    const { publicKey } = await generateKeyPair();
+    // A port nothing listens on yet.
+    const probe = await startStub(publicKey);
+    const port = Number(new URL(probe.endpoint).port);
+    await probe.close();
+    await page.goto(
+      `/site-editor#endpoint=${encodeURIComponent(`http://127.0.0.1:${port}/rpc`)}`,
+    );
+    await expect(
+      page.getByText(`Waiting for deco serve on 127.0.0.1:${port}…`),
+    ).toBeVisible({ timeout: 30_000 });
+    const stub = await startStub(publicKey, port);
+    try {
+      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByTestId("content-version-badge")).toHaveText(
+        "v8",
+        { timeout: 30_000 },
+      );
+    } finally {
+      await stub.close();
+    }
+  });
+
   test("refuses a link to a server off this machine", async ({ page }) => {
     await page.goto(
-      `/site-editor#endpoint=${encodeURIComponent("https://attacker.example/rpc")}&token=t`,
+      `/site-editor#endpoint=${encodeURIComponent("https://attacker.example/rpc")}`,
     );
     await expect(
       page.getByRole("heading", {
@@ -309,7 +337,6 @@ test.describe("site editor over deco serve", () => {
     try {
       await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
-      expect(page.url()).not.toContain(stub.token);
       await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
         timeout: 30_000,
       });

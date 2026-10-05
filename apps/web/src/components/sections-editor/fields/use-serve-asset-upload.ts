@@ -6,7 +6,7 @@ import type { SandboxConfig } from "./field-props";
 
 /**
  * Uploads to a connected `deco serve`, when it takes them (`describe.assets`):
- * `PUT <server>/assets/<name>` with its token, answered with the path the
+ * `PUT <server>/assets/<name>`, answered with the path the
  * field stores (`/assets/<name>`). `null` otherwise — on GitHub uploads keep
  * going to Studio's file storage.
  */
@@ -39,7 +39,6 @@ export function useServeAssetUpload(
       {
         method: "PUT",
         headers: {
-          authorization: `Bearer ${connection.token}`,
           "content-type": file.type || "application/octet-stream",
         },
         body: file,

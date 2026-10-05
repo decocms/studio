@@ -14,7 +14,7 @@ export interface DecoServeConnectionState {
 }
 
 /**
- * `/site-editor`'s connection, which belongs to the tab and to no project.
+ * `/site-editor`'s connection, which belongs to no project.
  * Inside it, every editor surface reads this one instead of a project's.
  */
 export const TabDecoServeConnectionContext =

@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
+import { endpointHost } from "./deco-serve-connection";
 import { useContentBackend } from "./use-content-backend";
 
 /** The site editor's "Local server" chip: what it edits, its state, Disconnect. */
@@ -24,9 +25,7 @@ export function DecoServeChip({
   if (!connection) return null;
   const problem =
     backend.kind === "unavailable"
-      ? backend.reason === "unauthorized"
-        ? t("decoServe.status.unauthorized")
-        : t("decoServe.status.unreachable")
+      ? `${t("decoServe.status.waiting", { host: endpointHost(connection.endpoint) })} ${t("decoServe.status.unreachable")}`
       : null;
   return (
     <div className="flex shrink-0 items-center gap-1">

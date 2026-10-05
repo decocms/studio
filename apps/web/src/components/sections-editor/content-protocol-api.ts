@@ -18,7 +18,6 @@ import {
 } from "@tanstack/react-query";
 import {
   ContentProtocolError,
-  ErrorCode,
   type BlocksListResult,
   type SchemaGetResult,
 } from "@decocms/blocks/protocol";
@@ -89,9 +88,9 @@ function savingBlockKeys(
 }
 
 /**
- * Runs a request against the backend. When a `deco serve` turns the token
- * down (it restarted) or can't be reached, its probe is reset, so the
- * backend turns `unavailable` and the editor says why.
+ * Runs a request against the backend. When a `deco serve` can't be reached
+ * (it stopped or is restarting), its probe is reset, so the editor waits for
+ * it and reconnects on its own.
  */
 async function guarded<T>(
   queryClient: QueryClient,
@@ -102,9 +101,7 @@ async function guarded<T>(
   try {
     return await request();
   } catch (error) {
-    const lostServer =
-      !(error instanceof ContentProtocolError) ||
-      error.code === ErrorCode.Unauthorized;
+    const lostServer = !(error instanceof ContentProtocolError);
     if (backend.source === "local" && lostServer) {
       void queryClient.resetQueries({
         queryKey: KEYS.contentBackend(

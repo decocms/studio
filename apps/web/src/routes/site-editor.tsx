@@ -1,5 +1,5 @@
 /**
- * `/site-editor#endpoint=…&token=…` — the site editor over the `deco serve`
+ * `/site-editor#endpoint=…` — the site editor over the `deco serve`
  * on this machine (the link the Blocks CLI prints), without a project.
  *
  * It is not gated, and it always renders in the New Layout, whatever this
@@ -12,9 +12,12 @@
  * publishing and Code. There is no org, so no recent app is recorded; the
  * rail still marks the Site Editor as the open app (`staticData.local`).
  *
- * The connection leaves the fragment at once (so the token never stays in
- * the address bar or history) and is kept for this tab only. Only loopback
- * servers are accepted (`parseConnectFragment`).
+ * `deco serve` has no token: the link carries only its endpoint (a `token=`
+ * in an older link is ignored). The endpoint leaves the fragment at once and
+ * is remembered in this browser, so `/site-editor` with no link reconnects to
+ * the last one. While the server is down or restarting the editor waits for
+ * it and reconnects on its own. Only loopback servers are accepted
+ * (`parseConnectFragment`).
  *
  * The editor expects a project and a chat task: it gets a placeholder project,
  * in an org with no id (which makes the Studio-backed reads skip themselves),
@@ -38,10 +41,11 @@ import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/bloc
 import { ConnectCentered as Centered } from "@/components/sections-editor/deco-serve-chip";
 import {
   type DecoServeConnection,
-  clearTabConnection,
+  clearLastConnection,
+  endpointHost,
   parseConnectFragment,
-  readTabConnection,
-  saveTabConnection,
+  readLastConnection,
+  saveLastConnection,
 } from "@/components/sections-editor/deco-serve-connection";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
@@ -83,18 +87,24 @@ const LOCAL_TASK: ChatTaskContextValue = {
   setCurrentTaskBranch: () => {},
 };
 
+/** The link's endpoint (then remembered), else the last one remembered. */
 function takeConnectionFromUrl(): DecoServeConnection | null {
-  const fromLink = parseConnectFragment(window.location.hash);
+  const hash = window.location.hash;
+  if (!new URLSearchParams(hash.replace(/^#/, "")).has("endpoint")) {
+    return readLastConnection();
+  }
+  // A link that names a server is used as is: an invalid one never falls
+  // back to another server.
+  const fromLink = parseConnectFragment(hash);
   if (fromLink) {
-    saveTabConnection(fromLink);
+    saveLastConnection(fromLink);
     window.history.replaceState(
       null,
       "",
       window.location.pathname + window.location.search,
     );
-    return fromLink;
   }
-  return readTabConnection();
+  return fromLink;
 }
 
 /** The app's own Preview/Content tabs, as the project tab bar draws them
@@ -160,10 +170,14 @@ function BackendGate({ children }: { children: ReactNode }) {
   // `unavailable`: the probe retries on its own; this retries now.
   return (
     <Centered>
-      <p role="alert" className="text-sm text-destructive">
-        {backend.kind === "unavailable" && backend.reason === "unauthorized"
-          ? t("decoServe.status.unauthorized")
-          : t("decoServe.status.unreachable")}
+      <Spinner className="size-6 text-muted-foreground" />
+      <p role="status" className="text-sm text-foreground">
+        {t("decoServe.status.waiting", {
+          host: connection ? endpointHost(connection.endpoint) : "",
+        })}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {t("decoServe.status.unreachable")}
       </p>
       <Button
         variant="outline"
@@ -227,11 +241,11 @@ export default function SiteEditorRoute() {
   const state: DecoServeConnectionState = {
     connection,
     set: (next) => {
-      saveTabConnection(next);
+      saveLastConnection(next);
       setConnection(next);
     },
     clear: () => {
-      clearTabConnection();
+      clearLastConnection();
       setConnection(null);
     },
   };

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   assertSupportedEndpoint,
   type ContentClient,
+  ContentProtocolError,
   createContentClient,
   type DescribeResult,
   ErrorCode,
@@ -17,7 +18,7 @@ import {
   type ProtocolBackend,
   selectContentBackend,
 } from "./content-backend";
-import { decoServeErrorReason } from "./deco-serve-connection";
+import { probeRetryDelay } from "./deco-serve-connection";
 
 interface Probe {
   client: ContentClient;
@@ -114,20 +115,17 @@ export function useContentBackend(
       virtualMcpId ?? "",
       "local",
       connection?.endpoint ?? "",
-      connection?.token ?? "",
     ),
     queryFn: () =>
-      probe(
-        createContentClient({
-          endpoint: connection!.endpoint,
-          token: connection!.token,
-        }),
-      ),
+      probe(createContentClient({ endpoint: connection!.endpoint })),
     enabled: localEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    retry: false,
-    // Reconnects on its own once `deco serve` is (re)started. A failed read
-    // or write resets this probe (see content-protocol-api).
+    // Waits for `deco serve` to (re)start and reconnects on its own, backing
+    // off up to 10s. A server that answers with an error (say, this origin
+    // isn't allowed) is polled instead. A failed read or write resets this
+    // probe (see content-protocol-api).
+    retry: (_failures, error) => !(error instanceof ContentProtocolError),
+    retryDelay: (failures) => probeRetryDelay(failures + 1),
     refetchInterval: (query) =>
       query.state.status === "error" ? PROBE_RETRY_MS : false,
   });
@@ -148,7 +146,7 @@ export function useContentBackend(
 
   if (decision === "pending") return { kind: "pending" };
   if (decision === "unavailable-github") {
-    return { kind: "unavailable", source: "github", reason: "unreachable" };
+    return { kind: "unavailable", source: "github" };
   }
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
@@ -157,12 +155,9 @@ export function useContentBackend(
   if (local.data) {
     return toBackend("local", local.data, `:serve:${connection!.endpoint}`);
   }
-  if (local.isError) {
-    return {
-      kind: "unavailable",
-      source: "local",
-      reason: decoServeErrorReason(local.error),
-    };
+  // Still retrying after a failure: `deco serve` is down or restarting.
+  if (local.isError || local.failureCount > 0) {
+    return { kind: "unavailable", source: "local" };
   }
   return { kind: "pending" };
 }

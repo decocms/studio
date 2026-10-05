@@ -87,11 +87,7 @@ describe("selectContentBackend", () => {
 describe("isProtocolProject", () => {
   test("a protocol endpoint, usable or not", () => {
     expect(
-      isProtocolProject({
-        kind: "unavailable",
-        source: "local",
-        reason: "unreachable",
-      }),
+      isProtocolProject({ kind: "unavailable", source: "local" }),
     ).toBe(true);
     expect(isProtocolProject({ kind: "legacy" })).toBe(false);
     expect(isProtocolProject({ kind: "pending" })).toBe(false);

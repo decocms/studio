@@ -2,7 +2,7 @@
  * A stand-in for `deco serve`, the Blocks CLI's local content-protocol server:
  * the protocol's own handler over its filesystem storage (both public in
  * `@decocms/blocks`), rooted at a temporary working tree and served over real
- * HTTP on 127.0.0.1 with a token, the way the CLI serves one. It is
+ * HTTP on 127.0.0.1 with no token, the way the CLI serves one. It is
  * the edge of the system under test (a developer's machine), so a spec can
  * drive the site editor against it and assert what the "working tree" holds.
  *
@@ -10,7 +10,6 @@
  * protocol handler itself is transport-agnostic.
  */
 
-import { randomBytes } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -65,7 +64,6 @@ async function send(response: Response, res: ServerResponse): Promise<void> {
 export interface DecoServeStub {
   /** The protocol endpoint, `http://127.0.0.1:<port>/rpc`. */
   endpoint: string;
-  token: string;
   /** The "working tree": the saved block files, by file name. */
   readFiles: () => Promise<Record<string, string>>;
   /** Every request body the server received, in order. */
@@ -81,8 +79,9 @@ export async function startDecoServeStub(params: {
   secretsPublicKey?: string;
   /** What `describe.preview` points at (the dev app, `deco serve --preview`). */
   previewUrl?: string;
+  /** The port to listen on; any free one by default. */
+  port?: number;
 }): Promise<DecoServeStub> {
-  const token = randomBytes(16).toString("hex");
   const root = await mkdtemp(join(tmpdir(), "deco-serve-stub-"));
   const blocksDir = join(root, ".deco", "blocks");
   await mkdir(blocksDir, { recursive: true });
@@ -101,14 +100,13 @@ export async function startDecoServeStub(params: {
   }
   const storage = createFsStorage({ root });
   const rpc = createContentHandler(storage, {
-    token,
     server: { name: "deco-serve-stub", version: "0" },
     preview: params.previewUrl ? { url: params.previewUrl } : null,
   });
   const requestBodies: string[] = [];
   const cors = {
     "access-control-allow-origin": params.allowOrigin,
-    "access-control-allow-headers": "authorization, content-type",
+    "access-control-allow-headers": "content-type",
     "access-control-allow-methods": "POST, PUT, OPTIONS",
     "access-control-allow-private-network": "true",
     vary: "origin",
@@ -136,11 +134,10 @@ export async function startDecoServeStub(params: {
       res.end(String(error));
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(params.port ?? 0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {
     endpoint: `http://127.0.0.1:${port}/rpc`,
-    token,
     readFiles: async () => {
       const files: Record<string, string> = {};
       for (const file of await readdir(blocksDir)) {

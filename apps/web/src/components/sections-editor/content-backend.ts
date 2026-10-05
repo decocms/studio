@@ -31,12 +31,8 @@ export type ContentBackend =
   | { kind: "pending" }
   | { kind: "legacy" }
   | ProtocolBackend
-  /** A protocol endpoint that can't be used right now. */
-  | {
-      kind: "unavailable";
-      source: ContentSource;
-      reason: "unauthorized" | "unreachable";
-    };
+  /** A protocol endpoint that can't be reached right now. */
+  | { kind: "unavailable"; source: ContentSource };
 
 /**
  * A content-protocol project, usable right now or not. The protocol never

@@ -60,7 +60,6 @@ import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { createContentClient } from "@decocms/blocks/protocol";
 import {
   type DecoServeConnection,
-  decoServeErrorReason,
   parseConnectLink,
 } from "@/components/sections-editor/deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
@@ -1035,12 +1034,8 @@ function LocalUrlForm({
     try {
       await createContentClient(connection).describe();
       onSaveServe(connection);
-    } catch (err) {
-      setError(
-        decoServeErrorReason(err) === "unauthorized"
-          ? t("thread.branchPicker.localServeUnauthorized")
-          : t("decoServe.status.unreachable"),
-      );
+    } catch {
+      setError(t("decoServe.status.unreachable"));
     } finally {
       setChecking(false);
     }
