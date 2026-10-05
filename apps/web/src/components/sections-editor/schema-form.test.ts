@@ -195,3 +195,38 @@ describe("renderField – boolean schema wins over stored value type", () => {
     expect(typeOf(el)).toBe(ObjectField);
   });
 });
+
+describe("renderField – shows the saved value, not the schema @default", () => {
+  const valueOf = (el: unknown) =>
+    (el as { props?: { value?: unknown } } | null)?.props?.value;
+  const baseProps = { onChange: () => {}, path: "display", label: "Mostrar" };
+
+  // Regression: a missing `@default true` flag rendered "on" though unsaved.
+  test("a missing boolean with @default true renders off", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "boolean", default: true },
+      value: undefined,
+    });
+    expect((el as { type?: unknown } | null)?.type).toBe(BooleanField);
+    expect(valueOf(el)).toBe(false);
+  });
+
+  test("a missing string with a @default renders empty", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "string", default: "Ver tudo" },
+      value: undefined,
+    });
+    expect(valueOf(el)).toBe("");
+  });
+
+  test("a saved value is shown as is", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "boolean", default: false },
+      value: true,
+    });
+    expect(valueOf(el)).toBe(true);
+  });
+});
