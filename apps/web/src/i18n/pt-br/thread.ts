@@ -23,7 +23,7 @@ export const thread = {
   "thread.branchPicker.localHint":
     "Aponte o editor para a sua máquina. Sites v8: cole o link que o deco serve mostra. Sites v7: cole uma URL de túnel público para o seu dev server (ex.: ngrok, cloudflared).",
   "thread.branchPicker.localServeConnected":
-    "Conectado ao deco serve em {endpoint} (v8). Cole um novo link para reconectar, ou uma URL de túnel para um site v7.",
+    "Conectado ao deco serve em {endpoint} (v8). Cole outro link para trocar de servidor, ou uma URL de túnel para um site v7.",
   "thread.branchPicker.localUrlLabel": "Link do deco serve ou URL do túnel",
   "thread.branchPicker.localUrlPlaceholder":
     "Link do deco serve, ou https://seu-tunel.exemplo.com",

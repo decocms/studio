@@ -68,6 +68,13 @@ import { ProjectContextProvider } from "@/sdk";
 const LOCAL_PROJECT_ID = "deco-serve";
 /** Stands in for the branch: `deco serve` edits the working tree. */
 const LOCAL_BRANCH = "working-tree";
+
+/** The origins `deco serve` answers without `--allow-origin`. */
+const DECO_SERVE_DEFAULT_ORIGINS = new Set([
+  "https://studio.decocms.com",
+  "https://admin.decocms.com",
+  "https://admin.deco.cx",
+]);
 /** No id: no Studio org behind this editor (see the file comment). */
 const NO_ORG = { id: "", slug: "", name: "", logo: null };
 const LOCAL_PROJECT = { id: LOCAL_PROJECT_ID, slug: LOCAL_PROJECT_ID };
@@ -179,6 +186,13 @@ function BackendGate({ children }: { children: ReactNode }) {
       <p className="text-sm text-muted-foreground">
         {t("decoServe.status.unreachable")}
       </p>
+      {!DECO_SERVE_DEFAULT_ORIGINS.has(window.location.origin) && (
+        <p className="text-sm text-muted-foreground">
+          {t("decoServe.status.otherOrigin", {
+            origin: window.location.origin,
+          })}
+        </p>
+      )}
       <Button
         variant="outline"
         onClick={() =>

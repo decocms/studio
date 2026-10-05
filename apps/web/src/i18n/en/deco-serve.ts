@@ -10,6 +10,8 @@ export const decoServe = {
   "decoServe.connect.retry": "Try again",
   "decoServe.status.unreachable":
     "The local server isn't answering. Start it with npx @decocms/blocks serve, and allow this site to reach your machine if Chrome asks.",
+  "decoServe.status.otherOrigin":
+    "If deco serve is running, start it with --allow-origin {origin}: it only answers the site editor's own origins.",
   "decoServe.status.waiting": "Waiting for deco serve on {host}…",
   "decoServe.version.v7":
     "Blocks v7: Studio reads and writes this site through its running app.",

@@ -21,7 +21,7 @@ export const thread = {
   "thread.branchPicker.localHint":
     "Point the editor at your own machine. v8 sites: paste the link deco serve prints. v7 sites: paste a public tunnel URL to your dev server (e.g. ngrok, cloudflared).",
   "thread.branchPicker.localServeConnected":
-    "Connected to deco serve at {endpoint} (v8). Paste a new link to reconnect, or a tunnel URL for a v7 site.",
+    "Connected to deco serve at {endpoint} (v8). Paste another link to switch servers, or a tunnel URL for a v7 site.",
   "thread.branchPicker.localUrlLabel": "deco serve link or tunnel URL",
   "thread.branchPicker.localUrlPlaceholder":
     "deco serve link, or https://your-tunnel.example.com",

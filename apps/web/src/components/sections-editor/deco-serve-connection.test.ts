@@ -47,7 +47,6 @@ describe("isLoopbackEndpoint", () => {
       "http://127.0.0.1:4545/rpc",
       "http://localhost:4545/rpc",
       "http://[::1]:4545/rpc",
-      "https://site.localhost/rpc",
     ]) {
       expect(isLoopbackEndpoint(endpoint)).toBe(true);
     }
@@ -55,12 +54,22 @@ describe("isLoopbackEndpoint", () => {
       "https://evil.example/rpc",
       "http://127.0.0.1.evil.example/rpc",
       "http://localhost.evil.example/rpc",
+      "https://site.localhost/rpc",
       "http://10.0.0.2:4545/rpc",
       "ftp://127.0.0.1/rpc",
       "not a url",
     ]) {
       expect(isLoopbackEndpoint(endpoint)).toBe(false);
     }
+  });
+
+  test("a connect link to another path is refused", () => {
+    expect(
+      parseConnectFragment("#endpoint=http://127.0.0.1:4545/other"),
+    ).toBeNull();
+    expect(
+      parseConnectFragment("#endpoint=http://127.0.0.1:4545/rpc"),
+    ).toEqual({ endpoint: "http://127.0.0.1:4545/rpc" });
   });
 
   test("a connect link to another host is refused", () => {

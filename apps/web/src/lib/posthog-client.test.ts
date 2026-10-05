@@ -101,19 +101,6 @@ describe("posthog-client report URL privacy", () => {
     ).toBe("/api/_reports/link-token/redacted?email_run_id=run-42");
   });
 
-  test("strips the deco serve token from the URL fragment", () => {
-    const sanitized = sanitizeAnalyticsUrl(
-      "https://studio.decocms.com/site-editor#endpoint=http%3A%2F%2F127.0.0.1%3A4545%2Frpc&token=SECRET",
-    );
-    expect(sanitized).not.toContain("SECRET");
-    expect(sanitized).toBe(
-      "https://studio.decocms.com/site-editor#endpoint=http%3A%2F%2F127.0.0.1%3A4545%2Frpc",
-    );
-    expect(sanitizeAnalyticsUrl("/site-editor#token=SECRET")).not.toContain(
-      "SECRET",
-    );
-  });
-
   test("leaves ordinary URLs and non-URL values unchanged", () => {
     expect(sanitizeAnalyticsUrl("https://studio.decocms.com/acme/tasks")).toBe(
       "https://studio.decocms.com/acme/tasks",

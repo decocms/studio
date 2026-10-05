@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 
-/** `deco serve` listens on this machine only. */
+/** `deco serve` listens on this machine only (the hosts its Host check accepts). */
 export function isLoopbackEndpoint(value: string): boolean {
   try {
     const url = new URL(value);
@@ -22,8 +22,7 @@ export function isLoopbackEndpoint(value: string): boolean {
     return (
       host === "127.0.0.1" ||
       host === "[::1]" ||
-      host === "localhost" ||
-      host.endsWith(".localhost")
+      host === "localhost"
     );
   } catch {
     return false;
@@ -32,7 +31,12 @@ export function isLoopbackEndpoint(value: string): boolean {
 
 const DecoServeConnectionSchema = z.object({
   /** The protocol endpoint, such as `http://127.0.0.1:4545/rpc`. */
-  endpoint: z.string().max(2048).refine(isLoopbackEndpoint),
+  endpoint: z
+    .string()
+    .max(2048)
+    .refine(
+      (value) => isLoopbackEndpoint(value) && new URL(value).pathname === "/rpc",
+    ),
 });
 
 export type DecoServeConnection = z.infer<typeof DecoServeConnectionSchema>;
