@@ -294,6 +294,28 @@ export const thread = {
   "thread.publishPopover.updatesPullRequest":
     "Atualiza o pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
+  "thread.publishCompare.sideBySide": "Lado a lado",
+  "thread.publishCompare.before": "Antes",
+  "thread.publishCompare.after": "Depois",
+  "thread.publishCompare.code": "Código",
+  "thread.publishCompare.pathLabel": "Endereço da página",
+  "thread.publishCompare.desktop": "Desktop",
+  "thread.publishCompare.mobile": "Celular",
+  "thread.publishCompare.openDraft": "Abrir em nova aba",
+  "thread.publishCompare.globalHint":
+    "Esta alteração pode aparecer em qualquer página. Mostrando a página inicial — digite outro endereço para comparar.",
+  "thread.publishCompare.dynamicHint":
+    "O endereço desta página é um padrão ({template}). Digite um endereço real para comparar.",
+  "thread.publishCompare.enterPath":
+    "Digite o endereço de uma página para comparar.",
+  "thread.publishCompare.draftUnavailable":
+    "Ainda não é possível mostrar suas alterações. Use Visualizar para abri-las.",
+  "thread.publishCompare.newTitle": "Página nova",
+  "thread.publishCompare.newDescription":
+    "Esta página ainda não existe no site publicado.",
+  "thread.publishCompare.removedTitle": "Página removida",
+  "thread.publishCompare.removedDescription":
+    "Esta página deixará de existir no site.",
   "thread.analytics.title": "Chats e automações",
   "thread.analytics.notAdmin":
     "A análise de chats só está disponível em uma organização administradora.",
