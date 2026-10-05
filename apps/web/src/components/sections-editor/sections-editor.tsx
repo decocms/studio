@@ -231,8 +231,8 @@ export function SectionsEditor({
   // the schema's name, description and image) and no loader-backed pickers.
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const protocolProject = isProtocolProject(contentBackend);
-  // v8 has no async rendering: offered only once the site is known to be v7.
-  // On v8 an existing Lazy wrapper can still be removed, never added.
+  // v8 has no async rendering (migration strips Lazy wrappers): offered only
+  // once the site is known to be v7.
   const asyncRenderAvailable = contentBackend.kind === "legacy";
   const galleryAvailable = !!sectionPreviewBase || protocolProject;
 
@@ -1116,11 +1116,6 @@ export function SectionsEditor({
     const rawSection = rawSections[index];
     const parsed = parsedSections[index];
     if (!rawSection || !parsed || parsed.isMultivariate) return;
-    if (
-      !asyncRenderAvailable &&
-      !isLazyResolveType(rawSection.__resolveType ?? "")
-    )
-      return;
 
     const next = toggleSectionLazyRender(rawSection);
     if (!next) return;
@@ -3254,8 +3249,7 @@ export function SectionsEditor({
         onDuplicate={handleDuplicateSection}
         onMakeReusable={setMakeReusableIndex}
         onToggleHidden={handleToggleHidden}
-        onToggleLazy={handleToggleLazy}
-        asyncRenderAvailable={asyncRenderAvailable}
+        onToggleLazy={asyncRenderAvailable ? handleToggleLazy : undefined}
         onAddVariant={handleAddSectionVariant}
         onDetach={handleDetachSection}
         onAddSection={() => setAddSectionOpen(true)}

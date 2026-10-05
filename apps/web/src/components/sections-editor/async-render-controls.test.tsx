@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { describe, expect, mock, test } from "bun:test";
-import { fireEvent, render, within } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 
@@ -19,8 +19,8 @@ import { LAZY_RENDER_RESOLVE_TYPE } from "./seo-lazy-render";
 import type { RawSection } from "./section-types";
 
 /**
- * v8 has no async rendering: nothing offers to turn it on. A Lazy wrapper
- * left over from v7 can still be turned off, so it isn't stuck on the page.
+ * v8 has no async rendering (the v7→v8 migration strips Lazy wrappers), so no
+ * control is offered; v7 keeps both directions.
  */
 
 function renderUi(ui: ReactElement) {
@@ -35,11 +35,7 @@ const LAZY_HERO = {
   section: HERO,
 } as RawSection;
 
-function renderList(
-  rawSections: RawSection[],
-  asyncRenderAvailable: boolean | undefined,
-) {
-  const toggled: number[] = [];
+function renderList(rawSections: RawSection[], asyncRenderAvailable: boolean) {
   const noop = () => {};
   renderUi(
     <SectionList
@@ -54,19 +50,18 @@ function renderList(
       onDuplicate={noop}
       onMakeReusable={noop}
       onToggleHidden={noop}
-      onToggleLazy={(i) => toggled.push(i)}
-      asyncRenderAvailable={asyncRenderAvailable}
+      // As SectionsEditor wires it: unset on v8.
+      onToggleLazy={asyncRenderAvailable ? noop : undefined}
       onAddVariant={noop}
       onDetach={noop}
       onAddSection={noop}
     />,
   );
-  return toggled;
 }
 
 describe("section row async rendering", () => {
   test("classic: v7 offers enable and disable", () => {
-    renderList([HERO, LAZY_HERO], undefined);
+    renderList([HERO, LAZY_HERO], true);
     expect(
       within(document.body).getAllByLabelText("Enable async rendering"),
     ).toHaveLength(1);
@@ -75,21 +70,19 @@ describe("section row async rendering", () => {
     ).toHaveLength(1);
   });
 
-  test("classic: v8 never offers enable, only removes a leftover wrapper", () => {
-    const toggled = renderList([HERO, LAZY_HERO], false);
+  test("classic: v8 offers no control", () => {
+    renderList([HERO, LAZY_HERO], false);
     expect(
       within(document.body).queryByLabelText("Enable async rendering"),
     ).toBeNull();
-    fireEvent.click(
-      within(document.body).getByLabelText("Disable async rendering"),
-    );
-    expect(toggled).toEqual([1]);
+    expect(
+      within(document.body).queryByLabelText("Disable async rendering"),
+    ).toBeNull();
   });
 });
 
 describe("page SEO async rendering", () => {
   function renderSeo(rawSeo: unknown, asyncRenderAvailable: boolean) {
-    const persisted: unknown[] = [];
     const noop = () => {};
     renderUi(
       <PageSeoForm
@@ -100,14 +93,13 @@ describe("page SEO async rendering", () => {
         activeResolveType={null}
         seoTypeOptions={undefined}
         formResetKey={0}
-        onPersistRaw={(raw) => persisted.push(raw)}
+        onPersistRaw={noop}
         onInnerChange={noop}
         onClearForm={noop}
         onBumpFormKey={noop}
         asyncRenderAvailable={asyncRenderAvailable}
       />,
     );
-    return persisted;
   }
 
   const SEO = { __resolveType: "website/sections/Seo/Seo.tsx", title: "T" };
@@ -117,19 +109,8 @@ describe("page SEO async rendering", () => {
     expect(document.querySelector("#seo-async-render")).not.toBeNull();
   });
 
-  test("v8 offers no switch on plain SEO", () => {
+  test("v8 offers no switch", () => {
     renderSeo(SEO, false);
     expect(document.querySelector("#seo-async-render")).toBeNull();
-  });
-
-  test("v8 can switch a leftover wrapper off, unwrapping it", () => {
-    const persisted = renderSeo(
-      { __resolveType: LAZY_RENDER_RESOLVE_TYPE, section: SEO },
-      false,
-    );
-    const toggle = document.querySelector("#seo-async-render");
-    if (!toggle) throw new Error("switch missing");
-    fireEvent.click(toggle);
-    expect(persisted).toEqual([SEO]);
   });
 });

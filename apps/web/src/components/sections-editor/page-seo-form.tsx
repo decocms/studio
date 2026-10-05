@@ -8,7 +8,6 @@ import type { SeoTypeOption } from "./seo-schema";
 import {
   defaultEnabledSeo,
   isSeoEnabled,
-  isSeoLazyRender,
   toggleSeoAsyncRender,
 } from "./seo-lazy-render";
 
@@ -29,8 +28,7 @@ interface PageSeoFormProps {
   /** Remounts schema widgets (type change). */
   onBumpFormKey: () => void;
   beforeFields?: ReactNode;
-  /** False on v8, which has no async rendering: nothing switches it on; a
-   *  leftover Lazy wrapper can still be switched off. */
+  /** False on v8, which has no async rendering: no switch at all. */
   asyncRenderAvailable?: boolean;
 }
 
@@ -66,7 +64,6 @@ export function PageSeoForm({
   };
 
   const handleAsyncRenderChange = (enabled: boolean) => {
-    if (enabled && !asyncRenderAvailable) return;
     const nextRaw = toggleSeoAsyncRender(enabled, rawSeo);
     onPersistRaw(nextRaw);
   };
@@ -82,11 +79,7 @@ export function PageSeoForm({
       rawSeo={rawSeo}
       onEnableChange={handleEnableChange}
       onAsyncRenderChange={
-        // Where async rendering doesn't exist (v8), a leftover wrapper can
-        // still be switched off; nothing can switch it on.
-        asyncRenderAvailable || isSeoLazyRender(rawSeo)
-          ? handleAsyncRenderChange
-          : undefined
+        asyncRenderAvailable ? handleAsyncRenderChange : undefined
       }
     >
       {beforeFields}
