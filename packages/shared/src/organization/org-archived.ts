@@ -1,27 +1,28 @@
 /**
- * True if a Studio organization is soft-deleted via `metadata.archived`.
- *
- * Better Auth is inconsistent about the shape of `metadata`: `organization.list()`
- * (and the `useListOrganizations` hook) returns it as a raw JSON **string**, while
- * `getFullOrganization()` returns it already parsed into an object. A naive
- * `org.metadata?.archived` check silently passes archived orgs through on the
- * string path, so callers must normalize. This helper handles both shapes.
+ * A Studio organization's `metadata` as an object. Better Auth stores it as a
+ * JSON string and returns it unparsed from both `organization.list()` and
+ * `getFullOrganization()`, so spreading it into a new object copies one key
+ * per character. Unparseable or non-object metadata reads as empty.
  */
+export function parseOrgMetadata(raw: unknown): Record<string, unknown> {
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : {};
+}
+
+/** True if a Studio organization is soft-deleted via `metadata.archived`. */
 export function isOrgArchived(
   org: { metadata?: unknown } | null | undefined,
 ): boolean {
-  const raw = org?.metadata;
-  if (!raw) return false;
-  try {
-    const meta =
-      typeof raw === "string"
-        ? (JSON.parse(raw) as { archived?: boolean })
-        : (raw as { archived?: boolean });
-    return meta.archived === true;
-  } catch {
-    // Unparseable metadata — treat as not archived
-    return false;
-  }
+  return parseOrgMetadata(org?.metadata).archived === true;
 }
 
 /** Thrown when a request explicitly targets a soft-deleted org; the web shell
