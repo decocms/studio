@@ -55,6 +55,10 @@ import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import {
+  getFullOrganizationForUser,
+  listOrganizationsForUser,
+} from "./sessionless-organization";
 import { buildWildcardPermission } from "./permission-wildcard";
 import {
   isOrgArchived,
@@ -260,6 +264,13 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
 
+  // A bearer that isn't an API key (MCP OAuth, Studio JWT) gives Better Auth
+  // no session, so its session-gated organization reads must go around it.
+  const sessionlessUserId =
+    !isApiKeyPrincipal && headers.get("Authorization")?.startsWith("Bearer ")
+      ? userId
+      : undefined;
+
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
   const hasPermissionApi = (auth.api as { hasPermission?: HasPermissionAPI })
     .hasPermission;
@@ -408,6 +419,12 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       get: async (organizationId) => {
+        if (sessionlessUserId) {
+          const id = organizationId ?? authOrganizationId;
+          return id
+            ? getFullOrganizationForUser(auth, sessionlessUserId, id)
+            : null;
+        }
         return auth.api.getFullOrganization({
           headers,
           query: organizationId ? { organizationId } : undefined,
@@ -419,7 +436,9 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         // API/UI surface, so filter them here — no caller of this method ever
         // sees them. A future restore flow would read archived orgs from
         // storage directly, not via this method.
-        const orgs = await auth.api.listOrganizations({ headers });
+        const orgs = sessionlessUserId
+          ? await listOrganizationsForUser(auth, sessionlessUserId)
+          : await auth.api.listOrganizations({ headers });
         return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
