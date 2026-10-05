@@ -50,6 +50,7 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import type { MonthlyCost, RunsToday } from "./daily-pulse";
 import { RhythmChart } from "./sparkline";
@@ -412,60 +413,74 @@ export function BriefStats({
 }) {
   const t = useT();
   const [costDialogOpen, setCostDialogOpen] = useState(false);
+  // AI spend is a percent on the plan card for an org without `model_choice`;
+  // the dollars behind it are not shown.
+  const showCost = useModelDisclosure();
 
   return (
     <div className="@container mt-1">
-      <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-2 @4xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}>
-          <DialogTrigger asChild>
-            <StatCard
-              label={t("home.stats.costLabel")}
-              className="@2xl:col-span-2 @4xl:col-span-1"
-              interactive
-              action={
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="size-6 p-0"
-                      aria-label={t("home.stats.moreActions")}
-                    >
-                      <DotsVertical size={14} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setCostDialogOpen(true)}>
-                      <BarChartSquare02 size={16} />
-                      {t("home.stats.viewDetails")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              }
-            >
-              <div className="flex items-baseline gap-2">
-                <Figure value={formatUsd(cost.total)} />
-                <TrendBadge delta={trendDelta(costRhythm)} format={formatUsd} />
-              </div>
-              <RhythmChart
-                series={costRhythm}
-                formatValue={formatUsd}
-                label={t("home.stats.costWindow")}
-                height={96}
-              />
-              <span className="text-xs text-muted-foreground">
-                {t("home.stats.costWindow")}
-              </span>
-            </StatCard>
-          </DialogTrigger>
-          <CostDetailDialog
-            cost={cost}
-            costRhythm={costRhythm}
-            costSeriesByProject={costSeriesByProject}
-            projectsById={projectsById}
-            orgSlug={orgSlug}
-          />
-        </Dialog>
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-4 @2xl:grid-cols-2",
+          showCost &&
+            "@4xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)]",
+        )}
+      >
+        {showCost && (
+          <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}>
+            <DialogTrigger asChild>
+              <StatCard
+                label={t("home.stats.costLabel")}
+                className="@2xl:col-span-2 @4xl:col-span-1"
+                interactive
+                action={
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="size-6 p-0"
+                        aria-label={t("home.stats.moreActions")}
+                      >
+                        <DotsVertical size={14} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setCostDialogOpen(true)}>
+                        <BarChartSquare02 size={16} />
+                        {t("home.stats.viewDetails")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                }
+              >
+                <div className="flex items-baseline gap-2">
+                  <Figure value={formatUsd(cost.total)} />
+                  <TrendBadge
+                    delta={trendDelta(costRhythm)}
+                    format={formatUsd}
+                  />
+                </div>
+                <RhythmChart
+                  series={costRhythm}
+                  formatValue={formatUsd}
+                  label={t("home.stats.costWindow")}
+                  height={96}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {t("home.stats.costWindow")}
+                </span>
+              </StatCard>
+            </DialogTrigger>
+            <CostDetailDialog
+              cost={cost}
+              costRhythm={costRhythm}
+              costSeriesByProject={costSeriesByProject}
+              projectsById={projectsById}
+              orgSlug={orgSlug}
+            />
+          </Dialog>
+        )}
 
         <StatCard label={t("home.stats.runsLabel")}>
           <div className="flex items-baseline gap-2">

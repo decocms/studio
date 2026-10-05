@@ -20,7 +20,7 @@ export type Plan = {
 
 /** What a tier costs per month, as Stripe states it. */
 export type PlanPrice = {
-  /** Minor units — centavos for BRL. */
+  /** Minor units — cents for USD. */
   amountCents: number;
   /** ISO 4217, lowercase from Stripe; `Intl` accepts either case. */
   currency: string;
@@ -65,33 +65,13 @@ export function usePlanPrices() {
   });
 }
 
-/**
- * Free has no Stripe price and never will — it is the absence of a
- * subscription, not a product priced at zero.
- *
- * It still renders "R$ 0" rather than nothing: an absent price line on one
- * card alone knocks its button out of line with the rest of the row. The
- * currency is borrowed from whatever a real tier is priced in, so the zero
- * matches the column beside it instead of asserting a currency of its own.
- */
-export function planPrice(
-  prices: Record<string, PlanPrice> | undefined,
-  planId: string,
-): PlanPrice | undefined {
-  if (planId !== "free") return prices?.[planId];
-  const paid = prices && Object.values(prices)[0];
-  return paid
-    ? { amountCents: 0, currency: paid.currency, interval: paid.interval }
-    : undefined;
-}
-
 /** One place that turns a price into the string every surface shows. */
 export function formatPlanPrice(price: PlanPrice, language: string): string {
   return (price.amountCents / 100).toLocaleString(language, {
     style: "currency",
     currency: price.currency.toUpperCase(),
-    // Whole units: these are R$ 250 / R$ 5.000, and ",00" on four cards is
-    // noise. A tier ever priced with cents will need this relaxed.
+    // Whole units: these are $50 / $500, and ".00" on every card is noise. A
+    // tier ever priced with cents will need this relaxed.
     maximumFractionDigits: 0,
   });
 }
@@ -111,7 +91,7 @@ export const FEATURE_ROWS = [
  * The cheapest rung that includes `feature` — the one the org has to climb to.
  *
  * "The next possible plan to get that feature", which is not always the next
- * plan: Kanban skips two rungs. Reads straight off the cheapest-first catalog,
+ * plan: Kanban skips a rung. Reads straight off the cheapest-first catalog,
  * so it never needs a table of its own to drift from the gateway's answer.
  */
 export function planUnlocking(
@@ -124,7 +104,29 @@ export function planUnlocking(
   return plan ? { plan, index } : null;
 }
 
-/** Cheapest-first, which is the order every rung here is derived from. */
+/**
+ * Plans deco staff assign by contract. They are not on the ladder, so an org on
+ * one is shown neither the catalog nor a checkout — only who to talk to.
+ */
+const STAFF_MANAGED_PLAN_IDS: ReadonlySet<string> = new Set([
+  "custom",
+  "ai_service",
+]);
+
+export function isStaffManagedPlan(planId: string | null | undefined): boolean {
+  return !!planId && STAFF_MANAGED_PLAN_IDS.has(planId);
+}
+
+// TODO: confirm contact address
+export const SALES_CONTACT_HREF = "mailto:sales@deco.cx";
+
+/**
+ * Cheapest-first, which is the order every rung here is derived from.
+ *
+ * `free` is dropped: the gateway still lists it, but it is the absence of a
+ * plan (no features at all), not a rung anyone picks — so an org on it has
+ * index -1 and its next rung is the first one.
+ */
 export function usePlanCatalog() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
@@ -137,22 +139,22 @@ export function usePlanCatalog() {
       const { plans } = await studio.call("AI_PLAN_LIST", {
         providerId: "deco",
       });
-      return plans;
+      return plans.filter((p) => p.id !== "free");
     },
   });
 }
 
 /**
- * Sprout, seedling, leafy stem, flower — the ladder drawn as growth.
+ * Seedling, leafy stem, flower — the ladder drawn as growth. The last rung is
+ * Custom, which is not in the catalog and is drawn at `plans.length`.
  *
  * Keyed by POSITION, not by plan id: the catalog is ordered cheapest-first
  * (the suggested upgrade is `plans[i + 1]`), so a renamed tier still reads as
- * growth and a fifth one keeps the last plant rather than rendering an empty
+ * growth and a fourth one keeps the last plant rather than rendering an empty
  * `<use>`. Colours are categorical, never semantic — `destructive` on the top
  * tier would read as an error rather than as the richest rung.
  */
 const PLAN_PLANTS = [
-  { symbol: "free", color: "text-chart-2" },
   { symbol: "starter", color: "text-chart-4" },
   { symbol: "growth", color: "text-chart-1" },
   { symbol: "scale", color: "text-brand-blue" },

@@ -2453,7 +2453,7 @@ export interface Database {
   organization_tags: OrganizationTagTable;
   member_tags: MemberTagTable;
 
-  // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
+  // Plan billing
   organization_billing: OrganizationBillingTable;
   task_quota_claims: TaskQuotaClaimTable;
   subsidized_gateway_keys: SubsidizedGatewayKeyTable;

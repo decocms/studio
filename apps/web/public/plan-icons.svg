@@ -145,31 +145,4 @@
     <rect x="3.20007" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
     <rect x="4.26672" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
   </symbol>
-
-  <symbol id="free-icon" viewBox="0 0 16 16" fill="none">
-    <rect x="7.46667" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="7.46667" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="7.46667" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="7.46667" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="6.40002" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="8.53333" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="9.59998" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="10.6666" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="8.53333" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="9.59998" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="9.59998" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="10.6666" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="11.7333" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="10.6666" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="11.7333" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="5.33337" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="4.2666" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="6.40002" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="5.33337" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="4.2666" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="3.19995" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="3.19995" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="4.2666" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-    <rect x="5.33337" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
-  </symbol>
 </svg>

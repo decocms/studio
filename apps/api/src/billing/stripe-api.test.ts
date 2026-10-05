@@ -6,6 +6,7 @@ import {
   plannedOrphanRefunds,
   taxAndAddressParams,
   toStripeForm,
+  trialEndFor,
 } from "./stripe-api";
 import { toUsdCreditCents } from "./exchange-rate";
 
@@ -291,5 +292,29 @@ describe("topUpIdempotencyKey", () => {
     );
     expect(topUpIdempotencyKey({ ...base, amountCents: 2000 })).not.toBe(key);
     expect(topUpIdempotencyKey({ ...base, currency: "usd" })).not.toBe(key);
+  });
+});
+
+describe("trialEndFor", () => {
+  const at = (iso: string) => trialEndFor(new Date(iso)).toISOString();
+
+  test("lands on a 1st, 00:00 UTC — the billing anchor — never under 30 days", () => {
+    // Signing up ON the 1st: 30 days lands on the 31st, so the next 1st.
+    expect(at("2026-10-01T00:00:00Z")).toBe("2026-11-01T00:00:00.000Z");
+    // Mid-month: 30 days reaches into November, so the trial runs to Dec 1.
+    expect(at("2026-10-05T12:00:00Z")).toBe("2026-12-01T00:00:00.000Z");
+    // Late in the month the floor already lands past the next 1st.
+    expect(at("2026-10-31T23:59:00Z")).toBe("2026-12-01T00:00:00.000Z");
+  });
+
+  test("is always at least 30 days away", () => {
+    for (let d = 0; d < 400; d++) {
+      const now = new Date(Date.UTC(2026, 0, 1) + d * 86_400_000 + 3_600_000);
+      const end = trialEndFor(now);
+      expect(end.getUTCDate()).toBe(1);
+      expect(end.getTime() - now.getTime()).toBeGreaterThanOrEqual(
+        30 * 86_400_000,
+      );
+    }
   });
 });
