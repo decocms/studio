@@ -354,7 +354,7 @@ export function SidebarProjectsTree({
   };
   /** Clearing only takes a project out of Suggested; one with a waiting task
    *  stays marked in its folder until the task is done. */
-  const dismissableIds = model.suggested.map((s) => s.project.id);
+  const dismissableIds = model.clearableIds;
   const clearSuggested = () => {
     track("sidebar_suggestions_cleared");
     updatePreferences.mutate((prefs) =>
