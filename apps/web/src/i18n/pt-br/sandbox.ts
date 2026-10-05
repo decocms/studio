@@ -109,10 +109,16 @@ export const sandbox = {
   "sandbox.categoryEditor.categoryNamePlaceholder": "Nome da categoria",
   "sandbox.categoryEditor.contentTitle": "Conteúdo",
   "sandbox.categoryEditor.descriptionLabel": "Descrição",
+  "sandbox.categoryEditor.duplicateNameWarning":
+    "Já existe outra categoria com esse nome. Nomes duplicados ficam difíceis de distinguir na hora de marcar um post.",
   "sandbox.categoryEditor.descriptionPlaceholder":
     "Descrição breve desta categoria",
   "sandbox.categoryEditor.noContentEmpty":
     "Esta categoria ainda não possui conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
+  "sandbox.categoryEditor.parentDescription":
+    "Aninhe esta categoria sob outra. Deixe vazio para uma categoria raiz.",
+  "sandbox.categoryEditor.parentLabel": "Categoria pai",
+  "sandbox.categoryEditor.parentNone": "Nenhuma (categoria raiz)",
   "sandbox.categoryEditor.pickPostsTooltip":
     "Selecione posts para adicionar nesta categoria",
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) nesta categoria",
@@ -121,8 +127,12 @@ export const sandbox = {
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
+  "sandbox.categoryEditor.renameDialogChildren":
+    "{count} subcategoria(s) passarão a apontar para o novo slug.",
   "sandbox.categoryEditor.renameDialogTitle": "Renomear slug da categoria?",
   "sandbox.categoryEditor.renameFailed": "Falha ao renomear",
+  "sandbox.categoryEditor.renameNameSuccess":
+    "Nome da categoria atualizado em {count} post(s)",
   "sandbox.categoryEditor.renameSuccessNoPosts": "Slug renomeado",
   "sandbox.categoryEditor.renameSuccessWithPosts":
     "Slug renomeado e {count} post(s) atualizado(s)",
@@ -130,6 +140,8 @@ export const sandbox = {
   "sandbox.categoryEditor.seeCategoryPreview": "Ver visualização da categoria",
   "sandbox.categoryEditor.setSlugTooltip":
     "Defina um slug para adicionar posts nesta categoria",
+  "sandbox.categoryEditor.slugDeduped":
+    "Esse slug já estava em uso — salvamos como \u201c{slug}\u201d.",
   "sandbox.categoryEditor.slugLabel": "Slug",
   "sandbox.categoryEditor.slugPlaceholder": "minha-categoria",
   "sandbox.categoryEditor.untitledCategory": "Categoria sem título",
@@ -391,6 +403,8 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "Mais ações",
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
+  "sandbox.itemRow.duplicateName": "Outro registro usa esse nome",
+  "sandbox.itemRow.missingFields": "Faltando: {fields}",
   "sandbox.itemRow.selectItem": "Selecionar {title}",
   "sandbox.itemRow.variantCount": "{count} variantes",
   "sandbox.listBlocks.addCard": "Adicionar card",
@@ -416,6 +430,7 @@ export const sandbox = {
   "sandbox.listBlocks.stepsTitle": "Título dos passos (opcional)",
   "sandbox.mediaBlocks.addCaption": "Adicione uma legenda…",
   "sandbox.mediaBlocks.altText": "Texto alternativo (acessibilidade)",
+  "sandbox.mediaBlocks.altLabel": "Alt",
   "sandbox.mediaBlocks.buttonLabel": "Rótulo do botão",
   "sandbox.mediaBlocks.calloutText": "Texto do destaque…",
   "sandbox.mediaBlocks.calloutTitle": "Título do destaque",
@@ -441,6 +456,9 @@ export const sandbox = {
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
   "sandbox.mediaBlocks.image": "Imagem",
+  "sandbox.mediaBlocks.highPriority": "Prioridade",
+  "sandbox.mediaBlocks.highPriorityHint":
+    "Carrega de imediato e com prioridade alta. Use em imagens acima da dobra.",
   "sandbox.mediaBlocks.label": "Rótulo",
   "sandbox.mediaBlocks.normal": "Normal",
   "sandbox.mediaBlocks.optionalDescription": "Descrição opcional",
@@ -523,6 +541,7 @@ export const sandbox = {
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
+  "sandbox.postBoard.duplicateTitle": "Título duplicado",
   "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.expandLane": "Expandir {lane}",
   "sandbox.postBoard.generateIdeas": "Gerar ideias",
@@ -549,14 +568,8 @@ export const sandbox = {
     "Este post está sem campos obrigatórios — abra-o para concluir antes de agendar.",
   "sandbox.postBoard.moveFailed": "Não foi possível mover este post",
   "sandbox.postBoard.moveInFlight": "Ainda movendo este post…",
-  "sandbox.postBoard.moveUnknownApp":
-    "Ainda lendo a versão do app de blog deste site.",
-  "sandbox.postBoard.moveNoBlogApp":
-    "Este site não roda o app de blog do deco, então nada aqui consegue colocar um post no ar.",
   "sandbox.postBoard.moveNotATarget":
     "Gerando é definido pela geração, não à mão.",
-  "sandbox.postBoard.moveUnsupported":
-    "O blog app deste site é anterior à {required} — rode `{command}` para habilitar.",
   "sandbox.postBoard.nIssues": "{count} a corrigir antes de agendar",
   "sandbox.postBoard.newPost": "Novo post",
   "sandbox.postBoard.newPostGenerate": "Gerar",
@@ -591,23 +604,12 @@ export const sandbox = {
   "sandbox.postCalendar.next": "Próximo mês",
   "sandbox.postCalendar.onlyScheduledCanMove":
     "Apenas posts agendados podem ser movidos.",
-  "sandbox.postCalendar.outdatedAppsDescription":
-    "Agendamento precisa do deco apps {required} ou mais novo. Atualize o pin deste site rodando:",
-  "sandbox.postCalendar.outdatedAppsTitle":
-    "Atualize a versão do apps deste site",
   "sandbox.postCalendar.previous": "Mês anterior",
   "sandbox.postCalendar.schedulePostOn": "Agendar um post em {date}",
   "sandbox.postCalendar.today": "Hoje",
   "sandbox.postCalendar.unscheduledHint":
     "Posts tracejados não estão agendados — estão na data de exibição deles, e nada vai publicá-los.",
   "sandbox.postCalendar.undatedEmpty": "Todos os posts têm data.",
-  "sandbox.postCalendar.unknownAppDescription":
-    "O calendário fica somente leitura até dar para ler os manifestos do repo — o sandbox pode ainda estar subindo.",
-  "sandbox.postCalendar.unknownAppTitle":
-    "Ainda lendo o app de blog deste site",
-  "sandbox.postCalendar.unsupportedRuntimeDescription":
-    "Este site não instala o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
-  "sandbox.postCalendar.unsupportedRuntimeTitle": "Sem app de blog neste site",
   "sandbox.postCalendar.undatedLabel": "Sem data · {count}",
   "sandbox.postEditor.addPropLabel": "Adicionar propriedade",
   "sandbox.postEditor.authorsLabel": "Autores",
@@ -618,6 +620,14 @@ export const sandbox = {
   "sandbox.postEditor.coverAltLabel": "Texto alternativo da capa",
   "sandbox.postEditor.coverImageLabel": "Imagem de capa",
   "sandbox.postEditor.dateLabel": "Data",
+  "sandbox.postEditor.deletePost": "Excluir post",
+  "sandbox.postEditor.deletePostCancel": "Cancelar",
+  "sandbox.postEditor.deletePostConfirmBody":
+    '"{title}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.postEditor.deletePostConfirmTitle": "Excluir este post?",
+  "sandbox.postEditor.deletePostFailed": "Falha ao excluir",
+  "sandbox.postEditor.deletePostSuccess": '"{title}" excluído',
+  "sandbox.postEditor.deletingPost": "Excluindo…",
   "sandbox.postEditor.duplicateTitleWarning":
     "Já existe outro post com esse título. Títulos duplicados competem entre si na busca.",
   "sandbox.postEditor.excerptLabel": "Resumo",

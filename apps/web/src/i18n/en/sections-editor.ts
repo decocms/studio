@@ -71,6 +71,12 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Drop an image or click to browse",
   "sectionsEditor.imageField.dropToUpload": "Drop to upload",
+  "sectionsEditor.imageField.desktopSlot": "Desktop image",
+  "sectionsEditor.imageField.dropMobileImage":
+    "Drop the mobile image or click to browse",
+  "sectionsEditor.imageField.mobileSlot": "Mobile image (below 768px)",
+  "sectionsEditor.imageField.mobileUrlLabel": "Mobile URL",
+  "sectionsEditor.imageField.urlLabel": "URL",
   "sectionsEditor.imageField.onlyImageFilesAccepted":
     "Only image files are accepted here.",
   "sectionsEditor.imageField.previewUnavailable": "Preview unavailable",
@@ -78,6 +84,8 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.replaceImage": "Replace image",
   "sectionsEditor.imageField.supportedFormatsAndSize":
     "PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB",
+  "sectionsEditor.imageField.unsafeUrl":
+    "That address can't be used as an image source.",
   "sectionsEditor.imageField.uploadFailed": "Upload failed",
   "sectionsEditor.imageField.uploadedWithExtraFilesIgnored":
     "Uploaded {fileName}; extra files were ignored (single-select field).",
