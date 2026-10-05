@@ -39,7 +39,10 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
-import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
+import {
+  useDraftPointer,
+  useFastPreviewDraftUrl,
+} from "../../sections-editor/use-fast-preview-draft-url.ts";
 import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
 import {
   lastPreviewPageKey,
@@ -135,6 +138,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           path: draftPath,
         }
       : null,
+  );
+  const draftPointer = useDraftPointer(
+    branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
   );
 
   /** Poll-free on purpose: every call forwards to the provider; save hooks invalidate
@@ -469,6 +475,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}
+          previewServerUrl={previewServerUrl}
+          draftPointer={draftPointer}
+          lastPreviewPage={lastPage}
+          visualReview={vm?.metadata?.publishVisualReview === true}
           lastPublishedPr={lastPublishedQuery.data ?? null}
           onRequestApproval={() => openSurface("review")}
           openPullRequest={pr?.state === "open" ? pr : null}

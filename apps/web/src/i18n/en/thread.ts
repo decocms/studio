@@ -279,6 +279,27 @@ export const thread = {
   "thread.publishPopover.versionNote": "Version note",
   "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
+  "thread.publishCompare.sideBySide": "Side by side",
+  "thread.publishCompare.before": "Before",
+  "thread.publishCompare.after": "After",
+  "thread.publishCompare.code": "Code",
+  "thread.publishCompare.pathLabel": "Page address",
+  "thread.publishCompare.desktop": "Desktop",
+  "thread.publishCompare.mobile": "Mobile",
+  "thread.publishCompare.openDraft": "Open in new tab",
+  "thread.publishCompare.globalHint":
+    "This change can appear on any page. Showing the home page — type another address to compare it.",
+  "thread.publishCompare.dynamicHint":
+    "This page's address is a pattern ({template}). Type a real address to compare it.",
+  "thread.publishCompare.enterPath": "Type a page address to compare.",
+  "thread.publishCompare.draftUnavailable":
+    "Your changes can't be shown yet. Use Preview to open them.",
+  "thread.publishCompare.newTitle": "New page",
+  "thread.publishCompare.newDescription":
+    "This page isn't on the live site yet.",
+  "thread.publishCompare.removedTitle": "Page removed",
+  "thread.publishCompare.removedDescription":
+    "This page will no longer be on the site.",
   "thread.analytics.title": "Chats & automations",
   "thread.analytics.notAdmin":
     "Chat analytics is only available in an admin organization.",

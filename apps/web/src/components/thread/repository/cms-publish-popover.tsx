@@ -2,12 +2,17 @@
  * Fast Preview's content-first publish surface — presentation only: reads come
  * from {@link useCmsPublishState}, writes from {@link useCmsPublishActions}.
  * Loads in two beats — see {@link useCmsPublishState} for what each decides.
+ * With `visualReview` it is a fullscreen dialog with a before/after pane.
  */
 
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Popover,
   PopoverAnchor,
@@ -34,7 +39,9 @@ import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
+import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import { changeId, PublishChangeCard } from "./cms-publish-change-card.tsx";
+import { PublishCompare } from "./cms-publish-compare.tsx";
 import {
   PublishFrame,
   PublishGhost,
@@ -96,6 +103,14 @@ export interface CmsPublishPopoverProps {
   /** Draft URL + destination host from useFastPreviewDraftUrl. */
   draftPreviewUrl: string | null;
   destinationHost: string | null;
+  /** Live site origin the review pane renders each changed page against. */
+  previewServerUrl: string | null;
+  /** This session's `?__draft=` pointer (useDraftPointer). */
+  draftPointer: string | null;
+  /** Fills a dynamic page's `:param`s when it is the page last previewed. */
+  lastPreviewPage: LastPreviewPage | null;
+  /** `metadata.publishVisualReview`: fullscreen before/after review instead of the popover. */
+  visualReview: boolean;
   /** The last publish, warmed by the header — never blocks this surface. */
   lastPublishedPr?: PrSummary | null;
   /** Blocked gate: hand this surface over to review mode. */
@@ -113,11 +128,36 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
   /** Set by the body while the publish flow runs — an outside click or Escape
    *  must not dismiss the only surface showing that progress. */
   const publishLockRef = useRef(false);
+  const t = useT();
 
   const handleOpenChange = (next: boolean) => {
     if (!next && publishLockRef.current) return;
     props.onOpenChange(next);
   };
+
+  if (props.visualReview) {
+    return (
+      <>
+        {props.children}
+        <Dialog open={props.open} onOpenChange={handleOpenChange}>
+          <DialogContent
+            aria-describedby={undefined}
+            className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+            closeButtonClassName="top-3.5 right-3.5"
+          >
+            <DialogTitle className="sr-only">
+              {props.mode === "review"
+                ? t("thread.publishPopover.submitForReview")
+                : t("thread.publishPopover.publish")}
+            </DialogTitle>
+            {props.open ? (
+              <CmsPublishBody {...props} publishLockRef={publishLockRef} />
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
 
   if (narrow) {
     return (
@@ -150,6 +190,35 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
         <CmsPublishBody {...props} publishLockRef={publishLockRef} />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** Visual review: the list column (clear of the close button when alone) beside the review pane. */
+function ReviewLayout({
+  visualReview,
+  list,
+  pane,
+}: {
+  visualReview: boolean;
+  list: ReactNode;
+  pane: ReactNode;
+}) {
+  if (!visualReview) return list;
+  return (
+    <>
+      <div className="flex min-h-0 w-full flex-col max-md:pt-8 md:w-[380px] md:shrink-0 md:border-r">
+        {list}
+      </div>
+      {pane}
+    </>
+  );
+}
+
+function ReviewPaneGhost() {
+  return (
+    <div className="hidden min-w-0 flex-1 bg-muted/40 p-3 md:flex">
+      <PublishGhost className="h-full w-full rounded-lg" />
+    </div>
   );
 }
 
@@ -207,49 +276,57 @@ function PreviewButton({
 function CmsPublishSkeleton({
   mode,
   draftPreviewUrl,
+  visualReview,
 }: {
   mode: CmsPublishMode;
   draftPreviewUrl: string | null;
+  visualReview: boolean;
 }) {
   const t = useT();
   return (
-    <PublishFrame
-      state="loading"
-      header={
-        <HeaderLine
-          mode={mode}
-          title={<PublishGhost className="h-3.5 w-48" />}
+    <ReviewLayout
+      visualReview={visualReview}
+      pane={<ReviewPaneGhost />}
+      list={
+        <PublishFrame
+          state="loading"
+          header={
+            <HeaderLine
+              mode={mode}
+              title={<PublishGhost className="h-3.5 w-48" />}
+            />
+          }
+          body={
+            <PublishListRegion>
+              <div className="space-y-1.5">
+                <PublishGhostCard />
+                <PublishGhostCard />
+                <PublishGhostCard />
+              </div>
+            </PublishListRegion>
+          }
+          note={
+            <>
+              <PublishGhost className="h-3 w-20" />
+              <PublishGhost className="h-14 w-full rounded-lg" />
+            </>
+          }
+          footer={
+            <div className="flex gap-2">
+              <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+              <Button
+                type="button"
+                variant={mode === "review" ? "default" : "brand"}
+                className="flex-1"
+                disabled
+              >
+                {mode === "review"
+                  ? t("thread.publishPopover.submitForReview")
+                  : t("thread.publishPopover.publish")}
+              </Button>
+            </div>
+          }
         />
-      }
-      body={
-        <PublishListRegion>
-          <div className="space-y-1.5">
-            <PublishGhostCard />
-            <PublishGhostCard />
-            <PublishGhostCard />
-          </div>
-        </PublishListRegion>
-      }
-      note={
-        <>
-          <PublishGhost className="h-3 w-20" />
-          <PublishGhost className="h-14 w-full rounded-lg" />
-        </>
-      }
-      footer={
-        <div className="flex gap-2">
-          <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
-          <Button
-            type="button"
-            variant={mode === "review" ? "default" : "brand"}
-            className="flex-1"
-            disabled
-          >
-            {mode === "review"
-              ? t("thread.publishPopover.submitForReview")
-              : t("thread.publishPopover.publish")}
-          </Button>
-        </div>
       }
     />
   );
@@ -260,40 +337,48 @@ function CmsPublishLoadError({
   draftPreviewUrl,
   message,
   onRetry,
+  visualReview,
 }: {
   mode: CmsPublishMode;
   draftPreviewUrl: string | null;
   message: string;
   onRetry: () => void;
+  visualReview: boolean;
 }) {
   const t = useT();
   return (
-    <PublishFrame
-      state="ready"
-      header={
-        <HeaderLine
-          mode={mode}
-          title={
-            <span className="truncate">
-              {t("thread.publishPopover.loadFailed")}
-            </span>
+    <ReviewLayout
+      visualReview={visualReview}
+      pane={<div className="hidden min-w-0 flex-1 bg-muted/40 md:flex" />}
+      list={
+        <PublishFrame
+          state="ready"
+          header={
+            <HeaderLine
+              mode={mode}
+              title={
+                <span className="truncate">
+                  {t("thread.publishPopover.loadFailed")}
+                </span>
+              }
+            />
+          }
+          body={<p className="px-4 py-6 text-xs text-destructive">{message}</p>}
+          footer={
+            <div className="flex gap-2">
+              <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={onRetry}
+              >
+                <RefreshCw01 className="size-4" />
+                {t("thread.publishPopover.retry")}
+              </Button>
+            </div>
           }
         />
-      }
-      body={<p className="px-4 py-6 text-xs text-destructive">{message}</p>}
-      footer={
-        <div className="flex gap-2">
-          <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={onRetry}
-          >
-            <RefreshCw01 className="size-4" />
-            {t("thread.publishPopover.retry")}
-          </Button>
-        </div>
       }
     />
   );
@@ -313,6 +398,7 @@ function CmsPublishBody(
           draftPreviewUrl={props.draftPreviewUrl}
           message={error?.message ?? ""}
           onRetry={resetError}
+          visualReview={props.visualReview}
         />
       )}
     >
@@ -321,6 +407,7 @@ function CmsPublishBody(
           <CmsPublishSkeleton
             mode={mode}
             draftPreviewUrl={props.draftPreviewUrl}
+            visualReview={props.visualReview}
           />
         }
       >
@@ -344,6 +431,10 @@ function CmsPublishContent({
   publishPolicy,
   draftPreviewUrl,
   destinationHost,
+  previewServerUrl,
+  draftPointer,
+  lastPreviewPage,
+  visualReview,
   lastPublishedPr = null,
   onRequestApproval,
   openPullRequest = null,
@@ -381,11 +472,18 @@ function CmsPublishContent({
    *  change list that lands after mount still describes itself. */
   const [editedNote, setEditedNote] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** The selected card (visual review) or the expanded one (popover). */
+  const [activeId, setActiveId] = useState<string | null>(null);
   /** Only one card may arm its discard at a time — it is a one-click destroy. */
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const note = resolveVersionNote(editedNote, buildAutoNote(summary));
+  const changes = [...summary.pages, ...summary.blocks, ...summary.other];
+  /** Falls back to the first change, so a discard never leaves the pane blank. */
+  const selected =
+    changes.find((change) => changeId(change) === activeId) ??
+    changes[0] ??
+    null;
   const isReview = mode === "review";
   const surfaceState: PublishSurfaceState = cardsPending
     ? "loading"
@@ -499,11 +597,21 @@ function CmsPublishContent({
             <PublishChangeCard
               key={id}
               change={change}
-              diff={gitDiff}
               bodyPending={bodiesPending}
-              expanded={expandedId === id}
-              onToggleExpanded={() =>
-                setExpandedId(expandedId === id ? null : id)
+              mode={
+                visualReview
+                  ? {
+                      kind: "select",
+                      selected: selected !== null && changeId(selected) === id,
+                      onSelect: () => setActiveId(id),
+                    }
+                  : {
+                      kind: "expand",
+                      expanded: activeId === id,
+                      onToggleExpanded: () =>
+                        setActiveId(activeId === id ? null : id),
+                      diff: gitDiff,
+                    }
               }
               confirming={confirmingId === id}
               onConfirmingChange={(confirming) =>
@@ -625,81 +733,105 @@ function CmsPublishContent({
     </PublishListRegion>
   );
 
+  const reviewPane = cardsPending ? (
+    <ReviewPaneGhost />
+  ) : selected ? (
+    <div className="hidden min-w-0 flex-1 md:flex">
+      <PublishCompare
+        key={changeId(selected)}
+        change={selected}
+        diff={gitDiff}
+        bodyPending={bodiesPending}
+        previewServerUrl={previewServerUrl}
+        draftPointer={draftPointer}
+        lastPage={lastPreviewPage}
+      />
+    </div>
+  ) : (
+    <div className="hidden min-w-0 flex-1 bg-muted/40 md:flex" />
+  );
+
   return (
-    <PublishFrame
-      state={surfaceState}
-      header={
-        <HeaderLine
-          mode={mode}
-          title={<span className="truncate">{headerTitle}</span>}
-          subLine={subLine}
-          trailing={discardAllControl}
-        />
-      }
-      body={body}
-      note={
-        summary.count === 0 ? null : (
-          <>
-            <span className="text-[13px] font-medium">
-              {isReview
-                ? t("thread.publishPopover.reviewNote")
-                : t("thread.publishPopover.versionNote")}
-            </span>
-            <Textarea
-              value={note}
-              onChange={(e) => setEditedNote(e.target.value)}
-              placeholder={
-                isReview
-                  ? t("thread.publishPopover.reviewNotePlaceholder")
-                  : t("thread.publishPopover.versionNotePlaceholder")
-              }
-              rows={2}
-              className="resize-none text-[13px]"
-              disabled={isPublishing}
+    <ReviewLayout
+      visualReview={visualReview}
+      pane={reviewPane}
+      list={
+        <PublishFrame
+          state={surfaceState}
+          header={
+            <HeaderLine
+              mode={mode}
+              title={<span className="truncate">{headerTitle}</span>}
+              subLine={subLine}
+              trailing={discardAllControl}
             />
-          </>
-        )
-      }
-      gate={gateRow}
-      footer={
-        <>
-          <div className="flex gap-2">
-            <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
-            {!isReview &&
-            summary.count > 0 &&
-            !gate.allowed &&
-            !gate.pending ? (
-              <Button
-                type="button"
-                className="flex-1"
-                onClick={onRequestApproval}
-                disabled={isPublishing}
-              >
-                {t("thread.publishPopover.requestApproval")}
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant={isReview ? "default" : "brand"}
-                className="flex-1"
-                onClick={() => void submit()}
-                disabled={!canSubmit}
-              >
-                {isPublishing ? (
-                  <Spinner className="size-4 motion-reduce:animate-none" />
-                ) : null}
-                {isPublishing
-                  ? isReview
-                    ? t("thread.publishPopover.submitting")
-                    : t("thread.publishPopover.publishing")
-                  : primaryLabel}
-              </Button>
-            )}
-          </div>
-          {publishError ? (
-            <p className="text-xs text-destructive">{publishError}</p>
-          ) : null}
-        </>
+          }
+          body={body}
+          note={
+            summary.count === 0 ? null : (
+              <>
+                <span className="text-[13px] font-medium">
+                  {isReview
+                    ? t("thread.publishPopover.reviewNote")
+                    : t("thread.publishPopover.versionNote")}
+                </span>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setEditedNote(e.target.value)}
+                  placeholder={
+                    isReview
+                      ? t("thread.publishPopover.reviewNotePlaceholder")
+                      : t("thread.publishPopover.versionNotePlaceholder")
+                  }
+                  rows={2}
+                  className="resize-none text-[13px]"
+                  disabled={isPublishing}
+                />
+              </>
+            )
+          }
+          gate={gateRow}
+          footer={
+            <>
+              <div className="flex gap-2">
+                <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+                {!isReview &&
+                summary.count > 0 &&
+                !gate.allowed &&
+                !gate.pending ? (
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    onClick={onRequestApproval}
+                    disabled={isPublishing}
+                  >
+                    {t("thread.publishPopover.requestApproval")}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant={isReview ? "default" : "brand"}
+                    className="flex-1"
+                    onClick={() => void submit()}
+                    disabled={!canSubmit}
+                  >
+                    {isPublishing ? (
+                      <Spinner className="size-4 motion-reduce:animate-none" />
+                    ) : null}
+                    {isPublishing
+                      ? isReview
+                        ? t("thread.publishPopover.submitting")
+                        : t("thread.publishPopover.publishing")
+                      : primaryLabel}
+                  </Button>
+                )}
+              </div>
+              {publishError ? (
+                <p className="text-xs text-destructive">{publishError}</p>
+              ) : null}
+            </>
+          }
+        />
       }
     />
   );

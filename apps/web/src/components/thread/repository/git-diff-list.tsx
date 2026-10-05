@@ -99,7 +99,7 @@ export interface GitDiffListProps {
   onDiscardFile?: (filepath: string) => void | Promise<void>;
   /**
    * Render only the always-open editors, no per-file header rows — for hosts
-   * that already name the file (the publish popover's change cards).
+   * that already name the file (the publish change cards and review pane).
    */
   hideFileRows?: boolean;
   /** Monaco diff height; the default suits the full-size dialog. */
