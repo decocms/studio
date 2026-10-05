@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   comparePageUrl,
+  compareSectionUrl,
   initialComparePath,
+  isComparePathEditable,
+  isolatedSectionKey,
 } from "./cms-publish-compare-path.ts";
 
 const SITE = "https://www.example.com";
@@ -79,5 +82,78 @@ describe("comparePageUrl", () => {
 
   test("an unparsable site origin is not renderable", () => {
     expect(comparePageUrl("not a url", "/sale")).toBeNull();
+  });
+});
+
+describe("isolatedSectionKey", () => {
+  const block = {
+    kind: "block" as const,
+    blockKey: "Header Global",
+    isSiteApp: false,
+    fromJson: null,
+    toJson: { __resolveType: "site/sections/Header/Header.tsx" },
+  };
+
+  test("a global section renders on its own", () => {
+    expect(isolatedSectionKey(block)).toBe("Header Global");
+  });
+
+  test("a removed section still renders its published shape", () => {
+    expect(
+      isolatedSectionKey({
+        ...block,
+        fromJson: { __resolveType: "website/flags/multivariate/section.ts" },
+        toJson: null,
+      }),
+    ).toBe("Header Global");
+  });
+
+  test("loaders, site settings and pages render inside a page", () => {
+    expect(
+      isolatedSectionKey({
+        ...block,
+        toJson: {
+          __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        },
+      }),
+    ).toBeNull();
+    expect(isolatedSectionKey({ ...block, isSiteApp: true })).toBeNull();
+    expect(isolatedSectionKey({ ...block, kind: "page" })).toBeNull();
+    expect(isolatedSectionKey({ ...block, toJson: {} })).toBeNull();
+  });
+});
+
+describe("isComparePathEditable", () => {
+  test("a static page is fixed to its own path", () => {
+    expect(isComparePathEditable({ kind: "page", pagePath: "/sale" })).toBe(
+      false,
+    );
+  });
+
+  test("dynamic pages, pathless pages and blocks let the reviewer pick", () => {
+    expect(
+      isComparePathEditable({ kind: "page", pagePath: "/blog/:slug" }),
+    ).toBe(true);
+    expect(isComparePathEditable({ kind: "page", pagePath: null })).toBe(true);
+    expect(isComparePathEditable({ kind: "block", pagePath: null })).toBe(true);
+  });
+});
+
+describe("compareSectionUrl", () => {
+  test("renders the block alone on the live site's preview route", () => {
+    const url = compareSectionUrl(`${SITE}/any/path`, "Header Global");
+    expect(url?.origin).toBe(SITE);
+    expect(url?.pathname).toBe(
+      `/live/previews/${encodeURIComponent("website/pages/Page.tsx")}`,
+    );
+    expect(url?.searchParams.has("__cb")).toBe(false);
+    const props = JSON.parse(
+      decodeURIComponent(atob(url?.searchParams.get("props") ?? "")),
+    );
+    expect(props.sections).toEqual([{ __resolveType: "Header Global" }]);
+  });
+
+  test("an unparsable site origin is not renderable", () => {
+    expect(compareSectionUrl("not a url", "Header Global")).toBeNull();
   });
 });
