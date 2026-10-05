@@ -842,6 +842,7 @@ const agentExperimentsRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
   staticData: {
+    pageTitle: "common.mainPanelTabs.experiments",
     defaultMain: "experiments",
     mainView: "experiments",
   },

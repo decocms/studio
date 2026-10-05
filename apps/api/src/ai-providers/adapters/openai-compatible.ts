@@ -78,16 +78,22 @@ export const openaiCompatibleAdapter: ProviderAdapter = {
         const body = await parseJsonResponse<{
           data: Array<{ id: string; owned_by?: string }>;
         }>("OpenAI-compatible listModels", res);
-        return body.data.map((m) => ({
-          providerId: "openai-compatible",
-          modelId: m.id,
-          title: m.id,
-          description: m.owned_by ? `Owned by ${m.owned_by}` : null,
-          logo: null,
-          capabilities: [],
-          limits: null,
-          costs: null,
-        }));
+        // Skip a catalog entry missing its id instead of crashing the whole call.
+        return body.data
+          .filter(
+            (m): m is { id: string; owned_by?: string } =>
+              typeof m.id === "string" && m.id.length > 0,
+          )
+          .map((m) => ({
+            providerId: "openai-compatible",
+            modelId: m.id,
+            title: m.id,
+            description: m.owned_by ? `Owned by ${m.owned_by}` : null,
+            logo: null,
+            capabilities: [],
+            limits: null,
+            costs: null,
+          }));
       },
     };
   },

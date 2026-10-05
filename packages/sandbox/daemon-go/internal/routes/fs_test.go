@@ -206,3 +206,31 @@ func TestWriteEscapesRootNamesTheRoot(t *testing.T) {
 		t.Fatalf("error must name AppRoot %q and RepoDir %q; got %s", deps.AppRoot, deps.RepoDir, msg)
 	}
 }
+
+// Unlink already marks a deleted path touched so a pre-baseline-arm delete
+// isn't folded into the dirty baseline as boot dirt (see
+// BranchStatusMonitor.MarkUserTouched). A rename deletes `from` the same way,
+// so it must notify both halves, not just the destination it writes.
+func TestRenameNotifiesBothFromAndTo(t *testing.T) {
+	repoDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoDir, "old.ts"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	var notified []string
+	deps := FsDeps{
+		AppRoot:            repoDir,
+		RepoDir:            repoDir,
+		OnWorkingTreeWrite: func(path string) { notified = append(notified, path) },
+	}
+	body, _ := json.Marshal(map[string]any{"from": "old.ts", "to": "new.ts"})
+	req := httptest.NewRequest(http.MethodPost, "/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Rename(deps)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	if len(notified) != 2 || notified[0] != "old.ts" || notified[1] != "new.ts" {
+		t.Fatalf("expected notifyWrite(old.ts) then notifyWrite(new.ts), got %v", notified)
+	}
+}

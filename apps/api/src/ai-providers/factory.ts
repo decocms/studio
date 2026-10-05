@@ -7,6 +7,7 @@ import {
   fetchWithTransientRetry,
   throwResponseError,
 } from "./adapters/fetch-transient-retry";
+import { deriveModalityCapabilities } from "./adapters/model-capabilities";
 
 // Sentinel org ID for the shared OpenRouter metadata cache (not org-specific)
 const OR_INDEX_ORG_ID = "_global";
@@ -28,28 +29,18 @@ function isMappableModel(m: OpenRouterAPIModel): boolean {
 }
 
 function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
-  // OpenRouter can omit `supported_parameters`; guard like adapters/openrouter.ts does.
-  const canTools = m.supported_parameters?.includes("tools") ?? false;
-  const canReasoning = m.supported_parameters?.includes("reasoning") ?? false;
   return {
     providerId: "openrouter",
     modelId: stripProviderPrefix(m.id),
     title: m.name,
     description: m.description || null,
     logo: null,
-    capabilities: [
-      ...new Set([
-        // "image" in input_modalities means the model accepts image input (vision),
-        // not that it generates images. Remap to "vision" so we distinguish from
-        // "image" in output_modalities which means actual image generation.
-        ...m.architecture.input_modalities.map((mod) =>
-          mod === "image" ? "vision" : mod,
-        ),
-        ...m.architecture.output_modalities,
-        ...(canTools ? (["tools"] as const) : []),
-        ...(canReasoning ? (["reasoning"] as const) : []),
-      ]),
-    ] as ModelCapability[],
+    capabilities: deriveModalityCapabilities(
+      m.architecture.input_modalities,
+      m.architecture.output_modalities,
+      m.supported_parameters,
+      m.supported_parameters?.includes("reasoning") ? ["reasoning"] : [],
+    ),
     limits: {
       contextWindow: m.context_length,
       maxOutputTokens: m.top_provider.max_completion_tokens || null,

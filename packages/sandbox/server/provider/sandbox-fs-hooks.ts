@@ -74,11 +74,11 @@ export interface SandboxFsHooksLifecycle {
   opTimeoutMs?: number;
   /**
    * Thread driving this run. Stamped as `x-thread-id` on every daemon call so
-   * the daemon's `linked()` middleware repoints `org/output` (and `org/upload`)
-   * at this thread's org-fs subtree before the handler runs. Without it the
-   * daemon never repoints for hosted-harness runs, the fs write's MkdirAll
-   * materializes `org/output` as a REAL dir on the pod's ephemeral disk, and
-   * every deliverable written there dies with the pod.
+   * the daemon's `linked()` middleware repoints `/app/org/output` (and
+   * `/app/org/upload`) at this thread's org-fs subtree before the handler runs.
+   * Without it the daemon never repoints for hosted-harness runs, the fs write's
+   * MkdirAll materializes `/app/org/output` as a REAL dir on the pod's ephemeral
+   * disk, and every deliverable written there dies with the pod.
    */
   threadId?: string;
 }

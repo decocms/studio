@@ -3,11 +3,13 @@
  * watcher (org-fs change-feed entries) and any tool-path detection.
  *
  * Convention: HTML artifacts the user should see live in the org home
- * volume, which sandboxes see mounted at the fixed `org/home/`:
+ * volume, which sandboxes see mounted at the fixed `/app/org/home/`:
  *   - `decks/<name>.html` — presentation decks (the `slides` skill)
  *   - `pages/<name>.html` — standalone pages (landing pages, one-pagers)
  * The Studio web UI previews (and for decks, edits) the same files.
  */
+
+import { orgRelativePath } from "@decocms/shared/organization/home-mount";
 
 const DECK_ENTRY_PATTERN = /^(decks|pages)\/([a-z0-9][a-z0-9._-]*)\.html$/i;
 
@@ -79,20 +81,19 @@ export function matchOwnHtmlArtifact(
 }
 
 /**
- * Match a SANDBOX tool path (`write`/`edit`/bash cwd-relative or absolute)
- * against the mounted deck dir, e.g. `org/home/decks/launch.html` or
- * `/app/repo/org/home/decks/launch.html`. `homeMountPath` is the fixed `home`
- * (kept as a param so the matcher stays pure/testable). Returns the
- * volume-relative ref.
+ * Match a SANDBOX tool path (`write`/`edit`) against the mounted deck dir,
+ * e.g. `/app/org/home/decks/launch.html` or the legacy relative
+ * `org/home/decks/launch.html`. `homeMountPath` is the fixed `home` (kept as
+ * a param so the matcher stays pure/testable). Returns the volume-relative
+ * ref.
  */
 export function matchHtmlArtifactToolPath(
   rawPath: string,
   homeMountPath: string,
 ): HtmlArtifactRef | null {
   if (!homeMountPath) return null;
-  const normalized = rawPath.replace(/^\.\//, "");
-  const marker = `org/${homeMountPath}/`;
-  const idx = normalized.indexOf(marker);
-  if (idx !== 0 && (idx < 0 || normalized[idx - 1] !== "/")) return null;
-  return matchHtmlArtifactEntry(normalized.slice(idx + marker.length));
+  const marker = `${homeMountPath}/`;
+  const rel = orgRelativePath(rawPath);
+  if (!rel?.startsWith(marker)) return null;
+  return matchHtmlArtifactEntry(rel.slice(marker.length));
 }

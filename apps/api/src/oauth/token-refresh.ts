@@ -163,10 +163,13 @@ async function refreshAndStoreOnce(
       accessToken: result.accessToken,
       refreshToken: result.refreshToken ?? token.refreshToken,
       scope: result.scope ?? token.scope,
+      // A rejected expires_in must fail safe as already-expired, not "never expires".
       expiresAt:
-        result.expiresIn === undefined
-          ? null
-          : new Date(Date.now() + result.expiresIn * 1000),
+        result.expiresIn !== undefined
+          ? new Date(Date.now() + result.expiresIn * 1000)
+          : result.expiresInMalformed
+            ? new Date()
+            : null,
       clientId: token.clientId,
       clientSecret: token.clientSecret,
       tokenEndpoint: token.tokenEndpoint,

@@ -2,7 +2,7 @@
  * ThreadFilesPanel — "Files in this task" accordion listing every file the
  * thread has produced (same `threadOutputs` query as the per-turn rows;
  * unlike those, this catches files the per-turn attribution can't see,
- * e.g. bash writing into org/output).
+ * e.g. bash writing into /app/org/output).
  *
  * Two placements, switched by container query (needs `@container` on the
  * chat main wrapper in side-panel-chat.tsx):

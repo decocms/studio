@@ -96,7 +96,7 @@ Keep the comment short. The senior reads the review, not you.
 - **Forward:** `JIRA_COMMENT_ADD` one short paragraph that opens with where it
   went and why you trusted it ("Sent to <column>: the review validated <items>
   on the preview at <commit>; spot-check of <behaviour> agrees"), plus your
-  spot-check screenshot as `![what it shows](org/output/<name>.png)`. Then
+  spot-check screenshot as `![what it shows](/app/org/output/<name>.png)`. Then
   `JIRA_ISSUE_TRANSITION` to the next column. Then **re-read the issue** and
   confirm it landed there, because a transition can fail silently.
 - **Leave it:** `JIRA_COMMENT_ADD` one or two lines that open with "Stays for a

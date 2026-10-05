@@ -30,12 +30,19 @@ const RESERVED_KEY_PREFIXES = [INTERESTS_KEY_PREFIX];
 const isReservedKey = (key: string) =>
   RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
 
-/** Shared org-id + reserved-key gate for every kv handler below. Returns the
- *  resolved orgId/key, or a Response to short-circuit the request with. */
+/** Shared auth + org-id + reserved-key gate for every kv handler below.
+ *  Returns the resolved orgId/key, or a Response to short-circuit the request
+ *  with. `resolveOrgFromPath` resolves the org for anonymous callers too (so
+ *  OAuth discovery can 401 downstream), so the principal check lives here. */
 function resolveKvRequest(
   c: Context<{ Variables: Variables }, "/kv/:key">,
 ): { orgId: string; key: string } | Response {
-  const orgId = c.get("studioContext").organization?.id;
+  const ctx = c.get("studioContext");
+  if (!ctx.auth?.user?.id && !ctx.auth?.apiKey?.id) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const orgId = ctx.organization?.id;
   if (!orgId) {
     return c.json({ error: "Organization required" }, 400);
   }

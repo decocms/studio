@@ -1,6 +1,6 @@
 /**
  * HTML-artifact buffer (cluster glue) — fast-path mirror for `write`/`edit`
- * tool calls on `org/home/{decks,pages}/<name>.html`. The sandbox mount's
+ * tool calls on `/app/org/home/{decks,pages}/<name>.html`. The sandbox mount's
  * vfs write-back takes seconds to reach org-fs; mirroring the tool's full
  * content server-side at step end makes the live preview (and the change-feed
  * watcher, which emits the `data-deck-updated` part) see the bytes

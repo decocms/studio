@@ -63,7 +63,6 @@ import {
   setProjectState,
   type SidebarSuggestion,
 } from "@/lib/project-sidebar-model";
-import { buildProjectTree } from "@/lib/project-tree";
 import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
@@ -404,12 +403,6 @@ export function SidebarProjectsTree({
     </ContextMenuItem>
   );
 
-  /** No real folders yet: keep the automatic Code / Other split. */
-  const autoTree =
-    sidebar.folders.length === 0 && !collapsed
-      ? buildProjectTree(model.loose)
-      : { folders: [], loose: model.loose };
-
   /** Every section header's "⋯" and "+". "Projects" is the first grouping,
    *  the projects in no folder, so it gets the same controls as a folder. */
   const sectionActions = (folder: ProjectFolder | null) => (
@@ -583,7 +576,7 @@ export function SidebarProjectsTree({
             ) : (
               <FolderSection
                 label={t("sidebar.projects.heading")}
-                projects={autoTree.loose}
+                projects={model.loose}
                 selectedId={selectedId}
                 onNavigate={onNavigate}
                 waitingByProject={waitingByProject}
@@ -604,20 +597,6 @@ export function SidebarProjectsTree({
                   actions={sectionActions(folder)}
                 />
               ))}
-            {autoTree.folders.map((folder) => (
-              <FolderSection
-                key={folder.kind}
-                label={t(
-                  folder.kind === "code"
-                    ? "sidebar.projects.folderCode"
-                    : "sidebar.projects.folderOther",
-                )}
-                projects={folder.projects}
-                selectedId={selectedId}
-                onNavigate={onNavigate}
-                waitingByProject={waitingByProject}
-              />
-            ))}
             {hiddenCount > 0 && !collapsed && (
               <SidebarMenu>
                 <SidebarNavRow

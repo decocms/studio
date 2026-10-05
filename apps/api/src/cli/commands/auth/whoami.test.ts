@@ -123,3 +123,29 @@ describe("whoamiCommand", () => {
     expect(logs.join("\n")).toMatch(/Not logged in.*decocms auth login/);
   });
 });
+
+describe("whoamiCommand --target", () => {
+  it("reports the session for the requested studio", async () => {
+    for (const [target, email] of [
+      ["https://studio.decocms.com", "prod@example.com"],
+      ["http://localhost:3000", "local@example.com"],
+    ] as const) {
+      await writeSession(dir, {
+        target,
+        clientId: "client_abc",
+        user: { sub: "u_1", email },
+        accessToken: "tok",
+        createdAt: "2026-05-04T00:00:00.000Z",
+      });
+    }
+
+    const code = await whoamiCommand({
+      dataDir: dir,
+      target: "http://localhost:3000",
+    });
+
+    expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("local@example.com");
+    expect(logs.join("\n")).not.toContain("prod@example.com");
+  });
+});

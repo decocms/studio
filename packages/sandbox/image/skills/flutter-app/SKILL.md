@@ -98,19 +98,19 @@ plugins included, so Firebase, push and the rest behave as on a phone.
 ```bash
 qa-android start                 # build + boot + install + launch; exit 2 = still going, then `qa-android wait`
 qa-android ui                    # what's on screen: "x,y [clickable]<TAB>label" per element
-qa-android shot org/output/qa/01.png
+qa-android shot /app/org/output/qa/01.png
 qa-android tap 640 1480          # an x,y from `ui`, or read off the screenshot
 qa-android type "search term"
 qa-android key ENTER             # BACK, HOME, ENTER, TAB, DEL, ...
 qa-android swipe 360 1200 360 400   # scroll down
-qa-android shot org/output/qa/02.png
+qa-android shot /app/org/output/qa/02.png
 qa-android logs 80               # the app's output — where startup crashes land
 qa-android stop
 ```
 
 Then `Read` the PNGs. A screenshot you never opened is not verification.
 To show them to a person, embed each as a markdown image in your comment —
-`![home](org/output/qa/01.png)` renders on the task; a bare path or a code
+`![home](/app/org/output/qa/01.png)` renders on the task; a bare path or a code
 span does not.
 
 **Run `qa-android start` in the foreground**, with the Bash tool's longest
@@ -154,7 +154,7 @@ A fallback for when `qa-android start` fails for a reason outside the change
 flutter build web --release        # ~30s for a small app, minutes for a real one
 (cd build/web && python3 -m http.server 8099 &)
 until curl -sfo /dev/null http://localhost:8099; do sleep 0.3; done   # it binds after you ask
-qa-screenshot http://localhost:8099 org/output/qa/after.png --mobile --flutter --console
+qa-screenshot http://localhost:8099 /app/org/output/qa/after.png --mobile --flutter --console
 ```
 
 Then `Read` the PNG. A screenshot you never opened is not verification.
@@ -182,7 +182,7 @@ Frame one widget for a focused before/after — the equivalent of `--selector`
 on a web page:
 
 ```bash
-qa-screenshot http://localhost:8099 org/output/qa/fab.png --flutter --label=Increment
+qa-screenshot http://localhost:8099 /app/org/output/qa/fab.png --flutter --label=Increment
 ```
 
 Do NOT reach for `--selector` here. Flutter emits **no `aria-label`**, and

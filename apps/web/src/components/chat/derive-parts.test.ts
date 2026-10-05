@@ -26,7 +26,7 @@ function joinText(doc: unknown): string {
 
 describe("derivePartsFromTiptapDoc — skill mentions", () => {
   const meta = {
-    sandboxPath: "org/public/core/seo-audit",
+    sandboxPath: "/app/org/public/core/seo-audit",
     files: [
       { relPath: "SKILL.md", content: "# SEO Audit\nCheck titles." },
       { relPath: "references/style.md", content: "Use sentence case." },
@@ -62,7 +62,7 @@ describe("derivePartsFromTiptapDoc — skill mentions", () => {
         },
       }),
     );
-    expect(text).toContain("Other files in `org/public/core/seo-audit/`:");
+    expect(text).toContain("Other files in `/app/org/public/core/seo-audit/`:");
     expect(text).toContain("scripts/audit.py");
     expect(text).toContain("assets/logo.png");
   });

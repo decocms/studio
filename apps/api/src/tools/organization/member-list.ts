@@ -57,23 +57,40 @@ export const ORGANIZATION_MEMBER_LIST = defineTool({
       );
     }
 
-    // List members via Better Auth — the endpoint returns `{ members, total }`.
-    const result = await ctx.boundAuth.organization.listMembers({
-      organizationId,
-      limit: input.limit,
-      offset: input.offset,
-    });
+    // Better Auth's listMembers needs a cookie session; agent and MCP callers have none.
+    const rows = await ctx.db
+      .selectFrom("member")
+      .innerJoin("user", "user.id", "member.userId")
+      .select([
+        "member.id as id",
+        "member.organizationId as organizationId",
+        "member.userId as userId",
+        "member.role as role",
+        "member.createdAt as createdAt",
+        "user.name as name",
+        "user.email as email",
+        "user.image as image",
+      ])
+      .where("member.organizationId", "=", organizationId)
+      .orderBy("member.createdAt", "asc")
+      .orderBy("member.id", "asc")
+      .limit(input.limit ?? 100)
+      .offset(input.offset ?? 0)
+      .execute();
 
-    // Convert dates to ISO strings for JSON Schema compatibility
-    const members = (result?.members ?? []).map(
-      (member: NonNullable<typeof result>["members"][number]) => ({
-        ...member,
-        createdAt:
-          member.createdAt instanceof Date
-            ? member.createdAt.toISOString()
-            : member.createdAt,
-      }),
-    );
+    const members = rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organizationId,
+      userId: row.userId,
+      role: row.role,
+      createdAt: new Date(row.createdAt).toISOString(),
+      user: {
+        id: row.userId,
+        name: row.name,
+        email: row.email,
+        image: row.image ?? undefined,
+      },
+    }));
 
     return { members };
   },

@@ -26,8 +26,7 @@ test("task conversation keeps replies chronological and details accessible", asy
   ]) {
     await call("TASK_BOARD_COMMENT_CREATE", { taskBoardItemId: item.id, body });
   }
-  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
-  await page.goto(`/${orgSlug}/tasks?assignee=any`);
+  await page.goto(`/${orgSlug}/tasks`);
   await page.getByText("Forum conversation", { exact: true }).click();
   const detail = page.getByTestId("task-detail");
   await expect(
@@ -133,8 +132,7 @@ test("agent summaries and reports share a message layout and open their source c
   expect(comments.find((entry) => entry.id === comment.id)?.threadId).toBe(
     threadId,
   );
-  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
-  await page.goto(`/${orgSlug}/tasks?assignee=any`);
+  await page.goto(`/${orgSlug}/tasks`);
   await page.getByText("Linked run messages", { exact: true }).click();
   const messages = page.getByTestId("task-message");
   await expect(messages).toHaveCount(2);

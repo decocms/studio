@@ -3,6 +3,7 @@ import {
   basename,
   browsePathFor,
   libraryTrail,
+  orgFsMountPath,
   parseLibraryPath,
   segmentLabel,
 } from "./location";
@@ -65,6 +66,32 @@ describe("browsePathFor", () => {
   it("keeps the public/<set> spelling", () => {
     const loc = parseLibraryPath("public/core");
     expect(browsePathFor(loc, "skills/web")).toBe("public/core/skills/web");
+  });
+});
+
+describe("orgFsMountPath", () => {
+  it("maps each volume to its absolute sandbox mount", () => {
+    expect(orgFsMountPath("home")).toBe("/app/org/home");
+    expect(orgFsMountPath("home/decks/q3.html")).toBe(
+      "/app/org/home/decks/q3.html",
+    );
+    expect(orgFsMountPath("outputs/t_1/report.md")).toBe(
+      "/app/org/.outputs/t_1/report.md",
+    );
+    expect(orgFsMountPath("uploads/t_1/a.pdf")).toBe(
+      "/app/org/.uploads/t_1/a.pdf",
+    );
+    expect(orgFsMountPath("public/core/skills/web")).toBe(
+      "/app/org/public/core/skills/web",
+    );
+    expect(orgFsMountPath("site-repo/src/x.ts")).toBe(
+      "/app/org/site-repo/src/x.ts",
+    );
+  });
+
+  it("is null without a single volume", () => {
+    expect(orgFsMountPath("")).toBeNull();
+    expect(orgFsMountPath("public")).toBeNull();
   });
 });
 

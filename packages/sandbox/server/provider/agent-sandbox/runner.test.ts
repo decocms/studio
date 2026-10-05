@@ -209,7 +209,7 @@ describe("freshOrgFsConfigJson", () => {
   });
 
   // A dead org-fs key 401s every WebDAV call and the agent sees EIO on every
-  // `org/` path, so the fallback must never be "no mounts".
+  // `/app/org/` path, so the fallback must never be "no mounts".
   it("falls back to the persisted config when the minter declines", async () => {
     expect(await freshOrgFsConfigJson(stale, async () => null)).toBe(
       stale.orgFsConfigJson,

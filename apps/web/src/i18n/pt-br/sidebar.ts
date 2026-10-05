@@ -29,8 +29,6 @@ export const sidebar = {
     "Nenhum chat corresponde aos seus filtros",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.siteEditor": "Editor do site",
-  "sidebar.projects.folderCode": "Código",
-  "sidebar.projects.folderOther": "Outros",
   "sidebar.projects.pinned": "Fixados",
   "sidebar.projects.suggested": "Sugeridos",
   "sidebar.projects.newBadge": "Novo",

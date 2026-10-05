@@ -65,7 +65,7 @@ use a sandbox concurrently.
 ### Concurrency and ownership
 
 An ephemeral Decopilot sandbox can be shared by multiple threads. Files such as
-`.deco/.endpoint.json` and links such as `org/output` have a single
+`.deco/.endpoint.json` and links such as `/app/org/output` have a single
 workspace-wide value, so concurrent runs can overwrite each other's context.
 The follow-up must choose and enforce one ownership model:
 

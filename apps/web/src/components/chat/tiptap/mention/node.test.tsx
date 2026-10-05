@@ -127,7 +127,7 @@ describe("skillMdBrowsePath", () => {
     expect(skillMdBrowsePath(null)).toBeNull();
     expect(skillMdBrowsePath(undefined)).toBeNull();
     expect(
-      skillMdBrowsePath({ sandboxPath: "org/public/core/slides" }),
+      skillMdBrowsePath({ sandboxPath: "/app/org/public/core/slides" }),
     ).toBeNull();
     expect(skillMdBrowsePath({ volume: "home", path: "" })).toBeNull();
     expect(skillMdBrowsePath({ volume: "", path: "x" })).toBeNull();

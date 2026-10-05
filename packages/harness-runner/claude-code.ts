@@ -67,6 +67,10 @@ function turnBudgetInstruction(maxTurns: number): string {
  */
 const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
 
+const ORG_FS_INSTRUCTION =
+  "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
+  "in older messages or skills means `/app/org/...`.";
+
 const WAIT_IN_TURN_INSTRUCTION =
   "This run ends when your turn ends. Nothing you start in the background can " +
   "report back afterwards, so wait for every command you start, in the " +
@@ -201,7 +205,7 @@ function claudeConfigDir(): string {
 
 /**
  * Where a skill the agent authors has to land to outlive the pod: the user-scope
- * skills dir, which the daemon links onto the org's `org/home/skills` (see
+ * skills dir, which the daemon links onto the org's `/app/org/home/skills` (see
  * `ensureSkillsLinkLocked`). Writing there IS an org-fs write, so the skill is
  * shared org-wide; a skill written into the checkout only reaches whoever merges
  * the branch.
@@ -242,6 +246,7 @@ export function buildOptions(args: {
   const instructionsWithSkills = [
     instructions,
     skillsInstruction(),
+    ORG_FS_INSTRUCTION,
     WAIT_IN_TURN_INSTRUCTION,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]

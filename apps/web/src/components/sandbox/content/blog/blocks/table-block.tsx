@@ -38,6 +38,11 @@ function emptyRow(cols: number): string[] {
   return Array.from({ length: cols }, () => "");
 }
 
+/** Widest row (or the header row), reduced rather than spread so a huge `body` can't overflow the call stack. */
+export function colCountOf(head: string[], body: string[][]): number {
+  return body.reduce((max, row) => Math.max(max, row.length), head.length) || 1;
+}
+
 export function TableBlock({
   headers,
   rows,
@@ -64,9 +69,7 @@ export function TableBlock({
   // template. Any stored data (even a single blank cell) opts out of it, so
   // the grid can shrink to one column / one row.
   const isEmpty = head.length === 0 && body.length === 0;
-  const colCount = isEmpty
-    ? TEMPLATE_COLS
-    : Math.max(head.length, ...body.map((row) => row.length), 1);
+  const colCount = isEmpty ? TEMPLATE_COLS : colCountOf(head, body);
 
   // Pad the parsed data out to a rectangular grid so every render has a
   // consistent column count regardless of ragged stored rows.

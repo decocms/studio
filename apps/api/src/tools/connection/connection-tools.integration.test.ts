@@ -44,7 +44,6 @@ const createMockBoundAuth = (): BoundAuthClient =>
       list: vi.fn(),
       addMember: vi.fn(),
       removeMember: vi.fn(),
-      listMembers: vi.fn(),
       updateMemberRole: vi.fn(),
     },
   }) as unknown as BoundAuthClient;

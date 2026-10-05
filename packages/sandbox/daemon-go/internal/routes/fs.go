@@ -407,6 +407,11 @@ func Rename(deps FsDeps) http.HandlerFunc {
 			httpx.Error(w, 500, err.Error())
 			return
 		}
+		// Both halves count as the user's work: Unlink already marks a deleted
+		// path touched so a pre-baseline-arm delete isn't swallowed as boot dirt
+		// (see BranchStatusMonitor.MarkUserTouched); a rename deletes `From` just
+		// as surely and was missing the same guard.
+		deps.notifyWrite(body.From)
 		deps.notifyWrite(body.To)
 		httpx.JSON(w, 200, map[string]any{"ok": true})
 	}

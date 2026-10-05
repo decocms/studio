@@ -24,6 +24,7 @@ import {
   type CodingWorkspacePromptInput,
 } from "@/harnesses/lib/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
+import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { sandboxIsDecoSite } from "./built-in-tools/agent-sandbox-fs";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -156,16 +157,17 @@ export async function buildAgentSystemPrompt(
 
   // Org filesystem layout. org-fs is mounted into every sandbox now (desktop +
   // cluster), so this is unconditional. The home folder mounts at the fixed
-  // `org/home/` for every org, so the prompt names it directly (no `ls org/`
-  // discovery, no per-org slug). Skills are surfaced separately via the
-  // <available-skills> catalog (served instructions). Fully cache-stable.
+  // `/app/org/home/` for every org, so the prompt names it directly (no
+  // `ls /app/org/` discovery, no per-org slug). Skills are surfaced separately
+  // via the <available-skills> catalog (served instructions). Fully
+  // cache-stable.
   add("orgFs", buildOrgFilesystemPrompt(opts.user?.id));
 
   // Eager-load the MEMORY.md indexes (Claude-Code-style persistent memory):
   // one shared org-wide, one private to the current user. Parent agent only —
   // subagents get a focused task, not the whole memory.
   if (opts.kind === "agent") {
-    const homeBase = "org/home";
+    const homeBase = orgFsSandboxPath("home", "");
     const userId = opts.user?.id;
     const [org, usr] = await Promise.all([
       loadMemoryBlock(opts.ctx, "organization", "MEMORY.md", homeBase, userId),
@@ -294,7 +296,8 @@ function memoryTemplate(scope: "organization" | "user"): string {
  * Read a MEMORY.md index from the `home` volume and render it as a system
  * block. `scope` is "organization" (shared) or "user" (private to the current
  * user); `path` is volume-relative (e.g. "MEMORY.md" or "users/<id>/MEMORY.md")
- * and `homeBase` is the sandbox mount path ("org/home") used only for display.
+ * and `homeBase` is the sandbox mount path ("/app/org/home") used only for
+ * display.
  * `actor` is the user id used to seed the file on first load.
  *
  * On the first load, if the file is genuinely absent it is created with a raw

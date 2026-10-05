@@ -9,8 +9,19 @@
       "name": "decocms-ui",
       "source": "./packages/ui",
       "description": "Build UI with the decocms product design system (@decocms/ui): install, tokens, components, and conventions.",
-      "author": { "name": "decocms" },
+      "author": {
+        "name": "decocms"
+      },
       "homepage": "https://design.decocms.com/"
+    },
+    {
+      "name": "decocms-studio",
+      "source": "./apps/api/plugin",
+      "description": "Operate a deco Studio organization (chats, agents, tools, files) from any agent through the decocms CLI and your own login.",
+      "author": {
+        "name": "decocms"
+      },
+      "homepage": "https://decocms.com/studio"
     }
   ]
 }
