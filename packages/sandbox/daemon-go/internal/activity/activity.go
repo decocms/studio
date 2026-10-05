@@ -11,12 +11,18 @@ var (
 	lastActivityAt = time.Now()
 	claimed        = false
 	prewarmed      = false
+	// poked wakes Stamp; buffered so Bump never blocks on it.
+	poked = make(chan struct{}, 1)
 )
 
 func Bump() {
 	mu.Lock()
 	lastActivityAt = time.Now()
 	mu.Unlock()
+	select {
+	case poked <- struct{}{}:
+	default:
+	}
 }
 
 // MarkClaimed: a user now owns this pod. Only config carrying a user identity
@@ -59,11 +65,13 @@ func Idle() IdleStatus {
 	}
 }
 
-// Stamp mirrors the last activity into the mtime of `path`, re-checked every
-// `every`, for the org-fs sidecar in the next container: it long-polls the
-// change feed only while the daemon is in use, so an idle VM goes quiet on the
-// network and its provider can pause it. Runs for the process lifetime.
-func Stamp(path string, every time.Duration) {
+// Stamp mirrors the last activity into the mtime of `path`, for the org-fs
+// sidecar in the next container: it long-polls the change feed only while the
+// daemon is in use, so an idle VM goes quiet on the network and its provider
+// can pause it. Stamps within a second of activity, so a waking sandbox gets
+// its feed back at once; `retry` paces attempts while `path` is unwritable.
+// Runs for the process lifetime.
+func Stamp(path string, retry time.Duration) {
 	var stamped time.Time
 	for {
 		mu.Lock()
@@ -72,7 +80,11 @@ func Stamp(path string, every time.Duration) {
 		if !at.Equal(stamped) && touch(path, at) == nil {
 			stamped = at
 		}
-		time.Sleep(every)
+		time.Sleep(time.Second)
+		select {
+		case <-poked:
+		case <-time.After(retry):
+		}
 	}
 }
 

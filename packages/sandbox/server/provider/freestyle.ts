@@ -368,9 +368,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         .map((k) => `-e ${shellQuote(k)}`)
         .join(" ");
       // The sidecar first: it only polls for the config the daemon relays.
+      // Its change-feed poll is network activity, which keeps a VM from
+      // pausing, so it stops once the daemon has been idle for a minute.
       await this.run(
         vm,
-        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
+        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -e ORGFS_FEED_IDLE_MS=60000 -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
         { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
       );
       await this.run(

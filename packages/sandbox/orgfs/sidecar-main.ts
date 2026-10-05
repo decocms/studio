@@ -5,9 +5,10 @@
  *   ORGFS_SIDECAR_CONFIG_PATH  relayed config file (default /run/orgfs/config.json)
  *   ORGFS_SIDECAR_STATUS_PATH  mounted-status file (default /run/orgfs/status.json)
  *   ORGFS_RCLONE_PATH          rclone binary (default: PATH lookup; baked in image)
- *
- * The daemon stamps `activity` beside the status file (see the daemon's
- * activity.Stamp); the change feed is only polled while that stamp is fresh.
+ *   ORGFS_FEED_IDLE_MS         when set, hold no change-feed poll once the
+ *                              daemon's `activity` stamp (beside the status
+ *                              file) is this old. For providers that pause a
+ *                              VM on network silence.
  */
 
 import { dirname, join } from "node:path";
@@ -26,8 +27,16 @@ process.on("SIGINT", () => ac.abort());
 console.log("[org-fs sidecar] waiting for relayed config…");
 const statusPath =
   process.env.ORGFS_SIDECAR_STATUS_PATH ?? "/run/orgfs/status.json";
-/** Daemon quiet this long: stop holding a change-feed poll open. */
-const IDLE_MS = 60_000;
+const idleMs = Number(process.env.ORGFS_FEED_IDLE_MS);
+if (idleMs > 0) {
+  console.log(
+    `[org-fs sidecar] change feed pauses after ${idleMs}ms of daemon inactivity`,
+  );
+} else if (process.env.ORGFS_FEED_IDLE_MS) {
+  console.warn(
+    `[org-fs sidecar] ignoring ORGFS_FEED_IDLE_MS=${process.env.ORGFS_FEED_IDLE_MS}: not a positive number`,
+  );
+}
 
 await runSidecar({
   configPath: process.env.ORGFS_SIDECAR_CONFIG_PATH ?? "/run/orgfs/config.json",
@@ -37,7 +46,9 @@ await runSidecar({
     createRcloneMounter(rclonePath, { allowOther: true }),
     undefined,
     changeFeedInvalidator(
-      activityGate(join(dirname(statusPath), "activity"), IDLE_MS),
+      idleMs > 0
+        ? activityGate(join(dirname(statusPath), "activity"), idleMs)
+        : undefined,
     ),
   ),
   signal: ac.signal,

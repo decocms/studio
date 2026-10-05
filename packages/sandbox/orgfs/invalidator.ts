@@ -143,7 +143,7 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
  * returns the changes it missed at once. No stamp (a daemon that writes none)
  * counts as in use.
  */
-export function activityGate(path: string, idleMs: number, checkMs = 1000) {
+export function activityGate(path: string, idleMs: number, checkMs = 250) {
   return async (signal: AbortSignal): Promise<void> => {
     while (!signal.aborted) {
       const mtime = await stat(path).then(
