@@ -132,7 +132,7 @@ export function DocsLinks({
   );
 }
 
-/** Title and explanation of a server that answered but can't be used. */
+/** Title and explanation of a server that can't be used. */
 export function serveProblemCopy(
   t: TFunction,
   problem: ServeProblem,
@@ -142,7 +142,7 @@ export function serveProblemCopy(
     case "not-answering":
       return {
         title: t("decoServe.state.notAnswering.title"),
-        body: t("decoServe.state.notAnswering.body", { host }),
+        body: t("decoServe.state.notAnswering.short", { host }),
       };
     case "outdated":
       return {

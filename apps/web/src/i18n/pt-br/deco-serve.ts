@@ -1,7 +1,6 @@
 import type { decoServe as decoServeEn } from "../en/deco-serve.ts";
 
 export const decoServe = {
-  "decoServe.chip.disconnect": "Desconectar",
   "decoServe.chip.label": "Servidor local",
   "decoServe.chip.tooltip":
     "Editando os arquivos deste computador pelo deco serve. Nada é commitado: você revisa as mudanças e faz o commit.",
@@ -31,28 +30,9 @@ export const decoServe = {
   "decoServe.guide.step2.looking": "Procurando o deco serve em {hosts}…",
   "decoServe.guide.step2.paused":
     "Pausado enquanto esta aba está em segundo plano. A busca recomeça quando você voltar.",
-  "decoServe.guide.step2.askFirst":
-    "Para encontrar o deco serve, o Studio precisa se conectar a apps neste computador. O Chrome vai pedir sua permissão antes: escolha Permitir.",
-  "decoServe.guide.step2.start": "Procurar o deco serve",
-  "decoServe.guide.step3.title": "Usando outra porta?",
-  "decoServe.guide.step3.body":
-    "Se você iniciou o deco serve com `--port`, cole o link do Site editor que ele mostrou, o endereço ou só a porta.",
-  "decoServe.guide.step3.label": "Endereço do deco serve",
-  "decoServe.guide.step3.placeholder":
-    "4547, 127.0.0.1:4547 ou o link do Site editor",
-  "decoServe.guide.step3.submit": "Conectar",
-  "decoServe.guide.step3.checking": "Conectando…",
-  "decoServe.guide.step3.notLocal":
-    "O deco serve roda no seu computador, então o endereço precisa usar 127.0.0.1 ou localhost. Cole o link do Site editor que ele mostrou, ou uma porta como 4547.",
-  "decoServe.guide.step3.unrecognized":
-    "Isso não é um endereço do deco serve. Cole o link do Site editor que ele mostrou, um endereço como 127.0.0.1:4547 ou só a porta.",
-  "decoServe.guide.step3.noAnswer":
-    "Nada respondeu em {host}. Confira se o deco serve ainda está rodando no terminal e se a porta é a mesma que ele mostrou.",
+  "decoServe.guide.step2.start": "Procurar o deco serve neste computador",
   "decoServe.guide.v7":
     "Trabalhando em um site Deco mais antigo (deco.cx ou @decocms/start)? O deco serve é para sites Blocks v8. Abra o site pelo projeto dele no Studio e escolha Local no seletor de rascunhos.",
-  "decoServe.guide.disconnected":
-    "Desconectado de {host}. Esta página não vai se reconectar a ele sozinha.",
-  "decoServe.guide.reconnect": "Reconectar",
   "decoServe.guide.checkingFirst": "Procurando o deco serve…",
 
   "decoServe.docs.heading": "Saiba mais",
@@ -73,14 +53,6 @@ export const decoServe = {
     "O Studio precisa de permissão para se conectar ao deco serve neste computador. Clique no ícone à esquerda da barra de endereço, permita o acesso a apps neste dispositivo (acesso à rede local) e recarregue esta página.",
 
   "decoServe.state.notAnswering.title": "O deco serve não está respondendo",
-  "decoServe.state.notAnswering.body":
-    "O editor do site estava usando o deco serve em {host}, mas ele parou de responder. Talvez tenha sido encerrado ou esteja reiniciando. Esta página se reconecta sozinha assim que ele voltar.",
-  "decoServe.state.notAnswering.next":
-    "Se ele parou, inicie de novo na pasta do seu site:",
-  "decoServe.state.notAnswering.origin":
-    "Continua sem resposta com ele rodando? O deco serve só responde aos endereços oficiais do Studio. Reinicie com `--allow-origin {origin}`.",
-  "decoServe.state.notAnswering.lna":
-    "Se o Chrome perguntou se este site pode se conectar a apps no seu dispositivo, escolha Permitir.",
   "decoServe.state.notAnswering.short":
     "O deco serve em {host} não está respondendo. A reconexão é automática quando ele voltar.",
   "decoServe.state.outdated.title": "Este deco serve está desatualizado",
@@ -92,13 +64,11 @@ export const decoServe = {
     "O deco serve em {host} é de uma versão principal do Blocks diferente da deste Studio, então os dois não conseguem editar o conteúdo juntos. Atualize o @decocms/blocks do seu site e reinicie o deco serve.",
   "decoServe.state.notDecoServe.title": "Outro programa está usando {host}",
   "decoServe.state.notDecoServe.body":
-    "Algo que não é o deco serve respondeu em {host}. Inicie o deco serve em outra porta com `--port 4546` e conecte-se a ela.",
+    "Algo que não é o deco serve respondeu em {host}. Inicie o deco serve em outra porta com `--port 4546` e abra o link do Site editor que ele mostra.",
   "decoServe.state.error.title":
     "O deco serve não conseguiu abrir seu conteúdo",
   "decoServe.state.error.body":
     'Ele respondeu, mas com um erro: "{detail}". Veja os detalhes no terminal onde o deco serve está rodando e tente de novo.',
-  "decoServe.state.tryNow": "Tentar agora",
-  "decoServe.state.useAnother": "Usar outro servidor",
 
   "decoServe.schemaMissing.title":
     "Os formulários do seu site ainda não foram gerados",

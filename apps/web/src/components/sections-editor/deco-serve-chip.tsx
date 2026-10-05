@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Tooltip,
@@ -12,7 +11,7 @@ import { endpointHost } from "./deco-serve-connection";
 import { RichCode, serveProblemShort } from "./deco-serve-notices";
 import { useContentBackend } from "./use-content-backend";
 
-/** The site editor's "Local server" chip: what it edits, its state, Disconnect. */
+/** The site editor's "Local server" chip: what it edits and its state. */
 export function DecoServeChip({
   virtualMcpId,
   branch,
@@ -21,7 +20,7 @@ export function DecoServeChip({
   branch: string | null;
 }) {
   const t = useT();
-  const { connection, clear } = useDecoServeConnection(virtualMcpId);
+  const { connection } = useDecoServeConnection(virtualMcpId);
   const backend = useContentBackend(virtualMcpId, branch);
   if (!connection) return null;
   const problem =
@@ -73,9 +72,6 @@ export function DecoServeChip({
           </TooltipContent>
         </Tooltip>
       )}
-      <Button variant="ghost" size="sm" onClick={clear}>
-        {t("decoServe.chip.disconnect")}
-      </Button>
     </div>
   );
 }

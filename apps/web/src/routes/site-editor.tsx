@@ -12,14 +12,17 @@
  * publishing and Code. There is no org, so no recent app is recorded; the
  * rail still marks the Site Editor as the open app (`staticData.local`).
  *
+ * One rule (`LocalServeSwitch`): it looks for `deco serve` at the link's
+ * endpoint, or else the last one used and the default port
+ * (`serveCandidates`). If it answers, the editor opens; if not, the guide
+ * (`SiteEditorGuide`) shows and keeps looking, and the editor opens as soon
+ * as it answers. When the server stops answering while editing, the guide
+ * comes back until it does. There is no Disconnect.
+ *
  * `deco serve` has no token: the link carries only its endpoint (a `token=`
  * in an older link is ignored). The endpoint leaves the fragment at once and
- * is remembered in this browser. With no link, the page shows a guide
- * (`SiteEditorGuide`) and looks for `deco serve` on its own: the last server
- * used, then the default port. Disconnecting keeps that server out of the
- * search for the rest of the session. While the server is down or restarting
- * the editor waits for it and reconnects on its own, explaining why it
- * waits. Only loopback servers are accepted (`parseConnectFragment`).
+ * is remembered in this browser. Only loopback servers are accepted
+ * (`parseConnectFragment`).
  *
  * The editor expects a project and a chat task: it gets a placeholder project,
  * in an org with no id (which makes the Studio-backed reads skip themselves),
@@ -27,10 +30,8 @@
  * `TabDecoServeConnectionContext`.
  */
 
-import { useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   ChatTaskValueProvider,
@@ -42,18 +43,12 @@ import { Page } from "@/components/page";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
 import { ConnectCentered as Centered } from "@/components/sections-editor/deco-serve-chip";
 import {
-  type DecoServeConnection,
-  clearLastConnection,
   endpointHost,
-  isLoopbackEndpoint,
-  markDisconnected,
-  needsAllowOrigin,
   parseConnectFragment,
   readLastConnection,
   SCHEMA_COMMAND,
   saveLastConnection,
-  serveCommand,
-  unmarkDisconnected,
+  serveCandidates,
 } from "@/components/sections-editor/deco-serve-connection";
 import {
   CommandSnippet,
@@ -61,10 +56,12 @@ import {
   RichCode,
   serveProblemCopy,
 } from "@/components/sections-editor/deco-serve-notices";
-import { SiteEditorGuide } from "@/components/sections-editor/site-editor-guide";
+import {
+  isServeLost,
+  LocalServeSwitch,
+} from "@/components/sections-editor/site-editor-guide";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
-  type DecoServeConnectionState,
   TabDecoServeConnectionContext,
   useDecoServeConnection,
 } from "@/hooks/use-deco-serve-connection";
@@ -75,7 +72,6 @@ import { PreviewTab } from "@/layouts/main-panel-tabs/preview-tab";
 import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
 import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
 import { authClient } from "@/lib/auth-client";
-import { KEYS } from "@/lib/query-keys";
 import SiteEditorApp from "@/routes/workspace/agent-site-editor";
 import { ProjectContextProvider } from "@/sdk";
 
@@ -104,32 +100,33 @@ const LOCAL_TASK: ChatTaskContextValue = {
 };
 
 interface RouteStart {
-  connection: DecoServeConnection | null;
+  /** Where to look for `deco serve` (see `serveCandidates`). */
+  candidates: string[];
   /** The page was opened with a link that isn't a usable one. */
   invalidLink: boolean;
 }
 
 /**
- * The link's endpoint (then remembered). With no link, nothing yet: the
- * guide looks for the last server used and the default port on its own.
+ * Takes the link's endpoint out of the address bar (and remembers it): it is
+ * the only place looked at. With no usable link, the last one used and the
+ * default port.
  */
-function takeConnectionFromUrl(): RouteStart {
+function takeStartFromUrl(): RouteStart {
   const hash = window.location.hash;
-  if (!new URLSearchParams(hash.replace(/^#/, "")).has("endpoint")) {
-    return { connection: null, invalidLink: false };
+  const hasLink = new URLSearchParams(hash.replace(/^#/, "")).has("endpoint");
+  const fromLink = hasLink ? parseConnectFragment(hash) : null;
+  if (hasLink) {
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search,
+    );
   }
-  // A link that names a server is used as is: an invalid one never falls
-  // back to another server.
-  const fromLink = parseConnectFragment(hash);
-  window.history.replaceState(
-    null,
-    "",
-    window.location.pathname + window.location.search,
-  );
-  if (!fromLink) return { connection: null, invalidLink: true };
-  saveLastConnection(fromLink);
-  unmarkDisconnected(fromLink.endpoint);
-  return { connection: fromLink, invalidLink: false };
+  if (fromLink) saveLastConnection(fromLink);
+  return {
+    candidates: serveCandidates(fromLink, readLastConnection()),
+    invalidLink: hasLink && !fromLink,
+  };
 }
 
 /** The app's own Preview/Content tabs, as the project tab bar draws them
@@ -186,18 +183,15 @@ function GateFrame({ children }: { children: ReactNode }) {
 
 /**
  * Holds the editor until the local server answers its probe, and explains
- * why when it doesn't: stopped or restarting, out of date, another program
- * on the port, or no schema generated yet.
+ * why when it answered but can't be used: out of date, another version,
+ * another program on the port, an error, or no schema generated yet. A server
+ * that stops answering takes the route back to its guide (`ServeLostWatcher`).
  */
 function BackendGate({ children }: { children: ReactNode }) {
   const t = useT();
-  const { connection, clear } = useDecoServeConnection(LOCAL_PROJECT_ID);
-  const queryClient = useQueryClient();
+  const { connection } = useDecoServeConnection(LOCAL_PROJECT_ID);
   const backend = useContentBackend(LOCAL_PROJECT_ID, LOCAL_BRANCH);
   const host = connection ? endpointHost(connection.endpoint) : "";
-  const origin = window.location.origin;
-  const retry = () =>
-    queryClient.invalidateQueries({ queryKey: KEYS.contentBackend() });
 
   if (backend.kind === "protocol") {
     if (backend.source !== "local" || backend.hasSchema !== false) {
@@ -216,7 +210,7 @@ function BackendGate({ children }: { children: ReactNode }) {
       </GateFrame>
     );
   }
-  if (backend.kind === "pending") {
+  if (backend.kind !== "unavailable" || isServeLost(backend)) {
     return (
       <Centered>
         <Spinner className="size-6 text-muted-foreground" />
@@ -226,55 +220,36 @@ function BackendGate({ children }: { children: ReactNode }) {
       </Centered>
     );
   }
-  // `unavailable`: the probe retries on its own; "Try now" retries at once.
-  const problem =
-    backend.kind === "unavailable" && backend.problem
-      ? backend.problem
-      : { reason: "not-answering" as const };
-  const { title, body } = serveProblemCopy(t, problem, host);
-  const notAnswering = problem.reason === "not-answering";
+  // It answered, but can't be used; the probe keeps polling on its own.
+  const { title, body } = serveProblemCopy(
+    t,
+    backend.problem ?? { reason: "not-answering" },
+    host,
+  );
   return (
     <GateFrame>
       <div role="status" className="flex flex-col gap-2">
-        <h2 className="flex items-center gap-2 text-base font-medium text-foreground">
-          {notAnswering && <Spinner className="size-4 text-muted-foreground" />}
-          {title}
-        </h2>
+        <h2 className="text-base font-medium text-foreground">{title}</h2>
         <p className="text-sm text-muted-foreground">
           <RichCode text={body} />
         </p>
       </div>
-      {notAnswering && (
-        <>
-          <p className="text-sm text-muted-foreground">
-            {t("decoServe.state.notAnswering.next")}
-          </p>
-          <CommandSnippet command={serveCommand(origin)} />
-          {needsAllowOrigin(origin) && (
-            <p className="text-sm text-muted-foreground">
-              <RichCode
-                text={t("decoServe.state.notAnswering.origin", { origin })}
-              />
-            </p>
-          )}
-          {!isLoopbackEndpoint(origin) && (
-            <p className="text-sm text-muted-foreground">
-              {t("decoServe.state.notAnswering.lna")}
-            </p>
-          )}
-        </>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => void retry()}>
-          {t("decoServe.state.tryNow")}
-        </Button>
-        <Button variant="ghost" onClick={clear}>
-          {t("decoServe.state.useAnother")}
-        </Button>
-      </div>
       <DocsLinks links={["troubleshooting", "serve"]} />
     </GateFrame>
   );
+}
+
+/** Calls `onLost` when the editor's server stops answering. */
+function ServeLostWatcher({ onLost }: { onLost: () => void }) {
+  const backend = useContentBackend(LOCAL_PROJECT_ID, LOCAL_BRANCH);
+  const lost = isServeLost(backend);
+  // The probe is an outside system: its failure hands the route back to the
+  // guide, which owns the search from there.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (lost) onLost();
+  }, [lost, onLost]);
+  return null;
 }
 
 /** Chat stays closed: there is no thread outside a project. */
@@ -310,64 +285,50 @@ function LocalSiteEditor() {
 }
 
 /** Before a connection: the guide, in the same app shell as the editor. */
-function LocalSiteEditorGuide(props: Parameters<typeof SiteEditorGuide>[0]) {
+function LocalSiteEditorGuide({ children }: { children: ReactNode }) {
   const { data: session } = authClient.useSession();
   return (
     <Layout outsideOrg={{ rail: !!session?.user }}>
       <Layout.Content>
         <ChatLayout {...NO_CHAT} threadless contentKey="guide">
           <ChatLayout.Thread>{null}</ChatLayout.Thread>
-          <ChatLayout.Content>
-            <SiteEditorGuide {...props} />
-          </ChatLayout.Content>
+          <ChatLayout.Content>{children}</ChatLayout.Content>
         </ChatLayout>
       </Layout.Content>
     </Layout>
   );
 }
 
+/** Nothing on `/site-editor` changes the server: it follows the rule above. */
+const noop = () => {};
+const NOT_CONNECTED = { connection: null, set: noop, clear: noop };
+
 export default function SiteEditorRoute() {
-  const [start] = useState(takeConnectionFromUrl);
-  const [connection, setConnection] = useState(start.connection);
-  const [invalidLink, setInvalidLink] = useState(start.invalidLink);
-  const [disconnectedFrom, setDisconnectedFrom] = useState<string | null>(null);
-  const state: DecoServeConnectionState = {
-    connection,
-    set: (next) => {
-      saveLastConnection(next);
-      unmarkDisconnected(next.endpoint);
-      setInvalidLink(false);
-      setDisconnectedFrom(null);
-      setConnection(next);
-    },
-    clear: () => {
-      // Not found again on its own in this session, or Disconnect would
-      // reconnect at once.
-      if (connection) markDisconnected(connection.endpoint);
-      clearLastConnection();
-      setDisconnectedFrom(connection?.endpoint ?? null);
-      setConnection(null);
-    },
-  };
+  const [start] = useState(takeStartFromUrl);
   return (
     <ForceProjectFirstNav value>
       <ProjectContextProvider org={NO_ORG} project={LOCAL_PROJECT}>
-        <TabDecoServeConnectionContext.Provider value={state}>
-          {connection ? (
-            <ChatTaskValueProvider value={LOCAL_TASK}>
-              <BlocksPreviewWorkspaceProvider>
-                <LocalSiteEditor />
-              </BlocksPreviewWorkspaceProvider>
-            </ChatTaskValueProvider>
-          ) : (
-            <LocalSiteEditorGuide
-              remembered={readLastConnection()}
-              invalidLink={invalidLink}
-              disconnectedFrom={disconnectedFrom}
-              onConnect={state.set}
-            />
+        <LocalServeSwitch
+          candidates={start.candidates}
+          invalidLink={start.invalidLink}
+          shell={(guide) => (
+            <TabDecoServeConnectionContext.Provider value={NOT_CONNECTED}>
+              <LocalSiteEditorGuide>{guide}</LocalSiteEditorGuide>
+            </TabDecoServeConnectionContext.Provider>
           )}
-        </TabDecoServeConnectionContext.Provider>
+          editor={(connection, onLost) => (
+            <TabDecoServeConnectionContext.Provider
+              value={{ connection, set: noop, clear: noop }}
+            >
+              <ServeLostWatcher onLost={onLost} />
+              <ChatTaskValueProvider value={LOCAL_TASK}>
+                <BlocksPreviewWorkspaceProvider>
+                  <LocalSiteEditor />
+                </BlocksPreviewWorkspaceProvider>
+              </ChatTaskValueProvider>
+            </TabDecoServeConnectionContext.Provider>
+          )}
+        />
       </ProjectContextProvider>
     </ForceProjectFirstNav>
   );

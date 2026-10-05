@@ -130,18 +130,16 @@ const idleSnapshot = () => IDLE;
 const lnaSnapshot = () => lnaState;
 
 /**
- * Looks for a running `deco serve` while `enabled` (see `startDiscovery`).
- * Where Chrome would ask for permission first, it waits for `start()` (a
- * click on a button that says what Chrome is about to ask), so the prompt
- * never appears before the page explains it.
+ * Looks for a running `deco serve` (see `startDiscovery`). Only where Chrome
+ * would ask for permission first (a deployed Studio that doesn't have it
+ * yet), it waits for `start()`, a click on a button that names what Chrome
+ * is about to ask.
  */
 export function useDecoServeDiscovery({
   candidates,
-  enabled,
   onFound,
 }: {
   candidates: readonly string[];
-  enabled: boolean;
   onFound: (endpoint: string) => void;
 }) {
   const [asked, setAsked] = useState(false);
@@ -154,7 +152,7 @@ export function useDecoServeDiscovery({
     access === "granted" ||
     access === "unsupported" ||
     (access === "prompt" && asked);
-  const active = enabled && canProbe && candidates.length > 0;
+  const active = canProbe && candidates.length > 0;
   const store = active ? discoveryStore(candidates.join(" ")) : null;
   if (store) store.onFound = onFound;
   const state = useSyncExternalStore(

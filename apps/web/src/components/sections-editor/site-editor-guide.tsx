@@ -1,45 +1,76 @@
 /**
- * `/site-editor` before it is connected: what the site editor is, and three
- * steps to get it running. Meanwhile it looks for `deco serve` on its own
- * (the last server used, then the default port) and hands the first one that
- * answers to `onConnect`, so starting `deco serve` is all it takes.
+ * `/site-editor`'s one rule: while `deco serve` answers, the editor; while it
+ * doesn't, this guide, which keeps looking for it (backing off, paused while
+ * the tab is hidden) and opens the editor as soon as it answers. The guide
+ * explains what the site editor is and how to start `deco serve`.
  */
 
-import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { AlertCircle, Monitor04, SearchSm } from "@untitledui/icons";
+import { type ReactNode, useId, useState } from "react";
+import { Monitor04 } from "@untitledui/icons";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
 } from "@decocms/ui/components/alert.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import {
-  probeServeEndpoint,
-  useDecoServeDiscovery,
-} from "@/hooks/use-deco-serve-discovery";
+import { useDecoServeDiscovery } from "@/hooks/use-deco-serve-discovery";
 import { usePreferences } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
+import type { ContentBackend } from "./content-backend";
 import {
-  classifyServeProbeError,
   type DecoServeConnection,
-  discoveryCandidates,
   endpointHost,
   needsAllowOrigin,
-  parseServeAddress,
-  readDisconnected,
   serveCommand,
 } from "./deco-serve-connection";
-import { DISCOVERY_PROBE_TIMEOUT_MS } from "./deco-serve-discovery";
 import {
   CommandSnippet,
   DocsLinks,
   RichCode,
   ServeProblemAlert,
-  serveProblemCopy,
 } from "./deco-serve-notices";
+
+/** The editor's server stopped answering: back to the guide until it's back. */
+export function isServeLost(backend: ContentBackend): boolean {
+  return (
+    backend.kind === "unavailable" &&
+    backend.source === "local" &&
+    (backend.problem?.reason ?? "not-answering") === "not-answering"
+  );
+}
+
+const bare = (guide: ReactNode) => guide;
+
+/**
+ * The guide until one of `candidates` answers, then `editor`, until it calls
+ * `onLost` (the server stopped answering), then the guide again.
+ */
+export function LocalServeSwitch({
+  candidates,
+  invalidLink = false,
+  shell = bare,
+  editor,
+}: {
+  candidates: readonly string[];
+  /** The page was opened with a link that isn't a usable one. */
+  invalidLink?: boolean;
+  /** Frames the guide (the app shell). */
+  shell?: (guide: ReactNode) => ReactNode;
+  editor: (connection: DecoServeConnection, onLost: () => void) => ReactNode;
+}) {
+  const [connection, setConnection] = useState<DecoServeConnection | null>(
+    null,
+  );
+  if (connection) return editor(connection, () => setConnection(null));
+  return shell(
+    <SiteEditorGuide
+      candidates={candidates}
+      invalidLink={invalidLink}
+      onConnect={setConnection}
+    />,
+  );
+}
 
 function Step({
   index,
@@ -72,129 +103,22 @@ function Step({
   );
 }
 
-/** "Using another port?": a pasted link, address or port, probed once. */
-function ManualConnect({
-  onConnect,
-}: {
-  onConnect: (connection: DecoServeConnection) => void;
-}) {
-  const t = useT();
-  const inputId = useId();
-  const errorId = useId();
-  const [checking, setChecking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const input = event.currentTarget.elements.namedItem(
-      "address",
-    ) as HTMLInputElement | null;
-    const value = input?.value ?? "";
-    if (!value.trim()) {
-      input?.focus();
-      return;
-    }
-    const parsed = parseServeAddress(value);
-    if (!parsed.ok) {
-      setError(
-        parsed.reason === "not-local"
-          ? t("decoServe.guide.step3.notLocal")
-          : t("decoServe.guide.step3.unrecognized"),
-      );
-      input?.focus();
-      return;
-    }
-    const { endpoint } = parsed.connection;
-    const host = endpointHost(endpoint);
-    setChecking(true);
-    setError(null);
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      DISCOVERY_PROBE_TIMEOUT_MS,
-    );
-    try {
-      // A click: where Chrome asks to reach this machine, it asks now.
-      await probeServeEndpoint(endpoint, controller.signal);
-      onConnect(parsed.connection);
-    } catch (failure) {
-      const problem = classifyServeProbeError(failure);
-      if (problem.reason === "not-answering") {
-        setError(t("decoServe.guide.step3.noAnswer", { host }));
-      } else {
-        const { title, body } = serveProblemCopy(t, problem, host);
-        setError(`${title}. ${body}`);
-      }
-      input?.focus();
-    } finally {
-      clearTimeout(timeout);
-      setChecking(false);
-    }
-  };
-
-  return (
-    <form
-      noValidate
-      onSubmit={(event) => void submit(event)}
-      className="flex flex-col gap-2"
-    >
-      <Label htmlFor={inputId}>{t("decoServe.guide.step3.label")}</Label>
-      <div className="flex gap-2">
-        <Input
-          id={inputId}
-          name="address"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={t("decoServe.guide.step3.placeholder")}
-          aria-invalid={!!error}
-          aria-describedby={error ? errorId : undefined}
-          onChange={() => setError(null)}
-        />
-        <Button type="submit" variant="outline" disabled={checking}>
-          {checking && <Spinner className="size-4" />}
-          {checking
-            ? t("decoServe.guide.step3.checking")
-            : t("decoServe.guide.step3.submit")}
-        </Button>
-      </div>
-      {error && (
-        <p
-          id={errorId}
-          role="alert"
-          className="flex items-start gap-1.5 text-sm text-destructive"
-        >
-          <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          <span>
-            <RichCode text={error} />
-          </span>
-        </p>
-      )}
-    </form>
-  );
-}
-
 export function SiteEditorGuide({
-  remembered,
+  candidates,
   invalidLink = false,
-  disconnectedFrom = null,
   onConnect,
 }: {
-  /** The last server used in this browser: looked for first. */
-  remembered: DecoServeConnection | null;
+  /** The endpoints looked for, in order (see `serveCandidates`). */
+  candidates: readonly string[];
   /** The page was opened with a link that isn't a usable one. */
   invalidLink?: boolean;
-  /** The endpoint just disconnected from, offered back. */
-  disconnectedFrom?: string | null;
   onConnect: (connection: DecoServeConnection) => void;
 }) {
   const t = useT();
   const [{ language }] = usePreferences();
   const origin = window.location.origin;
-  const candidates = discoveryCandidates(remembered, readDisconnected());
   const discovery = useDecoServeDiscovery({
     candidates,
-    enabled: true,
     onFound: (endpoint) => onConnect({ endpoint }),
   });
   const { state, access, needsGesture } = discovery;
@@ -203,18 +127,15 @@ export function SiteEditorGuide({
     type: "conjunction",
   }).format(candidates.map(endpointHost));
 
-  // A returning visitor sees a short "Looking…" while the remembered server
-  // is probed, not a flash of the whole guide.
-  const quietFirstRound =
-    !!remembered &&
+  // While the first look runs, a short "Looking…", not a flash of the guide
+  // before the editor opens.
+  const firstLook =
     !invalidLink &&
-    !disconnectedFrom &&
-    candidates.length > 0 &&
     access !== "denied" &&
     !needsGesture &&
     !state.firstRoundDone &&
     state.status !== "found";
-  if (quietFirstRound) {
+  if (firstLook) {
     return (
       <div
         role="status"
@@ -261,24 +182,6 @@ export function SiteEditorGuide({
             </div>
           </Alert>
         )}
-        {disconnectedFrom && (
-          <Alert variant="info" role="status">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
-              <AlertDescription className="text-foreground">
-                {t("decoServe.guide.disconnected", {
-                  host: endpointHost(disconnectedFrom),
-                })}
-              </AlertDescription>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onConnect({ endpoint: disconnectedFrom })}
-              >
-                {t("decoServe.guide.reconnect")}
-              </Button>
-            </div>
-          </Alert>
-        )}
         {access === "denied" && (
           <Alert variant="destructive">
             <div className="flex min-w-0 flex-col gap-1">
@@ -321,18 +224,15 @@ export function SiteEditorGuide({
               />
             )}
             {needsGesture ? (
-              <div className="flex flex-col items-start gap-2">
-                <p className="text-sm text-muted-foreground">
-                  {t("decoServe.guide.step2.askFirst")}
-                </p>
-                <Button variant="outline" onClick={discovery.start}>
-                  <SearchSm />
-                  {t("decoServe.guide.step2.start")}
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                className="self-start"
+                onClick={discovery.start}
+              >
+                {t("decoServe.guide.step2.start")}
+              </Button>
             ) : (
-              access !== "denied" &&
-              candidates.length > 0 && (
+              access !== "denied" && (
                 <p
                   role="status"
                   className="flex items-center gap-2 text-sm text-muted-foreground"
@@ -348,13 +248,6 @@ export function SiteEditorGuide({
                 </p>
               )
             )}
-          </Step>
-
-          <Step index={3} title={t("decoServe.guide.step3.title")}>
-            <p className="text-sm text-muted-foreground">
-              <RichCode text={t("decoServe.guide.step3.body")} />
-            </p>
-            <ManualConnect onConnect={onConnect} />
           </Step>
         </ol>
 

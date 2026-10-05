@@ -4,7 +4,6 @@
  * backticks renders as code (`RichCode`); commands and flags stay in English.
  */
 export const decoServe = {
-  "decoServe.chip.disconnect": "Disconnect",
   "decoServe.chip.label": "Local server",
   "decoServe.chip.tooltip":
     "Editing the files on this computer through deco serve. Nothing is committed: you review the changes and commit them yourself.",
@@ -33,28 +32,9 @@ export const decoServe = {
   "decoServe.guide.step2.looking": "Looking for deco serve on {hosts}…",
   "decoServe.guide.step2.paused":
     "Paused while this tab is in the background. It looks again when you come back.",
-  "decoServe.guide.step2.askFirst":
-    "To find deco serve, Studio has to connect to apps on this computer. Chrome will ask you first: choose Allow.",
-  "decoServe.guide.step2.start": "Look for deco serve",
-  "decoServe.guide.step3.title": "Using another port?",
-  "decoServe.guide.step3.body":
-    "If you started deco serve with `--port`, paste the Site editor link it printed, its address, or just the port.",
-  "decoServe.guide.step3.label": "deco serve address",
-  "decoServe.guide.step3.placeholder":
-    "4547, 127.0.0.1:4547 or the Site editor link",
-  "decoServe.guide.step3.submit": "Connect",
-  "decoServe.guide.step3.checking": "Connecting…",
-  "decoServe.guide.step3.notLocal":
-    "deco serve runs on your computer, so the address must use 127.0.0.1 or localhost. Paste the Site editor link it printed, or a port such as 4547.",
-  "decoServe.guide.step3.unrecognized":
-    "That isn't a deco serve address. Paste the Site editor link it printed, an address such as 127.0.0.1:4547, or just the port.",
-  "decoServe.guide.step3.noAnswer":
-    "Nothing answered on {host}. Check that deco serve is still running in your terminal and that the port matches the one it printed.",
+  "decoServe.guide.step2.start": "Look for deco serve on this computer",
   "decoServe.guide.v7":
     "Working on an older Deco site (deco.cx or @decocms/start)? deco serve is for Blocks v8 sites. Open the site from its Studio project and choose Local in the draft selector.",
-  "decoServe.guide.disconnected":
-    "Disconnected from {host}. This page won't reconnect to it on its own.",
-  "decoServe.guide.reconnect": "Reconnect",
   "decoServe.guide.checkingFirst": "Looking for deco serve…",
 
   "decoServe.docs.heading": "Learn more",
@@ -75,14 +55,6 @@ export const decoServe = {
     "Studio needs permission to connect to deco serve on this computer. Click the icon at the left of the address bar, allow access to apps on this device (local network access), then reload this page.",
 
   "decoServe.state.notAnswering.title": "deco serve isn't answering",
-  "decoServe.state.notAnswering.body":
-    "The site editor was using deco serve on {host}, but it stopped answering. It may have been stopped or be restarting. This page reconnects on its own as soon as it's back.",
-  "decoServe.state.notAnswering.next":
-    "If it stopped, start it again in your site's folder:",
-  "decoServe.state.notAnswering.origin":
-    "Still nothing while it's running? deco serve only answers the official Studio addresses. Restart it with `--allow-origin {origin}`.",
-  "decoServe.state.notAnswering.lna":
-    "If Chrome asked whether this site may connect to apps on your device, choose Allow.",
   "decoServe.state.notAnswering.short":
     "deco serve on {host} isn't answering. Reconnecting on its own when it's back.",
   "decoServe.state.outdated.title": "This deco serve is out of date",
@@ -94,12 +66,10 @@ export const decoServe = {
     "deco serve on {host} comes from a different major version of Blocks than this Studio, so they can't edit content together. Update @decocms/blocks in your site and restart deco serve.",
   "decoServe.state.notDecoServe.title": "Another program is using {host}",
   "decoServe.state.notDecoServe.body":
-    "Something other than deco serve answered on {host}. Start deco serve on another port with `--port 4546` and connect to that port.",
+    "Something other than deco serve answered on {host}. Start deco serve on another port with `--port 4546` and open the Site editor link it prints.",
   "decoServe.state.error.title": "deco serve couldn't open your content",
   "decoServe.state.error.body":
     'It answered, but with an error: "{detail}". Check the terminal where deco serve runs for details, then try again.',
-  "decoServe.state.tryNow": "Try now",
-  "decoServe.state.useAnother": "Use a different server",
 
   "decoServe.schemaMissing.title":
     "Your site's forms haven't been generated yet",

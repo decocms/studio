@@ -6,12 +6,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
   render as renderBare,
-  type RenderResult,
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { PROTOCOL_NAME } from "@decocms/blocks/protocol";
-import { SiteEditorGuide } from "./site-editor-guide";
+import {
+  DEFAULT_SERVE_ENDPOINT,
+  serveCandidates,
+} from "./deco-serve-connection";
+import {
+  isServeLost,
+  LocalServeSwitch,
+  SiteEditorGuide,
+} from "./site-editor-guide";
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -22,7 +29,7 @@ function wrapper({ children }: { children: ReactNode }) {
 const render = (ui: Parameters<typeof renderBare>[0]) =>
   renderBare(ui, { wrapper });
 
-/** A `deco serve` answering on `ports`; everything else refuses. */
+/** A `deco serve` answering on `ports` (changeable later); everything else refuses. */
 function serveOn(ports: number[]) {
   return mock(async (input: RequestInfo | URL) => {
     const request = input instanceof Request ? input : new Request(input);
@@ -57,26 +64,32 @@ afterEach(() => {
 });
 
 describe("SiteEditorGuide", () => {
-  test("with no link and nothing remembered, shows the guide, not an error", async () => {
+  test("with nothing answering, shows the guide, not an error", async () => {
     globalThis.fetch = serveOn([]) as unknown as typeof fetch;
     const view = render(
-      <SiteEditorGuide remembered={null} onConnect={() => {}} />,
+      <SiteEditorGuide
+        candidates={[DEFAULT_SERVE_ENDPOINT]}
+        onConnect={() => {}}
+      />,
     );
 
+    // A short "Looking…" first, then the guide once nothing answered.
+    expect(view.getByText("Looking for deco serve…")).toBeInTheDocument();
     expect(
-      view.getByRole("heading", {
+      await view.findByRole("heading", {
         level: 1,
         name: "Edit your site's content on your computer",
       }),
     ).toBeInTheDocument();
     expect(view.queryByText(/incomplete/i)).toBeNull();
-    // The three steps, in order.
+    // The two steps, in order; no address field and no way to disconnect.
     const steps = view.getAllByRole("heading", { level: 2 });
     expect(steps.map((step) => step.textContent)).toEqual([
       "Start deco serve in your site's folder",
       "This page connects on its own",
-      "Using another port?",
     ]);
+    expect(view.queryByRole("textbox")).toBeNull();
+    expect(view.queryByRole("button", { name: /disconnect/i })).toBeNull();
     // Studio runs on localhost:4000 here, so the command allows that origin.
     expect(
       view.getByText(
@@ -107,7 +120,12 @@ describe("SiteEditorGuide", () => {
   test("connects on its own when deco serve answers on 4545", async () => {
     globalThis.fetch = serveOn([4545]) as unknown as typeof fetch;
     const onConnect = mock(() => {});
-    render(<SiteEditorGuide remembered={null} onConnect={onConnect} />);
+    render(
+      <SiteEditorGuide
+        candidates={[DEFAULT_SERVE_ENDPOINT]}
+        onConnect={onConnect}
+      />,
+    );
     await waitFor(() =>
       expect(onConnect).toHaveBeenCalledWith({
         endpoint: "http://127.0.0.1:4545/rpc",
@@ -118,93 +136,125 @@ describe("SiteEditorGuide", () => {
   test("explains an invalid link above the steps", () => {
     globalThis.fetch = serveOn([]) as unknown as typeof fetch;
     const view = render(
-      <SiteEditorGuide remembered={null} invalidLink onConnect={() => {}} />,
+      <SiteEditorGuide
+        candidates={[DEFAULT_SERVE_ENDPOINT]}
+        invalidLink
+        onConnect={() => {}}
+      />,
     );
     expect(
       view.getByText("This link doesn't point to deco serve on your computer"),
     ).toBeInTheDocument();
   });
+});
 
-  describe("Using another port?", () => {
-    const submit = (view: RenderResult, value: string) => {
-      fireEvent.input(view.getByLabelText("deco serve address"), {
-        target: { value },
-      });
-      const button = view.getByRole("button", { name: "Connect" });
+/** The editor stand-in: names its server, and stops when the server does. */
+function editor(
+  connection: { endpoint: string },
+  onLost: () => void,
+): ReactNode {
+  return (
+    <div>
+      <p>Editing {connection.endpoint}</p>
+      <button type="button" onClick={onLost}>
+        server stopped
+      </button>
+    </div>
+  );
+}
 
-      fireEvent.submit(button.closest("form")!);
-    };
+const GUIDE_TITLE = "Edit your site's content on your computer";
 
-    test("connects to a typed port", async () => {
-      globalThis.fetch = serveOn([4547]) as unknown as typeof fetch;
-      const onConnect = mock(() => {});
-      const view = render(
-        <SiteEditorGuide remembered={null} onConnect={onConnect} />,
-      );
-      submit(view, "4547");
-      await waitFor(() =>
-        expect(onConnect).toHaveBeenCalledWith({
-          endpoint: "http://127.0.0.1:4547/rpc",
-        }),
-      );
-    });
+describe("LocalServeSwitch", () => {
+  test("no link and nothing answering: the empty state", async () => {
+    globalThis.fetch = serveOn([]) as unknown as typeof fetch;
+    const view = render(
+      <LocalServeSwitch
+        candidates={serveCandidates(null, null)}
+        editor={editor}
+      />,
+    );
+    expect(
+      await view.findByRole("heading", { level: 1, name: GUIDE_TITLE }),
+    ).toBeInTheDocument();
+    expect(view.queryByText(/^Editing/)).toBeNull();
+  });
 
-    test("connects to a pasted Site editor link", async () => {
-      globalThis.fetch = serveOn([4548]) as unknown as typeof fetch;
-      const onConnect = mock(() => {});
-      const view = render(
-        <SiteEditorGuide remembered={null} onConnect={onConnect} />,
-      );
-      submit(
-        view,
-        `http://localhost:4000/site-editor#endpoint=${encodeURIComponent("http://127.0.0.1:4548/rpc")}`,
-      );
-      await waitFor(() =>
-        expect(onConnect).toHaveBeenCalledWith({
-          endpoint: "http://127.0.0.1:4548/rpc",
-        }),
-      );
-    });
+  test("the default port answering: the editor", async () => {
+    globalThis.fetch = serveOn([4545]) as unknown as typeof fetch;
+    const view = render(
+      <LocalServeSwitch
+        candidates={serveCandidates(null, null)}
+        editor={editor}
+      />,
+    );
+    expect(
+      await view.findByText(`Editing ${DEFAULT_SERVE_ENDPOINT}`),
+    ).toBeInTheDocument();
+    expect(view.queryByRole("heading", { name: GUIDE_TITLE })).toBeNull();
+  });
 
-    test("rejects junk with guidance, without a request", async () => {
-      const fetchMock = serveOn([]);
-      globalThis.fetch = fetchMock as unknown as typeof fetch;
-      const onConnect = mock(() => {});
-      const view = render(
-        <SiteEditorGuide remembered={null} onConnect={onConnect} />,
-      );
-      submit(view, "hello world");
-      const alert = await view.findByText(/That isn't a deco serve address/);
-      expect(alert).toBeInTheDocument();
-      expect(view.getByLabelText("deco serve address")).toHaveAttribute(
-        "aria-invalid",
-        "true",
-      );
-      expect(onConnect).not.toHaveBeenCalled();
-    });
+  test("the server stopping: the empty state, then the editor once it's back", async () => {
+    const ports = [4545];
+    globalThis.fetch = serveOn(ports) as unknown as typeof fetch;
+    const view = render(
+      <LocalServeSwitch
+        candidates={serveCandidates(null, null)}
+        editor={editor}
+      />,
+    );
+    await view.findByText(`Editing ${DEFAULT_SERVE_ENDPOINT}`);
 
-    test("rejects an address off this machine", async () => {
-      globalThis.fetch = serveOn([]) as unknown as typeof fetch;
-      const view = render(
-        <SiteEditorGuide remembered={null} onConnect={() => {}} />,
-      );
-      submit(view, "example.com:4545");
-      expect(
-        await view.findByText(/must use 127\.0\.0\.1 or localhost/),
-      ).toBeInTheDocument();
-    });
+    ports.length = 0;
+    fireEvent.click(view.getByRole("button", { name: "server stopped" }));
+    expect(
+      await view.findByRole("heading", { level: 1, name: GUIDE_TITLE }),
+    ).toBeInTheDocument();
 
-    test("says when nothing answers on that port", async () => {
-      globalThis.fetch = serveOn([]) as unknown as typeof fetch;
-      const onConnect = mock(() => {});
-      const view = render(
-        <SiteEditorGuide remembered={null} onConnect={onConnect} />,
-      );
-      submit(view, "4999");
-      expect(
-        await view.findByText(/Nothing answered on 127\.0\.0\.1:4999/),
-      ).toBeInTheDocument();
-      expect(onConnect).not.toHaveBeenCalled();
-    });
+    ports.push(4545);
+    expect(
+      await view.findByText(
+        `Editing ${DEFAULT_SERVE_ENDPOINT}`,
+        {},
+        { timeout: 4_000 },
+      ),
+    ).toBeInTheDocument();
+  }, 10_000);
+
+  test("a link's endpoint wins over the default port", async () => {
+    globalThis.fetch = serveOn([4545, 4547]) as unknown as typeof fetch;
+    const view = render(
+      <LocalServeSwitch
+        candidates={serveCandidates(
+          { endpoint: "http://127.0.0.1:4547/rpc" },
+          null,
+        )}
+        editor={editor}
+      />,
+    );
+    expect(
+      await view.findByText("Editing http://127.0.0.1:4547/rpc"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("isServeLost", () => {
+  test("only a local server that stopped answering", () => {
+    expect(
+      isServeLost({
+        kind: "unavailable",
+        source: "local",
+        problem: { reason: "not-answering" },
+      }),
+    ).toBe(true);
+    expect(
+      isServeLost({
+        kind: "unavailable",
+        source: "local",
+        problem: { reason: "outdated" },
+      }),
+    ).toBe(false);
+    expect(isServeLost({ kind: "unavailable", source: "github" })).toBe(false);
+    expect(isServeLost({ kind: "pending" })).toBe(false);
   });
 });

@@ -463,8 +463,9 @@ test.describe("site editor over deco serve", () => {
     await page.goto(
       `/site-editor#endpoint=${encodeURIComponent(`http://127.0.0.1:${port}/rpc`)}`,
     );
+    // Nothing answers: the guide, which keeps looking for the link's server.
     await expect(
-      page.getByText(`Waiting for deco serve on 127.0.0.1:${port}…`),
+      page.getByText(`Looking for deco serve on 127.0.0.1:${port}…`),
     ).toBeVisible({ timeout: 30_000 });
     const stub = await startStub(publicKey, port);
     try {

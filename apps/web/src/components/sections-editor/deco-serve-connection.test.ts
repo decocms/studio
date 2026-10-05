@@ -1,16 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import {
   classifyServeProbeError,
-  clearLastConnection,
   DEFAULT_SERVE_ENDPOINT,
-  discoveryCandidates,
-  markDisconnected,
   NotDecoServeError,
   parseServeAddress,
-  readDisconnected,
+  serveCandidates,
   serveCommand,
-  unmarkDisconnected,
   endpointHost,
   isLoopbackEndpoint,
   parseConnectFragment,
@@ -155,8 +151,6 @@ describe("last connection", () => {
     expect(readLastConnection()).toEqual({
       endpoint: "http://127.0.0.1:4545/rpc",
     });
-    clearLastConnection();
-    expect(readLastConnection()).toBeNull();
   });
 
   test("blocked storage reads as nothing remembered", () => {
@@ -170,7 +164,6 @@ describe("last connection", () => {
       saveLastConnection({ endpoint: "http://127.0.0.1:4545/rpc" }),
     ).not.toThrow();
     expect(readLastConnection()).toBeNull();
-    expect(() => clearLastConnection()).not.toThrow();
   });
 });
 
@@ -328,43 +321,23 @@ describe("serveCommand", () => {
   });
 });
 
-describe("discovery candidates", () => {
-  const original = Object.getOwnPropertyDescriptor(
-    globalThis,
-    "sessionStorage",
-  );
-  beforeEach(() => {
-    const map = new Map<string, string>();
-    Object.defineProperty(globalThis, "sessionStorage", {
-      value: {
-        getItem: (k: string) => map.get(k) ?? null,
-        setItem: (k: string, v: string) => void map.set(k, v),
-      } as unknown as Storage,
-      configurable: true,
-    });
-  });
-  afterEach(() => {
-    if (original) Object.defineProperty(globalThis, "sessionStorage", original);
-    else delete (globalThis as { sessionStorage?: Storage }).sessionStorage;
+describe("serveCandidates", () => {
+  test("the link's endpoint wins", () => {
+    expect(
+      serveCandidates(
+        { endpoint: "http://127.0.0.1:4547/rpc" },
+        { endpoint: "http://127.0.0.1:4548/rpc" },
+      ),
+    ).toEqual(["http://127.0.0.1:4547/rpc"]);
   });
 
-  test("the remembered server, then the default port, without repeats", () => {
-    expect(discoveryCandidates(null, [])).toEqual([DEFAULT_SERVE_ENDPOINT]);
+  test("with no link, the remembered server, then the default port, without repeats", () => {
+    expect(serveCandidates(null, null)).toEqual([DEFAULT_SERVE_ENDPOINT]);
     expect(
-      discoveryCandidates({ endpoint: "http://127.0.0.1:4547/rpc" }, []),
+      serveCandidates(null, { endpoint: "http://127.0.0.1:4547/rpc" }),
     ).toEqual(["http://127.0.0.1:4547/rpc", DEFAULT_SERVE_ENDPOINT]);
-    expect(
-      discoveryCandidates({ endpoint: DEFAULT_SERVE_ENDPOINT }, []),
-    ).toEqual([DEFAULT_SERVE_ENDPOINT]);
-  });
-
-  test("skips a server disconnected in this session", () => {
-    markDisconnected(DEFAULT_SERVE_ENDPOINT);
-    expect(readDisconnected()).toEqual([DEFAULT_SERVE_ENDPOINT]);
-    expect(discoveryCandidates(null, readDisconnected())).toEqual([]);
-    unmarkDisconnected(DEFAULT_SERVE_ENDPOINT);
-    expect(discoveryCandidates(null, readDisconnected())).toEqual([
-      DEFAULT_SERVE_ENDPOINT,
-    ]);
+    expect(serveCandidates(null, { endpoint: DEFAULT_SERVE_ENDPOINT })).toEqual(
+      [DEFAULT_SERVE_ENDPOINT],
+    );
   });
 });

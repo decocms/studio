@@ -74,8 +74,8 @@ export function parseConnectLink(value: string): DecoServeConnection | null {
 const LAST_KEY = "studio:deco-serve-last";
 
 /**
- * Remembers `/site-editor`'s last endpoint in this browser, so opening
- * `/site-editor` with no link reconnects to it.
+ * Remembers `/site-editor`'s last link endpoint in this browser, so opening
+ * `/site-editor` with no link looks for it too.
  */
 export function saveLastConnection(connection: DecoServeConnection): void {
   try {
@@ -91,14 +91,6 @@ export function readLastConnection(): DecoServeConnection | null {
     return raw ? parseStoredConnection(JSON.parse(raw)) : null;
   } catch {
     return null;
-  }
-}
-
-export function clearLastConnection(): void {
-  try {
-    localStorage.removeItem(LAST_KEY);
-  } catch {
-    // Nothing to clear.
   }
 }
 
@@ -149,8 +141,8 @@ export type ParsedServeAddress =
   | { ok: false; reason: "not-local" | "unrecognized" };
 
 /**
- * What someone typed into "Using another port?": the Site editor link
- * `deco serve` printed, an address (`127.0.0.1:4547`, `localhost:4547`,
+ * What someone pasted into the draft selector's "Local" option: the Site
+ * editor link `deco serve` printed, an address (`127.0.0.1:4547`, `localhost:4547`,
  * `http://127.0.0.1:4547/rpc`) or just a port (`4547`). Always resolves to
  * the server's `/rpc` endpoint; only this machine is accepted.
  */
@@ -208,7 +200,8 @@ export function parseServeAddress(input: string): ParsedServeAddress {
  * Why a `deco serve` endpoint can't be used, in the words the site editor
  * explains it with:
  * - `not-answering`: nothing answered (stopped, restarting, another port, or a
- *   refused origin or Chrome permission, which a browser can't tell apart);
+ *   refused origin or Chrome permission, which a browser can't tell apart):
+ *   `/site-editor` shows its guide and keeps looking;
  * - `outdated`: an older `deco serve`, which asked for an access token;
  * - `version-mismatch`: a `deco serve` of another major protocol version;
  * - `not-deco-serve`: another program answered on that port;
@@ -258,54 +251,18 @@ export function classifyServeProbeError(error: unknown): ServeProblem {
   }
 }
 
-const DISCONNECTED_KEY = "studio:deco-serve-disconnected";
-
 /**
- * Endpoints disconnected in this tab's session: `/site-editor` won't find
- * them on its own again, or Disconnect would reconnect at once.
+ * Where `/site-editor` looks for `deco serve`: the link's endpoint when it
+ * was opened with one (it wins), otherwise the last one used, then the
+ * default port.
  */
-export function readDisconnected(): string[] {
-  try {
-    const raw = sessionStorage.getItem(DISCONNECTED_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-export function markDisconnected(endpoint: string): void {
-  try {
-    const next = [...new Set([...readDisconnected(), endpoint])];
-    sessionStorage.setItem(DISCONNECTED_KEY, JSON.stringify(next));
-  } catch {
-    // Storage blocked: discovery may find it again.
-  }
-}
-
-export function unmarkDisconnected(endpoint: string): void {
-  try {
-    const next = readDisconnected().filter((item) => item !== endpoint);
-    sessionStorage.setItem(DISCONNECTED_KEY, JSON.stringify(next));
-  } catch {
-    // Nothing to clear.
-  }
-}
-
-/**
- * The endpoints `/site-editor` looks for on its own: the last one used, then
- * the default port; minus any disconnected in this session.
- */
-export function discoveryCandidates(
+export function serveCandidates(
+  fromLink: DecoServeConnection | null,
   remembered: DecoServeConnection | null,
-  disconnected: readonly string[],
 ): string[] {
+  if (fromLink) return [fromLink.endpoint];
   const all = [remembered?.endpoint, DEFAULT_SERVE_ENDPOINT].filter(
     (endpoint): endpoint is string => !!endpoint,
   );
-  return [...new Set(all)].filter(
-    (endpoint) => !disconnected.includes(endpoint),
-  );
+  return [...new Set(all)];
 }
