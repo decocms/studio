@@ -50,7 +50,7 @@ const DEFAULT_DEV_PORT = 3000;
 const CONTAINER = "sandbox";
 const SIDECAR = "orgfs";
 /** Track `orgFs.image.tag` in deploy/helm/sandbox-env/values.yaml. */
-const DEFAULT_SIDECAR_IMAGE = "ghcr.io/decocms/studio/orgfs-sidecar:0.1.0";
+const DEFAULT_SIDECAR_IMAGE = "ghcr.io/decocms/studio/orgfs-sidecar:0.2.0";
 /** Host dirs standing in for the pod's `orgfs-org` and `orgfs-ctl` volumes. */
 const HOST_ORG_DIR = "/srv/sandbox/org";
 const HOST_CTL_DIR = "/srv/sandbox/orgfs-ctl";
@@ -93,7 +93,7 @@ export interface FreestyleSandboxProviderOptions {
   image?: string;
   /** The org-fs sidecar image. Default: the chart's `orgFs.image`. */
   orgFsSidecarImage?: string;
-  /** Pause a VM after this long without network activity. Default 15 min. */
+  /** Pause a VM after this long without network activity. Default 5 min. */
   idleTimeoutSeconds?: number;
   /**
    * Delete a VM after this long without running. Default 3 days. A plan
@@ -157,7 +157,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.image =
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
-    this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 15 * 60;
+    this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 3 * 24 * 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
@@ -368,9 +368,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         .map((k) => `-e ${shellQuote(k)}`)
         .join(" ");
       // The sidecar first: it only polls for the config the daemon relays.
+      // No change feed: its long-poll is network activity, so the VM would
+      // never idle; rclone's dir-cache TTL bounds staleness instead.
       await this.run(
         vm,
-        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
+        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -e ORGFS_CHANGE_FEED=off -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
         { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
       );
       await this.run(

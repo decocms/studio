@@ -5,6 +5,8 @@
  *   ORGFS_SIDECAR_CONFIG_PATH  relayed config file (default /run/orgfs/config.json)
  *   ORGFS_SIDECAR_STATUS_PATH  mounted-status file (default /run/orgfs/status.json)
  *   ORGFS_RCLONE_PATH          rclone binary (default: PATH lookup; baked in image)
+ *   ORGFS_CHANGE_FEED          `off` skips the change-feed invalidator, leaving
+ *                              freshness to rclone's dir-cache TTL
  */
 
 import { MountManager } from "./mount-manager";
@@ -25,6 +27,8 @@ await runSidecar({
   appRoot: process.env.APP_ROOT ?? "/app",
   manager: new MountManager(
     createRcloneMounter(rclonePath, { allowOther: true }),
+    undefined,
+    process.env.ORGFS_CHANGE_FEED === "off" ? () => ({ stop() {} }) : undefined,
   ),
   signal: ac.signal,
   log: (m, e) =>
