@@ -18,11 +18,10 @@ const SANDBOX_MANIFEST = "packages/sandbox/package.json";
 // its registry does not have yet (publish-sandbox-controller-npm.yaml, whose
 // trigger paths list the same directories).
 const SANDBOX_CONTROLLER_MANIFEST = "packages/sandbox-controller/package.json";
-// @decocms/typegen is packed into the sandbox image like the harness runner,
-// and @decocms/studio-cli (private) is bundled into both typegen and the
-// server's CLI, so its changes republish typegen and roll the release line.
-const TYPEGEN_MANIFEST = "packages/typegen/package.json";
-const STUDIO_CLI_SOURCES = "packages/studio-cli/";
+// @decocms/cli is packed into the sandbox image like the harness runner and
+// bundled into the server's CLI, so its changes also retag the image and roll
+// the release line (its own manifest bumps through the generic package rule).
+const CLI_SOURCES = "packages/cli/";
 const SANDBOX_CONTROLLER_SOURCES = [
   "packages/sandbox/server/",
   "packages/shared/src/git-providers/",
@@ -85,16 +84,12 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
     // rebuild overwrites the live tag in place, and every node that already
     // cached it keeps serving the old runner — #6816's fix reached 4 of 21
     // prod sandbox pods that way.
-    if (
-      file.startsWith("packages/harness-runner/") ||
-      file.startsWith("packages/typegen/")
-    ) {
+    if (file.startsWith("packages/harness-runner/")) {
       manifests.add(SANDBOX_MANIFEST);
     }
 
-    if (file.startsWith(STUDIO_CLI_SOURCES)) {
+    if (file.startsWith(CLI_SOURCES)) {
       addReleaseLine();
-      manifests.add(TYPEGEN_MANIFEST);
       manifests.add(SANDBOX_MANIFEST);
     }
 

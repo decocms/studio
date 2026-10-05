@@ -1,7 +1,7 @@
 //! Port of `packages/sandbox/daemon-go/internal/toolscatalog/catalog.go` — materializes an
 //! org's Virtual MCP tool catalog onto the sandbox filesystem (one JSON
 //! Schema file per tool under `<repo>/.deco/tools/`) plus the pre-
-//! authenticated endpoint file scripts/typegen use to call tools without
+//! authenticated endpoint file scripts and `decocms` use to call tools without
 //! flags. Byte-parity target for the pure filename-sanitizing logic
 //! (`toolCatalogFiles`); the fetch step lives in `mcp_client.rs`.
 

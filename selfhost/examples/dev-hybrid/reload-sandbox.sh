@@ -9,7 +9,7 @@
 #   packages/sandbox/daemon-go/**     the Go daemon
 #   packages/harness-runner/**        the in-pod harness runner (claude-code)
 #   packages/sandbox/image/**         the Dockerfile + bundled skills
-#   packages/typegen/**               packed into the image
+#   packages/cli/**                   packed into the image
 #
 # Rebuilds the image and recycles the sandboxes so the next run picks it up.
 # No push, no `kind load`: this k3s node's runtime IS dockerd (Rancher Desktop
@@ -52,7 +52,7 @@ esac
 
 # The image copies these tarballs in, so they have to be repacked from source
 # first — a stale dist/ is how a rebuilt image ships yesterday's runner.
-echo "==> Packing sandbox tarballs (harness-runner + typegen)"
+echo "==> Packing sandbox tarballs (harness-runner + cli)"
 bun run --cwd="${REPO_ROOT}/packages/sandbox" build
 
 echo "==> Building ${IMAGE}"

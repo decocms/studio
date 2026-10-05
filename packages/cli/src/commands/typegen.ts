@@ -6,6 +6,7 @@ import { type CredentialOptions, resolveCredential } from "../lib/credentials";
 import { mcpIdFromUrl } from "../lib/endpoint";
 import { type ConnectMcp, connectStreamableHttp } from "../lib/mcp";
 import { errorMessage } from "../lib/studio-request";
+import { print } from "../lib/output";
 
 export interface TypegenOptions extends CredentialOptions {
   org?: string;
@@ -33,7 +34,7 @@ const ToolDefinitionSchema = z.looseObject({
 
 /**
  * `decocms typegen` — write a typed TypeScript client for an agent's tools,
- * built on `createStudioClient` from `@decocms/typegen`.
+ * built on `createStudioClient` from this package.
  */
 export async function typegenCommand(options: TypegenOptions): Promise<number> {
   const credential = await resolveCredential(options);
@@ -96,7 +97,7 @@ export async function typegenCommand(options: TypegenOptions): Promise<number> {
 
   const output = options.output ?? "client.ts";
   await writeFile(output, await generateClientCode({ mcpId, tools }), "utf-8");
-  console.log(`Generated ${output} with ${tools.length} tool(s) for ${mcpId}.`);
+  print(`Generated ${output} with ${tools.length} tool(s) for ${mcpId}.`);
 
   if (options.schemasDir) {
     const schemasDir = options.schemasDir;
@@ -107,7 +108,7 @@ export async function typegenCommand(options: TypegenOptions): Promise<number> {
         writeFile(join(schemasDir, file.filename), file.content),
       ),
     );
-    console.log(`Wrote ${files.length} schema file(s) to ${schemasDir}.`);
+    print(`Wrote ${files.length} schema file(s) to ${schemasDir}.`);
   }
   return 0;
 }

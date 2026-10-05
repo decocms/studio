@@ -10,7 +10,7 @@ The workspace carries a materialized catalog of the org's tools:
 - `.deco/tools/<TOOL>.json` — one JSON Schema per tool:
   `{ name, description, inputSchema, outputSchema }`
 - `.deco/tools/.endpoint.json` — the run's pre-authenticated MCP endpoint.
-  The `decocms` CLI and the typegen client discover it automatically (walking up from
+  The `decocms` CLI and its client discover it automatically (walking up from
   cwd) — no flags, keys, or env needed. The daemon refreshes it; a reconnect
   picks up new credentials.
 
@@ -35,7 +35,7 @@ decocms tools call SEND_EMAIL -d '{"to":"ada@example.com","subject":"hi"}'
 Prints the tool's result as JSON; non-zero exit and a message on stderr on
 failure. `-d @args.json` and `-d @-` read the arguments from a file or stdin.
 Inside a run no `--org` is needed: the run's endpoint decides the tools. If
-`decocms` is not on PATH, use `npx -y -p @decocms/typegen decocms tools ...`.
+`decocms` is not on PATH, use `npx -y @decocms/cli tools ...`.
 
 ## Bulk calls — write a script
 
@@ -44,23 +44,23 @@ tool-calling — write a script, run it, read back the summary. Results belong
 in a file, not in your context.
 
 Set up a scratch project so the user's repo stays untouched. Cloud sandboxes
-carry the typegen package built from the same Studio revision; Desktop falls
-back to the published package. Then run from the repo root (endpoint discovery
+carry the @decocms/cli package built from the same Studio revision; Desktop
+falls back to the published package. Then run from the repo root (endpoint discovery
 walks up from cwd):
 
 ```bash
 mkdir -p /tmp/toolrun && cd /tmp/toolrun
-if [ -f /opt/sandbox-daemon/typegen.tgz ]; then
-  bun add /opt/sandbox-daemon/typegen.tgz
+if [ -f /opt/sandbox-daemon/cli.tgz ]; then
+  bun add /opt/sandbox-daemon/cli.tgz
 else
-  bun add @decocms/typegen
+  bun add @decocms/cli
 fi
 cd - && bun run /tmp/toolrun/bulk.ts
 ```
 
 ```ts
 // /tmp/toolrun/bulk.ts
-import { createStudioClient } from "@decocms/typegen";
+import { createStudioClient } from "@decocms/cli";
 
 const client = createStudioClient(); // discovers .deco/tools/.endpoint.json
 const rows: { email: string }[] = JSON.parse(

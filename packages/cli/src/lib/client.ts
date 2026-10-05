@@ -1,7 +1,33 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { discoverEndpoint, withMcpId } from "./endpoint.js";
-import type { StudioClient, StudioClientOptions, ToolMap } from "./index.js";
+import { discoverEndpoint, withMcpId } from "./endpoint";
+
+export type ToolMap = Record<string, { input: unknown; output: unknown }>;
+
+export type StudioClientInstance<T extends ToolMap> = {
+  [K in keyof T]: (input: T[K]["input"]) => Promise<T[K]["output"]>;
+};
+
+export type StudioClient<T extends ToolMap> = StudioClientInstance<T> & {
+  /** Close the underlying MCP connection and reset it so the next call reconnects. */
+  close(): Promise<void>;
+};
+
+export interface StudioClientOptions {
+  /** Virtual MCP id. Optional when an endpoint is passed or discoverable. */
+  mcpId?: string;
+  /** Falls back to process.env.STUDIO_API_KEY */
+  apiKey?: string;
+  /** Falls back to https://studio.decocms.com */
+  baseUrl?: string;
+  /**
+   * A full pre-authenticated endpoint — overrides mcpId/apiKey/baseUrl.
+   * When omitted and no api key resolves, the sandbox endpoint file
+   * (`.deco/tools/.endpoint.json`, written by the daemon) is discovered by
+   * walking up from cwd, so scripts inside a sandbox connect with no config.
+   */
+  endpoint?: { url: string; headers?: Record<string, string> };
+}
 
 const DEFAULT_BASE_URL = "https://studio.decocms.com";
 
@@ -24,8 +50,7 @@ function resolveTarget(opts: StudioClientOptions): {
       headers: opts.endpoint.headers ?? {},
     };
   }
-  const apiKey =
-    opts.apiKey ?? process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY;
+  const apiKey = opts.apiKey ?? process.env.STUDIO_API_KEY;
   if (opts.mcpId && (apiKey || opts.baseUrl)) {
     const base = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
     // Build URL with string concat so a path-prefixed baseUrl is preserved,
@@ -63,7 +88,6 @@ export interface StudioClientDeps {
 }
 
 /** @deprecated Use `StudioClientDeps`. */
-export type MeshClientDeps = StudioClientDeps;
 
 export function createStudioClient<T extends ToolMap = ToolMap>(
   opts: StudioClientOptions = {},
@@ -81,7 +105,7 @@ export function createStudioClient<T extends ToolMap = ToolMap>(
     connectPromise = (async () => {
       const { url, headers } = resolveTarget(opts);
       const client = new ClientCtor({
-        name: "@decocms/typegen",
+        name: "@decocms/cli",
         version: "1.0.0",
       });
       await client.connect(
@@ -141,12 +165,4 @@ export function createStudioClient<T extends ToolMap = ToolMap>(
       };
     },
   });
-}
-
-/** @deprecated Use `createStudioClient`. */
-export function createMeshClient<T extends ToolMap = ToolMap>(
-  opts: StudioClientOptions = {},
-  /** @internal */ deps?: Partial<StudioClientDeps>,
-): StudioClient<T> {
-  return createStudioClient<T>(opts, deps);
 }

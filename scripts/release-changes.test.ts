@@ -66,24 +66,16 @@ describe("release change classification", () => {
     }
   });
 
-  /** studio-cli is bundled into the server CLI and into typegen, and typegen
-   *  is packed into the sandbox image: one change must reach all three. */
-  test("studio-cli changes roll the release line, typegen, and the sandbox image", () => {
+  /** @decocms/cli is bundled into the server CLI and packed into the sandbox
+   *  image: one change must reach the release line, the image, and npm. */
+  test("cli changes roll the release line, the sandbox image, and the package", () => {
     expect(
-      releaseManifestCandidates(["packages/studio-cli/src/commands/tools.ts"]),
+      releaseManifestCandidates(["packages/cli/src/commands/tools.ts"]),
     ).toEqual([
       API_MANIFEST,
       NATIVE_MANIFEST,
+      "packages/cli/package.json",
       "packages/sandbox/package.json",
-      "packages/studio-cli/package.json",
-      "packages/typegen/package.json",
-    ]);
-  });
-
-  test("typegen changes also retag the sandbox image that packs it", () => {
-    expect(releaseManifestCandidates(["packages/typegen/src/cli.ts"])).toEqual([
-      "packages/sandbox/package.json",
-      "packages/typegen/package.json",
     ]);
   });
 
@@ -170,7 +162,7 @@ describe("release change classification", () => {
       "packages/runtime/src/index.ts",
       "packages/sandbox/src/index.ts",
       "packages/shared/src/index.ts",
-      "packages/typegen/src/index.ts",
+      "packages/cli/src/index.ts",
       "packages/ui/src/index.ts",
       "packages/mesh-sdk/src/index.ts",
       "packages/std/src/index.ts",
@@ -186,13 +178,13 @@ describe("release change classification", () => {
     const expectedManifests = [
       API_MANIFEST,
       "packages/bindings/package.json",
+      "packages/cli/package.json",
       "packages/create-deco/package.json",
       "packages/e2e/package.json",
       "packages/mcp-utils/package.json",
       "packages/runtime/package.json",
       "packages/sandbox/package.json",
       "packages/shared/package.json",
-      "packages/typegen/package.json",
       "packages/ui/package.json",
     ];
 

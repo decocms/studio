@@ -1,4 +1,5 @@
 import { clearSession, readSession } from "../../lib/session";
+import { print } from "../../lib/output";
 
 export interface LogoutOptions {
   dataDir: string;
@@ -7,10 +8,10 @@ export interface LogoutOptions {
 export async function logoutCommand(options: LogoutOptions): Promise<number> {
   const session = await readSession(options.dataDir);
   if (!session) {
-    console.log("Already logged out.");
+    print("Already logged out.");
     return 0;
   }
   await clearSession(options.dataDir);
-  console.log("Logged out.");
+  print("Logged out.");
   return 0;
 }

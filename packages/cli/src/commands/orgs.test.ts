@@ -37,9 +37,12 @@ beforeEach(async () => {
   err = [];
   calls = [];
   chunks = [];
-  logSpy = spyOn(console, "log").mockImplementation((msg: unknown) => {
-    out.push(String(msg));
-  });
+  logSpy = spyOn(process.stdout, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    out.push(String(chunk).replace(/\n$/, ""));
+    return true;
+  }) as typeof process.stdout.write);
   errSpy = spyOn(console, "error").mockImplementation((msg: unknown) => {
     err.push(String(msg));
   });

@@ -84,7 +84,7 @@ describe("generateClientCode", () => {
     expect(output).toContain("input:");
     expect(output).toContain("output:");
     // Must import createStudioClient
-    expect(output).toContain('from "@decocms/typegen"');
+    expect(output).toContain('from "@decocms/cli"');
     // Must call createStudioClient with the mcpId
     expect(output).toContain("vmc_abc123");
     expect(output).toContain("createStudioClient<Tools>");

@@ -1,10 +1,15 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { createMeshClient, createStudioClient } from "./runtime.js";
-import type { StudioClientDeps } from "./runtime.js";
+import { createStudioClient, type StudioClientDeps } from "./client";
 
 // Build mock constructors without touching the module registry
 const mockCallTool = mock(
-  async ({ name, arguments: args }: { name: string; arguments: unknown }) => ({
+  async ({
+    name,
+    arguments: args,
+  }: {
+    name: string;
+    arguments: unknown;
+  }): Promise<Record<string, unknown>> => ({
     isError: false,
     structuredContent: { tool: name, args },
   }),
@@ -31,7 +36,10 @@ describe("createStudioClient", () => {
 
   test("returns an object with callable tool methods", async () => {
     type Tools = {
-      MY_TOOL: { input: { id: string }; output: { name: string } };
+      MY_TOOL: {
+        input: { id: string };
+        output: { tool: string; args: unknown };
+      };
     };
 
     const client = createStudioClient<Tools>(
@@ -45,21 +53,6 @@ describe("createStudioClient", () => {
     expect(mockCallTool).toHaveBeenCalledWith({
       name: "MY_TOOL",
       arguments: { id: "123" },
-    });
-  });
-
-  test("keeps createMeshClient as a compatibility alias", async () => {
-    type Tools = {
-      MY_TOOL: { input: { id: string }; output: { name: string } };
-    };
-    const client = createMeshClient<Tools>(
-      { mcpId: "vmc_test", apiKey: "sk_test" },
-      deps,
-    );
-
-    await expect(client.MY_TOOL({ id: "123" })).resolves.toEqual({
-      tool: "MY_TOOL",
-      args: { id: "123" },
     });
   });
 
@@ -145,7 +138,7 @@ describe("createStudioClient", () => {
       deps,
     );
 
-    expect(client.then).toBeUndefined();
+    expect((client as { then?: unknown }).then).toBeUndefined();
   });
 
   test("builds URL with correct mcpId and baseUrl", async () => {

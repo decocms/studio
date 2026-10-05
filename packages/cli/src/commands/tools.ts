@@ -14,6 +14,7 @@ import {
   studioFetch,
   writeResponse,
 } from "../lib/studio-request";
+import { print } from "../lib/output";
 
 export interface ToolsOptions extends CredentialOptions, RequestIo {
   subcommand?: string;
@@ -99,7 +100,7 @@ export async function toolsCommand(options: ToolsOptions): Promise<number> {
         );
         return 1;
       }
-      console.log(JSON.stringify(tool, null, 2));
+      print(JSON.stringify(tool, null, 2));
       return 0;
     }
 
@@ -112,12 +113,12 @@ export async function toolsCommand(options: ToolsOptions): Promise<number> {
         )
       : tools;
     if (options.json) {
-      console.log(JSON.stringify(matches));
+      print(JSON.stringify(matches));
       return 0;
     }
     for (const tool of matches) {
       const summary = tool.description?.trim().split("\n")[0] ?? "";
-      console.log(summary ? `${tool.name}\t${summary}` : tool.name);
+      print(summary ? `${tool.name}\t${summary}` : tool.name);
     }
     return 0;
   } finally {
@@ -261,7 +262,7 @@ const CallResultSchema = z.looseObject({
 function printCallResult(result: unknown): number {
   const parsed = CallResultSchema.safeParse(result);
   if (!parsed.success) {
-    console.log(JSON.stringify(result));
+    print(JSON.stringify(result));
     return 0;
   }
   const { isError, structuredContent, content } = parsed.data;
@@ -278,6 +279,6 @@ function printCallResult(result: unknown): number {
     }
   }
   if (isError) console.error("The tool returned an error.");
-  console.log(JSON.stringify(value));
+  print(JSON.stringify(value));
   return isError ? 1 : 0;
 }

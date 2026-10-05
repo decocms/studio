@@ -1,11 +1,10 @@
-name: Publish @decocms/typegen
+name: Publish @decocms/cli
 
 on:
   push:
     branches: [main]
     paths:
-      - "packages/typegen/**"
-      - "packages/studio-cli/**"
+      - "packages/cli/**"
   workflow_dispatch:
 
 permissions:
@@ -32,14 +31,14 @@ jobs:
 
       - name: Build
         run: bun run build
-        working-directory: packages/typegen
+        working-directory: packages/cli
 
       - name: Check if version changed
         id: version-check
         run: |
           CURRENT_VERSION=$(node -e "console.log(require('./package.json').version)")
 
-          if npm view @decocms/typegen@$CURRENT_VERSION version >/dev/null 2>&1; then
+          if npm view @decocms/cli@$CURRENT_VERSION version >/dev/null 2>&1; then
             echo "version-changed=false" >> $GITHUB_OUTPUT
             echo "⏭️ Version $CURRENT_VERSION already published, skipping publish"
           else
@@ -56,30 +55,30 @@ jobs:
             echo "npm-tag=latest" >> $GITHUB_OUTPUT
             echo "📦 Stable version detected, will publish with tag 'latest'"
           fi
-        working-directory: packages/typegen
+        working-directory: packages/cli
 
       - name: Publish to npm
         if: steps.version-check.outputs.version-changed == 'true'
         run: npm publish --access public --tag ${{ steps.version-check.outputs.npm-tag }} --provenance
-        working-directory: packages/typegen
+        working-directory: packages/cli
 
       - name: Create Release
         if: steps.version-check.outputs.version-changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "typegen-v${{ steps.version-check.outputs.current-version }}" \
-            --title "@decocms/typegen v${{ steps.version-check.outputs.current-version }}" \
+          gh release create "cli-v${{ steps.version-check.outputs.current-version }}" \
+            --title "@decocms/cli v${{ steps.version-check.outputs.current-version }}" \
             --notes "## Changes
 
-          Automated release of @decocms/typegen package.
+          Automated release of @decocms/cli package.
 
           ### Installation
           \`\`\`bash
-          npm install @decocms/typegen
+          npm install -g @decocms/cli
           \`\`\`
 
           ### Usage
           \`\`\`bash
-          bunx @decocms/typegen --mcp <virtual-mcp-id> --key <api-key> --output client.ts
+          bunx @decocms/cli auth login
           \`\`\`"

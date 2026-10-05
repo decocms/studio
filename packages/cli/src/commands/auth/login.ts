@@ -4,6 +4,7 @@ import { startOAuthCallbackServer } from "../../lib/oauth-callback";
 import { generatePkcePair } from "../../lib/pkce";
 import { MAX_EXPIRES_IN_SECONDS } from "../../lib/refresh-session";
 import { type Session, writeSession } from "../../lib/session";
+import { print } from "../../lib/output";
 
 export interface LoginOptions {
   dataDir: string;
@@ -77,7 +78,7 @@ async function performInteractiveLogin(
     });
     const url = `${target}/login?${params.toString()}`;
 
-    console.log(`Opening ${url} in your browser...`);
+    print(`Opening ${url} in your browser...`);
     await openImpl(url);
 
     const { code } = await server.waitForCallback();
@@ -124,7 +125,7 @@ export async function loginCommand(options: LoginOptions): Promise<number> {
       fetch: options.fetch,
     });
     await writeSession(options.dataDir, session);
-    console.log(`Logged in as ${session.user.email ?? session.user.sub}.`);
+    print(`Logged in as ${session.user.email ?? session.user.sub}.`);
     return 0;
   } catch (err) {
     console.error(
@@ -233,7 +234,7 @@ async function defaultOpenBrowser(url: string): Promise<void> {
   await new Promise<void>((resolve) => {
     const child = spawn(command, args, { stdio: "ignore", detached: true });
     child.on("error", () => {
-      console.log(
+      print(
         `Could not open browser automatically. Please open this URL manually:\n  ${url}`,
       );
       resolve();

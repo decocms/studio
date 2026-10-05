@@ -2,6 +2,7 @@ import {
   type CredentialOptions,
   resolveCredential,
 } from "../../lib/credentials";
+import { print } from "../../lib/output";
 
 /** Prints which credential commands will use, so an agent knows where it is. */
 export async function whoamiCommand(
@@ -11,18 +12,18 @@ export async function whoamiCommand(
   if (!credential) return 1;
   switch (credential.kind) {
     case "session":
-      console.log(`Target: ${credential.target}`);
-      console.log(
+      print(`Target: ${credential.target}`);
+      print(
         `User:   ${credential.session.user.email ?? credential.session.user.sub}`,
       );
       return 0;
     case "apiKey":
-      console.log(`Target: ${credential.target}`);
-      console.log("Using:  STUDIO_API_KEY");
+      print(`Target: ${credential.target}`);
+      print("Using:  STUDIO_API_KEY");
       return 0;
     case "run":
-      console.log(`Endpoint: ${credential.url}`);
-      console.log("Using:    this Studio run's credential");
+      print(`Endpoint: ${credential.url}`);
+      print("Using:    this Studio run's credential");
       return 0;
   }
 }

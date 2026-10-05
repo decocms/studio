@@ -1,15 +1,26 @@
 {
-  "name": "@decocms/studio-cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@decocms/cli",
+  "version": "0.1.0",
+  "description": "The decocms command (login, orgs, tools, api, typegen) and the typed Studio client runtime",
+  "license": "MIT",
   "type": "module",
-  "description": "Studio client commands (auth, api, tools, orgs) shared by the decocms server CLI and the typegen package",
-  "exports": {
-    ".": "./src/index.ts",
-    "./endpoint": "./src/lib/endpoint.ts",
-    "./codegen": "./src/lib/codegen.ts"
+  "bin": {
+    "decocms": "./dist/bin.js"
   },
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
   "scripts": {
+    "build": "tsup",
     "check": "tsc --noEmit",
     "test": "bun test"
   },
@@ -21,6 +32,18 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "tsup": "^8.5.0",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/decocms/studio",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

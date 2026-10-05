@@ -10,9 +10,9 @@ session and refreshes it. The CLI is the only thing that touches the token:
 call Studio with `decocms api` and `decocms tools`, and leave the session files
 in the data dir alone.
 
-Run the CLI as `decocms` when it is on `PATH`, otherwise `bunx decocms@latest`.
-An `Unknown command: tools` error means a cached old version; rerun with
-`bunx decocms@latest`.
+Run the CLI as `decocms` when it is on `PATH`, otherwise
+`bunx @decocms/cli@latest` (a few hundred KB; the `decocms` server package has
+the same commands but downloads the whole server).
 
 ## 1. Session
 

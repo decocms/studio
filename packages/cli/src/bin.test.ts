@@ -30,8 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url));
-const STUDIO = fileURLToPath(new URL("./studio.ts", import.meta.url));
+const BIN = fileURLToPath(new URL("./bin.ts", import.meta.url));
 
 const CUSTOMERS = [
   { id: "c1", name: "Ada", email: "ada@example.com", plan: "pro" },
@@ -145,134 +144,21 @@ afterEach(async () => {
 });
 
 beforeAll(async () => {
-  tmp = await mkdtemp(join(tmpdir(), "typegen-e2e-"));
+  tmp = await mkdtemp(join(tmpdir(), "decocms-e2e-"));
 });
 
 afterAll(async () => {
   if (tmp) await rm(tmp, { recursive: true, force: true });
 });
 
-function runCli(
-  args: string[],
-  extraEnv?: Record<string, string>,
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["bun", "run", CLI, ...args], {
-    env: {
-      ...process.env,
-      STUDIO_BASE_URL: baseUrl,
-      STUDIO_API_KEY: "test-key",
-      ...extraEnv,
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]).then(([code, stdout, stderr]) => ({ code, stdout, stderr }));
-}
-
-describe("typegen CLI e2e", () => {
-  test("generate writes a client and one schema file per tool", async () => {
-    const clientPath = join(tmp, "client.ts");
-    const schemasDir = join(tmp, "tools");
-    const { code, stderr } = await runCli([
-      "--mcp",
-      "crm",
-      "--output",
-      clientPath,
-      "--schemas-dir",
-      schemasDir,
-    ]);
-    expect(stderr).toContain("use `decocms typegen`");
-    expect(code).toBe(0);
-
-    const clientSrc = await readFile(clientPath, "utf-8");
-    expect(clientSrc).toContain("export type Tools = {");
-    expect(clientSrc).toContain("LIST_CUSTOMERS:");
-    expect(clientSrc).toContain("SEND_EMAIL:");
-
-    const files = (await readdir(schemasDir)).sort();
-    expect(files).toEqual(["LIST_CUSTOMERS.json", "SEND_EMAIL.json"]);
-
-    const listSchema = JSON.parse(
-      await readFile(join(schemasDir, "LIST_CUSTOMERS.json"), "utf-8"),
-    );
-    expect(listSchema.name).toBe("LIST_CUSTOMERS");
-    expect(listSchema.description).toBe(
-      "List customers, optionally filtered by plan",
-    );
-    expect(listSchema.inputSchema.properties.plan.enum).toEqual([
-      "free",
-      "pro",
-    ]);
-    expect(listSchema.outputSchema.required).toEqual(["customers"]);
-  });
-
-  test("tools lists the available tools", async () => {
-    const { code, stdout } = await runCli(["tools", "--mcp", "crm"]);
-    expect(code).toBe(0);
-    expect(stdout).toContain("LIST_CUSTOMERS — List customers");
-    expect(stdout).toContain("SEND_EMAIL — Send an email");
-  });
-
-  test("call invokes a tool and prints structured output", async () => {
-    const { code, stdout } = await runCli([
-      "call",
-      "LIST_CUSTOMERS",
-      '{"plan":"pro"}',
-      "--mcp",
-      "crm",
-    ]);
-    expect(code).toBe(0);
-    const result = JSON.parse(stdout);
-    expect(result.customers).toHaveLength(1);
-    expect(result.customers[0].name).toBe("Ada");
-  });
-
-  test("call with default empty input returns all rows", async () => {
-    const { code, stdout } = await runCli([
-      "call",
-      "LIST_CUSTOMERS",
-      "--mcp",
-      "crm",
-    ]);
-    expect(code).toBe(0);
-    expect(JSON.parse(stdout).customers).toHaveLength(2);
-  });
-
-  test("honors legacy MESH_* env vars as a fallback", async () => {
-    // No STUDIO_* set; only the legacy names. Must still resolve.
-    const env = { ...process.env };
-    delete env.STUDIO_BASE_URL;
-    delete env.STUDIO_API_KEY;
-    env.MESH_BASE_URL = baseUrl;
-    env.MESH_API_KEY = "test-key";
-    const proc = Bun.spawn(["bun", "run", CLI, "tools", "--mcp", "crm"], {
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [code, stdout] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-    ]);
-    expect(code).toBe(0);
-    expect(stdout).toContain("LIST_CUSTOMERS");
-  });
-
-  // A workspace as the daemon leaves it: .deco/tools/.endpoint.json holding
-  // the run's pre-authenticated endpoint. No flags, no STUDIO_*/MESH_* env.
-  // One CLI invocation per test — the stub transport is single-session.
+describe("decocms binary inside a sandbox workspace", () => {
   async function flaglessWorkspace(): Promise<{
     run: (
       args: string[],
-      entry?: string,
     ) => Promise<{ code: number; stdout: string; stderr: string }>;
     [Symbol.asyncDispose]: () => Promise<void>;
   }> {
-    const workspace = await mkdtemp(join(tmpdir(), "typegen-sandbox-"));
+    const workspace = await mkdtemp(join(tmpdir(), "decocms-sandbox-"));
     const toolsDir = join(workspace, ".deco", "tools");
     await mkdir(toolsDir, { recursive: true });
     await writeFile(
@@ -293,8 +179,8 @@ describe("typegen CLI e2e", () => {
     delete env.MESH_MCP_ID;
 
     return {
-      run: (args: string[], entry = CLI) => {
-        const proc = Bun.spawn(["bun", "run", entry, ...args], {
+      run: (args: string[]) => {
+        const proc = Bun.spawn(["bun", "run", BIN, ...args], {
           cwd: workspace,
           env,
           stdout: "pipe",
@@ -310,67 +196,69 @@ describe("typegen CLI e2e", () => {
         rm(workspace, { recursive: true, force: true }),
     };
   }
-
-  test("flagless `tools` inside a sandbox workspace via the endpoint file", async () => {
+  test("whoami reports the run's endpoint", async () => {
     await using ws = await flaglessWorkspace();
-    const tools = await ws.run(["tools"]);
-    expect(tools.stderr).toContain("use `decocms tools");
-    expect(tools.code).toBe(0);
-    expect(tools.stdout).toContain("LIST_CUSTOMERS");
-  });
-
-  test("flagless `call` inside a sandbox workspace via the endpoint file", async () => {
-    await using ws = await flaglessWorkspace();
-    const call = await ws.run(["call", "LIST_CUSTOMERS", '{"plan":"free"}']);
-    expect(call.code).toBe(0);
-    expect(JSON.parse(call.stdout).customers[0].name).toBe("Grace");
-  });
-
-  test("the decocms binary lists the run's tools with no flags", async () => {
-    await using ws = await flaglessWorkspace();
-    const whoami = await ws.run(["auth", "whoami"], STUDIO);
+    const whoami = await ws.run(["auth", "whoami"]);
+    expect(whoami.code).toBe(0);
     expect(whoami.stdout).toContain(`${baseUrl}/mcp/virtual-mcp/crm`);
-    const tools = await ws.run(["tools", "list"], STUDIO);
-    expect(tools.code).toBe(0);
-    expect(tools.stdout).toContain("LIST_CUSTOMERS");
   });
 
-  test("the decocms binary calls a run's tool with -d arguments", async () => {
+  test("tools list shows the run's tools with no flags", async () => {
     await using ws = await flaglessWorkspace();
-    const call = await ws.run(
-      ["tools", "call", "LIST_CUSTOMERS", "-d", '{"plan":"free"}'],
-      STUDIO,
-    );
+    const tools = await ws.run(["tools", "list"]);
+    expect(tools.stderr).toBe("");
+    expect(tools.code).toBe(0);
+    expect(tools.stdout).toContain("LIST_CUSTOMERS");
+    expect(tools.stdout).toContain("SEND_EMAIL");
+  });
+
+  test("tools call passes -d arguments and prints the structured result", async () => {
+    await using ws = await flaglessWorkspace();
+    const call = await ws.run([
+      "tools",
+      "call",
+      "LIST_CUSTOMERS",
+      "-d",
+      '{"plan":"free"}',
+    ]);
     expect(call.code).toBe(0);
     expect(JSON.parse(call.stdout).customers[0].name).toBe("Grace");
   });
 
-  test("the decocms binary generates a client for the run's agent", async () => {
+  test("tools call exits non-zero for an unknown tool", async () => {
+    await using ws = await flaglessWorkspace();
+    const call = await ws.run(["tools", "call", "DOES_NOT_EXIST"]);
+    expect(call.code).not.toBe(0);
+  });
+
+  test("typegen writes a client and schemas for the run's agent", async () => {
     await using ws = await flaglessWorkspace();
     const clientPath = join(tmp, "run-client.ts");
-    const gen = await ws.run(["typegen", "--output", clientPath], STUDIO);
+    const schemasDir = join(tmp, "run-schemas");
+    const gen = await ws.run([
+      "typegen",
+      "--output",
+      clientPath,
+      "--schemas-dir",
+      schemasDir,
+    ]);
     expect(gen.stderr).toBe("");
     expect(gen.code).toBe(0);
     const clientSrc = await readFile(clientPath, "utf-8");
+    expect(clientSrc).toContain("export type Tools = {");
     expect(clientSrc).toContain("LIST_CUSTOMERS:");
     expect(clientSrc).toContain('mcpId: "crm"');
+    expect(clientSrc).toContain('from "@decocms/cli"');
+    expect((await readdir(schemasDir)).sort()).toEqual([
+      "LIST_CUSTOMERS.json",
+      "SEND_EMAIL.json",
+    ]);
   });
 
-  test("the decocms binary refuses org-wide commands with only a run's key", async () => {
+  test("org-wide commands are refused with only a run's key", async () => {
     await using ws = await flaglessWorkspace();
-    const orgs = await ws.run(["orgs"], STUDIO);
+    const orgs = await ws.run(["orgs"]);
     expect(orgs.code).toBe(1);
     expect(orgs.stderr).toContain("needs a login");
-  });
-
-  test("call surfaces tool errors with a non-zero exit", async () => {
-    const { code, stderr } = await runCli([
-      "call",
-      "DOES_NOT_EXIST",
-      "--mcp",
-      "crm",
-    ]);
-    expect(code).not.toBe(0);
-    expect(stderr.length).toBeGreaterThan(0);
   });
 });

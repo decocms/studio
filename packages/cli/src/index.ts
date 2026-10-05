@@ -1,3 +1,14 @@
+import { print } from "./lib/output";
+export {
+  createStudioClient,
+  type StudioClient,
+  type StudioClientDeps,
+  type StudioClientInstance,
+  type StudioClientOptions,
+  type ToolMap,
+} from "./lib/client";
+export { type DiscoveredEndpoint, discoverEndpoint } from "./lib/endpoint";
+
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -41,6 +52,16 @@ Options:
   --home <path>         Where the login is stored (default: ~/deco, or DATA_DIR / DECOCMS_HOME)`;
 
 /**
+ * Exits once stdout has drained. `process.exit` alone drops piped output past
+ * the OS pipe buffer (64 KB), cutting large JSON in half; in Bun only `end()`
+ * waits for the whole buffer, a write callback does not.
+ */
+export async function exitAfterFlush(code: number): Promise<never> {
+  await new Promise<void>((resolve) => process.stdout.end(resolve));
+  process.exit(code);
+}
+
+/**
  * Runs `auth`, `api`, `tools`, or `orgs` with `args` (the command first) and
  * returns the exit code.
  */
@@ -54,7 +75,7 @@ export async function runStudioCli(args: string[]): Promise<number> {
   }
   const { values, positionals } = parsed;
   if (values.help) {
-    console.log(STUDIO_CLI_USAGE);
+    print(STUDIO_CLI_USAGE);
     return 0;
   }
   const dataDir =

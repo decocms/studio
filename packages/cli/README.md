@@ -1,22 +1,24 @@
-# @decocms/studio-cli
+# @decocms/cli
 
-The Studio commands an agent or a person runs from a shell: `auth`, `orgs`,
-`tools`, `api`, and `typegen`.
+The `decocms` command an agent or a person runs from a shell (`auth`, `orgs`,
+`tools`, `api`, `typegen`) and `createStudioClient()`, the typed client that
+generated code and scripts import.
 
 | Attribute | Value |
 | --- | --- |
-| Workspace | `@decocms/studio-cli` (`packages/studio-cli`) |
-| Kind | Shared CLI command library |
+| Workspace | `@decocms/cli` (`packages/cli`) |
+| Kind | Public CLI and client library |
 | Runtime | Node.js 20+ and Bun |
-| Distribution | Private workspace package; bundled into the `decocms` server CLI and the `decocms` binary of `@decocms/typegen` |
+| Distribution | Public npm package; `decocms` binary. Also bundled into the `decocms` server CLI and installed in the Studio sandbox image |
 
 ## Overview
 
-The same commands ship in two places so an agent learns one vocabulary:
+One vocabulary everywhere an agent reaches Studio from a shell:
 
-- the `decocms` npm package (the Studio server), for people and local agents;
-- `@decocms/typegen`, which the Studio sandbox image installs, so a run's
-  agent has `decocms` on its PATH.
+- people and local agents run `bunx @decocms/cli` (or the server package's
+  `decocms`, which bundles the same commands);
+- the Studio sandbox image installs this package from the same revision, so a
+  run's agent has `decocms` on its PATH.
 
 The commands are shared; the credentials are not. A run acts with its own
 org-bound key, and a person acts with their own login.
@@ -30,13 +32,13 @@ org-bound key, and a person acts with their own login.
   Virtual MCP's tools (a run's endpoint, or an agent with `--agent`) over MCP.
 - Send authenticated requests to any Studio route (`api`) and list the user's
   organizations (`orgs`).
-- Generate a typed TypeScript client for an agent's tools (`typegen`), built on
-  `createStudioClient()` from `@decocms/typegen`.
+- Generate a typed TypeScript client for an agent's tools (`typegen`).
+- Provide `createStudioClient()`, the lazy MCP client generated code calls.
 
 ## Usage
 
 ```bash
-decocms auth login                       # opens the browser
+bunx @decocms/cli auth login             # opens the browser
 decocms auth whoami                      # which credential commands will use
 decocms orgs                             # slug<TAB>name per organization
 decocms tools list --org my-org thread
@@ -47,10 +49,22 @@ decocms typegen --org my-org --agent vir_123 --output client.ts
 ```
 
 Inside a Studio run, `decocms tools list|describe|call` and `decocms typegen`
-need no flags: the run's endpoint decides the tools. `decocms --help` lists every option.
+need no flags: the run's endpoint decides the tools. `decocms --help` lists
+every option.
+
+Call tools from a script, typed with a generated `client.ts` or untyped:
+
+```ts
+import { createStudioClient } from "@decocms/cli";
+
+const client = createStudioClient(); // the sandbox endpoint, or mcpId + apiKey
+const result = await client.SEARCH({ query: "Studio" });
+await client.close();
+```
 
 Embed the commands in another CLI with `runStudioCli(args)`, which returns the
-exit code, and `isStudioCliCommand(args[0])` to route to it.
+exit code, and `isStudioCliCommand(args[0])` to route to it; the server's
+`apps/api/src/cli.ts` does this.
 
 ## Architecture
 
@@ -67,22 +81,26 @@ from `src/lib/credentials.ts`, first match wins:
 `tools` reads that credential to pick a source: REST at `/api/:org/tools` for
 a login or API key, or an MCP Streamable HTTP client for a run's endpoint or
 `/api/:org/mcp/virtual-mcp/:id` with `--agent`. `typegen` always uses MCP, the
-same way. `api` and `orgs` need a login or an API key; a run's key only covers
-the run's tools, so they refuse it.
+same way, and `src/lib/codegen.ts` turns each tool's JSON Schemas into a
+`Tools` type. `api` and `orgs` need a login or an API key; a run's key only
+covers the run's tools, so they refuse it.
+
+The package's export conditions send Bun and TypeScript to `src/` and plain
+Node to the tsup build in `dist/`, which is also what the `decocms` binary runs.
 
 ## Development
 
 ```bash
-bun run --cwd=packages/studio-cli check
-bun run --cwd=packages/studio-cli test
+bun run --cwd=packages/cli check
+bun run --cwd=packages/cli test
 ```
 
-The code runs under both Node (inside `@decocms/typegen`) and Bun (inside the
-server), so it uses Node APIs only. Rebuild typegen to try the Node binary:
+The code runs under both Node (the published binary) and Bun (the server), so
+it uses Node APIs only. Build and run the Node binary:
 
 ```bash
-bun run --cwd=packages/typegen build
-node packages/typegen/dist/studio.js auth whoami
+bun run --cwd=packages/cli build
+node packages/cli/dist/bin.js auth whoami
 ```
 
 ## Boundaries
@@ -92,13 +110,15 @@ node packages/typegen/dist/studio.js auth whoami
   `auth token`.
 - Session files and `.deco/tools/.endpoint.json` hold bearer credentials. They
   are written with mode 0600; do not print, commit, or copy them.
-- A change here ships through `decocms`, `@decocms/typegen`, and the sandbox
+- Generated clients authenticate with `STUDIO_API_KEY` or the sandbox's
+  endpoint file; they don't read the `decocms auth login` session.
+- Generated types are a snapshot of the agent's tools. Rerun `decocms typegen`
+  when they change; the runtime does not validate responses against them.
+- A change here ships through npm, the `decocms` server CLI, and the sandbox
   image; `scripts/release-changes.ts` bumps all three.
 
 ## Related documentation
 
-- [`@decocms/typegen`](../typegen/README.md): the published package that
-  carries the `decocms` binary into sandboxes.
 - [`decocms-studio` skill](../../apps/api/plugin/skills/decocms-studio/SKILL.md):
   how agents use these commands.
 - [`tool-scripting` skill](../sandbox/image/skills/tool-scripting/SKILL.md):

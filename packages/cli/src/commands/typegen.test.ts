@@ -58,9 +58,12 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "deco-typegen-"));
   out = [];
   err = [];
-  logSpy = spyOn(console, "log").mockImplementation((msg: unknown) => {
-    out.push(String(msg));
-  });
+  logSpy = spyOn(process.stdout, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    out.push(String(chunk).replace(/\n$/, ""));
+    return true;
+  }) as typeof process.stdout.write);
   errSpy = spyOn(console, "error").mockImplementation((msg: unknown) => {
     err.push(String(msg));
   });
@@ -109,7 +112,7 @@ describe("typegenCommand with a login", () => {
     const source = await readFile(output, "utf-8");
     expect(source).toContain("LIST_CUSTOMERS");
     expect(source).toContain('"vir_1"');
-    expect(source).toContain("@decocms/typegen");
+    expect(source).toContain("@decocms/cli");
     expect(await readdir(schemasDir)).toEqual(["LIST_CUSTOMERS.json"]);
     expect(out.join("\n")).toContain("1 tool(s) for vir_1");
   });

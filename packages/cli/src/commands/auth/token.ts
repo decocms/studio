@@ -1,4 +1,5 @@
 import { requireSession, type SessionOptions } from "../../lib/studio-request";
+import { print } from "../../lib/output";
 
 /**
  * Prints a valid access token, refreshing it first when expired, so scripts
@@ -7,6 +8,6 @@ import { requireSession, type SessionOptions } from "../../lib/studio-request";
 export async function tokenCommand(options: SessionOptions): Promise<number> {
   const session = await requireSession(options);
   if (!session) return 1;
-  console.log(session.accessToken);
+  print(session.accessToken);
   return 0;
 }

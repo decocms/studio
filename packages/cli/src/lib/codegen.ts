@@ -232,14 +232,14 @@ export async function generateClientCode(
       : `export type Tools = {\n${toolEntries.join("\n")}\n};`;
 
   const code = `${BANNER}
-import { createStudioClient } from "@decocms/typegen";
+import { createStudioClient } from "@decocms/cli";
 
 ${toolsType}
 
 export const client = createStudioClient<Tools>({
   mcpId: ${JSON.stringify(mcpId)},
-  apiKey: process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY,
-  baseUrl: process.env.STUDIO_BASE_URL ?? process.env.MESH_BASE_URL,
+  apiKey: process.env.STUDIO_API_KEY,
+  baseUrl: process.env.STUDIO_BASE_URL,
 });
 `;
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { isStudioCliCommand, runStudioCli, STUDIO_CLI_COMMANDS } from "./index";
 
 let out: string[];
@@ -9,9 +10,12 @@ let errSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
   out = [];
   err = [];
-  logSpy = spyOn(console, "log").mockImplementation((msg: unknown) => {
-    out.push(String(msg));
-  });
+  logSpy = spyOn(process.stdout, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    out.push(String(chunk).replace(/\n$/, ""));
+    return true;
+  }) as typeof process.stdout.write);
   errSpy = spyOn(console, "error").mockImplementation((msg: unknown) => {
     err.push(String(msg));
   });
@@ -47,5 +51,29 @@ describe("runStudioCli", () => {
     expect(err.join("\n")).toContain(
       "decocms auth <login|whoami|token|logout>",
     );
+  });
+});
+
+describe("exitAfterFlush", () => {
+  /** A slow pipe reader is what exposed the cut: the OS buffer (64 KB) fills
+   *  and anything still queued when the process exits is lost. */
+  it("delivers large piped output to a slow reader before exiting", async () => {
+    const index = fileURLToPath(new URL("./index.ts", import.meta.url));
+    const script = `
+      import { exitAfterFlush } from ${JSON.stringify(index)};
+      process.stdout.write("x".repeat(6_000_000) + "\\n");
+      await exitAfterFlush(3);
+    `;
+    const proc = Bun.spawn(["bun", "-e", script], { stdout: "pipe" });
+    const reader = proc.stdout.getReader();
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.length;
+      await Bun.sleep(1);
+    }
+    expect(await proc.exited).toBe(3);
+    expect(bytes).toBe(6_000_001);
   });
 });

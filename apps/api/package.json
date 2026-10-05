@@ -48,7 +48,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@clickhouse/client": "^1.8.1",
     "@dbos-inc/dbos-sdk": "^4.21.6",
-    "@decocms/studio-cli": "workspace:*",
+    "@decocms/cli": "workspace:*",
     "@inkjs/ui": "^2.0.0",
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/kv": "3.4.0",

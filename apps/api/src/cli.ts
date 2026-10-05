@@ -10,14 +10,15 @@
  *   bunx decocms init <directory>   # Scaffold from decocms/mcp-app
  *   bunx decocms completion         # Shell completion setup
  *   bunx decocms services <up|down|status>  # Service management
- *   bunx decocms <auth|orgs|tools|api>  # Studio commands (@decocms/studio-cli)
+ *   bunx decocms <auth|orgs|tools|api>  # Studio commands (@decocms/cli)
  */
 
 import {
+  exitAfterFlush,
   isStudioCliCommand,
   runStudioCli,
   STUDIO_CLI_USAGE,
-} from "@decocms/studio-cli";
+} from "@decocms/cli";
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
@@ -27,7 +28,7 @@ import { parsePositiveIntFlag } from "./cli/parse-positive-int-flag";
 // Studio commands parse their own flags, so they run before the server's
 // strict parser sees them.
 if (isStudioCliCommand(process.argv[2])) {
-  process.exit(await runStudioCli(process.argv.slice(2)));
+  await exitAfterFlush(await runStudioCli(process.argv.slice(2)));
 }
 
 const { values, positionals } = parseArgs({

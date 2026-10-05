@@ -10,7 +10,9 @@ let logSpy: ReturnType<typeof spyOn>;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "deco-logout-"));
-  logSpy = spyOn(console, "log").mockImplementation(() => {});
+  logSpy = spyOn(process.stdout, "write").mockImplementation(
+    ((_chunk: string | Uint8Array) => true) as typeof process.stdout.write,
+  );
 });
 
 afterEach(async () => {

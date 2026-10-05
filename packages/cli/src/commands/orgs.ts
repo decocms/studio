@@ -8,6 +8,7 @@ import {
   type CredentialOptions,
   resolveRestCredential,
 } from "../lib/credentials";
+import { print } from "../lib/output";
 
 export interface OrgsOptions extends CredentialOptions, RequestIo {
   /** Print the full response instead of one line per organization. */
@@ -38,11 +39,11 @@ export async function orgsCommand(options: OrgsOptions): Promise<number> {
   }
   const { organizations } = parsed.data;
   if (options.json) {
-    console.log(JSON.stringify(organizations));
+    print(JSON.stringify(organizations));
     return 0;
   }
   for (const org of organizations) {
-    console.log(`${org.slug}\t${org.name}`);
+    print(`${org.slug}\t${org.name}`);
   }
   return 0;
 }

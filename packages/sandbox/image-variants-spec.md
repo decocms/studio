@@ -313,5 +313,5 @@ tools, REST mirror, console, review).
   implementation. Not in scope here; this spec only avoids blocking it.
 - **`FROM <customer image>` + our layer.** Feasible because the daemon is one
   static Go binary, blocked by the width of the base runtime contract (bun,
-  node, chromium, python office tooling, skills, typegen, harness-runner).
+  node, chromium, python office tooling, skills, the decocms CLI, harness-runner).
   Shrinking that contract is the prerequisite; this spec does not attempt it.

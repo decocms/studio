@@ -19,7 +19,9 @@ let errSpy: ReturnType<typeof spyOn>;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "deco-login-"));
-  logSpy = spyOn(console, "log").mockImplementation(() => {});
+  logSpy = spyOn(process.stdout, "write").mockImplementation(
+    ((_chunk: string | Uint8Array) => true) as typeof process.stdout.write,
+  );
   errSpy = spyOn(console, "error").mockImplementation(() => {});
 });
 

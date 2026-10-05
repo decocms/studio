@@ -132,11 +132,11 @@ RUN apt-get update \
   && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
   && chromium --version
 
-# Install the typegen build produced from this exact source revision. Installing
-# from npm here would race the post-merge package release and could bake the
-# previous CLI, which does not discover the materialized endpoint file.
-COPY --chown=sandbox:sandbox dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
-RUN npm install -g /opt/sandbox-daemon/typegen.tgz
+# Install the @decocms/cli build (the `decocms` command) produced from this
+# exact source revision. Installing from npm here would race the post-merge
+# package release and could bake a CLI older than this daemon.
+COPY --chown=sandbox:sandbox dist/cli.tgz /opt/sandbox-daemon/cli.tgz
+RUN npm install -g /opt/sandbox-daemon/cli.tgz
 
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 

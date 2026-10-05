@@ -92,8 +92,8 @@ jobs:
         if: steps.tag-check.outputs.exists != 'true'
         uses: ./.github/actions/setup-bun
 
-      # The Dockerfile copies dist/typegen.tgz into the image.
-      - name: Build typegen package
+      # The Dockerfile copies dist/cli.tgz into the image.
+      - name: Build CLI package
         if: steps.tag-check.outputs.exists != 'true'
         run: bun run --cwd=packages/sandbox build
 
