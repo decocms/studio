@@ -96,7 +96,7 @@ export interface FreestyleSandboxProviderOptions {
   /** Pause a VM after this long without network activity. Default 5 min. */
   idleTimeoutSeconds?: number;
   /**
-   * Delete a VM after this long without running. Default 3 days. A plan
+   * Delete a VM after this long without running. Default 1 hour. A plan
    * that caps it lower gets its cap.
    */
   autoDeleteSeconds?: number;
@@ -158,7 +158,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
-    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 3 * 24 * 60 * 60;
+    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
   }
