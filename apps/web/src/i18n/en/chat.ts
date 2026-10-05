@@ -150,7 +150,7 @@ export const chat = {
   "chat.contextPanel.usageLabel": "Usage",
   "chat.contextPanel.userPercent": "User {pct}%",
   "chat.creditsEmptyState.description":
-    "Add credits to use AI here, or connect your own provider.",
+    "Your free credits were used in another workspace. Add credits to use AI here.",
   "chat.creditsEmptyState.skipForNow": "Skip for now",
   "chat.creditsEmptyState.title": "This workspace has no credits",
   "chat.creditsEmptyState.useYourOwnProvider": "Use your own provider",
@@ -546,7 +546,7 @@ export const chat = {
   "chat.todoStatus.pending": "pending",
   "chat.subscriptionLimit.trialLabel": "Subscription required",
   "chat.subscriptionLimit.trialTitle":
-    "This organization used its trial auto-task runs. Subscribe to keep going.",
+    "This organization used its 3 free auto-task runs. Subscribe to keep going.",
   "chat.subscriptionLimit.monthlyLabel": "Auto-task quota used up",
   "chat.subscriptionLimit.monthlyTitle":
     "This organization used its auto-task runs for this billing cycle. More become available next cycle.",

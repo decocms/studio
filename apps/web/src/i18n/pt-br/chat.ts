@@ -155,7 +155,7 @@ export const chat = {
   "chat.contextPanel.usageLabel": "Uso",
   "chat.contextPanel.userPercent": "Usuário {pct}%",
   "chat.creditsEmptyState.description":
-    "Adicione créditos para usar IA aqui, ou conecte seu próprio provedor.",
+    "Seus créditos gratuitos foram utilizados em outro workspace. Adicione créditos para usar IA aqui.",
   "chat.creditsEmptyState.skipForNow": "Pular por enquanto",
   "chat.creditsEmptyState.title": "Este workspace não possui créditos",
   "chat.creditsEmptyState.useYourOwnProvider": "Usar seu próprio provedor",
@@ -562,7 +562,7 @@ export const chat = {
   "chat.todoStatus.pending": "pendente",
   "chat.subscriptionLimit.trialLabel": "Assinatura necessária",
   "chat.subscriptionLimit.trialTitle":
-    "Esta organização usou as execuções de auto tasks do período de teste. Assine para continuar.",
+    "Esta organização usou as 3 execuções grátis de auto tasks. Assine para continuar.",
   "chat.subscriptionLimit.monthlyLabel": "Cota de auto tasks esgotada",
   "chat.subscriptionLimit.monthlyTitle":
     "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais ficam disponíveis no próximo ciclo.",

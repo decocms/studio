@@ -1,5 +1,5 @@
 export const credits = {
-  "credits.topUp.small": "Small",
+  "credits.topUp.starter": "Starter",
   "credits.topUp.popular": "Popular",
   "credits.topUp.bestValue": "Best value",
   "credits.topUp.enterCustom": "Enter custom amount",

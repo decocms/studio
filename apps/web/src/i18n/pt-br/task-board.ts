@@ -359,7 +359,7 @@ export const taskBoard = {
     "O agente corrige o que encontra e abre um pull request para sua revisão",
   "taskBoard.subscriptionPaywall.trialBenefitRuns":
     "10 execuções de auto tasks por ciclo de cobrança",
-  "taskBoard.subscriptionPaywall.trialPrice": "$50",
+  "taskBoard.subscriptionPaywall.trialPrice": "R$ 250",
   "taskBoard.subscriptionPaywall.trialPricePeriod": "/mês",
   "taskBoard.subscriptionPaywall.previewAlt": "Prévia do seu quadro de tarefas",
   "taskBoard.subscriptionPaywall.monthlyTitle": "Cota de auto tasks esgotada",
