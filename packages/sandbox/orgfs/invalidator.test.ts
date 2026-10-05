@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { activityGate, errorBackoffMs, runInvalidator } from "./invalidator";
@@ -129,25 +129,30 @@ describe("errorBackoffMs", () => {
 
 describe("activityGate", () => {
   it("passes on a missing or fresh stamp and holds on a stale one until it is touched", async () => {
-    const path = join(mkdtempSync(join(tmpdir(), "orgfs-gate-")), "activity");
+    const dir = mkdtempSync(join(tmpdir(), "orgfs-gate-"));
+    const path = join(dir, "activity");
     const gate = activityGate(path, 60_000, 5);
     const signal = new AbortController().signal;
 
-    await gate(signal); // no stamp: an older daemon, treated as in use
+    try {
+      await gate(signal); // no stamp: an older daemon, treated as in use
 
-    writeFileSync(path, "");
-    const stale = (Date.now() - 120_000) / 1000;
-    utimesSync(path, stale, stale);
-    let passed = false;
-    const held = gate(signal).then(() => {
-      passed = true;
-    });
-    await Bun.sleep(30);
-    expect(passed).toBe(false);
+      writeFileSync(path, "");
+      const stale = (Date.now() - 120_000) / 1000;
+      utimesSync(path, stale, stale);
+      let passed = false;
+      const held = gate(signal).then(() => {
+        passed = true;
+      });
+      await Bun.sleep(30);
+      expect(passed).toBe(false);
 
-    const now = Date.now() / 1000;
-    utimesSync(path, now, now);
-    await held;
-    expect(passed).toBe(true);
+      const now = Date.now() / 1000;
+      utimesSync(path, now, now);
+      await held;
+      expect(passed).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -1047,7 +1047,8 @@ func main() {
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 	}
-	if p := d.orgFsLinks.ConfigPath; p != "" {
+	// Beside the status file: that is where the sidecar looks for it.
+	if p := d.orgFsLinks.StatusPath; p != "" {
 		go activity.Stamp(filepath.Join(filepath.Dir(p), "activity"), 10*time.Second)
 	}
 	// The golden cache's remote tier needs `zstd` in the image; without it every
