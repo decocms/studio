@@ -98,4 +98,27 @@ describe("ORGANIZATION_MEMBER_LIST (real Postgres)", () => {
 
     expect(members.map((m) => m.id)).toEqual(["mem-b"]);
   });
+
+  it("breaks createdAt ties by id so pages stay stable", async () => {
+    // Same createdAt as mem-b, inserted after it, but sorts before it by id.
+    await sql`
+      INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
+      VALUES ('user-d', 'd@members.test', 'Dee', false, now(), now())
+    `.execute(database.db);
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem-0', 'user-d', ${ORG_ID}, 'user', '2026-01-02T00:00:00.000Z')
+    `.execute(database.db);
+
+    const pages: string[] = [];
+    for (const offset of [0, 1, 2]) {
+      const { members } = await ORGANIZATION_MEMBER_LIST.handler(
+        { limit: 1, offset },
+        makeCtx(database),
+      );
+      pages.push(...members.map((m) => m.id));
+    }
+
+    expect(pages).toEqual(["mem-a", "mem-0", "mem-b"]);
+  });
 });
