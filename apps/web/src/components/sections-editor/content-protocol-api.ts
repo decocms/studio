@@ -215,6 +215,8 @@ async function readContent(
 /**
  * One `blocks.apply`; adopts the returned revision. On GitHub the commit
  * moved the branch head, so the header's branch status is refreshed.
+ * `ifMatch` guards entries by version (`null`: only if it doesn't exist yet);
+ * a failed guard rejects the whole patch with a Conflict.
  */
 export async function applyProtocolPatch(
   queryClient: QueryClient,
@@ -222,11 +224,13 @@ export async function applyProtocolPatch(
   params: ProtocolParams,
   cacheKey: string,
   patch: DecofilePatchBody,
+  ifMatch?: Record<string, string | null>,
 ): Promise<{ revision: string }> {
   const result = await guarded(queryClient, backend, params, () =>
     backend.client.blocksApply({
       set: patch.set as Record<string, Record<string, unknown>> | undefined,
       delete: patch.delete,
+      ...(ifMatch ? { ifMatch } : {}),
     }),
   );
   queryClient.setQueryData<ContentRevisions>(

@@ -394,13 +394,59 @@ test.describe("site editor over deco serve", () => {
         __resolveType: "cms-settings",
         telemetry: { enabled: false },
       });
-      expect(
-        stub.requestBodies.some((body) => body.includes("blocks.apply")),
-      ).toBe(true);
+      // Create-only: the first save guards CMS with ifMatch null.
+      type Call = { method?: string; params?: { ifMatch?: unknown } };
+      const applies = () =>
+        stub.requestBodies
+          .filter((body) => body.includes("blocks.apply"))
+          .flatMap((body) => [JSON.parse(body) as Call | Call[]].flat())
+          .filter((call) => call.method === "blocks.apply");
+      expect(applies()).toHaveLength(1);
+      expect(applies()[0]?.params?.ifMatch).toEqual({ CMS: null });
       await expect(
         page.getByTestId("cms-settings-defaults-notice"),
       ).toHaveCount(0);
       await expect(enabled).not.toBeChecked();
+
+      // Once it exists, a save replaces it like any other block: no guard.
+      await enabled.click();
+      await expect.poll(cmsOf, { timeout: 15_000 }).toMatchObject({
+        telemetry: { enabled: true },
+      });
+      expect(applies()).toHaveLength(2);
+      expect(applies()[1]?.params?.ifMatch).toBeUndefined();
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test("Settings' first save never replaces a CMS block created meanwhile", async ({
+    page,
+  }) => {
+    const stub = await startStub(
+      (await generateKeyPair()).publicKey,
+      undefined,
+      schemaWithSettings,
+    );
+    try {
+      await page.goto(linkOf(stub, "/site-editor/content"));
+      const content = page.getByTestId("main-panel");
+      await content
+        .getByRole("button", { name: "Settings", exact: true })
+        .click({ timeout: 30_000 });
+      await expect(
+        page.getByTestId("cms-settings-defaults-notice"),
+      ).toBeVisible();
+      // Another writer saves a block named CMS, of another type, first.
+      const theirs = `${JSON.stringify({ __resolveType: "site/sections/Cms.tsx" }, null, 2)}\n`;
+      await stub.writeFile("CMS.json", theirs);
+      await content.getByRole("button", { name: "Telemetry" }).click();
+      await content.getByRole("switch", { name: "Enabled" }).click();
+      // The guard fails; the content is read again and explained, not replaced.
+      await expect(page.getByText("CMS settings unavailable")).toBeVisible({
+        timeout: 15_000,
+      });
+      expect((await stub.readFiles())["CMS.json"]).toBe(theirs);
     } finally {
       await stub.close();
     }

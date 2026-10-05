@@ -12,6 +12,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
+  type SaveGuard,
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
@@ -39,6 +40,7 @@ export function AppEditor({
   schemaPending = false,
   previewBaseUrl = null,
   notice,
+  saveGuard,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -54,6 +56,8 @@ export function AppEditor({
   previewBaseUrl?: string | null;
   /** Shown above the form (e.g. that the block is not saved yet). */
   notice?: ReactNode;
+  /** A version guard for this block's autosaves (e.g. create-only on the first save). */
+  saveGuard?: SaveGuard;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -72,11 +76,10 @@ export function AppEditor({
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
-  const { save, flush, isPending } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  const { save, flush, isPending } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { guard: saveGuard },
+  );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
     save(refKey, data),

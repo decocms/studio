@@ -68,6 +68,8 @@ export interface DecoServeStub {
   readFiles: () => Promise<Record<string, string>>;
   /** Every request body the server received, in order. */
   requestBodies: string[];
+  /** Writes a saved block file behind the editor's back (another writer). */
+  writeFile: (file: string, text: string) => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -148,6 +150,7 @@ export async function startDecoServeStub(params: {
       return files;
     },
     requestBodies,
+    writeFile: (file, text) => writeFile(join(blocksDir, file), text),
     close: async () => {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

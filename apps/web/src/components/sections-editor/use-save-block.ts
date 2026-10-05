@@ -32,6 +32,20 @@ interface UseSaveBlockParams {
   branch: string;
 }
 
+/**
+ * A `blocks.apply` version guard for one save, decided when the save runs
+ * (saves of a branch run one at a time), not when it's scheduled. `ifMatch`
+ * returns the guard, or undefined for none; `onApplied` runs as soon as the
+ * guarded write lands, before the next save of the branch starts. Only the
+ * content-protocol backend sends it; the others have no versions.
+ */
+export interface SaveGuard {
+  ifMatch: (blockKey: string) => Record<string, string | null> | undefined;
+  onApplied?: () => void;
+  /** A save the guard refused (or any failed guarded save): re-read the content. */
+  onRejected?: (error: unknown) => void;
+}
+
 export function useSaveBlock({
   orgSlug,
   virtualMcpId,
@@ -63,20 +77,31 @@ export function useSaveBlock({
     mutationFn: async ({
       blockKey,
       data,
+      guard,
     }: {
       blockKey: string;
       data: unknown;
+      guard?: SaveGuard;
     }) => {
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
       if (protocol) {
-        return applyProtocolPatch(
-          queryClient,
-          protocol,
-          { orgSlug, virtualMcpId, branch, threadId },
-          cacheKey,
-          { set: { [blockKey]: data } },
-        );
+        const ifMatch = guard?.ifMatch(blockKey);
+        try {
+          const result = await applyProtocolPatch(
+            queryClient,
+            protocol,
+            { orgSlug, virtualMcpId, branch, threadId },
+            cacheKey,
+            { set: { [blockKey]: data } },
+            ifMatch,
+          );
+          if (ifMatch) guard?.onApplied?.();
+          return result;
+        } catch (error) {
+          if (ifMatch) guard?.onRejected?.(error);
+          throw error;
+        }
       }
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };
@@ -184,7 +209,7 @@ type SaveData =
  */
 export function useDebouncedSaveBlock(
   params: UseSaveBlockParams,
-  opts?: { onSaved?: () => void },
+  opts?: { onSaved?: () => void; guard?: SaveGuard },
 ) {
   const saveBlock = useSaveBlock(params);
   const t = useT();
@@ -200,7 +225,7 @@ export function useDebouncedSaveBlock(
     pendingRef.current.delete(blockKey);
     if (!resolved) return;
     saveBlock.mutate(
-      { blockKey, data: resolved },
+      { blockKey, data: resolved, guard: opts?.guard },
       {
         onSuccess: () => opts?.onSaved?.(),
         onError: (err) =>
