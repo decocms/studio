@@ -12,6 +12,7 @@
  *   bunx decocms services <up|down|status>  # Service management
  *   bunx decocms api <path>         # Authenticated request to the studio
  *   bunx decocms tools <list|describe|call>  # Builtin tools over REST
+ *   bunx decocms orgs               # Organizations you belong to
  */
 
 import { parseArgs } from "util";
@@ -98,6 +99,7 @@ Usage:
   deco auth <login|whoami|token|logout>  Manage CLI authentication
   deco api <path>                    Authenticated request to the studio
   deco tools <list|describe|call>    List, inspect, and call builtin tools
+  deco orgs                          List the organizations you belong to
   deco backfill-assets               Hoist legacy inline media out of threads + connections + org logos
   deco completion [shell]            Install shell completions
 
@@ -114,7 +116,7 @@ Dev Options:
   --vite-port <port>            Vite dev server port (default: 4000)
   --base-url <url>              Base URL for the server
 
-Auth Options (auth, api, tools):
+Auth Options (auth, api, tools, orgs):
   --target <url>        Decocms target (default: https://studio.decocms.com)
 
 API Options:
@@ -125,7 +127,7 @@ API Options:
 Tools Options:
   --org <slug>          Organization slug (first path segment of the studio URL)
   -d, --data <json>     Tool arguments: literal JSON, @<file>, or @- for stdin
-  --json                Print full tool objects from tools list
+  --json                Print full objects from tools list and orgs
 
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)
@@ -150,6 +152,7 @@ Examples:
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
   deco auth whoami                Show current session
+  deco orgs
   deco tools list --org my-org thread
   deco tools call ORGANIZATION_LIST --org my-org
   deco api "/api/my-org/fs/<volume>/list?path=/"
@@ -308,6 +311,17 @@ if (command === "api") {
   process.exit(code);
 }
 
+// ── Orgs command ───────────────────────────────────────────────────────
+if (command === "orgs") {
+  const { orgsCommand } = await import("./cli/commands/orgs");
+  const code = await orgsCommand({
+    dataDir: resolveDataDir(),
+    target: values.target,
+    json: values.json === true,
+  });
+  process.exit(code);
+}
+
 // ── Tools command ──────────────────────────────────────────────────────
 if (command === "tools") {
   const { toolsCommand } = await import("./cli/commands/tools");
@@ -383,6 +397,7 @@ if (
     "auth",
     "api",
     "tools",
+    "orgs",
     "backfill-assets",
   ].includes(command)
 ) {
