@@ -66,6 +66,27 @@ describe("release change classification", () => {
     }
   });
 
+  /** studio-cli is bundled into the server CLI and into typegen, and typegen
+   *  is packed into the sandbox image: one change must reach all three. */
+  test("studio-cli changes roll the release line, typegen, and the sandbox image", () => {
+    expect(
+      releaseManifestCandidates(["packages/studio-cli/src/commands/tools.ts"]),
+    ).toEqual([
+      API_MANIFEST,
+      NATIVE_MANIFEST,
+      "packages/sandbox/package.json",
+      "packages/studio-cli/package.json",
+      "packages/typegen/package.json",
+    ]);
+  });
+
+  test("typegen changes also retag the sandbox image that packs it", () => {
+    expect(releaseManifestCandidates(["packages/typegen/src/cli.ts"])).toEqual([
+      "packages/sandbox/package.json",
+      "packages/typegen/package.json",
+    ]);
+  });
+
   /** The harness runner is packed into the sandbox image, which is tagged from
    *  packages/sandbox/package.json. Bumping only the runner leaves the tag
    *  where it is, the rebuild overwrites it in place, and nodes holding the

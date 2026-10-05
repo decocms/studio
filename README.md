@@ -198,6 +198,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 | [`packages/sandbox`](./packages/sandbox/README.md) | Agent sandbox lifecycle, daemon, dispatch, and proxy implementation |
 | [`packages/sandbox-controller`](./packages/sandbox-controller/README.md) | Sandbox provider bundled for a remote host such as the control plane |
 | [`packages/shared`](./packages/shared/README.md) | Private isomorphic contracts, SDK utilities, and async primitives |
+| [`packages/studio-cli`](./packages/studio-cli/README.md) | Studio shell commands (`auth`, `orgs`, `tools`, `api`) shared by the server CLI and typegen |
 | [`packages/typegen`](./packages/typegen/README.md) | Typed client generator for Studio Virtual MCPs |
 | [`packages/ui`](./packages/ui/README.md) | Internal React design system |
 

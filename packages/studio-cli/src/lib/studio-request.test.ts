@@ -2,15 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Session } from "./session";
-import { readDataArg, studioFetch, writeResponse } from "./studio-request";
+import {
+  type RestAuth,
+  readDataArg,
+  studioFetch,
+  writeResponse,
+} from "./studio-request";
 
-const session: Session = {
+const session: RestAuth = {
+  kind: "session",
   target: "https://studio.example.com",
-  clientId: "client_abc",
-  user: { sub: "u_1" },
-  accessToken: "at_123",
-  createdAt: "2026-05-04T00:00:00.000Z",
+  token: "at_123",
 };
 
 function recordingFetch() {
@@ -181,6 +183,20 @@ describe("writeResponse", () => {
     expect(errors.join("\n")).toContain(
       "decocms auth login --target https://studio.example.com",
     );
+  });
+
+  it("names STUDIO_API_KEY instead of a login on 401 for an API key", async () => {
+    const chunks: Uint8Array[] = [];
+    const code = await writeResponse(
+      new Response("", { status: 401 }),
+      { ...session, kind: "apiKey" },
+      async (c) => {
+        chunks.push(c);
+      },
+    );
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("STUDIO_API_KEY");
+    expect(errors.join("\n")).not.toContain("auth login");
   });
 
   it("handles an empty body", async () => {

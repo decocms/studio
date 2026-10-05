@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSession } from "../lib/session";
@@ -141,7 +141,7 @@ describe("apiCommand", () => {
 
   it("sends a file with its extension's content type", async () => {
     const path = join(dir, "notes.md");
-    await Bun.write(path, "# hi");
+    await writeFile(path, "# hi");
     await apiCommand({
       dataDir: dir,
       path: "/api/my-org/fs/home/file?path=notes.md",

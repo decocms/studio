@@ -2,13 +2,15 @@ import {
   errorMessage,
   readDataArg,
   type RequestIo,
-  requireSession,
-  type SessionOptions,
   studioFetch,
   writeResponse,
 } from "../lib/studio-request";
+import {
+  type CredentialOptions,
+  resolveRestCredential,
+} from "../lib/credentials";
 
-export interface ApiOptions extends SessionOptions, RequestIo {
+export interface ApiOptions extends CredentialOptions, RequestIo {
   /** Path on the studio, e.g. `/api/<org>/fs/<volume>/list?path=/`. */
   path?: string;
   /** Defaults to POST when `data` is set, GET otherwise. */
@@ -50,8 +52,8 @@ export async function apiCommand(options: ApiOptions): Promise<number> {
     }
   }
 
-  const session = await requireSession(options);
-  if (!session) return 1;
+  const auth = await resolveRestCredential(options, "api");
+  if (!auth) return 1;
 
   let res: Response;
   try {
@@ -59,7 +61,7 @@ export async function apiCommand(options: ApiOptions): Promise<number> {
     const method = (options.method ?? (body === undefined ? "GET" : "POST"))
       .trim()
       .toUpperCase();
-    res = await studioFetch(session, options.path, {
+    res = await studioFetch(auth, options.path, {
       method,
       headers,
       body,
@@ -69,5 +71,5 @@ export async function apiCommand(options: ApiOptions): Promise<number> {
     console.error(errorMessage(err));
     return 1;
   }
-  return writeResponse(res, session, options.output);
+  return writeResponse(res, auth, options.output);
 }

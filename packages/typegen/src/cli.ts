@@ -194,6 +194,11 @@ async function cmdCall(args: string[]): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const cmd = args[0];
+  if (cmd === "tools" || cmd === "call") {
+    console.error(
+      `typegen ${cmd} is deprecated: use \`decocms tools list|describe|call\` (same package), which also works with your login outside a sandbox.`,
+    );
+  }
   if (cmd === "tools") return cmdTools(args);
   if (cmd === "call") return cmdCall(args);
   // Default (no subcommand, or leading `--mcp ...`): generate a client.

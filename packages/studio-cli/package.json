@@ -1,0 +1,22 @@
+{
+  "name": "@decocms/studio-cli",
+  "private": true,
+  "type": "module",
+  "description": "Studio client commands (auth, api, tools, orgs) shared by the decocms server CLI and the typegen package",
+  "exports": {
+    ".": "./src/index.ts",
+    "./endpoint": "./src/lib/endpoint.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  }
+}

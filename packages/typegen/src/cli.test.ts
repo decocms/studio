@@ -31,6 +31,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url));
+const STUDIO = fileURLToPath(new URL("./studio.ts", import.meta.url));
 
 const CUSTOMERS = [
   { id: "c1", name: "Ada", email: "ada@example.com", plan: "pro" },
@@ -267,6 +268,7 @@ describe("typegen CLI e2e", () => {
   async function flaglessWorkspace(): Promise<{
     run: (
       args: string[],
+      entry?: string,
     ) => Promise<{ code: number; stdout: string; stderr: string }>;
     [Symbol.asyncDispose]: () => Promise<void>;
   }> {
@@ -291,8 +293,8 @@ describe("typegen CLI e2e", () => {
     delete env.MESH_MCP_ID;
 
     return {
-      run: (args: string[]) => {
-        const proc = Bun.spawn(["bun", "run", CLI, ...args], {
+      run: (args: string[], entry = CLI) => {
+        const proc = Bun.spawn(["bun", "run", entry, ...args], {
           cwd: workspace,
           env,
           stdout: "pipe",
@@ -312,7 +314,7 @@ describe("typegen CLI e2e", () => {
   test("flagless `tools` inside a sandbox workspace via the endpoint file", async () => {
     await using ws = await flaglessWorkspace();
     const tools = await ws.run(["tools"]);
-    expect(tools.stderr).toBe("");
+    expect(tools.stderr).toContain("use `decocms tools");
     expect(tools.code).toBe(0);
     expect(tools.stdout).toContain("LIST_CUSTOMERS");
   });
@@ -322,6 +324,32 @@ describe("typegen CLI e2e", () => {
     const call = await ws.run(["call", "LIST_CUSTOMERS", '{"plan":"free"}']);
     expect(call.code).toBe(0);
     expect(JSON.parse(call.stdout).customers[0].name).toBe("Grace");
+  });
+
+  test("the decocms binary lists the run's tools with no flags", async () => {
+    await using ws = await flaglessWorkspace();
+    const whoami = await ws.run(["auth", "whoami"], STUDIO);
+    expect(whoami.stdout).toContain(`${baseUrl}/mcp/virtual-mcp/crm`);
+    const tools = await ws.run(["tools", "list"], STUDIO);
+    expect(tools.code).toBe(0);
+    expect(tools.stdout).toContain("LIST_CUSTOMERS");
+  });
+
+  test("the decocms binary calls a run's tool with -d arguments", async () => {
+    await using ws = await flaglessWorkspace();
+    const call = await ws.run(
+      ["tools", "call", "LIST_CUSTOMERS", "-d", '{"plan":"free"}'],
+      STUDIO,
+    );
+    expect(call.code).toBe(0);
+    expect(JSON.parse(call.stdout).customers[0].name).toBe("Grace");
+  });
+
+  test("the decocms binary refuses org-wide commands with only a run's key", async () => {
+    await using ws = await flaglessWorkspace();
+    const orgs = await ws.run(["orgs"], STUDIO);
+    expect(orgs.code).toBe(1);
+    expect(orgs.stderr).toContain("needs a login");
   });
 
   test("call surfaces tool errors with a non-zero exit", async () => {

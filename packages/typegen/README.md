@@ -8,7 +8,7 @@ Node.js command line.
 | Workspace | `@decocms/typegen` (`packages/typegen`) |
 | Kind | Public typed-client generator and CLI |
 | Runtime | Node.js 20+ |
-| Distribution | Public npm package; `typegen` binary |
+| Distribution | Public npm package; `typegen` and `decocms` binaries |
 
 ## Overview
 
@@ -76,30 +76,31 @@ const result = await client.SEARCH({ query: "typed MCP clients" });
 await client.close();
 ```
 
-Inspect tools without generating code:
+Inspect and call tools without generating code with the package's `decocms`
+binary, the same Studio commands the `decocms` server package ships. Inside a
+Studio sandbox it uses the run's endpoint; elsewhere, a login or
+`STUDIO_API_KEY`:
 
 ```bash
-bunx @decocms/typegen tools --mcp my-virtual-mcp-id --key "$STUDIO_API_KEY"
-bunx @decocms/typegen tools SEARCH --mcp my-virtual-mcp-id --key "$STUDIO_API_KEY"
+decocms tools list                         # inside a sandbox run
+decocms tools describe SEARCH
+decocms tools call SEARCH -d '{"query":"Studio"}'
+decocms tools list --org my-org --agent my-virtual-mcp-id   # with a login
 ```
 
-Call a tool and print its structured result:
-
-```bash
-bunx @decocms/typegen call SEARCH '{"query":"Studio"}' \
-  --mcp my-virtual-mcp-id \
-  --key "$STUDIO_API_KEY"
-```
+`typegen tools` and `typegen call` still work and print a deprecation notice.
 
 ## Architecture
 
-The package has three parts:
+The package has four parts:
 
-1. **CLI** — resolves connection settings, connects an MCP client, and dispatches
-   the generate, tools, or call operation.
-2. **Code generator** — converts each input and output JSON Schema to an inline
+1. **`typegen` CLI** — resolves connection settings, connects an MCP client, and
+   dispatches the generate operation (plus the deprecated tools and call).
+2. **`decocms` CLI** — the Studio commands from the private
+   `@decocms/studio-cli` workspace, bundled into `dist/studio.js`.
+3. **Code generator** — converts each input and output JSON Schema to an inline
    TypeScript type, builds a `Tools` map, and formats the generated module.
-3. **Runtime client** — creates a proxy whose property names are MCP tool names.
+4. **Runtime client** — creates a proxy whose property names are MCP tool names.
    The first call opens one shared connection; concurrent calls reuse the same
    connection promise.
 
@@ -178,7 +179,7 @@ typegen [--mcp ID] [--key KEY] [--url BASE_URL]
 | `--output` | `client.ts` | Generated TypeScript module |
 | `--schemas-dir` | Not written | Directory for per-tool JSON Schema files |
 
-### Inspect tools
+### Inspect tools (deprecated: use `decocms tools list|describe`)
 
 ```text
 typegen tools [TOOL_NAME] [connection flags]
@@ -187,7 +188,7 @@ typegen tools [TOOL_NAME] [connection flags]
 Without a name, the command prints the tool list and first description line. With
 a name, it prints that complete MCP tool definition as JSON.
 
-### Call a tool
+### Call a tool (deprecated: use `decocms tools call`)
 
 ```text
 typegen call TOOL_NAME [JSON_INPUT] [connection flags]

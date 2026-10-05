@@ -17,14 +17,21 @@ An `Unknown command: tools` error means a cached old version; rerun with
 ## 1. Session
 
 ```bash
-decocms auth whoami        # prints Target and User when logged in
+decocms auth whoami        # which credential commands will use
 ```
 
-Not logged in: ask the user to run `decocms auth login` (it opens a browser for
-them to approve). A self-hosted or local studio adds `--target <url>` to every
-command, e.g. `--target http://localhost:3000`.
+`whoami` prints one of:
 
-Done when `whoami` prints the user the person expects.
+- `Target` and `User`: the person's login. Not logged in: ask them to run
+  `decocms auth login` (it opens a browser for them to approve). A self-hosted
+  or local studio adds `--target <url>` to every command, e.g.
+  `--target http://localhost:3000`.
+- `Endpoint`: you are inside a Studio run. `decocms tools` uses the run's own
+  tools with no `--org` and no login; skip step 2. `orgs` and `api` need a
+  login and are refused there.
+- `STUDIO_API_KEY`: an API key from the environment, scoped to its org.
+
+Done when `whoami` names the user or run the person expects.
 
 ## 2. Organization slug
 
@@ -50,6 +57,9 @@ decocms tools describe COLLECTION_THREADS_LIST --org <slug>   # full JSON schema
 decocms tools call COLLECTION_THREADS_LIST --org <slug> -d '{"limit":5}'
 decocms tools call <NAME> --org <slug> -d @args.json          # or -d @- for stdin
 ```
+
+`--agent <vir_id>` (with `--org`) lists and calls one agent's tools instead,
+connections included: what a run of that agent would see.
 
 `call` prints the tool's JSON result and exits non-zero on failure, with the
 error body still on stdout:

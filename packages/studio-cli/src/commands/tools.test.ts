@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSession } from "../lib/session";
-import { toolsCommand } from "./tools";
+import { type McpToolClient, toolsCommand } from "./tools";
 
 const TOOLS = {
   tools: [
@@ -243,5 +243,197 @@ describe("toolsCommand usage", () => {
     expect(code).toBe(1);
     expect(calls).toHaveLength(0);
     expect(err.join("\n")).toContain("Missing --org");
+    expect(err.join("\n")).toContain("decocms orgs");
+  });
+});
+
+function fakeMcp(result: unknown = { structuredContent: { ok: true } }) {
+  const connects: { url: string; headers: Record<string, string> }[] = [];
+  const toolCalls: unknown[] = [];
+  let closed = 0;
+  const connectMcp = async (url: URL, headers: Record<string, string>) => {
+    connects.push({ url: String(url), headers });
+    const client: McpToolClient = {
+      listTools: async () => ({ tools: TOOLS.tools }),
+      callTool: async (params) => {
+        toolCalls.push(params);
+        return result;
+      },
+      close: async () => {
+        closed++;
+      },
+    };
+    return client;
+  };
+  return { connectMcp, connects, toolCalls, closed: () => closed };
+}
+
+async function enterRun(workspace: string) {
+  await mkdir(join(workspace, ".deco", "tools"), { recursive: true });
+  await writeFile(
+    join(workspace, ".deco", "tools", ".endpoint.json"),
+    JSON.stringify({
+      url: "https://studio.example.com/mcp/virtual-mcp/vir_run",
+      headers: { Authorization: "Bearer run-key" },
+    }),
+  );
+}
+
+describe("toolsCommand inside a Studio run", () => {
+  it("lists the run's tools over MCP, with no --org", async () => {
+    await enterRun(dir);
+    const mcp = fakeMcp();
+    const code = await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "list",
+      arg: "organizations",
+      connectMcp: mcp.connectMcp,
+      fetch: respondWith(TOOLS),
+    });
+
+    expect(code).toBe(0);
+    expect(calls).toHaveLength(0);
+    expect(mcp.connects).toEqual([
+      {
+        url: "https://studio.example.com/mcp/virtual-mcp/vir_run",
+        headers: { Authorization: "Bearer run-key" },
+      },
+    ]);
+    expect(out).toEqual(["ORGANIZATION_LIST\tList organizations."]);
+    expect(mcp.closed()).toBe(1);
+  });
+
+  it("calls a tool and prints its structured result", async () => {
+    await enterRun(dir);
+    const mcp = fakeMcp({ structuredContent: { id: "t_1" } });
+    const code = await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "call",
+      arg: "THREAD_GET",
+      org: "ignored-inside-a-run",
+      data: '{"id":"t_1"}',
+      connectMcp: mcp.connectMcp,
+    });
+
+    expect(code).toBe(0);
+    expect(mcp.toolCalls).toEqual([
+      { name: "THREAD_GET", arguments: { id: "t_1" } },
+    ]);
+    expect(out).toEqual(['{"id":"t_1"}']);
+  });
+
+  it("parses a JSON text result when there is no structured content", async () => {
+    await enterRun(dir);
+    const mcp = fakeMcp({ content: [{ type: "text", text: '{"n":2}' }] });
+    await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "call",
+      arg: "X",
+      connectMcp: mcp.connectMcp,
+    });
+
+    expect(mcp.toolCalls).toEqual([{ name: "X", arguments: {} }]);
+    expect(out).toEqual(['{"n":2}']);
+  });
+
+  it("exits 1 when the tool reports an error", async () => {
+    await enterRun(dir);
+    const mcp = fakeMcp({
+      isError: true,
+      content: [{ type: "text", text: "Access denied" }],
+    });
+    const code = await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "call",
+      arg: "X",
+      connectMcp: mcp.connectMcp,
+    });
+
+    expect(code).toBe(1);
+    expect(out).toEqual(['"Access denied"']);
+  });
+
+  it("rejects arguments that are not a JSON object before connecting", async () => {
+    await enterRun(dir);
+    const mcp = fakeMcp();
+    for (const data of ["[1]", "nope", '"text"']) {
+      const code = await toolsCommand({
+        dataDir: dir,
+        cwd: dir,
+        env: {},
+        subcommand: "call",
+        arg: "X",
+        data,
+        connectMcp: mcp.connectMcp,
+      });
+      expect(code).toBe(1);
+    }
+    expect(mcp.connects).toHaveLength(0);
+    expect(err.join("\n")).toContain("must be a JSON object");
+  });
+
+  it("refuses --agent", async () => {
+    await enterRun(dir);
+    const mcp = fakeMcp();
+    const code = await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "list",
+      agent: "vir_other",
+      connectMcp: mcp.connectMcp,
+    });
+
+    expect(code).toBe(1);
+    expect(mcp.connects).toHaveLength(0);
+    expect(err.join("\n")).toContain("--agent is not available");
+  });
+});
+
+describe("toolsCommand --agent with a login", () => {
+  it("talks MCP to the agent's Virtual MCP with the user's token", async () => {
+    const mcp = fakeMcp();
+    const code = await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "describe",
+      arg: "THREAD_GET",
+      org: "my org",
+      agent: "vir_1",
+      connectMcp: mcp.connectMcp,
+    });
+
+    expect(code).toBe(0);
+    expect(mcp.connects).toEqual([
+      {
+        url: "https://studio.example.com/api/my%20org/mcp/virtual-mcp/vir_1",
+        headers: { Authorization: "Bearer at_123" },
+      },
+    ]);
+    expect(JSON.parse(out[0]!)).toEqual(TOOLS.tools[1]);
+  });
+
+  it("still needs --org", async () => {
+    const mcp = fakeMcp();
+    const code = await toolsCommand({
+      dataDir: dir,
+      cwd: dir,
+      env: {},
+      subcommand: "list",
+      agent: "vir_1",
+      connectMcp: mcp.connectMcp,
+    });
+
+    expect(code).toBe(1);
+    expect(mcp.connects).toHaveLength(0);
   });
 });

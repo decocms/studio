@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "packages/typegen/**"
+      - "packages/studio-cli/**"
   workflow_dispatch:
 
 permissions:

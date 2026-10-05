@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+
 export interface OAuthCallback {
   code: string;
 }
@@ -35,40 +37,45 @@ export async function startOAuthCallbackServer(
   callbackPromise.catch(() => {});
 
   let settled = false;
-  const server = Bun.serve({
-    port: options.port ?? 0,
-    hostname: "127.0.0.1",
-    fetch(req) {
-      if (settled) {
-        return new Response("", { status: 204 });
-      }
-      const url = new URL(req.url);
-      const code = url.searchParams.get("code");
-      const state = url.searchParams.get("state");
-      if (state !== options.expectedState) {
-        settled = true;
-        rejectCallback(new Error("OAuth state mismatch"));
-        return new Response("State mismatch — close this tab.", {
-          status: 400,
-        });
-      }
-      if (!code) {
-        settled = true;
-        rejectCallback(new Error("OAuth callback missing code"));
-        return new Response("Missing code — close this tab.", { status: 400 });
-      }
-      settled = true;
-      resolveCallback({ code });
-      return new Response(null, {
-        status: 302,
-        headers: { location: options.successRedirectUrl },
-      });
-    },
+  const server = createServer((req, res) => {
+    if (settled) {
+      res.writeHead(204).end();
+      return;
+    }
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    settled = true;
+    if (state !== options.expectedState) {
+      rejectCallback(new Error("OAuth state mismatch"));
+      res.writeHead(400).end("State mismatch — close this tab.");
+      return;
+    }
+    if (!code) {
+      rejectCallback(new Error("OAuth callback missing code"));
+      res.writeHead(400).end("Missing code — close this tab.");
+      return;
+    }
+    resolveCallback({ code });
+    res.writeHead(302, { location: options.successRedirectUrl }).end();
   });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(options.port ?? 0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("OAuth callback server did not bind a TCP port");
+  }
+  const { port } = address;
 
   return {
-    url: `http://127.0.0.1:${server.port}`,
+    url: `http://127.0.0.1:${port}`,
     waitForCallback: () => callbackPromise,
-    close: () => server.stop(true),
+    close: () => {
+      server.closeAllConnections();
+      server.close();
+    },
   };
 }

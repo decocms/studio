@@ -4,6 +4,7 @@ const config: Options = {
   entry: {
     index: "src/index.ts",
     cli: "src/cli.ts",
+    studio: "src/studio.ts",
   },
   format: ["esm"],
   target: "es2022",
@@ -19,6 +20,7 @@ const config: Options = {
     "@modelcontextprotocol/sdk",
     "json-schema-to-typescript",
     "prettier",
+    "zod",
   ],
 };
 

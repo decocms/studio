@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { getValidSession } from "./get-valid-session";
 import { RefreshFailedError } from "./refresh-session";
 import type { Session } from "./session";
@@ -72,21 +74,28 @@ export async function readDataArg(
     return { bytes: await readStdin(), contentType: JSON_TYPE };
   }
   if (data.startsWith("@")) {
-    const file = Bun.file(data.slice(1));
+    const path = data.slice(1);
     return {
-      bytes: new Uint8Array(await file.arrayBuffer()),
-      contentType: file.type,
+      bytes: new Uint8Array(await readFile(path)),
+      contentType: contentTypeFor(path),
     };
   }
   return { bytes: data, contentType: JSON_TYPE };
 }
 
+/** A bearer credential for Studio's REST routes. */
+export interface RestAuth {
+  target: string;
+  token: string;
+  kind: "apiKey" | "session";
+}
+
 /**
- * Sends an authenticated request to the session's studio. `path` must resolve
- * to the same origin as the session, so the token never leaves that studio.
+ * Sends an authenticated request to the credential's studio. `path` must
+ * resolve to that studio's origin, so the token never leaves it.
  */
 export async function studioFetch(
-  session: Session,
+  auth: RestAuth,
   path: string,
   init: {
     method: string;
@@ -95,8 +104,8 @@ export async function studioFetch(
     fetch?: typeof fetch;
   },
 ): Promise<Response> {
-  const origin = new URL(session.target).origin;
-  const url = new URL(path, session.target);
+  const origin = new URL(auth.target).origin;
+  const url = new URL(path, auth.target);
   if (!path.startsWith("/") || url.origin !== origin) {
     throw new Error(
       `Path must start with "/" and stay on ${origin}; got "${path}".`,
@@ -106,7 +115,7 @@ export async function studioFetch(
   if (init.body && !headers.has("content-type")) {
     headers.set("content-type", init.body.contentType);
   }
-  headers.set("authorization", `Bearer ${session.accessToken}`);
+  headers.set("authorization", `Bearer ${auth.token}`);
   return (init.fetch ?? fetch)(url, {
     method: init.method,
     headers,
@@ -120,21 +129,24 @@ export async function studioFetch(
  */
 export async function writeResponse(
   res: Response,
-  session: Session,
+  auth: RestAuth,
   output: (chunk: Uint8Array) => Promise<void> = defaultOutput,
 ): Promise<number> {
   if (!res.ok) {
     console.error(`HTTP ${res.status} ${res.statusText}`.trim());
     if (res.status === 401) {
       console.error(
-        `Run \`${loginHint(session.target)}\` to authenticate again.`,
+        auth.kind === "session"
+          ? `Run \`${loginHint(auth.target)}\` to authenticate again.`
+          : "Studio rejected STUDIO_API_KEY.",
       );
     }
   }
-  if (res.body) {
-    for await (const chunk of res.body) {
-      await output(chunk);
-    }
+  const reader = res.body?.getReader();
+  while (reader) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    await output(value);
   }
   return res.ok ? 0 : 1;
 }
@@ -143,8 +155,35 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Types for the files people upload most; anything else is opaque bytes. */
+const CONTENT_TYPES: Record<string, string> = {
+  css: "text/css",
+  csv: "text/csv",
+  gif: "image/gif",
+  html: "text/html",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  js: "text/javascript",
+  json: "application/json",
+  md: "text/markdown",
+  pdf: "application/pdf",
+  png: "image/png",
+  svg: "image/svg+xml",
+  txt: "text/plain",
+  webp: "image/webp",
+};
+
+function contentTypeFor(path: string): string {
+  const extension = extname(path).slice(1).toLowerCase();
+  return CONTENT_TYPES[extension] ?? "application/octet-stream";
+}
+
 async function defaultReadStdin(): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await Bun.stdin.arrayBuffer());
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
 }
 
 function defaultOutput(chunk: Uint8Array): Promise<void> {

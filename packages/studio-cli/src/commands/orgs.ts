@@ -1,13 +1,15 @@
 import { z } from "zod";
 import {
-  requireSession,
   type RequestIo,
-  type SessionOptions,
   studioFetch,
   writeResponse,
 } from "../lib/studio-request";
+import {
+  type CredentialOptions,
+  resolveRestCredential,
+} from "../lib/credentials";
 
-export interface OrgsOptions extends SessionOptions, RequestIo {
+export interface OrgsOptions extends CredentialOptions, RequestIo {
   /** Print the full response instead of one line per organization. */
   json?: boolean;
 }
@@ -20,14 +22,14 @@ const OrganizationsSchema = z.object({
 
 /** `decocms orgs` — the organizations the logged-in user belongs to. */
 export async function orgsCommand(options: OrgsOptions): Promise<number> {
-  const session = await requireSession(options);
-  if (!session) return 1;
+  const auth = await resolveRestCredential(options, "orgs");
+  if (!auth) return 1;
 
-  const res = await studioFetch(session, "/api/_me/organizations", {
+  const res = await studioFetch(auth, "/api/_me/organizations", {
     method: "GET",
     fetch: options.fetch,
   });
-  if (!res.ok) return writeResponse(res, session, options.output);
+  if (!res.ok) return writeResponse(res, auth, options.output);
 
   const parsed = OrganizationsSchema.safeParse(await res.json());
   if (!parsed.success) {

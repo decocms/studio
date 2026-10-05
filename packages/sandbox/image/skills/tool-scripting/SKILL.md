@@ -1,6 +1,6 @@
 ---
 name: tool-scripting
-description: Script against the org's MCP tools from inside the sandbox — discover schemas under .deco/tools/, call one tool from the shell with `typegen call`, or batch many calls in a script. Use whenever a task needs repeated or bulk tool calls (same tool many times, one call per file/row/item) instead of one-at-a-time agent tool calls.
+description: Script against the org's MCP tools from inside the sandbox — discover schemas under .deco/tools/, call one tool from the shell with `decocms tools call`, or batch many calls in a script. Use whenever a task needs repeated or bulk tool calls (same tool many times, one call per file/row/item) instead of one-at-a-time agent tool calls.
 ---
 
 # tool-scripting — call org tools from scripts
@@ -10,7 +10,7 @@ The workspace carries a materialized catalog of the org's tools:
 - `.deco/tools/<TOOL>.json` — one JSON Schema per tool:
   `{ name, description, inputSchema, outputSchema }`
 - `.deco/tools/.endpoint.json` — the run's pre-authenticated MCP endpoint.
-  The `typegen` CLI and client discover it automatically (walking up from
+  The `decocms` CLI and the typegen client discover it automatically (walking up from
   cwd) — no flags, keys, or env needed. The daemon refreshes it; a reconnect
   picks up new credentials.
 
@@ -23,18 +23,19 @@ ls .deco/tools/
 cat .deco/tools/SEND_EMAIL.json
 ```
 
-or `typegen tools` (list names + descriptions) / `typegen tools SEND_EMAIL`
-(one tool's full schema).
+or `decocms tools list [search]` (names + one-line descriptions) /
+`decocms tools describe SEND_EMAIL` (one tool's full schema).
 
 ## One-off call from the shell
 
 ```bash
-typegen call SEND_EMAIL '{"to":"ada@example.com","subject":"hi"}'
+decocms tools call SEND_EMAIL -d '{"to":"ada@example.com","subject":"hi"}'
 ```
 
-Prints the tool's structured output as JSON; non-zero exit and a message on
-stderr on failure. If `typegen` is not on PATH, use
-`bunx @decocms/typegen call ...`.
+Prints the tool's result as JSON; non-zero exit and a message on stderr on
+failure. `-d @args.json` and `-d @-` read the arguments from a file or stdin.
+Inside a run no `--org` is needed: the run's endpoint decides the tools. If
+`decocms` is not on PATH, use `npx -y -p @decocms/typegen decocms tools ...`.
 
 ## Bulk calls — write a script
 
