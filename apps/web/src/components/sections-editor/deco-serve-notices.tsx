@@ -31,7 +31,7 @@ export function RichCode({ text }: { text: string }) {
           <code
             // oxlint-disable-next-line no-array-index-key -- static split of one sentence
             key={index}
-            className="rounded bg-muted px-1 py-px font-mono text-[0.85em] text-foreground"
+            className="whitespace-nowrap rounded bg-muted px-1 py-px font-mono text-[0.85em] text-foreground"
           >
             {part}
           </code>
@@ -49,29 +49,34 @@ export function CommandSnippet({ command }: { command: string }) {
   const t = useT();
   const { handleCopy, copied } = useCopy();
   return (
-    <div className="flex items-stretch gap-2">
-      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words rounded-md bg-muted px-3 py-2 font-mono text-xs leading-5 text-foreground">
-        <code>
-          <span
-            aria-hidden="true"
-            className="select-none text-muted-foreground"
+    <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 py-1 pr-1 pl-3">
+      <code className="min-w-0 flex-1 overflow-x-auto py-1.5 font-mono text-xs leading-5 text-foreground">
+        <span aria-hidden="true" className="select-none text-muted-foreground">
+          ${" "}
+        </span>
+        {command.split(" ").map((word, index) => (
+          <Fragment
+            // oxlint-disable-next-line no-array-index-key -- static split of one command, wrapping between words only
+            key={index}
           >
-            ${" "}
-          </span>
-          {command}
-        </code>
-      </pre>
+            {index > 0 && " "}
+            <span className="whitespace-nowrap">{word}</span>
+          </Fragment>
+        ))}
+      </code>
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="h-auto shrink-0"
+        className="shrink-0 self-start"
         aria-label={t("decoServe.guide.copy")}
         onClick={() => void handleCopy(command).catch(() => {})}
       >
-        {copied ? <Check /> : <Copy01 />}
-        <span>
-          {copied ? t("decoServe.guide.copied") : t("decoServe.guide.copy")}
+        {copied ? <Check className="text-success" /> : <Copy01 />}
+        <span aria-hidden="true">
+          {copied
+            ? t("decoServe.guide.copied")
+            : t("decoServe.guide.copyShort")}
         </span>
       </Button>
       <span className="sr-only" aria-live="polite">
@@ -103,27 +108,26 @@ export function DocsLinks({
   return (
     <nav
       aria-label={t("decoServe.docs.heading")}
-      className={cn(
-        "flex flex-wrap items-center gap-x-4 gap-y-1 text-sm",
-        className,
-      )}
+      className={cn("flex flex-col gap-2 text-sm", className)}
     >
       <span className="text-muted-foreground">
         {t("decoServe.docs.heading")}
       </span>
-      {links.map((link) => (
-        <a
-          key={link}
-          href={blocksDocs[link]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-foreground underline-offset-4 hover:underline focus-visible:underline"
-        >
-          {t(DOCS_LABELS[link])}
-          <LinkExternal01 aria-hidden="true" className="size-3.5" />
-          <span className="sr-only">{t("decoServe.docs.newTab")}</span>
-        </a>
-      ))}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {links.map((link) => (
+          <a
+            key={link}
+            href={blocksDocs[link]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-foreground underline-offset-4 hover:underline focus-visible:underline"
+          >
+            {t(DOCS_LABELS[link])}
+            <LinkExternal01 aria-hidden="true" className="size-3.5" />
+            <span className="sr-only">{t("decoServe.docs.newTab")}</span>
+          </a>
+        ))}
+      </div>
     </nav>
   );
 }

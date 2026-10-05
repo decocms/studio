@@ -80,7 +80,10 @@ describe("SiteEditorGuide", () => {
     // Studio runs on localhost:4000 here, so the command allows that origin.
     expect(
       view.getByText(
-        "npx @decocms/blocks serve --allow-origin http://localhost:4000",
+        (_, element) =>
+          element?.tagName === "CODE" &&
+          element.textContent?.replace(/^\$\s*/, "") ===
+            "npx @decocms/blocks serve --allow-origin http://localhost:4000",
       ),
     ).toBeInTheDocument();
     expect(

@@ -22,8 +22,9 @@ export const decoServe = {
   "decoServe.guide.step1.preview":
     "The Preview tab shows your app on the port in your Vite config, or localhost:5173. If it runs somewhere else, add `--preview` with its address, such as `--preview localhost:3000`.",
   "decoServe.guide.step1.origin":
-    "You're using Studio at {origin}, so the command includes `--allow-origin {origin}`. Without it, deco serve only answers the official Studio addresses.",
+    "You're using Studio at {origin}, so the command adds `--allow-origin` for that address. Without it, deco serve only answers the official Studio addresses.",
   "decoServe.guide.copy": "Copy command",
+  "decoServe.guide.copyShort": "Copy",
   "decoServe.guide.copied": "Copied",
   "decoServe.guide.copiedAnnouncement": "Command copied to the clipboard",
   "decoServe.guide.step2.title": "This page connects on its own",

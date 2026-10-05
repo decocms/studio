@@ -52,19 +52,22 @@ function Step({
 }) {
   const headingId = useId();
   return (
-    <li aria-labelledby={headingId} className="surface flex gap-4 p-5">
-      <span
-        aria-hidden="true"
-        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground"
-      >
-        {index}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+    <li
+      aria-labelledby={headingId}
+      className="surface flex flex-col gap-3 p-4 sm:p-5"
+    >
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium tabular-nums text-foreground"
+        >
+          {index}
+        </span>
         <h2 id={headingId} className="text-sm font-medium text-foreground">
           {title}
         </h2>
-        {children}
       </div>
+      <div className="flex min-w-0 flex-col gap-3 sm:pl-9">{children}</div>
     </li>
   );
 }
@@ -227,21 +230,21 @@ export function SiteEditorGuide({
 
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-12">
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8 sm:py-12">
         <header className="flex flex-col items-center gap-3 text-center">
           <span
             aria-hidden="true"
-            className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground"
+            className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground sm:size-12"
           >
-            <Monitor04 className="size-6" />
+            <Monitor04 className="size-5 sm:size-6" />
           </span>
           <h1
             tabIndex={-1}
-            className="text-xl font-medium text-foreground outline-none"
+            className="text-balance text-lg font-medium text-foreground outline-none sm:text-xl"
           >
             {t("decoServe.guide.title")}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-pretty text-sm text-muted-foreground">
             {t("decoServe.guide.lead")}
           </p>
         </header>
@@ -288,12 +291,6 @@ export function SiteEditorGuide({
             </div>
           </Alert>
         )}
-        {state.problem && (
-          <ServeProblemAlert
-            problem={state.problem}
-            host={endpointHost(state.problem.endpoint)}
-          />
-        )}
 
         <ol className="flex flex-col gap-3">
           <Step index={1} title={t("decoServe.guide.step1.title")}>
@@ -317,6 +314,12 @@ export function SiteEditorGuide({
             <p className="text-sm text-muted-foreground">
               {t("decoServe.guide.step2.body")}
             </p>
+            {state.problem && (
+              <ServeProblemAlert
+                problem={state.problem}
+                host={endpointHost(state.problem.endpoint)}
+              />
+            )}
             {needsGesture ? (
               <div className="flex flex-col items-start gap-2">
                 <p className="text-sm text-muted-foreground">

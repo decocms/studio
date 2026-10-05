@@ -315,7 +315,12 @@ function LocalSiteEditorGuide(props: Parameters<typeof SiteEditorGuide>[0]) {
   return (
     <Layout outsideOrg={{ rail: !!session?.user }}>
       <Layout.Content>
-        <SiteEditorGuide {...props} />
+        <ChatLayout {...NO_CHAT} threadless contentKey="guide">
+          <ChatLayout.Thread>{null}</ChatLayout.Thread>
+          <ChatLayout.Content>
+            <SiteEditorGuide {...props} />
+          </ChatLayout.Content>
+        </ChatLayout>
       </Layout.Content>
     </Layout>
   );
