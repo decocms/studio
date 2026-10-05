@@ -73,7 +73,6 @@ const createMockContext = (
       list: async () => ({ data: [], error: null }),
       addMember: async () => ({ data: null, error: null }),
       removeMember: async () => {},
-      listMembers: async () => ({ data: [], error: null }),
       updateMemberRole: async () => ({ data: null, error: null }),
     },
   } as never,

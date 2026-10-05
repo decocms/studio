@@ -254,9 +254,6 @@ export const createTaskBoardImportRoutes = () => {
         : item,
     );
 
-    // Validate real-member assignees against the member table directly — the
-    // create tool's assertValidAssignee goes through boundAuth, which needs a
-    // user session this service-token route doesn't have.
     for (const item of items) {
       if (!item.assigneeId || item.assigneeId === SUPER_AGENT_ASSIGNEE_ID)
         continue;
