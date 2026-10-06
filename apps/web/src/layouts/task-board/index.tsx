@@ -1474,8 +1474,7 @@ function TaskBoardBody({
             </Button>
           </Page.Actions>
           {inlineTabs ? (
-            /* A full-bleed rule fences these tabs off from the apps launcher above, so they read as the control of the region below them. */
-            <div className="mt-2 border-t border-border">
+            <div>
               {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
               <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
                 {layoutTabs}
