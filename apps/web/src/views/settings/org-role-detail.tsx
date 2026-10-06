@@ -1193,6 +1193,39 @@ const BUILTIN_ROLE_PERMISSIONS: Record<"owner" | "admin" | "user", string[]> = {
 
 type MemberLike = { id: string; role: string };
 
+/**
+ * Better Auth stores multiple roles comma-joined on `member.role` (e.g.
+ * `"admin,billing-manager"`, see packages/shared/src/auth/roles.ts). An exact
+ * string match against a single role slug silently misses a multi-role
+ * member, both when listing a role's members and when deciding who to
+ * add/remove.
+ */
+export function parseMemberRoles(role: string | undefined | null): string[] {
+  return (role ?? "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+}
+
+/** The role list to persist when adding `slug` to a member's existing roles. */
+export function withRoleAdded(existingRoles: string[], slug: string): string[] {
+  return existingRoles.includes(slug)
+    ? existingRoles
+    : [...existingRoles, slug];
+}
+
+/**
+ * The role list to persist when removing `slug` from a member's existing
+ * roles, falling back to the default `user` role if none remain.
+ */
+export function withRoleRemoved(
+  existingRoles: string[],
+  slug: string,
+): string[] {
+  const remaining = existingRoles.filter((r) => r !== slug);
+  return remaining.length > 0 ? remaining : ["user"];
+}
+
 function loadBuiltinRoleIntoForm(
   role: "owner" | "admin" | "user",
   members: Array<{ id: string; role: string }>,
@@ -1226,7 +1259,9 @@ function loadBuiltinRoleIntoForm(
     modelSet: {},
     allowAllProjects: true,
     projectSet: [],
-    memberIds: members.filter((m) => m.role === role).map((m) => m.id),
+    memberIds: members
+      .filter((m) => parseMemberRoles(m.role).includes(role))
+      .map((m) => m.id),
   };
 }
 
@@ -1293,7 +1328,9 @@ function convertRoleToFormData(
     modelSet,
     allowAllProjects,
     projectSet,
-    memberIds: members.filter((m) => m.role === role.role).map((m) => m.id),
+    memberIds: members
+      .filter((m) => parseMemberRoles(m.role).includes(role.role))
+      .map((m) => m.id),
   };
 }
 
@@ -1491,8 +1528,9 @@ function RoleDetailPageInner({
         !formData.role.id;
 
       const syncMembers = async (currentSlug: string, lookupSlug?: string) => {
+        const matchSlug = lookupSlug ?? currentSlug;
         const currentIds = members
-          .filter((m) => m.role === (lookupSlug ?? currentSlug))
+          .filter((m) => parseMemberRoles(m.role).includes(matchSlug))
           .map((m) => m.id);
         const toAdd = formData.memberIds.filter(
           (id) => !currentIds.includes(id),
@@ -1501,9 +1539,12 @@ function RoleDetailPageInner({
           (id: string) => !formData.memberIds.includes(id),
         );
         for (const memberId of toAdd) {
+          const existingRoles = parseMemberRoles(
+            members.find((m) => m.id === memberId)?.role,
+          );
           const r = await orgAuth.organization.updateMemberRole({
             memberId,
-            role: [currentSlug],
+            role: withRoleAdded(existingRoles, currentSlug),
           });
           if (r?.error)
             throw new Error(
@@ -1511,9 +1552,12 @@ function RoleDetailPageInner({
             );
         }
         for (const memberId of toRemove) {
+          const existingRoles = parseMemberRoles(
+            members.find((m) => m.id === memberId)?.role,
+          );
           const r = await orgAuth.organization.updateMemberRole({
             memberId,
-            role: ["user"],
+            role: withRoleRemoved(existingRoles, matchSlug),
           });
           if (r?.error)
             throw new Error(
