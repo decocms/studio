@@ -145,9 +145,20 @@ function ColumnRulesForm({
   const [prompt, setPrompt] = useState(initial.prompt);
   const [skills, setSkills] = useState(initial.skills);
 
+  const nextAutomation = run ? automation : null;
+  const initialAutomation = initial.run ? initial.automation : null;
   const submit = () =>
     save.mutate(
-      { columnKey, prompt, skills, automation: run ? automation : null },
+      {
+        columnKey,
+        ...(prompt !== initial.prompt ||
+        skills.join("\n") !== initial.skills.join("\n")
+          ? { rules: { prompt, skills } }
+          : {}),
+        ...(nextAutomation !== initialAutomation
+          ? { automation: nextAutomation }
+          : {}),
+      },
       {
         onSuccess: () => {
           toast.success(t("taskBoard.columnRules.saved"));
@@ -243,8 +254,12 @@ export function SkillsField({
   const catalog = useOrgFsSkillCatalog();
   const nameOf = (id: string) =>
     catalog.data?.find((s) => s.id === id)?.name ?? id;
+  // A run can't load a manual-only skill, so a rule can't ask for one.
   const options = (catalog.data ?? []).filter(
-    (s) => !value.includes(s.id) && !inherited.includes(s.id),
+    (s) =>
+      !s.disableModelInvocation &&
+      !value.includes(s.id) &&
+      !inherited.includes(s.id),
   );
 
   return (

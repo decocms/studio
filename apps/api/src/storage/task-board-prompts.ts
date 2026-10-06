@@ -38,7 +38,9 @@ export class TaskBoardPromptStorage {
     const unset = DEFAULT_BOARD_PROMPTS.filter(
       (d) => !set.some((p) => p.columnKey === d.columnKey),
     );
-    return [...set, ...unset].sort((a, b) =>
+    // A blank row only marks a cleared default; it is not a scope in effect.
+    const inEffect = set.filter((p) => p.prompt || p.skills.length > 0);
+    return [...inEffect, ...unset].sort((a, b) =>
       a.columnKey === null ? -1 : b.columnKey === null ? 1 : 0,
     );
   }

@@ -67,7 +67,7 @@ export function TaskSystemPromptSettings() {
                 disabled={!dirty || save.isPending}
                 onClick={() =>
                   save.mutate(
-                    { columnKey: null, ...draft },
+                    { columnKey: null, rules: draft },
                     {
                       onSuccess: () =>
                         toast.success(t("settings.taskPrompt.saved")),

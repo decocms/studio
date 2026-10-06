@@ -34,42 +34,38 @@ export function useTaskBoardColumnAutomations() {
 export interface ColumnRules {
   /** null for the org-wide scope. */
   columnKey: string | null;
-  /** Standing instructions for every run on this scope. */
-  prompt: string;
-  skills: string[];
+  /** Standing instructions and skills for every run on this scope. Omitted
+   *  leaves them as saved, so a lane still on its default stays on it. */
+  rules?: { prompt: string; skills: string[] };
   /** Column scope only: null = no run on landing; "" = the agent's default. */
   automation?: string | null;
 }
 
-/** Save one scope's rules; empty fields delete their rows. */
+/** Save the parts of one scope that changed; empty fields delete their rows. */
 export function useSaveColumnRules() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (rules: ColumnRules) => {
-      const prompt = rules.prompt.trim();
-      const columnKey = rules.columnKey;
-      const writes: Promise<unknown>[] = [
-        prompt || rules.skills.length
+    mutationFn: async ({ columnKey, rules, automation }: ColumnRules) => {
+      if (rules) {
+        const prompt = rules.prompt.trim();
+        await (prompt || rules.skills.length
           ? studio.call("TASK_BOARD_PROMPT_UPSERT", {
               columnKey,
               prompt,
               skills: rules.skills,
             })
-          : studio.call("TASK_BOARD_PROMPT_DELETE", { columnKey }),
-      ];
-      if (columnKey !== null && rules.automation !== undefined) {
-        writes.push(
-          rules.automation === null
-            ? studio.call("TASK_BOARD_AUTOMATION_DELETE", { columnKey })
-            : studio.call("TASK_BOARD_AUTOMATION_UPSERT", {
-                columnKey,
-                prompt: rules.automation.trim() || null,
-              }),
-        );
+          : studio.call("TASK_BOARD_PROMPT_DELETE", { columnKey }));
       }
-      await Promise.all(writes);
+      if (columnKey !== null && automation !== undefined) {
+        await (automation === null
+          ? studio.call("TASK_BOARD_AUTOMATION_DELETE", { columnKey })
+          : studio.call("TASK_BOARD_AUTOMATION_UPSERT", {
+              columnKey,
+              prompt: automation.trim() || null,
+            }));
+      }
     },
     onSettled: () =>
       Promise.all([

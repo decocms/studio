@@ -12,6 +12,7 @@ import { getDecopilotId } from "@decocms/shared/sdk";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import {
   MODEL_CLASS_METADATA_KEY,
+  TASK_RUN_INSTRUCTIONS_KEY,
   type ClaudeCodeModelClass,
 } from "@/harnesses/claude-code-env";
 import type { TaskRepo } from "./claude-code-task-run";
@@ -209,6 +210,9 @@ export async function enqueueAgentRunForTask(
   const metadata = {
     ...(thread.metadata ?? {}),
     ...(opts.metadata ?? {}),
+    ...(appendInstructions
+      ? { [TASK_RUN_INSTRUCTIONS_KEY]: appendInstructions }
+      : {}),
     // Read back by `resolveSandboxBranch` at provision time (via the thread, so
     // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),

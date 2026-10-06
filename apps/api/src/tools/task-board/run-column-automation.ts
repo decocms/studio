@@ -7,7 +7,7 @@
  * could never win.
  */
 
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
@@ -63,7 +63,8 @@ export async function runColumnAutomation(
   try {
     await reactToSuperAgentDelegation(ctx, delegated, {
       instruction: automation.prompt ?? undefined,
-      column: item.status,
+      // In Progress's rules are the reviewer's; an implementing run there follows To Do's.
+      column: item.status === LANES.progress ? LANES.queue : item.status,
     });
   } catch (err) {
     console.warn(

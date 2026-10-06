@@ -274,6 +274,8 @@ export interface OrgFsSkillCatalogEntry {
   volume: string;
   path: string;
   sandboxPath: string;
+  /** Manual-only: the `skill` tool refuses it, only a person can invoke it. */
+  disableModelInvocation: boolean;
 }
 
 /** Fetch the full skill catalog (used by the chat `/` picker, not react-query). */

@@ -69,6 +69,9 @@ describe("TaskBoardPromptStorage defaults", () => {
 
     expect(await s.remove("o", "todo")).toBe(true);
     expect(await s.promptFor("o", "todo")).toBeUndefined();
+    expect((await s.listByOrg("o")).some((p) => p.columnKey === "todo")).toBe(
+      false,
+    );
     expect(await s.remove("o", "todo")).toBe(false);
   });
 });

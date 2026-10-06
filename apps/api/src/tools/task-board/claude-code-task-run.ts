@@ -29,7 +29,7 @@ import {
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
-import { studioToolNamespaceFact } from "./jira-run-prompt";
+import { STUDIO_TOOL_NAMESPACE_FACT } from "./jira-run-prompt";
 import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
@@ -265,8 +265,10 @@ export function buildClaudeCodeTaskPrompt(
   ]
     .filter(Boolean)
     .join("\n\n");
+  // A rule's instruction leads the user message itself; a Jira run gets no lead.
+  const leadsItself = !!opts?.instruction?.trim() || jiraRun;
   const lines: string[] = [
-    opts?.instruction?.trim() || jiraRun
+    leadsItself
       ? ""
       : `The user message is a task assigned to you. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`,
     "",
@@ -344,7 +346,7 @@ export function buildClaudeCodeTaskPrompt(
   }
 
   if (jiraRun) {
-    lines.push(studioToolNamespaceFact("mcp__studio__"), "");
+    lines.push(STUDIO_TOOL_NAMESPACE_FACT, "");
     return { system: lines.join("\n").trim(), message };
   }
 

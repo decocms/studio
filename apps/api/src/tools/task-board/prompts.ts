@@ -111,24 +111,32 @@ export const TASK_BOARD_PROMPT_UPSERT = defineTool({
 
     const prompt = input.prompt.trim();
     const skills = input.skills ? [...new Set(input.skills)] : undefined;
-    // A skill the catalog can't resolve is a line the run can't act on.
-    if (skills?.length) {
-      const known = new Set(
-        (await buildSkillCatalog(ctx, organizationId)).map((e) => e.id),
+    const current = (
+      await ctx.storage.taskBoardPrompts.listByOrg(organizationId)
+    ).find((p) => p.columnKey === columnKey);
+    // Only what this call adds is checked: a lane's default may name a skill
+    // this deployment's catalog lacks, and re-saving the lane must not fail on it.
+    const added = skills?.filter((id) => !current?.skills.includes(id)) ?? [];
+    if (added.length > 0) {
+      const catalog = new Map(
+        (await buildSkillCatalog(ctx, organizationId)).map((e) => [e.id, e]),
       );
-      const unknown = skills.filter((id) => !known.has(id));
+      const unknown = added.filter((id) => !catalog.has(id));
       if (unknown.length > 0) {
         throw new Error(`Unknown skill(s): ${unknown.join(", ")}`);
       }
+      const manual = added.filter(
+        (id) => catalog.get(id)?.disableModelInvocation,
+      );
+      if (manual.length > 0) {
+        throw new Error(
+          `Manual-only skill(s) a run can't load: ${manual.join(", ")}`,
+        );
+      }
     }
-    // An empty scope is a deleted row, never a stored blank one.
+    // Clearing a scope is TASK_BOARD_PROMPT_DELETE's job.
     if (!prompt) {
-      const kept =
-        skills ??
-        (await ctx.storage.taskBoardPrompts.listByOrg(organizationId)).find(
-          (p) => p.columnKey === columnKey,
-        )?.skills ??
-        [];
+      const kept = skills ?? current?.skills ?? [];
       if (kept.length === 0) {
         throw new Error(
           "Nothing to set — give a prompt or skills, or use TASK_BOARD_PROMPT_DELETE",

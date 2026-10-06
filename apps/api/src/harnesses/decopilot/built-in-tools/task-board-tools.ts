@@ -71,10 +71,14 @@ export function createTaskBoardTools(
       value: output as JSONValue,
     };
 
-  const wrap = (def: StudioTool<z.ZodTypeAny, z.ZodTypeAny>) =>
+  const wrap = (
+    def: StudioTool<z.ZodTypeAny, z.ZodTypeAny>,
+    needsApproval = false,
+  ) =>
     tool({
       description: def.description,
       inputSchema: zodSchema(def.inputSchema),
+      needsApproval,
       execute: (input) => def.execute(input, ctx),
       toModelOutput,
     });
@@ -85,13 +89,16 @@ export function createTaskBoardTools(
     TASK_BOARD_ITEM_UPDATE: wrap(TASK_BOARD_ITEM_UPDATE),
     TASK_BOARD_ITEM_DELETE: wrap(TASK_BOARD_ITEM_DELETE),
     TASK_BOARD_ITEM_PRS_GET: wrap(TASK_BOARD_ITEM_PRS_GET),
-    // Column rules, so the agent can set the board up with the user (the `task-board-setup` skill).
+    // Column rules, so the agent can set the board up with the user (the
+    // `task-board-setup` skill). Writes always ask: their text becomes system
+    // prompt for every later run on the board, so content the chat read must
+    // not be able to plant it.
     TASK_BOARD_PROMPT_LIST: wrap(TASK_BOARD_PROMPT_LIST),
-    TASK_BOARD_PROMPT_UPSERT: wrap(TASK_BOARD_PROMPT_UPSERT),
-    TASK_BOARD_PROMPT_DELETE: wrap(TASK_BOARD_PROMPT_DELETE),
+    TASK_BOARD_PROMPT_UPSERT: wrap(TASK_BOARD_PROMPT_UPSERT, true),
+    TASK_BOARD_PROMPT_DELETE: wrap(TASK_BOARD_PROMPT_DELETE, true),
     TASK_BOARD_AUTOMATION_LIST: wrap(TASK_BOARD_AUTOMATION_LIST),
-    TASK_BOARD_AUTOMATION_UPSERT: wrap(TASK_BOARD_AUTOMATION_UPSERT),
-    TASK_BOARD_AUTOMATION_DELETE: wrap(TASK_BOARD_AUTOMATION_DELETE),
+    TASK_BOARD_AUTOMATION_UPSERT: wrap(TASK_BOARD_AUTOMATION_UPSERT, true),
+    TASK_BOARD_AUTOMATION_DELETE: wrap(TASK_BOARD_AUTOMATION_DELETE, true),
     // The board's analytics, and the orgs a cross-org read may name.
     // Without these the agent cannot answer the questions the two Grafana
     // dashboards answer, and cannot discover the orgs the `org` parameter on
