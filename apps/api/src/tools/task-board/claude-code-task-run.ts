@@ -219,9 +219,7 @@ const MIXED_PROVIDER_NOTE =
  * The sandbox is pinned to one branch; each of these needs its own clone and
  * its own checkout before the run may push to it. Empty when there are none.
  */
-function otherPullRequestsLead(
-  pr: SuperAgentPromptOpts["pr"],
-): string[] {
+function otherPullRequestsLead(pr: SuperAgentPromptOpts["pr"]): string[] {
   const others = pr?.others ?? [];
   if (others.length === 0) return [];
   return [
