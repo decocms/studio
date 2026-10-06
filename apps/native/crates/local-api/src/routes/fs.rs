@@ -1104,7 +1104,7 @@ async fn write_private_endpoint(path: &Path, content: &str) -> Result<(), ApiErr
 }
 
 /// Publishes the endpoint descriptor before attempting MCP discovery. This is
-/// an independent, short commit: `typegen call` needs only this credential and
+/// an independent, short commit: `decocms tools call` needs only this credential and
 /// must keep working when `tools/list` is temporarily unavailable. The later
 /// whole-directory catalog swap includes the same endpoint again on success.
 async fn commit_endpoint_file(state: &AppState, content: String) -> Result<(), ApiError> {

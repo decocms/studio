@@ -10,16 +10,26 @@
  *   bunx decocms init <directory>   # Scaffold from decocms/mcp-app
  *   bunx decocms completion         # Shell completion setup
  *   bunx decocms services <up|down|status>  # Service management
- *   bunx decocms api <path>         # Authenticated request to the studio
- *   bunx decocms tools <list|describe|call>  # Builtin tools over REST
- *   bunx decocms orgs               # Organizations you belong to
+ *   bunx decocms <auth|orgs|tools|api>  # Studio commands (@decocms/cli)
  */
 
+import {
+  exitAfterFlush,
+  isStudioCliCommand,
+  runStudioCli,
+  STUDIO_CLI_USAGE,
+} from "@decocms/cli";
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
 import { resolveTui } from "./cli/resolve-tui";
 import { parsePositiveIntFlag } from "./cli/parse-positive-int-flag";
+
+// Studio commands parse their own flags, so they run before the server's
+// strict parser sees them.
+if (isStudioCliCommand(process.argv[2])) {
+  await exitAfterFlush(await runStudioCli(process.argv.slice(2)));
+}
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -69,10 +79,6 @@ const { values, positionals } = parseArgs({
     batch: { type: "string" },
     limit: { type: "string" },
     org: { type: "string" },
-    method: { type: "string", short: "X" },
-    data: { type: "string", short: "d" },
-    header: { type: "string", short: "H", multiple: true },
-    json: { type: "boolean", default: false },
   },
   allowPositionals: true,
 });
@@ -96,10 +102,7 @@ Usage:
   deco dev [options]                 Start dev server (Vite + hot reload)
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
-  deco auth <login|whoami|token|logout>  Manage CLI authentication
-  deco api <path>                    Authenticated request to the studio
-  deco tools <list|describe|call>    List, inspect, and call builtin tools
-  deco orgs                          List the organizations you belong to
+  deco <auth|orgs|tools|api>         Studio commands (see below)
   deco backfill-assets               Hoist legacy inline media out of threads + connections + org logos
   deco completion [shell]            Install shell completions
 
@@ -115,19 +118,6 @@ Server Options:
 Dev Options:
   --vite-port <port>            Vite dev server port (default: 4000)
   --base-url <url>              Base URL for the server
-
-Auth Options (auth, api, tools, orgs):
-  --target <url>        Decocms target (default: https://studio.decocms.com)
-
-API Options:
-  -X, --method <m>      HTTP method (default: POST with --data, else GET)
-  -d, --data <body>     Request body: literal, @<file>, or @- for stdin
-  -H, --header <h>      Extra header "Name: value" (repeatable)
-
-Tools Options:
-  --org <slug>          Organization slug (first path segment of the studio URL)
-  -d, --data <json>     Tool arguments: literal JSON, @<file>, or @- for stdin
-  --json                Print full objects from tools list and orgs
 
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)
@@ -151,11 +141,10 @@ Examples:
   deco dev                        Start dev server
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
-  deco auth whoami                Show current session
-  deco orgs
+  deco orgs                       List your organizations
   deco tools list --org my-org thread
-  deco tools call ORGANIZATION_LIST --org my-org
-  deco api "/api/my-org/fs/<volume>/list?path=/"
+
+${STUDIO_CLI_USAGE}
 
 Documentation:
   https://decocms.com/studio
@@ -265,78 +254,6 @@ function resolveDataDir(): string {
   );
 }
 
-// ── Auth command ───────────────────────────────────────────────────────
-if (command === "auth") {
-  const sub = positionals[1];
-  const dataDir = resolveDataDir();
-
-  if (sub === "login") {
-    const { loginCommand } = await import("./cli/commands/auth/login");
-    const code = await loginCommand({
-      dataDir,
-      target: values.target,
-    });
-    process.exit(code);
-  }
-  if (sub === "whoami") {
-    const { whoamiCommand } = await import("./cli/commands/auth/whoami");
-    const code = await whoamiCommand({ dataDir, target: values.target });
-    process.exit(code);
-  }
-  if (sub === "token") {
-    const { tokenCommand } = await import("./cli/commands/auth/token");
-    const code = await tokenCommand({ dataDir, target: values.target });
-    process.exit(code);
-  }
-  if (sub === "logout") {
-    const { logoutCommand } = await import("./cli/commands/auth/logout");
-    const code = await logoutCommand({ dataDir });
-    process.exit(code);
-  }
-  console.error(`Usage: decocms auth <login|whoami|token|logout>`);
-  process.exit(1);
-}
-
-// ── API command ────────────────────────────────────────────────────────
-if (command === "api") {
-  const { apiCommand } = await import("./cli/commands/api");
-  const code = await apiCommand({
-    dataDir: resolveDataDir(),
-    target: values.target,
-    path: positionals[1],
-    method: values.method,
-    data: values.data,
-    headers: values.header,
-  });
-  process.exit(code);
-}
-
-// ── Orgs command ───────────────────────────────────────────────────────
-if (command === "orgs") {
-  const { orgsCommand } = await import("./cli/commands/orgs");
-  const code = await orgsCommand({
-    dataDir: resolveDataDir(),
-    target: values.target,
-    json: values.json === true,
-  });
-  process.exit(code);
-}
-
-// ── Tools command ──────────────────────────────────────────────────────
-if (command === "tools") {
-  const { toolsCommand } = await import("./cli/commands/tools");
-  const code = await toolsCommand({
-    dataDir: resolveDataDir(),
-    target: values.target,
-    subcommand: positionals[1],
-    arg: positionals[2],
-    org: values.org,
-    data: values.data,
-    json: values.json === true,
-  });
-  process.exit(code);
-}
-
 // ── Dev command (Ink TUI + dev servers) ─────────────────────────────────
 if (command === "dev") {
   const decoHome =
@@ -389,17 +306,9 @@ if (command === "dev") {
 
 if (
   command &&
-  ![
-    "init",
-    "completion",
-    "dev",
-    "services",
-    "auth",
-    "api",
-    "tools",
-    "orgs",
-    "backfill-assets",
-  ].includes(command)
+  !["init", "completion", "dev", "services", "backfill-assets"].includes(
+    command,
+  )
 ) {
   console.error(`Unknown command: ${command}`);
   process.exit(1);

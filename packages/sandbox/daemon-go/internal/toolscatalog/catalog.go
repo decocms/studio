@@ -2,7 +2,7 @@
 // sandbox filesystem so an agent can discover and script against tools from
 // disk. One raw JSON Schema file per tool under `<repo>/.deco/tools/` —
 // deliberately no TypeScript codegen (agents wanting a typed client run
-// `@decocms/typegen` themselves).
+// `decocms typegen` themselves).
 package toolscatalog
 
 import (
@@ -143,7 +143,7 @@ func WriteCatalog(tools []Tool, opts Opts) (count int, names []string, err error
 }
 
 // WriteEndpointFile writes the run's MCP endpoint to
-// `<repoDir>/.deco/tools/.endpoint.json` so in-workspace scripts and the typegen
+// `<repoDir>/.deco/tools/.endpoint.json` so in-workspace scripts and the decocms
 // CLI can call tools without flags or env. 0600 — it holds a bearer credential.
 func WriteEndpointFile(ep Endpoint, opts Opts) (bool, error) {
 	target, ok := paths.SafePath(opts.AppRoot, opts.RepoDir, CatalogDir+"/"+EndpointFilename)

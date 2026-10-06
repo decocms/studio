@@ -7,8 +7,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun run build:typegen && bun run build:harness-runner",
-    "build:typegen": "mkdir -p dist && bun run --cwd=../typegen build && bun --cwd=../typegen pm pack --filename $PWD/dist/typegen.tgz --quiet",
+    "build": "bun run build:cli && bun run build:harness-runner",
+    "build:cli": "mkdir -p dist && bun run --cwd=../cli build && bun --cwd=../cli pm pack --filename $PWD/dist/cli.tgz --quiet",
     "build:harness-runner": "mkdir -p dist && bun --cwd=../harness-runner pm pack --filename $PWD/dist/harness-runner.tgz --quiet"
   },
   "exports": {

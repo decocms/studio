@@ -68,7 +68,7 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              packages/sandbox/*|packages/typegen/*|packages/shared/*) relevant=true; break ;;
+              packages/sandbox/*|packages/cli/*|packages/shared/*) relevant=true; break ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
@@ -123,7 +123,7 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Build typegen package
+      - name: Build CLI package
         run: bun run --cwd=packages/sandbox build
 
       - name: Build the sandbox image

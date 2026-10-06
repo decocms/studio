@@ -206,6 +206,7 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
  */
 function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
   const t = useT();
+  const { org } = useProjectContext();
   const studio = useStudioTools();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -213,9 +214,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
 
   const mcpId = virtualMcp.id;
   const agentName = virtualMcp.title || `agent-${mcpId.slice(0, 8)}`;
-  const command = apiKey
-    ? `bunx @decocms/typegen@latest --mcp ${mcpId} --key ${apiKey} --output client.ts`
-    : `bunx @decocms/typegen@latest --mcp ${mcpId} --key <api-key> --output client.ts`;
+  const command = `STUDIO_API_KEY=${apiKey ?? "<api-key>"} bunx @decocms/cli@latest typegen --org ${org.slug} --agent ${mcpId} --output client.ts`;
 
   const handleGenerateKey = async () => {
     setGenerating(true);
