@@ -124,9 +124,13 @@ function FlatProjectBody({
           nothing while a card is open — a launcher above someone reading one
           card is the rest of the project talking over it. */}
           {!taskOpen && (
-            <Page.Container className="hidden max-w-[1680px] shrink-0 flex-col gap-4 pb-6 has-[a]:flex">
-              <ProjectApps project={project} orgSlug={org.slug} />
-            </Page.Container>
+            /* The full-bleed rule fences the board's tabs off from the apps, and
+               goes with them when there are none. */
+            <div className="hidden shrink-0 border-b border-border has-[a]:block">
+              <Page.Container className="flex max-w-[1680px] flex-col gap-4 pb-6">
+                <ProjectApps project={project} orgSlug={org.slug} />
+              </Page.Container>
+            </div>
           )}
           {/* Given the project explicitly: this route carries no `$agentId`.
           `inlineTabs` puts Board/List/Feed at the top of the board instead of
