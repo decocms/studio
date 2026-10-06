@@ -1,3 +1,7 @@
+import {
+  orgRelativePath,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 
 /**
@@ -89,12 +93,20 @@ export function commentUploadsAsSandboxPaths(
   );
 }
 
-/** The inverse, for a body a run writes back: no browser can load `org/.uploads/…`. */
+/**
+ * The inverse, for a body a run writes back: no browser can load a mounted
+ * path. Covers the links `commentUploadsAsSandboxPaths` handed the run, and the
+ * screenshots a run saves straight into `/app/org/.outputs/` when its per-run
+ * `/app/org/output` link is missing. Legacy `org/…` paths count too.
+ */
 export function sandboxPathsAsUploads(body: string, orgSlug: string): string {
-  return body.replace(/\]\((org\/[^)\s]+)\)/g, (ref, target: string) => {
-    const mount = COMMENT_MOUNTS.find((m) => target.startsWith(m.prefix));
+  return body.replace(/\]\(([^)\s]+)\)/g, (ref, target: string) => {
+    const rel = orgRelativePath(target);
+    if (rel === null) return ref;
+    const absolute = `${SANDBOX_ORG_ROOT}/${rel}`;
+    const mount = COMMENT_MOUNTS.find((m) => absolute.startsWith(m.prefix));
     if (!mount) return ref;
-    const path = target.slice(mount.prefix.length);
+    const path = absolute.slice(mount.prefix.length);
     if (!path || climbsOut(path)) return ref;
     return `](/api/${encodeURIComponent(orgSlug)}/fs/${mount.volume}/read?path=${encodeURIComponent(path)})`;
   });
