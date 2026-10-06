@@ -719,7 +719,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   );
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
-  const { url: draftPreviewUrl, failed: draftFailed } = useFastPreviewDraftUrl(
+  const { url: draftPreviewUrl } = useFastPreviewDraftUrl(
     fastPreviewEnabled && virtualMcpId && branch
       ? {
           orgSlug: org.slug,
@@ -745,7 +745,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
-    fastPreviewFailed: !!draftFailed,
     codingSession,
     localPreviewUrl,
   });
@@ -2050,23 +2049,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         />
                       </div>
                     )}
-
-                    {fastPreviewEnabled &&
-                      draftFailed &&
-                      !draftPreviewUrl &&
-                      previewState.kind !== "suspended" &&
-                      previewState.kind !== "errored" && (
-                        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background p-6">
-                          <div className="flex max-w-md flex-col items-center gap-1 text-center">
-                            <span className="text-sm font-medium text-foreground">
-                              {t("sandbox.preview.previewUnavailable")}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {draftFailed}
-                            </span>
-                          </div>
-                        </div>
-                      )}
 
                     {display.showWakingPill && (
                       <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">

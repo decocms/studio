@@ -28,7 +28,7 @@ import {
   type DecofilePatchBody,
   type DecofileScopeParams,
   decofileWriteMutationKey,
-  fetchDraftToken,
+  useProtocolDraftGrant,
 } from "./decofile-api";
 import { buildDraftPointer } from "./section-preview-url";
 import type { LiveMeta } from "./resolve-schema";
@@ -255,50 +255,27 @@ export async function applyProtocolPatch(
 }
 
 /**
- * A draft token lives six hours. Each new token changes the pointer and so
- * reloads the preview, so refresh only once, an hour before it expires.
- */
-const DRAFT_TOKEN_REFRESH_MS = 5 * 60 * 60_000;
-
-export interface ProtocolDraft {
-  /** The `?__draft=` pointer to the branch's changes, or null before a token and a revision. */
-  pointer: string | null;
-  /** Why the preview's draft token couldn't be fetched, or null ("preview unavailable"). */
-  failed: string | null;
-}
-
-/**
  * The `?__draft=` pointer of a project on the GitHub backend: the v7 Fast
  * Preview pointer, naming the branch's `changes` against production. Its
- * version is the last revision a read or write saw, so each save refreshes
- * the preview. `params` is `null` for any other backend.
+ * token comes with the protocol's answers (see `setProtocolDraftGrant`), and
+ * its version is the last revision a read or write saw, so each save
+ * refreshes the preview. `params` is `null` for any other backend; the
+ * pointer is null until a grant and a revision exist.
  */
 export function useProtocolDraft(
   params: DecofileScopeParams | null,
   cacheKey: string,
-): ProtocolDraft {
+): string | null {
   const revision = useContentRevision(cacheKey);
-  const { data, error } = useQuery({
-    queryKey: KEYS.draftToken(cacheKey),
-    queryFn: () => fetchDraftToken(params!),
-    enabled: !!params,
-    staleTime: DRAFT_TOKEN_REFRESH_MS,
-    refetchInterval: DRAFT_TOKEN_REFRESH_MS,
+  const grant = useProtocolDraftGrant(params);
+  if (!params || !grant || !revision) return null;
+  return buildDraftPointer({
+    ...params,
+    token: grant.token,
+    apiHost: grant.apiHost,
+    version: revision,
+    suffix: "/changes",
   });
-  if (!params) return { pointer: null, failed: null };
-  return {
-    pointer:
-      data && revision
-        ? buildDraftPointer({
-            ...params,
-            ...data,
-            version: revision,
-            suffix: "/changes",
-          })
-        : null,
-    // A token from before a failed refresh still works until it expires.
-    failed: !data && error ? error.message || "Preview unavailable" : null,
-  };
 }
 
 /**

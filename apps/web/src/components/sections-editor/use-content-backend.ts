@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   assertSupportedEndpoint,
   type ContentClient,
@@ -24,6 +24,7 @@ import {
   NotDecoServeError,
   probeRetryDelay,
 } from "./deco-serve-connection";
+import { setProtocolDraftGrant } from "./decofile-api";
 import { isSchemaAbsent } from "./schemaless";
 
 export interface Probe {
@@ -91,6 +92,7 @@ export function useContentBackend(
   branch: string | null | undefined,
 ): ContentBackend {
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const flagEnabled = useOrgFlagState("site_editor_content_protocol");
   const { connection } = useDecoServeConnection(virtualMcpId);
   const { url: tunnel } = useLocalPreviewUrl(virtualMcpId);
@@ -112,12 +114,23 @@ export function useContentBackend(
       "github",
     ),
     queryFn: async (): Promise<Probe | null> => {
+      const params = {
+        orgSlug: org.slug,
+        virtualMcpId: virtualMcpId!,
+        branch: branch!,
+      };
       const client = createContentClient({
-        endpoint: githubContentEndpoint({
-          orgSlug: org.slug,
-          virtualMcpId: virtualMcpId!,
-          branch: branch!,
-        }),
+        endpoint: githubContentEndpoint(params),
+        // Every answer carries the draft grant, as the v7 read/write do.
+        fetch: async (request) => {
+          const res = await fetch(request);
+          const token = res.headers.get("X-Deco-Draft-Token");
+          const apiHost = res.headers.get("X-Deco-Api-Host");
+          if (token && apiHost) {
+            setProtocolDraftGrant(queryClient, params, { token, apiHost });
+          }
+          return res;
+        },
       });
       const result = await probe(client);
       // Only a committed schema with `"blocksMajor": 8` is a v8 site; no

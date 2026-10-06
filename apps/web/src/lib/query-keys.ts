@@ -773,7 +773,8 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
-  // A content-protocol project's draft token for its `changes` pointer (GitHub backend).
+  // A content-protocol project's draft grant for its `changes` pointer (GitHub
+  // backend), set from its `rpc` answers.
   draftToken: (cacheKey: string) => ["draft-token", cacheKey] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,

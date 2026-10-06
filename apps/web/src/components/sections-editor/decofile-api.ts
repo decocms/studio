@@ -118,18 +118,51 @@ export function useDecofileDraft(
   return data ?? null;
 }
 
+/** A content-protocol project's draft grant, and when Studio issued it. */
+export interface ProtocolDraftGrant
+  extends Pick<DecofileDraft, "token" | "apiHost"> {
+  issuedAt: number;
+}
+
 /**
- * A fresh draft token for a content-protocol project's `changes` pointer:
- * its saves go through the protocol, which mints none.
+ * A draft token lives six hours, and each new one changes the pointer and so
+ * reloads the preview: a grant is replaced only an hour before it expires.
  */
-export async function fetchDraftToken(
+const PROTOCOL_GRANT_REFRESH_MS = 5 * 60 * 60_000;
+
+/**
+ * Stashes the grant a content-protocol (`rpc`) answer carried, the v7 way:
+ * every authenticated read and write hands one out.
+ */
+export function setProtocolDraftGrant(
+  queryClient: QueryClient,
   params: DecofileScopeParams,
-): Promise<Pick<DecofileDraft, "token" | "apiHost">> {
-  const res = await fetch(`${decofileApiUrl(params)}/draft-token`, {
-    cache: "no-store",
+  grant: Pick<DecofileDraft, "token" | "apiHost">,
+): void {
+  const key = KEYS.draftToken(decofileCacheKey(params));
+  const now = Date.now();
+  const held = queryClient.getQueryData<ProtocolDraftGrant>(key);
+  if (held && now - held.issuedAt < PROTOCOL_GRANT_REFRESH_MS) return;
+  queryClient.setQueryData<ProtocolDraftGrant>(key, {
+    ...grant,
+    issuedAt: now,
   });
-  if (!res.ok) return throwResponseError(res, "Draft preview");
-  return (await res.json()) as Pick<DecofileDraft, "token" | "apiHost">;
+}
+
+/** Subscribe to a content-protocol project's draft grant (see above). */
+export function useProtocolDraftGrant(
+  params: DecofileScopeParams | null,
+): ProtocolDraftGrant | null {
+  const { data } = useQuery<ProtocolDraftGrant>({
+    queryKey: KEYS.draftToken(params ? decofileCacheKey(params) : ""),
+    enabled: false,
+    queryFn: async () => {
+      throw new Error("the draft grant is set by content-protocol answers");
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+  return data ?? null;
 }
 
 /** GET the merged decofile; stashes the draft pointer as a side effect. */

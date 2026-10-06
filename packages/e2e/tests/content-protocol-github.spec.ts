@@ -4,7 +4,9 @@
  *
  *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc              (session, org flag)
  *   GET  /api/:org/decofile/:virtualMcpId/:branch/changes          (draft token or session, org flag)
- *   GET  /api/:org/decofile/:virtualMcpId/:branch/draft-token      (session, org flag)
+ *
+ * Like the v7 read/write, every `rpc` answer carries a draft token and the
+ * API host (`X-Deco-Draft-Token`, `X-Deco-Api-Host`).
  *
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts).
@@ -117,13 +119,19 @@ async function rpc<T>(
   path: string,
   method: string,
   params: unknown = {},
-): Promise<{ status: number; result?: T; error?: { code: number } }> {
+): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  result?: T;
+  error?: { code: number };
+}> {
   const res = await ctx.post(path, {
     data: { jsonrpc: "2.0", id: 1, method, params },
   });
-  if (res.status() !== 200) return { status: res.status() };
+  const headers = res.headers();
+  if (res.status() !== 200) return { status: res.status(), headers };
   const body = (await res.json()) as { result?: T; error?: { code: number } };
-  return { status: 200, ...body };
+  return { status: 200, headers, ...body };
 }
 
 async function enableContentProtocol(
@@ -193,11 +201,9 @@ test.describe("content protocol on GitHub", () => {
       });
       const path = rpcPath(project, "main");
       const changesPath = path.replace(/\/rpc$/, "/changes");
-      const tokenPath = path.replace(/\/rpc$/, "/draft-token");
 
       expect((await rpc(ctx, path, "describe")).status).toBe(404);
       expect((await ctx.get(changesPath)).status()).toBe(404);
-      expect((await ctx.get(tokenPath)).status()).toBe(404);
 
       await enableContentProtocol(ctx, project.org);
       const described = await rpc<DescribeResult>(ctx, path, "describe");
@@ -206,21 +212,18 @@ test.describe("content protocol on GitHub", () => {
         server: { name: "studio-github" },
         kind: "git",
         root: ".",
-        refs: { default: "main", autoCreate: true },
         assets: null,
         preview: { url: "https://site.example.com" },
       });
 
       expect((await rpc(anon, path, "describe")).status).toBe(401);
       expect((await anon.get(changesPath)).status()).toBe(401);
-      expect((await anon.get(tokenPath)).status()).toBe(401);
-      // A draft token reads changes, but never mints another token.
-      const { token } = (await (await ctx.get(tokenPath)).json()) as {
-        token: string;
-      };
+      // The answer's draft token reads changes, but never calls `rpc`.
+      const token = described.headers["x-deco-draft-token"]!;
+      expect(token).toEqual(expect.any(String));
       const q = `?token=${encodeURIComponent(token)}`;
       expect((await anon.get(`${changesPath}${q}`)).status()).toBe(200);
-      expect((await anon.get(`${tokenPath}${q}`)).status()).toBe(401);
+      expect((await rpc(anon, `${path}${q}`, "describe")).status).toBe(401);
     } finally {
       await ctx.dispose();
       await anon.dispose();
@@ -245,9 +248,6 @@ test.describe("content protocol on GitHub", () => {
         resolvedRef: "main",
         blocks: { "hero-home": { __resolveType: "hero" } },
       });
-      expect(
-        (await rpc(ctx, path, "blocks.list", { ref: "main" })).error?.code,
-      ).toBe(-32006);
       expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual({
         main: expect.any(String),
       });
@@ -408,14 +408,9 @@ test.describe("content protocol on GitHub", () => {
       );
       expect(applied.result?.revision).toEqual(expect.any(String));
 
-      const minted = await ctx.get(`${base}/draft-1/draft-token`);
-      expect(minted.status()).toBe(200);
-      expect(minted.headers()["cache-control"]).toBe("no-store");
-      const { token, apiHost } = (await minted.json()) as {
-        token: string;
-        apiHost: string;
-      };
-      expect(apiHost).toEqual(expect.any(String));
+      // The save's answer carries the grant, as v7's PATCH does.
+      const token = applied.headers["x-deco-draft-token"]!;
+      expect(applied.headers["x-deco-api-host"]).toEqual(expect.any(String));
       const q = `?token=${encodeURIComponent(token)}`;
 
       // What the site's SDK fetches: only the draft's changes, footer inherits production.

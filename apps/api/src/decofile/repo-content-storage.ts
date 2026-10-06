@@ -4,7 +4,7 @@
  *
  * One storage is bound to one `(repository, app root, branch)`. The vendored
  * protocol core (`createContentHandler`) owns names, validation, the secret
- * guard, limits and retries; this file only lists, reads and commits files
+ * guard and retries; this file only lists, reads and commits files
  * under `<root>/.deco/`, through the same `RepoContentClient`, blob cache and
  * compare-and-swap commit the legacy decofile routes use.
  *
@@ -99,14 +99,6 @@ export function createRepoContentStorage(
   const { client, packagePath, branch } = options;
   const blocksPrefix = `${blocksDirPath(packagePath)}/`;
 
-  const checkRef = (ref: string | undefined) => {
-    if (ref !== undefined && ref !== branch) {
-      throw unsupported(
-        `this endpoint is bound to the branch "${branch}"; omit ref`,
-      );
-    }
-  };
-
   /** The bound branch's head, or the default branch's while it doesn't exist. */
   const readHead = async (): Promise<{ sha: string; ref: string }> => {
     const head = await client.getBranch(branch);
@@ -151,20 +143,22 @@ export function createRepoContentStorage(
 
   return {
     describe(): StorageDescription {
-      return {
-        kind: "git",
+      const description = {
+        kind: "git" as const,
         root: packagePath ?? ".",
         readOnly: false,
-        refs: { default: branch, autoCreate: true },
         // Uploads go to Studio's own file storage, never into the repository.
         assets: null,
+        // Only for @decocms/blocks 8.1.0-next.4's types, which still require
+        // these two; the protocol drops them. Delete with the next bump.
+        refs: null,
         idempotency: null,
       };
+      return description;
     },
 
-    snapshot: ({ ref }) =>
+    snapshot: () =>
       guarded(async (): Promise<StorageSnapshot> => {
-        checkRef(ref);
         const head = await readHead();
         const tree = await client.listDecofileEntries(head.sha, packagePath);
         if (tree.length === 0 && (await schemaEntryAt(head.sha)) === null) {
@@ -199,9 +193,8 @@ export function createRepoContentStorage(
         return out;
       }),
 
-    readSchema: ({ ref }) =>
+    readSchema: () =>
       guarded(async (): Promise<StoredSchema | null> => {
-        checkRef(ref);
         const schema = await resolveSchema(await readHead());
         if (!schema) return null;
         const text = await readBlobText(schema.entry.path, schema.entry.sha);
@@ -224,7 +217,6 @@ export function createRepoContentStorage(
 
     commit: (attempt) =>
       guarded(async (): Promise<CommitResult> => {
-        checkRef(attempt.ref);
         const base = attempt.base.revision;
         try {
           // The whole head is the guard: any commit since `base` is stale,

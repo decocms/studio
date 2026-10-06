@@ -26,33 +26,18 @@ interface DraftParams {
  * {@link useFastPreviewDraftUrl} for one known path.
  */
 export function useDraftPointer(params: DraftParams | null): string | null {
-  return useDraftPointerState(params).pointer;
-}
-
-/** {@link useDraftPointer}, plus why the pointer couldn't be built. */
-function useDraftPointerState(params: DraftParams | null): {
-  pointer: string | null;
-  failed: string | null;
-} {
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   const github = backend.kind === "protocol" && backend.source === "github";
-  const legacyDraft = useDecofileDraft(params);
-  const protocolDraft = useProtocolDraft(
+  const draft = useDecofileDraft(params);
+  const protocolPointer = useProtocolDraft(
     github ? params : null,
     useDecofileCacheKey(params),
   );
-  if (!params || !fastPreviewActive) {
-    return { pointer: null, failed: null };
-  }
-  if (github) return protocolDraft;
-  return {
-    pointer: legacyDraft
-      ? buildDraftPointer({ ...params, ...legacyDraft })
-      : null,
-    failed: null,
-  };
+  if (!params || !fastPreviewActive) return null;
+  if (github) return protocolPointer;
+  return draft ? buildDraftPointer({ ...params, ...draft }) : null;
 }
 
 export interface FastPreviewDraftUrl {
@@ -68,12 +53,6 @@ export interface FastPreviewDraftUrl {
    * the draft grant exists. Null when the URL is absent or unparsable.
    */
   host: string | null;
-  /**
-   * Why the draft preview can't be shown (its draft token couldn't be
-   * fetched), or null. `url` is then null: never the published site in its
-   * place.
-   */
-  failed: string | null;
 }
 
 /**
@@ -96,7 +75,7 @@ export function useFastPreviewDraftUrl(
     path: string;
   } | null,
 ): FastPreviewDraftUrl {
-  const { pointer: draftPointer, failed } = useDraftPointerState(
+  const draftPointer = useDraftPointer(
     params
       ? {
           orgSlug: params.orgSlug,
@@ -124,5 +103,5 @@ export function useFastPreviewDraftUrl(
         )
       : null;
 
-  return { url, host, failed };
+  return { url, host };
 }

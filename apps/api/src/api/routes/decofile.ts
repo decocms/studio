@@ -10,7 +10,6 @@
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, flag)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/changes   draft changes vs production (token or session, flag)
- *   GET    /api/:org/decofile/:virtualMcpId/:branch/draft-token  a fresh draft token (session, flag)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -25,8 +24,9 @@
  * preview. Their previews use the same Fast Preview pointer as v7, naming
  * `changes` instead of the whole decofile: only what the branch changed
  * against production (`decofile/draft-changes.ts`), computed on request.
- * Saves go through `rpc`, which mints no token, so the editor asks
- * `draft-token` for one.
+ * Like the v7 read and write, every `rpc` answer carries a fresh draft token
+ * and the API host, here as the `X-Deco-Draft-Token` and `X-Deco-Api-Host`
+ * headers, since its body is the protocol's.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -172,11 +172,9 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   const userId = ctx.auth?.user?.id ?? null;
   if (!userId) {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
-    // A token never mints another one (`draft-token`), so it can't outlive its TTL.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" &&
-      !c.req.path.match(/\/(publish|status|draft-token)$/);
+      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -578,7 +576,16 @@ export function createDecofileRoutes() {
           }),
       },
     );
-    return handler(c.req.raw);
+    const res = await handler(c.req.raw);
+    // The v7 read/write hand the editor its draft grant; so does `rpc`.
+    const headers = new Headers(res.headers);
+    headers.set("X-Deco-Draft-Token", signScopeDraftToken(scope));
+    headers.set("X-Deco-Api-Host", requestApiHost(c));
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
   });
 
   /**
@@ -614,24 +621,6 @@ export function createDecofileRoutes() {
       for (const [k, v] of Object.entries(headers)) res.headers.set(k, v);
       return res;
     }
-  });
-
-  /**
-   * A fresh draft token for the `changes` pointer: saves over `rpc` carry
-   * none. Session only (see the anonymous rule in `resolveDecofileScope`).
-   */
-  app.get("/:virtualMcpId/:branch/draft-token", async (c) => {
-    if (!(await contentProtocolEnabled(c))) {
-      return c.json({ error: "Not found" }, 404);
-    }
-    return c.json(
-      {
-        token: signScopeDraftToken(c.get("decofileScope")),
-        apiHost: requestApiHost(c),
-      },
-      200,
-      { "Cache-Control": "no-store" },
-    );
   });
 
   return app;
