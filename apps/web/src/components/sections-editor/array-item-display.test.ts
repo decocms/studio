@@ -164,6 +164,19 @@ describe("getArrayItemLabel", () => {
     expect(getArrayItemLabel(item, 0, undefined)).toBe("Date");
   });
 
+  test("labels a hidden primitive array item by its unwrapped value", () => {
+    const item = {
+      __resolveType: "website/flags/multivariate.ts",
+      variants: [
+        {
+          value: "Hello World",
+          rule: { __resolveType: "website/matchers/never.ts" },
+        },
+      ],
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Hello World");
+  });
+
   test("labels a saved matcher block reference by its block key", () => {
     const item = { __resolveType: "ETC Segment" };
     expect(getArrayItemLabel(item, 0, undefined)).toBe("ETC Segment");
