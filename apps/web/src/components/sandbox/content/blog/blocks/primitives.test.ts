@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { jsonField, parseJsonArray } from "./primitives";
+import { jsonField, normalizeAnchorId, parseJsonArray } from "./primitives";
 
 describe("jsonField", () => {
   test("passes an already-encoded string through unchanged", () => {
@@ -15,5 +15,26 @@ describe("jsonField", () => {
   test("falls back to the given default for null/undefined", () => {
     expect(jsonField(undefined)).toBe("[]");
     expect(jsonField(null, {})).toBe("{}");
+  });
+});
+
+describe("normalizeAnchorId", () => {
+  test("strips whitespace at the ends and between characters alike", () => {
+    expect(normalizeAnchorId("  minha faq 1 ")).toBe("minhafaq1");
+  });
+
+  test("strips tabs and newlines, not just spaces", () => {
+    expect(normalizeAnchorId("a\tb\nc")).toBe("abc");
+  });
+
+  test("leaves an already-clean id alone", () => {
+    expect(normalizeAnchorId("perguntas-frequentes")).toBe(
+      "perguntas-frequentes",
+    );
+  });
+
+  test("collapses a whitespace-only value to empty", () => {
+    expect(normalizeAnchorId("   ")).toBe("");
+    expect(normalizeAnchorId("")).toBe("");
   });
 });

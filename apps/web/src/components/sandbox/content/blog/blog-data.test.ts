@@ -1818,6 +1818,7 @@ describe("buildPostSections", () => {
     Callout: "blog/sections/blocks/Callout.tsx",
     Cta: "blog/sections/blocks/Cta.tsx",
     Divider: "blog/sections/blocks/Divider.tsx",
+    FAQ: "blog/sections/blocks/FAQ.tsx",
   };
 
   test("a List stores its items newline-joined, not as an array", () => {
@@ -1878,6 +1879,60 @@ describe("buildPostSections", () => {
         { Heading: types.Heading },
       ),
     ).toEqual([{ __resolveType: types.Heading, text: "fica", level: "2" }]);
+  });
+
+  test("an FAQ wraps each answer in a Paragraph section", () => {
+    expect(
+      buildPostSections(
+        [
+          {
+            type: "FAQ",
+            faq: [
+              {
+                question: "Entrega?",
+                answerHtml: "Em <strong>2</strong> dias",
+              },
+              { question: "Troca?", answerHtml: "Até 30 dias" },
+            ],
+          },
+        ],
+        types,
+      ),
+    ).toEqual([
+      {
+        __resolveType: types.FAQ,
+        items: [
+          {
+            title: "Entrega?",
+            body: [
+              {
+                __resolveType: types.Paragraph,
+                html: "Em <strong>2</strong> dias",
+              },
+            ],
+          },
+          {
+            title: "Troca?",
+            body: [{ __resolveType: types.Paragraph, html: "Até 30 dias" }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("an FAQ with no questions still lands, so the author can fill it in", () => {
+    expect(buildPostSections([{ type: "FAQ" }], types)).toEqual([
+      { __resolveType: types.FAQ, items: [] },
+    ]);
+  });
+
+  test("drops an FAQ when the site has no Paragraph to hold the answers", () => {
+    expect(
+      buildPostSections(
+        [{ type: "FAQ", faq: [{ question: "q", answerHtml: "a" }] }],
+        { FAQ: types.FAQ },
+      ),
+    ).toEqual([]);
   });
 
   test("keeps the reading order", () => {

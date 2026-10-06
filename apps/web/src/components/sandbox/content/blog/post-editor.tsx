@@ -70,7 +70,8 @@ import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { asBlocks, BlockDocument } from "./block-document";
+import { BlockDocument } from "./block-document";
+import { asBlocks } from "./block-items";
 import {
   AddButton,
   EditableText,

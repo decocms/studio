@@ -1034,6 +1034,11 @@ const KNOWN_BLOG_BLOCK_CATALOG: Record<
     description: "Horizontal divider",
     iconName: "Divider",
   },
+  FAQ: {
+    title: "FAQ",
+    description: "Expandable questions and answers",
+    iconName: "MessageQuestionSquare",
+  },
   Cta: {
     title: "Call to action",
     description: "Button linking to a URL",
@@ -1827,6 +1832,19 @@ export function buildPostSections(
       case "Divider":
         blocks.push({ __resolveType });
         break;
+      case "FAQ": {
+        // The model writes prose; an answer is sections — hence the wrap.
+        const paragraph = resolveTypes.Paragraph;
+        if (!paragraph) break;
+        blocks.push({
+          __resolveType,
+          items: (section.faq ?? []).map((entry) => ({
+            title: str(entry.question),
+            body: [{ __resolveType: paragraph, html: str(entry.answerHtml) }],
+          })),
+        });
+        break;
+      }
     }
   }
   return blocks;

@@ -60,7 +60,8 @@ import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { asBlocks, BlockDocument } from "./block-document";
+import { BlockDocument } from "./block-document";
+import { asBlocks } from "./block-items";
 import { CollapsibleSection } from "./editor-section";
 import { EditableText, str } from "./blocks/primitives";
 import {

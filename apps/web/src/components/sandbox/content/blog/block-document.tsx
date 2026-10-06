@@ -18,7 +18,11 @@ import { Plus } from "@untitledui/icons";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { useT } from "@/i18n/use-t.ts";
-import { type BlogBlockType, discoverBlogBlockTypes } from "./blog-data";
+import {
+  blockComponentName,
+  type BlogBlockType,
+  discoverBlogBlockTypes,
+} from "./blog-data";
 import { BlockPicker } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
 import { type RawBlock } from "./blocks/block-registry";
@@ -28,10 +32,6 @@ import {
   uid,
   type BlockItem,
 } from "./block-items";
-
-export function asBlocks(value: unknown): RawBlock[] {
-  return Array.isArray(value) ? (value as RawBlock[]) : [];
-}
 
 /**
  * A slim insert affordance in the gap between two blocks: invisible until the
@@ -75,6 +75,7 @@ export function BlockDocument({
   decofile,
   sandboxRef,
   emptyMessage = "No content yet. Add your first block below.",
+  allowBlocks,
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
@@ -84,9 +85,15 @@ export function BlockDocument({
   /** Running sandbox coords — enables the VTEX product picker in blocks. */
   sandboxRef?: PreviewProxyRef | null;
   emptyMessage?: string;
+  /** Component names the picker is limited to. Unset offers every blog block. */
+  allowBlocks?: readonly string[];
 }) {
   const t = useT();
-  const blockTypes = discoverBlogBlockTypes(meta);
+  const blockTypes = allowBlocks
+    ? discoverBlogBlockTypes(meta).filter((type) =>
+        allowBlocks.includes(blockComponentName(type.resolveType)),
+      )
+    : discoverBlogBlockTypes(meta);
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     seedBlockItems(value),

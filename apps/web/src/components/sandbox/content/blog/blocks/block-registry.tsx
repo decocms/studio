@@ -15,6 +15,7 @@ import {
   VideoBlock,
 } from "./media-blocks";
 import { BlockImageBlock } from "./image-block";
+import { FaqBlock } from "./faq-block";
 import {
   CardGroupBlock,
   ChecklistBlock,
@@ -102,6 +103,16 @@ export function BlockEditor({
         );
       case "BlockImage":
         return <BlockImageBlock block={block} onChange={onChange} />;
+      case "FAQ":
+        return (
+          <FaqBlock
+            block={block}
+            meta={meta}
+            onChange={onChange}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
+          />
+        );
       case "Video":
         return (
           <VideoBlock
