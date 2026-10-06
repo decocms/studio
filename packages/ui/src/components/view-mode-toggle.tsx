@@ -80,7 +80,7 @@ export function ViewModeToggle<T extends string = string>({
             key={option.value}
             type="button"
             onClick={() => onValueChange(option.value)}
-            aria-label={option.label}
+            aria-label={option.label ?? option.tooltip}
             className={cn(
               "relative z-10 flex items-center justify-center gap-2 rounded-full transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
               fullWidth

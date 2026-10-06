@@ -10,17 +10,27 @@
 
 import type { ComponentType, SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
-import { type LibraryFileView, matchesLibraryFileView } from "./file-view";
 import {
-  Folder,
+  type LibraryFileView,
+  type LibraryModified,
+  matchesLibraryFileView,
+  matchesLibraryModified,
+} from "./file-view";
+import {
   Grid01,
   List,
+  Palette,
   Stars01,
   Upload01,
   Zap,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { FolderIcon } from "@/components/folder-icon";
+import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import { describeFileType } from "@/components/file-type-icon";
+import { timeAgo } from "@/lib/format-time";
 import {
   HOME_MOUNT_PATH,
   homeDisplayName,
@@ -28,22 +38,18 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import {
   type OrgFsEntry,
+  type OrgFsRecentEntry,
   type OrgFsSearchScope,
   type ShareMode,
   useOrgFsFileUrl,
   useOrgFsList,
+  useOrgFsVolumeFiles,
+  VOLUME_FILES_LIMIT,
   useOrgFsPublicSets,
   useOrgFsRecent,
   useOrgFsSearch,
-  useOrgFsUsage,
 } from "@/hooks/use-org-fs";
-import {
-  BrandCard,
-  FileCard,
-  type PublicState,
-  PublicBadge,
-  SkillCard,
-} from "./cards";
+import { FileCard, type PublicState, PublicBadge } from "./cards";
 import { EntryList, EntryRow, type EntryRowActions } from "./entry-row";
 import { FOLDER_COUNT_LIMIT, FolderTile, FolderTiles } from "./folder-tile";
 import { AgentAvatar } from "@/components/agent-icon";
@@ -62,11 +68,12 @@ import {
   browsePathFor,
   browsePathForEntry,
   type LibraryLocation,
+  namedFolderOf,
   publicSetOf,
   segmentLabel,
 } from "./location";
 import type { ShareTarget } from "./file-share-button";
-import { SyncedRepoFolders } from "./synced-repos";
+import { curateRecents } from "./recents";
 
 /** List or grid, for the Files section. */
 export type LibraryLayout = "list" | "grid";
@@ -125,13 +132,14 @@ export const SYSTEM_FOLDER_NAMES: ReadonlySet<string> = new Set([
   segmentLabel("public"),
 ]);
 
-const RECENTLY_ADDED_COUNT = 12;
+/** One row at a typical width. */
+const RECENT_COUNT = 4;
 
 /** The folder a cross-volume hit lives in — its NAME, since a full path
  *  truncates to nothing in this column. Volume root falls back to the
  *  volume. */
 function locationOf(volume: string, path: string, orgSlug: string): string {
-  const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const dir = namedFolderOf(path);
   if (dir) return segmentLabel(basename(dir));
   const set = publicSetOf(volume);
   if (set) return set;
@@ -190,10 +198,24 @@ export interface ListingView {
   sort: LibrarySort;
   onSort: (sort: LibrarySort) => void;
   fileView: LibraryFileView;
+  modified: LibraryModified;
+  /** The file whose preview is open beside the list, as a browse path. */
+  previewPath?: string;
+}
+
+/** The two filters, as one test. */
+function matchesView(
+  entry: { path: string; updatedAt: string },
+  view: ListingView,
+): boolean {
+  return (
+    matchesLibraryFileView(entry.path, view.fileView) &&
+    matchesLibraryModified(entry.updatedAt, view.modified)
+  );
 }
 
 /** Table or thumbnails: two states, so a toggle rather than a menu. */
-function LayoutToggle({
+export function LayoutToggle({
   layout,
   onChange,
 }: {
@@ -201,31 +223,23 @@ function LayoutToggle({
   onChange: (layout: LibraryLayout) => void;
 }) {
   const t = useT();
-  const options = [
-    { value: "list", Icon: List, label: t("library.entries.listView") },
-    { value: "grid", Icon: Grid01, label: t("library.entries.gridView") },
-  ] as const;
   return (
-    <div className="flex h-7 items-center gap-0.5 rounded-lg border border-border p-0.5">
-      {options.map(({ value, Icon, label }) => (
-        <button
-          key={value}
-          type="button"
-          aria-label={label}
-          aria-pressed={layout === value}
-          title={label}
-          onClick={() => onChange(value)}
-          className={cn(
-            "flex size-6 items-center justify-center rounded-md transition-colors",
-            layout === value
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Icon size={13} />
-        </button>
-      ))}
-    </div>
+    <ViewModeToggle
+      value={layout}
+      onValueChange={onChange}
+      options={[
+        {
+          value: "list",
+          icon: <List />,
+          tooltip: t("library.entries.listView"),
+        },
+        {
+          value: "grid",
+          icon: <Grid01 />,
+          tooltip: t("library.entries.gridView"),
+        },
+      ]}
+    />
   );
 }
 
@@ -244,9 +258,7 @@ function SectionHead({
       <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
         {label}
         {count !== undefined && count > 0 && (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {count}
-          </span>
+          <span className="text-meta">{count}</span>
         )}
       </h2>
       {action}
@@ -266,7 +278,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-3">
       <SectionHead label={label} count={count} action={action} />
       {children}
     </section>
@@ -319,10 +331,12 @@ function FileEntry({
   secondary,
   publicState,
   downloadUrl,
+  selected,
   actions,
 }: {
   entry: LibraryEntry;
   view: ListingView;
+  selected?: boolean;
   secondary?: string;
   publicState?: PublicState;
   downloadUrl: string;
@@ -332,6 +346,7 @@ function FileEntry({
     return (
       <EntryRow
         entry={entry}
+        selected={selected}
         secondary={secondary}
         publicState={publicState}
         actions={actions}
@@ -340,13 +355,12 @@ function FileEntry({
   }
   return (
     <FileCard
-      layout="media"
       size={entry.size}
       filename={entry.name}
-      updatedAt={entry.updatedAt}
       downloadUrl={downloadUrl}
-      subtitle={secondary}
+      subtitle={`${secondary ?? describeFileType(entry.name)} · ${timeAgo(entry.updatedAt)}`}
       publicState={publicState}
+      selected={selected}
       onOpen={actions.onOpen}
       onShare={actions.onShare}
       onDelete={actions.onDelete}
@@ -361,14 +375,18 @@ function FileEntry({
 function FilesSection({
   view,
   count,
-  typeLabel,
   label,
+  locationLabel,
+  note,
   children,
 }: {
   view: ListingView;
   count?: number;
-  typeLabel: string;
   label?: string;
+  /** Names the folder column, in a cross-volume feed. */
+  locationLabel?: string;
+  /** A caption beside the heading, such as a cut-off list. */
+  note?: string;
   children: React.ReactNode;
 }) {
   const t = useT();
@@ -376,91 +394,33 @@ function FilesSection({
     <Section
       label={label ?? t("library.libraryViews.files")}
       count={count}
-      action={<LayoutToggle layout={view.layout} onChange={view.onLayout} />}
+      action={note && <span className="text-meta">{note}</span>}
     >
       {view.layout === "grid" ? (
         <CardsGrid>{children}</CardsGrid>
       ) : (
-        <EntryList sort={view.sort} onSort={view.onSort} typeLabel={typeLabel}>
+        <EntryList
+          sort={view.sort}
+          onSort={view.onSort}
+          locationLabel={locationLabel}
+        >
           {children}
         </EntryList>
       )}
     </Section>
   );
 }
-/** A volume rendered as a folder, with the file count the volume already
- *  knows — no listing needed, so no per-tile request. */
-function VolumeFolderTile({
-  volume,
-  glyph,
-  onOpen,
+/** A skill's or a brand's mark, in place of the folder art: opening one
+ *  previews it rather than listing it. */
+function KindMark({
+  Glyph,
 }: {
-  volume: string;
-  glyph?: ComponentType<SVGProps<SVGSVGElement>>;
-  onOpen: () => void;
+  Glyph: ComponentType<SVGProps<SVGSVGElement>>;
 }) {
-  const t = useT();
-  const usage = useOrgFsUsage(volume);
   return (
-    <FolderTile
-      name={volume}
-      meta={
-        usage.data
-          ? t("library.libraryViews.filesCount", { count: usage.data.files })
-          : undefined
-      }
-      glyph={glyph}
-      tone="system"
-      onOpen={onOpen}
-    />
-  );
-}
-
-/**
- * The folders pinned to the top of the drive, led by `projects`. The others are
- * separate volumes under the hood, which a member has no reason to know.
- *
- * Their labels are reserved at the drive root (`SYSTEM_FOLDER_NAMES`), since a
- * hand-made folder of the same name would point at a different volume.
- */
-function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
-  const t = useT();
-  const publicSets = useOrgFsPublicSets();
-  const setCount = publicSets.data?.length ?? 0;
-  const projectsPath = `${HOME_MOUNT_PATH}/${PROJECTS_FOLDER}`;
-  return (
-    <>
-      <FolderTile
-        name={PROJECTS_FOLDER}
-        glyph={Folder}
-        tone="system"
-        counts={{
-          volume: HOME_MOUNT_PATH,
-          path: PROJECTS_FOLDER,
-          enabled: true,
-        }}
-        onOpen={() => onOpenDir(projectsPath)}
-      />
-      {SYSTEM_FOLDERS.map((f) => (
-        <VolumeFolderTile
-          key={f.volume}
-          volume={f.volume}
-          glyph={f.glyph}
-          onOpen={() => onOpenDir(f.volume)}
-        />
-      ))}
-      {setCount > 0 && (
-        <FolderTile
-          name={segmentLabel("public")}
-          meta={t("library.libraryViews.skillSetsCount", { count: setCount })}
-          glyph={Zap}
-          tone="system"
-          readOnly
-          onOpen={() => onOpenDir("public")}
-        />
-      )}
-      <SyncedRepoFolders onOpenDir={onOpenDir} />
-    </>
+    <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+      <Glyph className="size-3.5" />
+    </span>
   );
 }
 
@@ -517,7 +477,7 @@ export function SearchResultsView({
 
   if (search.isPending) return <ListingSkeleton layout={view.layout} />;
   const results = (search.data ?? []).filter((entry) =>
-    matchesLibraryFileView(entry.path, view.fileView),
+    matchesView(entry, view),
   );
   if (results.length === 0) {
     return (
@@ -543,23 +503,25 @@ export function SearchResultsView({
       <FilesSection
         view={view}
         label={t("library.libraryViews.results")}
+        locationLabel={t("library.entries.location")}
         count={results.length}
-        typeLabel={t("library.entries.location")}
       >
         {sorted.map(({ item, hit: e }) => {
           // Hits from the shared public sets are read-only: no share/delete.
           const readOnly = publicSetOf(e.volume) !== null;
           const downloadUrl = fileUrl(e.volume, e.path);
+          const previewPath = browsePathForEntry(e.volume, e.path);
           return (
             <FileEntry
               key={`${e.volume}/${e.path}`}
               entry={item}
               view={view}
+              selected={view.previewPath === previewPath}
               secondary={locationOf(e.volume, e.path, org.slug)}
               publicState={publicStateOf(e)}
               downloadUrl={downloadUrl}
               actions={{
-                onOpen: () => onOpenFile(browsePathForEntry(e.volume, e.path)),
+                onOpen: () => onOpenFile(previewPath),
                 download: { url: downloadUrl, filename: item.name },
                 onShare: readOnly ? undefined : () => shareFile(e),
                 onDelete: readOnly
@@ -579,67 +541,144 @@ export function SearchResultsView({
   );
 }
 
-/**
- * Cross-volume "Recently added" feed. Sits at the BOTTOM of the drive listing
- * (folders first — that's what people came for) and only there: it spans every
- * volume, so it would be a lie inside any single folder.
- */
-function RecentlyAdded({
+/** Cross-volume recents (see `recents.ts`), so only at the drive root. */
+function Recent({
   view,
   onOpenFile,
-  onShare,
-  onDelete,
 }: {
   view: ListingView;
   onOpenFile: (previewPath: string) => void;
-  onShare: (target: ShareTarget) => void;
-  onDelete: (pending: PendingDelete) => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const recent = useOrgFsRecent();
   const fileUrl = useOrgFsFileUrl();
 
-  const shareFile = (e: OrgFsEntry & { volume: string }) =>
-    onShare({
-      volume: e.volume,
-      path: e.path,
-      kind: "file",
-      shareMode: e.shareMode ?? "private",
-      effectivePublic: e.effectivePublic ?? false,
-      url: publicFileUrl(fileUrl(e.volume, e.path)),
-    });
+  if (recent.isPending) return null;
+  const items = curateRecents(
+    (recent.data ?? []).filter((e) => matchesView(e, view)),
+    RECENT_COUNT,
+  );
+  if (items.length === 0) return null;
 
-  if (recent.isPending) return <ListSkeleton rows={4} />;
-  const recentlyAdded = (recent.data ?? [])
-    .filter((entry) => matchesLibraryFileView(entry.path, view.fileView))
-    .slice(0, RECENTLY_ADDED_COUNT);
-  if (recentlyAdded.length === 0) return null;
+  const captionOf = (entry: OrgFsRecentEntry, more: number) =>
+    [
+      locationOf(entry.volume, entry.path, org.slug),
+      timeAgo(entry.updatedAt),
+      more > 0 && t("library.libraryViews.moreInFolder", { count: more }),
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   return (
-    /* Server-ordered by recency, which IS the section, so it takes no sort. */
+    <Section label={t("library.libraryViews.recent")}>
+      <div className="@container">
+        <div className="grid grid-cols-2 gap-3 @[720px]:grid-cols-4">
+          {items.map(({ entry, more }) => {
+            const previewPath = browsePathForEntry(entry.volume, entry.path);
+            const name = basename(entry.path);
+            return (
+              <FileCard
+                key={`${entry.volume}/${entry.path}`}
+                size={entry.size}
+                filename={name}
+                downloadUrl={fileUrl(entry.volume, entry.path)}
+                subtitle={captionOf(entry, more)}
+                publicState={publicStateOf(entry)}
+                selected={view.previewPath === previewPath}
+                compact
+                onOpen={() => onOpenFile(previewPath)}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/** Volumes the product fills one chat folder at a time. */
+const CHAT_VOLUMES: ReadonlySet<string> = new Set(
+  SYSTEM_FOLDERS.map((f) => f.volume),
+);
+
+export function isChatVolume(volume: string | null): boolean {
+  return volume !== null && CHAT_VOLUMES.has(volume);
+}
+
+/** A chat-filled volume as its files: its folders are chat ids, mostly empty. */
+export function ChatFilesView({
+  volume,
+  view,
+  onOpenFile,
+  onShare,
+  onDelete,
+  emptyActions,
+}: {
+  volume: string;
+  view: ListingView;
+  onOpenFile: (previewPath: string) => void;
+  onShare: (target: ShareTarget) => void;
+  onDelete: (pending: PendingDelete) => void;
+  emptyActions?: React.ReactNode;
+}) {
+  const t = useT();
+  const fileUrl = useOrgFsFileUrl();
+  const volumeFiles = useOrgFsVolumeFiles(volume);
+
+  if (volumeFiles.isPending) return <ListingSkeleton layout={view.layout} />;
+  const all = volumeFiles.data ?? [];
+  const files = all.filter((e) => matchesView(e, view));
+
+  if (files.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border">
+        <EmptyState
+          illustration={<FolderIcon className="size-16" />}
+          title={t("library.libraryViews.emptyFolder")}
+          description={t("library.libraryViews.emptyFolderHint")}
+          buttonComponent={emptyActions}
+        />
+      </div>
+    );
+  }
+
+  const sorted = sortEntries(files.map(toLibraryEntry), view.sort);
+  return (
     <FilesSection
       view={view}
-      label={t("library.libraryViews.recentlyAdded")}
-      typeLabel={t("library.entries.location")}
+      count={files.length}
+      note={
+        all.length >= VOLUME_FILES_LIMIT
+          ? t("library.libraryViews.newestOnly", { count: all.length })
+          : undefined
+      }
     >
-      {recentlyAdded.map((e) => {
-        const item = toLibraryEntry(e);
-        const downloadUrl = fileUrl(e.volume, e.path);
+      {sorted.map((item) => {
+        const previewPath = browsePathForEntry(volume, item.path);
+        const downloadUrl = fileUrl(volume, item.path);
         return (
           <FileEntry
-            key={`${e.volume}/${e.path}`}
+            key={item.path}
             entry={item}
             view={view}
-            secondary={locationOf(e.volume, e.path, org.slug)}
-            publicState={publicStateOf(e)}
+            selected={view.previewPath === previewPath}
+            publicState={publicStateOf(item.entry)}
             downloadUrl={downloadUrl}
             actions={{
-              onOpen: () => onOpenFile(browsePathForEntry(e.volume, e.path)),
+              onOpen: () => onOpenFile(previewPath),
               download: { url: downloadUrl, filename: item.name },
-              onShare: () => shareFile(e),
+              onShare: () =>
+                onShare({
+                  volume,
+                  path: item.path,
+                  kind: "file",
+                  shareMode: item.entry.shareMode ?? "private",
+                  effectivePublic: item.entry.effectivePublic ?? false,
+                  url: publicFileUrl(downloadUrl),
+                }),
               onDelete: () =>
-                onDelete({ volume: e.volume, path: e.path, kind: "file" }),
+                onDelete({ volume, path: item.path, kind: "file" }),
             }}
           />
         );
@@ -702,6 +741,7 @@ export function VolumeView({
   onDragStart,
   onContextMenu,
   onMove,
+  emptyActions,
 }: {
   location: LibraryLocation;
   /** The browse path this tree is rooted at — the drive, or one project's
@@ -717,6 +757,8 @@ export function VolumeView({
   onDragStart?: (path: string) => void;
   onContextMenu?: (path: string, kind: "file" | "dir") => void;
   onMove?: (fromPath: string, toDir: string) => void;
+  /** What an empty, writable folder offers: upload and new folder. */
+  emptyActions?: React.ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
@@ -737,19 +779,14 @@ export function VolumeView({
       ? `${homeDisplayName(org.slug)}/${name}`
       : undefined;
 
-  // Independent of this listing, so no skeleton flash on the landing view.
-  const systemFolders = isDriveRoot ? (
-    <SystemFolders onOpenDir={onOpenDir} />
+  const recent = isDriveRoot ? (
+    <Recent view={view} onOpenFile={onOpenFile} />
   ) : null;
 
   if (listing.isPending) {
     return (
       <>
-        {systemFolders && (
-          <Section label={t("library.libraryViews.folders")}>
-            <FolderTiles>{systemFolders}</FolderTiles>
-          </Section>
-        )}
+        {recent}
         <ListingSkeleton layout={view.layout} />
       </>
     );
@@ -775,14 +812,22 @@ export function VolumeView({
       ),
   );
 
-  // An empty root still has the pinned folders and the recent feed to show.
+  // An empty root still has the recent feed to show.
   if (entries.length === 0 && !isDriveRoot) {
     return (
-      <EmptyNote>
-        {location.readOnly
-          ? t("library.libraryViews.emptyReadOnlySet")
-          : t("library.libraryViews.emptyFolder")}
-      </EmptyNote>
+      /* Dashed, because the whole page takes a drop and this says so. */
+      <div className="rounded-2xl border border-dashed border-border">
+        <EmptyState
+          illustration={<FolderIcon className="size-16" />}
+          title={t("library.libraryViews.emptyFolder")}
+          description={t(
+            location.readOnly
+              ? "library.libraryViews.emptyReadOnlySet"
+              : "library.libraryViews.emptyFolderHint",
+          )}
+          buttonComponent={location.readOnly ? undefined : emptyActions}
+        />
+      </div>
     );
   }
 
@@ -808,161 +853,227 @@ export function VolumeView({
                 : undefined,
           });
 
-  const skills = entries.filter((e) => e.kind === "dir" && e.hasSkill);
+  // Folders have no file type, so any type filter hides them.
+  const keepsDir = (e: OrgFsEntry) =>
+    view.fileView === "all" &&
+    matchesLibraryModified(e.updatedAt, view.modified);
+  const skills = entries.filter(
+    (e) => e.kind === "dir" && e.hasSkill && keepsDir(e),
+  );
   // Skill wins over brand if a dir somehow carries both markers.
   const brands = entries.filter(
-    (e) => e.kind === "dir" && e.hasBrand && !e.hasSkill,
+    (e) => e.kind === "dir" && e.hasBrand && !e.hasSkill && keepsDir(e),
   );
   const dirs = entries.filter(
-    (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand,
+    (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand && keepsDir(e),
   );
   const files = entries.filter(
-    (e) => e.kind === "file" && matchesLibraryFileView(e.path, view.fileView),
+    (e) => e.kind === "file" && matchesView(e, view),
   );
   const sortedFiles = sortEntries(files.map(toLibraryEntry), view.sort);
 
+  /** Folders lead, whatever the sort: `sortEntries` groups them. */
+  const rows = sortEntries(
+    [...skills, ...brands, ...dirs, ...files].map(toLibraryEntry),
+    view.sort,
+  );
+  const openFor = (item: LibraryEntry): (() => void) => {
+    const path = browsePathFor(location, item.path);
+    switch (item.kind) {
+      case "folder":
+        return () => onOpenDir(path);
+      case "skill":
+        return () => onOpenSkill(path);
+      case "brand":
+        return () => onOpenBrand(path);
+      case "file":
+        return () => onOpenFile(path);
+      default: {
+        const unhandled: never = item.kind;
+        return unhandled;
+      }
+    }
+  };
+
+  /** One list, the way Finder and Dropbox show a folder: what is in it, with
+   *  nothing above it competing for the eye. */
+  const table = rows.length > 0 && (
+    <EntryList sort={view.sort} onSort={view.onSort}>
+      {rows.map((item) => {
+        const path = browsePathFor(location, item.path);
+        const project = inProjectsFolder
+          ? projectsByFolder.get(item.name)
+          : undefined;
+        const previewable = item.kind === "skill" || item.kind === "brand";
+        return (
+          <EntryRow
+            key={item.path}
+            entry={project?.title ? { ...item, name: project.title } : item}
+            selected={item.kind === "file" && view.previewPath === path}
+            publicState={publicStateOf(item.entry)}
+            actions={{
+              onOpen: openFor(item),
+              onBrowse: previewable ? () => onOpenDir(path) : undefined,
+              download:
+                item.kind === "file"
+                  ? { url: fileUrl(volume, item.path), filename: item.name }
+                  : undefined,
+              onShare: item.kind === "brand" ? undefined : shareFor(item.entry),
+              onDelete: deleteFor(item.entry),
+              draggable: !location.readOnly,
+              ...makeDragHandlers(
+                item.path,
+                item.kind === "file" ? "file" : "dir",
+                {
+                  onDragStart,
+                  onContextMenu,
+                  onDrop: item.kind === "folder" ? onMove : undefined,
+                },
+              ),
+            }}
+          />
+        );
+      })}
+    </EntryList>
+  );
+
   return (
     <>
-      {(dirs.length > 0 || systemFolders) && (
-        <Section
-          label={t("library.libraryViews.folders")}
-          /* Omitted at the drive root, where the pinned folders sit beside these and are not in the listing. */
-          count={systemFolders ? undefined : dirs.length}
-        >
-          <FolderTiles>
-            {systemFolders}
-            {dirs.map((e, index) => {
-              const name = basename(e.path);
-              const project = inProjectsFolder
-                ? projectsByFolder.get(name)
-                : undefined;
-              const publicState = publicStateOf(e);
-              return (
-                <FolderTile
-                  key={e.path}
-                  name={project?.title ?? name}
-                  meta={disambiguate(name)}
-                  readOnly={location.readOnly}
-                  counts={{
-                    volume,
-                    path: e.path,
-                    enabled: index < FOLDER_COUNT_LIMIT,
+      {recent}
+      {view.layout === "list" ? (
+        table
+      ) : (
+        <>
+          {dirs.length + skills.length + brands.length > 0 && (
+            <Section
+              label={t("library.libraryViews.folders")}
+              count={dirs.length + skills.length + brands.length}
+            >
+              <FolderTiles>
+                {skills.map((e) => {
+                  const publicState = publicStateOf(e);
+                  return (
+                    <FolderTile
+                      key={e.path}
+                      name={basename(e.path)}
+                      meta={t("library.cards.skill")}
+                      icon={<KindMark Glyph={Zap} />}
+                      badge={
+                        publicState && <PublicBadge state={publicState} t={t} />
+                      }
+                      onOpen={() =>
+                        onOpenSkill(browsePathFor(location, e.path))
+                      }
+                      onBrowse={() =>
+                        onOpenDir(browsePathFor(location, e.path))
+                      }
+                      onShare={shareFor(e)}
+                      onDelete={deleteFor(e)}
+                      draggable={!location.readOnly}
+                      {...makeDragHandlers(e.path, "dir", {
+                        onDragStart,
+                        onContextMenu,
+                      })}
+                    />
+                  );
+                })}
+                {brands.map((e) => (
+                  <FolderTile
+                    key={e.path}
+                    name={basename(e.path)}
+                    meta={t("library.cards.brand")}
+                    icon={<KindMark Glyph={Palette} />}
+                    onOpen={() => onOpenBrand(browsePathFor(location, e.path))}
+                    onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
+                    onDelete={deleteFor(e)}
+                    draggable={!location.readOnly}
+                    {...makeDragHandlers(e.path, "dir", {
+                      onDragStart,
+                      onContextMenu,
+                    })}
+                  />
+                ))}
+                {dirs.map((e, index) => {
+                  const name = basename(e.path);
+                  const project = inProjectsFolder
+                    ? projectsByFolder.get(name)
+                    : undefined;
+                  const publicState = publicStateOf(e);
+                  return (
+                    <FolderTile
+                      key={e.path}
+                      name={project?.title ?? name}
+                      meta={disambiguate(name)}
+                      readOnly={location.readOnly}
+                      counts={{
+                        volume,
+                        path: e.path,
+                        enabled: index < FOLDER_COUNT_LIMIT,
+                      }}
+                      overlay={
+                        project && (
+                          <AgentAvatar
+                            icon={project.icon}
+                            name={project.title}
+                            size="xs"
+                          />
+                        )
+                      }
+                      badge={
+                        publicState && <PublicBadge state={publicState} t={t} />
+                      }
+                      onOpen={() => onOpenDir(browsePathFor(location, e.path))}
+                      onShare={shareFor(e)}
+                      onDelete={deleteFor(e)}
+                      draggable={!location.readOnly}
+                      {...makeDragHandlers(e.path, "dir", {
+                        onDragStart,
+                        onContextMenu,
+                        onDrop: onMove,
+                      })}
+                    />
+                  );
+                })}
+              </FolderTiles>
+            </Section>
+          )}
+          {sortedFiles.length > 0 && (
+            <FilesSection view={view} count={sortedFiles.length}>
+              {sortedFiles.map((item) => (
+                <FileEntry
+                  key={item.path}
+                  entry={item}
+                  view={view}
+                  selected={
+                    view.previewPath === browsePathFor(location, item.path)
+                  }
+                  publicState={publicStateOf(item.entry)}
+                  downloadUrl={fileUrl(volume, item.path)}
+                  actions={{
+                    onOpen: () =>
+                      onOpenFile(browsePathFor(location, item.path)),
+                    download: {
+                      url: fileUrl(volume, item.path),
+                      filename: item.name,
+                    },
+                    onShare: shareFor(item.entry),
+                    onDelete: deleteFor(item.entry),
+                    draggable: !location.readOnly,
+                    ...makeDragHandlers(item.path, "file", {
+                      onDragStart,
+                      onContextMenu,
+                    }),
                   }}
-                  overlay={
-                    project && (
-                      <AgentAvatar
-                        icon={project.icon}
-                        name={project.title}
-                        size="xs"
-                      />
-                    )
-                  }
-                  badge={
-                    publicState && <PublicBadge state={publicState} t={t} />
-                  }
-                  onOpen={() => onOpenDir(browsePathFor(location, e.path))}
-                  onShare={shareFor(e)}
-                  onDelete={deleteFor(e)}
-                  draggable={!location.readOnly}
-                  {...makeDragHandlers(e.path, "dir", {
-                    onDragStart,
-                    onContextMenu,
-                    onDrop: onMove,
-                  })}
                 />
-              );
-            })}
-          </FolderTiles>
-        </Section>
+              ))}
+            </FilesSection>
+          )}
+        </>
       )}
-      {skills.length > 0 && (
-        <Section label={t("library.libraryViews.skills")} count={skills.length}>
-          <CardsGrid>
-            {skills.map((e) => (
-              <SkillCard
-                key={e.path}
-                dirName={basename(e.path)}
-                updatedAt={e.updatedAt}
-                skillMdUrl={fileUrl(volume, `${e.path}/SKILL.md`)}
-                publicState={publicStateOf(e)}
-                onOpen={() => onOpenSkill(browsePathFor(location, e.path))}
-                onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
-                onShare={shareFor(e)}
-                onDelete={deleteFor(e)}
-                draggable={!location.readOnly}
-                {...makeDragHandlers(e.path, "dir", {
-                  onDragStart,
-                  onContextMenu,
-                })}
-              />
-            ))}
-          </CardsGrid>
-        </Section>
-      )}
-      {brands.length > 0 && (
-        <Section label={t("library.libraryViews.brands")} count={brands.length}>
-          <CardsGrid>
-            {brands.map((e) => (
-              <BrandCard
-                key={e.path}
-                dirName={basename(e.path)}
-                updatedAt={e.updatedAt}
-                tokensUrl={fileUrl(volume, `${e.path}/tokens.css`)}
-                onOpen={() => onOpenBrand(browsePathFor(location, e.path))}
-                onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
-                onDelete={deleteFor(e)}
-                draggable={!location.readOnly}
-                {...makeDragHandlers(e.path, "dir", {
-                  onDragStart,
-                  onContextMenu,
-                })}
-              />
-            ))}
-          </CardsGrid>
-        </Section>
-      )}
-      {sortedFiles.length > 0 && (
-        <FilesSection
-          view={view}
-          count={sortedFiles.length}
-          typeLabel={t("library.library.type")}
-        >
-          {sortedFiles.map((item) => (
-            <FileEntry
-              key={item.path}
-              entry={item}
-              view={view}
-              publicState={publicStateOf(item.entry)}
-              downloadUrl={fileUrl(volume, item.path)}
-              actions={{
-                onOpen: () => onOpenFile(browsePathFor(location, item.path)),
-                download: {
-                  url: fileUrl(volume, item.path),
-                  filename: item.name,
-                },
-                onShare: shareFor(item.entry),
-                onDelete: deleteFor(item.entry),
-                draggable: !location.readOnly,
-                ...makeDragHandlers(item.path, "file", {
-                  onDragStart,
-                  onContextMenu,
-                }),
-              }}
-            />
-          ))}
-        </FilesSection>
-      )}
-      {view.fileView !== "all" && files.length === 0 && (
-        <EmptyNote>{t("library.library.noFilesInView")}</EmptyNote>
-      )}
-      {isDriveRoot && (
-        <RecentlyAdded
-          view={view}
-          onOpenFile={onOpenFile}
-          onShare={onShare}
-          onDelete={onDelete}
-        />
-      )}
+      {(view.fileView !== "all" || view.modified !== "any") &&
+        files.length === 0 && (
+          <EmptyNote>{t("library.library.noFilesInView")}</EmptyNote>
+        )}
     </>
   );
 }

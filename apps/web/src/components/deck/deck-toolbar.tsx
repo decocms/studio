@@ -34,6 +34,11 @@ import {
   RefreshCw01,
 } from "@untitledui/icons";
 import type { ReactNode } from "react";
+import { Page } from "@/components/page";
+import {
+  type ToolbarPlacement,
+  toolbarButton,
+} from "@/components/toolbar-placement";
 import { useT } from "@/i18n/use-t.ts";
 import type { DeckEditor } from "./use-deck-editor";
 
@@ -42,6 +47,8 @@ export function DeckToolbar({
   editor,
   downloadName,
   trailing,
+  className,
+  placement = "bar",
 }: {
   readUrl: string;
   editor: DeckEditor;
@@ -49,44 +56,18 @@ export function DeckToolbar({
   downloadName: string;
   /** Host-specific actions appended after the shared ones. */
   trailing?: ReactNode;
+  /** Overrides the bar's height and padding. */
+  className?: string;
+  /** `topbar` hands the controls to the page header, which already names
+   *  the file. */
+  placement?: ToolbarPlacement;
 }) {
   const t = useT();
   const absoluteUrl = new URL(readUrl, window.location.origin).toString();
+  const button = toolbarButton(placement);
 
-  return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
-      {editor.deckDetected && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={editor.railOpen ? "secondary" : "ghost"}
-              size="icon"
-              aria-label={
-                editor.railOpen
-                  ? t("deck.deckToolbar.hideSlideList")
-                  : t("deck.deckToolbar.showSlideList")
-              }
-              onClick={() => editor.setRailOpen(!editor.railOpen)}
-            >
-              <LayoutLeft size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {editor.railOpen
-              ? t("deck.deckToolbar.hideSlideList")
-              : t("deck.deckToolbar.showSlideList")}
-          </TooltipContent>
-        </Tooltip>
-      )}
-      <button
-        type="button"
-        onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
-        className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        title={absoluteUrl}
-      >
-        <span className="truncate">{absoluteUrl}</span>
-      </button>
-
+  const controls = (
+    <>
       {editor.agentUpdated && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -116,8 +97,9 @@ export function DeckToolbar({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant={editor.editMode ? "secondary" : "ghost"}
-              size="icon"
+              variant={editor.editMode ? "secondary" : button.variant}
+              size={button.size}
+              aria-pressed={editor.editMode}
               aria-label={
                 editor.editMode
                   ? t("deck.deckToolbar.doneEditing")
@@ -143,8 +125,8 @@ export function DeckToolbar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="ghost"
-              size="icon"
+              variant={button.variant}
+              size={button.size}
               aria-label={t("deck.deckToolbar.download")}
             >
               <Download01 size={14} />
@@ -171,8 +153,8 @@ export function DeckToolbar({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="ghost"
-              size="icon"
+              variant={button.variant}
+              size={button.size}
               aria-label={t("deck.deckToolbar.download")}
               asChild
             >
@@ -190,8 +172,8 @@ export function DeckToolbar({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost"
-            size="icon"
+            variant={button.variant}
+            size={button.size}
             aria-label={t("deck.deckToolbar.openInNewTab")}
             onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
           >
@@ -203,6 +185,82 @@ export function DeckToolbar({
         </TooltipContent>
       </Tooltip>
       {trailing}
+    </>
+  );
+
+  if (placement === "topbar") {
+    return (
+      <Page.Actions>
+        {editor.deckDetected && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={editor.railOpen ? "secondary" : button.variant}
+                size={button.size}
+                aria-pressed={editor.railOpen}
+                aria-label={
+                  editor.railOpen
+                    ? t("deck.deckToolbar.hideSlideList")
+                    : t("deck.deckToolbar.showSlideList")
+                }
+                onClick={() => editor.setRailOpen(!editor.railOpen)}
+              >
+                <LayoutLeft size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {editor.railOpen
+                ? t("deck.deckToolbar.hideSlideList")
+                : t("deck.deckToolbar.showSlideList")}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {controls}
+      </Page.Actions>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2",
+        className,
+      )}
+    >
+      {editor.deckDetected && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={editor.railOpen ? "secondary" : button.variant}
+              size={button.size}
+              aria-pressed={editor.railOpen}
+              aria-label={
+                editor.railOpen
+                  ? t("deck.deckToolbar.hideSlideList")
+                  : t("deck.deckToolbar.showSlideList")
+              }
+              onClick={() => editor.setRailOpen(!editor.railOpen)}
+            >
+              <LayoutLeft size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {editor.railOpen
+              ? t("deck.deckToolbar.hideSlideList")
+              : t("deck.deckToolbar.showSlideList")}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      <button
+        type="button"
+        onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
+        className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-1 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        title={absoluteUrl}
+      >
+        {/* The name; the API URL stays in the hover title. */}
+        <span className="truncate">{downloadName}</span>
+      </button>
+      {controls}
     </div>
   );
 }

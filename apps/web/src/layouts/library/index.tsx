@@ -12,7 +12,11 @@
 import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
-import { type LibraryFileView } from "./file-view";
+import {
+  LIBRARY_MODIFIED,
+  type LibraryFileView,
+  type LibraryModified,
+} from "./file-view";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
@@ -47,25 +51,35 @@ import {
   homeDisplayName,
 } from "@decocms/shared/organization/home-mount";
 import { KEYS } from "@/lib/query-keys";
+import { clearOpenFileDismissal } from "@/hooks/use-open-library-file";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
-import { useOrgFsMutations } from "@/hooks/use-org-fs";
+import { useOrgFsMutations, useOrgFsPublicSets } from "@/hooks/use-org-fs";
+import { FilterMenu } from "./filter-menu";
+import { PROJECTS_FOLDER } from "./project-folder";
 import {
   basename,
+  libraryPlaceOf,
   libraryTrail,
   parseLibraryPath,
   segmentLabel,
 } from "./location";
 import { LIBRARY_SORTS, type LibrarySort } from "./entries";
-import { useOrgRepoSyncVolumes } from "@/hooks/use-org-repo-syncs";
+import {
+  useOrgRepoSyncs,
+  useOrgRepoSyncVolumes,
+} from "@/hooks/use-org-repo-syncs";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview";
 import {
   LIBRARY_VOLUMES,
+  LayoutToggle,
   type LibraryLayout,
   type ListingView,
   type PendingDelete,
+  ChatFilesView,
+  isChatVolume,
   PublicSetsView,
   SearchResultsView,
   SYSTEM_FOLDER_NAMES,
@@ -96,6 +110,7 @@ export function LibraryPage({
   const isMobile = useIsMobile();
   const search = useSearch({ strict: false }) as {
     fileView?: LibraryFileView;
+    modified?: LibraryModified;
     layout?: LibraryLayout;
     sort?: LibrarySort;
     path?: string;
@@ -104,10 +119,16 @@ export function LibraryPage({
     brand?: string;
   };
   const fileView = search.fileView ?? "all";
+  const modified = search.modified ?? "any";
   const layout: LibraryLayout = search.layout === "grid" ? "grid" : "list";
-  const sort: LibrarySort = LIBRARY_SORTS.includes(search.sort as LibrarySort)
-    ? (search.sort as LibrarySort)
-    : "name";
+  /** Files a chat dropped in read best newest first; a member's own by name. */
+  const startLocation = parseLibraryPath(search.path || root);
+  const defaultSort: LibrarySort =
+    isChatVolume(startLocation.volume) && !startLocation.dirPath
+      ? "updated"
+      : "name";
+  const sort: LibrarySort =
+    LIBRARY_SORTS.find((option) => option === search.sort) ?? defaultSort;
   const setSearchParam = (
     key:
       | "path"
@@ -115,6 +136,7 @@ export function LibraryPage({
       | "skill"
       | "brand"
       | "fileView"
+      | "modified"
       | "layout"
       | "sort",
     value: string | null,
@@ -128,12 +150,17 @@ export function LibraryPage({
     });
   const setFileView = (view: LibraryFileView) =>
     setSearchParam("fileView", view === "all" ? null : view);
+  /** This page shows the previews it opens; an override sends them elsewhere. */
+  const ownsPreview = !onOpenFileOverride;
   const view: ListingView = {
     layout,
     sort,
     fileView,
+    modified,
+    previewPath: ownsPreview ? search.preview : undefined,
     onLayout: (next) => setSearchParam("layout", next === "list" ? null : next),
-    onSort: (next) => setSearchParam("sort", next === "name" ? null : next),
+    onSort: (next) =>
+      setSearchParam("sort", next === defaultSort ? null : next),
   };
 
   /** A missing (or emptied) `?path=` lands at the tree's root. */
@@ -171,9 +198,11 @@ export function LibraryPage({
         [kind]: value,
       }),
     });
-  const onOpenFile =
-    onOpenFileOverride ??
-    ((previewPath: string) => openPreview("preview", previewPath));
+  const onOpenFile = (previewPath: string) => {
+    clearOpenFileDismissal();
+    if (onOpenFileOverride) onOpenFileOverride(previewPath);
+    else openPreview("preview", previewPath);
+  };
   const onOpenSkill =
     onOpenSkillOverride ??
     ((skillPath: string) => openPreview("skill", skillPath));
@@ -472,17 +501,125 @@ export function LibraryPage({
     </Button>
   );
 
-  const fileViewTabs = (
+  /** What an empty, writable place offers. */
+  const uploadAction = (
+    <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+      <Upload01 size={14} />
+      {t("library.library.uploadFile")}
+    </Button>
+  );
+  const emptyActions = (
+    <div className="flex items-center gap-2">
+      {uploadAction}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => setNewFolderOpen(true)}
+      >
+        <Plus size={14} />
+        {t("library.library.newFolder")}
+      </Button>
+    </div>
+  );
+  /** A chat-filled volume's root lists its files, not its per-chat folders. */
+  const isChatVolumeRoot = isChatVolume(location.volume) && !location.dirPath;
+
+  /** The places of the drive, each a separate volume or folder underneath.
+   *  Only the org's drive has them: a project's files are one place. */
+  const syncs = useOrgRepoSyncs();
+  const publicSets = useOrgFsPublicSets();
+  const place = libraryPlaceOf(location);
+  const places =
+    root === HOME_MOUNT_PATH
+      ? [
+          { key: "all", label: t("library.library.all"), path: root },
+          {
+            key: PROJECTS_FOLDER,
+            label: t("library.library.placeProjects"),
+            path: `${HOME_MOUNT_PATH}/${PROJECTS_FOLDER}`,
+          },
+          {
+            key: "uploads",
+            label: t("library.library.placeUploads"),
+            path: "uploads",
+          },
+          {
+            key: "outputs",
+            label: t("library.library.placeOutputs"),
+            path: "outputs",
+          },
+          ...((publicSets.data?.length ?? 0) > 0
+            ? [
+                {
+                  key: "public",
+                  label: t("library.library.placeSkills"),
+                  path: "public",
+                },
+              ]
+            : []),
+          ...(syncs.data ?? []).map((sync) => ({
+            key: sync.volume,
+            label: sync.volume,
+            path: sync.volume,
+          })),
+        ]
+      : [];
+
+  const modifiedOptions = LIBRARY_MODIFIED.map((value) => ({
+    value,
+    label: {
+      any: t("library.library.modifiedAny"),
+      today: t("library.library.modifiedToday"),
+      week: t("library.library.modifiedWeek"),
+      month: t("library.library.modifiedMonth"),
+    }[value],
+  }));
+  const typeOptions = (["all", "documents", "media"] as const).map((value) => ({
+    value,
+    label: t(
+      value === "all" ? "library.library.anyType" : `library.library.${value}`,
+    ),
+  }));
+
+  /** One bar: where to look, then what to keep. Drive's order. */
+  const filters = (
     <Page.Tabs>
-      {(["all", "documents", "media"] as const).map((tab) => (
+      {places.map((p) => (
         <Page.Tab
-          key={tab}
-          active={fileView === tab}
-          onClick={() => void setFileView(tab)}
+          key={p.key}
+          active={place === p.key}
+          onClick={() => onOpenDir(p.path)}
         >
-          {t(`library.library.${tab}`)}
+          {p.label}
         </Page.Tab>
       ))}
+      {places.length > 0 && (
+        <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+      )}
+      <FilterMenu
+        label={
+          fileView === "all"
+            ? t("library.library.typeFilter")
+            : typeOptions.find((o) => o.value === fileView)?.label
+        }
+        value={fileView}
+        options={typeOptions}
+        active={fileView !== "all"}
+        onChange={setFileView}
+      />
+      <FilterMenu
+        label={
+          modified === "any"
+            ? t("library.library.modified")
+            : modifiedOptions.find((o) => o.value === modified)?.label
+        }
+        value={modified}
+        options={modifiedOptions}
+        active={modified !== "any"}
+        onChange={(next) =>
+          void setSearchParam("modified", next === "any" ? null : next)
+        }
+      />
     </Page.Tabs>
   );
 
@@ -538,9 +675,12 @@ export function LibraryPage({
       >
         {primaryAction}
       </Page.Actions>
-      <Panel.Toolbar.Left.Portal>{fileViewTabs}</Panel.Toolbar.Left.Portal>
+      <Panel.Toolbar.Left.Portal>{filters}</Panel.Toolbar.Left.Portal>
+      <Panel.Toolbar.Right.Portal>
+        <LayoutToggle layout={layout} onChange={view.onLayout} />
+      </Panel.Toolbar.Right.Portal>
       <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full flex-col max-w-[1200px] gap-6 px-4 py-6 md:px-8">
+        <div className="mx-auto flex w-full flex-col max-w-[1200px] gap-8 px-4 py-6 md:px-8">
           {searchQuery ? (
             <SearchResultsView
               view={view}
@@ -553,6 +693,16 @@ export function LibraryPage({
             />
           ) : location.volume === null ? (
             <PublicSetsView view={view} onOpenDir={onOpenDir} />
+          ) : isChatVolumeRoot ? (
+            <ChatFilesView
+              key={location.volume}
+              volume={location.volume}
+              view={view}
+              onOpenFile={onOpenFile}
+              onShare={setShareTarget}
+              onDelete={setPendingDelete}
+              emptyActions={uploadAction}
+            />
           ) : (
             <VolumeView
               view={view}
@@ -572,6 +722,7 @@ export function LibraryPage({
                 setRenameOpen(true);
               }}
               onMove={handleMove}
+              emptyActions={emptyActions}
             />
           )}
         </div>

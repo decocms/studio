@@ -19,6 +19,7 @@ import {
   HOME_MOUNT_PATH,
   SANDBOX_ORG_ROOT,
 } from "@decocms/shared/organization/home-mount";
+import { PROJECTS_FOLDER } from "./project-folder";
 
 export interface LibraryLocation {
   /** Raw path segments, as browsed (incl. the `public/<set>` prefix). */
@@ -145,4 +146,29 @@ export function libraryTrail(browsePath: string, root: string): LibraryCrumb[] {
     label: segmentLabel(segment),
     path: segments.slice(0, offset + index + 1).join("/"),
   }));
+}
+
+const GENERATED_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The folder a file is in, as a person would name it. A generated-id folder
+ *  (each chat upload gets one) belongs to the folder above it. */
+export function namedFolderOf(path: string): string {
+  const segments = path.split("/").slice(0, -1);
+  while (segments.length > 0 && GENERATED_ID.test(segments.at(-1) ?? "")) {
+    segments.pop();
+  }
+  return segments.join("/");
+}
+
+/** Which place in the Library's top bar a location belongs to: `all` for the
+ *  member's own drive, `projects` inside the projects folder, `public` for the
+ *  shared skill sets, or the volume's own name. */
+export function libraryPlaceOf(location: LibraryLocation): string {
+  if (location.isPublic) return "public";
+  if (location.volume === HOME_MOUNT_PATH) {
+    const [first] = location.dirPath.split("/");
+    return first === PROJECTS_FOLDER ? PROJECTS_FOLDER : "all";
+  }
+  return location.volume ?? "all";
 }

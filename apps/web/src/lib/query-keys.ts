@@ -520,8 +520,9 @@ export const KEYS = {
     ["org-fs", orgId, volume] as const,
   orgFsList: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "list", path] as const,
-  orgFsUsage: (orgId: string, volume: string) =>
-    ["org-fs", orgId, volume, "usage"] as const,
+  /** Under the volume's prefix, so every write to it refreshes the list. */
+  orgFsVolumeFiles: (orgId: string, volume: string) =>
+    ["org-fs", orgId, volume, "files"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
   orgFsText: (orgId: string, volume: string, path: string, marker: string) =>

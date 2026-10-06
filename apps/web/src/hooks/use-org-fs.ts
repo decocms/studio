@@ -16,6 +16,8 @@ export interface OrgFsEntry {
   size: number;
   updatedAt: string;
   contentHash?: string | null;
+  /** The member who first wrote it. Agents write as the member they run for. */
+  createdBy?: string;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
   /** Dir is a brand folder (contains tokens.css or brand.md). */
@@ -30,11 +32,6 @@ export interface OrgFsEntry {
 }
 
 export type ShareMode = "private" | "public" | "password";
-
-export interface OrgFsUsage {
-  files: number;
-  bytes: number;
-}
 
 /** A `/fs/recent` entry — cross-volume, so the volume rides along. */
 export interface OrgFsRecentEntry extends OrgFsEntry {
@@ -152,17 +149,6 @@ export function useOrgFsStat(
   });
 }
 
-export function useOrgFsUsage(volume: string) {
-  const { org } = useProjectContext();
-  return useQuery({
-    queryKey: KEYS.orgFsUsage(org.id, volume),
-    queryFn: async () => {
-      const res = await fsFetch(fsUrl(org.slug, volume, "usage"));
-      return (await res.json()) as OrgFsUsage;
-    },
-  });
-}
-
 /**
  * Most recently written files across every volume, newest first — the
  * Library home's feed. The query key is limit-agnostic (single consumer);
@@ -198,6 +184,34 @@ export interface OrgFsSearchScope {
  * runs for non-empty queries; previous results stay on screen while a new
  * query loads.
  */
+/** The most the search route returns in one request. */
+export const VOLUME_FILES_LIMIT = 200;
+
+/**
+ * A volume's newest files at any depth, in one request.
+ *
+ * TODO(api): this borrows the search route with `q="."`, which matches any
+ * file with an extension and stops at `VOLUME_FILES_LIMIT`. A flat
+ * `GET /fs/:volume/files` over `OrgFs.listVolumeFiles` should replace it.
+ */
+export function useOrgFsVolumeFiles(volume: string) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        q: ".",
+        volume,
+        limit: String(VOLUME_FILES_LIMIT),
+      });
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/search?${params}`,
+      );
+      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
+    },
+  });
+}
+
 export function useOrgFsSearch(query: string, scope?: OrgFsSearchScope) {
   const { org } = useProjectContext();
   return useQuery({
