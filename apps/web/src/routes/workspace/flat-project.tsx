@@ -124,7 +124,7 @@ function FlatProjectBody({
           nothing while a card is open — a launcher above someone reading one
           card is the rest of the project talking over it. */}
           {!taskOpen && (
-            <Page.Container className="flex max-w-[1680px] shrink-0 flex-col gap-4 pb-6">
+            <Page.Container className="hidden max-w-[1680px] shrink-0 flex-col gap-4 pb-6 has-[a]:flex">
               <ProjectApps project={project} orgSlug={org.slug} />
             </Page.Container>
           )}
