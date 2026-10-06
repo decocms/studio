@@ -245,14 +245,26 @@ function isContentProtocolPath(path: string): boolean {
   return path.endsWith("/rpc");
 }
 
+/**
+ * The `site_editor_content_protocol` org flag, read before a content-protocol
+ * route does anything (and so before any commit). A failed read is "off":
+ * the route answers 404 and the editor stays on the v7 path.
+ */
 async function contentProtocolEnabled(
   c: Context<DecofileEnv>,
 ): Promise<boolean> {
   const ctx = c.var.studioContext;
-  const settings = await ctx.storage.organizationSettings.get(
-    c.get("decofileScope").organizationId,
-  );
-  return orgFlagEnabled(settings?.flags, "site_editor_content_protocol");
+  const organizationId = c.get("decofileScope").organizationId;
+  try {
+    const settings = await ctx.storage.organizationSettings.get(organizationId);
+    return orgFlagEnabled(settings?.flags, "site_editor_content_protocol");
+  } catch (error) {
+    console.error("decofile: org settings read failed; protocol off", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {

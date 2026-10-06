@@ -232,9 +232,9 @@ export function SectionsEditor({
   // the schema's name, description and image) and no loader-backed pickers.
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const protocolProject = isProtocolProject(contentBackend);
-  // v8 has no async rendering (migration strips Lazy wrappers): offered only
-  // once the site is known to be v7.
-  const asyncRenderAvailable = contentBackend.kind === "legacy";
+  // v8 has no async rendering (migration strips Lazy wrappers): hidden once
+  // the site is known to be v8, shown as before otherwise.
+  const asyncRenderAvailable = !protocolProject;
   const galleryAvailable = !!sectionPreviewBase || protocolProject;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<

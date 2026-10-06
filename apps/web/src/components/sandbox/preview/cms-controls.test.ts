@@ -35,21 +35,21 @@ describe("showPreviewToolbarFor", () => {
     previewSurfaceActive: true,
     daemonReady: false,
     production: false,
-    localPreviewUrl: null,
+    servePreviewUrl: null,
   };
 
-  it("shows it for a local preview URL without a sandbox daemon", () => {
+  it("shows it for a deco serve preview without a sandbox daemon", () => {
     expect(
       showPreviewToolbarFor({
         ...base,
-        localPreviewUrl: "http://localhost:5180",
+        servePreviewUrl: "http://localhost:5180",
       }),
     ).toBe(true);
     expect(
       showCmsPageSelector({
         showPreviewToolbar: showPreviewToolbarFor({
           ...base,
-          localPreviewUrl: "http://localhost:5180",
+          servePreviewUrl: "http://localhost:5180",
         }),
         contentEditingEnabled: true,
       }),
@@ -67,7 +67,7 @@ describe("showPreviewToolbarFor", () => {
       showPreviewToolbarFor({
         ...base,
         previewSurfaceActive: false,
-        localPreviewUrl: "http://localhost:5180",
+        servePreviewUrl: "http://localhost:5180",
       }),
     ).toBe(false);
   });

@@ -85,8 +85,6 @@ export const decoServe = {
   "decoServe.upload.readOnly":
     "Couldn't upload {name}: deco serve is read-only (started with --read-only).",
 
-  "decoServe.version.v7":
-    "Blocks v7: Studio reads and saves content through your running site.",
   "decoServe.version.v8":
     "Blocks v8: Studio edits your site's content files directly, without running your site's code.",
 } as const;

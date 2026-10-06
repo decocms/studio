@@ -10,8 +10,10 @@
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts).
  * The cases below it cover what's specific to this backend: the flag, auth,
  * the bound branch, branch creation on first write, the tracked
- * `blocks.gen.json`, a legacy (v7) site's secret blocks, and the draft
- * changes the site's `cms.forDraft` reads through its Fast Preview pointer.
+ * `blocks.gen.json`, v7 secret blocks left in a migrated site, the draft
+ * changes the site's `cms.forDraft` reads through its Fast Preview pointer,
+ * and the editor's v7/v8 detection: only a committed schema with
+ * `"blocksMajor": 8` is a v8 site, even with the org flag on.
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -31,13 +33,18 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
+import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
 const SECRET_BLOCK = "newsletter";
 const SECRET_FIELD = "apiKey";
 
-/** A small deco-meta@1 schema with a block type that has a Secret field. */
+/**
+ * A small v8 schema (deco-meta@1, `"blocksMajor": 8` as `deco schema` writes
+ * it) with a block type that has a Secret field.
+ */
 const schema = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       sections: {
@@ -226,7 +233,7 @@ test.describe("content protocol on GitHub", () => {
     const ctx = await newApiContext(playwright);
     try {
       const project = await setUp(ctx, {
-        ".deco/meta.gen.json": JSON.stringify(schema),
+        ".deco/schema.gen.json": JSON.stringify(schema),
         ".deco/blocks.gen.json": '{"hero-home":{"__resolveType":"hero"}}',
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
@@ -273,12 +280,16 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("saves a legacy site's secret loader blocks", async ({ playwright }) => {
+  test("saves the v7 secret loader blocks a migrated site still has", async ({
+    playwright,
+  }) => {
     const ctx = await newApiContext(playwright);
     try {
       const loader = "website/loaders/secret.ts";
-      // v7 `meta.gen.json`: the loader marks its encrypted string `format: secret`.
-      const legacyMeta = {
+      // A v8 schema that still lists the v7 secret loader, which marks its
+      // encrypted string `format: secret`.
+      const migratedSchema = {
+        blocksMajor: 8,
         manifest: {
           blocks: {
             loaders: { [loader]: { $ref: "#/definitions/c2VjcmV0" } },
@@ -302,7 +313,7 @@ test.describe("content protocol on GitHub", () => {
         },
       };
       const project = await setUp(ctx, {
-        ".deco/meta.gen.json": JSON.stringify(legacyMeta),
+        ".deco/schema.gen.json": JSON.stringify(migratedSchema),
         ".deco/blocks/site.json": '{"__resolveType":"site/apps/site.ts"}\n',
       });
       await enableContentProtocol(ctx, project.org);
@@ -397,6 +408,163 @@ test.describe("content protocol on GitHub", () => {
     } finally {
       await ctx.dispose();
       await site.dispose();
+    }
+  });
+});
+
+/** A v7 site's `meta.gen.json`, as the classic editor reads it. */
+const v7Meta = {
+  manifest: {
+    blocks: {
+      pages: { "website/pages/Page.tsx": { $ref: "#/definitions/Page" } },
+      sections: {
+        "site/sections/Hero.tsx": { $ref: "#/definitions/Hero" },
+      },
+    },
+  },
+  schema: {
+    definitions: {
+      Page: { type: "object", properties: {} },
+      Hero: {
+        type: "object",
+        title: "Hero",
+        properties: { title: { type: "string", title: "Title" } },
+      },
+    },
+  },
+};
+
+const homePage = JSON.stringify({
+  __resolveType: "website/pages/Page.tsx",
+  name: "Home",
+  path: "/",
+  sections: [{ __resolveType: "site/sections/Hero.tsx", title: "Hello" }],
+});
+
+/** A Fast Preview project in the signed-in user's org, with the flag on. */
+async function openEditor(
+  api: APIRequestContext,
+  orgSlug: string,
+  previewServerUrl: string,
+  files: Record<string, string>,
+): Promise<{ url: string; project: FastPreviewProject }> {
+  const owner = uniqueOwner();
+  const project = await createFastPreviewProject(api, orgSlug, {
+    owner,
+    repo: "site",
+    // The header's PR lookup dials this; a closed port fails fast.
+    connectionUrl: "http://127.0.0.1:1/unused",
+    previewServerUrl,
+  });
+  await seedStubRepo(api, {
+    owner,
+    repo: "site",
+    defaultBranch: "main",
+    branches: { main: { files } },
+  });
+  await enableContentProtocol(api, orgSlug);
+  const { item: thread } = await callSelfMcpTool<{ item: { id: string } }>(
+    api,
+    orgSlug,
+    "COLLECTION_THREADS_CREATE",
+    { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
+  );
+  return {
+    project,
+    url: `/${orgSlug}/projects/${project.vmcpId}/site-editor?thread=${thread.id}&sidepanel=false`,
+  };
+}
+
+test.describe("v7/v8 detection with the org flag on", () => {
+  test.setTimeout(120_000);
+
+  for (const [name, file, meta] of [
+    ["a v7 meta.gen.json", ".deco/meta.gen.json", v7Meta],
+    [
+      "a meta.gen.json that names another major",
+      ".deco/meta.gen.json",
+      { ...v7Meta, blocksMajor: 7 },
+    ],
+  ] as const) {
+    test(`${name} without "blocksMajor": 8 stays on the v7 editor`, async ({
+      authedPage: { page, orgSlug },
+    }) => {
+      const preview = await startPreviewSite();
+      try {
+        const { url } = await openEditor(page.request, orgSlug, preview.url, {
+          [file]: JSON.stringify(meta),
+          ".deco/blocks/home.json": homePage,
+        });
+        await page.goto(url);
+        // The classic editor (the org's `new_blocks_editor` is off): v8
+        // sites always get the new one, so this is the v7 path.
+        const blocks = page.getByTestId("blocks-panel");
+        await expect(
+          blocks.getByPlaceholder("Page name", { exact: true }),
+        ).toHaveValue("Home", { timeout: 60_000 });
+        await expect(page.getByTestId("content-version-badge")).toHaveCount(0);
+      } finally {
+        await preview.close();
+      }
+    });
+  }
+
+  test('a schema with "blocksMajor": 8 is a v8 site', async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const preview = await startPreviewSite();
+    try {
+      const { url } = await openEditor(page.request, orgSlug, preview.url, {
+        ".deco/schema.gen.json": JSON.stringify({ ...v7Meta, blocksMajor: 8 }),
+        ".deco/blocks/home.json": homePage,
+      });
+      await page.goto(url);
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 60_000,
+      });
+    } finally {
+      await preview.close();
+    }
+  });
+
+  test("a v7 site's decofile read and save still mint draft tokens", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const anon = await newApiContext(playwright);
+    try {
+      const project = await setUp(ctx, {
+        ".deco/meta.gen.json": JSON.stringify(v7Meta),
+        ".deco/blocks/home.json": homePage,
+      });
+      await enableContentProtocol(ctx, project.org);
+      const url = `/api/${project.org}/decofile/${project.vmcpId}/draft-1`;
+
+      const saved = await ctx.patch(url, {
+        data: { set: { promo: { __resolveType: "site/sections/Hero.tsx" } } },
+      });
+      expect(saved.status()).toBe(200);
+      const { token } = (await saved.json()) as { token: string };
+      expect(token).toEqual(expect.any(String));
+
+      const read = await ctx.get(url);
+      expect(read.status()).toBe(200);
+      expect(((await read.json()) as { token?: string }).token).toEqual(
+        expect.any(String),
+      );
+
+      // The draft link the site pulls still answers the whole decofile.
+      const pulled = await anon.get(
+        `${url}?token=${encodeURIComponent(token)}`,
+      );
+      expect(pulled.status()).toBe(200);
+      const decofile = (await pulled.json()) as Record<string, unknown>;
+      expect(decofile.promo).toEqual({
+        __resolveType: "site/sections/Hero.tsx",
+      });
+    } finally {
+      await ctx.dispose();
+      await anon.dispose();
     }
   });
 });

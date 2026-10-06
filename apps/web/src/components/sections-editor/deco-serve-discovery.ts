@@ -16,7 +16,7 @@ import {
 } from "./deco-serve-connection";
 
 /** Retries back off up to this, so a closed port is rarely re-asked. */
-export const DISCOVERY_MAX_DELAY_MS = 15_000;
+const DISCOVERY_MAX_DELAY_MS = 15_000;
 /** A probe that takes longer than this counts as no answer. */
 export const DISCOVERY_PROBE_TIMEOUT_MS = 3_000;
 

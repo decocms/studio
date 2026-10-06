@@ -84,8 +84,6 @@ export const decoServe = {
   "decoServe.upload.readOnly":
     "Não foi possível enviar {name}: o deco serve está em somente leitura (iniciado com --read-only).",
 
-  "decoServe.version.v7":
-    "Blocks v7: o Studio lê e salva o conteúdo pelo seu site em execução.",
   "decoServe.version.v8":
     "Blocks v8: o Studio edita os arquivos de conteúdo do seu site diretamente, sem rodar o código do site.",
 } satisfies Record<keyof typeof decoServeEn, string>;

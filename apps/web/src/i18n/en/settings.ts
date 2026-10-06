@@ -352,7 +352,7 @@ export const settings = {
   "settings.preferences.title": "Preferences",
   "settings.blocksEditor.title": "New blocks editor",
   "settings.blocksEditor.description":
-    "Applies to everyone in this organization, on v7 sites. v8 sites always use it, and the rest of Studio always uses the new layout.",
+    "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
   "settings.preferences.projectFirstNav": "Project-first navigation",
   "settings.preferences.projectFirstNavDescription":
     "Try the org rail, project launcher and the Today/Agents home.",

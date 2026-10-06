@@ -26,11 +26,17 @@ export function SecretFieldForBackend(props: FieldProps) {
   }
   // Undecided or unreachable: the legacy field would post plaintext to a site
   // that may be a protocol one, so nothing is editable until it's known.
+  // Still being decided (briefly, while org settings load), it says nothing:
+  // most sites are v7 and get their usual field a moment later.
   if (backend.kind !== "protocol") {
     return (
       <SecretMessage
         {...props}
-        message="sectionsEditor.secretField.backendUnavailableMessage"
+        message={
+          backend.kind === "unavailable"
+            ? "sectionsEditor.secretField.backendUnavailableMessage"
+            : null
+        }
       />
     );
   }
@@ -97,7 +103,8 @@ function SecretMessage({
 }: FieldProps & {
   message:
     | "sectionsEditor.secretField.backendUnavailableMessage"
-    | "sectionsEditor.secretField.legacySecretUnavailableMessage";
+    | "sectionsEditor.secretField.legacySecretUnavailableMessage"
+    | null;
 }) {
   const t = useT();
   return (
@@ -108,7 +115,7 @@ function SecretMessage({
         description={schema.description}
         virtualMcpId={sandbox?.virtualMcpId}
       />
-      <p className="text-xs text-muted-foreground">{t(message)}</p>
+      {message && <p className="text-xs text-muted-foreground">{t(message)}</p>}
     </div>
   );
 }

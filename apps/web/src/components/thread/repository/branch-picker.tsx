@@ -51,7 +51,6 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
@@ -61,7 +60,6 @@ import {
   type DecoServeConnection,
   classifyServeProbeError,
   endpointHost,
-  parseServeAddress,
 } from "@/components/sections-editor/deco-serve-connection";
 import { serveProblemShort } from "@/components/sections-editor/deco-serve-notices";
 import { DISCOVERY_PROBE_TIMEOUT_MS } from "@/components/sections-editor/deco-serve-discovery";
@@ -69,6 +67,7 @@ import { probeServeEndpoint } from "@/hooks/use-deco-serve-discovery";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
+import { resolveLocalSubmit } from "./local-url-submit.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
 import {
@@ -1027,14 +1026,6 @@ function LocalUrlForm({
   const [error, setError] = useState<string | null>(null);
   const trimmed = value.trim();
   const submit = async () => {
-    // A Site editor link, or an address or port on this machine: deco serve.
-    // Anything else is a v7 tunnel URL.
-    const parsed = parseServeAddress(trimmed);
-    if (!parsed.ok) {
-      onSave(productionUrlFromDomain(trimmed));
-      return;
-    }
-    const { connection } = parsed;
     // The first request is what makes Chrome ask to reach this machine.
     setChecking(true);
     setError(null);
@@ -1044,16 +1035,20 @@ function LocalUrlForm({
       DISCOVERY_PROBE_TIMEOUT_MS,
     );
     try {
-      await probeServeEndpoint(connection.endpoint, controller.signal);
-      onSaveServe(connection);
-    } catch (failure) {
-      setError(
-        serveProblemShort(
-          t,
-          classifyServeProbeError(failure),
-          endpointHost(connection.endpoint),
-        ),
+      const outcome = await resolveLocalSubmit(trimmed, (endpoint) =>
+        probeServeEndpoint(endpoint, controller.signal),
       );
+      if (outcome.kind === "serve") onSaveServe(outcome.connection);
+      else if (outcome.kind === "tunnel") onSave(outcome.url);
+      else {
+        setError(
+          serveProblemShort(
+            t,
+            classifyServeProbeError(outcome.failure),
+            endpointHost(outcome.connection.endpoint),
+          ),
+        );
+      }
     } finally {
       clearTimeout(timeout);
       setChecking(false);

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
   isProtocolProject,
+  isV8Schema,
   mergePolledBlocks,
   newBlocksEditorEnabled,
   selectContentBackend,
@@ -10,11 +11,12 @@ import {
 
 describe("selectContentBackend", () => {
   const base = {
+    hasProject: true,
     flagEnabled: true,
     hasServeConnection: false,
     hasLocalTunnel: false,
     runtime: "cms" as const,
-    githubSchema: "present" as const,
+    githubSite: "v8" as const,
   };
 
   test("waits for the org flag before the GitHub backend", () => {
@@ -56,7 +58,7 @@ describe("selectContentBackend", () => {
         hasServeConnection: true,
         hasLocalTunnel: true,
         runtime: "sandbox",
-        githubSchema: "absent",
+        githubSite: "v7",
       }),
     ).toBe("protocol-local");
   });
@@ -70,18 +72,53 @@ describe("selectContentBackend", () => {
     );
   });
 
-  test("a cms session follows the committed schema", () => {
+  test("a cms session follows the committed schema's blocksMajor", () => {
     expect(selectContentBackend(base)).toBe("protocol-github");
-    expect(selectContentBackend({ ...base, githubSchema: "absent" })).toBe(
-      "legacy",
-    );
-    expect(selectContentBackend({ ...base, githubSchema: "loading" })).toBe(
+    expect(selectContentBackend({ ...base, githubSite: "v7" })).toBe("legacy");
+    expect(selectContentBackend({ ...base, githubSite: "loading" })).toBe(
       "pending",
     );
-    // A failed probe never routes a protocol site to the legacy path.
-    expect(selectContentBackend({ ...base, githubSchema: "error" })).toBe(
-      "unavailable-github",
+  });
+
+  test("a failed GitHub probe is v7, never unavailable", () => {
+    expect(selectContentBackend({ ...base, githubSite: "error" })).toBe(
+      "legacy",
     );
+  });
+
+  test("without a project (SEO, blog forms) it is legacy right away", () => {
+    for (const flagEnabled of [true, false, undefined]) {
+      expect(
+        selectContentBackend({
+          ...base,
+          hasProject: false,
+          flagEnabled,
+          githubSite: "loading",
+        }),
+      ).toBe("legacy");
+    }
+  });
+});
+
+describe("isV8Schema", () => {
+  test('only "blocksMajor": 8 is v8', () => {
+    expect(isV8Schema({ major: 1, blocksMajor: 8 })).toBe(true);
+  });
+
+  test("a missing field or any other value is v7", () => {
+    for (const schema of [
+      { major: 1 },
+      { major: 1, blocksMajor: 7 },
+      { major: 1, blocksMajor: "8" },
+      { major: 1, blocksMajor: null },
+      { major: 1, blocksMajor: 9 },
+      null,
+      undefined,
+      "8",
+      8,
+    ]) {
+      expect(isV8Schema(schema)).toBe(false);
+    }
   });
 });
 

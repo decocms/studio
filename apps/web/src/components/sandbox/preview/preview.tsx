@@ -1545,7 +1545,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewSurfaceActive,
     daemonReady,
     production: display.mode === "production",
-    localPreviewUrl,
+    servePreviewUrl: servePreviewUrl(contentBackend),
   });
 
   /** The page selector shares the exact project-level gate used by Content and
@@ -1811,7 +1811,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Desktop composition (portaled into the panel header's centre slot).
 
-  const canVisualEdit = hasChat && display.mode === "sandbox";
+  // A v7 site keeps visual editing as before; a v8 one needs a chat to ask
+  // (none in the account-less `/site-editor`).
+  const canVisualEdit = (runsSiteCode || hasChat) && display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
   const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];

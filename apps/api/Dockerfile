@@ -58,4 +58,8 @@ ENV DATABASE_URL=file:/app/data/mesh.db
 
 # The CLI handles migrations automatically on startup
 # Use --skip-migrations if you want to manage migrations separately
-CMD ["bun", "run", "deco", "--no-tui", "--no-local-mode"]
+# Runs Studio's CLI by path, not through the `deco` bin name: another installed
+# package may declare a `deco` bin too (@decocms/blocks does), and whichever
+# wins `node_modules/.bin/deco` would start instead of Studio
+# (src/cli/deco-bin.test.ts).
+CMD ["bun", "run", "node_modules/decocms/dist/server/cli.js", "--no-tui", "--no-local-mode"]

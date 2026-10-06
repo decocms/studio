@@ -3,7 +3,7 @@
  * Every docs link the site editor shows is built from this one base, so a
  * move changes only this line.
  */
-export const BLOCKS_DOCS_URL = "https://docs.decocms.com/storefront/blocks";
+const BLOCKS_DOCS_URL = "https://docs.decocms.com/storefront/blocks";
 
 export const blocksDocs = {
   quickstart: `${BLOCKS_DOCS_URL}/next/quickstart`,

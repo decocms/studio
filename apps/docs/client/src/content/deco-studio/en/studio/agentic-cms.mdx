@@ -54,13 +54,13 @@ Existing deco.cx projects continue to work. Migration adds the agent layer; it d
 
 ## Next-major Blocks sites
 
-Sites built on next-major Blocks (v8) are edited through the **content protocol**: the site editor reads the committed schema (`.deco/schema.gen.json`, or `.deco/meta.gen.json`) and the saved blocks in `.deco/blocks`, and never runs the site's code. The site editor shows a small **v8** or **v7** badge so you can tell which path a site is on.
+Sites built on next-major Blocks (v8) are edited through the **content protocol**: the site editor reads the committed schema (`.deco/schema.gen.json`) and the saved blocks in `.deco/blocks`, and never runs the site's code. Studio treats a site as v8 only when its schema declares `"blocksMajor": 8`, which `deco schema` writes; any other site keeps the v7 editor. v8 sites show a small **v8** badge in the site editor.
 
 A site uses the protocol when:
 
 - **You open the link `deco serve` prints.** Run `npx @decocms/blocks serve` next to your dev server and open its `/site-editor` link. It needs no Studio account: it opens the Site Editor app, with the same Preview and Content tabs as inside a project, connected to the server on your machine (signed in, the sidebar lists your organizations). Publishing, releases and the GitHub backend aren't there. Preview shows the app `deco serve --preview` names (`--preview localhost:8001`; by default your Vite port), and the browser remembers the server. Opening `/site-editor` with no link looks for that server and the default port (`localhost:4545`): if one answers the editor opens, otherwise the page shows how to start `deco serve` and opens the editor as soon as it answers. If the server stops while you edit, the page goes back to waiting for it. Studio only accepts links to a server on your machine (`localhost`; `127.0.0.1` and `[::1]` links open as `localhost`); Chrome asks once whether Studio may reach it.
 - **You paste that link into a project's "Local" draft option.** Signed in, open the draft selector, then **Advanced → Local**, and paste the `deco serve` link. Studio checks the server answers before switching. A tunnel URL there keeps working as before, for v7 sites. The editor shows a **Local server** chip and reconnects on its own when the server restarts; choosing a draft in the selector leaves Local.
-- **A Fast Preview session's branch has a committed schema**, behind the `site_editor_content_protocol` organization flag (off by default). Each save is one commit on the draft branch, the schema comes from that branch (or the default branch when it has none), and the preview renders your site with a `?__draft=` link.
+- **A Fast Preview session's branch has a committed schema with `"blocksMajor": 8`**, behind the `site_editor_content_protocol` organization flag (off by default). Each save is one commit on the draft branch, the schema comes from that branch (or the default branch when it has none), and the preview renders your site with a `?__draft=` link.
 
 With `deco serve`, saves write the files in your working tree and uploads go to `public/assets/`, and you commit them yourself.
 

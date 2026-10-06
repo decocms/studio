@@ -50,7 +50,7 @@ const isRecord = (value: unknown): value is JsonRecord =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
 /** The one notice of a site without a schema: what's missing and the fix. */
-export function SchemaPendingBanner({ className }: { className?: string }) {
+function SchemaPendingBanner({ className }: { className?: string }) {
   const t = useT();
   return (
     <section
@@ -297,7 +297,7 @@ function JsonValueField({
 }
 
 /** A block's values as plain fields, plus its raw JSON. */
-export function SchemalessBlockEditor({
+function SchemalessBlockEditor({
   blockKey,
   block,
   onChange,

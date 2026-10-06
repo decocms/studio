@@ -30,7 +30,7 @@ export function isLoopbackEndpoint(value: string): boolean {
 }
 
 /** A loopback endpoint on `localhost`: `http://127.0.0.1:4545/rpc` → `http://localhost:4545/rpc`. */
-export function toLocalhost(endpoint: string): string {
+function toLocalhost(endpoint: string): string {
   try {
     const url = new URL(endpoint);
     if (url.hostname === "127.0.0.1" || url.hostname === "[::1]") {

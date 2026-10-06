@@ -339,15 +339,18 @@ test.describe("site editor over deco serve", () => {
     const stub = await startStub(publicKey);
     try {
       await page.goto(`/${orgSlug}/projects/${project.id}/site-editor/content`);
-      await expect(page.getByTestId("content-version-badge")).toHaveText("v7", {
-        timeout: 30_000,
-      });
+      const branchPicker = page.locator(
+        '[data-tour="tour-layout-branch-picker"]',
+      );
+      await expect(branchPicker).toBeVisible({ timeout: 30_000 });
+      // A v7 site shows no version badge: only v8 sites get one.
+      await expect(page.getByTestId("content-version-badge")).toHaveCount(0);
 
-      await page.locator('[data-tour="tour-layout-branch-picker"]').click();
+      await branchPicker.click();
       await page.getByRole("button", { name: "Advanced" }).click();
       await page.getByRole("tab", { name: "Local" }).click();
       await page
-        .getByLabel("deco serve address or tunnel URL")
+        .getByLabel("Local tunnel URL")
         .fill(`${getE2EAppOrigin()}${linkOf(stub)}`);
       await page.getByRole("button", { name: "Save" }).click();
 

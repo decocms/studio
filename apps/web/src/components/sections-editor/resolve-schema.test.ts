@@ -2511,10 +2511,85 @@ describe("resolveSchema – recursive object/array types (commerce Product)", ()
     const item = resolved?.properties?.products?.items;
     expect(item?.properties?.name?.type).toBe("string");
     expect(item?.properties?.isRelatedTo?.type).toBe("array");
-    // The recursive Product is not re-expanded.
-    expect(item?.properties?.isRelatedTo?.items?.properties).toBeUndefined();
+    // The recursive Product keeps its fields for three levels, then stops.
+    const level2 = item?.properties?.isRelatedTo?.items;
+    expect(level2?.properties?.name?.type).toBe("string");
+    const level3 = level2?.properties?.isSimilarTo?.items;
+    expect(level3?.properties?.name?.type).toBe("string");
+    expect(level3?.properties?.isRelatedTo?.items?.properties).toBeUndefined();
     const group = item?.properties?.isVariantOf;
     expect(group?.properties?.name?.type).toBe("string");
-    expect(group?.properties?.hasVariant?.items?.properties).toBeUndefined();
+    expect(group?.properties?.hasVariant?.items?.properties?.name?.type).toBe(
+      "string",
+    );
+  });
+});
+
+describe("resolveSchema – self-referencing types (menus)", () => {
+  /**
+   * A Header menu: `MenuItem.children: MenuItem[]` (as commerce
+   * `SiteNavigationElementLeaf.children`). Nested items must keep their
+   * fields — a cycle guard that allowed no repeat left level 2 and below as
+   * empty forms on every v7 site.
+   */
+  function menuMeta(): LiveMeta {
+    return {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Header.tsx": { $ref: "#/definitions/Header" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Header: {
+            type: "object",
+            properties: {
+              menu: {
+                type: "array",
+                items: { $ref: "#/definitions/MenuItem" },
+              },
+              featured: { $ref: "#/definitions/MenuItem" },
+            },
+          },
+          MenuItem: {
+            type: "object",
+            properties: {
+              label: { type: "string", title: "Label" },
+              href: { type: "string" },
+              children: {
+                type: "array",
+                items: { $ref: "#/definitions/MenuItem" },
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  test("nested items render their fields for three levels", () => {
+    const resolved = resolveSchema("site/sections/Header.tsx", menuMeta());
+    const level1 = resolved?.properties?.menu?.items;
+    const level2 = level1?.properties?.children?.items;
+    const level3 = level2?.properties?.children?.items;
+    for (const level of [level1, level2, level3]) {
+      expect(level?.properties?.label?.type).toBe("string");
+      expect(level?.properties?.label?.title).toBe("Label");
+      expect(level?.properties?.href?.type).toBe("string");
+      expect(level?.properties?.children?.type).toBe("array");
+    }
+    // Bounded: a fourth level isn't expanded.
+    expect(level3?.properties?.children?.items?.properties).toBeUndefined();
+  });
+
+  test("a self-referencing object property keeps its fields too", () => {
+    const resolved = resolveSchema("site/sections/Header.tsx", menuMeta());
+    const featured = resolved?.properties?.featured;
+    expect(featured?.properties?.label?.type).toBe("string");
+    expect(featured?.properties?.children?.items?.properties?.label?.type).toBe(
+      "string",
+    );
   });
 });

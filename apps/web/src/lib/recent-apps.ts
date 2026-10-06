@@ -65,10 +65,11 @@ interface RouteMatchLike {
   params?: unknown;
 }
 
-/** Which app the matched routes are, or null. The Site Editor's Preview,
- *  Content and Code tabs are routes of their own (`siteEditorView`) but one
- *  app. `isApp` is the launcher's catalogue, passed in so this module does not
- *  depend on it. Pure and tested. */
+/** Which app the matched routes are, or null. In the account-less
+ *  `/site-editor`, the Preview, Content and Code tabs (`siteEditorView`) are
+ *  all the Site Editor; in a project each route keeps its own `mainView`, as
+ *  before `/site-editor` existed. `isApp` is the launcher's catalogue, passed
+ *  in so this module does not depend on it. Pure and tested. */
 export function openAppOf(
   matches: readonly RouteMatchLike[],
   isApp: (app: string) => boolean,
@@ -76,7 +77,7 @@ export function openAppOf(
   const match = matches.findLast((it) => it.staticData.mainView);
   if (!match) return null;
   const { mainView, siteEditorView, local } = match.staticData;
-  const app = siteEditorView ? "site-editor" : mainView;
+  const app = siteEditorView && local ? "site-editor" : mainView;
   if (!app || !isApp(app)) return null;
   const projectId = (match.params as { agentId?: string } | undefined)?.agentId;
   if (projectId) return { app, projectId };

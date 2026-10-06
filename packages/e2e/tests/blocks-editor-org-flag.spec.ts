@@ -48,9 +48,6 @@ test("the blocks editor switch is shared by the whole org", async ({
   await page.goto(`/${orgSlug}/settings/general`);
   const toggle = page.getByRole("switch", { name: SWITCH_NAME, exact: true });
   await expect(toggle).not.toBeChecked({ timeout: 60_000 });
-  // It picks the editor of v7 sites only; v8 sites always get the new one
-  // (content-protocol-deco-serve.spec.ts asserts that with the flag off).
-  await expect(page.getByText(/v8 sites always use it/)).toBeVisible();
   await toggle.click();
   await expect(toggle).toBeChecked();
   await expect.poll(readFlag).toBe(true);

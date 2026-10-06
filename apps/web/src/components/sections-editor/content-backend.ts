@@ -84,40 +84,66 @@ export function servePreviewUrl(backend: ContentBackend): string | null {
   return url && isLoopbackEndpoint(url) ? url : null;
 }
 
+/**
+ * The Blocks major a v8 schema declares: `deco schema` writes a top-level
+ * `"blocksMajor": 8` into `.deco/schema.gen.json` (`BLOCKS_MAJOR` in
+ * `@decocms/blocks/protocol`, which `deco check` requires). Kept here rather
+ * than imported because the pinned `@decocms/blocks` predates the constant.
+ */
+const V8_BLOCKS_MAJOR = 8;
+
+/**
+ * Whether a committed schema is a Blocks v8 one: only `blocksMajor === 8`
+ * says so. The file name doesn't (v7 sites commit `meta.gen.json`, and either
+ * name may lack the field); a missing field, any other value, or anything
+ * that isn't a schema object is v7.
+ */
+export function isV8Schema(schema: unknown): boolean {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    (schema as { blocksMajor?: unknown }).blocksMajor === V8_BLOCKS_MAJOR
+  );
+}
+
 export type BackendDecision =
   | "pending"
   | "legacy"
   | "protocol-local"
-  | "protocol-github"
-  /** The GitHub probe failed: neither backend is known to be right. */
-  | "unavailable-github";
+  | "protocol-github";
 
 /**
- * Which backend a project's editor uses. A connected `deco serve` wins, for
- * every org: it exists only once someone pasted its link into the "Local"
- * draft option, so a v7 site (a Local tunnel URL) never gets one. Then the
- * legacy Local tunnel. Behind the org flag, a Fast Preview (`cms`) session
- * uses the GitHub backend when the branch has a committed schema; a failed
- * probe is not "no schema", so it never falls back to legacy. Sandbox
+ * Which backend a project's editor uses. Outside a project (forms with no
+ * project id, such as SEO and the blog registry) there is no site to probe:
+ * legacy. A connected `deco serve` wins, for every org: it exists only once
+ * someone pasted its link into the "Local" draft option or opened the link it
+ * printed, and only a Blocks v8 `deco serve` answers it. Then the legacy
+ * Local tunnel. Behind the org flag, a Fast Preview (`cms`) session uses the
+ * GitHub backend only when the branch's committed schema says
+ * `"blocksMajor": 8` ({@link isV8Schema}). Everything else is v7 and legacy,
+ * as before next-major Blocks — including a failed probe, which is retried in
+ * the background (a site already known to be v8 keeps that answer). Sandbox
  * sessions stay legacy: their pod's working tree shares the branch, and
  * commits from here would make the two diverge.
  */
 export function selectContentBackend(input: {
+  /** Whether there is a project to probe (a virtual MCP id). */
+  hasProject: boolean;
   /** The org flag (GitHub backend only); `undefined` while it loads. */
   flagEnabled: boolean | undefined;
   hasServeConnection: boolean;
   hasLocalTunnel: boolean;
   runtime: "cms" | "sandbox";
-  /** The GitHub probe: does the branch have a committed schema? */
-  githubSchema: "present" | "absent" | "loading" | "error";
+  /** The GitHub probe: is the branch's committed schema a v8 one? */
+  githubSite: "v8" | "v7" | "loading" | "error";
 }): BackendDecision {
+  if (!input.hasProject) return "legacy";
   if (input.hasServeConnection) return "protocol-local";
   if (input.hasLocalTunnel || input.runtime !== "cms") return "legacy";
   if (input.flagEnabled === undefined) return "pending";
   if (!input.flagEnabled) return "legacy";
-  if (input.githubSchema === "loading") return "pending";
-  if (input.githubSchema === "error") return "unavailable-github";
-  return input.githubSchema === "present" ? "protocol-github" : "legacy";
+  if (input.githubSite === "loading") return "pending";
+  return input.githubSite === "v8" ? "protocol-github" : "legacy";
 }
 
 /**

@@ -361,7 +361,7 @@ export const settings = {
   "settings.preferences.title": "Preferências",
   "settings.blocksEditor.title": "Novo editor de blocos",
   "settings.blocksEditor.description":
-    "Vale para todos desta organização, nos sites v7. Sites v8 sempre o usam, e o restante do Studio sempre usa o novo layout.",
+    "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
   "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
   "settings.preferences.projectFirstNavDescription":
     "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",

@@ -15,6 +15,7 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
 import {
   type ContentBackend,
+  isV8Schema,
   type ProtocolBackend,
   selectContentBackend,
 } from "./content-backend";
@@ -30,6 +31,8 @@ export interface Probe {
   describe: DescribeResult;
   /** Whether the endpoint has a schema (see `isSchemaAbsent`). */
   hasSchema: boolean;
+  /** Whether that schema declares `"blocksMajor": 8` (see `isV8Schema`). */
+  v8Schema: boolean;
 }
 
 /** How often a failed probe is retried, so a backend recovers on its own. */
@@ -62,8 +65,18 @@ export async function probe(client: ContentClient): Promise<Probe> {
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
   if (!schema) throw new Error("no schema.get");
   // `schema: null`, or NotFound from an older deco serve: no schema yet.
-  if (isSchemaAbsent(schema)) return { client, describe, hasSchema: false };
-  if (schema.ok) return { client, describe, hasSchema: true };
+  if (isSchemaAbsent(schema)) {
+    return { client, describe, hasSchema: false, v8Schema: false };
+  }
+  if (schema.ok) {
+    const result = schema.result as { schema?: unknown } | null;
+    return {
+      client,
+      describe,
+      hasSchema: true,
+      v8Schema: isV8Schema(result?.schema),
+    };
+  }
   throw schema.error;
 }
 
@@ -107,12 +120,15 @@ export function useContentBackend(
         }),
       });
       const result = await probe(client);
-      // No committed schema: a legacy site.
-      return result.hasSchema ? result : null;
+      // Only a committed schema with `"blocksMajor": 8` is a v8 site; no
+      // schema, or one without the field (a v7 `meta.gen.json`), is legacy.
+      return result.v8Schema ? result : null;
     },
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     retry: 2,
+    // A failed probe reads as v7 (legacy) and is retried quietly. A site
+    // already known to be v8 keeps its data through a failed refetch.
     refetchInterval: (query) =>
       query.state.status === "error" ? PROBE_RETRY_MS : false,
   });
@@ -147,23 +163,21 @@ export function useContentBackend(
   });
 
   const decision = selectContentBackend({
+    hasProject: !!virtualMcpId,
     flagEnabled,
     hasServeConnection: !!connection,
     hasLocalTunnel: !!tunnel,
     runtime,
-    githubSchema: github.data
-      ? "present"
+    githubSite: github.data
+      ? "v8"
       : github.data === null
-        ? "absent"
+        ? "v7"
         : github.isError
           ? "error"
           : "loading",
   });
 
   if (decision === "pending") return { kind: "pending" };
-  if (decision === "unavailable-github") {
-    return { kind: "unavailable", source: "github" };
-  }
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
     return toBackend("github", github.data!, "");

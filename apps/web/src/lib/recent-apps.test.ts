@@ -98,9 +98,19 @@ describe("openAppOf", () => {
     ).toEqual({ app: "assets", projectId: "p1" });
   });
 
-  test("every Site Editor tab is the Site Editor", () => {
+  test("a project's Site Editor tabs keep their own views, as before", () => {
+    expect(
+      openAppOf(
+        [
+          match(
+            { mainView: "site-editor", siteEditorView: "preview" },
+            { agentId: "p1" },
+          ),
+        ],
+        isApp,
+      ),
+    ).toEqual({ app: "site-editor", projectId: "p1" });
     for (const [mainView, siteEditorView] of [
-      ["site-editor", "preview"],
       ["content", "content"],
       ["code", "code"],
     ] as const) {
@@ -109,7 +119,19 @@ describe("openAppOf", () => {
           [match({ mainView, siteEditorView }, { agentId: "p1" })],
           isApp,
         ),
-      ).toEqual({ app: "site-editor", projectId: "p1" });
+      ).toBeNull();
+    }
+  });
+
+  test("every account-less /site-editor tab is the Site Editor", () => {
+    for (const [mainView, siteEditorView] of [
+      ["site-editor", "preview"],
+      ["content", "content"],
+      ["code", "code"],
+    ] as const) {
+      expect(
+        openAppOf([match({ mainView, siteEditorView, local: true })], isApp),
+      ).toEqual({ app: "site-editor", projectId: null });
     }
   });
 
