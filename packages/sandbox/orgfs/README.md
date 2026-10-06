@@ -58,7 +58,9 @@ through Studio.
    from the link gate, because that gate waits on mounts that exist only after
    this POST.
 4. **Mount.** The sidecar parses the config (`config.ts`) and mounts every
-   volume concurrently (`mount-manager.ts`). Each volume gets its own
+   volume concurrently (`mount-manager.ts`). First it makes `/app/org`
+   writable by the sandbox user, sticky like `/tmp`, when the pod hands it
+   over root-only; otherwise the daemon cannot add its per-run links. Each volume gets its own
    `OrgFsClient`, its own loopback WebDAV server, and its own
    `rclone mount --allow-other` process (`mounter.ts`). A mount counts as live
    once rclone's rc API reports a VFS, within 15 s. A volume that fails is
