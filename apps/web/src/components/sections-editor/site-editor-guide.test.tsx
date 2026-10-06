@@ -111,7 +111,7 @@ describe("SiteEditorGuide", () => {
     expect(links.length).toBe(4);
     for (const link of links) {
       expect(link.getAttribute("href")).toStartWith(
-        "https://decocms.github.io/blocks/",
+        "https://docs.decocms.com/storefront/blocks/next/",
       );
       expect(link.getAttribute("target")).toBe("_blank");
     }

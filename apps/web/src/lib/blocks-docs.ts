@@ -1,9 +1,9 @@
 /**
- * The Deco Blocks docs (decocms/blocks `docs/`, published to GitHub Pages).
+ * The Deco Blocks docs (deco-sites/docs-tanstack, published at docs.decocms.com).
  * Every docs link the site editor shows is built from this one base, so a
- * move to a custom domain changes only this line.
+ * move changes only this line.
  */
-export const BLOCKS_DOCS_URL = "https://decocms.github.io/blocks";
+export const BLOCKS_DOCS_URL = "https://docs.decocms.com/storefront/blocks";
 
 export const blocksDocs = {
   quickstart: `${BLOCKS_DOCS_URL}/next/quickstart`,
