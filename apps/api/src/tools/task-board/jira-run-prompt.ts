@@ -20,16 +20,10 @@
 /**
  * The tool namespace, stated as a fact.
  *
- * A skill is written once and runs on either harness: sandbox-hosted runs
- * reach Studio over MCP and see `mcp__studio__JIRA_COMMENT_ADD`, while
- * Decopilot has the same tools as built-ins under their bare names. Skills
- * therefore name tools bare, and this is what keeps a bare name from costing
- * the run a tool search — the failure this replaced, observed on the first
- * production run, was the model searching for a tool whose real name it had
- * simply never been shown.
+ * Skills name tools bare; a sandbox-hosted run reaches Studio over MCP and sees
+ * `mcp__studio__JIRA_COMMENT_ADD`. Without this the model spends a tool search
+ * on a name it has never been shown — the failure observed on the first
+ * production run.
  */
-export function studioToolNamespaceFact(prefix: "mcp__studio__" | ""): string {
-  return prefix === ""
-    ? "Your Studio tools are registered under their bare names: a tool named `JIRA_COMMENT_ADD` is called exactly that."
-    : "Your Studio tools are namespaced `mcp__studio__`: where an instruction names a tool `JIRA_COMMENT_ADD`, the tool you actually call is `mcp__studio__JIRA_COMMENT_ADD`. Don't search for the unprefixed name.";
-}
+export const STUDIO_TOOL_NAMESPACE_FACT =
+  "Your Studio tools are namespaced `mcp__studio__`: where an instruction names a tool `JIRA_COMMENT_ADD`, the tool you actually call is `mcp__studio__JIRA_COMMENT_ADD`. Don't search for the unprefixed name.";

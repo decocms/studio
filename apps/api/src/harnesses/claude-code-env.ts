@@ -77,6 +77,10 @@ const CLAUDE_CODE_MODEL: Record<
  */
 export const MODEL_CLASS_METADATA_KEY = "claudeCodeModelClass";
 
+/** Thread metadata key holding a task run's `appendInstructions`, reused by
+ *  every later turn on that thread. */
+export const TASK_RUN_INSTRUCTIONS_KEY = "taskRunInstructions";
+
 /** Narrow an untrusted `runMetadata` value to a class. Pure — unit-tested. */
 export function modelClassFromMetadata(
   value: string | undefined,

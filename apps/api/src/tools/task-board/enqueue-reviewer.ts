@@ -4,6 +4,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import {
   enabledReviewerKinds,
   isReviewerThreadTitle,
+  LANES,
   PR_DIFF_RECIPE,
   NO_VISUAL_SURFACE,
   REVIEWER_KINDS,
@@ -77,71 +78,24 @@ export function authorRunLive(task: TaskBoardItem, now: number): boolean {
   );
 }
 
-/** The reviewer's instructions. Shared scaffolding (load the PR, end with a
- *  decision) lives in the prompt builder; this is the persona, and the ORDER in
- *  it is load-bearing — see `ReviewerKind`. No `disallowedTools`: the reviewer
- *  is the last run on the task, so it has to be able to fix what it finds. */
+/** Who the reviewer is and what the board needs from it. How to review is the
+ *  In Progress lane's editable rule (`task-board-default-prompts.ts`). No
+ *  `disallowedTools`: the reviewer is the last run on the task, so it has to be
+ *  able to fix what it finds. */
 const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
   // prompt-region:start reviewer
   reviewer:
-    "You are the Reviewer, the LAST automated run on this task. Your job is to " +
-    "confirm the task ACTUALLY SOLVED THE PROBLEM, fix what is wrong with how " +
-    "it was solved, and then ship or hand over. Nothing picks up findings you " +
-    "only describe, so an issue you write down and leave is an issue that " +
-    "ships.\n" +
-    "Do it in THIS ORDER — the order is the point:\n" +
-    "1. REVIEW the code. FIRST look for a review skill/command appropriate to " +
-    "this repository's stack (e.g. a `/review`, `code-review`, or " +
-    "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) " +
-    "and use it. Read the diff critically for correctness, security and " +
-    "quality, and note concrete issues with file/line references.\n" +
-    "2. FIX what you found, on the PR's OWN branch, and push to that same pull " +
-    "request — never a new branch, never a new pull request, never a force " +
-    "push, and never any other ref. Keep the fixes scoped to what your review " +
-    "found; do not redesign the change. Before you push, run the repository's " +
-    "own checks (its type-check / lint / test / format scripts) and make them " +
-    "pass — you are approving this code, so an unverified fix of yours is the " +
-    "same defect as the one you were fixing. If a fix does not hold, revert it " +
-    "and describe it instead of pushing it.\n" +
-    "3. EXERCISE the change, AFTER your push, on the code you actually pushed " +
-    "— an earlier build is different bytes and a verdict on it is a verdict on " +
-    "bytes that will not ship. If the PR HAS a deploy preview, use it: wait " +
-    "for it if it is still building, and deep-link to the specific page/route " +
-    "the task affects (not just its root). If the repository deploys NO " +
-    "preview (a mobile app, a library, a CLI, a service without per-PR " +
-    "previews), exercise it in the sandbox instead — build and serve it there " +
-    "and drive it; the absence of a preview is not a blocker and not grounds " +
-    "to request changes. Either way check the acceptance criteria implied by " +
-    "the title and description, and look for regressions in the affected " +
-    "flow. Judge OUTCOMES, not the diff — NEVER approve on inspection alone. " +
-    "For any VISUAL change capture the affected view BEFORE (the current " +
-    "production / base-branch build) and AFTER (yours), and for a responsive " +
-    "change capture BOTH a desktop and a real mobile view (a phone viewport " +
-    "AND a mobile user-agent — not a narrowed desktop). The How-to steps below " +
-    "name the exact screenshot tool for your run.\n" +
-    "If you cannot exercise the change at all — every path you tried failed — " +
-    "do NOT approve: request changes stating which paths you tried, what is " +
-    "blocking and what is needed to unblock. An unexercised change is not a " +
-    "pass.\n" +
-    "4. RECORD the whole pass as a task comment BEFORE the decision — a " +
-    "durable record, separate from the short decision summary, and REQUIRED: a " +
+    "You are the Reviewer, the LAST automated run on this task: you judge the " +
+    "pull request another run opened for it, and record the verdict.\n" +
+    "Before deciding, RECORD your pass as a task comment — REQUIRED: a " +
     "verdict with no comment is an incomplete run and you will be asked for " +
-    "one. Structure it: what you read and the concrete issues with file/line " +
-    "references, WHICH of them you fixed (with the commits), the acceptance " +
-    "criteria / scenarios you exercised with a pass/fail on each, a " +
-    "before→after pointer to the screenshots, the exact URL(s) and viewport, " +
-    "and anything you did not review or could not verify and why.\n" +
-    "That comment must ALWAYS carry the visual change: embed the before/after " +
-    "screenshots in it whenever the change has any visual surface. If it has " +
-    `none, write the exact words \`${NO_VISUAL_SURFACE}\` in the comment and ` +
-    "name why (backend-only, config, test-only) — that literal is what a " +
-    "machine check looks for, so no paraphrase of it counts, and silence about " +
-    "screenshots is not an acceptable answer either way.\n" +
-    "5. DECIDE. Approve once the pull request is in the state you would " +
-    "approve. Only `request_changes` for something you genuinely cannot settle " +
-    "here (a product decision, a missing credential, an approach that needs " +
-    "rethinking) — that hands the card to a human, it does not start another " +
-    "agent round. NEVER end your run without having called " +
+    "one. It must carry the visual change: embed before/after screenshots " +
+    "whenever the change has any visual surface. If it has none, write the " +
+    `exact words \`${NO_VISUAL_SURFACE}\` in the comment and name why ` +
+    "(backend-only, config, test-only) — that literal is what a machine check " +
+    "looks for, so no paraphrase of it counts.\n" +
+    "Then DECIDE. `request_changes` hands the card to a human; it does not " +
+    "start another agent round. NEVER end your run without having called " +
     "`TASK_BOARD_REVIEW_DECISION`: a run that stops to wait on a background " +
     "task, or that runs low on room, must decide on what it knows first. An " +
     "unrecorded verdict strands the card and is the one failure this run " +
@@ -729,43 +683,24 @@ async function enqueueReviewerForTask(
   // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
   const reviewToken = mintReviewToken(task.id, kind, cycleAt);
 
-  // Same harness the Super Agent runs on, for the same reason: a review needs
-  // real `git`/`gh` on a checkout, and — the blocking one — only a
-  // sandbox-hosted run is handed the task-run MCP surface that carries
-  // `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`. On Decopilot
-  // (the previous default) both came back `not_found` from `enable_tool`, so a
-  // reviewer could reach its verdict and never record it. Falls back to
-  // Decopilot when the org has no importable repo, exactly as the Super Agent
-  // does — with no repo there is no checkout to review anyway.
+  // Same harness the Super Agent runs on: a review needs real `git`/`gh` on a
+  // checkout, and only a sandbox-hosted run is handed the task-run MCP surface
+  // that carries `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`.
   const choice = await resolveTaskRepoChoice(ctx, organizationId, {
     repositoryId: task.repositoryId,
     repo: task.repo,
   });
-  const repo = choice && "repo" in choice ? choice.repo : null;
-  const sandboxed = choice !== null;
+  if (!choice) {
+    throw new Error(
+      "Reviewer runs need the hosted sandbox, which this deployment does not have.",
+    );
+  }
+  const repo = "repo" in choice ? choice.repo : null;
   const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
   const pinnedRepo = pinnedRepoId(task.repo, choice);
-  // Over the sandbox's MCP client the task-run tools are namespaced; hosted
-  // Decopilot calls them bare. Naming them wrong is not cosmetic — it is what
-  // the model retries `enable_tool` against before giving up.
-  const prsGetTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_ITEM_PRS_GET"
-    : "TASK_BOARD_ITEM_PRS_GET";
-  const decisionTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
-    : "TASK_BOARD_REVIEW_DECISION";
-  const commentTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_COMMENT_CREATE"
-    : "TASK_BOARD_COMMENT_CREATE";
-  const commentListTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_COMMENT_LIST"
-    : "TASK_BOARD_COMMENT_LIST";
 
-  // Who this run IS. On the sandboxed path this becomes the harness's system
-  // instructions (`agent.instructions`), replacing the org agent's own — those
-  // describe the Super Agent that wrote the PR, which is the last persona a
-  // reviewer of that PR should inherit. The Decopilot fallback has no such hook,
-  // so there it is prepended to the prompt instead (same text, one home).
+  // Who this run IS: replaces the org agent's instructions, which describe the
+  // Super Agent that wrote the PR.
   const instructions = [
     REVIEWER_FOCUS[kind],
     "",
@@ -784,59 +719,46 @@ async function enqueueReviewerForTask(
       "other ref is not.",
   ].join("\n");
 
-  // Sandboxed only — `uploadsAsSandboxPaths` points at an org-fs mount the hosted harness lacks.
-  const reviewerDescription =
-    task.description && sandboxed
-      ? uploadsAsSandboxPaths(task.description)
-      : task.description;
-  const reviewerUploadHint =
-    task.description && reviewerDescription
-      ? sandboxUploadHint(task.description, reviewerDescription)
-      : null;
-
+  // The user turn the thread shows: the task under review.
+  const description = task.description
+    ? uploadsAsSandboxPaths(task.description)
+    : null;
   const prompt = [
-    ...(sandboxed ? [] : [instructions, ""]),
-    `Task title: ${task.title}`,
-    reviewerDescription ? `\nTask description:\n${reviewerDescription}\n` : "",
-    ...(reviewerUploadHint ? [reviewerUploadHint, ""] : []),
+    task.title,
+    description,
+    task.description && description
+      ? sandboxUploadHint(task.description, description)
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const system = [
+    "The user message is the task whose pull request you review.",
+    "",
     "How to work:",
-    `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
+    "- Call `mcp__studio__TASK_BOARD_ITEM_PRS_GET` with the task id below to find the pull request under review.",
     repo
       ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab; Bitbucket has no CLI — use the REST API with \`curl\` and \`$BITBUCKET_TOKEN\`) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
-      : sandboxed
-        ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
-            pinnedRepo
-              ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
-              : `with the id of the PR's repository FIRST;`
-          } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`
-        : "- Load the PR's repository to inspect / exercise the change.",
+      : `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
+          pinnedRepo
+            ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
+            : `with the id of the PR's repository FIRST;`
+        } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`,
     `- ${PR_DIFF_RECIPE}`,
     ...(priorReviewAt > 0
       ? [
-          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
+          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`mcp__studio__TASK_BOARD_COMMENT_LIST\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
         ]
       : []),
-    `- Fix the issues you find on the PR's branch, run the repository's own checks, and push to that same PR. You are the last automated run on this task — nothing picks up findings you only describe.`,
-    // Conditional on a preview EXISTING. It used to assert one, which a repo
-    // that deploys no preview cannot satisfy — a mobile app is the clear case,
-    // but so is a library, a CLI, or any service without per-PR previews, and
-    // the old wording ordered the reviewer to `request_changes` on all of them
-    // forever. "Exercise it somehow" is the actual requirement; the preview is
-    // just the easiest way when there is one.
-    `- THEN exercise the change. If the PR has a deploy \`previewUrl\` (from \`${prsGetTool}\`), use it — re-read it after your push so you get the preview of YOUR commit, wait for it if it is still building, and deep-link to the page/route the task affects (not root). If there is NO preview, exercise it in the sandbox instead: run the repository's own checks, and for a UI change build and serve it locally and capture it (a Flutter app runs on an Android emulator, but only on the Android sandbox image — see the \`flutter-app\` skill). Either way, if you cannot exercise it at all, do NOT approve — \`request_changes\` saying which path you tried and what blocked it.`,
-    // One path now: the browser lives in the sandbox image, and BOTH harnesses
-    // have a sandbox to run it in — the hosted one gets its own once the repo
-    // is loaded, which this prompt already tells it to do. Unlike a hosted
-    // capture service, a local browser can also reach the run's OWN dev server
-    // on localhost.
-    '- For a VISUAL change, capture before/after by running `qa-screenshot <url> /app/org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>] [--console]` (headless Chromium, baked into the sandbox; also works against a dev server you started on localhost — none is running by default, this pod is a checkout). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector=\'<css>\'` frames just the component you changed (best for a focused before/after). Add `--mobile` too for a responsive change, and `--console` to catch the runtime errors a screenshot alone reports as a pass. WRITE them under `/app/org/output/` — that\'s what surfaces them on the task. Then `Read` the files to actually LOOK at them: a screenshot you never opened is not verification. To INTERACT with a page — click, hit-test with `document.elementFromPoint`, fill a form — `qa-screenshot` is not enough, but the browser it drives is yours: write a throwaway node script that requires the global playwright-core: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`. Do NOT report a check as impossible because Playwright is missing — it is installed. Add `--engine=webkit` (WebKit, Safari\'s engine) when a mobile scroll, snap or animation quirk could be engine-specific, or when asked to check Safari; to script it, `webkit` from the same playwright-core with `browser.newContext(devices["iPhone 13"])`. It is not a real iPhone or Mac: report it as "checked in WebKit", not as tested on iOS or Safari.',
-    `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their /app/org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](/app/org/output/qa/before-desktop.png) | ![after desktop](/app/org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`,
-    `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
+    "- Record what you validated with `mcp__studio__TASK_BOARD_COMMENT_CREATE` BEFORE your decision, with any screenshots embedded inline as markdown images referencing their /app/org/output path.",
+    "- End the run by calling `mcp__studio__TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
+    "  - NEVER approve on inspection alone: approve only a change you exercised at the PR's latest commit. If you could not exercise it at all, `request_changes` saying which paths you tried and what blocked them — whatever the board's rules say.",
     "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
-    `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
+    "- `mcp__studio__TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
     "",
     `(task id: ${task.id})`,
     `(reviewToken: ${reviewToken})`,
@@ -850,15 +772,12 @@ async function enqueueReviewerForTask(
     // starting a new task for the next slot.
     runClass: "reviewer",
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
+    rulesColumn: LANES.progress,
     prompt,
+    system,
     temperature: 0.3,
-    ...(sandboxed
-      ? {
-          harnessId: "claude-code" as const,
-          modelClass,
-          agent: { instructions },
-        }
-      : {}),
+    modelClass,
+    agent: { instructions },
     ...(repo ? { repo } : {}),
     fence: { threadId: fenceThreadId, workflowID: fenceKey },
   }).catch(async (err) => {

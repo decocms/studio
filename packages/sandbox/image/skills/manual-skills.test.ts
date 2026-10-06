@@ -25,6 +25,7 @@ const MANUAL_ONLY = [
   "jira-release",
   "jira-validate-production",
   "jira-qa-gate",
+  "task-board-setup",
 ];
 
 function meta(dir: string) {

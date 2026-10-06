@@ -73,6 +73,34 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
+  "taskBoard.agenticSetup.button": "Agentic Setup",
+  "taskBoard.agenticSetup.message":
+    "Help me set up my board around the work I'm doing.",
+  "taskBoard.agenticSetup.failed": "Couldn't start the board setup chat",
+  "taskBoard.columnRules.add": "Add instructions",
+  "taskBoard.columnRules.editAriaLabel": "Edit rules for {lane}",
+  "taskBoard.columnRules.defaultRun": "Runs the agent",
+  "taskBoard.columnRules.skillsOnly": "{count} skills",
+  "taskBoard.columnRules.runLabel": "Run the agent",
+  "taskBoard.columnRules.runHint":
+    "Start a run on every card that lands here, unless someone already owns it.",
+  "taskBoard.columnRules.automationLabel":
+    "What to do with a card landing here",
+  "taskBoard.columnRules.automationPlaceholder":
+    "What should the agent do with a card landing here? Leave empty for the built-in behavior.",
+  "taskBoard.columnRules.promptLabel": "Instructions",
+  "taskBoard.columnRules.promptPlaceholder":
+    "Conventions, tools to prefer, what never to touch",
+  "taskBoard.columnRules.skillsLabel": "Skills",
+  "taskBoard.columnRules.removeSkill": "Remove {skill}",
+  "taskBoard.columnRules.searchSkills": "Search skills",
+  "taskBoard.columnRules.noSkills": "No skills found",
+  "taskBoard.columnRules.inheritedHint":
+    "Also available here, from Settings → Tasks:",
+  "taskBoard.columnRules.cancel": "Cancel",
+  "taskBoard.columnRules.save": "Save",
+  "taskBoard.columnRules.saved": "Column rules saved",
+  "taskBoard.columnRules.failed": "Couldn't save the column rules",
   "taskBoard.taskBoard.hiddenColumns": "Hidden columns",
   "taskBoard.taskBoard.showColumn": "Show",
   "taskBoard.taskBoard.selectedCount": "{count} selected",

@@ -793,6 +793,7 @@ export const settings = {
   "settings.taskPrompt.save": "Save",
   "settings.taskPrompt.saved": "System prompt saved",
   "settings.taskPrompt.failed": "Couldn't save the system prompt",
+  "settings.taskPrompt.skillsLabel": "Skills on every column",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",

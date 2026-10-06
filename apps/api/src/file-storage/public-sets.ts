@@ -11,6 +11,8 @@
  * (the syncer writes server-side through `OrgFs` directly, never over HTTP).
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { getSettings } from "../settings";
 import { getObjectStorageS3Service } from "../object-storage/factory";
@@ -46,6 +48,8 @@ const setSchema = z.object({
   /** Branch, tag, or commit SHA. */
   ref: z.string().min(1),
   paths: z.array(sourcePathSchema).min(1),
+  /** A local checkout of `repo` to read instead of fetching `ref`. */
+  dir: z.string().optional(),
 });
 
 export type PublicSkillSetSource = z.infer<typeof setSchema>;
@@ -117,9 +121,22 @@ export function resolvePublicSets(
   return [...byName.values()];
 }
 
-/** The deployment's effective public sets (defaults + env override). */
+/** This checkout, when the API runs from source rather than a build. */
+const LOCAL_CHECKOUT = join(import.meta.dir, "../../../..");
+
+/** The deployment's effective public sets (defaults + env override). Outside
+ *  production, the built-in `core` reads this checkout, so a skill added on a
+ *  branch is there without merging it to `main`. */
 export function getPublicSets(): PublicSkillSetSource[] {
-  return resolvePublicSets(getSettings().orgFsPublicSetsJson);
+  const settings = getSettings();
+  const sets = resolvePublicSets(settings.orgFsPublicSetsJson);
+  if (settings.nodeEnv === "production") return sets;
+  return sets.map((s) =>
+    s === DEFAULT_PUBLIC_SETS[0] &&
+    existsSync(join(LOCAL_CHECKOUT, s.paths[0]!.from))
+      ? { ...s, dir: LOCAL_CHECKOUT }
+      : s,
+  );
 }
 
 /**
