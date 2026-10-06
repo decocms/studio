@@ -239,6 +239,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
     opts: CallOptions = {},
   ): Promise<T> {
     const { timeoutMs = CONTROL_TIMEOUT_MS, signal } = opts;
+    const connecting = this.connecting;
     let result: Awaited<ReturnType<Client["callTool"]>>;
     try {
       result = await retry(
@@ -258,6 +259,8 @@ export class RemoteSandboxProvider implements SandboxProvider {
         },
       );
     } catch (err) {
+      // A thrown call is transport-level; the cached client may be stale.
+      if (this.connecting === connecting) this.connecting = null;
       // The SDK rewords an abort as a timeout; the reason says which it was.
       if (signal?.aborted) throw signal.reason;
       throw err instanceof RetryError ? err.cause : err;
