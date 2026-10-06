@@ -238,6 +238,7 @@ function GitCredentialRow({
   const t = useT();
   const trimmed = row.host.trim();
   const invalid = trimmed.length > 0 && !SUBMODULE_HOST_RE.test(trimmed);
+  const errorId = `git-credential-host-error-${index}`;
 
   return (
     <div className="flex flex-col gap-2 p-2 sm:flex-row sm:items-center">
@@ -257,12 +258,13 @@ function GitCredentialRow({
               invalid && "border-destructive focus-visible:ring-destructive",
             )}
             aria-invalid={invalid}
+            aria-describedby={invalid ? errorId : undefined}
             aria-label={t("settings.gitCredentials.hostAriaLabel", {
               index: index + 1,
             })}
           />
           {invalid ? (
-            <p className="text-[11px] text-destructive">
+            <p id={errorId} className="text-[11px] text-destructive">
               {t("settings.gitCredentials.hostInvalidMessage")}
             </p>
           ) : null}
