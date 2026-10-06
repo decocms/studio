@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { experimentSchema, variantsInputSchema } from "./schema";
+import {
+  experimentSchema,
+  goalsInputSchema,
+  variantsInputSchema,
+} from "./schema";
 import { assertOwnsSite } from "./ownership";
 
 export const EXPERIMENT_UPDATE = defineTool({
@@ -20,7 +24,7 @@ export const EXPERIMENT_UPDATE = defineTool({
     key: z.string().min(1),
     name: z.string().min(1).optional(),
     status: z.enum(["draft", "running", "paused", "ended"]).optional(),
-    goals: z.array(z.string()).optional(),
+    goals: goalsInputSchema.optional(),
     variants: variantsInputSchema.optional(),
   }),
   outputSchema: z.object({ experiment: experimentSchema }),
