@@ -8,7 +8,7 @@
  * auto-initialized from process.env on first access.
  */
 
-import { resolveConfig } from "./resolve-config";
+import { assertEncryptionKeyConfigured, resolveConfig } from "./resolve-config";
 import type { Settings } from "./types";
 
 let _settings: Settings | null = null;
@@ -61,6 +61,7 @@ function initSettingsFromEnv(): void {
     },
     envVars,
   );
+  assertEncryptionKeyConfigured(config.settings);
 
   _settings = Object.freeze({
     ...config.settings,

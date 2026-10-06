@@ -62,10 +62,28 @@ export function resolveShutdownDrainMs(
  */
 export function describeEncryptionKeyForLog(ek: string): string {
   if (!ek) {
-    return "[settings] ENCRYPTION_KEY is not set (using deterministic fallback, 32 chars) — set ENCRYPTION_KEY for production";
+    return "[settings] ENCRYPTION_KEY is not set (using the fixed local/development fallback) — production requires ENCRYPTION_KEY";
   }
   const masked = ek.length <= 8 ? "***" : `${ek.slice(0, 4)}..${ek.slice(-4)}`;
   return `[settings] ENCRYPTION_KEY is set (${masked}, ${ek.length} chars)`;
+}
+
+/**
+ * Refuse to boot a production server without `ENCRYPTION_KEY`. An empty key
+ * makes CredentialVault derive its AES key from SHA-256(""), which anyone can
+ * compute. Local mode keeps that fallback: its database and any key file
+ * would sit in the same data directory.
+ */
+export function assertEncryptionKeyConfigured(
+  settings: Pick<Settings, "encryptionKey" | "localMode" | "nodeEnv">,
+): void {
+  if (settings.localMode || settings.nodeEnv !== "production") return;
+  if (settings.encryptionKey.trim()) return;
+  throw new Error(
+    "ENCRYPTION_KEY is required in production. Generate one with `openssl rand -base64 32`. " +
+      "If this deployment already stored credentials without a key, re-encrypt them with " +
+      "apps/api/scripts/rotate-encryption-key.ts (OLD_ENCRYPTION_KEY empty) before setting it.",
+  );
 }
 
 function toBool(value: string | undefined): boolean {

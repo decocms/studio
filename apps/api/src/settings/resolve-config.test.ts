@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  assertEncryptionKeyConfigured,
   describeEncryptionKeyForLog,
   resolveConfig,
   resolveShutdownDrainMs,
@@ -378,9 +379,9 @@ describe("resolveConfig NODE_ENV", () => {
 });
 
 describe("describeEncryptionKeyForLog", () => {
-  it("reports the deterministic-fallback message when unset", () => {
+  it("reports the local/development fallback when unset", () => {
     expect(describeEncryptionKeyForLog("")).toBe(
-      "[settings] ENCRYPTION_KEY is not set (using deterministic fallback, 32 chars) — set ENCRYPTION_KEY for production",
+      "[settings] ENCRYPTION_KEY is not set (using the fixed local/development fallback) — production requires ENCRYPTION_KEY",
     );
   });
 
@@ -696,5 +697,39 @@ describe("resolveConfig plans gateway JWT secret", () => {
         price_a: "pro",
       });
     });
+  });
+});
+
+describe("assertEncryptionKeyConfigured", () => {
+  it("rejects a production server without a key", () => {
+    for (const encryptionKey of ["", "   "]) {
+      expect(() =>
+        assertEncryptionKeyConfigured({
+          encryptionKey,
+          localMode: false,
+          nodeEnv: "production",
+        }),
+      ).toThrow(/ENCRYPTION_KEY is required/);
+    }
+  });
+
+  it("accepts a production server with a key", () => {
+    expect(() =>
+      assertEncryptionKeyConfigured({
+        encryptionKey: "a-real-key",
+        localMode: false,
+        nodeEnv: "production",
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps the fallback for local mode and non-production environments", () => {
+    for (const settings of [
+      { encryptionKey: "", localMode: true, nodeEnv: "production" as const },
+      { encryptionKey: "", localMode: false, nodeEnv: "development" as const },
+      { encryptionKey: "", localMode: false, nodeEnv: "test" as const },
+    ]) {
+      expect(() => assertEncryptionKeyConfigured(settings)).not.toThrow();
+    }
   });
 });

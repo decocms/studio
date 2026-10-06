@@ -454,9 +454,8 @@ secret:
   # Stripe webhook places the tier through this, so a subscription that cannot
   # reach the gateway is a payment taken for an entitlement never granted.
   # DECO_AI_GATEWAY_ADMIN_TOKEN: ""
-  # ENCRYPTION_KEY for CredentialVault (AES-256-GCM).
-  # Empty string "" is valid — derives key via SHA-256("").
-  # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
+  # ENCRYPTION_KEY for CredentialVault (AES-256-GCM). Required: Studio refuses
+  # to start in production without it. Must stay stable across restarts.
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
   # Dedicated bearer for the internal organization-notices API.
