@@ -64,4 +64,13 @@ describe("ConnectionEntitySchema JSON field caps", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects a multi-byte blob whose UTF-16 length is under the cap but whose UTF-8 byte size is not", () => {
+    // "🚀" is 2 UTF-16 units but 4 UTF-8 bytes — a length check would miss this.
+    const huge = { blob: "🚀".repeat(140 * 1024) };
+    const result = ConnectionEntitySchema.safeParse(
+      baseEntity({ metadata: huge }),
+    );
+    expect(result.success).toBe(false);
+  });
 });
