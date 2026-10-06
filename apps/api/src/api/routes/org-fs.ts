@@ -24,6 +24,9 @@
  * `ORG_FS_READ`, writes on `ORG_FS_WRITE` (both basic-usage today); a future
  * per-volume ACL removes them from basic-usage and gates by role/permission
  * with no route changes. See `.context/org-filesystem-proposal.md`.
+ *
+ * The one carve-out is `home/users/<id>/`: only its owner reads or writes it
+ * (`personal-home.ts`).
  */
 
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
@@ -34,12 +37,21 @@ import { getCookie, setCookie } from "hono/cookie";
 import type { NatsConnection } from "@nats-io/nats-core";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
-import type { OrgFs, ReadAccess } from "@/file-storage/org-fs";
+import type {
+  OrgFs,
+  ReadAccess,
+  WriteExpectation,
+} from "@/file-storage/org-fs";
 import {
+  OrgFsConflictError,
   OrgFsNotFoundError,
   OrgFsQuotaError,
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
+import {
+  canReadPersonal,
+  canWritePersonal,
+} from "@/file-storage/personal-home";
 import {
   signUnlockToken,
   unlockCookieName,
@@ -222,6 +234,16 @@ ${opts.error ? `<div class="err">${escapeHtml(opts.error)}</div>` : ""}
   });
 }
 
+/**
+ * Optional compare-and-swap for a PUT: `If-Match: "<contentHash>"` writes only
+ * over that version, `If-None-Match: *` only when nothing is there yet.
+ */
+function writePrecondition(c: Ctx): WriteExpectation | undefined {
+  if (c.req.header("if-none-match") === "*") return { absent: true };
+  const match = c.req.header("if-match")?.replace(/^"|"$/g, "");
+  return match ? { contentHash: match } : undefined;
+}
+
 /** Translate an OrgFs error into an explicit JSON response (never thrown). */
 function fsErrorResponse(c: Ctx, err: unknown): Response {
   if (err instanceof OrgFsQuotaError)
@@ -230,6 +252,8 @@ function fsErrorResponse(c: Ctx, err: unknown): Response {
     return c.json({ error: err.message }, 404);
   if (err instanceof OrgFsValidationError)
     return c.json({ error: err.message }, 400);
+  if (err instanceof OrgFsConflictError)
+    return c.json({ error: err.message }, 412);
   // Unexpected — let the global handler log + 500 it.
   throw err;
 }
@@ -348,6 +372,21 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   };
 
+  /** 403 unless the caller may touch every path in `home/users/<id>/` it names. */
+  const personalDenied = (
+    c: Ctx,
+    ctx: StudioContext,
+    volume: string,
+    paths: string[],
+    mode: "read" | "write",
+  ): Response | null => {
+    const caller = ctx.auth.user!.id;
+    const allowed = mode === "read" ? canReadPersonal : canWritePersonal;
+    return paths.every((p) => allowed(volume, p, caller))
+      ? null
+      : c.json({ error: "This folder belongs to another member" }, 403);
+  };
+
   /**
    * Resolve the authenticated, org-scoped OrgFs for this request, gating on the
    * given permission. Returns an explicit error response (401/400/403/503) on
@@ -443,8 +482,12 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_RECENT_LIMIT,
     );
     try {
+      const caller = ctx.auth.user!.id;
+      const entries = await ctx.orgFs.recentWithEffectivePublic(limit);
       return c.json({
-        entries: await ctx.orgFs.recentWithEffectivePublic(limit),
+        entries: entries.filter((e) =>
+          canReadPersonal(e.volume, e.path, caller),
+        ),
       });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -512,7 +555,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             )
           : [],
       ]);
+      const caller = ctx.auth.user!.id;
       const entries = [...own, ...pub]
+        .filter((e) => canReadPersonal(e.volume, e.path, caller))
         .sort((a, b) => Number(BigInt(b.seq) - BigInt(a.seq)))
         .slice(0, limit);
       return c.json({ entries });
@@ -563,7 +608,12 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
     try {
-      const entries = selectSkillFiles(await r.fs.listVolumeFiles(volume));
+      const caller = r.ctx.auth.user!.id;
+      const entries = selectSkillFiles(
+        (await r.fs.listVolumeFiles(volume)).filter((e) =>
+          canReadPersonal(volume, e.path, caller),
+        ),
+      );
       if (entries.length === 0) {
         return c.json({ error: "No skills in this volume" }, 404);
       }
@@ -603,8 +653,13 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
     const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "read");
+    if (denied) return denied;
+    const caller = r.ctx.auth.user!.id;
     try {
-      const entries = await r.fs.listDir(volume, path);
+      const entries = (await r.fs.listDir(volume, path)).filter((e) =>
+        canReadPersonal(volume, e.path, caller),
+      );
       const dirs = entries.filter((e) => e.kind === "dir");
       const exists = dirs.length
         ? await r.fs.filesExist(
@@ -645,8 +700,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "read");
+    if (denied) return denied;
     try {
-      const entry = await r.fs.stat(volume, c.req.query("path") ?? "");
+      const entry = await r.fs.stat(volume, path);
       if (!entry) return c.json({ error: "Not found" }, 404);
       const effectivePublic =
         entry.readPublic || (await r.fs.inheritsPublic(volume, entry.path));
@@ -716,6 +774,8 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       }
       return r.res;
     }
+    const denied = personalDenied(c, r.ctx, volume, [path], "read");
+    if (denied) return denied;
     try {
       if (c.req.query("presign")) {
         return c.json({ url: await r.fs.presignRead(volume, path) });
@@ -746,18 +806,23 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_CHANGES_LIMIT,
     );
     const wait = c.req.query("wait") === "1" || c.req.query("wait") === "true";
+    const caller = r.ctx.auth.user!.id;
     try {
-      if (!wait) {
-        return c.json(await r.fs.changes(volume, since, limit));
-      }
-      return c.json(
-        await waitForChanges(c, r.fs, getConnection(), {
-          orgId: r.ctx.organization!.id,
-          volume,
-          since,
-          limit,
-        }),
-      );
+      const feed = wait
+        ? await waitForChanges(c, r.fs, getConnection(), {
+            orgId: r.ctx.organization!.id,
+            volume,
+            since,
+            limit,
+          })
+        : await r.fs.changes(volume, since, limit);
+      // The cursor stays the unfiltered one, so hidden entries are skipped, not replayed.
+      return c.json({
+        ...feed,
+        entries: feed.entries.filter((e) =>
+          canReadPersonal(volume, e.path, caller),
+        ),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -790,6 +855,8 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       const r = await resolve(c, volume, "ORG_FS_WRITE");
       if (!r.ok) return r.res;
       const path = c.req.query("path") ?? "";
+      const denied = personalDenied(c, r.ctx, volume, [path], "write");
+      if (denied) return denied;
       const contentType = c.req.header("content-type");
       const bytes = new Uint8Array(await c.req.arrayBuffer());
       try {
@@ -799,6 +866,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             contentType && contentType !== "application/octet-stream"
               ? contentType
               : undefined,
+          expect: writePrecondition(c),
         });
         await notifyOrgFsChange(
           getConnection(),
@@ -817,8 +885,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_WRITE");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "write");
+    if (denied) return denied;
     try {
-      await r.fs.mkdir(volume, c.req.query("path") ?? "", {
+      await r.fs.mkdir(volume, path, {
         actor: r.ctx.auth!.user!.id,
       });
       await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
@@ -833,8 +904,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_WRITE");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "write");
+    if (denied) return denied;
     try {
-      await r.fs.delete(volume, c.req.query("path") ?? "", {
+      await r.fs.delete(volume, path, {
         actor: r.ctx.auth!.user!.id,
       });
       await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
@@ -869,6 +943,14 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           400,
         );
       }
+      const denied = personalDenied(
+        c,
+        r.ctx,
+        volume,
+        [body.from, body.to],
+        "write",
+      );
+      if (denied) return denied;
       try {
         await r.fs.move(volume, body.from, body.to, {
           actor: r.ctx.auth!.user!.id,
@@ -902,6 +984,8 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       const r = await resolve(c, volume, "ORG_FS_WRITE");
       if (!r.ok) return r.res;
       const path = c.req.query("path") ?? "";
+      const denied = personalDenied(c, r.ctx, volume, [path], "write");
+      if (denied) return denied;
       const body = (await c.req.json().catch(() => null)) as {
         mode?: unknown;
         public?: unknown;
