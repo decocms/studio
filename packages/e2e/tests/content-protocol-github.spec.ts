@@ -346,7 +346,12 @@ test.describe("content protocol on GitHub", () => {
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
-    const site = await newApiContext(playwright);
+    // The storefront, on its own origin: Studio's CORS reflects only its own
+    // and localhost origins, so a site gets the pointer's `*`.
+    const site = await playwright.request.newContext({
+      baseURL: getE2EAppOrigin(),
+      extraHTTPHeaders: { Origin: "https://storefront.example" },
+    });
     try {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
