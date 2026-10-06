@@ -42,7 +42,8 @@ function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
       m.supported_parameters?.includes("reasoning") ? ["reasoning"] : [],
     ),
     limits: {
-      contextWindow: m.context_length,
+      // OpenRouter can omit context_length; mirror the adapters/openrouter.ts guard.
+      contextWindow: m.context_length ?? 0,
       maxOutputTokens: m.top_provider.max_completion_tokens || null,
     },
     costs: {
