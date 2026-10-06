@@ -55,7 +55,7 @@ import { clearOpenFileDismissal } from "@/hooks/use-open-library-file";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations, useOrgFsPublicSets } from "@/hooks/use-org-fs";
 import { FilterMenu } from "./filter-menu";
-import { PROJECTS_FOLDER } from "./project-folder";
+import { PROJECTS_FOLDER } from "@decocms/shared/organization/project-folder";
 import {
   basename,
   libraryPlaceOf,
