@@ -81,7 +81,11 @@ export function PlanCatalog() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
-  const canInvoice = entitlements?.features.invoice_upgrade === true;
+  // Only a flagged org, and only at its limit — the same two conditions
+  // AI_PLAN_INVOICE_UPGRADE enforces, so the button never offers a refusal.
+  const canInvoice =
+    entitlements?.features.invoice_upgrade === true &&
+    entitlements.usage?.state === "exhausted";
   // Same query as the plan card's billing button. A live subscription owns the
   // plan, so the invoice path waits for a definite "none" before it shows.
   const { data: billingAccount } = useQuery({
@@ -115,8 +119,7 @@ export function PlanCatalog() {
   const currentId = entitlements?.plan.id ?? null;
 
   const staffManaged = isStaffManagedPlan(currentId);
-  const limitReached =
-    staffManaged && canInvoice && entitlements?.usage?.state === "exhausted";
+  const limitReached = staffManaged && canInvoice;
 
   if (staffManaged && !limitReached) {
     return (
