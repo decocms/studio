@@ -342,6 +342,38 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
+  test("never reads or writes a v7 site over /rpc, even with the flag on", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      // The same schema without `"blocksMajor": 8`: a v7 site.
+      const project = await setUp(ctx, {
+        ".deco/schema.gen.json": JSON.stringify({
+          manifest: schema.manifest,
+          schema: schema.schema,
+        }),
+        ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
+      });
+      await enableContentProtocol(ctx, project.org);
+      const path = rpcPath(project, "main");
+      const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
+        .refs;
+
+      // It reads as schemaless, so the editor stays on the classic one.
+      expect((await rpc(ctx, path, "schema.get")).error).toBeDefined();
+      const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
+        set: { "hero-home": { __resolveType: "hero", title: "x" } },
+      });
+      expect(applied.error?.code).toBe(-32006);
+      expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
+        headBefore,
+      );
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("a draft's pointer answers only what its branch changed", async ({
     playwright,
   }) => {

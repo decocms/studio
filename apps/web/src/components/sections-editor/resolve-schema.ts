@@ -1145,12 +1145,15 @@ export function resolveSchema(
     ) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
-        // Hand buildProperty the un-resolved `$ref` so it records the ref on
-        // the path — resolving it here first hid `Product[]` cycles from the
-        // guard above.
-        const itemsInput = rawItems;
+        // Hand buildProperty the un-resolved `$ref` of an object type so it
+        // records the ref on the path — resolving it here first hid
+        // `Product[]` cycles from the guard above. A union item (a matcher
+        // inside Multi) stays resolved, as on main, so its branches keep
+        // their schema and defaults at every depth.
+        let itemsInput = rawItems;
         if (typeof rawItems.$ref === "string") {
           rawItems = resolveRef(rawItems.$ref);
+          if (Array.isArray(rawItems.anyOf)) itemsInput = rawItems;
         }
         itemsSchema = buildProperty(itemsInput, depth + 1, unionSeen);
         if (

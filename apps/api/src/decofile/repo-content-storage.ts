@@ -53,6 +53,26 @@ export interface RepoContentStorageOptions {
   coAuthor?: CoAuthorIdentity | null;
 }
 
+/**
+ * Whether committed schema text is a Blocks v8 one: only a top-level
+ * `"blocksMajor": 8` (written by `deco schema`) counts. Missing, any other
+ * value or unparseable text is a v7 site, which this protocol never serves.
+ * Mirrors the web's `isV8Schema`.
+ */
+function isV8SchemaText(text: string): boolean {
+  try {
+    const schema: unknown = JSON.parse(text);
+    return (
+      typeof schema === "object" &&
+      schema !== null &&
+      !Array.isArray(schema) &&
+      (schema as { blocksMajor?: unknown }).blocksMajor === 8
+    );
+  } catch {
+    return false;
+  }
+}
+
 function decoPath(packagePath: string | null, file: string): string {
   return packagePath ? `${packagePath}/.deco/${file}` : `.deco/${file}`;
 }
@@ -184,11 +204,10 @@ export function createRepoContentStorage(
         checkRef(ref);
         const schema = await resolveSchema(await readHead());
         if (!schema) return null;
-        return {
-          version: schema.entry.sha,
-          text: await readBlobText(schema.entry.path, schema.entry.sha),
-          resolvedRef: schema.ref,
-        };
+        const text = await readBlobText(schema.entry.path, schema.entry.sha);
+        // A v7 site reads as schemaless, so the editor stays on the classic one.
+        if (!isV8SchemaText(text)) return null;
+        return { version: schema.entry.sha, text, resolvedRef: schema.ref };
       }),
 
     readSecretsPublicKey: () =>
@@ -216,9 +235,18 @@ export function createRepoContentStorage(
           } else if (current.sha !== base) {
             return { status: "stale" };
           }
+          // Never write a v7 site through the protocol, even by a direct call.
+          const schema = await resolveSchema({ sha: base, ref: branch });
+          if (
+            !schema ||
+            !isV8SchemaText(
+              await readBlobText(schema.entry.path, schema.entry.sha),
+            )
+          ) {
+            throw unsupported("not a Blocks v8 site");
+          }
           if (attempt.expectedSchemaVersion !== undefined) {
-            const schema = await resolveSchema({ sha: base, ref: branch });
-            if ((schema?.entry.sha ?? null) !== attempt.expectedSchemaVersion) {
+            if (schema.entry.sha !== attempt.expectedSchemaVersion) {
               return { status: "stale" };
             }
           }
