@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.429.14",
+      "version": "4.417.5",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -114,7 +114,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.429.14",
+      "version": "4.417.5",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -249,7 +249,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.97.2",
+      "version": "1.93.4",
       "dependencies": {
         "@decocms/blocks": "8.1.0-next.4",
         "@decocms/shared": "workspace:*",
@@ -266,7 +266,7 @@
     },
     "packages/harness-runner": {
       "name": "@decocms/harness-runner",
-      "version": "0.9.10",
+      "version": "0.9.9",
       "bin": {
         "decocms-harness-runner": "./main.ts",
       },
@@ -319,7 +319,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.80.3",
+      "version": "1.77.0",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -336,7 +336,7 @@
     },
     "packages/sandbox-controller": {
       "name": "@decocms/sandbox-controller",
-      "version": "0.7.1",
+      "version": "0.5.0",
       "dependencies": {
         "@kubernetes/client-node": "^1.4.0",
       },
@@ -353,7 +353,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.130.1",
+      "version": "0.126.5",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
