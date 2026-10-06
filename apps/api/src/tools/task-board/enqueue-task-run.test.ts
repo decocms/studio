@@ -137,7 +137,7 @@ describe("enqueueAgentRunForTask plan gate", () => {
     assignedBy: null,
   } as never;
 
-  const opts = { title: "t", prompt: "p", temperature: 0 };
+  const opts = { title: "t", prompt: "p", temperature: 0, rulesColumn: null };
 
   function ctx(): never {
     return {

@@ -101,6 +101,12 @@ export async function enqueueAgentRunForTask(
     title: string;
     prompt: string;
     temperature: number;
+    /**
+     * The lane whose rules this run follows, beside the org-wide ones. By role,
+     * not by where the card sits: a re-run happens on an In Progress card and
+     * must still follow To Do's. Null for the org-wide rules alone.
+     */
+    rulesColumn: string | null;
     /** Hosted harness for this run. Defaults to Decopilot. */
     harnessId?: HostedHarnessId;
     /**
@@ -177,11 +183,9 @@ export async function enqueueAgentRunForTask(
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
 
-  // The board's standing instructions for this card — the org-wide prompt plus
-  // its column's, if either is set. Best-effort: an unreadable row costs the
-  // run its house rules, never the dispatch.
+  // Best-effort: an unreadable row costs the run its house rules, never the dispatch.
   const boardPrompt = await ctx.storage.taskBoardPrompts
-    .promptFor(organizationId, task.status)
+    .promptFor(organizationId, opts.rulesColumn)
     .catch(() => undefined);
   const sandboxed = harnessRunsInSandbox(harnessId);
   const { agent, prompt } = withOrgTaskPrompt(

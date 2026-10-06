@@ -1,7 +1,10 @@
 import type { Kysely } from "kysely";
 import type { Database } from "./types";
+import { DEFAULT_BOARD_PROMPTS } from "./task-board-default-prompts";
 
-/** Board prompt scopes: `columnKey` null is org-wide, otherwise one column. */
+/** Board prompt scopes: `columnKey` null is org-wide, otherwise one column.
+ *  A lane with no row carries its `DEFAULT_BOARD_PROMPTS` entry; a blank row
+ *  is a lane the org cleared. */
 export interface TaskBoardPrompt {
   columnKey: string | null;
   prompt: string;
@@ -19,7 +22,7 @@ const rowId = (organizationId: string, columnKey: string | null) =>
 export class TaskBoardPromptStorage {
   constructor(private readonly db: Kysely<Database>) {}
 
-  /** Every prompt this org has set, org-wide row first. */
+  /** Every scope in effect for this org, defaults included, org-wide first. */
   async listByOrg(organizationId: string): Promise<TaskBoardPrompt[]> {
     const rows = await this.db
       .selectFrom("task_board_prompts")
@@ -27,15 +30,17 @@ export class TaskBoardPromptStorage {
       .where("organization_id", "=", organizationId)
       .orderBy("column_key", "asc")
       .execute();
-    return (rows as Row[])
-      .map((r) => ({
-        columnKey: r.column_key,
-        prompt: r.prompt,
-        skills: r.skills,
-      }))
-      .sort((a, b) =>
-        a.columnKey === null ? -1 : b.columnKey === null ? 1 : 0,
-      );
+    const set: TaskBoardPrompt[] = (rows as Row[]).map((r) => ({
+      columnKey: r.column_key,
+      prompt: r.prompt,
+      skills: r.skills,
+    }));
+    const unset = DEFAULT_BOARD_PROMPTS.filter(
+      (d) => !set.some((p) => p.columnKey === d.columnKey),
+    );
+    return [...set, ...unset].sort((a, b) =>
+      a.columnKey === null ? -1 : b.columnKey === null ? 1 : 0,
+    );
   }
 
   /** The org-wide and `columnKey` scopes, composed for one run. */
@@ -62,7 +67,7 @@ export class TaskBoardPromptStorage {
         organization_id: organizationId,
         column_key: columnKey,
         prompt: fields.prompt,
-        skills: fields.skills ?? [],
+        skills: fields.skills ?? defaultFor(columnKey)?.skills ?? [],
       })
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
@@ -76,13 +81,20 @@ export class TaskBoardPromptStorage {
     return { columnKey, prompt: row.prompt, skills: row.skills };
   }
 
-  /** Clear the prompt on a scope. Deleting IS the off switch — an empty row
-   *  and no row would otherwise mean the same thing in two ways. Returns
-   *  whether there was one. */
+  /** Clear a scope. A defaulted lane keeps a blank row, or the default would
+   *  come back. Returns whether there was anything to clear. */
   async remove(
     organizationId: string,
     columnKey: string | null,
   ): Promise<boolean> {
+    if (defaultFor(columnKey)) {
+      const current = (await this.listByOrg(organizationId)).find(
+        (p) => p.columnKey === columnKey,
+      );
+      if (!current?.prompt && !current?.skills.length) return false;
+      await this.upsert(organizationId, columnKey, { prompt: "", skills: [] });
+      return true;
+    }
     const result = await this.db
       .deleteFrom("task_board_prompts")
       .where("id", "=", rowId(organizationId, columnKey))
@@ -91,6 +103,9 @@ export class TaskBoardPromptStorage {
     return (result.numDeletedRows ?? 0n) > 0n;
   }
 }
+
+const defaultFor = (columnKey: string | null) =>
+  DEFAULT_BOARD_PROMPTS.find((d) => d.columnKey === columnKey);
 
 /** Scopes' prompts in order, then one line naming their skills. */
 export function composeBoardPrompt(

@@ -375,18 +375,7 @@ export function buildClaudeCodeTaskPrompt(
       (opts?.pr
         ? " — or push to the existing one, per the instruction above."
         : "."),
-    "- Change only what the task needs. Don't refactor around it.",
-    // The two defects behind every card that burned its bounce budget.
-    "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is the most common reason a task comes back rejected.",
-    // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
-    // for a deploy that may not exist yet, and that is the reviewer's job
-    // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
-    // The sandbox's state — installed or not, dev server or not — is NOT
-    // stated here. It is decided by the claim, minutes after this string is
-    // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
-    // the true answer at dispatch.
-    '- A browser is installed globally, NOT in the repo\'s `node_modules` — don\'t go looking for playwright there. `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders any URL (localhost included) in headless Chromium, runs the page\'s JS, and writes a file you must then `Read` — a screenshot you never opened is not verification. Write screenshots under `/app/org/output/` and EMBED them in your task comment as markdown images, `![home](/app/org/output/qa/home.png)` — only that form renders on the card; a bare path or a code span shows the reader nothing. To INTERACT (click, fill, `document.elementFromPoint`), write a throwaway node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`. Add `--engine=webkit` (WebKit, Safari\'s engine) when a mobile scroll, snap or animation quirk could be engine-specific, or when asked to check Safari; to script it, `webkit` from the same playwright-core with `browser.newContext(devices["iPhone 13"])`. It is not a real iPhone or Mac: report it as "checked in WebKit", not as tested on iOS or Safari.',
+    // Work policy (scope, verification, screenshots) is the To Do lane's editable rule.
     // How the board finds the PR now: it looks GitHub up by the branch this
     // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do
     // is open the PR from some other branch. Replaces asking the run to report

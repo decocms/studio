@@ -117,12 +117,10 @@ describe("buildClaudeCodeTaskPrompt", () => {
     });
   });
 
-  test("a board run keeps its board tools and its local-only verification", () => {
+  test("a board run keeps its board tools", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
     expect(prompt).not.toContain("JIRA_");
-    expect(prompt).toContain("Do NOT wait for, or verify against");
-    expect(prompt).not.toContain("DEPLOY PREVIEW");
   });
 
   test("omits the description block when there is none", () => {
@@ -166,15 +164,10 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(buildClaudeCodeTaskPrompt(task, repo)).toContain("AUTONOMOUSLY");
   });
 
-  // Inverted: this used to require fetching the PR's `previewUrl` and
-  // verifying on the deploy preview. That is the reviewer's job — the Super
-  // Agent implements and verifies locally, and must not sit waiting for a
-  // deploy.
-  test("requires reachability and a LOCAL check before handing over", () => {
+  test("leaves the work policy to the lane rule", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
-    expect(prompt).toContain("must be REACHABLE");
-    expect(prompt).toContain("VERIFY the task's outcome LOCALLY");
-    expect(prompt).toContain("A green test suite is not the bar");
+    expect(prompt).not.toContain("must be REACHABLE");
+    expect(prompt).not.toContain("qa-screenshot");
     expect(prompt).not.toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
   });
 

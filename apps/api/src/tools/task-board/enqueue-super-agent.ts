@@ -1,6 +1,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  LANES,
   outstandingReviewFeedback,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
@@ -37,7 +38,7 @@ import {
 export async function reactToSuperAgentDelegation(
   ctx: StudioContext,
   item: TaskBoardItem,
-  opts?: Pick<SuperAgentPromptOpts, "userInitiated" | "instruction">,
+  opts?: Pick<SuperAgentPromptOpts, "userInitiated" | "instruction" | "column">,
 ): Promise<void> {
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
   await enqueueSuperAgentForTask(ctx, item, opts).catch((err) => {
@@ -77,6 +78,9 @@ export type SuperAgentPromptOpts = {
    *  opening instruction; the task's own title and description still follow,
    *  or the agent would not know which card it is on. */
   instruction?: string;
+  /** The lane whose rules the run follows. Defaults to To Do, where the Super
+   *  Agent picks work up; a column automation passes its own column. */
+  column?: string | null;
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
   /** The PR already under review, so the re-run updates it in place instead
@@ -393,12 +397,14 @@ export async function enqueueSuperAgentForTask(
     const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
       ? "conflict"
       : undefined;
+    const rulesColumn = opts?.column !== undefined ? opts.column : LANES.queue;
 
     if (choice) {
       harness = "claude-code";
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
         title,
+        rulesColumn,
         ...(runMetadata ? { metadata: runMetadata } : {}),
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
         ...(pinnedRef ? { pinnedRef } : {}),
@@ -416,6 +422,7 @@ export async function enqueueSuperAgentForTask(
     } else {
       await enqueueAgentRunForTask(ctx, task, {
         title,
+        rulesColumn,
         ...(runMetadata ? { metadata: runMetadata } : {}),
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
         prompt: buildSuperAgentTaskPrompt(promptTask, promptOpts),
