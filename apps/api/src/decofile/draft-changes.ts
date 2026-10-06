@@ -10,7 +10,9 @@
  * merge base with the production branch replaces production's entry whole;
  * a file the draft deleted is a tombstone; every other file inherits
  * production. Only changed bodies are read, through the blob cache. Nothing
- * is prepared or stored: each request computes it from Git.
+ * is prepared or stored: each request computes it from Git, and a result
+ * is reused for a short while per branch head (it can't change for one head
+ * except when production takes the branch in, which leaves nothing to show).
  */
 
 import {
@@ -38,6 +40,23 @@ export interface DraftChanges {
 
 /** Thrown when a draft's changes exceed {@link MAX_DRAFT_CHANGE_BYTES}. */
 export class DraftChangesTooLarge extends Error {}
+
+/** Thrown when a saved block on the branch isn't valid JSON; names its file. */
+export class DraftChangesInvalidBlock extends Error {
+  constructor(readonly file: string) {
+    super(
+      `saved block "${file}" isn't valid JSON; fix or discard it to preview`,
+    );
+  }
+}
+
+function parseBlock(file: string, text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new DraftChangesInvalidBlock(file);
+  }
+}
 
 interface BlockFile {
   file: string;
@@ -94,7 +113,9 @@ async function winnerOf(
         );
   const candidates = group.map((f, i) => ({
     ...f,
-    hasPath: bodies[i] ? entryHasPath(JSON.parse(bodies[i].content)) : false,
+    hasPath: bodies[i]
+      ? entryHasPath(parseBlock(f.file, bodies[i].content))
+      : false,
   }));
   const [resolved] = resolveSpellings(candidates).values();
   if (!resolved) return null;
@@ -115,14 +136,49 @@ export async function buildDraftChanges(
   packagePath: string | null,
   branch: string,
 ): Promise<DraftChanges> {
-  const empty: DraftChanges = { format: 1, set: {}, delete: [] };
   const head = await client.getBranch(branch);
-  if (!head) return empty;
+  if (!head) return { format: 1, set: {}, delete: [] };
+  const { host, path } = client.repo;
+  const key = `${host}/${path}\0${packagePath ?? ""}\0${head.sha}`;
+  const now = Date.now();
+  const cached = recent.get(key);
+  if (cached && cached.until > now) return cached.changes;
+  const changes = changesAt(client, packagePath, head.sha);
+  recent.delete(key);
+  recent.set(key, { until: now + REUSE_MS, changes });
+  while (recent.size > REUSE_ENTRIES) {
+    recent.delete(recent.keys().next().value!);
+  }
+  changes.catch(() => {
+    if (recent.get(key)?.changes === changes) recent.delete(key);
+  });
+  return changes;
+}
+
+/** How long, and for how many heads, a computed result is reused. */
+const REUSE_MS = 60_000;
+const REUSE_ENTRIES = 100;
+const recent = new Map<
+  string,
+  { until: number; changes: Promise<DraftChanges> }
+>();
+
+/** Forgets reused results (tests). */
+export function clearDraftChangesCache(): void {
+  recent.clear();
+}
+
+async function changesAt(
+  client: RepoContentClient,
+  packagePath: string | null,
+  headSha: string,
+): Promise<DraftChanges> {
+  const empty: DraftChanges = { format: 1, set: {}, delete: [] };
   const production = await client.getDefaultBranch();
-  const { mergeBaseSha } = await client.compareDetailed(production, head.sha);
-  if (mergeBaseSha === head.sha) return empty;
+  const mergeBaseSha = await client.mergeBase(production, headSha);
+  if (mergeBaseSha === headSha) return empty;
   const [draft, base] = await Promise.all([
-    blockFiles(client, head.sha, packagePath),
+    blockFiles(client, headSha, packagePath),
     blockFiles(client, mergeBaseSha, packagePath),
   ]);
 
@@ -163,7 +219,7 @@ export async function buildDraftChanges(
     const text = bodies[i]!.content;
     bytes += Buffer.byteLength(text);
     if (bytes > MAX_DRAFT_CHANGE_BYTES) throw tooLarge();
-    set.push([winner.name, JSON.parse(text)]);
+    set.push([winner.name, parseBlock(winner.file, text)]);
     deleted.delete(winner.name);
   }
   return {

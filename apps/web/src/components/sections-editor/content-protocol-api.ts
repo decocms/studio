@@ -254,8 +254,11 @@ export async function applyProtocolPatch(
   return { revision: result.revision };
 }
 
-/** A draft token lives six hours; refreshing it every half hour keeps the pointer valid. */
-const DRAFT_TOKEN_REFRESH_MS = 30 * 60_000;
+/**
+ * A draft token lives six hours. Each new token changes the pointer and so
+ * reloads the preview, so refresh only once, an hour before it expires.
+ */
+const DRAFT_TOKEN_REFRESH_MS = 5 * 60 * 60_000;
 
 export interface ProtocolDraft {
   /** The `?__draft=` pointer to the branch's changes, or null before a token and a revision. */

@@ -60,6 +60,7 @@ import {
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import {
   buildDraftChanges,
+  DraftChangesInvalidBlock,
   DraftChangesTooLarge,
 } from "@/decofile/draft-changes";
 import { repoGitRebase } from "@/decofile/git-compat";
@@ -593,6 +594,9 @@ export function createDecofileRoutes() {
     } catch (err) {
       if (err instanceof DraftChangesTooLarge) {
         return c.json({ error: err.message }, 413, headers);
+      }
+      if (err instanceof DraftChangesInvalidBlock) {
+        return c.json({ error: err.message, file: err.file }, 422, headers);
       }
       const res = errorResponse(c, err);
       for (const [k, v] of Object.entries(headers)) res.headers.set(k, v);

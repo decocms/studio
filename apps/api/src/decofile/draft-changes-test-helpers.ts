@@ -24,13 +24,7 @@ export function fakeRepo(input: {
     getDefaultBranch: async () => "main",
     getBranch: async (name: string) =>
       input.commits[name] ? { sha: name } : null,
-    compareDetailed: async () => ({
-      aheadBy: 1,
-      behindBy: 0,
-      mergeBaseSha: input.mergeBase,
-      files: [],
-      commitMessages: [],
-    }),
+    mergeBase: async () => input.mergeBase,
     listDecofileEntries: async (treeish: string): Promise<TreeEntry[]> => {
       const commit = input.commits[treeish];
       if (!commit) throw new Error(`unknown commit ${treeish}`);

@@ -1,7 +1,9 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { serializeBlock } from "@decocms/blocks/protocol";
 import {
   buildDraftChanges,
+  clearDraftChangesCache,
+  DraftChangesInvalidBlock,
   DraftChangesTooLarge,
   MAX_DRAFT_CHANGE_BYTES,
 } from "./draft-changes";
@@ -12,6 +14,8 @@ beforeAll(() => {
   // No disk blob cache: every body read goes through the fake client.
   process.env.FAST_PREVIEW_CACHE_DIR = "";
 });
+
+beforeEach(() => clearDraftChangesCache());
 
 const block = (value: unknown) => serializeBlock(value);
 
@@ -129,5 +133,77 @@ describe("buildDraftChanges", () => {
     await expect(buildDraftChanges(client, null, "draft")).rejects.toThrow(
       DraftChangesTooLarge,
     );
+  });
+  it("tombstones what a delete-only branch removed", async () => {
+    const { client } = fakeRepo({
+      mergeBase: "base",
+      commits: {
+        base: { "Keep.json": block({ k: 1 }), "Gone.json": block({ g: 1 }) },
+        draft: { "Keep.json": block({ k: 1 }) },
+      },
+    });
+    expect(await buildDraftChanges(client, null, "draft")).toEqual({
+      format: 1,
+      set: {},
+      delete: ["Gone"],
+    });
+  });
+
+  it("answers a rename as a delete plus a set", async () => {
+    const { client } = fakeRepo({
+      mergeBase: "base",
+      commits: {
+        base: { "Old.json": block({ x: 1 }) },
+        draft: { "New.json": block({ x: 1 }) },
+      },
+    });
+    expect(await buildDraftChanges(client, null, "draft")).toEqual({
+      format: 1,
+      set: { New: { x: 1 } },
+      delete: ["Old"],
+    });
+  });
+
+  it("sets the other spelling when the draft deletes the winning one", async () => {
+    // Two spellings of one name: the page-like one wins. Deleting it leaves
+    // the other as the name's entry, so the name is set, not deleted.
+    const { client } = fakeRepo({
+      mergeBase: "base",
+      commits: {
+        base: {
+          "pages%2Fhome.json": block({ path: "/", v: 1 }),
+          "pages%2fhome.json": block({ v: 2 }),
+        },
+        draft: { "pages%2fhome.json": block({ v: 2 }) },
+      },
+    });
+    expect(await buildDraftChanges(client, null, "draft")).toEqual({
+      format: 1,
+      set: { "pages/home": { v: 2 } },
+      delete: [],
+    });
+  });
+
+  it("names the file of a saved block that isn't valid JSON", async () => {
+    const { client } = fakeRepo({
+      mergeBase: "base",
+      commits: { base: {}, draft: { "Broken.json": "{ not json" } },
+    });
+    const error = await buildDraftChanges(client, null, "draft").catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(DraftChangesInvalidBlock);
+    expect((error as DraftChangesInvalidBlock).file).toBe("Broken.json");
+  });
+
+  it("reuses a result for the same branch head", async () => {
+    const { client, reads } = fakeRepo({
+      mergeBase: "base",
+      commits: { base: {}, draft: { "A.json": block({ a: 1 }) } },
+    });
+    const first = await buildDraftChanges(client, null, "draft");
+    const again = await buildDraftChanges(client, null, "draft");
+    expect(again).toEqual(first);
+    expect(reads).toHaveLength(1);
   });
 });

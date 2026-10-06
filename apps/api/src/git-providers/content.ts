@@ -224,6 +224,11 @@ export interface RepoContentClient {
     aheadBy: number;
     behindBy: number;
   }>;
+  /**
+   * The commit `base` and `head` last shared, without the changed files or
+   * commits; empty when they share no history.
+   */
+  mergeBase(base: string, head: string): Promise<string>;
   compareDetailed(
     base: string,
     head: string,

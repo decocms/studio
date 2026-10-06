@@ -775,6 +775,10 @@ export class BitbucketContentClient implements RepoContentClient {
     return { aheadBy: ahead.length, behindBy: behind.length };
   }
 
+  mergeBase(base: string, head: string): Promise<string> {
+    return this.mergeBaseSha(base, head);
+  }
+
   async compareDetailed(
     base: string,
     head: string,
