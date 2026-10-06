@@ -683,43 +683,24 @@ async function enqueueReviewerForTask(
   // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
   const reviewToken = mintReviewToken(task.id, kind, cycleAt);
 
-  // Same harness the Super Agent runs on, for the same reason: a review needs
-  // real `git`/`gh` on a checkout, and — the blocking one — only a
-  // sandbox-hosted run is handed the task-run MCP surface that carries
-  // `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`. On Decopilot
-  // (the previous default) both came back `not_found` from `enable_tool`, so a
-  // reviewer could reach its verdict and never record it. Falls back to
-  // Decopilot when the org has no importable repo, exactly as the Super Agent
-  // does — with no repo there is no checkout to review anyway.
+  // Same harness the Super Agent runs on: a review needs real `git`/`gh` on a
+  // checkout, and only a sandbox-hosted run is handed the task-run MCP surface
+  // that carries `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`.
   const choice = await resolveTaskRepoChoice(ctx, organizationId, {
     repositoryId: task.repositoryId,
     repo: task.repo,
   });
-  const repo = choice && "repo" in choice ? choice.repo : null;
-  const sandboxed = choice !== null;
+  if (!choice) {
+    throw new Error(
+      "Reviewer runs need the hosted sandbox, which this deployment does not have.",
+    );
+  }
+  const repo = "repo" in choice ? choice.repo : null;
   const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
   const pinnedRepo = pinnedRepoId(task.repo, choice);
-  // Over the sandbox's MCP client the task-run tools are namespaced; hosted
-  // Decopilot calls them bare. Naming them wrong is not cosmetic — it is what
-  // the model retries `enable_tool` against before giving up.
-  const prsGetTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_ITEM_PRS_GET"
-    : "TASK_BOARD_ITEM_PRS_GET";
-  const decisionTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
-    : "TASK_BOARD_REVIEW_DECISION";
-  const commentTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_COMMENT_CREATE"
-    : "TASK_BOARD_COMMENT_CREATE";
-  const commentListTool = sandboxed
-    ? "mcp__studio__TASK_BOARD_COMMENT_LIST"
-    : "TASK_BOARD_COMMENT_LIST";
 
-  // Who this run IS. On the sandboxed path this becomes the harness's system
-  // instructions (`agent.instructions`), replacing the org agent's own — those
-  // describe the Super Agent that wrote the PR, which is the last persona a
-  // reviewer of that PR should inherit. The Decopilot fallback has no such hook,
-  // so there it is prepended to the prompt instead (same text, one home).
+  // Who this run IS: replaces the org agent's instructions, which describe the
+  // Super Agent that wrote the PR.
   const instructions = [
     REVIEWER_FOCUS[kind],
     "",
@@ -738,45 +719,45 @@ async function enqueueReviewerForTask(
       "other ref is not.",
   ].join("\n");
 
-  // Sandboxed only — `uploadsAsSandboxPaths` points at an org-fs mount the hosted harness lacks.
-  const reviewerDescription =
-    task.description && sandboxed
-      ? uploadsAsSandboxPaths(task.description)
-      : task.description;
-  const reviewerUploadHint =
-    task.description && reviewerDescription
-      ? sandboxUploadHint(task.description, reviewerDescription)
-      : null;
-
+  // The user turn the thread shows: the task under review.
+  const description = task.description
+    ? uploadsAsSandboxPaths(task.description)
+    : null;
   const prompt = [
-    ...(sandboxed ? [] : [instructions, ""]),
-    `Task title: ${task.title}`,
-    reviewerDescription ? `\nTask description:\n${reviewerDescription}\n` : "",
-    ...(reviewerUploadHint ? [reviewerUploadHint, ""] : []),
+    task.title,
+    description,
+    task.description && description
+      ? sandboxUploadHint(task.description, description)
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const system = [
+    "The user message is the task whose pull request you review.",
+    "",
     "How to work:",
-    `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
+    "- Call `mcp__studio__TASK_BOARD_ITEM_PRS_GET` with the task id below to find the pull request under review.",
     repo
       ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab; Bitbucket has no CLI — use the REST API with \`curl\` and \`$BITBUCKET_TOKEN\`) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
-      : sandboxed
-        ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
-            pinnedRepo
-              ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
-              : `with the id of the PR's repository FIRST;`
-          } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`
-        : "- Load the PR's repository to inspect / exercise the change.",
+      : `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
+          pinnedRepo
+            ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
+            : `with the id of the PR's repository FIRST;`
+        } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`,
     `- ${PR_DIFF_RECIPE}`,
     ...(priorReviewAt > 0
       ? [
-          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
+          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`mcp__studio__TASK_BOARD_COMMENT_LIST\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
         ]
       : []),
-    `- Record what you validated with \`${commentTool}\` BEFORE your decision, with any screenshots embedded inline as markdown images referencing their /app/org/output path.`,
-    `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
+    "- Record what you validated with `mcp__studio__TASK_BOARD_COMMENT_CREATE` BEFORE your decision, with any screenshots embedded inline as markdown images referencing their /app/org/output path.",
+    "- End the run by calling `mcp__studio__TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
     "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
-    `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
+    "- `mcp__studio__TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
     "",
     `(task id: ${task.id})`,
     `(reviewToken: ${reviewToken})`,
@@ -792,14 +773,10 @@ async function enqueueReviewerForTask(
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
     rulesColumn: LANES.progress,
     prompt,
+    system,
     temperature: 0.3,
-    ...(sandboxed
-      ? {
-          harnessId: "claude-code" as const,
-          modelClass,
-          agent: { instructions },
-        }
-      : {}),
+    modelClass,
+    agent: { instructions },
     ...(repo ? { repo } : {}),
     fence: { threadId: fenceThreadId, workflowID: fenceKey },
   }).catch(async (err) => {
