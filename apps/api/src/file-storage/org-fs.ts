@@ -60,6 +60,17 @@ export class OrgFsValidationError extends Error {
   }
 }
 
+/** Thrown when a write's precondition no longer holds (→ 412). */
+export class OrgFsConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OrgFsConflictError";
+  }
+}
+
+/** The version a conditional write expects to replace. */
+export type WriteExpectation = { contentHash: string } | { absent: true };
+
 /** Thrown when a required path is absent (→ 404). */
 export class OrgFsNotFoundError extends Error {
   constructor(message: string) {
@@ -410,6 +421,7 @@ export class OrgFs {
       /** Chat/run writing this file — scopes live deck previews. Omit for
        *  writes not tied to a dispatch (mount write-backs, backfill). */
       threadId?: string | null;
+      expect?: WriteExpectation;
     },
   ): Promise<OrgFsEntry> {
     assertValidVolume(volume);
@@ -448,6 +460,19 @@ export class OrgFs {
       throw new OrgFsValidationError(
         `Cannot write a file at ${normalized}: a directory exists there`,
       );
+    }
+    // ponytail: checked against the manifest row read above, so it closes the
+    // client's stat-then-PUT gap but not a write landing in this same request;
+    // a conditional manifest upsert would make it exact.
+    if (opts.expect) {
+      const current = existing?.kind === "file" ? existing.contentHash : null;
+      const holds =
+        "absent" in opts.expect
+          ? !existing
+          : current === opts.expect.contentHash;
+      if (!holds) {
+        throw new OrgFsConflictError(`${normalized} changed since it was read`);
+      }
     }
     if (usage) {
       const prior = existing?.kind === "file" ? existing.size : 0;

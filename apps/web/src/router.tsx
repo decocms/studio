@@ -1520,6 +1520,9 @@ const settingsMemoryRoute = createRoute({
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/memory.tsx"),
   ),
+  validateSearch: z.lazy(() =>
+    z.object({ scope: z.enum(["user"]).optional() }),
+  ),
 });
 
 // ============================================

@@ -458,10 +458,10 @@ export const settings = {
   "settings.memory.notSaved": "Não salvo",
   "settings.memory.saveError":
     "Não deu para salvar. Continue digitando para tentar de novo.",
+  "settings.memory.readOnly": "Você pode ler esta memória, mas não alterá-la.",
   "settings.memory.updated": "Atualizada {time}",
   "settings.memory.notStarted": "Nada lembrado ainda",
-  "settings.memory.conflict":
-    "O Deco atualizou esta memória enquanto você editava.",
+  "settings.memory.conflict": "Esta memória mudou enquanto você editava.",
   "settings.memory.loadLatest": "Carregar a mais recente",
   "settings.memory.keepMine": "Manter a minha",
   "settings.memory.budget": "{percent}% do que os chats leem",
@@ -470,7 +470,7 @@ export const settings = {
     "Os chats carregam os primeiros 16.000 caracteres. Mantenha isto como um índice curto e leve os detalhes para notas separadas.",
   "settings.memory.errorTitle": "Não deu para carregar a memória",
   "settings.memory.errorDescription":
-    "Os arquivos da organização não estão acessíveis agora.",
+    "Não deu para carregar os arquivos da organização. Talvez você não tenha acesso a eles.",
   "settings.memory.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",

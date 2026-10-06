@@ -37,6 +37,11 @@ import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-b
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
 import { OrgFsNotFoundError } from "@/file-storage/org-fs";
+import {
+  MEMORY_INJECT_CAP,
+  memoryPath,
+  memoryTemplate,
+} from "@decocms/shared/memory";
 import { STUDIO_PACK_AGENT_NAMES } from "@/tools/virtual/studio-pack/agent-names";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
@@ -168,12 +173,18 @@ export async function buildAgentSystemPrompt(
     const homeBase = "org/home";
     const userId = opts.user?.id;
     const [org, usr] = await Promise.all([
-      loadMemoryBlock(opts.ctx, "organization", "MEMORY.md", homeBase, userId),
+      loadMemoryBlock(
+        opts.ctx,
+        "organization",
+        memoryPath("organization", userId ?? ""),
+        homeBase,
+        userId,
+      ),
       userId
         ? loadMemoryBlock(
             opts.ctx,
             "user",
-            `users/${userId}/MEMORY.md`,
+            memoryPath("user", userId),
             homeBase,
             userId,
           )
@@ -278,18 +289,6 @@ shows what you can aggregate into one. You cannot create or edit connections.
 </agent-management>`;
 }
 
-/** Cap on the MEMORY.md content folded into every prompt — it is an index, not
- *  a log. Larger files are truncated with a pointer to read the rest on demand. */
-const MEMORY_INJECT_CAP = 16_000;
-
-/** Raw starter content seeded on first load so the agent's later
- *  Read(MEMORY.md) never hits a missing file. Kept minimal — just a heading. */
-function memoryTemplate(scope: "organization" | "user"): string {
-  return scope === "organization"
-    ? "# Organization memory\n\nDurable facts shared with everyone in this organization. Keep this a concise, curated index — not a log.\n"
-    : "# User memory\n\nFacts and preferences specific to you. Keep this a concise, curated index — not a log.\n";
-}
-
 /**
  * Read a MEMORY.md index from the `home` volume and render it as a system
  * block. `scope` is "organization" (shared) or "user" (private to the current
@@ -320,9 +319,11 @@ async function loadMemoryBlock(
     // error never clobbers an existing file. Best-effort; never throws.
     if (actor && err instanceof OrgFsNotFoundError) {
       try {
+        // Only into a still-absent file: a member's first save may land between the read and here.
         await ctx.orgFs.write("home", path, memoryTemplate(scope), {
           actor,
           contentType: "text/markdown",
+          expect: { absent: true },
         });
       } catch {
         // ignore — seeding is best-effort

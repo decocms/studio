@@ -54,6 +54,7 @@ function buildStudioApp(db: StudioDatabase) {
         setOrganizationId: () => {},
         setRole: () => {},
         check: async () => {},
+        getRole: () => "member",
       },
       storage: {
         threads: { setOrganizationId: () => {} },

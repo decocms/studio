@@ -302,7 +302,7 @@ export function useOrgFsSkillCatalog() {
 }
 
 /** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */
-async function fetchOrgFsText(
+export async function fetchOrgFsText(
   orgSlug: string,
   volume: string,
   path: string,
@@ -495,6 +495,43 @@ export function useOrgFsWriteText(volume: string) {
       return ((await res.json()) as { entry: OrgFsEntry }).entry;
     },
   });
+}
+
+/** The version a conditional write must still find: a content hash, or nothing yet. */
+export type OrgFsWriteExpect = { contentHash: string } | { absent: true };
+
+export type OrgFsConditionalWrite =
+  | { ok: true; entry: OrgFsEntry }
+  | { ok: false; reason: "conflict" | "forbidden" };
+
+/**
+ * Write a text file only over the version the caller last saw. A plain
+ * function, not a mutation hook, so a save scheduled before unmount still lands.
+ */
+export async function writeOrgFsTextIf(
+  orgSlug: string,
+  volume: string,
+  path: string,
+  body: string,
+  expect: OrgFsWriteExpect | null,
+): Promise<OrgFsConditionalWrite> {
+  const headers: Record<string, string> = {
+    "content-type": "text/markdown; charset=utf-8",
+  };
+  if (expect && "absent" in expect) headers["if-none-match"] = "*";
+  else if (expect) headers["if-match"] = `"${expect.contentHash}"`;
+  const res = await fetch(fsUrl(orgSlug, volume, "file", { path }), {
+    method: "PUT",
+    headers,
+    body,
+  });
+  if (res.status === 412) return { ok: false, reason: "conflict" };
+  if (res.status === 403) return { ok: false, reason: "forbidden" };
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return {
+    ok: true,
+    entry: ((await res.json()) as { entry: OrgFsEntry }).entry,
+  };
 }
 
 /**

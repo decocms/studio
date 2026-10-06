@@ -446,10 +446,10 @@ export const settings = {
   "settings.memory.saved": "Saved",
   "settings.memory.notSaved": "Not saved",
   "settings.memory.saveError": "Couldn't save. Keep typing to retry.",
+  "settings.memory.readOnly": "You can read this memory but not change it.",
   "settings.memory.updated": "Updated {time}",
   "settings.memory.notStarted": "Nothing remembered yet",
-  "settings.memory.conflict":
-    "Deco updated this memory while you were editing.",
+  "settings.memory.conflict": "This memory changed while you were editing.",
   "settings.memory.loadLatest": "Load latest",
   "settings.memory.keepMine": "Keep my version",
   "settings.memory.budget": "{percent}% of what chats read",
@@ -458,7 +458,7 @@ export const settings = {
     "Chats load the first 16,000 characters. Keep this a short index and move details into separate notes.",
   "settings.memory.errorTitle": "Couldn't load memory",
   "settings.memory.errorDescription":
-    "The organization's files aren't reachable right now.",
+    "The organization's files couldn't be loaded. You may not have access to them.",
   "settings.memory.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
