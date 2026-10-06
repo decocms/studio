@@ -104,7 +104,6 @@ const CONTENT_TYPE_MAP: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
-  ".avif": "image/avif",
   ".pdf": "application/pdf",
   ".zip": "application/zip",
   ".gz": "application/gzip",
