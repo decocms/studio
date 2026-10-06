@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
+  libraryPlaceOf,
+  namedFolderOf,
   basename,
   browsePathFor,
   libraryTrail,
@@ -140,5 +142,49 @@ describe("libraryTrail", () => {
       { label: "uploads", path: "uploads" },
       { label: "docs", path: "uploads/docs" },
     ]);
+  });
+});
+
+describe("namedFolderOf", () => {
+  it("is the parent folder", () => {
+    expect(namedFolderOf("briefs/today.md")).toBe("briefs");
+    expect(namedFolderOf("today.md")).toBe("");
+  });
+
+  it("skips generated-id folders", () => {
+    expect(
+      namedFolderOf("chat/6a36530c-acd5-4c86-9e48-7654a6696aaa/image.png"),
+    ).toBe("chat");
+    expect(namedFolderOf("6a36530c-acd5-4c86-9e48-7654a6696aaa/a.png")).toBe(
+      "",
+    );
+  });
+});
+
+describe("libraryPlaceOf", () => {
+  const place = (path: string) => libraryPlaceOf(parseLibraryPath(path));
+
+  it("is the drive for the home root and its folders", () => {
+    expect(place("home")).toBe("all");
+    expect(place("home/briefs/2026")).toBe("all");
+  });
+
+  it("is projects anywhere under the projects folder", () => {
+    expect(place("home/projects")).toBe("projects");
+    expect(place("home/projects/loja/Meetings")).toBe("projects");
+  });
+
+  it("does not mistake a folder that only starts with the name", () => {
+    expect(place("home/projects-old")).toBe("all");
+  });
+
+  it("is public for the shared skill sets", () => {
+    expect(place("public")).toBe("public");
+    expect(place("public/core/skills")).toBe("public");
+  });
+
+  it("is the volume itself for the other volumes", () => {
+    expect(place("uploads/abc")).toBe("uploads");
+    expect(place("outputs")).toBe("outputs");
   });
 });

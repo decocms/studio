@@ -42,6 +42,10 @@ import {
 } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+  type ToolbarPlacement,
+  toolbarButton,
+} from "@/components/toolbar-placement";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ShareMode,
@@ -284,22 +288,25 @@ export function FileShareButton({
   shareMode,
   effectivePublic,
   url,
+  placement = "bar",
 }: {
   volume: string;
   path: string;
   shareMode: ShareMode;
   effectivePublic: boolean;
   url: string;
+  placement?: ToolbarPlacement;
 }) {
   const t = useT();
+  const button = toolbarButton(placement);
   return (
     <Popover>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button
-              variant="ghost"
-              size="icon"
+              variant={button.variant}
+              size={button.size}
               aria-label={t("library.fileShareButton.share")}
             >
               <Share07 size={14} />

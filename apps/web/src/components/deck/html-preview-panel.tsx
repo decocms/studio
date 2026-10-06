@@ -17,6 +17,7 @@
 
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { type ReactNode, useState } from "react";
+import type { ToolbarPlacement } from "@/components/toolbar-placement";
 import { DeckToolbar } from "./deck-toolbar";
 import { useDeckEditor } from "./use-deck-editor";
 
@@ -28,6 +29,8 @@ export function HtmlPreviewPanel({
   title,
   savePath,
   trailing,
+  toolbarClassName,
+  placement,
 }: {
   readUrl: string;
   /** Content marker (org-fs `size-updatedAt` / publish byte count). */
@@ -38,6 +41,8 @@ export function HtmlPreviewPanel({
   /** Host-specific actions appended to the (single) toolbar — e.g. the
    *  Library's download/close buttons. Keeps every surface on one bar. */
   trailing?: ReactNode;
+  toolbarClassName?: string;
+  placement?: ToolbarPlacement;
 }) {
   const editor = useDeckEditor({ readUrl, statMarker: marker, savePath });
 
@@ -62,6 +67,8 @@ export function HtmlPreviewPanel({
         // and browsers mangle slashes in the download attribute.
         downloadName={title.split("/").pop() ?? title}
         trailing={trailing}
+        className={toolbarClassName}
+        placement={placement}
       />
       <div className="relative flex-1">
         <iframe

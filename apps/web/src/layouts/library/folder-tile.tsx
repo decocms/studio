@@ -8,7 +8,6 @@
  */
 
 import type { ComponentType, ReactNode, SVGProps } from "react";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { FolderIcon, type FolderTone } from "@/components/folder-icon";
 import { useOrgFsList } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
@@ -28,6 +27,7 @@ function sheetsFor(count: number | undefined): number {
 export function FolderTile({
   name,
   meta,
+  icon,
   glyph,
   tone,
   readOnly,
@@ -35,6 +35,7 @@ export function FolderTile({
   badge,
   counts,
   onOpen,
+  onBrowse,
   onShare,
   onDelete,
   draggable,
@@ -43,6 +44,8 @@ export function FolderTile({
   onDrop,
 }: {
   name: string;
+  /** Replaces the folder art — a skill's or a brand's own mark. */
+  icon?: ReactNode;
   /** What to say under the name when the tile is not counting its own
    *  contents — a volume's own file count, or how long ago it changed. */
   meta?: string;
@@ -58,6 +61,8 @@ export function FolderTile({
    *  known. */
   counts?: { volume: string; path: string; enabled: boolean };
   onOpen: () => void;
+  /** Lists the folder when opening shows something else (a skill). */
+  onBrowse?: () => void;
   onShare?: () => void;
   onDelete?: () => void;
   draggable?: boolean;
@@ -96,49 +101,46 @@ export function FolderTile({
       onContextMenu={onContextMenu}
       onDragOver={onDrop ? (e) => e.preventDefault() : undefined}
       onDrop={onDrop}
-      className={cn(
-        "group/card relative flex cursor-pointer flex-col items-center gap-3 rounded-2xl p-4 text-center",
-        "border border-transparent transition-colors hover:border-border hover:bg-accent/40",
-      )}
+      className="group/card surface surface-interactive focus-ring relative flex h-12 min-w-0 cursor-pointer items-center gap-2.5 pr-1.5 pl-3"
     >
-      {badge && <span className="absolute top-3 left-3">{badge}</span>}
-      <span className="absolute top-2 right-2">
-        <EntryActionsMenu
-          label={name}
-          onShare={onShare}
-          onDelete={onDelete}
-          t={t}
-        />
-      </span>
-      <span className="relative">
-        <FolderIcon
-          glyph={glyph}
-          tone={tone}
-          readOnly={readOnly}
-          sheets={sheetsFor(count)}
-          className="size-16 transition-transform duration-200 group-hover/card:-translate-y-0.5"
-        />
-        {/* Ringed in the page background so the mark reads as sitting ON the
-            folder rather than being part of its art. */}
+      <span className="relative flex shrink-0">
+        {icon ?? (
+          <FolderIcon
+            glyph={glyph}
+            tone={tone}
+            readOnly={readOnly}
+            sheets={sheetsFor(count)}
+            className="size-6"
+          />
+        )}
+        {/* The ring makes the mark sit ON the folder, not in its art. */}
         {overlay && (
-          <span className="absolute -right-1 -bottom-0.5 flex rounded-lg ring-2 ring-background">
+          <span className="absolute -right-1.5 -bottom-1 flex rounded-lg ring-2 ring-card">
             {overlay}
           </span>
         )}
       </span>
-      <span className="flex w-full min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span
           className="truncate text-sm font-medium text-foreground"
           title={name}
         >
           {name}
         </span>
-        {/* Reserves its line whether or not there is a subtitle, so a row of
-            tiles has one baseline instead of ragged bottoms. */}
-        <span className="h-4 truncate text-xs text-muted-foreground">
-          {subtitle ?? ""}
-        </span>
+        {badge}
       </span>
+      {subtitle && (
+        <span className="text-meta shrink-0 group-hover/card:hidden group-has-[[data-state=open]]/card:hidden">
+          {subtitle}
+        </span>
+      )}
+      <EntryActionsMenu
+        label={name}
+        onBrowse={onBrowse}
+        onShare={onShare}
+        onDelete={onDelete}
+        t={t}
+      />
     </div>
   );
 }
@@ -146,7 +148,7 @@ export function FolderTile({
 /** `auto-fill` so a folder keeps its size and the last row runs short. */
 export function FolderTiles({ children }: { children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
       {children}
     </div>
   );

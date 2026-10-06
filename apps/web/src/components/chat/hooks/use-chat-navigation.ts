@@ -53,6 +53,24 @@ export function useChatNavigation(): ChatNavigation {
     /** Org destinations cannot encode an agent. A thread opened from one moves
      * to its agent overview; agent-owned views carry forward as themselves. */
     const targetAgentId = opts?.virtualMcpId ?? virtualMcpId;
+    const superAgentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    /** The org's own chat needs no agent in the path, so on an org page it
+     *  opens in place: the folder and file the question is about stay open. */
+    if (
+      targetAgentId === superAgentId &&
+      carried &&
+      tabRouteLocation(carried).kind === "org-destination"
+    ) {
+      void navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          thread: taskId,
+          ...(opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {}),
+        }),
+      });
+      return;
+    }
     const tabId =
       targetAgentId === virtualMcpId &&
       carried &&
@@ -62,7 +80,7 @@ export function useChatNavigation(): ChatNavigation {
     const target = canonicalThreadRouteTarget({
       org: org.slug,
       agentId: targetAgentId,
-      superAgentId: getWellKnownDecopilotVirtualMCP(org.id).id,
+      superAgentId,
       tabId,
     });
     navigateToTabRouteTarget(navigate, target, {

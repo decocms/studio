@@ -25,6 +25,9 @@ export const chat = {
     "A sessão de voz terminou. O chat e o trabalho do agente continuam disponíveis.",
   "chat.voice.sendFailed":
     "Não foi possível enviar ou concluir este pedido. Volte ao chat para conferir o estado dele.",
+  "chat.input.openFileContext":
+    "O agente vê {name}, o arquivo que você tem aberto",
+  "chat.input.openFileDismiss": "Deixar este arquivo de fora",
   "chat.input.taskMode": "Tarefa",
   "chat.input.startTask": "Iniciar tarefa",
   "chat.input.taskPlaceholder":

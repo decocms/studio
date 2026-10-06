@@ -251,10 +251,14 @@ function ChatLayoutContent({
   children,
   actions,
   drawer,
+  aside,
 }: {
   children: ReactNode;
   actions?: ReactNode;
   drawer?: ReactNode;
+  /** A second surface beside this one, such as a file preview. Desktop only:
+   *  on mobile the route shows it its own way. */
+  aside?: ReactNode;
 }) {
   const layout = useChatLayoutContext();
 
@@ -303,7 +307,16 @@ function ChatLayoutContent({
       data-chat-layout-panel-open={layout.contentOpen ? "" : undefined}
       className="min-w-0 overflow-hidden bg-sidebar"
     >
-      <div className="h-full min-h-0 p-0.5">{panel}</div>
+      {/* Flex, not a nested resizable group: that one sized itself after
+          mount, so a page loading in flashed its loader in a sliver. */}
+      <div className="flex h-full min-h-0">
+        <div className="h-full min-h-0 min-w-0 flex-1 p-0.5">{panel}</div>
+        {aside && (
+          <div className="h-full min-h-0 w-[42%] min-w-80 shrink-0 p-0.5">
+            <Panel data-testid="aside-panel">{aside}</Panel>
+          </div>
+        )}
+      </div>
     </ResizablePanel>
   );
 }

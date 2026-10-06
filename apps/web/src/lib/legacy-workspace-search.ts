@@ -44,10 +44,13 @@ export const taskBoardSearchShape = {
  *  link with a retired value opens the Library, never a blank route. */
 export const librarySearchShape = {
   fileView: z.enum(["all", "documents", "media"]).catch("all").optional(),
+  modified: z.enum(["any", "today", "week", "month"]).catch("any").optional(),
   layout: z.enum(["list", "grid"]).catch("list").optional(),
   sort: z.enum(["name", "updated", "size"]).catch("name").optional(),
   path: z.string().optional(),
   preview: z.string().optional(),
+  /** The preview fills the main panel instead of sitting beside the list. */
+  expanded: z.coerce.boolean().optional().catch(undefined),
   skill: z.string().optional(),
   brand: z.string().optional(),
 };

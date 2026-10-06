@@ -6,6 +6,28 @@ import { BrandPreviewDialog } from "@/layouts/library/brand-preview";
 import { formatLibraryFileTabId } from "./tab-id";
 import { usePanelNavigate } from "./use-panel-navigate";
 
+type FilePreviewMode = "panel" | "dialog" | "side";
+
+/** What a click on a file does; `undefined` lets the Library decide. */
+function fileOpener(
+  mode: FilePreviewMode,
+  openDialog: (path: string) => void,
+  openTab: (path: string) => void,
+): ((path: string) => void) | undefined {
+  switch (mode) {
+    case "dialog":
+      return openDialog;
+    case "panel":
+      return openTab;
+    case "side":
+      return undefined;
+    default: {
+      const unhandled: never = mode;
+      return unhandled;
+    }
+  }
+}
+
 export function LibraryTab({
   root,
   rootLabel,
@@ -22,8 +44,9 @@ export function LibraryTab({
    * there swapped the whole shell for the scoped one — a sidebar that jumped
    * into the project and a breadcrumb naming the agent instead of the file's
    * project. `dialog` previews the file in place, over the files it came from.
+   * `side` leaves it to the Library, which opens it beside the list.
    */
-  filePreview?: "panel" | "dialog";
+  filePreview?: FilePreviewMode;
 } = {}) {
   const { openPanel } = usePanelNavigate();
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -35,11 +58,9 @@ export function LibraryTab({
       <LibraryPage
         root={root}
         rootLabel={rootLabel}
-        onOpenFile={
-          filePreview === "dialog"
-            ? setOpenFile
-            : (path) => openPanel(formatLibraryFileTabId(path))
-        }
+        onOpenFile={fileOpener(filePreview, setOpenFile, (path) =>
+          openPanel(formatLibraryFileTabId(path)),
+        )}
         onOpenSkill={setOpenSkill}
         onOpenBrand={setOpenBrand}
       />
