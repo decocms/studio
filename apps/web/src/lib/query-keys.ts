@@ -773,9 +773,8 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
-  // The `?__draft=` overlay preview of one saved commit of a content-protocol project on GitHub.
-  draftPreview: (cacheKey: string, revision: string) =>
-    ["draft-preview", cacheKey, revision] as const,
+  // A content-protocol project's draft token for its `changes` pointer (GitHub backend).
+  draftToken: (cacheKey: string) => ["draft-token", cacheKey] as const,
   // The repo's committed `deno.json`, read for its pinned deco-apps version.
   denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["deno-json", orgSlug, virtualMcpId, branch] as const,

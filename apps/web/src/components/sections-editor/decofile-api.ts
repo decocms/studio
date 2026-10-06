@@ -92,10 +92,8 @@ export async function throwResponseError(
 export function setDecofileDraft(
   queryClient: QueryClient,
   params: DecofileScopeParams,
-  draft: DecofileDraft | null,
+  draft: DecofileDraft,
 ): void {
-  // A content-protocol project's writes carry no whole-decofile grant.
-  if (!draft) return;
   queryClient.setQueryData(KEYS.decofileDraft(decofileCacheKey(params)), draft);
 }
 
@@ -121,27 +119,17 @@ export function useDecofileDraft(
 }
 
 /**
- * A content-protocol project's preview of one saved commit: its draft overlay
- * is `preparing` until uploaded, then `ready` with the signed `?__draft=`
- * pointer to it (blocks docs: /next/content-delivery#exact-draft-previews).
+ * A fresh draft token for a content-protocol project's `changes` pointer:
+ * its saves go through the protocol, which mints none.
  */
-export type DraftPreview =
-  | { status: "ready"; pointer: string; expiresAt: string }
-  | { status: "preparing" }
-  | { status: "failed"; error: string };
-
-export async function fetchDraftPreview(
+export async function fetchDraftToken(
   params: DecofileScopeParams,
-  revision: string,
-): Promise<DraftPreview> {
-  const res = await fetch(`${decofileApiUrl(params)}/preview`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ revision }),
+): Promise<Pick<DecofileDraft, "token" | "apiHost">> {
+  const res = await fetch(`${decofileApiUrl(params)}/draft-token`, {
     cache: "no-store",
   });
   if (!res.ok) return throwResponseError(res, "Draft preview");
-  return (await res.json()) as DraftPreview;
+  return (await res.json()) as Pick<DecofileDraft, "token" | "apiHost">;
 }
 
 /** GET the merged decofile; stashes the draft pointer as a side effect. */
@@ -171,25 +159,18 @@ export async function fetchDecofile(
   return body.decofile;
 }
 
-/** PATCH blocks; resolves with the draft pointer of the carrying commit (null without a grant). */
+/** PATCH blocks; resolves with the draft pointer of the carrying commit. */
 export async function patchDecofile(
   params: DecofileScopeParams,
   patch: DecofilePatchBody,
-): Promise<DecofileDraft | null> {
+): Promise<DecofileDraft> {
   const res = await fetch(decofileApiUrl(params), {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(patch),
   });
   if (!res.ok) return throwResponseError(res, "Save");
-  const body = (await res.json()) as Partial<DecofileDraft> & {
-    version: string;
-    token: string | null;
-  };
-  if (!body.token) return null;
-  return {
-    ...body,
-    token: body.token,
-    apiHost: body.apiHost ?? window.location.host,
-  };
+  const body = (await res.json()) as Partial<DecofileDraft> &
+    Pick<DecofileDraft, "version" | "token">;
+  return { ...body, apiHost: body.apiHost ?? window.location.host };
 }

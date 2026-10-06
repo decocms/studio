@@ -14,8 +14,8 @@ interface DraftParams {
 /**
  * This session's `?__draft=` pointer, or `null` when Fast Preview is off or no
  * pointer is ready yet: a v7 site's decofile read/write stashes a grant
- * (KEYS.decofileDraft); a content-protocol site on GitHub waits for its saved
- * commit's draft overlay ({@link useProtocolDraft}).
+ * (KEYS.decofileDraft); a content-protocol site on GitHub points at its
+ * branch's changes ({@link useProtocolDraft}).
  *
  * The Fast Preview gate is load-bearing: a coding session shares the CMS
  * draft's branch, and the grant cache never expires, so without it a
@@ -29,10 +29,9 @@ export function useDraftPointer(params: DraftParams | null): string | null {
   return useDraftPointerState(params).pointer;
 }
 
-/** {@link useDraftPointer}, plus whether a newer saved commit's preview is still preparing or failed. */
+/** {@link useDraftPointer}, plus why the pointer couldn't be built. */
 function useDraftPointerState(params: DraftParams | null): {
   pointer: string | null;
-  preparing: boolean;
   failed: string | null;
 } {
   const fastPreviewActive =
@@ -45,14 +44,13 @@ function useDraftPointerState(params: DraftParams | null): {
     useDecofileCacheKey(params),
   );
   if (!params || !fastPreviewActive) {
-    return { pointer: null, preparing: false, failed: null };
+    return { pointer: null, failed: null };
   }
   if (github) return protocolDraft;
   return {
     pointer: legacyDraft
       ? buildDraftPointer({ ...params, ...legacyDraft })
       : null,
-    preparing: false,
     failed: null,
   };
 }
@@ -70,12 +68,10 @@ export interface FastPreviewDraftUrl {
    * the draft grant exists. Null when the URL is absent or unparsable.
    */
   host: string | null;
-  /** A newer saved commit's preview is still preparing; `url` is the previous one. */
-  preparing: boolean;
   /**
-   * Why the last saved commit's preview can't be shown (its overlay failed to
-   * prepare), or null. `url` is then the last ready draft, or null: never the
-   * published site in its place.
+   * Why the draft preview can't be shown (its draft token couldn't be
+   * fetched), or null. `url` is then null: never the published site in its
+   * place.
    */
   failed: string | null;
 }
@@ -100,11 +96,7 @@ export function useFastPreviewDraftUrl(
     path: string;
   } | null,
 ): FastPreviewDraftUrl {
-  const {
-    pointer: draftPointer,
-    preparing,
-    failed,
-  } = useDraftPointerState(
+  const { pointer: draftPointer, failed } = useDraftPointerState(
     params
       ? {
           orgSlug: params.orgSlug,
@@ -132,5 +124,5 @@ export function useFastPreviewDraftUrl(
         )
       : null;
 
-  return { url, host, preparing, failed };
+  return { url, host, failed };
 }

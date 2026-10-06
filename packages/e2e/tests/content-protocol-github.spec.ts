@@ -3,16 +3,15 @@
  * protocol served over a project's repository.
  *
  *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc              (session, org flag)
- *   POST /api/:org/decofile/:virtualMcpId/:branch/preview          (session, org flag)
- *   GET  /api/:org/decofile/:virtualMcpId/:branch/site-connection  (session, org flag)
- *   GET  /api/_delivery/sites/:site/{drafts,draft-blocks}/:hash.json (site token + grant)
+ *   GET  /api/:org/decofile/:virtualMcpId/:branch/changes          (draft token or session, org flag)
+ *   GET  /api/:org/decofile/:virtualMcpId/:branch/draft-token      (session, org flag)
  *
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts).
  * The cases below it cover what's specific to this backend: the flag, auth,
  * the bound branch, branch creation on first write, the tracked
  * `blocks.gen.json`, a legacy (v7) site's secret blocks, and the draft
- * overlay a save prepares for the site's `cms.forDraft`.
+ * changes the site's `cms.forDraft` reads through its Fast Preview pointer.
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -31,7 +30,6 @@ import {
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
-import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
@@ -187,12 +185,12 @@ test.describe("content protocol on GitHub", () => {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
       const path = rpcPath(project, "main");
-      const previewPath = path.replace(/\/rpc$/, "/preview");
-      const sitePath = path.replace(/\/rpc$/, "/site-connection");
+      const changesPath = path.replace(/\/rpc$/, "/changes");
+      const tokenPath = path.replace(/\/rpc$/, "/draft-token");
 
       expect((await rpc(ctx, path, "describe")).status).toBe(404);
-      expect((await ctx.post(previewPath, { data: {} })).status()).toBe(404);
-      expect((await ctx.get(sitePath)).status()).toBe(404);
+      expect((await ctx.get(changesPath)).status()).toBe(404);
+      expect((await ctx.get(tokenPath)).status()).toBe(404);
 
       await enableContentProtocol(ctx, project.org);
       const described = await rpc<DescribeResult>(ctx, path, "describe");
@@ -205,12 +203,17 @@ test.describe("content protocol on GitHub", () => {
         assets: null,
         preview: { url: "https://site.example.com" },
       });
-      // No site this organization owns: no previews, no site token.
-      expect((await ctx.get(sitePath)).status()).toBe(404);
 
       expect((await rpc(anon, path, "describe")).status).toBe(401);
-      expect((await anon.post(previewPath, { data: {} })).status()).toBe(401);
-      expect((await anon.get(sitePath)).status()).toBe(401);
+      expect((await anon.get(changesPath)).status()).toBe(401);
+      expect((await anon.get(tokenPath)).status()).toBe(401);
+      // A draft token reads changes, but never mints another token.
+      const { token } = (await (await ctx.get(tokenPath)).json()) as {
+        token: string;
+      };
+      const q = `?token=${encodeURIComponent(token)}`;
+      expect((await anon.get(`${changesPath}${q}`)).status()).toBe(200);
+      expect((await anon.get(`${tokenPath}${q}`)).status()).toBe(401);
     } finally {
       await ctx.dispose();
       await anon.dispose();
@@ -328,12 +331,11 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("prepares a save's draft overlay and serves it to the site", async ({
+  test("a draft's pointer answers only what its branch changed", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
     const site = await newApiContext(playwright);
-    const db = await connectDevDb();
     try {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
@@ -342,19 +344,12 @@ test.describe("content protocol on GitHub", () => {
         ".deco/blocks/footer.json": '{"__resolveType":"hero","title":"F"}\n',
       });
       await enableContentProtocol(ctx, project.org);
-      const slug = uniqueOwner();
-      const orgId = await findOrgId(ctx, project.org);
-      await db.query(
-        `INSERT INTO org_sites (slug, organization_id, source, created_by, updated_by)
-         VALUES ($1, $2, 'manual', 'e2e', 'e2e')`,
-        [slug, orgId],
-      );
-      await db.query(
-        `UPDATE connections
-            SET metadata = jsonb_set(COALESCE(metadata::jsonb, '{}'::jsonb), '{siteSlug}', $1::jsonb, true)::text
-          WHERE id = $2`,
-        [JSON.stringify(slug), project.vmcpId],
-      );
+      const base = `/api/${project.org}/decofile/${project.vmcpId}`;
+
+      // Before the first save the branch doesn't exist: nothing changed.
+      const fresh = await ctx.get(`${base}/draft-1/changes`);
+      expect(fresh.status()).toBe(200);
+      expect(await fresh.json()).toEqual({ format: 1, set: {}, delete: [] });
 
       const hero = { __resolveType: "hero", title: "Summer" };
       const applied = await rpc<BlocksApplyResult>(
@@ -363,66 +358,43 @@ test.describe("content protocol on GitHub", () => {
         "blocks.apply",
         { set: { "hero-home": hero }, delete: ["promo"] },
       );
-      const revision = applied.result!.revision;
+      expect(applied.result?.revision).toEqual(expect.any(String));
 
-      const base = `/api/${project.org}/decofile/${project.vmcpId}/draft-1`;
-      let preview: { status: string; pointer?: string } = { status: "" };
-      for (let i = 0; i < 10 && preview.status !== "ready"; i++) {
-        const res = await ctx.post(`${base}/preview`, { data: { revision } });
-        expect(res.status()).toBe(200);
-        preview = await res.json();
-        expect(preview.status).not.toBe("failed");
-      }
-      const match = preview.pointer?.match(
-        new RegExp(
-          `^delivery\\.decocms\\.com/sites/${slug}/drafts\\?token=([^@]+)@([0-9a-f]{64})$`,
-        ),
-      );
-      expect(match, preview.pointer).toBeTruthy();
-      const [, grant, version] = match!;
-
-      const connection = await ctx.get(`${base}/site-connection`);
-      const { token } = (await connection.json()) as { token: string };
-      const headers = { authorization: `Bearer ${token}` };
-      const delivery = `/api/_delivery/sites/${slug}`;
-
-      const manifest = await site.get(
-        `${delivery}/drafts/${version}.json?token=${grant}`,
-        { headers },
-      );
-      expect(manifest.status()).toBe(200);
-      const overlay = (await manifest.json()) as {
-        format: number;
-        set: Record<string, string>;
-        delete: string[];
+      const minted = await ctx.get(`${base}/draft-1/draft-token`);
+      expect(minted.status()).toBe(200);
+      expect(minted.headers()["cache-control"]).toBe("no-store");
+      const { token, apiHost } = (await minted.json()) as {
+        token: string;
+        apiHost: string;
       };
-      // Only what the draft changed: footer inherits production.
-      expect(overlay).toEqual({
+      expect(apiHost).toEqual(expect.any(String));
+      const q = `?token=${encodeURIComponent(token)}`;
+
+      // What the site's SDK fetches: only the draft's changes, footer inherits production.
+      const changes = await site.get(`${base}/draft-1/changes${q}&v=x`);
+      expect(changes.status()).toBe(200);
+      expect(changes.headers()["cache-control"]).toBe("no-store");
+      expect(changes.headers()["access-control-allow-origin"]).toBe("*");
+      expect(await changes.json()).toEqual({
         format: 1,
-        set: { "hero-home": expect.stringMatching(/^[0-9a-f]{64}$/) },
+        set: { "hero-home": hero },
         delete: ["promo"],
       });
-      const block = await site.get(
-        `${delivery}/draft-blocks/${overlay.set["hero-home"]}.json?token=${grant}`,
-        { headers },
-      );
-      expect(block.status()).toBe(200);
-      expect(await block.json()).toEqual(hero);
 
+      // The token is scoped to its branch.
+      expect((await site.get(`${base}/main/changes${q}`)).status()).toBe(401);
       expect(
-        (
-          await site.get(`${delivery}/drafts/${version}.json?token=${grant}`)
-        ).status(),
+        (await site.get(`${base}/draft-1/changes?token=forged`)).status(),
       ).toBe(401);
-      expect(
-        (
-          await site.get(`${delivery}/drafts/${version}.json?token=forged`, {
-            headers,
-          })
-        ).status(),
-      ).toBe(403);
+
+      // The v7 pointer is untouched: the whole decofile, as before.
+      const legacy = await site.get(`${base}/draft-1${q}`);
+      expect(legacy.status()).toBe(200);
+      const decofile = (await legacy.json()) as Record<string, unknown>;
+      expect(decofile["hero-home"]).toEqual(hero);
+      expect(decofile.footer).toEqual({ __resolveType: "hero", title: "F" });
+      expect(decofile.promo).toBeUndefined();
     } finally {
-      await db.end();
       await ctx.dispose();
       await site.dispose();
     }

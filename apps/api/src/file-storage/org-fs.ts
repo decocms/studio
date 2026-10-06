@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { retry } from "@decocms/shared/std";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
-import {
-  detectContentType,
-  isMissingObject,
-} from "../object-storage/key-utils";
+import { detectContentType } from "../object-storage/key-utils";
 import type {
   OrgFsEntry,
   OrgFsEntryStorage,
@@ -69,6 +66,29 @@ export class OrgFsNotFoundError extends Error {
     super(message);
     this.name = "OrgFsNotFoundError";
   }
+}
+
+/**
+ * True for an object-storage "the key isn't there" error: S3 `NoSuchKey`, a 404
+ * from a non-AWS gateway, or ENOENT from the dev filesystem backend. The
+ * manifest and the bucket can drift — a byte put that failed after the row
+ * landed, a bucket reset under an existing DB — and a missing object is a
+ * not-found, not a server fault.
+ */
+function isMissingObject(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as {
+    name?: string;
+    code?: string;
+    Code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    e.name === "NoSuchKey" ||
+    e.Code === "NoSuchKey" ||
+    e.code === "ENOENT" ||
+    e.$metadata?.httpStatusCode === 404
+  );
 }
 
 function sha256(bytes: Uint8Array): string {

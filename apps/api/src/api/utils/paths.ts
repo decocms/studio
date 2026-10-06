@@ -24,8 +24,6 @@ export const SYSTEM_PATHS = {
 const PATH_PREFIXES = {
   API: "/api/",
   API_AUTH: "/api/auth/",
-  // Draft overlay delivery reads object storage only (no session, no database).
-  API_DELIVERY: "/api/_delivery/",
   MCP: "/mcp/",
   OAUTH_PROXY: "/oauth-proxy/",
   WELL_KNOWN: "/.well-known",
@@ -87,7 +85,6 @@ export function shouldSkipStudioContext(path: string): boolean {
   return (
     path === "/" ||
     path.startsWith(PATH_PREFIXES.API_AUTH) ||
-    path.startsWith(PATH_PREFIXES.API_DELIVERY) ||
     path === "/api/trigger-callback" ||
     isSystemPath(path) ||
     // Static file extension check only applies to non-API paths (e.g. Vite assets).

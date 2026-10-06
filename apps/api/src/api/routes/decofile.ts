@@ -9,8 +9,8 @@
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, flag)
- *   POST   /api/:org/decofile/:virtualMcpId/:branch/preview   draft overlay pointer (session, flag)
- *   GET    /api/:org/decofile/:virtualMcpId/:branch/site-connection  DECO_SITE + token (session, flag)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/changes   draft changes vs production (token or session, flag)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/draft-token  a fresh draft token (session, flag)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -22,23 +22,18 @@
  * `decofile/repo-content-storage.ts`) and exist only behind the
  * `site_editor_content_protocol` org flag. `rpc` doesn't need a preview
  * server: the protocol never renders, and a project without one just has no
- * preview. Their previews are draft overlays (`decofile/draft-overlay.ts`):
- * each save prepares one, `preview` reports when the saved commit's overlay
- * is ready and mints its signed pointer, and the delivery routes
- * (`draft-delivery.ts`) serve it. Previews and site tokens are control-plane
- * routes outside the protocol's four methods.
+ * preview. Their previews use the same Fast Preview pointer as v7, naming
+ * `changes` instead of the whole decofile: only what the branch changed
+ * against production (`decofile/draft-changes.ts`), computed on request.
+ * Saves go through `rpc`, which mints no token, so the editor asks
+ * `draft-token` for one.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
  * self-enforces the signed draft token, mirroring automation-webhooks.ts.
- * That whole-decofile read is the v7 runtime's draft transport only: a project
- * the editor serves over the content protocol (the org flag on and a committed
- * schema, the same rule as the editor's backend probe) answers it 404, and its
- * legacy responses mint no draft token.
  */
 
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
   assertSafeDecoBlockKey,
@@ -62,17 +57,11 @@ import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
+import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import {
-  signDraftToken,
-  signOverlayGrant,
-  siteToken,
-  verifyDraftToken,
-} from "@/decofile/draft-token";
-import {
-  draftOverlayPointer,
-  draftOverlayStatus,
-  prepareDraftOverlayOnce,
-} from "@/decofile/draft-overlay";
+  buildDraftChanges,
+  DraftChangesTooLarge,
+} from "@/decofile/draft-changes";
 import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import { createRepoContentStorage } from "@/decofile/repo-content-storage";
@@ -91,8 +80,6 @@ interface DecofileScope {
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
   previewServerUrl: string | null;
-  /** The project's site slug; see {@link ownedSite} before using it. */
-  site: string | null;
 }
 
 type DecofileEnv = Env & {
@@ -127,11 +114,6 @@ const MAX_PATCH_BODY_BYTES = 8 * 1024 * 1024;
 export const patchBodyLimit = bodyLimit({
   maxSize: MAX_PATCH_BODY_BYTES,
   onError: (c) => c.json({ error: "Payload too large" }, 413),
-});
-
-const previewBodySchema = z.object({
-  /** The exact saved commit (a revision `blocks.list`/`blocks.apply` reported). */
-  revision: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/),
 });
 
 export const patchBodySchema = z
@@ -189,10 +171,11 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   const userId = ctx.auth?.user?.id ?? null;
   if (!userId) {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
+    // A token never mints another one (`draft-token`), so it can't outlive its TTL.
     const token = c.req.query("token");
     const isPlainGet =
       c.req.method === "GET" &&
-      !c.req.path.match(/\/(publish|status|site-connection)$/);
+      !c.req.path.match(/\/(publish|status|draft-token)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -252,14 +235,13 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     repository,
     userId,
     previewServerUrl,
-    site: resolveAgentSiteSlug(virtualMcp),
   });
   return next();
 });
 
 /** Content-protocol routes that work without a preview server. */
 function isContentProtocolPath(path: string): boolean {
-  return path.endsWith("/rpc") || path.endsWith("/site-connection");
+  return path.endsWith("/rpc");
 }
 
 async function contentProtocolEnabled(
@@ -270,57 +252,6 @@ async function contentProtocolEnabled(
     c.get("decofileScope").organizationId,
   );
   return orgFlagEnabled(settings?.flags, "site_editor_content_protocol");
-}
-
-/**
- * The project's site id (`DECO_SITE`), only while this organization owns it
- * (`org_sites`, the same tenancy asset storage uses): draft overlays and site
- * tokens are namespaced by it across organizations.
- */
-async function ownedSite(c: Context<DecofileEnv>): Promise<string | null> {
-  const { site, organizationId } = c.get("decofileScope");
-  if (!site) return null;
-  const owned = await c.var.studioContext.storage.orgSites.isOwnedBy(
-    site,
-    organizationId,
-  );
-  return owned ? site : null;
-}
-
-/**
- * Whether the editor serves this project over the content protocol on the
- * GitHub backend: the org flag, and a committed schema (`schema.get` isn't
- * NotFound). Its previews are draft overlays, never the whole-decofile read.
- */
-async function servedOverProtocol(
-  c: Context<DecofileEnv>,
-  client: RepoContentClient,
-): Promise<boolean> {
-  if (!(await contentProtocolEnabled(c))) return false;
-  const scope = c.get("decofileScope");
-  const schema = await createRepoContentStorage({
-    client,
-    packagePath: scope.packagePath,
-    branch: scope.branch,
-  }).readSchema({});
-  return schema !== null;
-}
-
-/**
- * Whether `revision` is on the branch: its head or an ancestor of it (the
- * default branch's while the branch doesn't exist yet), so a member can't
- * mint pointers to, or start preparing, another branch's commits.
- */
-export async function revisionOnBranch(
-  client: RepoContentClient,
-  branch: string,
-  revision: string,
-): Promise<boolean> {
-  const head = (await client.getBranch(branch))
-    ? branch
-    : await client.getDefaultBranch();
-  const { mergeBaseSha } = await client.compareDetailed(revision, head);
-  return mergeBaseSha === revision;
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {
@@ -382,12 +313,6 @@ export function createDecofileRoutes() {
     const scope = c.get("decofileScope");
     try {
       const client = await contentClientForScope(c);
-      const overProtocol = await servedOverProtocol(c, client);
-      if (!scope.userId && overProtocol) {
-        return c.json({ error: "Not found" }, 404, {
-          "Cache-Control": "no-store",
-        });
-      }
       const snapshot = await readDecofileSnapshot(
         client,
         scope.branch,
@@ -422,8 +347,7 @@ export function createDecofileRoutes() {
           "content-type": "application/json",
         });
       }
-      // A protocol project's previews are overlays: no whole-decofile grant.
-      const token = overProtocol ? null : signScopeDraftToken(scope);
+      const token = signScopeDraftToken(scope);
       return c.body(
         `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${snapshot.decofile}}`,
         200,
@@ -526,9 +450,7 @@ export function createDecofileRoutes() {
         },
         patch,
       );
-      const token = (await servedOverProtocol(c, client))
-        ? null
-        : signScopeDraftToken(scope);
+      const token = signScopeDraftToken(scope);
       return c.json({ version: sha, token, apiHost: requestApiHost(c) });
     } catch (err) {
       return errorResponse(c, err);
@@ -628,19 +550,6 @@ export function createDecofileRoutes() {
         packagePath: scope.packagePath,
         branch: scope.branch,
         coAuthor: coAuthorFromStudioContext(c.var.studioContext),
-        // Saving and preview readiness are separate: prepare in the background.
-        onCommitted: (revision) =>
-          void ownedSite(c)
-            .then((site) => {
-              if (!site) return;
-              void prepareDraftOverlayOnce({
-                client,
-                packagePath: scope.packagePath,
-                site,
-                revision,
-              });
-            })
-            .catch(() => {}),
       }),
       {
         server: { name: "studio-github", version: "1" },
@@ -660,69 +569,53 @@ export function createDecofileRoutes() {
   });
 
   /**
-   * The `?__draft=` pointer for one saved commit: `preparing` until its
-   * overlay is uploaded (waiting briefly for it), then a signed pointer.
+   * A content-protocol draft's `?__draft=` target: what the branch changed
+   * against production, never the whole decofile (blocks docs:
+   * /next/content-delivery#draft-previews). The site's SDK reads it with the
+   * pointer's token; a branch that doesn't exist yet changed nothing.
    */
-  app.post("/:virtualMcpId/:branch/preview", async (c) => {
+  app.get("/:virtualMcpId/:branch/changes", async (c) => {
+    const headers = {
+      "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
+    };
     if (!(await contentProtocolEnabled(c))) {
-      return c.json({ error: "Not found" }, 404);
+      return c.json({ error: "Not found" }, 404, headers);
     }
     const scope = c.get("decofileScope");
-    const site = await ownedSite(c);
-    if (!site) return c.json({ error: "Project has no site" }, 404);
-    const parsed = previewBodySchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
-    if (!parsed.success) {
-      return c.json(
-        { error: "Invalid body", details: parsed.error.issues },
-        400,
-      );
-    }
-    const noStore = { "Cache-Control": "no-store" };
     try {
-      const client = await contentClientForScope(c);
-      if (
-        !(await revisionOnBranch(client, scope.branch, parsed.data.revision))
-      ) {
-        return c.json({ error: "Not found" }, 404, noStore);
-      }
-      const status = await draftOverlayStatus({
-        client,
-        packagePath: scope.packagePath,
-        site,
-        revision: parsed.data.revision,
-      });
-      if (status.status !== "ready") return c.json(status, 200, noStore);
-      const grant = signOverlayGrant({ site, version: status.version });
-      return c.json(
-        {
-          status: "ready",
-          pointer: draftOverlayPointer({
-            site,
-            version: status.version,
-            grant: grant.token,
-          }),
-          expiresAt: grant.expiresAt,
-        },
-        200,
-        noStore,
+      const changes = await buildDraftChanges(
+        await contentClientForScope(c),
+        scope.packagePath,
+        scope.branch,
       );
+      return c.json(changes, 200, headers);
     } catch (err) {
-      return errorResponse(c, err);
+      if (err instanceof DraftChangesTooLarge) {
+        return c.json({ error: err.message }, 413, headers);
+      }
+      const res = errorResponse(c, err);
+      for (const [k, v] of Object.entries(headers)) res.headers.set(k, v);
+      return res;
     }
   });
 
-  /** What the site sets as `DECO_SITE` and `DECO_SITE_TOKEN` to load drafts. */
-  app.get("/:virtualMcpId/:branch/site-connection", async (c) => {
+  /**
+   * A fresh draft token for the `changes` pointer: saves over `rpc` carry
+   * none. Session only (see the anonymous rule in `resolveDecofileScope`).
+   */
+  app.get("/:virtualMcpId/:branch/draft-token", async (c) => {
     if (!(await contentProtocolEnabled(c))) {
       return c.json({ error: "Not found" }, 404);
     }
-    const site = await ownedSite(c);
-    if (!site) return c.json({ error: "Project has no site" }, 404);
-    return c.json({ site, token: siteToken(site) }, 200, {
-      "Cache-Control": "no-store",
-    });
+    return c.json(
+      {
+        token: signScopeDraftToken(c.get("decofileScope")),
+        apiHost: requestApiHost(c),
+      },
+      200,
+      { "Cache-Control": "no-store" },
+    );
   });
 
   return app;

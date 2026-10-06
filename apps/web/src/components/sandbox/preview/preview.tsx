@@ -719,11 +719,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   );
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
-  const {
-    url: draftPreviewUrl,
-    preparing: draftPreparing,
-    failed: draftFailed,
-  } = useFastPreviewDraftUrl(
+  const { url: draftPreviewUrl, failed: draftFailed } = useFastPreviewDraftUrl(
     fastPreviewEnabled && virtualMcpId && branch
       ? {
           orgSlug: org.slug,
@@ -2067,28 +2063,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                               {draftFailed}
                             </span>
                           </div>
-                        </div>
-                      )}
-
-                    {display.mode === "production" &&
-                      !display.showWakingPill &&
-                      draftFailed &&
-                      draftPreviewUrl && (
-                        <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-center gap-2 rounded-full border border-destructive/40 bg-muted px-3 py-1.5 text-xs font-medium text-foreground shadow-md pointer-events-none select-none">
-                          <span className="truncate">
-                            {t("sandbox.preview.previewUnavailableReason", {
-                              reason: draftFailed,
-                            })}
-                          </span>
-                        </div>
-                      )}
-
-                    {display.mode === "production" &&
-                      !display.showWakingPill &&
-                      draftPreparing && (
-                        <div className="absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs font-medium text-foreground shadow-md pointer-events-none select-none">
-                          <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
-                          {t("sandbox.preview.preparingPreview")}
                         </div>
                       )}
 

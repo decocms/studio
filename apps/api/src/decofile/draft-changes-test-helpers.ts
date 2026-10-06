@@ -1,12 +1,14 @@
-/** Fakes for draft overlay tests: a repository by commit, and object storage in memory. */
+/** A fake repository for draft-changes tests: branches named after their commits. */
 import type { RepoContentClient, TreeEntry } from "@/git-providers";
-import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import { gitBlobSha } from "./read-decofile";
 
 /** Saved-block files by name, per commit. */
 type Commit = Record<string, string>;
 
-/** A repository whose commits are listed by sha; `merge base` is fixed per test. */
+/**
+ * A repository whose commits are listed by sha; each commit is also a branch
+ * of the same name, and the merge base is fixed per test.
+ */
 export function fakeRepo(input: {
   commits: Record<string, Commit>;
   mergeBase: string;
@@ -20,6 +22,8 @@ export function fakeRepo(input: {
   const client = {
     repo: { provider: "github", host: "github.com", path: "acme/site" },
     getDefaultBranch: async () => "main",
+    getBranch: async (name: string) =>
+      input.commits[name] ? { sha: name } : null,
     compareDetailed: async () => ({
       aheadBy: 1,
       behindBy: 0,
@@ -44,28 +48,4 @@ export function fakeRepo(input: {
     },
   } as unknown as RepoContentClient;
   return { client, reads };
-}
-
-/** Object storage in memory, recording the order of writes. */
-export function memoryStorage() {
-  const objects = new Map<string, string>();
-  const puts: string[] = [];
-  const store = {
-    put: async (key: string, body: string | Uint8Array) => {
-      puts.push(key);
-      objects.set(
-        key,
-        typeof body === "string" ? body : new TextDecoder().decode(body),
-      );
-      return { key, etag: "" };
-    },
-    getBytes: async (key: string) => {
-      const body = objects.get(key);
-      if (body === undefined) {
-        throw Object.assign(new Error("missing"), { name: "NoSuchKey" });
-      }
-      return new TextEncoder().encode(body);
-    },
-  } as unknown as BoundObjectStorage;
-  return { store, objects, puts };
 }

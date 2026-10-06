@@ -10,12 +10,7 @@
  * someone else wrote.
  */
 
-import { useRef } from "react";
-import {
-  keepPreviousData,
-  type QueryClient,
-  useQuery,
-} from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
@@ -33,8 +28,9 @@ import {
   type DecofilePatchBody,
   type DecofileScopeParams,
   decofileWriteMutationKey,
-  fetchDraftPreview,
+  fetchDraftToken,
 } from "./decofile-api";
+import { buildDraftPointer } from "./section-preview-url";
 import type { LiveMeta } from "./resolve-schema";
 import { isSchemaAbsent, noSchemaMeta } from "./schemaless";
 
@@ -258,96 +254,47 @@ export async function applyProtocolPatch(
   return { revision: result.revision };
 }
 
-/** A grant lives an hour; refreshing it every half hour keeps the pointer valid. */
-const DRAFT_GRANT_REFRESH_MS = 30 * 60_000;
-
-export class PreviewPreparing extends Error {}
+/** A draft token lives six hours; refreshing it every half hour keeps the pointer valid. */
+const DRAFT_TOKEN_REFRESH_MS = 30 * 60_000;
 
 export interface ProtocolDraft {
-  /** The newest ready `?__draft=` pointer: the saved commit's, or the last one while it prepares. */
+  /** The `?__draft=` pointer to the branch's changes, or null before a token and a revision. */
   pointer: string | null;
-  /** The last saved commit's overlay isn't uploaded yet ("preparing preview"). */
-  preparing: boolean;
-  /** Why the last saved commit's preview can't be shown, or null ("preview unavailable"). */
+  /** Why the preview's draft token couldn't be fetched, or null ("preview unavailable"). */
   failed: string | null;
 }
 
 /**
- * The `?__draft=` pointer of a project on the GitHub backend: the draft
- * overlay of the last revision a read or write saw. Saving and preview
- * readiness are separate, so after a save the previous pointer stays while
- * the new commit's overlay prepares. `params` is `null` for any other backend.
+ * The `?__draft=` pointer of a project on the GitHub backend: the v7 Fast
+ * Preview pointer, naming the branch's `changes` against production. Its
+ * version is the last revision a read or write saw, so each save refreshes
+ * the preview. `params` is `null` for any other backend.
  */
 export function useProtocolDraft(
   params: DecofileScopeParams | null,
   cacheKey: string,
 ): ProtocolDraft {
   const revision = useContentRevision(cacheKey);
-  const { data, isPlaceholderData, isPending, isError, error } = useQuery({
-    queryKey: KEYS.draftPreview(cacheKey, revision ?? ""),
-    queryFn: async () => {
-      const preview = await fetchDraftPreview(params!, revision!);
-      if (preview.status === "failed") throw new Error(preview.error);
-      if (preview.status === "preparing") throw new PreviewPreparing();
-      return preview.pointer;
-    },
-    enabled: !!params && !!revision,
-    // The route waits on the preparation itself (and restarts a lost one); ask
-    // again while it runs, until it's ready or reports a failure.
-    retry: (_failures, error) => error instanceof PreviewPreparing,
-    retryDelay: 0,
-    placeholderData: keepPreviousData,
-    staleTime: DRAFT_GRANT_REFRESH_MS,
-    refetchInterval: DRAFT_GRANT_REFRESH_MS,
+  const { data, error } = useQuery({
+    queryKey: KEYS.draftToken(cacheKey),
+    queryFn: () => fetchDraftToken(params!),
+    enabled: !!params,
+    staleTime: DRAFT_TOKEN_REFRESH_MS,
+    refetchInterval: DRAFT_TOKEN_REFRESH_MS,
   });
-  // An error clears `data` (placeholders only cover pending), so the last
-  // ready pointer is kept here: a failed save never swaps in the published site.
-  const lastPointer = useRef<{ cacheKey: string; pointer: string } | null>(
-    null,
-  );
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- remember the last ready pointer across an error
-  if (data) lastPointer.current = { cacheKey, pointer: data };
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the remembered pointer (this project's only)
-  const remembered = lastPointer.current;
-  const fallbackPointer =
-    remembered?.cacheKey === cacheKey ? remembered.pointer : null;
-  if (!params) return { pointer: null, preparing: false, failed: null };
-  return protocolDraftState({
-    revision,
-    data,
-    fallbackPointer,
-    isPlaceholderData,
-    isPending,
-    error: isError ? error : null,
-  });
-}
-
-/**
- * The editor's draft preview state from its query: a failure (anything but
- * "still preparing") is reported, never hidden behind the published site,
- * and the last ready pointer stays while a newer save prepares or fails.
- */
-export function protocolDraftState(input: {
-  revision: string | undefined;
-  data: string | undefined;
-  /** The last ready pointer this project saw. */
-  fallbackPointer: string | null;
-  isPlaceholderData: boolean;
-  isPending: boolean;
-  error: Error | null;
-}): ProtocolDraft {
-  const stillPreparing = input.error instanceof PreviewPreparing;
-  const failed =
-    input.error && !stillPreparing
-      ? input.error.message || "Preview unavailable"
-      : null;
+  if (!params) return { pointer: null, failed: null };
   return {
-    pointer: input.data ?? input.fallbackPointer,
-    preparing:
-      !!input.revision &&
-      !failed &&
-      (input.isPlaceholderData || input.isPending || stillPreparing),
-    failed,
+    pointer:
+      data && revision
+        ? buildDraftPointer({
+            ...params,
+            ...data,
+            version: revision,
+            suffix: "/changes",
+          })
+        : null,
+    // A token from before a failed refresh still works until it expires.
+    failed: !data && error ? error.message || "Preview unavailable" : null,
   };
 }
 

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import type { RepoContentClient } from "@/git-providers";
-import { patchBodyLimit, patchBodySchema, revisionOnBranch } from "./decofile";
+import { patchBodyLimit, patchBodySchema } from "./decofile";
 
 describe("decofile patchBodySchema", () => {
   test("accepts a reasonably sized patch", () => {
@@ -54,48 +53,5 @@ describe("decofile patchBodyLimit", () => {
   test("lets a body under the cap through", async () => {
     const res = await app.request("/", { method: "PATCH", body: "small" });
     expect(res.status).toBe(200);
-  });
-});
-
-describe("decofile revisionOnBranch", () => {
-  /** A history `main <- a <- b` on "feat", and "other" at `x`, off `main`. */
-  const client = (branches: Record<string, string>) =>
-    ({
-      getBranch: async (name: string) =>
-        branches[name] ? { sha: branches[name] } : null,
-      getDefaultBranch: async () => "main",
-      compareDetailed: async (base: string, head: string) => {
-        const ancestors: Record<string, string[]> = {
-          b: ["main", "a", "b"],
-          x: ["main", "x"],
-          main: ["main"],
-        };
-        const tip = branches[head] ?? head;
-        const line = ancestors[tip] ?? [];
-        return {
-          aheadBy: 0,
-          behindBy: 0,
-          mergeBaseSha: line.includes(base) ? base : "main",
-          files: [],
-          commitMessages: [],
-        };
-      },
-    }) as unknown as RepoContentClient;
-
-  test("accepts the branch head and its ancestors", async () => {
-    const c = client({ feat: "b", other: "x", main: "main" });
-    expect(await revisionOnBranch(c, "feat", "b")).toBe(true);
-    expect(await revisionOnBranch(c, "feat", "a")).toBe(true);
-  });
-
-  test("refuses another branch's commit", async () => {
-    const c = client({ feat: "b", other: "x", main: "main" });
-    expect(await revisionOnBranch(c, "feat", "x")).toBe(false);
-  });
-
-  test("checks against the default branch while the branch doesn't exist", async () => {
-    const c = client({ other: "x", main: "main" });
-    expect(await revisionOnBranch(c, "feat", "main")).toBe(true);
-    expect(await revisionOnBranch(c, "feat", "x")).toBe(false);
   });
 });
