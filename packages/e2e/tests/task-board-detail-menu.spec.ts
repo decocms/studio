@@ -39,7 +39,8 @@ async function seedCards(
 
 async function openBoard(page: Page, orgSlug: string) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/${orgSlug}/tasks`);
+  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
+  await page.goto(`/${orgSlug}/tasks?assignee=any`);
   // Generous: the board's first paint waits on the shell's route chunks.
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible({
     timeout: 30_000,

@@ -73,7 +73,8 @@ async function closeTask(page: Page) {
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
-  await page.goto(`/${orgSlug}/tasks`);
+  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
+  await page.goto(`/${orgSlug}/tasks?assignee=any`);
   const card = page.getByText(title, { exact: true });
   await card.waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
   await card.click();
