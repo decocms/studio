@@ -25,7 +25,7 @@ export class ConnectionWatch {
       return;
     }
     if (state === "disconnected" && !this.timer)
-      this.timer = setTimeout(this.onDisconnect, this.graceMs);
+      this.timer = setTimeout(() => this.onDisconnect(), this.graceMs);
   }
 
   dispose() {
