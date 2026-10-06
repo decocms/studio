@@ -26,24 +26,60 @@ export interface McpListCache {
   teardown(): void;
 }
 
-const KV_BUCKET = "DECOCMS_MCP_LISTS";
+/**
+ * Versioned because `Kvm.create` binds to an existing bucket without applying
+ * new options: the TTL below needs a bucket that never existed without one.
+ */
+const KV_BUCKET = "DECOCMS_MCP_LISTS_V2";
+
+/**
+ * A hit is served before it is revalidated, so an entry nobody reads would
+ * otherwise be served at any age on its next read. Revalidation rewrites the
+ * entry, so lists in use never reach this; it bounds the idle ones, and the
+ * ones whose revalidation keeps failing.
+ */
+const TTL_MS = 10 * 60_000;
+
+const MAX_BUCKET_BYTES = 128 * 1024 * 1024;
 
 export interface JetStreamKVMcpListCacheOptions {
   getJetStream: () => JetStreamClient | null;
+  /**
+   * The running API's version. A self connection's lists come from this
+   * process's code, so they are stored per version: a deploy that adds a
+   * management tool must not be answered with the previous release's list.
+   */
+  selfListVersion: string;
 }
 
 export class JetStreamKVMcpListCache implements McpListCache {
   private kv: KV | null = null;
   private readonly codec = jsonCodec<unknown[]>();
+  private readonly selfKeySuffix: string;
 
-  constructor(private readonly options: JetStreamKVMcpListCacheOptions) {}
+  constructor(private readonly options: JetStreamKVMcpListCacheOptions) {
+    // KV keys allow only `[-/_=.a-zA-Z0-9]`.
+    this.selfKeySuffix = `.v${options.selfListVersion.replace(/[^-/_=.a-zA-Z0-9]/g, "_")}`;
+  }
 
-  async init(): Promise<void> {
+  /** @param kv Test seam: use this bucket instead of opening the real one. */
+  async init(kv?: KV): Promise<void> {
+    if (kv) {
+      this.kv = kv;
+      return;
+    }
     const js = this.options.getJetStream();
     if (!js) return; // NATS not ready — cache disabled until re-init
     this.kv = await new Kvm(js).create(KV_BUCKET, {
       storage: StorageType.Memory,
+      ttl: TTL_MS,
+      max_bytes: MAX_BUCKET_BYTES,
     });
+  }
+
+  private key(type: McpListType, connectionId: string): string {
+    const base = `${type}.${connectionId}`;
+    return connectionId.endsWith("_self") ? base + this.selfKeySuffix : base;
   }
 
   async get(
@@ -52,7 +88,7 @@ export class JetStreamKVMcpListCache implements McpListCache {
   ): Promise<unknown[] | null> {
     if (!this.kv) return null;
     try {
-      const entry = await this.kv.get(`${type}.${connectionId}`);
+      const entry = await this.kv.get(this.key(type, connectionId));
       if (!entry?.value?.length) return null;
       // DEL/PURGE entries have no meaningful value
       if (entry.operation === "DEL" || entry.operation === "PURGE") return null;
@@ -69,7 +105,7 @@ export class JetStreamKVMcpListCache implements McpListCache {
   ): Promise<void> {
     if (!this.kv) return;
     try {
-      await this.kv.put(`${type}.${connectionId}`, this.codec.encode(data));
+      await this.kv.put(this.key(type, connectionId), this.codec.encode(data));
     } catch {
       // best-effort, non-critical
     }
@@ -81,7 +117,7 @@ export class JetStreamKVMcpListCache implements McpListCache {
     await Promise.all(
       types.map(async (type) => {
         try {
-          await this.kv!.delete(`${type}.${connectionId}`);
+          await this.kv!.delete(this.key(type, connectionId));
         } catch {
           // best-effort, non-critical
         }

@@ -3,11 +3,11 @@
  *
  * Uses a minimal TestMcpListCache (Map-based) as a test double for
  * fetchWithCache tests.
- * JetStreamKVMcpListCache requires a live NATS server — see
- * scripts/sim-tool-list-cache.ts for a multi-pod integration simulation.
+ * JetStreamKVMcpListCache runs against an in-process stand-in for its bucket.
  */
 
 import { describe, expect, it } from "bun:test";
+import type { KV } from "@nats-io/kv";
 import type {
   Prompt,
   Resource,
@@ -16,6 +16,7 @@ import type {
 import {
   clearRevalidationState,
   fetchWithCache,
+  JetStreamKVMcpListCache,
   isRevalidationStale,
   type McpListCache,
   type McpListType,
@@ -483,5 +484,90 @@ describe("cross-pod cache simulation (shared TestMcpListCache)", () => {
     expect(result).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 10));
     expect(pod2Calls).toBe(1); // background reval
+  });
+});
+
+// ============================================================================
+// JetStreamKVMcpListCache keys
+// ============================================================================
+
+/**
+ * Minimal in-process stand-in for the KV bucket: only what the cache calls,
+ * rejecting the keys NATS rejects.
+ */
+function fakeKv(): KV {
+  const store = new Map<string, Uint8Array>();
+  const checked = (key: string) => {
+    if (!/^[-/_=.a-zA-Z0-9]+$/.test(key)) throw new Error("invalid key");
+    return key;
+  };
+  return {
+    get: async (key: string) => {
+      const value = store.get(checked(key));
+      return value ? { value, operation: "PUT" } : null;
+    },
+    put: async (key: string, value: Uint8Array) => {
+      store.set(checked(key), value);
+      return 1;
+    },
+    delete: async (key: string) => {
+      store.delete(checked(key));
+    },
+  } as unknown as KV;
+}
+
+async function cacheAt(kv: KV, selfListVersion: string) {
+  const cache = new JetStreamKVMcpListCache({
+    getJetStream: () => null,
+    selfListVersion,
+  });
+  await cache.init(kv);
+  return cache;
+}
+
+describe("JetStreamKVMcpListCache", () => {
+  it("keeps a self connection's lists apart per release", async () => {
+    const kv = fakeKv();
+    const previous = await cacheAt(kv, "1.0.0");
+    const current = await cacheAt(kv, "1.1.0");
+
+    await previous.set("tools", "org_example_self", [makeTool("OLD")]);
+
+    expect(await current.get("tools", "org_example_self")).toBeNull();
+    await current.set("tools", "org_example_self", [makeTool("NEW")]);
+    expect(await previous.get("tools", "org_example_self")).toEqual([
+      makeTool("OLD"),
+    ]);
+    expect(await current.get("tools", "org_example_self")).toEqual([
+      makeTool("NEW"),
+    ]);
+  });
+
+  it("shares any other connection's lists across releases", async () => {
+    const kv = fakeKv();
+    const previous = await cacheAt(kv, "1.0.0");
+    const current = await cacheAt(kv, "1.1.0");
+
+    await previous.set("tools", "conn_1", [makeTool("a")]);
+
+    expect(await current.get("tools", "conn_1")).toEqual([makeTool("a")]);
+  });
+
+  it("invalidates the self entry of its own release", async () => {
+    const cache = await cacheAt(fakeKv(), "1.0.0");
+    await cache.set("tools", "org_example_self", [makeTool("a")]);
+
+    await cache.invalidate("org_example_self");
+
+    expect(await cache.get("tools", "org_example_self")).toBeNull();
+  });
+
+  it("stores a version with characters KV keys reject", async () => {
+    const cache = await cacheAt(fakeKv(), "1.0.0+build 7");
+    await cache.set("tools", "org_example_self", [makeTool("a")]);
+
+    expect(await cache.get("tools", "org_example_self")).toEqual([
+      makeTool("a"),
+    ]);
   });
 });

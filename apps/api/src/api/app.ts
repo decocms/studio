@@ -152,6 +152,7 @@ import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
 } from "../nats/connection";
+import pkg from "../../package.json" with { type: "json" };
 import {
   JetStreamKVMcpListCache,
   setMcpListCache,
@@ -1079,6 +1080,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     const tlc = isMcpCacheEnabled()
       ? new JetStreamKVMcpListCache({
           getJetStream: () => natsProvider!.getJetStream(),
+          selfListVersion: pkg.version,
         })
       : null;
     tlc?.init().catch(() => {});
