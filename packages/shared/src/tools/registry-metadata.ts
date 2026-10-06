@@ -184,6 +184,7 @@ const ALL_TOOL_NAMES = [
   "AI_PLAN_ENTITLEMENTS",
   "AI_PLAN_LIST",
   "AI_PLAN_SET",
+  "AI_PLAN_INVOICE_UPGRADE",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -984,6 +985,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "AI_PLAN_SET",
     description: "Change the organization's plan",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_INVOICE_UPGRADE",
+    description: "Move the organization to a paid plan billed on its invoice",
     category: "AI Providers",
   },
   // Secrets tools
@@ -1904,6 +1910,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PLAN_ENTITLEMENTS",
       "AI_PLAN_LIST",
       "AI_PLAN_SET",
+      "AI_PLAN_INVOICE_UPGRADE",
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",

@@ -5836,6 +5836,10 @@ export interface StudioToolIO {
       features: Record<string, boolean>;
     };
   };
+  AI_PLAN_INVOICE_UPGRADE: {
+    input: { planId: "starter" | "business" };
+    output: { planId: string };
+  };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };
     output: {

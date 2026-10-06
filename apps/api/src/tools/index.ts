@@ -239,6 +239,7 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PLAN_ENTITLEMENTS,
   AiProvidersTools.AI_PLAN_LIST,
   AiProvidersTools.AI_PLAN_SET,
+  AiProvidersTools.AI_PLAN_INVOICE_UPGRADE,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
