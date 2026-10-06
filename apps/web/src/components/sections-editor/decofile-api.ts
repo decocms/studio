@@ -139,7 +139,7 @@ export function setProtocolDraftGrant(
   params: DecofileScopeParams,
   grant: Pick<DecofileDraft, "token" | "apiHost">,
 ): void {
-  const key = KEYS.draftToken(decofileCacheKey(params));
+  const key = KEYS.protocolDraftGrant(decofileCacheKey(params));
   const now = Date.now();
   const held = queryClient.getQueryData<ProtocolDraftGrant>(key);
   if (held && now - held.issuedAt < PROTOCOL_GRANT_REFRESH_MS) return;
@@ -154,7 +154,7 @@ export function useProtocolDraftGrant(
   params: DecofileScopeParams | null,
 ): ProtocolDraftGrant | null {
   const { data } = useQuery<ProtocolDraftGrant>({
-    queryKey: KEYS.draftToken(params ? decofileCacheKey(params) : ""),
+    queryKey: KEYS.protocolDraftGrant(params ? decofileCacheKey(params) : ""),
     enabled: false,
     queryFn: async () => {
       throw new Error("the draft grant is set by content-protocol answers");

@@ -775,7 +775,8 @@ export const KEYS = {
     ["content-revision", cacheKey] as const,
   // A content-protocol project's draft grant for its `changes` pointer (GitHub
   // backend), set from its `rpc` answers.
-  draftToken: (cacheKey: string) => ["draft-token", cacheKey] as const,
+  protocolDraftGrant: (cacheKey: string) =>
+    ["protocol-draft-grant", cacheKey] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions
