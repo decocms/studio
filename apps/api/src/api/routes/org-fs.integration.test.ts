@@ -53,7 +53,6 @@ function buildApp(
     /** Mimic app.ts's global handler that 500s every *thrown* error. */
     swallowOnError?: boolean;
     userId?: string;
-    role?: string;
   } = {},
 ) {
   const app = new Hono<{ Variables: Variables }>();
@@ -74,7 +73,6 @@ function buildApp(
         setOrganizationId: () => {},
         setRole: () => {},
         check: opts.accessCheck ?? (async () => {}),
-        getRole: () => opts.role ?? "member",
       },
       storage: {
         threads: { setOrganizationId: () => {} },
@@ -260,8 +258,7 @@ describe("org-fs HTTP routes (integration)", () => {
         body: "note",
         headers,
       });
-    const as = (userId: string, role = "member") =>
-      buildApp(db, true, { userId, role });
+    const as = (userId: string) => buildApp(db, true, { userId });
 
     beforeEach(async () => {
       await addMember(db, OTHER, "member");
@@ -284,7 +281,7 @@ describe("org-fs HTTP routes (integration)", () => {
       expect(move.status).toBe(403);
     });
 
-    it("hides a teammate's folder from members and shows it to admins", async () => {
+    it("hides a teammate's folder from everyone else, admins included", async () => {
       for (const op of ["read", "stat"]) {
         expect((await app.request(homeUrl(op, theirs))).status).toBe(403);
       }
@@ -295,17 +292,15 @@ describe("org-fs HTTP routes (integration)", () => {
       ).json();
       expect(search.entries).toEqual([]);
 
-      const admin = as("user_fs_admin", "admin");
-      const read = await admin.request(homeUrl("read", theirs));
-      expect(await read.text()).toBe("note");
+      const admin = as("user_fs_admin");
+      expect((await admin.request(homeUrl("read", theirs))).status).toBe(403);
       expect((await putHome(admin, theirs)).status).toBe(403);
     });
 
     it("refuses to remove the users folder itself", async () => {
-      const del = await as("user_fs_owner", "owner").request(
-        homeUrl("file", "users"),
-        { method: "DELETE" },
-      );
+      const del = await as("user_fs_owner").request(homeUrl("file", "users"), {
+        method: "DELETE",
+      });
       expect(del.status).toBe(403);
     });
   });

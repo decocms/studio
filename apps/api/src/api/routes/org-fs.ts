@@ -25,8 +25,8 @@
  * per-volume ACL removes them from basic-usage and gates by role/permission
  * with no route changes. See `.context/org-filesystem-proposal.md`.
  *
- * The one carve-out is `home/users/<id>/`: only its owner writes it, and only
- * the owner and org admins read it (`personal-home.ts`).
+ * The one carve-out is `home/users/<id>/`: only its owner reads or writes it
+ * (`personal-home.ts`).
  */
 
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
@@ -35,7 +35,6 @@ import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import type { NatsConnection } from "@nats-io/nats-core";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
 import type {
@@ -50,7 +49,6 @@ import {
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
 import {
-  type Caller,
   canReadPersonal,
   canWritePersonal,
 } from "@/file-storage/personal-home";
@@ -371,11 +369,6 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   };
 
-  const callerOf = (ctx: StudioContext): Caller => ({
-    userId: ctx.auth.user!.id,
-    isAdmin: hasAdminRole(ctx.access.getRole()),
-  });
-
   /** 403 unless the caller may touch every path in `home/users/<id>/` it names. */
   const personalDenied = (
     c: Ctx,
@@ -384,7 +377,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     paths: string[],
     mode: "read" | "write",
   ): Response | null => {
-    const caller = callerOf(ctx);
+    const caller = ctx.auth.user!.id;
     const allowed = mode === "read" ? canReadPersonal : canWritePersonal;
     return paths.every((p) => allowed(volume, p, caller))
       ? null
@@ -486,7 +479,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_RECENT_LIMIT,
     );
     try {
-      const caller = callerOf(ctx);
+      const caller = ctx.auth.user!.id;
       const entries = await ctx.orgFs.recentWithEffectivePublic(limit);
       return c.json({
         entries: entries.filter((e) =>
@@ -559,7 +552,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             )
           : [],
       ]);
-      const caller = callerOf(ctx);
+      const caller = ctx.auth.user!.id;
       const entries = [...own, ...pub]
         .filter((e) => canReadPersonal(e.volume, e.path, caller))
         .sort((a, b) => Number(BigInt(b.seq) - BigInt(a.seq)))
@@ -612,7 +605,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
     try {
-      const caller = callerOf(r.ctx);
+      const caller = r.ctx.auth.user!.id;
       const entries = selectSkillFiles(
         (await r.fs.listVolumeFiles(volume)).filter((e) =>
           canReadPersonal(volume, e.path, caller),
@@ -659,7 +652,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const path = c.req.query("path") ?? "";
     const denied = personalDenied(c, r.ctx, volume, [path], "read");
     if (denied) return denied;
-    const caller = callerOf(r.ctx);
+    const caller = r.ctx.auth.user!.id;
     try {
       const entries = (await r.fs.listDir(volume, path)).filter((e) =>
         canReadPersonal(volume, e.path, caller),
@@ -807,7 +800,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_CHANGES_LIMIT,
     );
     const wait = c.req.query("wait") === "1" || c.req.query("wait") === "true";
-    const caller = callerOf(r.ctx);
+    const caller = r.ctx.auth.user!.id;
     try {
       const feed = wait
         ? await waitForChanges(c, r.fs, getConnection(), {
