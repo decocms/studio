@@ -193,7 +193,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
   );
 }
 
-/** Visual review: the list column (clear of the close button when alone) beside the review pane. */
+/** Visual review: the review pane beside the list column, whose header clears the close button. */
 function ReviewLayout({
   visualReview,
   list,
@@ -206,10 +206,10 @@ function ReviewLayout({
   if (!visualReview) return list;
   return (
     <>
-      <div className="flex min-h-0 w-full flex-col max-md:pt-8 md:w-[380px] md:shrink-0 md:border-r">
+      {pane}
+      <div className="flex min-h-0 w-full flex-col max-md:pt-8 md:w-[380px] md:shrink-0 md:border-l md:[&>[data-publish-state]>:first-child]:pr-12">
         {list}
       </div>
-      {pane}
     </>
   );
 }
