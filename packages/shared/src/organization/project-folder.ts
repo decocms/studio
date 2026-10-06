@@ -65,14 +65,12 @@ export function projectFolderPath(project: ProjectLike): string {
   return `${HOME_MOUNT_PATH}/${projectFolderDir(project)}`;
 }
 
-/** What every project folder holds, recreated when missing so the shape is
- *  the same in every project. */
+/** Every project's folders, by a file's role so they fit any project; recreated when missing. */
 export const PROJECT_SUBFOLDERS = [
-  "Meetings",
   "Documents",
-  "Research",
-  "Reports",
-  "Contracts",
+  "Notes",
+  "Work",
+  "Delivered",
 ] as const;
 
 export const PROJECT_MEMORY_FILE = "memory.md";

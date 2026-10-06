@@ -66,11 +66,10 @@ describe("ensureProjectFolder (integration)", () => {
 
     expect(root).toBe("projects/farm-br");
     expect((await names(root)).toSorted()).toEqual([
-      "dir:projects/farm-br/Contracts",
+      "dir:projects/farm-br/Delivered",
       "dir:projects/farm-br/Documents",
-      "dir:projects/farm-br/Meetings",
-      "dir:projects/farm-br/Reports",
-      "dir:projects/farm-br/Research",
+      "dir:projects/farm-br/Notes",
+      "dir:projects/farm-br/Work",
       "file:projects/farm-br/memory.md",
     ]);
     const memory = await fs.read(HOME_MOUNT_PATH, `${root}/memory.md`);
@@ -96,7 +95,7 @@ describe("ensureProjectFolder (integration)", () => {
 
   it("restores a deleted subfolder and is a no-op when complete", async () => {
     await ensureProjectFolder(fs, PROJECT, ACTOR);
-    await fs.delete(HOME_MOUNT_PATH, "projects/farm-br/Contracts", {
+    await fs.delete(HOME_MOUNT_PATH, "projects/farm-br/Notes", {
       actor: ACTOR,
     });
 
@@ -105,7 +104,7 @@ describe("ensureProjectFolder (integration)", () => {
     await ensureProjectFolder(fs, PROJECT, ACTOR);
 
     expect(await names("projects/farm-br")).toContain(
-      "dir:projects/farm-br/Contracts",
+      "dir:projects/farm-br/Notes",
     );
     expect(await fs.latestSeq(HOME_MOUNT_PATH)).toBe(before);
   });
