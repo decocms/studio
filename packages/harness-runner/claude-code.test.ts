@@ -659,5 +659,11 @@ describe("interactiveToolGate", () => {
     expect(
       await ask(interactiveToolGate({ planMode: true, onAwaitUser }), "Bash"),
     ).toMatchObject({ behavior: "deny" });
+    expect(
+      await ask(
+        interactiveToolGate({ planMode: true, onAwaitUser }),
+        "mcp__studio__web_search",
+      ),
+    ).toMatchObject({ behavior: "allow" });
   });
 });

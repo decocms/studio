@@ -239,6 +239,12 @@ function skillsInstruction(): string {
  * resumed session cannot take an injected tool result.
  */
 const INTERACTIVE_TOOLS = new Set(["AskUserQuestion", "ExitPlanMode"]);
+/** Studio research tools a plan may use; they read the web, never the workspace. */
+const PLAN_MODE_RESEARCH_TOOLS = new Set(
+  ["web_search", "deep_research", "research_result"].map(
+    (name) => `mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__${name}`,
+  ),
+);
 
 /**
  * The permission callback. An interactive call is parked for the user and the
@@ -267,7 +273,7 @@ export function interactiveToolGate(args: {
       };
     }
     // Plan mode auto-allows read-only tools; anything that asks would change something.
-    if (args.planMode) {
+    if (args.planMode && !PLAN_MODE_RESEARCH_TOOLS.has(toolName)) {
       return {
         behavior: "deny",
         message:
