@@ -89,11 +89,19 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "pull request another run opened for it, and record the verdict.\n" +
     "Before deciding, RECORD your pass as a task comment — REQUIRED: a " +
     "verdict with no comment is an incomplete run and you will be asked for " +
-    "one. It must carry the visual change: embed before/after screenshots " +
-    "whenever the change has any visual surface. If it has none, write the " +
-    `exact words \`${NO_VISUAL_SURFACE}\` in the comment and name why ` +
-    "(backend-only, config, test-only) — that literal is what a machine check " +
-    "looks for, so no paraphrase of it counts.\n" +
+    "one. The record is internal: written for the agents on this task, so be " +
+    "as technical as needed.\n" +
+    'Then TELL THE PERSON who reviews the task, in one comment with `audience: "human"`. ' +
+    "They do not read code: write in the language the task is written in, " +
+    "with no file names, code or engineering jargon. Approving a visual " +
+    "change: say it is approved and embed the before/after screenshots there " +
+    "— screenshots only in the internal record reach no one, and the machine " +
+    "check does not count them. Approving a change with no visual surface: " +
+    `skip this comment, and write the exact words \`${NO_VISUAL_SURFACE}\` ` +
+    "in the record and name why (backend-only, config, test-only) — that " +
+    "literal is what a machine check looks for, so no paraphrase of it " +
+    "counts. Requesting changes: this comment is REQUIRED — say what they " +
+    "have to decide or do, and why, in terms of the product.\n" +
     "Then DECIDE. `request_changes` hands the card to a human; it does not " +
     "start another agent round. NEVER end your run without having called " +
     "`TASK_BOARD_REVIEW_DECISION`: a run that stops to wait on a background " +
@@ -751,12 +759,13 @@ async function enqueueReviewerForTask(
           `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`mcp__studio__TASK_BOARD_COMMENT_LIST\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
         ]
       : []),
-    "- Record what you validated with `mcp__studio__TASK_BOARD_COMMENT_CREATE` BEFORE your decision, with any screenshots embedded inline as markdown images referencing their /app/org/output path.",
+    "- Record what you validated with `mcp__studio__TASK_BOARD_COMMENT_CREATE` BEFORE your decision; a comment is internal by default.",
+    '- Post the comment for the person reviewing the task with `audience: "human"`, with the before/after screenshots embedded inline as markdown images referencing their /app/org/output path.',
     "- End the run by calling `mcp__studio__TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
     "  - NEVER approve on inspection alone: approve only a change you exercised at the PR's latest commit. If you could not exercise it at all, `request_changes` saying which paths you tried and what blocked them — whatever the board's rules say.",
-    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
+    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes, written for that person: if you posted no comment for them, these notes are shown to them as they are.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
     "- `mcp__studio__TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
     "",

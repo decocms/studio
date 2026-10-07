@@ -1,8 +1,8 @@
-/** A column's rules, edited from the strip above its lane header. */
+/** A column's rules, edited from the icon in its lane header. */
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Stars02, XClose, Zap } from "@untitledui/icons";
+import { Plus, XClose } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -33,17 +33,30 @@ import {
 } from "@/hooks/use-task-board-prompts";
 import { useT } from "@/i18n/use-t.ts";
 
-/** Whether the column has rules; an unconfigured one is added from the lane header instead. */
-export function useColumnConfigured(columnKey: string) {
+/** A column's saved rules and a one-line summary of them, for the lane header icon. */
+export function useColumnRules(columnKey: string) {
+  const t = useT();
   const prompts = useTaskBoardPrompts();
   const automations = useTaskBoardColumnAutomations();
-  return (
-    !!automations.data?.some((a) => a.columnKey === columnKey) ||
-    !!prompts.data?.some((p) => p.columnKey === columnKey)
-  );
+  const scope = prompts.data?.find((p) => p.columnKey === columnKey);
+  const automation = automations.data?.find((a) => a.columnKey === columnKey);
+  const skillCount = scope?.skills.length ?? 0;
+  const summary =
+    automation?.prompt ||
+    scope?.prompt ||
+    (automation
+      ? t("taskBoard.columnRules.defaultRun")
+      : t("taskBoard.columnRules.skillsOnly", { count: skillCount }));
+  return {
+    scope,
+    automation,
+    configured: !!automation || !!scope,
+    summary,
+    boardSkills: prompts.data?.find((p) => p.columnKey === null)?.skills ?? [],
+  };
 }
 
-export function ColumnRulesStrip({
+export function ColumnRulesSheet({
   columnKey,
   label,
   open,
@@ -54,46 +67,10 @@ export function ColumnRulesStrip({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const t = useT();
-  const prompts = useTaskBoardPrompts();
-  const automations = useTaskBoardColumnAutomations();
-  const scope = prompts.data?.find((p) => p.columnKey === columnKey);
-  const automation = automations.data?.find((a) => a.columnKey === columnKey);
-  const skillCount = scope?.skills.length ?? 0;
-  const configured = !!automation || !!scope;
-  const summary =
-    automation?.prompt ||
-    scope?.prompt ||
-    (automation
-      ? t("taskBoard.columnRules.defaultRun")
-      : t("taskBoard.columnRules.skillsOnly", { count: skillCount }));
-  // A skills-only rule already says the count in its summary.
-  const showSkillCount = skillCount > 0 && (!!automation || !!scope?.prompt);
+  const { scope, automation, boardSkills } = useColumnRules(columnKey);
 
   return (
     <>
-      {configured && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={t("taskBoard.columnRules.editAriaLabel", { lane: label })}
-          // Same px-2 / gap-2 / 15px glyph as the lane header, so the icon and text line up with it.
-          className="flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          {automation ? (
-            <Zap size={15} className="shrink-0 fill-current text-special" />
-          ) : (
-            <Stars02 size={15} className="shrink-0" />
-          )}
-          <span className="min-w-0 flex-1 truncate">{summary}</span>
-          {showSkillCount && (
-            <span className="flex shrink-0 items-center gap-0.5 text-2xs font-medium">
-              <Stars02 size={11} />
-              {skillCount}
-            </span>
-          )}
-        </button>
-      )}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           className="w-full gap-0 sm:max-w-md"
@@ -110,9 +87,7 @@ export function ColumnRulesStrip({
               prompt: scope?.prompt ?? "",
               skills: scope?.skills ?? [],
             }}
-            boardSkills={
-              prompts.data?.find((p) => p.columnKey === null)?.skills ?? []
-            }
+            boardSkills={boardSkills}
             onDone={() => setOpen(false)}
           />
         </SheetContent>

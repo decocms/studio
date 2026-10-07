@@ -51,6 +51,8 @@ export type TaskComment = {
   body: string;
   createdAt: string;
   onOpenThread?: () => void;
+  /** Handoff between agents, shown only behind the scenes. */
+  internal?: boolean;
   replies: TaskComment[];
   /** Stored state is retained for compatibility, but does not hide comments. */
   resolved?: boolean;
@@ -133,6 +135,7 @@ function CommentEntry({
       createdAt={comment.createdAt}
       body={comment.body}
       isReply={isReply}
+      muted={comment.internal}
       onOpenThread={comment.onOpenThread}
       actions={onDelete && <CommentActionsMenu onDelete={onDelete} />}
     />

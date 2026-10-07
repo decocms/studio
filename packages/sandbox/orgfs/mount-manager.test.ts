@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sleep } from "@decocms/shared/std";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+  ensureOrgRootWritable,
   type InvalidatorFactory,
   type Mounter,
   MountManager,
@@ -276,5 +277,61 @@ describe("MountManager", () => {
     await sleep(20); // let any stray watcher microtask run
     expect(calls.length).toBe(1); // no remount
     expect(mm.list()).toEqual([]);
+  });
+});
+
+describe("ensureOrgRootWritable", () => {
+  let base: string;
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), "orgroot-"));
+  });
+  afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+  const modeOf = (p: string) => statSync(p).mode & 0o7777;
+  const quiet = () => {};
+  // Only root may set the sticky bit on a directory on macOS; the sidecar
+  // and CI run on Linux, where the owner may.
+  const expectOpened = (p: string) => {
+    expect(modeOf(p) & 0o777).toBe(0o777);
+    if (process.platform === "linux") expect(modeOf(p) & 0o1000).toBe(0o1000);
+  };
+
+  // The shape some pods hand over: owned by root, writable only by root.
+  it("opens a 0755 org root to the sandbox user, sticky like /tmp", async () => {
+    const orgRoot = join(base, "org");
+    mkdirSync(orgRoot);
+    chmodSync(orgRoot, 0o755);
+    await ensureOrgRootWritable(orgRoot, quiet, true);
+    expectOpened(orgRoot);
+  });
+
+  it("leaves an org root that is already writable as it is", async () => {
+    const orgRoot = join(base, "org");
+    mkdirSync(orgRoot);
+    chmodSync(orgRoot, 0o777);
+    await ensureOrgRootWritable(orgRoot, quiet, true);
+    expect(modeOf(orgRoot)).toBe(0o777);
+  });
+
+  it("creates a missing org root before opening it", async () => {
+    const orgRoot = join(base, "app", "org");
+    await ensureOrgRootWritable(orgRoot, quiet, true);
+    expectOpened(orgRoot);
+  });
+
+  it("does nothing when the mounter is not root", async () => {
+    const orgRoot = join(base, "org");
+    mkdirSync(orgRoot);
+    chmodSync(orgRoot, 0o755);
+    await ensureOrgRootWritable(orgRoot, quiet, false);
+    expect(modeOf(orgRoot)).toBe(0o755);
+  });
+
+  it("logs instead of throwing when the mode can't be changed", async () => {
+    const orgRoot = join(base, "file-not-dir");
+    await Bun.write(orgRoot, "x");
+    const logged: string[] = [];
+    await ensureOrgRootWritable(orgRoot, (m) => logged.push(m), true);
+    expect(logged.join("\n")).toContain("could not make");
   });
 });

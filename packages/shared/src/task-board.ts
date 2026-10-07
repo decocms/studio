@@ -8,6 +8,14 @@ import { orgFlagEnabled } from "./organization/schema";
  */
 export const SUPER_AGENT_ASSIGNEE_ID = "super-agent";
 
+/**
+ * Who a task comment is written for. `internal` is handoff between agent runs;
+ * the task feed shows it only in the behind-the-scenes view. `human` is what a
+ * person reviewing the task reads.
+ */
+export const TASK_COMMENT_AUDIENCES = ["human", "internal"] as const;
+export type TaskCommentAudience = (typeof TASK_COMMENT_AUDIENCES)[number];
+
 /** Suggested colors a new tag cycles through, so consecutive tags are visually
  *  distinct without anyone having to choose. Any hex is valid — the picker's
  *  `<input type="color">` isn't limited to these, and neither is the reports

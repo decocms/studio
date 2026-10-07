@@ -72,6 +72,7 @@ export const sidebar = {
     "H\u00e1 mais projetos do que cabem aqui \u2014 continue digitando",
   "sidebar.picker.verbTravel": "Abrir {name}",
   "sidebar.rail.ariaLabel": "Organizações",
+  "sidebar.rail.closeApp": "Fechar {name}",
   "sidebar.rail.currentOrganization": "atual",
   "sidebar.rail.searchEmpty": "Nenhuma organização corresponde.",
   "sidebar.rail.searchMoreOrganizations": "Buscar organizações (mais {count})",

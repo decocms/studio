@@ -17,6 +17,7 @@ export function TaskMessage({
   onOpenThread,
   isReply,
   commentId,
+  muted,
 }: {
   id: string;
   author: string;
@@ -28,13 +29,20 @@ export function TaskMessage({
   onOpenThread?: () => void;
   isReply?: boolean;
   commentId?: string;
+  /** Agent handoff, shown only behind the scenes: dimmed so the messages
+   *  written for people stand out. */
+  muted?: boolean;
 }) {
   const t = useT();
   return (
     <article
       data-comment-id={commentId}
       data-testid="task-message"
-      className="group flex min-w-0 flex-col gap-1.5 py-3"
+      data-muted={muted || undefined}
+      className={cn(
+        "group flex min-w-0 flex-col gap-1.5 py-3",
+        muted && "opacity-60 transition-opacity hover:opacity-100",
+      )}
     >
       <div className="flex flex-wrap items-center gap-2">
         {avatar}
@@ -42,6 +50,11 @@ export function TaskMessage({
         <time dateTime={createdAt} className="text-sm text-muted-foreground">
           {formatTimeAgo(new Date(createdAt))}
         </time>
+        {muted && (
+          <span className="text-xs text-muted-foreground">
+            {t("taskBoard.conversation.behindTheScenesLabel")}
+          </span>
+        )}
         {metadata}
         <div className="ml-auto flex items-center gap-1">
           {onOpenThread && (

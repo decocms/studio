@@ -20,6 +20,9 @@ export const taskBoard = {
   "taskBoard.conversation.newReplies":
     "Novas respostas ({count}) · Ir para o mais recente",
   "taskBoard.conversation.replies": "Conversa",
+  "taskBoard.conversation.showBehindTheScenes": "Bastidores ({count})",
+  "taskBoard.conversation.hideBehindTheScenes": "Ocultar bastidores",
+  "taskBoard.conversation.behindTheScenesLabel": "Bastidores",
   "taskBoard.conversation.sendFailed":
     "Não foi possível enviar sua resposta. Tente novamente.",
   "taskBoard.config.priorityHigh": "Alta",
