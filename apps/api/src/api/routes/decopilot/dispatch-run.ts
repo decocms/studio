@@ -447,6 +447,9 @@ export interface FrozenRunSnapshot {
    * server-built base system prompt for this run only.
    */
   systemContext?: string;
+  /** Prior turns of a Decopilot thread on its first claude-code turn (see
+   *  `buildHistoryPrefix`). Prepended to the prompt; never persisted. */
+  historyPrefix?: string;
 }
 
 export interface DurableDispatchRunInput extends FrozenRunSnapshot {
@@ -502,6 +505,7 @@ export function buildDurableDispatchInput(
     messageId: string;
     runFenceToken?: string;
     branch?: string | null;
+    historyPrefix?: string;
   },
 ): DurableDispatchRunInput {
   if (!input.taskId) {
@@ -561,6 +565,7 @@ export function buildDurableDispatchInput(
       : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
     ...(systemContext ? { systemContext } : {}),
+    ...(options.historyPrefix ? { historyPrefix: options.historyPrefix } : {}),
   };
 }
 
@@ -1315,9 +1320,23 @@ async function prepareRun(
 
     // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only.
-    const wireUserMessage = materializedRequestMessage
+    const resolvedUserMessage = materializedRequestMessage
       ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
       : undefined;
+    const historyPrefix =
+      sandboxHosted && isDurableDispatchRunInput(input)
+        ? input.historyPrefix
+        : undefined;
+    const wireUserMessage =
+      resolvedUserMessage && historyPrefix
+        ? {
+            ...resolvedUserMessage,
+            parts: [
+              { type: "text" as const, text: historyPrefix },
+              ...resolvedUserMessage.parts,
+            ],
+          }
+        : resolvedUserMessage;
 
     if (!wireUserMessage || !materializedRequestMessage) {
       throw new PermanentRunError(

@@ -10,7 +10,8 @@
  *
  * Branch resolution (only meaningful when the vMCP has a repository):
  * honor `data.branch`, else the most-recently-touched `sandboxMap[userId]`
- * branch (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
+ * branch (warm sandbox; skipped under `chat_harness_sandbox_only`), else
+ * `generateBranchName` (`<user-slug>-<timestamp>`).
  * A `runtime: "sandbox"` coding session deliberately shares the caller's
  * branch — it continues the CMS draft; the two runtimes are told apart by the
  * thread's own stamp, never by the branch.
@@ -52,6 +53,7 @@ import {
   generateBranchName,
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
+import { sandboxOnlyChatsEnabled } from "../../harnesses/sandbox-only-chats";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -131,9 +133,13 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     const repository = metadata?.repository;
     let branch: string | null = null;
     if (repository) {
+      // Sandbox-only chats get one sandbox each, so none inherits a warm one.
+      const warmBranch = (await sandboxOnlyChatsEnabled(ctx, organization.id))
+        ? undefined
+        : pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId);
       branch =
         data.branch ??
-        pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
+        warmBranch ??
         generateBranchName(branchUserLabel(ctx.auth.user));
     }
 
