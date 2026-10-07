@@ -2,26 +2,19 @@
  * generate_image — the Decopilot built-in's generation core, over the org's
  * `image` tier.
  *
- * The model gets the image itself as MCP image content (so it can look at what
- * it made) plus the result JSON with each image's `studio-storage://` URI, which
- * the chat UI renders from.
+ * The model gets the result JSON with each image's `studio-storage://` URI, as
+ * Decopilot's did; the chat UI renders the image from it.
  */
 
-import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { resolveTier } from "@/core/resolve-tier";
-import {
-  type StudioContext,
-  requireAuth,
-  requireOrganization,
-} from "@/core/studio-context";
+import { requireAuth, requireOrganization } from "@/core/studio-context";
 import {
   GENERATE_IMAGE_DESCRIPTION,
   GenerateImageInputSchema,
   generateImageCore,
 } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
-import { parseStudioStorageKey } from "@/harnesses/lib/decopilot/studio-storage-uri";
 import { getSettings } from "@/settings";
 
 const GenerateImageOutputSchema = z.object({
@@ -32,30 +25,6 @@ const GenerateImageOutputSchema = z.object({
   usage: z.object({ inputTokens: z.number(), outputTokens: z.number() }),
   usedReferenceImages: z.number(),
 });
-
-async function imageContent(
-  result: z.infer<typeof GenerateImageOutputSchema>,
-  ctx: StudioContext,
-): Promise<ContentBlock[]> {
-  const objectStorage = ctx.objectStorage;
-  const images = await Promise.all(
-    result.images.map(async (image): Promise<ContentBlock[]> => {
-      const key = parseStudioStorageKey(image.uri);
-      if (key === null || !objectStorage) return [];
-      // Stored either way: not showing it to the model must not fail the call.
-      const bytes = await objectStorage.getBytes(key).catch(() => null);
-      if (!bytes) return [];
-      return [
-        {
-          type: "image",
-          data: Buffer.from(bytes).toString("base64"),
-          mimeType: image.mediaType,
-        },
-      ];
-    }),
-  );
-  return [{ type: "text", text: JSON.stringify(result) }, ...images.flat()];
-}
 
 export const GENERATE_IMAGE = defineTool({
   name: "generate_image",
@@ -70,7 +39,6 @@ export const GENERATE_IMAGE = defineTool({
   inputSchema: GenerateImageInputSchema,
   outputSchema: GenerateImageOutputSchema,
   requiresAiBudget: true,
-  modelContent: imageContent,
   handler: async (input, ctx, call) => {
     requireAuth(ctx);
     const organization = requireOrganization(ctx);

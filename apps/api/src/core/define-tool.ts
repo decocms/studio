@@ -11,7 +11,6 @@
 
 import { SpanStatusCode } from "@opentelemetry/api";
 import { z } from "zod";
-import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
 import type { StudioContext } from "./studio-context";
 import {
   isOrgBlocked,
@@ -77,14 +76,6 @@ export interface ToolBinder<
    * confirmation. The UI still receives the full structuredContent.
    */
   modelSummary?: (result: z.infer<TOutput>) => string;
-  /**
-   * Replaces the MCP `content` the model receives, for a result the model has
-   * to SEE rather than read as JSON (an image). Wins over `modelSummary`.
-   */
-  modelContent?: (
-    result: z.infer<TOutput>,
-    ctx: StudioContext,
-  ) => Promise<ContentBlock[]>;
 }
 
 /**

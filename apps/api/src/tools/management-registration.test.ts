@@ -206,25 +206,4 @@ describe("toolCallContext", () => {
     ).toBe("toolu_1");
     expect(toolCallContext(fakeExtra({})).callId).toBeUndefined();
   });
-
-  test("a tool's modelContent replaces the JSON text", async () => {
-    const tool: RegistrableTool = {
-      name: "PICTURE",
-      description: "test",
-      inputSchema: undefined,
-      outputSchema: undefined,
-      execute: async () => ({ uri: "studio-storage://a.png" }),
-      modelContent: async () => [
-        { type: "image", data: "AAAA", mimeType: "image/png" },
-      ],
-    };
-    const { handler } = buildToolRegistration(tool);
-    const result = await managementContextStore.run(fakeCtx("t"), () =>
-      handler({}, fakeExtra()),
-    );
-    expect(result.content).toEqual([
-      { type: "image", data: "AAAA", mimeType: "image/png" },
-    ]);
-    expect(result.structuredContent).toEqual({ uri: "studio-storage://a.png" });
-  });
 });

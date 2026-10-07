@@ -16,7 +16,6 @@ import type { ToolAnnotations, ToolCallContext } from "@/core/define-tool";
 import type { StudioContext } from "@/core/studio-context";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
-  ContentBlock,
   ServerNotification,
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -33,10 +32,6 @@ export interface RegistrableTool {
   annotations?: ToolAnnotations;
   _meta?: Record<string, unknown>;
   modelSummary?: (result: unknown) => string;
-  modelContent?: (
-    result: unknown,
-    ctx: StudioContext,
-  ) => Promise<ContentBlock[]>;
   execute: (
     input: unknown,
     ctx: StudioContext,
@@ -106,12 +101,6 @@ export function buildToolRegistration(tool: RegistrableTool) {
       ctx.access.setToolName(tool.name);
       try {
         const result = await tool.execute(args, ctx, toolCallContext(extra));
-        if (tool.modelContent) {
-          return {
-            content: await tool.modelContent(result, ctx),
-            structuredContent: result as { [x: string]: unknown },
-          };
-        }
         const modelText = tool.modelSummary
           ? tool.modelSummary(result)
           : JSON.stringify(result);

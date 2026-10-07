@@ -41,20 +41,6 @@ describe("generate_image", () => {
     expect(key).toStartWith("generated-images/");
   });
 
-  // The model sees the picture it made; the UI reads the URI from the JSON.
-  it("hands the model the image itself plus the result JSON", async () => {
-    const ctx = contextWithImageModel([]);
-    const result = await GENERATE_IMAGE.handler({ prompt: "a red fox" }, ctx);
-    const content = await GENERATE_IMAGE.modelContent!(result, ctx);
-
-    expect(content[0]).toEqual({ type: "text", text: JSON.stringify(result) });
-    expect(content[1]).toEqual({
-      type: "image",
-      data: PNG_BASE64,
-      mimeType: result.images[0]!.mediaType,
-    });
-  });
-
   it("refuses a reference image on a private address", async () => {
     const ctx = contextWithImageModel([]);
     await expect(
