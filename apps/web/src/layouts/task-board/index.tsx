@@ -1434,42 +1434,46 @@ function TaskBoardBody({
           </Page.Title>
           <Page.Actions
             secondary={
-              items.length > 0 && (
-                <>
-                  {/* No width swap: these three are ~100px together, so there
+              <>
+                {items.length > 0 && (
+                  <>
+                    {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
                       drawer of the chip pickers they replaced. */}
-                  <div className="flex items-center gap-2">
-                    <SearchToggle
-                      value={filters.search}
-                      onChange={(search) =>
-                        handleFiltersChange({ ...filters, search })
-                      }
-                      label={t("taskBoard.taskFilters.searchLabel")}
-                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
-                    />
-                    <TaskFilterButton
-                      filters={filters}
-                      items={items}
-                      members={members}
-                      tags={orgTags}
-                      index={projectIndex}
-                      onChange={handleFiltersChange}
-                    />
-                    {layout === "list" && (
-                      <>
-                        <GroupByButton {...grouping} />
-                        <SortByButton {...sorting} />
-                      </>
-                    )}
-                    <BoardSettingsButton
-                      onClick={openBoardSettings}
-                      label={boardSettingsLabel}
-                    />
-                  </div>
-                </>
-              )
+                    <div className="flex items-center gap-2">
+                      <SearchToggle
+                        value={filters.search}
+                        onChange={(search) =>
+                          handleFiltersChange({ ...filters, search })
+                        }
+                        label={t("taskBoard.taskFilters.searchLabel")}
+                        placeholder={t(
+                          "taskBoard.taskFilters.searchPlaceholder",
+                        )}
+                        clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
+                      />
+                      <TaskFilterButton
+                        filters={filters}
+                        items={items}
+                        members={members}
+                        tags={orgTags}
+                        index={projectIndex}
+                        onChange={handleFiltersChange}
+                      />
+                      {layout === "list" && (
+                        <>
+                          <GroupByButton {...grouping} />
+                          <SortByButton {...sorting} />
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+                <BoardSettingsButton
+                  onClick={openBoardSettings}
+                  label={boardSettingsLabel}
+                />
+              </>
             }
           >
             <TaskBoardAdminControls />
