@@ -94,6 +94,7 @@ export function optimisticEntry(
     id: `home/${path}`,
     name: meta.name ?? slug,
     description: meta.description,
+    disableModelInvocation: meta.disableModelInvocation,
     // Wire token, not a path — it just happens to spell the volume too.
     source: "home",
     volume: HOME_MOUNT_PATH,

@@ -1,0 +1,48 @@
+name: Sandbox ARM64 smoke
+
+on:
+  pull_request:
+    paths:
+      - "packages/sandbox/image/Dockerfile"
+      - ".github/workflows/release-studio-sandbox.yaml"
+      - ".github/workflows/sandbox-arm64-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-arm64-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-npm:
+    name: Node and npm under ARM64 emulation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up ARM64 emulation
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+          reset: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the Dockerfile's Node base
+        run: |
+          docker buildx build --load --platform linux/arm64 \
+            --target node-dist --tag sandbox-node-arm64-smoke \
+            --file packages/sandbox/image/Dockerfile packages/sandbox
+
+      - name: Exercise Node and npm
+        run: |
+          docker run --rm --platform linux/arm64 sandbox-node-arm64-smoke \
+            sh -ec '
+              node --version
+              npm --version
+              node --print process.arch | grep --line-regexp arm64
+            '

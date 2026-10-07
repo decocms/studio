@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { GitProviderError } from "../git-providers/types";
 import {
@@ -6,6 +7,7 @@ import {
   isUpToDate,
   parseTar,
   planVolumeTree,
+  readLocalFiles,
   staleDirs,
   TarballHttpError,
   tarballRequestFor,
@@ -244,5 +246,22 @@ describe("isRetriableTarballError", () => {
       new GitProviderError({ provider: "gitlab", status, message: "x" });
     expect(isRetriableTarballError(mk(404))).toBe(false);
     expect(isRetriableTarballError(mk(401))).toBe(false);
+  });
+});
+
+describe("readLocalFiles", () => {
+  it("reads only the `from` subtrees of a checkout, keyed repo-relative", async () => {
+    const repo = join(import.meta.dir, "../../../..");
+    const files = await readLocalFiles(repo, [
+      { from: "packages/sandbox/image/skills" },
+    ]);
+    expect(
+      files.has("packages/sandbox/image/skills/qa-screenshot/SKILL.md"),
+    ).toBe(true);
+    expect(
+      [...files.keys()].every((k) =>
+        k.startsWith("packages/sandbox/image/skills/"),
+      ),
+    ).toBe(true);
   });
 });

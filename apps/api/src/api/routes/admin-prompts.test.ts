@@ -6,7 +6,8 @@ import {
 } from "./admin-prompts";
 
 const REVIEWER_PATH = "apps/api/src/tools/task-board/enqueue-reviewer.ts";
-const SUPER_AGENT_PATH = "apps/api/src/tools/task-board/enqueue-super-agent.ts";
+const SUPER_AGENT_PATH =
+  "apps/api/src/tools/task-board/claude-code-task-run.ts";
 
 const REVIEWER_SOURCE = [
   "const X = {",
@@ -52,16 +53,16 @@ describe("applyPromptEdits", () => {
       [
         SUPER_AGENT_PATH,
         [
-          "// prompt-region:start super-agent",
+          "// prompt-region:start super-agent-sandbox",
           'hosted: "be quick",',
-          "// prompt-region:end super-agent",
+          "// prompt-region:end super-agent-sandbox",
           "",
         ].join("\n"),
       ],
     ]);
     applyPromptEdits(sources, [
       { id: "reviewer", content: '  reviewer: "be lenient",' },
-      { id: "super-agent", content: 'hosted: "be slow",' },
+      { id: "super-agent-sandbox", content: 'hosted: "be slow",' },
     ]);
     expect(sources.get(REVIEWER_PATH)).toContain('reviewer: "be lenient"');
     expect(sources.get(SUPER_AGENT_PATH)).toContain('hosted: "be slow"');

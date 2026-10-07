@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import { emitTaskBoardRulesUpdated } from "./prompts";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "./schema";
 
 const AutomationSchema = z.object({
@@ -72,13 +73,13 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
     }
 
     const prompt = input.prompt?.trim() ? input.prompt.trim() : null;
-    return {
-      automation: await ctx.storage.columnAutomations.upsert(
-        organizationId,
-        input.columnKey,
-        prompt,
-      ),
-    };
+    const automation = await ctx.storage.columnAutomations.upsert(
+      organizationId,
+      input.columnKey,
+      prompt,
+    );
+    emitTaskBoardRulesUpdated(organizationId, input.columnKey);
+    return { automation };
   },
 });
 
@@ -98,11 +99,11 @@ export const TASK_BOARD_AUTOMATION_DELETE = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
-    return {
-      removed: await ctx.storage.columnAutomations.remove(
-        organizationId,
-        input.columnKey,
-      ),
-    };
+    const removed = await ctx.storage.columnAutomations.remove(
+      organizationId,
+      input.columnKey,
+    );
+    if (removed) emitTaskBoardRulesUpdated(organizationId, input.columnKey);
+    return { removed };
   },
 });

@@ -44,7 +44,10 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { NoResultError } from "kysely";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
+import {
+  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+  TASK_RUN_INSTRUCTIONS_KEY,
+} from "@/harnesses/claude-code-env";
 import {
   harnessRunsInSandbox,
   isRunSuperseded,
@@ -1373,8 +1376,17 @@ async function prepareRun(
     // The dispatcher's override wins over the agent's own instructions: a
     // reviewer run borrows the org agent (for its model + MCP surface) but is
     // not that agent.
+    // A later turn on a task-run thread (a nudge, a person typing) carries no
+    // append of its own, and the resumed Claude Code session keeps no system
+    // prompt — so the one the thread was started with is reused.
+    const storedAppend = mem.thread.metadata?.[TASK_RUN_INSTRUCTIONS_KEY];
     const agentInstructions = resolveAgentInstructions(
-      input.agent,
+      {
+        ...input.agent,
+        appendInstructions:
+          input.agent.appendInstructions ??
+          (typeof storedAppend === "string" ? storedAppend : undefined),
+      },
       effectiveVirtualMcp.metadata,
     );
     const decopilotRunContext = {

@@ -52,6 +52,7 @@ function buildApp(
     accessCheck?: () => Promise<void>;
     /** Mimic app.ts's global handler that 500s every *thrown* error. */
     swallowOnError?: boolean;
+    userId?: string;
   } = {},
 ) {
   const app = new Hono<{ Variables: Variables }>();
@@ -65,7 +66,7 @@ function buildApp(
   }
   app.use("*", async (c, next) => {
     c.set("studioContext", {
-      auth: authed ? { user: { id: USER } } : {},
+      auth: authed ? { user: { id: opts.userId ?? USER } } : {},
       db: db.db,
       baseUrl: "http://test",
       access: {
@@ -94,20 +95,25 @@ function buildApp(
   return app;
 }
 
+async function addMember(db: StudioDatabase, userId: string, role: string) {
+  const now = new Date().toISOString();
+  await sql`
+    INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
+    VALUES (${userId}, ${userId + "@test.com"}, 'U', false, ${now}, ${now})
+  `.execute(db.db);
+  await sql`
+    INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+    VALUES (${`mem_${userId}`}, ${userId}, ${ORG}, ${role}, ${now})
+  `.execute(db.db);
+}
+
 async function seed(db: StudioDatabase) {
   const now = new Date().toISOString();
   await sql`
     INSERT INTO "organization" (id, name, slug, "createdAt")
     VALUES (${ORG}, ${ORG}, ${SLUG}, ${now})
   `.execute(db.db);
-  await sql`
-    INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
-    VALUES (${USER}, ${USER + "@test.com"}, 'U', false, ${now}, ${now})
-  `.execute(db.db);
-  await sql`
-    INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
-    VALUES ('mem_fs_api', ${USER}, ${ORG}, 'member', ${now})
-  `.execute(db.db);
+  await addMember(db, USER, "member");
 }
 
 describe("org-fs HTTP routes (integration)", () => {
@@ -234,6 +240,100 @@ describe("org-fs HTTP routes (integration)", () => {
 
     const usage = await (await app.request(`${BASE}/skills/usage`)).json();
     expect(usage).toEqual({ files: 2, bytes: 3 });
+  });
+
+  describe("personal home folders", () => {
+    const OTHER = "user_fs_teammate";
+    const mine = `users/${USER}/MEMORY.md`;
+    const theirs = `users/${OTHER}/MEMORY.md`;
+    const homeUrl = (op: string, path: string) =>
+      `${BASE}/home/${op}?path=${encodeURIComponent(path)}`;
+    const putHome = (
+      a: Hono<{ Variables: Variables }>,
+      path: string,
+      headers?: Record<string, string>,
+    ) =>
+      a.request(homeUrl("file", path), {
+        method: "PUT",
+        body: "note",
+        headers,
+      });
+    const as = (userId: string) => buildApp(db, true, { userId });
+
+    beforeEach(async () => {
+      await addMember(db, OTHER, "member");
+      await addMember(db, "user_fs_admin", "admin");
+      await addMember(db, "user_fs_owner", "owner");
+      expect((await putHome(as(OTHER), theirs)).status).toBe(200);
+    });
+
+    it("lets a member write their own folder but not a teammate's", async () => {
+      expect((await putHome(app, mine)).status).toBe(200);
+      expect((await putHome(app, theirs)).status).toBe(403);
+      const del = await app.request(homeUrl("file", `users/${OTHER}`), {
+        method: "DELETE",
+      });
+      expect(del.status).toBe(403);
+      const move = await app.request(`${BASE}/home/move`, {
+        method: "POST",
+        body: JSON.stringify({ from: theirs, to: "stolen.md" }),
+      });
+      expect(move.status).toBe(403);
+    });
+
+    it("hides a teammate's folder from everyone else, admins included", async () => {
+      for (const op of ["read", "stat"]) {
+        expect((await app.request(homeUrl(op, theirs))).status).toBe(403);
+      }
+      const listed = await (await app.request(homeUrl("list", "users"))).json();
+      expect(listed.entries).toEqual([]);
+      const search = await (
+        await app.request(`${BASE}/search?q=MEMORY`)
+      ).json();
+      expect(search.entries).toEqual([]);
+
+      const admin = as("user_fs_admin");
+      expect((await admin.request(homeUrl("read", theirs))).status).toBe(403);
+      expect((await putHome(admin, theirs)).status).toBe(403);
+    });
+
+    it("refuses to remove the users folder itself", async () => {
+      const del = await as("user_fs_owner").request(homeUrl("file", "users"), {
+        method: "DELETE",
+      });
+      expect(del.status).toBe(403);
+    });
+  });
+
+  it("writes conditionally on If-Match / If-None-Match", async () => {
+    const first = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v1",
+      headers: { "if-none-match": "*" },
+    });
+    expect(first.status).toBe(200);
+    const { entry } = await first.json();
+    const again = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v1b",
+      headers: { "if-none-match": "*" },
+    });
+    expect(again.status).toBe(412);
+
+    const stale = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v2",
+      headers: { "if-match": '"not-the-hash"' },
+    });
+    expect(stale.status).toBe(412);
+    const ok = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v2",
+      headers: { "if-match": `"${entry.contentHash}"` },
+    });
+    expect(ok.status).toBe(200);
+    const read = await app.request(`${BASE}/skills/read?path=c.md`);
+    expect(await read.text()).toBe("v2");
   });
 
   it("rejects writing to the volume root with 400", async () => {

@@ -117,6 +117,7 @@ describe("optimisticEntry", () => {
       id: "home/skills/seo-audit",
       name: "SEO Audit",
       description: "Audits a page.",
+      disableModelInvocation: false,
       source: "home",
       volume: "home",
       path: "skills/seo-audit",
