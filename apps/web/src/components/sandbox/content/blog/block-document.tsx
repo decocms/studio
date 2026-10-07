@@ -18,6 +18,7 @@ import { Plus } from "@untitledui/icons";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { useT } from "@/i18n/use-t.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { type BlogBlockType, discoverBlogBlockTypes } from "./blog-data";
 import { BlockPicker } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
@@ -86,7 +87,8 @@ export function BlockDocument({
   emptyMessage?: string;
 }) {
   const t = useT();
-  const blockTypes = discoverBlogBlockTypes(meta);
+  const hideDefaults = useHideDefaultBlogBlocks();
+  const blockTypes = discoverBlogBlockTypes(meta, { hideDefaults });
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     seedBlockItems(value),
