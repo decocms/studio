@@ -5,6 +5,7 @@ import {
   buildOptions,
   createDeltaCoalescer,
   errorFinishChunks,
+  interactiveToolGate,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
@@ -169,6 +170,10 @@ describe("buildOptions", () => {
 
   test("bypasses permissions — the pod is the isolation boundary", () => {
     expect(options().permissionMode).toBe("bypassPermissions");
+  });
+
+  test("plan mode runs the SDK in plan mode", () => {
+    expect(options({ mode: "plan" }).permissionMode).toBe("plan");
   });
 
   test("keeps Claude Code's own prompt and appends the agent instructions", () => {
@@ -598,5 +603,61 @@ describe("errorFinishChunks", () => {
       { type: "finish-step" },
       { type: "finish", finishReason: "error" },
     ]);
+  });
+});
+
+describe("interactiveToolGate", () => {
+  const ask = (
+    gate: ReturnType<typeof interactiveToolGate>,
+    toolName: string,
+    agentID?: string,
+  ) =>
+    gate(
+      toolName,
+      { q: 1 },
+      {
+        signal: new AbortController().signal,
+        toolUseID: "call-1",
+        requestId: "r",
+        ...(agentID ? { agentID } : {}),
+      },
+    );
+
+  for (const toolName of ["AskUserQuestion", "ExitPlanMode"]) {
+    test(`${toolName} is parked for the user and ends the turn`, async () => {
+      const parked: string[] = [];
+      const gate = interactiveToolGate({
+        planMode: false,
+        onAwaitUser: (id) => parked.push(id),
+      });
+      expect(await ask(gate, toolName)).toEqual({
+        behavior: "deny",
+        message: "Waiting for the user.",
+        interrupt: true,
+      });
+      expect(parked).toEqual(["call-1"]);
+    });
+  }
+
+  test("a subagent cannot ask the user, and the turn goes on", async () => {
+    const parked: string[] = [];
+    const gate = interactiveToolGate({
+      planMode: false,
+      onAwaitUser: (id) => parked.push(id),
+    });
+    const result = await ask(gate, "AskUserQuestion", "agent-1");
+    expect(result).toMatchObject({ behavior: "deny" });
+    expect(result).not.toHaveProperty("interrupt");
+    expect(parked).toEqual([]);
+  });
+
+  test("other tools are allowed outside plan mode and denied in it", async () => {
+    const onAwaitUser = () => {};
+    expect(
+      await ask(interactiveToolGate({ planMode: false, onAwaitUser }), "Bash"),
+    ).toEqual({ behavior: "allow", updatedInput: { q: 1 } });
+    expect(
+      await ask(interactiveToolGate({ planMode: true, onAwaitUser }), "Bash"),
+    ).toMatchObject({ behavior: "deny" });
   });
 });
