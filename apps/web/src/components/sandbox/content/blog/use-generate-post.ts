@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -93,6 +94,7 @@ export function useGeneratePost({
 }: UseGeneratePostParams) {
   const t = useT();
   const studio = useStudioTools();
+  const hideDefaults = useHideDefaultBlogBlocks();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
 
   return async (briefing: PostBriefing) => {
@@ -140,7 +142,7 @@ export function useGeneratePost({
           : undefined,
         theme: { title: briefing.idea.title, body: briefing.idea.body },
         format: briefing.format,
-        sections: mentionableSections(meta)
+        sections: mentionableSections(meta, { hideDefaults })
           .filter((section) => isGeneratable(section.name))
           .map((section) => ({
             type: section.name as GeneratableSection,
@@ -154,7 +156,7 @@ export function useGeneratePost({
 
       const payload = buildGeneratedPostPayload({
         draft,
-        resolveTypes: sectionResolveTypes(meta),
+        resolveTypes: sectionResolveTypes(meta, { hideDefaults }),
         categories,
         authors,
         planning,

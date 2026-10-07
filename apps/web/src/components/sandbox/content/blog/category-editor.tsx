@@ -48,6 +48,7 @@ import {
   listAllPostPayloads,
   listAllPostsWithMeta,
   maskSlugInput,
+  missingFieldsLabel,
   missingCategoryFields,
   renameCategoryOnPost,
   reparentCategory,
@@ -225,10 +226,10 @@ export function CategoryEditor({
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         })
       : t("sandbox.postEditor.missingFieldPlural", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         });
 
   /** Persist the new slug on the category block itself (no cascade). */
@@ -559,7 +560,10 @@ export function CategoryEditor({
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
+                decofile={decofile}
                 sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                previewBaseUrl={previewBaseUrl}
+                onSaveReferencedBlock={saveReferencedBlock}
                 emptyMessage={t("sandbox.categoryEditor.noContentEmpty")}
               />
             </CollapsibleSection>

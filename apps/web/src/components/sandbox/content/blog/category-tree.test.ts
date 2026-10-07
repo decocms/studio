@@ -79,7 +79,7 @@ describe("orderCategoryTree", () => {
       label: "Unnamed",
       subtitle: "",
       parentSlug: "recipes",
-      missing: ["Slug"],
+      missing: ["slug"],
     };
     const rows = orderCategoryTree([cat("recipes"), nameless]);
     expect(rows.find((r) => r.entry === nameless)?.depth).toBe(0);
@@ -91,7 +91,7 @@ describe("orderCategoryTree", () => {
       kind: "categories",
       label: "Unnamed category",
       subtitle: "",
-      missing: ["Name", "Slug"],
+      missing: ["name", "slug"],
     };
     expect(orderCategoryTree([nameless])).toEqual([
       { entry: nameless, depth: 0 },

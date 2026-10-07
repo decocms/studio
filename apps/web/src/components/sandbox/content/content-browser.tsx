@@ -102,6 +102,7 @@ import {
   getBlogPayload,
   isBlogKind,
   listAllPostPayloads,
+  missingFieldsLabel,
   postIdOfKey,
   buildPostBlock,
   removeCategoryFromPost,
@@ -393,7 +394,7 @@ function ContentBrowserReady({
   }
   const [searchQuery, setSearchQuery] = useState("");
   // Posts workspace view + grouping — lifted so they survive opening a post.
-  const [postsView, setPostsView] = useState<PostsView>("board");
+  const [postsView, setPostsView] = useState<PostsView>("list");
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
@@ -1793,7 +1794,7 @@ function ItemList({
                     invalidReason={
                       entry.missing.length > 0
                         ? t("sandbox.itemRow.missingFields", {
-                            fields: entry.missing.join(", "),
+                            fields: missingFieldsLabel(entry.missing, t),
                           })
                         : undefined
                     }

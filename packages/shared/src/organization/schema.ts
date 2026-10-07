@@ -277,6 +277,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Use the redesigned blocks editor for every member of the organization. Off by default — the classic editor stays until an admin opts the org in.",
     ),
+  hide_default_blog_blocks: z
+    .boolean()
+    .optional()
+    .describe(
+      "Hide the `deco-cms/blog` built-in post blocks everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
