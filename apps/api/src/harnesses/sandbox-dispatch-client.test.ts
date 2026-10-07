@@ -10,6 +10,7 @@ import {
   harnessRunsInSandbox,
   isRunSuperseded,
   isStudioOwnedConnection,
+  orgOutputFallbackInstruction,
   sandboxStateInstruction,
   selectRunConnections,
   isUnreachableStatus,
@@ -18,6 +19,7 @@ import {
   RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
+import { sandboxPathsAsUploads } from "@/tools/task-board/description-uploads";
 
 function bodyOf(text: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -895,5 +897,29 @@ describe("sandboxStateInstruction", () => {
     for (const warm of [true, false]) {
       expect(sandboxStateInstruction(warm)).not.toContain("may");
     }
+  });
+});
+
+describe("orgOutputFallbackInstruction", () => {
+  const text = orgOutputFallbackInstruction("thrd_abc");
+
+  test("names the run's own folder in the outputs mount, never /tmp", () => {
+    expect(text).toContain("/app/org/output");
+    expect(text).toContain("/app/org/.outputs/thrd_abc/");
+    expect(text).toContain("never use `/tmp`");
+  });
+
+  test("only while the mount point exists, never by creating it", () => {
+    expect(text).toContain("but `/app/org/.outputs` does");
+    expect(text).toContain("Never create `/app/org/.outputs` yourself");
+  });
+
+  // The instruction is only worth giving if a comment that follows it renders.
+  test("points at a path task comments turn into an image", () => {
+    const shot = "/app/org/.outputs/thrd_abc/qa/after.png";
+    expect(text).toContain(shot.slice(0, shot.lastIndexOf("qa/")));
+    expect(sandboxPathsAsUploads(`![after](${shot})`, "acme")).toBe(
+      "![after](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fafter.png)",
+    );
   });
 });

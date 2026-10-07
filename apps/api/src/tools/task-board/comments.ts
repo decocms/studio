@@ -111,8 +111,9 @@ export function embedOrgOutputImages(
 }
 
 /**
- * A body a run wrote, made renderable: its `org/output/…` screenshots, and any
- * mounted path it read through `TASK_BOARD_COMMENT_LIST` and wrote back.
+ * A body a run wrote, made renderable: its `org/output/…` screenshots, any
+ * mounted path it read through `TASK_BOARD_COMMENT_LIST` and wrote back, and
+ * screenshots it saved through the hidden mounts.
  */
 function bodyFromRun(body: string, threadId: string, orgSlug: string): string {
   return sandboxPathsAsUploads(
