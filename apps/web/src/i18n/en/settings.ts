@@ -863,7 +863,7 @@ export const settings = {
   "settings.sandbox.title": "Sandbox",
   "settings.sandbox.setupScriptTitle": "Run the repository's setup script",
   "settings.sandbox.setupScriptDescription":
-    "Before installing dependencies, a sandbox runs decocms.setup.sh from the repository root, with the project's environment variables in scope. For repositories that must write a credential file \u2014 a private registry's .npmrc \u2014 before any package manager can resolve. The script runs on every boot, so it should be safe to repeat.",
+    "The sandbox runs decocms.setup.sh from the repository root before installing dependencies, with the project's environment variables available. Use it when the repository has to create a credential file \u2014 a private registry's .npmrc, say \u2014 that the package manager needs before it can download anything. The script runs on every boot, so it has to survive running again.",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

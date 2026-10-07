@@ -893,7 +893,7 @@ export const settings = {
   "settings.sandbox.setupScriptTitle":
     "Rodar o script de setup do reposit\u00f3rio",
   "settings.sandbox.setupScriptDescription":
-    "Antes de instalar as depend\u00eancias, o sandbox roda o decocms.setup.sh da raiz do reposit\u00f3rio, com as vari\u00e1veis de ambiente do projeto no escopo. Para reposit\u00f3rios que precisam escrever um arquivo de credencial \u2014 o .npmrc de um registry privado \u2014 antes de qualquer gerenciador de pacotes conseguir resolver. O script roda em todo boot, ent\u00e3o precisa ser seguro repetir.",
+    "O sandbox roda o decocms.setup.sh da raiz do reposit\u00f3rio antes de instalar as depend\u00eancias, com as vari\u00e1veis de ambiente do projeto dispon\u00edveis. Use quando o reposit\u00f3rio precisa criar um arquivo de credencial \u2014 o .npmrc de um registry privado, por exemplo \u2014 sem o qual o gerenciador de pacotes n\u00e3o consegue baixar nada. O script roda a cada boot do sandbox, ent\u00e3o ele precisa aguentar rodar de novo sem quebrar.",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
