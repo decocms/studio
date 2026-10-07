@@ -40,7 +40,12 @@ export const SETTINGS_DESTINATION = "settings";
 
 /** The display order `useNavDestinations` maps over. The keyed record below is
  *  exhaustive over it, so the two cannot drift. */
-export const NAV_DESTINATION_KEYS = ["overview", "tasks", "agents", "files"] as const;
+export const NAV_DESTINATION_KEYS = [
+  "overview",
+  "tasks",
+  "agents",
+  "files",
+] as const;
 
 type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
 
