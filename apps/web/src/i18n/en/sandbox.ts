@@ -526,7 +526,6 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Collapse to panel",
   "sandbox.postBoard.collapseLane": "Collapse {lane}",
   "sandbox.postBoard.delete": "Delete",
-  "sandbox.postBoard.deleteIdea": "Delete idea",
   "sandbox.postBoard.emptyDescription":
     "Generate a few ideas and shape them into published posts.",
   "sandbox.postBoard.emptyTitle": "No posts yet",
@@ -542,8 +541,6 @@ export const sandbox = {
   "sandbox.postBoard.ideaNoPillar": "Any pillar",
   "sandbox.postBoard.ideaPillarLabel": "Pillar",
   "sandbox.postBoard.ideasAdded": "Added {count} idea(s)",
-  "sandbox.postBoard.ideasEmpty":
-    "No ideas yet. Generate a few, or write one straight into a post.",
   "sandbox.postBoard.ideasFailed": "Could not generate ideas",
   "sandbox.postBoard.ideasTray": "Ideas",
   "sandbox.postBoard.laneEmpty": "Nothing here yet",
@@ -579,11 +576,9 @@ export const sandbox = {
   "sandbox.postBoard.readyToSchedule": "Ready to schedule",
   "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
   "sandbox.postBoard.untitled": "Untitled post",
-  "sandbox.postBoard.untitledIdea": "Untitled idea",
   "sandbox.postBoard.usesCredits": "Uses AI credits",
   "sandbox.postBoard.viewBoard": "Board",
   "sandbox.postBoard.viewList": "List",
-  "sandbox.postBoard.writeFromIdea": "Write a post",
   "sandbox.postCalendar.couldNotCreate": "Could not create",
   "sandbox.postCalendar.couldNotReschedule": "Could not reschedule",
   "sandbox.postCalendar.createdScheduledPost": "Created scheduled post",
