@@ -1495,6 +1495,7 @@ async function prepareRun(
               ctx,
               harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
+              fenceToken: runFenceToken,
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.
               streamBuffer,
