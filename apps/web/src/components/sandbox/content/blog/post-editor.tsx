@@ -386,6 +386,8 @@ export function PostEditor({
                   meta={meta}
                   decofile={decofile}
                   sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                  previewBaseUrl={previewBaseUrl}
+                  onSaveReferencedBlock={saveReferencedBlock}
                   emptyMessage={t("sandbox.postEditor.noContentYet")}
                 />
               </div>

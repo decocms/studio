@@ -560,7 +560,10 @@ export function CategoryEditor({
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
+                decofile={decofile}
                 sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                previewBaseUrl={previewBaseUrl}
+                onSaveReferencedBlock={saveReferencedBlock}
                 emptyMessage={t("sandbox.categoryEditor.noContentEmpty")}
               />
             </CollapsibleSection>

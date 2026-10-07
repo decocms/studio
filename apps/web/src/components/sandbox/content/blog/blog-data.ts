@@ -1183,13 +1183,49 @@ function humanizeComponentName(name: string): string {
 }
 
 /**
+ * Title, description and icon for one blog block, with the precedence
+ * described in KNOWN_BLOG_BLOCK_CATALOG. Callers that only hold a stored
+ * block's `__resolveType` (the generic block editor) use this to name what is
+ * being edited; the inserter builds its whole list from it.
+ */
+export function blogBlockTypeFor(
+  resolveType: string,
+  meta: LiveMeta,
+): BlogBlockType {
+  const md = resolveBlockSchemaMetadata(resolveType, meta);
+  const name = blockComponentName(resolveType);
+  const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
+  const source = blogBlockSource(resolveType);
+
+  // Site schema label wins, but only a real one — never a path-like default.
+  const mdTitle = humanLabel(md.title);
+  const mdDescription = humanLabel(md.description);
+  const title =
+    (source === "site"
+      ? pick(mdTitle, catalog?.title)
+      : pick(catalog?.title, mdTitle)) ?? humanizeComponentName(name);
+  const description =
+    source === "site"
+      ? pick(mdDescription, catalog?.description)
+      : pick(catalog?.description, mdDescription);
+
+  // Only a site block's `@icon` is trusted: built-in schemas carry no icon hint.
+  const rawIcon = source === "site" ? md.icon : undefined;
+  const iconUrl = rawIcon && isImageUrl(rawIcon) ? rawIcon : undefined;
+  const iconName =
+    iconUrl !== undefined
+      ? (catalog?.iconName ?? FALLBACK_BLOG_BLOCK_ICON)
+      : (pick(rawIcon, catalog?.iconName) ?? FALLBACK_BLOG_BLOCK_ICON);
+
+  return { resolveType, title, description, iconName, iconUrl, source };
+}
+
+/**
  * Discover the content block types a post can contain from the live
  * manifest, with title/icon metadata for the inserter UI. Recognizes both
  * the `deco-cms/blog` app blocks (`blog/sections/blocks/*`) and
  * site-defined blog blocks (`site/sections/Blog/Post/*`), matching the
  * same set that `isBlogPostBlockResolveType` accepts everywhere else.
- *
- * Precedence depends on the block's source — see KNOWN_BLOG_BLOCK_CATALOG.
  */
 export function discoverBlogBlockTypes(
   meta: LiveMeta,
@@ -1205,41 +1241,7 @@ export function discoverBlogBlockTypes(
       }
       if (hideDefaults && blogBlockSource(resolveType) === "app") continue;
       seen.add(resolveType);
-      const md = resolveBlockSchemaMetadata(resolveType, meta);
-      const name = blockComponentName(resolveType);
-      const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
-      const source = blogBlockSource(resolveType);
-
-      // Site schema label wins, but only a real one — never a path-like default.
-      const mdTitle = humanLabel(md.title);
-      const mdDescription = humanLabel(md.description);
-      const title =
-        (source === "site"
-          ? pick(mdTitle, catalog?.title)
-          : pick(catalog?.title, mdTitle)) ?? humanizeComponentName(name);
-      const description =
-        source === "site"
-          ? pick(mdDescription, catalog?.description)
-          : pick(catalog?.description, mdDescription);
-
-      // `@icon` on a site block can be a URL (rendered as <img>) or an
-      // @untitledui/icons component name. App blocks always use the
-      // catalog icon — built-in schemas don't carry useful icon hints.
-      const rawIcon = source === "site" ? md.icon : undefined;
-      const iconUrl = rawIcon && isImageUrl(rawIcon) ? rawIcon : undefined;
-      const iconName =
-        iconUrl !== undefined
-          ? (catalog?.iconName ?? FALLBACK_BLOG_BLOCK_ICON)
-          : (pick(rawIcon, catalog?.iconName) ?? FALLBACK_BLOG_BLOCK_ICON);
-
-      out.push({
-        resolveType,
-        title,
-        description,
-        iconName,
-        iconUrl,
-        source,
-      });
+      out.push(blogBlockTypeFor(resolveType, meta));
     }
   }
   return out.sort((a, b) => a.title.localeCompare(b.title));
