@@ -1593,6 +1593,45 @@ export function ActiveTaskProvider({
         reportHostedLegacyDispatchBlocked();
         return;
       }
+      // Claude Code cannot take an injected tool result: the answer is sent
+      // as the next message and the server resolves the tool part.
+      if (
+        action.kind === "toolOutput" &&
+        activeTask?.harness_id === "claude-code"
+      ) {
+        const { response } = (action.output ?? {}) as { response?: unknown };
+        await conn.submit(
+          {
+            kind: "message",
+            message: {
+              id: crypto.randomUUID(),
+              role: "user",
+              parts: [
+                {
+                  type: "text",
+                  text:
+                    typeof response === "string"
+                      ? response
+                      : JSON.stringify(action.output),
+                },
+              ],
+              metadata: {
+                created_at: new Date().toISOString(),
+                user: {
+                  avatar: user?.image ?? undefined,
+                  name: user?.name ?? "you",
+                },
+                toolOutput: {
+                  toolCallId: action.toolCallId,
+                  output: action.output,
+                },
+              },
+            },
+          },
+          opts,
+        );
+        return;
+      }
       await conn.submit(action, opts);
     },
     removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
