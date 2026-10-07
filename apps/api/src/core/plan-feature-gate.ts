@@ -31,6 +31,9 @@ export type PlanFeature =
   | "model_choice"
   | "diagnostic"
   | "diagnostic_enriched"
+  /** Per-org, not a plan surface: may move to a paid plan billed on deco's
+   *  invoice instead of Stripe (`AI_PLAN_INVOICE_UPGRADE`). */
+  | "invoice_upgrade"
   /** May buy AI credits on top of the allowance — every plan, Free included.
    *  What it buys is the wallet, a second pool: more work, never a bigger
    *  allowance. `isUsageBlocked` is what lets that wallet outlive a full

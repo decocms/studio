@@ -337,6 +337,7 @@ export const settings = {
   "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
   "settings.nav.skills": "Skills",
+  "settings.nav.memory": "Memória",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
   "settings.nav.security": "Segurança",
@@ -435,6 +436,38 @@ export const settings = {
   "settings.skills.errorDescription":
     "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
   "settings.skills.retry": "Tentar novamente",
+  "settings.memory.pageTitle": "Memória",
+  "settings.memory.tabOrg": "Organização",
+  "settings.memory.tabUser": "Só você",
+  "settings.memory.orgHeading": "Compartilhada com todo mundo em {org}",
+  "settings.memory.orgDescription":
+    "O Deco lê isto no começo de cada chat e acrescenta o que aprende. Corrija o que estiver errado ou desatualizado.",
+  "settings.memory.userHeading": "Sua memória pessoal",
+  "settings.memory.userDescription":
+    "Carregada só nos seus chats. Boa para como você gosta de trabalhar, o que é seu e o que pular.",
+  "settings.memory.orgPlaceholder":
+    "Fatos que todos os chats devem saber. Por exemplo: a gente sobe na quinta, preços em BRL, o tom da marca é informal.",
+  "settings.memory.userPlaceholder":
+    "Coisas que o Deco deve lembrar sobre você. Por exemplo: responda em português, cuido do checkout, resumos curtos.",
+  "settings.memory.saving": "Salvando…",
+  "settings.memory.saved": "Salvo",
+  "settings.memory.notSaved": "Não salvo",
+  "settings.memory.saveError":
+    "Não deu para salvar. Continue digitando para tentar de novo.",
+  "settings.memory.readOnly": "Você pode ler esta memória, mas não alterá-la.",
+  "settings.memory.updated": "Atualizada {time}",
+  "settings.memory.notStarted": "Nada lembrado ainda",
+  "settings.memory.conflict": "Esta memória mudou enquanto você editava.",
+  "settings.memory.loadLatest": "Carregar a mais recente",
+  "settings.memory.keepMine": "Manter a minha",
+  "settings.memory.budget": "{percent}% do que os chats leem",
+  "settings.memory.budgetOver": "Os chats só leem o começo",
+  "settings.memory.budgetHint":
+    "Os chats carregam os primeiros 16.000 caracteres. Mantenha isto como um índice curto e leve os detalhes para notas separadas.",
+  "settings.memory.errorTitle": "Não deu para carregar a memória",
+  "settings.memory.errorDescription":
+    "Não deu para carregar os arquivos da organização. Talvez você não tenha acesso a eles.",
+  "settings.memory.retry": "Tentar novamente",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",
@@ -660,6 +693,12 @@ export const settings = {
     "Para grandes times com contrato próprio",
   "settings.plans.custom.cta": "Fale com a gente",
   "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
+  "settings.plans.limitReached": "Você atingiu o seu limite de uso de AI",
+  "settings.plans.invoice.cta": "Adicionar à minha fatura",
+  "settings.plans.invoice.confirm":
+    "O plano {plan} será adicionado à sua próxima fatura. Mudar agora?",
+  "settings.plans.invoice.cancel": "Cancelar",
+  "settings.plans.invoice.switch": "Mudar de plano",
   "settings.paywall.bullets.kanban.1":
     "Agentes que fazem o trabalho e movem os cards",
   "settings.paywall.bullets.kanban.2":
@@ -816,6 +855,7 @@ export const settings = {
   "settings.taskPrompt.saved": "System prompt salvo",
   "settings.taskPrompt.failed":
     "N\u00e3o foi poss\u00edvel salvar o system prompt",
+  "settings.taskPrompt.skillsLabel": "Skills em todas as colunas",
   "settings.agentTools.title": "Ferramentas do agente",
   "settings.agentTools.description":
     "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",

@@ -479,6 +479,8 @@ export const KEYS = {
   // Automations (scoped by organization, optionally by project)
   taskBoardPrompts: (organizationId: string) =>
     ["task-board-prompts", organizationId] as const,
+  taskBoardColumnAutomations: (organizationId: string) =>
+    ["task-board-column-automations", organizationId] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>
@@ -539,6 +541,8 @@ export const KEYS = {
     ["org-fs", orgId, volume, "usage"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
+  orgFsText: (orgId: string, volume: string, path: string, marker: string) =>
+    ["org-fs", orgId, volume, "text", path, marker] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
 
   // The signed-in user's stored profile pictures (instance-level, org-free).

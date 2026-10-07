@@ -9,6 +9,12 @@ import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 import { invalidateOrgFeaturesEverywhere } from "../../billing/plan-cache-broadcast";
+import {
+  gatewayAdminConfigured,
+  setGatewayOrgPlan,
+} from "../../billing/gateway-admin";
+import { getSettings } from "../../settings";
+import { captureOrgEvent } from "@/posthog";
 
 const planSchema = z.object({
   id: z.string(),
@@ -98,5 +104,120 @@ export const AI_PLAN_SET = defineTool({
     // replica the next request happened to reach.
     invalidateOrgFeaturesEverywhere(org.id);
     return { plan: result.plan, features: result.features };
+  },
+});
+
+/**
+ * Why an invoice upgrade must be refused, or null when it may go ahead.
+ *
+ * Every unknown refuses: this grants a paid plan with no payment, so it is the
+ * opposite of the feature gate's fail-open bias. `entitlements` is null when
+ * the gateway was not asked or did not answer.
+ */
+export function invoiceUpgradeRefusal(input: {
+  plansEnabled: boolean;
+  entitlements: {
+    planId: string;
+    features: Record<string, boolean>;
+    /** Null when the gateway could not read usage — which refuses. */
+    usageState: "ok" | "warn" | "exhausted" | null;
+  } | null;
+  subscriptionBound: boolean;
+  targetPlanId: string;
+}): string | null {
+  if (!input.plansEnabled) return "Plans are not enabled on this deployment.";
+  if (!input.entitlements) return "Could not read this organization's plan.";
+  if (input.entitlements.features.invoice_upgrade !== true) {
+    return "This organization cannot add a plan to its invoice.";
+  }
+  // The offer is for an org that has run out, not a standing self-serve
+  // upgrade path around Stripe.
+  if (input.entitlements.usageState !== "exhausted") {
+    return "Invoice upgrades open once this organization's AI usage limit is reached.";
+  }
+  // A Stripe subscription owns this org's plan; a second, invoiced one would
+  // be overwritten by the next webhook or billed twice.
+  if (input.subscriptionBound) {
+    return "This organization has an active subscription — change plans through billing.";
+  }
+  if (input.entitlements.planId === input.targetPlanId) {
+    return "This organization is already on that plan.";
+  }
+  return null;
+}
+
+/**
+ * Move a flagged org (`invoice_upgrade`) onto a paid plan now and bill it on
+ * the org's next invoice, outside Stripe. deco finance learns of it from the
+ * `plan_invoice_upgrade` event.
+ *
+ * Not `requiresFeature`: that gate fails OPEN when the gateway cannot answer,
+ * which would hand out a paid plan. The flag is read fresh, past the gate's
+ * cache, and anything short of a `true` refuses.
+ */
+export const AI_PLAN_INVOICE_UPGRADE = defineTool({
+  name: "AI_PLAN_INVOICE_UPGRADE",
+  description:
+    "Move the organization to a paid plan now, billed on its next deco invoice. Only for organizations deco enabled for invoice billing.",
+  inputSchema: z.object({ planId: z.enum(["starter", "business"]) }),
+  outputSchema: z.object({ planId: z.string() }),
+  handler: async (input, ctx) => {
+    requireAuth(ctx);
+    const org = requireOrganization(ctx);
+    await ctx.access.check();
+
+    const userId = getUserId(ctx);
+    if (!userId) throw new Error("Unable to determine user ID");
+
+    const plansEnabled = getSettings().plansEnabled && gatewayAdminConfigured();
+    const billing = await ctx.storage.organizationBilling.getBilling(org.id);
+    const adapter = getProviders().deco;
+    let entitlements: {
+      planId: string;
+      features: Record<string, boolean>;
+      usageState: "ok" | "warn" | "exhausted" | null;
+    } | null = null;
+    if (plansEnabled && adapter?.getEntitlements) {
+      const read = await adapter.getEntitlements(
+        await mintGatewayJwt(userId),
+        org.id,
+      );
+      if (read.features && typeof read.features === "object") {
+        entitlements = {
+          planId: read.plan.id,
+          features: read.features,
+          usageState: read.usage?.state ?? null,
+        };
+      }
+    }
+    const refusal = invoiceUpgradeRefusal({
+      plansEnabled,
+      entitlements,
+      subscriptionBound: !!billing?.stripeSubscriptionId,
+      targetPlanId: input.planId,
+    });
+    if (refusal || !entitlements) {
+      throw new Error(refusal ?? "Could not read this organization's plan.");
+    }
+
+    const by = ctx.auth.user?.email ?? userId;
+    await setGatewayOrgPlan({
+      organizationId: org.id,
+      planId: input.planId,
+      note: `invoice upgrade by ${by} at ${new Date().toISOString()} — bill on next invoice`,
+    });
+    invalidateOrgFeaturesEverywhere(org.id);
+    captureOrgEvent({
+      event: "plan_invoice_upgrade",
+      organizationId: org.id,
+      userId,
+      properties: {
+        plan_id: input.planId,
+        previous_plan_id: entitlements.planId,
+        org_slug: org.slug,
+        org_name: org.name,
+      },
+    });
+    return { planId: input.planId };
   },
 });

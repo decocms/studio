@@ -15,7 +15,6 @@ import {
   getUserId,
   type StudioContext,
 } from "@/core/studio-context";
-import { syncJiraChatAgent } from "@/jira/chat-agent";
 import { JiraClient, normalizeSiteUrl } from "@/jira/client";
 import type { OrgJiraIntegration } from "@/storage/types";
 
@@ -164,11 +163,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       enabled,
       createdBy: existing?.createdBy ?? userId,
     });
-    await syncJiraChatAgent(ctx.storage.virtualMcps, {
-      organizationId: organization.id,
-      userId,
-      enabled: integration.enabled,
-    });
     return { integration: toOutput(integration) };
   },
 });
@@ -183,11 +177,6 @@ export const JIRA_INTEGRATION_DELETE = defineTool({
     await ctx.access.check();
     const organization = requireOrganization(ctx);
     const deleted = await ctx.storage.jiraIntegrations.delete(organization.id);
-    await syncJiraChatAgent(ctx.storage.virtualMcps, {
-      organizationId: organization.id,
-      userId: getUserId(ctx) ?? "",
-      enabled: false,
-    });
     return { deleted };
   },
 });

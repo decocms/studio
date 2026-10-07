@@ -629,11 +629,19 @@ export interface StudioToolIO {
   };
   TASK_BOARD_PROMPT_LIST: {
     input: { [x: string]: never };
-    output: { prompts: { columnKey: string | null; prompt: string }[] };
+    output: {
+      prompts: { columnKey: string | null; prompt: string; skills: string[] }[];
+    };
   };
   TASK_BOARD_PROMPT_UPSERT: {
-    input: { prompt: string; columnKey?: string | null | undefined };
-    output: { prompt: { columnKey: string | null; prompt: string } };
+    input: {
+      prompt: string;
+      columnKey?: string | null | undefined;
+      skills?: string[] | undefined;
+    };
+    output: {
+      prompt: { columnKey: string | null; prompt: string; skills: string[] };
+    };
   };
   TASK_BOARD_PROMPT_DELETE: {
     input: { columnKey?: string | null | undefined };
@@ -5848,6 +5856,10 @@ export interface StudioToolIO {
       plan: { id: string; name: string };
       features: Record<string, boolean>;
     };
+  };
+  AI_PLAN_INVOICE_UPGRADE: {
+    input: { planId: "starter" | "business" };
+    output: { planId: string };
   };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };

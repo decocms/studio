@@ -9,7 +9,6 @@ on:
     paths-ignore:
       - "apps/api/package.json"
       - ".github/**"
-      - "apps/docs/**"
       - "**/*.md"
   pull_request:
     # Multi-pod tests are slow (~7-10 min cold image build + serialized

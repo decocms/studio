@@ -177,7 +177,7 @@ the request.
 ## Related documentation
 
 - [Studio API](../api/README.md)
-- [Studio documentation site](../docs/README.md)
+- [Studio documentation](https://docs.decocms.com/studio)
 - [Repository guidelines](../../AGENTS.md)
 - [Testing strategy](../../TESTING.md)
 - [Project overview](../../README.md)

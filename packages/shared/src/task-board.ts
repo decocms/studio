@@ -58,9 +58,9 @@ export function isReportsTask(item: { createdBy: string }): boolean {
  * — and one run after the implementer has that. Code review is a part of the
  * job, not a job.
  *
- * Review is SINGLE-PASS: the reviewer runs at most once per delegation, in a
- * fixed order — review, fix what it found on the PR's own branch, push, then
- * exercise the change on the preview of THAT push, then decide. A
+ * Review is SINGLE-PASS: the reviewer runs at most once per delegation. How it
+ * reviews is the In Progress lane's editable rule; what it may never do —
+ * approve a change it did not exercise — is fixed in its prompt. A
  * `request_changes` verdict hands the card to a human instead of bouncing it
  * back to the Super Agent: the reviewer → fix → re-review loop had no natural
  * fixed point (one live board logged 179 change-requests against 68 approvals,
@@ -504,6 +504,9 @@ export function outstandingReviewFeedback(
  * react-query cache from it, so the board is real-time with no polling.
  */
 export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
+
+/** Org-scoped SSE event: a board prompt scope or column automation changed; `data` is `{ columnKey }`. */
+export const TASK_BOARD_RULES_UPDATED_EVENT = "task-board.rules.updated";
 
 /**
  * Org-scoped SSE event pushed on `sseHub` whenever a task board item is deleted.

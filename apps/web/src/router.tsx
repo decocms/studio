@@ -1567,6 +1567,18 @@ const settingsSkillsRoute = createRoute({
   ),
 });
 
+const settingsMemoryRoute = createRoute({
+  staticData: { pageTitle: "settings.nav.memory" },
+  getParentRoute: () => settingsRoute,
+  path: "/memory",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/memory.tsx"),
+  ),
+  validateSearch: z.lazy(() =>
+    z.object({ scope: z.enum(["user"]).optional() }),
+  ),
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -1579,6 +1591,7 @@ const settingsWithChildren = settingsRoute.addChildren([
   settingsAgentsRoute,
   settingsAutomationsRoute,
   settingsSkillsRoute,
+  settingsMemoryRoute,
   monitoringRoute,
   settingsGeneralRoute,
   settingsConnectRoute,

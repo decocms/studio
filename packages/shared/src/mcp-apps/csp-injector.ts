@@ -73,6 +73,17 @@ function validateDomains(domains: string[] | undefined): string[] {
   return domains.filter((d) => DOMAIN_RE.test(d));
 }
 
+/**
+ * CSP `connect-src` does not treat an `https:` source as covering `wss:` (a
+ * WebSocket to a host listed only as `https://host` is blocked — verified in
+ * Chrome). So for each connect domain also authorize its WebSocket scheme:
+ * `https://host` → `wss://host`, `http://host` → `ws://host`. Originals are kept
+ * first so plain fetch/XHR still match and existing output is unchanged up front.
+ */
+function withWebSocketSchemes(domains: string[]): string[] {
+  return [...domains, ...domains.map((d) => d.replace(/^http/, "ws"))];
+}
+
 function buildCSPPolicy(options: CSPInjectorOptions): string {
   if (options.csp) return options.csp;
 
@@ -116,7 +127,7 @@ function buildCSPPolicy(options: CSPInjectorOptions): string {
       : "media-src * data: blob:",
     hasResourceDomains ? `font-src data: ${rd}` : "font-src data:",
     hasConnectDomains
-      ? `connect-src ${connectDomains.join(" ")}`
+      ? `connect-src ${withWebSocketSchemes(connectDomains).join(" ")}`
       : "connect-src 'none'",
     hasFrameDomains
       ? `frame-src ${frameDomains.join(" ")}`
