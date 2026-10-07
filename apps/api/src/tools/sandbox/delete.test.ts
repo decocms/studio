@@ -37,7 +37,7 @@ mock.module("../../sandbox/lifecycle", () => ({
   getAgentSandboxProviderForTeardown: async () => mockRunner,
 }));
 
-const { SANDBOX_DELETE } = await import("./delete");
+const { SANDBOX_DELETE, deleteThreadSandboxes } = await import("./delete");
 
 const BRANCH = "feat/example";
 
@@ -310,5 +310,65 @@ describe("SANDBOX_DELETE", () => {
         ctx,
       ),
     ).rejects.toThrow("User ID required");
+  });
+});
+
+describe("deleteThreadSandboxes", () => {
+  beforeEach(() => {
+    mockDelete.mockReset();
+    mockDelete.mockImplementation(async () => {});
+  });
+
+  it("tears down only the sandboxes keyed to the deleted thread", async () => {
+    const entry = (handle: string) =>
+      ({
+        "agent-sandbox": { ...HOSTED_ENTRY, sandboxHandle: handle },
+      }) as SandboxMap[string][string];
+    const thread = {
+      id: "thr_1",
+      virtual_mcp_id: "vmcp_1",
+      metadata: {
+        sandboxMap: {
+          "owner-1": {
+            "thread:thr_1": entry("own-bare"),
+            "thread:thr_1/conn_1": entry("own-repo"),
+            "thread:thr_10": entry("other-thread"),
+            ephemeral: entry("shared-ephemeral"),
+            "sandbox/thread-thr_0-conn_1": entry("pinned-ref"),
+            "thread:thr_1/conn_2": { "local-api": DESKTOP_ENTRY } as never,
+          },
+        },
+      },
+    };
+    const ctx = makeCtx({ virtualMcp: makeVirtualMcp("org_1", {}) });
+
+    await deleteThreadSandboxes(ctx, thread as never);
+
+    expect(mockDelete.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "own-bare",
+      "own-repo",
+    ]);
+  });
+
+  it("swallows teardown failures", async () => {
+    mockDelete.mockImplementation(async () => {
+      throw new Error("claim gone");
+    });
+    const thread = {
+      id: "thr_1",
+      virtual_mcp_id: "vmcp_1",
+      metadata: {
+        sandboxMap: makeSandboxMap(
+          "owner-1",
+          "thread:thr_1",
+          "agent-sandbox",
+          HOSTED_ENTRY,
+        ),
+      },
+    };
+    const ctx = makeCtx({ virtualMcp: null });
+
+    await deleteThreadSandboxes(ctx, thread as never);
+    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
   });
 });

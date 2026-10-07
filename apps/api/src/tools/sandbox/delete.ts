@@ -1,8 +1,16 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { getUserId, type StudioContext } from "../../core/studio-context";
 import { getAgentSandboxProviderForTeardown } from "../../sandbox/lifecycle";
+import type { Thread } from "../../storage/types";
 import { requireVmEntry } from "./helpers";
-import { AGENT_SANDBOX_KIND, removeSandboxMapEntry } from "./sandbox-map";
+import {
+  AGENT_SANDBOX_KIND,
+  readSandboxMap,
+  removeSandboxMapEntry,
+  resolveVm,
+} from "./sandbox-map";
+import { threadIdFromBranch } from "./thread-repo";
 
 export const SANDBOX_DELETE = defineTool({
   name: "SANDBOX_DELETE",
@@ -78,3 +86,53 @@ export const SANDBOX_DELETE = defineTool({
     return { success: true };
   },
 });
+
+/**
+ * The sandboxes keyed to this thread alone (`thread:<id>[/<conn>]`). The
+ * thread's sandboxMap can also record shared keys (`ephemeral`, a pinned git
+ * ref reused by task re-runs); other threads still run on those.
+ */
+function threadOwnedSandboxes(
+  thread: Pick<Thread, "id" | "metadata">,
+): { userId: string; branch: string; handle: string }[] {
+  const map = readSandboxMap(thread.metadata);
+  return Object.entries(map).flatMap(([userId, branches]) =>
+    Object.keys(branches).flatMap((branch) => {
+      if (threadIdFromBranch(branch) !== thread.id) return [];
+      const entry = resolveVm(map, userId, branch);
+      return entry ? [{ userId, branch, handle: entry.sandboxHandle }] : [];
+    }),
+  );
+}
+
+/** Tear down a deleted thread's own sandboxes. Never throws. */
+export async function deleteThreadSandboxes(
+  ctx: StudioContext,
+  thread: Pick<Thread, "id" | "metadata" | "virtual_mcp_id">,
+): Promise<void> {
+  const owned = threadOwnedSandboxes(thread);
+  if (owned.length === 0) return;
+  const log = (handle: string) => (err: unknown) =>
+    console.error(
+      `[thread-delete] sandbox teardown failed for ${handle}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  try {
+    const runner = await getAgentSandboxProviderForTeardown(ctx);
+    await Promise.all(
+      owned.map(async ({ userId, branch, handle }) => {
+        await removeSandboxMapEntry(
+          ctx.storage.virtualMcps,
+          thread.virtual_mcp_id,
+          getUserId(ctx) ?? userId,
+          userId,
+          branch,
+        ).catch(log(handle));
+        await runner.delete(handle).catch(log(handle));
+      }),
+    );
+  } catch (err) {
+    log(owned.map((s) => s.handle).join(","))(err);
+  }
+}

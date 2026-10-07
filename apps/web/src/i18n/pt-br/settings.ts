@@ -1185,7 +1185,7 @@ export const settings = {
   "settings.infraBilling.tooManySites":
     "Mostrando os primeiros {count} sites. Selecione sites específicos para ver os demais.",
   "settings.infraBilling.multipleTeams":
-    "Plano e faturas são de um único time legado — filtre a seleção para vê-los.",
+    "Estes sites são cobrados por {count} times legados. O plano e as faturas de cada time estão em Faturas.",
   "settings.infraBilling.noTeam":
     "Estes sites não estão vinculados a um time de cobrança legado.",
   "settings.infraBilling.partialTeam":
@@ -1217,7 +1217,7 @@ export const settings = {
   "settings.infraBilling.dataTransfer": "Transferência de dados",
   "settings.infraBilling.dataTransferDescription":
     "Banda entregue pela edge e pela origem.",
-  "settings.infraBilling.noInvoices": "Nenhuma fatura emitida para este site.",
+  "settings.infraBilling.noInvoices": "Nenhuma fatura emitida para este time.",
   "settings.infraBilling.invoiceReference": "Referência",
   "settings.infraBilling.invoiceDue": "Vencimento",
   "settings.infraBilling.invoiceAmount": "Valor",

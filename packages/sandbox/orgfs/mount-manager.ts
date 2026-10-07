@@ -15,9 +15,11 @@
  * valid Studio-pushed config.
  */
 
-import { mkdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, stat } from "node:fs/promises";
 import * as net from "node:net";
 import { join, isAbsolute } from "node:path";
+import { promisify } from "node:util";
 import { safePath } from "./safe-path";
 import { OrgFsClient } from "./client";
 import { createWebdavHandler } from "./webdav";
@@ -136,6 +138,35 @@ export function resolveMountPath(appRoot: string, p: string): string | null {
   return safePath(appRoot, orgRoot, p);
 }
 
+/**
+ * Let the unprivileged daemon add its per-run `org/output` and `org/upload`
+ * links. The pod template relies on `fsGroup` to make the `<appRoot>/org`
+ * emptyDir writable by the sandbox user, but some pods get it as root:root
+ * 0755. The daemon's symlink then fails with EACCES, it carries on without
+ * the link, and runs save their screenshots to `/tmp`, where no card can show
+ * them. As root, this fixes the mode itself: world-writable and sticky like
+ * `/tmp`, so the daemon can add its links but not remove the mount points.
+ * A mounter that isn't root already runs as the user that owns the dir.
+ */
+export async function ensureOrgRootWritable(
+  orgRoot: string,
+  log: (msg: string, err?: unknown) => void,
+  isRoot: boolean = process.getuid?.() === 0,
+): Promise<void> {
+  if (!isRoot) return;
+  try {
+    await mkdir(orgRoot, { recursive: true });
+    const { mode } = await stat(orgRoot);
+    if ((mode & 0o002) !== 0) return;
+    // Not fs.chmod: Bun masks its mode to 0o777, which drops the sticky bit.
+    const opened = (mode & 0o7777) | 0o1777;
+    await promisify(execFile)("chmod", [opened.toString(8), orgRoot]);
+    log(`made ${orgRoot} writable for the sandbox user`);
+  } catch (err) {
+    log(`could not make ${orgRoot} writable for the sandbox user`, err);
+  }
+}
+
 export class MountManager {
   private active: ActiveMount[] = [];
   private config: OrgFsMountConfig | null = null;
@@ -176,6 +207,7 @@ export class MountManager {
       );
       return;
     }
+    await ensureOrgRootWritable(join(appRoot, "org"), this.log);
     await Promise.all(config.mounts.map((m) => this.mountOne(m)));
   }
 

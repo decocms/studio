@@ -1,8 +1,7 @@
 /**
  * Settings > Infra Billing — a port of the deco.cx admin's billing dashboard
  * for orgs that still own legacy sites (`org_sites`). Read-only: usage,
- * plan and issued invoices. Scoped to one site at a time, since Studio's
- * ownership unit is the site slug, not the legacy team.
+ * plan and issued invoices, grouped by legacy team.
  */
 
 import { useState } from "react";
@@ -54,6 +53,12 @@ type UsageRow = {
 
 type MetricKey = keyof Omit<UsageRow, "date">;
 
+type TeamBilling = NonNullable<
+  ReturnType<typeof useInfraBilling>["data"]
+>["teams"][number];
+
+type Invoice = NonNullable<TeamBilling["billing"]>["invoices"][number];
+
 const NUMBER_FMT = new Intl.NumberFormat(undefined, {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -90,6 +95,15 @@ const CURRENCY_FMT = new Intl.NumberFormat("pt-BR", {
  */
 function utcDay(value: string): Date {
   return new Date(`${value.slice(0, 10)}T00:00:00Z`);
+}
+
+function formatDay(value: string): string {
+  return utcDay(value).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 /** The last 12 months, newest first, as "YYYY-MM-01" values. */
@@ -267,11 +281,13 @@ function InfraBillingContent() {
       ? formatBytes
       : (value: number) => NUMBER_FMT.format(value);
 
-  const billing = data?.billing ?? null;
-  /** One boleto in the team's history means boleto is how they pay. */
-  const teamUsesBankSlip = (billing?.invoices ?? []).some(
-    (i) => !!i.bankSlipUrl,
-  );
+  const teams = data?.teams ?? [];
+  const withoutTeam = data?.siteSlugsWithoutTeam ?? [];
+  /** The summary card has room for one team's plan; several are listed under Invoices. */
+  const soleTeam = teams.length === 1 ? teams[0] : undefined;
+  const billing = soleTeam?.billing ?? null;
+  /** Invoice cards name their sites only when there is more than one card. */
+  const showGroupSites = teams.length + (withoutTeam.length > 0 ? 1 : 0) > 1;
 
   const totalPageviews = sum(usage, "pageviews");
   const ratio =
@@ -281,13 +297,15 @@ function InfraBillingContent() {
       ? ratio.toFixed(ratio < 10 ? 1 : 0)
       : "—";
 
-  /** Null billing has four causes; only one of them is the user's to fix. */
-  const billingMessage = {
-    multiple_teams: t("settings.infraBilling.multipleTeams"),
-    no_team: t("settings.infraBilling.noTeam"),
-    partial_team: t("settings.infraBilling.partialTeam"),
-    unavailable: t("settings.infraBilling.billingUnavailable"),
-  }[data?.billingUnavailableReason ?? "multiple_teams"];
+  const billingMessage = data?.billingUnavailable
+    ? t("settings.infraBilling.billingUnavailable")
+    : teams.length > 1
+      ? t("settings.infraBilling.multipleTeams", {
+          count: String(teams.length),
+        })
+      : soleTeam
+        ? teamUnavailableMessage(soleTeam, t)
+        : t("settings.infraBilling.noTeam");
 
   return (
     <div className="flex flex-col gap-8">
@@ -349,12 +367,12 @@ function InfraBillingContent() {
                       {t("settings.infraBilling.detailsTitle")}
                     </span>
                   </div>
-                  {billing?.canManageSubscription && (
+                  {soleTeam && billing?.canManageSubscription && (
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={portal.isPending}
-                      onClick={() => portal.mutate(selected)}
+                      onClick={() => portal.mutate(soleTeam.siteSlugs)}
                     >
                       {t("settings.infraBilling.manageButton")}
                     </Button>
@@ -389,14 +407,7 @@ function InfraBillingContent() {
                         </span>
                         <span className="font-medium tabular-nums">
                           {billing.nextBillingDate
-                            ? new Date(
-                                `${billing.nextBillingDate}T00:00:00Z`,
-                              ).toLocaleDateString(undefined, {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                                timeZone: "UTC",
-                              })
+                            ? formatDay(billing.nextBillingDate)
                             : "—"}
                         </span>
                       </div>
@@ -477,105 +488,182 @@ function InfraBillingContent() {
           </SettingsSection>
 
           <SettingsSection title={t("settings.infraBilling.invoicesTitle")}>
-            <Card className="mx-4 overflow-x-auto">
+            <div className="flex flex-col gap-4 px-4">
               {!data ? (
-                <Skeleton className="m-4 h-24" />
-              ) : (billing?.invoices.length ?? 0) === 0 ? (
-                <p className="p-4 text-sm text-muted-foreground">
-                  {billing
-                    ? t("settings.infraBilling.noInvoices")
-                    : billingMessage}
-                </p>
+                <Card>
+                  <Skeleton className="m-4 h-24" />
+                </Card>
+              ) : data.billingUnavailable ? (
+                <Card className="p-4 text-sm text-muted-foreground">
+                  {t("settings.infraBilling.billingUnavailable")}
+                </Card>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>
-                        {t("settings.infraBilling.invoiceReference")}
-                      </TableHead>
-                      <TableHead>
-                        {t("settings.infraBilling.invoiceDue")}
-                      </TableHead>
-                      <TableHead>
-                        {t("settings.infraBilling.invoiceAmount")}
-                      </TableHead>
-                      <TableHead>
-                        {t("settings.infraBilling.invoiceStatus")}
-                      </TableHead>
-                      <TableHead>
-                        {t("settings.infraBilling.invoiceDocuments")}
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(billing?.invoices ?? []).map((invoice) => (
-                      <TableRow key={invoice.id}>
-                        <TableCell>
-                          {invoice.referenceMonth
-                            ? utcDay(invoice.referenceMonth).toLocaleDateString(
-                                undefined,
-                                {
-                                  month: "long",
-                                  year: "numeric",
-                                  timeZone: "UTC",
-                                },
-                              )
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {invoice.dueDate
-                            ? utcDay(invoice.dueDate).toLocaleDateString(
-                                undefined,
-                                {
-                                  day: "numeric",
-                                  month: "short",
-                                  year: "numeric",
-                                  timeZone: "UTC",
-                                },
-                              )
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="tabular-nums">
-                          {CURRENCY_FMT.format(invoice.value)}
-                        </TableCell>
-                        <TableCell>
-                          <InvoiceStatus status={invoice.status} />
-                        </TableCell>
-                        <TableCell className="flex gap-2">
-                          {invoice.nfUrl && (
-                            <DocumentLink
-                              href={invoice.nfUrl}
-                              label={t("settings.infraBilling.invoiceNf")}
-                            />
-                          )}
-                          {invoice.bankSlipUrl && (
-                            <DocumentLink
-                              href={invoice.bankSlipUrl}
-                              label={t("settings.infraBilling.invoiceBankSlip")}
-                            />
-                          )}
-                          {!invoice.bankSlipUrl &&
-                            !teamUsesBankSlip &&
-                            invoice.nfUrl && (
-                              <DocumentLink
-                                href={BANK_TRANSFER_PDF_URL}
-                                label={t(
-                                  "settings.infraBilling.invoiceBankTransfer",
-                                )}
-                              />
-                            )}
-                          {!invoice.nfUrl && !invoice.bankSlipUrl && "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <>
+                  {teams.map((team) => (
+                    <TeamInvoices
+                      key={team.siteSlugs.join(",")}
+                      team={team}
+                      showSites={showGroupSites}
+                    />
+                  ))}
+                  {withoutTeam.length > 0 && (
+                    <Card className="flex flex-col gap-1 p-4">
+                      {showGroupSites && (
+                        <span className="text-sm font-medium">
+                          {withoutTeam.join(", ")}
+                        </span>
+                      )}
+                      <p className="text-sm text-muted-foreground">
+                        {t("settings.infraBilling.noTeam")}
+                      </p>
+                    </Card>
+                  )}
+                </>
               )}
-            </Card>
+            </div>
           </SettingsSection>
         </>
       )}
     </div>
+  );
+}
+
+function teamUnavailableMessage(
+  team: TeamBilling,
+  t: ReturnType<typeof useT>,
+): string {
+  return team.unavailableReason === "partial_team"
+    ? t("settings.infraBilling.partialTeam")
+    : t("settings.infraBilling.billingUnavailable");
+}
+
+/** One legacy team's plan and invoices. */
+function TeamInvoices({
+  team,
+  showSites,
+}: {
+  team: TeamBilling;
+  showSites: boolean;
+}) {
+  const t = useT();
+  const portal = useInfraBillingPortal();
+  const billing = team.billing;
+
+  return (
+    <Card className="gap-0 overflow-x-auto">
+      {showSites && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+          <span className="text-sm font-medium">
+            {team.siteSlugs.join(", ")}
+          </span>
+          {billing && (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <Badge
+                variant={billing.planType === "free" ? "secondary" : "success"}
+              >
+                {t(`settings.infraBilling.plan.${billing.planType}`)}
+              </Badge>
+              {billing.nextBillingDate && (
+                <span className="flex gap-1.5">
+                  <span className="text-muted-foreground">
+                    {t("settings.infraBilling.nextBilling")}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {formatDay(billing.nextBillingDate)}
+                  </span>
+                </span>
+              )}
+              {billing.canManageSubscription && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={portal.isPending}
+                  onClick={() => portal.mutate(team.siteSlugs)}
+                >
+                  {t("settings.infraBilling.manageButton")}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {!billing ? (
+        <p className="p-4 text-sm text-muted-foreground">
+          {teamUnavailableMessage(team, t)}
+        </p>
+      ) : billing.invoices.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">
+          {t("settings.infraBilling.noInvoices")}
+        </p>
+      ) : (
+        <InvoiceTable invoices={billing.invoices} />
+      )}
+    </Card>
+  );
+}
+
+function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
+  const t = useT();
+  /** One boleto in the team's history means boleto is how they pay. */
+  const teamUsesBankSlip = invoices.some((i) => !!i.bankSlipUrl);
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t("settings.infraBilling.invoiceReference")}</TableHead>
+          <TableHead>{t("settings.infraBilling.invoiceDue")}</TableHead>
+          <TableHead>{t("settings.infraBilling.invoiceAmount")}</TableHead>
+          <TableHead>{t("settings.infraBilling.invoiceStatus")}</TableHead>
+          <TableHead>{t("settings.infraBilling.invoiceDocuments")}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {invoices.map((invoice) => (
+          <TableRow key={invoice.id}>
+            <TableCell>
+              {invoice.referenceMonth
+                ? utcDay(invoice.referenceMonth).toLocaleDateString(undefined, {
+                    month: "long",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  })
+                : "—"}
+            </TableCell>
+            <TableCell>
+              {invoice.dueDate ? formatDay(invoice.dueDate) : "—"}
+            </TableCell>
+            <TableCell className="tabular-nums">
+              {CURRENCY_FMT.format(invoice.value)}
+            </TableCell>
+            <TableCell>
+              <InvoiceStatus status={invoice.status} />
+            </TableCell>
+            <TableCell className="flex gap-2">
+              {invoice.nfUrl && (
+                <DocumentLink
+                  href={invoice.nfUrl}
+                  label={t("settings.infraBilling.invoiceNf")}
+                />
+              )}
+              {invoice.bankSlipUrl && (
+                <DocumentLink
+                  href={invoice.bankSlipUrl}
+                  label={t("settings.infraBilling.invoiceBankSlip")}
+                />
+              )}
+              {!invoice.bankSlipUrl && !teamUsesBankSlip && invoice.nfUrl && (
+                <DocumentLink
+                  href={BANK_TRANSFER_PDF_URL}
+                  label={t("settings.infraBilling.invoiceBankTransfer")}
+                />
+              )}
+              {!invoice.nfUrl && !invoice.bankSlipUrl && "—"}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 

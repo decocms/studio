@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   appOpenKey,
+  dropRecentApp,
   openAppOf,
   pushAppOpen,
   pushRecentApp,
@@ -55,6 +56,27 @@ describe("pushRecentApp", () => {
   });
 });
 
+describe("dropRecentApp", () => {
+  test("closes only that app in that project", () => {
+    const list = [
+      entry("hosting", "p1"),
+      entry("hosting", "p2"),
+      entry("assets", "p1"),
+    ];
+    expect(dropRecentApp(list, { app: "hosting", projectId: "p1" })).toEqual([
+      entry("hosting", "p2"),
+      entry("assets", "p1"),
+    ]);
+  });
+
+  test("closing an app that is not there changes nothing", () => {
+    const list = [entry("hosting", "p1")];
+    expect(dropRecentApp(list, { app: "assets", projectId: "p1" })).toEqual(
+      list,
+    );
+  });
+});
+
 describe("pushAppOpen", () => {
   test("newest first, one entry per app and project", () => {
     const a = appOpenKey("p1", "hosting");
@@ -80,6 +102,8 @@ describe("pushAppOpen", () => {
 describe("openAppOf", () => {
   const isApp = (app: string) =>
     ["site-editor", "assets", "reports"].includes(app);
+  const connectionApp = (id: string, toolName: string) =>
+    `app:${id}:${toolName}`;
   const match = (
     staticData: {
       mainView?: string;
@@ -94,23 +118,14 @@ describe("openAppOf", () => {
       openAppOf(
         [match({}), match({ mainView: "assets" }, { agentId: "p1" })],
         isApp,
+        connectionApp,
       ),
     ).toEqual({ app: "assets", projectId: "p1" });
   });
 
-  test("a project's Site Editor tabs keep their own views, as before", () => {
-    expect(
-      openAppOf(
-        [
-          match(
-            { mainView: "site-editor", siteEditorView: "preview" },
-            { agentId: "p1" },
-          ),
-        ],
-        isApp,
-      ),
-    ).toEqual({ app: "site-editor", projectId: "p1" });
+  test("a project's Site Editor tabs are all the Site Editor", () => {
     for (const [mainView, siteEditorView] of [
+      ["site-editor", "preview"],
       ["content", "content"],
       ["code", "code"],
     ] as const) {
@@ -118,9 +133,29 @@ describe("openAppOf", () => {
         openAppOf(
           [match({ mainView, siteEditorView }, { agentId: "p1" })],
           isApp,
+          connectionApp,
         ),
-      ).toBeNull();
+      ).toEqual({ app: "site-editor", projectId: "p1" });
     }
+  });
+
+  test("a connection's app is that pinned view in that project", () => {
+    expect(
+      openAppOf(
+        [
+          match(
+            { mainView: "app" },
+            { agentId: "p1", connectionId: "conn_1", toolName: "open" },
+          ),
+        ],
+        isApp,
+        connectionApp,
+      ),
+    ).toEqual({
+      app: "app:conn_1:open",
+      projectId: "p1",
+      connection: { id: "conn_1", toolName: "open" },
+    });
   });
 
   test("every account-less /site-editor tab is the Site Editor", () => {
@@ -130,7 +165,11 @@ describe("openAppOf", () => {
       ["code", "code"],
     ] as const) {
       expect(
-        openAppOf([match({ mainView, siteEditorView, local: true })], isApp),
+        openAppOf(
+          [match({ mainView, siteEditorView, local: true })],
+          isApp,
+          connectionApp,
+        ),
       ).toEqual({ app: "site-editor", projectId: null });
     }
   });
@@ -147,18 +186,25 @@ describe("openAppOf", () => {
           }),
         ],
         isApp,
+        connectionApp,
       ),
     ).toEqual({ app: "site-editor", projectId: null });
   });
 
   test("an org-level route with no project is no open app", () => {
-    expect(openAppOf([match({ mainView: "reports" }, {})], isApp)).toBeNull();
+    expect(
+      openAppOf([match({ mainView: "reports" }, {})], isApp, connectionApp),
+    ).toBeNull();
   });
 
   test("a place, not an app, is no open app", () => {
     expect(
-      openAppOf([match({ mainView: "board" }, { agentId: "p1" })], isApp),
+      openAppOf(
+        [match({ mainView: "board" }, { agentId: "p1" })],
+        isApp,
+        connectionApp,
+      ),
     ).toBeNull();
-    expect(openAppOf([match({})], isApp)).toBeNull();
+    expect(openAppOf([match({})], isApp, connectionApp)).toBeNull();
   });
 });

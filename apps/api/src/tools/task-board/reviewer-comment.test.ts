@@ -4,6 +4,7 @@ import {
   nextGapAfterMirror,
   reviewerCommentGap,
   verdictCommentBody,
+  verdictMirrorAudience,
 } from "./reviewer-comment";
 
 const THREAD = "thrd_reviewer";
@@ -17,16 +18,27 @@ describe("reviewerCommentGap", () => {
   });
 
   it("does not credit another run's comment", () => {
-    const comments = [{ threadId: "thrd_other", body: RECORD }];
+    const comments = [
+      { threadId: "thrd_other", audience: "internal" as const, body: RECORD },
+    ];
     expect(reviewerCommentGap(comments, THREAD)).toBe("missing");
     // ...nor a human's.
-    expect(reviewerCommentGap([{ threadId: null, body: RECORD }], THREAD)).toBe(
-      "missing",
-    );
+    expect(
+      reviewerCommentGap(
+        [{ threadId: null, audience: "human" as const, body: RECORD }],
+        THREAD,
+      ),
+    ).toBe("missing");
   });
 
   it("does not credit a progress note", () => {
-    const comments = [{ threadId: THREAD, body: "starting review" }];
+    const comments = [
+      {
+        threadId: THREAD,
+        audience: "internal" as const,
+        body: "starting review",
+      },
+    ];
     expect(reviewerCommentGap(comments, THREAD)).toBe("missing");
   });
 
@@ -35,7 +47,9 @@ describe("reviewerCommentGap", () => {
   // so prose alone is now a gap — the sentinel is how a backend-only change says
   // there was nothing to show.
   it("requires the visual change even from a code-only record", () => {
-    const comments = [{ threadId: THREAD, body: RECORD }];
+    const comments = [
+      { threadId: THREAD, audience: "internal" as const, body: RECORD },
+    ];
     expect(reviewerCommentGap(comments, THREAD)).toBe("no_screenshots");
   });
 
@@ -48,48 +62,146 @@ describe("reviewerCommentGap", () => {
     ]) {
       expect(
         reviewerCommentGap(
-          [{ threadId: THREAD, body: `${RECORD} ${tail}` }],
+          [
+            {
+              threadId: THREAD,
+              audience: "human" as const,
+              body: `${RECORD} ${tail}`,
+            },
+          ],
           THREAD,
         ),
       ).toBe("no_screenshots");
     }
   });
 
-  it("accepts a record with an embedded screenshot", () => {
+  it("accepts screenshots in a comment for the person reviewing the task", () => {
     const comments = [
+      { threadId: THREAD, audience: "internal" as const, body: RECORD },
       {
         threadId: THREAD,
-        body: `${RECORD}\n| ![before](/api/o/fs/outputs/read?path=a) |`,
+        audience: "human" as const,
+        body: "Approved.\n| ![before](/api/o/fs/outputs/read?path=a) |",
       },
     ];
     expect(reviewerCommentGap(comments, THREAD)).toBeNull();
   });
 
+  it("does not count screenshots only the agents see", () => {
+    const comments = [
+      {
+        threadId: THREAD,
+        audience: "internal" as const,
+        body: `${RECORD}\n| ![before](/api/o/fs/outputs/read?path=a) |`,
+      },
+    ];
+    expect(reviewerCommentGap(comments, THREAD)).toBe("no_screenshots");
+  });
+
   it("accepts a record that declares the change free of visual surface", () => {
     const body = `${RECORD}\n${NO_VISUAL_SURFACE} — migration only.`;
-    expect(reviewerCommentGap([{ threadId: THREAD, body }], THREAD)).toBeNull();
+    expect(
+      reviewerCommentGap(
+        [{ threadId: THREAD, audience: "internal", body }],
+        THREAD,
+      ),
+    ).toBeNull();
   });
 });
 
 describe("nextGapAfterMirror", () => {
+  const internal = (body: string) => ({ audience: "internal" as const, body });
+
   it("asks for screenshots when the mirrored notes are prose only", () => {
     // Not "missing": a one-word verdict mirrors under the progress-note floor,
     // and the mirrored text IS the reviewer's record however short.
-    expect(
-      nextGapAfterMirror(verdictCommentBody("reviewer", "approve", "LGTM")),
-    ).toBe("no_screenshots");
-    expect(
-      nextGapAfterMirror(verdictCommentBody("reviewer", "approve", RECORD)),
-    ).toBe("no_screenshots");
+    for (const notes of ["LGTM", RECORD]) {
+      expect(
+        nextGapAfterMirror(
+          [],
+          THREAD,
+          internal(verdictCommentBody("reviewer", "approve", notes)),
+        ),
+      ).toBe("no_screenshots");
+    }
   });
 
-  it("accepts a mirrored verdict that already embeds a screenshot", () => {
+  it("counts a screenshot in the mirror only when a person sees it", () => {
     const body = verdictCommentBody(
       "reviewer",
-      "approve",
+      "request_changes",
       `${RECORD}\n![before](x)`,
     );
-    expect(nextGapAfterMirror(body)).toBeNull();
+    expect(nextGapAfterMirror([], THREAD, internal(body))).toBe(
+      "no_screenshots",
+    );
+    expect(
+      nextGapAfterMirror([], THREAD, { audience: "human", body }),
+    ).toBeNull();
+  });
+
+  it("accepts the sentinel in the mirror, or screenshots the run already showed", () => {
+    const sentinel = verdictCommentBody(
+      "reviewer",
+      "approve",
+      `${NO_VISUAL_SURFACE} — config only.`,
+    );
+    expect(nextGapAfterMirror([], THREAD, internal(sentinel))).toBeNull();
+    const shown = [
+      { threadId: THREAD, audience: "human" as const, body: "![after](x)" },
+    ];
+    expect(
+      nextGapAfterMirror(
+        shown,
+        THREAD,
+        internal(verdictCommentBody("reviewer", "approve", "LGTM")),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("verdictMirrorAudience", () => {
+  const record = {
+    threadId: THREAD,
+    audience: "internal" as const,
+    body: `${RECORD}\n${NO_VISUAL_SURFACE} — backend only.`,
+  };
+  const note = {
+    threadId: THREAD,
+    audience: "human" as const,
+    body: "The checkout needs a product decision on the discount rule.",
+  };
+
+  it("shows a change request's notes to the person the run never told", () => {
+    expect(
+      verdictMirrorAudience([record], THREAD, "request_changes", null),
+    ).toBe("human");
+    // Even with no record at all: one comment serves both.
+    expect(
+      verdictMirrorAudience([], THREAD, "request_changes", "missing"),
+    ).toBe("human");
+    // A note from another run is not this reviewer telling them.
+    expect(
+      verdictMirrorAudience(
+        [record, { ...note, threadId: "thrd_super" }],
+        THREAD,
+        "request_changes",
+        null,
+      ),
+    ).toBe("human");
+  });
+
+  it("mirrors nothing for a change request the run already explained", () => {
+    expect(
+      verdictMirrorAudience([record, note], THREAD, "request_changes", null),
+    ).toBeNull();
+  });
+
+  it("keeps an approval quiet unless the record is missing", () => {
+    expect(verdictMirrorAudience([record], THREAD, "approve", null)).toBeNull();
+    expect(verdictMirrorAudience([], THREAD, "approve", "missing")).toBe(
+      "internal",
+    );
   });
 });
 

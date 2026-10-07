@@ -279,8 +279,8 @@ export const thread = {
   "thread.publishPopover.discarded": "{name} descartado",
   "thread.publishPopover.discard": "Descartar",
   "thread.publishPopover.discardAll": "Descartar tudo",
-  "thread.publishPopover.discardAllConfirm":
-    "Descartar todas as alterações? Isso não pode ser desfeito.",
+  "thread.publishPopover.discardAllConfirm": "Isso não pode ser desfeito.",
+  "thread.publishPopover.discardAllTitle": "Descartar todas as alterações?",
   "thread.publishPopover.reviewNote": "Nota para quem revisa",
   "thread.publishPopover.reviewNotePlaceholder": "O que mudou e por quê…",
   "thread.publishPopover.reviewing": "Revisando conteúdo…",

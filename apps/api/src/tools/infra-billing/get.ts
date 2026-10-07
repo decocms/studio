@@ -1,6 +1,6 @@
 /**
- * INFRA_BILLING_GET — one month of infra usage, plan and invoices for a legacy
- * deco.cx site the org owns. Ownership is checked against `org_sites`, so a
+ * INFRA_BILLING_GET — one month of infra usage, plan and invoices for legacy
+ * deco.cx sites the org owns. Ownership is checked against `org_sites`, so a
  * member of org A can never read org B's site by guessing its slug.
  */
 
@@ -14,7 +14,7 @@ import { resolveOwnedSlugs } from "./ownership";
 export const INFRA_BILLING_GET = defineTool({
   name: "INFRA_BILLING_GET",
   description:
-    "Get infra usage (requests, data transfer, pageviews), plan and invoices for one legacy deco.cx site owned by this organization, for a given month.",
+    "Get infra usage (requests, data transfer, pageviews) for legacy deco.cx sites owned by this organization for a given month, plus the plan and invoices of each legacy team behind them.",
   annotations: {
     title: "Get Infra Billing",
     readOnlyHint: true,
@@ -47,32 +47,38 @@ export const INFRA_BILLING_GET = defineTool({
     pageviewsAvailable: z.boolean(),
     /** True when this deployment has no analytics warehouse configured. */
     usageUnavailable: z.boolean(),
-    /** Why `billing` is null, so the UI names the real cause. */
-    billingUnavailableReason: z
-      .enum(["no_team", "multiple_teams", "partial_team", "unavailable"])
-      .nullable(),
-    /** Plan and invoices belong to the legacy team, so they are only reported
-     *  when the whole selection rolls up to exactly one team the org fully owns. */
-    billing: z
-      .object({
-        planType: z.enum(["free", "pro", "enterprise"]),
-        /** "YYYY-MM-DD", or null when nothing schedules a next charge. */
-        nextBillingDate: z.string().nullable(),
-        /** Whether INFRA_BILLING_PORTAL has a Stripe customer to open for. */
-        canManageSubscription: z.boolean(),
-        invoices: z.array(
-          z.object({
-            id: z.string(),
-            status: z.string(),
-            dueDate: z.string().nullable(),
-            value: z.number(),
-            referenceMonth: z.string().nullable(),
-            nfUrl: z.string().nullable(),
-            bankSlipUrl: z.string().nullable(),
-          }),
-        ),
-      })
-      .nullable(),
+    /** Plan and invoices are team-scoped, so they are reported per team. */
+    teams: z.array(
+      z.object({
+        siteSlugs: z.array(z.string()),
+        /** Null when withheld or unreadable — see `unavailableReason`. */
+        billing: z
+          .object({
+            planType: z.enum(["free", "pro", "enterprise"]),
+            /** "YYYY-MM-DD", or null when nothing schedules a next charge. */
+            nextBillingDate: z.string().nullable(),
+            /** Whether INFRA_BILLING_PORTAL has a Stripe customer to open for. */
+            canManageSubscription: z.boolean(),
+            invoices: z.array(
+              z.object({
+                id: z.string(),
+                status: z.string(),
+                dueDate: z.string().nullable(),
+                value: z.number(),
+                referenceMonth: z.string().nullable(),
+                nfUrl: z.string().nullable(),
+                bankSlipUrl: z.string().nullable(),
+              }),
+            ),
+          })
+          .nullable(),
+        unavailableReason: z.enum(["partial_team", "unavailable"]).nullable(),
+      }),
+    ),
+    /** Selected sites no legacy team bills. */
+    siteSlugsWithoutTeam: z.array(z.string()),
+    /** True when the legacy team lookup is unconfigured or failed. */
+    billingUnavailable: z.boolean(),
   }),
 
   handler: async (input, ctx) => {
