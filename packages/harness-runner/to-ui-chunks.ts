@@ -70,6 +70,11 @@ export interface SdkResultMessage {
   usage?: SdkUsage;
   /** The CLI's own cost estimate for the turn, in USD. */
   total_cost_usd?: number;
+  /** Per-model usage, keyed by model id; carries each model's real limits. */
+  modelUsage?: Record<
+    string,
+    { contextWindow?: number; maxOutputTokens?: number; inputTokens?: number }
+  >;
 }
 
 /**
@@ -580,6 +585,7 @@ export function turnStartChunks(messageId: string): UIMessageChunk[] {
 export function turnFinishChunks(
   result: SdkResultMessage,
   contextTokens = 0,
+  model?: string,
   awaitingUser = false,
 ): UIMessageChunk[] {
   const chunks: UIMessageChunk[] = [];
@@ -592,6 +598,11 @@ export function turnFinishChunks(
   }
   chunks.push({ type: "finish-step" });
   const usage = turnUsage(result, contextTokens);
+  const modelLimits = turnModelLimits(result, model);
+  const messageMetadata = {
+    ...(usage ? { usage } : {}),
+    ...(modelLimits ? { modelLimits } : {}),
+  };
   chunks.push({
     type: "finish",
     finishReason: awaitingUser
@@ -599,9 +610,32 @@ export function turnFinishChunks(
       : failed
         ? ("error" as const)
         : ("stop" as const),
-    ...(usage ? { messageMetadata: { usage } } : {}),
+    ...(Object.keys(messageMetadata).length ? { messageMetadata } : {}),
   });
   return chunks;
+}
+
+/**
+ * The limits of the model that ran the turn, which is what the chat's context
+ * meter divides by. Keyed by the pinned model when there is one; otherwise the
+ * model that read the most input, since auxiliary calls (titles, compaction)
+ * may run on a smaller one.
+ */
+function turnModelLimits(
+  result: SdkResultMessage,
+  model: string | undefined,
+): { contextWindow: number; maxOutputTokens: number } | null {
+  const entries = Object.entries(result.modelUsage ?? {});
+  const main =
+    entries.find(([id]) => id === model)?.[1] ??
+    entries
+      .map(([, usage]) => usage)
+      .sort((a, b) => (b.inputTokens ?? 0) - (a.inputTokens ?? 0))[0];
+  if (!main?.contextWindow || !main.maxOutputTokens) return null;
+  return {
+    contextWindow: main.contextWindow,
+    maxOutputTokens: main.maxOutputTokens,
+  };
 }
 
 /**

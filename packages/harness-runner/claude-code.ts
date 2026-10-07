@@ -985,6 +985,7 @@ export async function runClaudeCode(
           ...turnFinishChunks(
             message as SdkResultMessage,
             translator.contextTokens,
+            process.env[ENVS.MODEL_ENV],
             translator.isAwaitingUser(),
           ),
         ],

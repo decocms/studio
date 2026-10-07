@@ -207,6 +207,49 @@ describe("claudeCodeEnvFromCredential", () => {
     }
   });
 
+  test("the chat's chosen Claude model sets CLAUDE_CODE_MODEL", () => {
+    const model = (providerId: string, chosen: string) =>
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "default", chosen)
+        .CLAUDE_CODE_MODEL;
+    expect(model("anthropic", "claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(model("openrouter", "anthropic/claude-haiku-5")).toBe(
+      "anthropic/claude-haiku-5",
+    );
+    expect(model("deco", "anthropic/claude-sonnet-5")).toBe(
+      "anthropic/claude-sonnet-5",
+    );
+    expect(model(CLAUDE_SUBSCRIPTION_PROVIDER_ID, "claude-sonnet-5")).toBe(
+      "claude-sonnet-5",
+    );
+  });
+
+  test("a chosen model the CLI cannot run on that credential keeps the default", () => {
+    const model = (providerId: string, chosen: string) =>
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "default", chosen)
+        .CLAUDE_CODE_MODEL;
+    expect(model("openrouter", "google/gemini-3-pro")).toBe(
+      "anthropic/claude-opus-5.5",
+    );
+    expect(model("anthropic", "anthropic/claude-sonnet-5")).toBe(
+      "claude-opus-5-5",
+    );
+    expect(
+      model(CLAUDE_SUBSCRIPTION_PROVIDER_ID, "anthropic/claude-sonnet-5"),
+    ).toBe("claude-opus-5-5");
+  });
+
+  test("reviewer and conflict runs keep their class model whatever was chosen", () => {
+    for (const modelClass of ["reviewer", "conflict"] as const) {
+      expect(
+        claudeCodeEnvFromCredential(
+          { providerId: "anthropic", apiKey: "sk-a" },
+          modelClass,
+          "claude-opus-5-5",
+        ).CLAUDE_CODE_MODEL,
+      ).toBe("claude-sonnet-5");
+    }
+  });
+
   test("omitting the class keeps the model every run had before", () => {
     expect(
       claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" })

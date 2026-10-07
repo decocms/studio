@@ -54,6 +54,7 @@ import {
 } from "@/harnesses/claude-code-env";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
+import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
 import {
@@ -504,11 +505,14 @@ export class SandboxDispatchClient {
     }
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
+    const runMetadata = this.ctx.metadata?.runMetadata;
     const modelEnv = claudeCodeEnvFromCredential(
       this.credential,
-      modelClassFromMetadata(
-        this.ctx.metadata?.runMetadata?.[MODEL_CLASS_METADATA_KEY],
-      ),
+      modelClassFromMetadata(runMetadata?.[MODEL_CLASS_METADATA_KEY]),
+      // Task-board runs carry a run class and keep their per-class model.
+      runMetadata?.[RUN_CLASS_METADATA_KEY]
+        ? undefined
+        : input.models.thinking.id,
     );
     const organization = this.ctx.organization;
     if (!organization) {
