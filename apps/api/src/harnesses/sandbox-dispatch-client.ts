@@ -812,11 +812,14 @@ export function sandboxStateInstruction(warmPoolAdopted: boolean): string {
  * same folder the link would have pointed at, and task comments render it.
  */
 export function orgOutputFallbackInstruction(threadId: string): string {
+  // A mount point the run creates holds local files, and rclone won't mount over them.
+  const outputs = orgFsSandboxPath("outputs", "");
   return (
-    `If \`${SANDBOX_ORG_ROOT}/output\` does not exist in this sandbox, save the files you want ` +
-    `to show (screenshots, exports) under \`${orgFsSandboxPath("outputs", threadId)}/\` ` +
-    "instead and reference that path: it is the same folder. Never use `/tmp` " +
-    "for them — nothing there reaches the task or the chat."
+    `If \`${SANDBOX_ORG_ROOT}/output\` does not exist in this sandbox but \`${outputs}\` does, ` +
+    "save the files you want to show (screenshots, exports) under " +
+    `\`${orgFsSandboxPath("outputs", threadId)}/\` instead and reference that path: it is ` +
+    `the same folder. Never create \`${outputs}\` yourself, and never use \`/tmp\` ` +
+    "for these files — nothing there reaches the task or the chat."
   );
 }
 

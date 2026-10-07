@@ -906,7 +906,12 @@ describe("orgOutputFallbackInstruction", () => {
   test("names the run's own folder in the outputs mount, never /tmp", () => {
     expect(text).toContain("/app/org/output");
     expect(text).toContain("/app/org/.outputs/thrd_abc/");
-    expect(text).toContain("Never use `/tmp`");
+    expect(text).toContain("never use `/tmp`");
+  });
+
+  test("only while the mount point exists, never by creating it", () => {
+    expect(text).toContain("but `/app/org/.outputs` does");
+    expect(text).toContain("Never create `/app/org/.outputs` yourself");
   });
 
   // The instruction is only worth giving if a comment that follows it renders.
