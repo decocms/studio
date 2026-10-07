@@ -114,7 +114,7 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
 
 const STUDIO_MCP_PREFIX = "mcp__studio__";
 
-export function canonicalToolName(name: string): string {
+function canonicalToolName(name: string): string {
   if (name.startsWith(STUDIO_MCP_PREFIX)) {
     return name.slice(STUDIO_MCP_PREFIX.length);
   }
