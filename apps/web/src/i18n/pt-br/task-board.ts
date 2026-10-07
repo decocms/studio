@@ -216,6 +216,11 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
   "taskBoard.taskDialog.commentDropToAttach": "Solte para anexar",
+  "taskBoard.taskDialog.commentEdit": "Editar",
+  "taskBoard.taskDialog.commentEditCancel": "Cancelar",
+  "taskBoard.taskDialog.commentEditFailed":
+    "Não foi possível salvar a edição. Tente novamente.",
+  "taskBoard.taskDialog.commentEditSave": "Salvar",
   "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
