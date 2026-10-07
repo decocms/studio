@@ -1709,26 +1709,26 @@ export interface StudioToolIO {
       }[];
       pageviewsAvailable: boolean;
       usageUnavailable: boolean;
-      billingUnavailableReason:
-        | "no_team"
-        | "multiple_teams"
-        | "partial_team"
-        | "unavailable"
-        | null;
-      billing: {
-        planType: "free" | "pro" | "enterprise";
-        nextBillingDate: string | null;
-        canManageSubscription: boolean;
-        invoices: {
-          id: string;
-          status: string;
-          dueDate: string | null;
-          value: number;
-          referenceMonth: string | null;
-          nfUrl: string | null;
-          bankSlipUrl: string | null;
-        }[];
-      } | null;
+      teams: {
+        siteSlugs: string[];
+        billing: {
+          planType: "free" | "pro" | "enterprise";
+          nextBillingDate: string | null;
+          canManageSubscription: boolean;
+          invoices: {
+            id: string;
+            status: string;
+            dueDate: string | null;
+            value: number;
+            referenceMonth: string | null;
+            nfUrl: string | null;
+            bankSlipUrl: string | null;
+          }[];
+        } | null;
+        unavailableReason: "partial_team" | "unavailable" | null;
+      }[];
+      siteSlugsWithoutTeam: string[];
+      billingUnavailable: boolean;
     };
   };
   INFRA_BILLING_PORTAL: {
