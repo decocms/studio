@@ -15,9 +15,11 @@
  * valid Studio-pushed config.
  */
 
-import { chmod, mkdir, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, stat } from "node:fs/promises";
 import * as net from "node:net";
 import { join, isAbsolute } from "node:path";
+import { promisify } from "node:util";
 import { safePath } from "./safe-path";
 import { OrgFsClient } from "./client";
 import { createWebdavHandler } from "./webdav";
@@ -156,7 +158,9 @@ export async function ensureOrgRootWritable(
     await mkdir(orgRoot, { recursive: true });
     const { mode } = await stat(orgRoot);
     if ((mode & 0o002) !== 0) return;
-    await chmod(orgRoot, (mode & 0o7777) | 0o1777);
+    // Not fs.chmod: Bun masks its mode to 0o777, which drops the sticky bit.
+    const opened = (mode & 0o7777) | 0o1777;
+    await promisify(execFile)("chmod", [opened.toString(8), orgRoot]);
     log(`made ${orgRoot} writable for the sandbox user`);
   } catch (err) {
     log(`could not make ${orgRoot} writable for the sandbox user`, err);
