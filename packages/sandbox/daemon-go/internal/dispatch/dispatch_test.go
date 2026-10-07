@@ -138,6 +138,29 @@ func TestDispatchCarriesTheEnvelopeHarness(t *testing.T) {
 	}
 }
 
+// Every chat mode pill the composer offers reaches the daemon.
+func TestValidateHarnessInputAcceptsEveryChatMode(t *testing.T) {
+	for _, mode := range []string{"default", "plan", "web-search", "deep-research", "gen-image"} {
+		input := `{
+			"threadId": "t1",
+			"userMessage": {"role": "user"},
+			"harness": {},
+			"workspace": {"cwd": null},
+			"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
+			"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
+			"mode": "` + mode + `",
+			"temperature": 0.5,
+			"toolApprovalLevel": "auto",
+			"user": {"id": "u", "email": "u@example.com"},
+			"organizationId": "org",
+			"agent": {"id": "a"}
+		}`
+		if reason := ValidateHarnessInput(json.RawMessage(input)); reason != "" {
+			t.Fatalf("mode %q rejected: %s", mode, reason)
+		}
+	}
+}
+
 // A task run on the bare `thread:<id>` key mounts /repo with no repo behind it
 // yet — it clones one mid-run with TASK_ADD_REPO.
 func TestValidateHarnessInputAcceptsRepolessRepoCwd(t *testing.T) {

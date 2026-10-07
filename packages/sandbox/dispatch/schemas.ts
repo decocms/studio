@@ -110,7 +110,7 @@ export const harnessStreamInputSchema = z
           .strict(),
       )
       .optional(),
-    mode: z.enum(["default", "plan", "web-search", "gen-image"]),
+    mode: z.enum(["default", "plan", "web-search", "deep-research", "gen-image"]),
     temperature: z.number(),
     toolApprovalLevel: z.enum(["auto", "readonly"]),
     // Per-run tool allowlist (model-facing names). null/absent = full toolset.

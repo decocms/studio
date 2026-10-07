@@ -53,6 +53,7 @@ import {
   isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
+import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
@@ -1427,7 +1428,21 @@ async function prepareRun(
       organizationId: input.organizationId,
       agent: {
         id: input.agent.id,
-        instructions: agentInstructions,
+        // Decopilot renders user context and mode from its run context instead.
+        instructions: sandboxHosted
+          ? [
+              agentInstructions,
+              sandboxRunPrompt({
+                mode: input.mode,
+                threadId: mem.thread.id,
+                agentId: input.agent.id,
+                userEmail: ctx.auth.user?.email,
+                userContext,
+              }),
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : agentInstructions,
         ...(input.agent.disallowedTools
           ? { disallowedTools: input.agent.disallowedTools }
           : {}),
