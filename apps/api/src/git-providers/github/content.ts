@@ -943,15 +943,6 @@ export class GithubContentClient implements RepoContentClient {
     return { aheadBy: json.ahead_by, behindBy: json.behind_by };
   }
 
-  async mergeBase(base: string, head: string): Promise<string> {
-    // One commit per page: the merge base comes without the files and commits.
-    const { json } = await this.call<{ merge_base_commit?: { sha?: string } }>(
-      "GET",
-      `${this.repoBase}/compare/${encodeRepoFilePath(base)}...${encodeRepoFilePath(head)}?per_page=1`,
-    );
-    return json.merge_base_commit?.sha ?? "";
-  }
-
   async compareDetailed(
     base: string,
     head: string,

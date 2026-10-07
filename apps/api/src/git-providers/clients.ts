@@ -267,6 +267,19 @@ async function insightsClientForTarget(
   return insightsClientFor(staticRepoCredential(resolved.ref, token));
 }
 
+/** {@link insightsClientForTarget} for a project's repository binding. */
+export function insightsClientForProjectRepo(
+  ctx: StudioContext,
+  organizationId: string,
+  repository: RepositoryBinding,
+): Promise<RepoInsightsClient> {
+  return insightsClientForTarget(
+    ctx,
+    organizationId,
+    repoTargetForBinding(repository),
+  );
+}
+
 /** {@link insightsClientForTarget} for a first-class repository row. */
 export function insightsClientForRepository(
   ctx: StudioContext,

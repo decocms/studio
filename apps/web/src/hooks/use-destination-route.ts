@@ -50,6 +50,7 @@ export const PROJECT_ROUTE = {
   connectSources: "/$org/projects/$agentId/connect-sources",
   settings: "/$org/projects/$agentId/settings",
   assets: "/$org/projects/$agentId/assets",
+  releases: "/$org/projects/$agentId/releases",
   git: "/$org/projects/$agentId/git",
   hosting: "/$org/projects/$agentId/hosting",
   e2e: "/$org/projects/$agentId/e2e",

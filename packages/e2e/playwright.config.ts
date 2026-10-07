@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 const serverPort = process.env.PORT || "3000";
@@ -55,10 +56,21 @@ const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
 // vault, task-board import, commerce-diagnostic share-invite). Kept in sync by
 // hand with the literal in reports-share.spec.ts (no shared import:
 // the config isn't a spec module).
+// The hosted Deco CMS (Blocks v8) writes to the delivery bucket through the
+// S3 API; delivery-stub-server.ts stands in for both that API and the public
+// origin sites read (DELIVERY_PUBLIC_ORIGIN). The site-token signing key is
+// minted per run; the denylist's Cloudflare API is never reached by a spec.
+const deliveryStubPort = process.env.DELIVERY_STUB_PORT || "4104";
+const deliveryStubOrigin = `http://127.0.0.1:${deliveryStubPort}`;
+const siteTokenSigningKey = generateKeyPairSync("ed25519")
+  .privateKey.export({ format: "der", type: "pkcs8" })
+  .toString("base64");
+const hostedEnv = `DELIVERY_R2_ENDPOINT=${deliveryStubOrigin} DELIVERY_R2_BUCKET=delivery DELIVERY_R2_ACCESS_KEY_ID=e2e DELIVERY_R2_SECRET_ACCESS_KEY=e2e DELIVERY_PUBLIC_ORIGIN=${deliveryStubOrigin} DECO_SITE_TOKEN_SIGNING_KEY=${siteTokenSigningKey} CF_ACCOUNT_ID=e2e CF_DENYLIST_KV_NAMESPACE_ID=e2e CF_KV_API_TOKEN=e2e`;
+
 const vaultServiceToken = "e2e-vault-service-token";
 const organizationNoticesApiKey = "e2e-organization-notices-api-key";
 
-const apiServerCommand = `MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `${hostedEnv} MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy
@@ -133,6 +145,15 @@ export default defineConfig({
       // imports).
       command: `GITHUB_STUB_PORT=${githubStubPort} bun run fixtures/github-stub-server.ts`,
       url: `${githubStubOrigin}/health`,
+      reuseExistingServer: true,
+      timeout: 30_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      // Delivery bucket stand-in for the hosted Deco CMS specs.
+      command: `DELIVERY_STUB_PORT=${deliveryStubPort} bun run fixtures/delivery-stub-server.ts`,
+      url: `${deliveryStubOrigin}/health`,
       reuseExistingServer: true,
       timeout: 30_000,
       stdout: "pipe",

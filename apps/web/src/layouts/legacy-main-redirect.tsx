@@ -161,6 +161,16 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
+    case PROJECT_ROUTE.releases:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.releases}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
     case PROJECT_ROUTE.git:
       return (
         <Navigate

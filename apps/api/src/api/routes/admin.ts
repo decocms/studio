@@ -30,6 +30,10 @@ import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
 import { VirtualMCPStorage } from "@/storage/virtual";
+import { KyselyKVStorage } from "@/storage/kv";
+import { denylist } from "@/hosted/denylist";
+import { readKillState, setKilled } from "@/hosted/kill-switch";
+import { projectSite } from "@/hosted/scope";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
@@ -918,6 +922,62 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  // Hosted Deco CMS kill switch: drops an account's telemetry and analytics at
+  // the edge by writing `kill:<site>` for every site of the org.
+  // OPEN: O-22 — "staff only" is this deployment-admin fence.
+  app.get("/orgs/:orgId/hosted-kill", async (c) => {
+    const orgId = c.req.param("orgId");
+    return c.json(await readKillState(new KyselyKVStorage(getDb().db), orgId));
+  });
+
+  app.put("/orgs/:orgId/hosted-kill", async (c) => {
+    const orgId = c.req.param("orgId");
+    const raw = (await c.req.json().catch(() => null)) as {
+      killed?: unknown;
+    } | null;
+    if (typeof raw?.killed !== "boolean") {
+      return c.json({ error: "killed must be a boolean" }, 400);
+    }
+    const deny = denylist();
+    if (!deny) return c.json({ error: "denylist not configured" }, 503);
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const sites = (await new VirtualMCPStorage(db).list(orgId)).flatMap(
+      (project) => {
+        const site = projectSite(
+          project.metadata as Record<string, unknown> | null,
+        );
+        return site ? [site] : [];
+      },
+    );
+    const state = await setKilled(
+      { kv: new KyselyKVStorage(db), denylist: deny },
+      orgId,
+      sites,
+      raw.killed,
+    );
+    auditAdminAction(raw.killed ? "org_hosted_kill" : "org_hosted_restore", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      sites: sites.length,
+    });
+    return c.json(state);
   });
 
   // The agent-prompt editor (reads/writes decocms/studio over GitHub) — its own

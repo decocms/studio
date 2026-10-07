@@ -328,6 +328,23 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
+
+  // Hosted Deco CMS (Blocks v8). The R2 bucket behind delivery.decocms.com,
+  // written through its S3 API; the endpoint derives from the account id.
+  deliveryR2AccountId: string | undefined;
+  deliveryR2AccessKeyId: string | undefined;
+  deliveryR2SecretAccessKey: string | undefined;
+  deliveryR2Bucket: string | undefined;
+  /** test-only: overrides `https://<account>.r2.cloudflarestorage.com`. */
+  deliveryR2Endpoint: string | undefined;
+  /** test-only: overrides `https://delivery.decocms.com` in draft pointers. */
+  deliveryPublicOrigin: string | undefined;
+  /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
+  siteTokenSigningKey: string | undefined;
+  /** Cloudflare KV namespace holding the site-token denylist and kill keys. */
+  cfAccountId: string | undefined;
+  cfDenylistKvNamespaceId: string | undefined;
+  cfKvApiToken: string | undefined;
 }
 
 export interface CliFlags {

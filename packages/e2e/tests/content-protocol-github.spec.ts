@@ -1,21 +1,21 @@
 /**
- * The site editor's GitHub backend for next-major Blocks sites: the content
- * protocol served over a project's repository.
+ * The site editor's GitHub backend for Blocks v8 sites on the hosted Deco
+ * CMS: the content protocol over main with the project's CDN draft layered
+ * on, and the publish that commits that draft to main and releases it.
  *
- *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc              (session, org flag)
- *   GET  /api/:org/decofile/:virtualMcpId/:branch/changes          (draft token or session, org flag)
- *
- * The `changes` pointer's draft token comes the v7 way, from the session's
- * decofile read (`GET /api/:org/decofile/:virtualMcpId/:branch`).
+ *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc        (session, org flag)
+ *   GET  /api/:org/decofile/:virtualMcpId/:branch            the draft pointer (session)
+ *   POST /api/:org/decofile/:virtualMcpId/:branch/publish    commit + release
+ *   /api/:org/hosted/:virtualMcpId/{releases,resync,site-tokens}
  *
  * The protocol's own black-box conformance suite runs against the endpoint,
- * with the repository on the local GitHub stub (see fixtures/fast-preview.ts).
- * The cases below it cover what's specific to this backend: the flag, auth,
- * the bound branch, branch creation on first write, the tracked
- * `blocks.gen.json`, v7 secret blocks left in a migrated site, the draft
- * changes the site's `cms.forDraft` reads through its Fast Preview pointer,
- * and the editor's v7/v8 detection: only a committed schema with
- * `"blocksMajor": 8` is a v8 site, even with the org flag on.
+ * with the repository on the local GitHub stub (see fixtures/fast-preview.ts)
+ * and the delivery bucket on its stub (fixtures/delivery-stub-server.ts). The
+ * cases below it cover what's specific to this backend: the flag, auth,
+ * saves into the CDN draft (never git), v7 secret blocks left in a migrated
+ * site, the `?__draft=` pointer the site revalidates with ETags, publish and
+ * releases, site tokens, and the editor's v7/v8 detection: only a committed
+ * schema with `"blocksMajor": 8` is a v8 site, even with the org flag on.
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -37,6 +37,25 @@ import {
 import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
 import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
+
+const DELIVERY_STUB_ORIGIN = `http://127.0.0.1:${process.env.DELIVERY_STUB_PORT ?? "4104"}`;
+
+/** The delivery bucket's objects under a prefix, as the stub holds them. */
+async function deliveryObjects(
+  ctx: APIRequestContext,
+  prefix: string,
+): Promise<
+  Record<string, { text: string; etag: string; cacheControl: string | null }>
+> {
+  const res = await ctx.get(
+    `${DELIVERY_STUB_ORIGIN}/__admin/objects?prefix=${encodeURIComponent(prefix)}`,
+  );
+  expect(res.ok()).toBe(true);
+  return (await res.json()) as Record<
+    string,
+    { text: string; etag: string; cacheControl: string | null }
+  >;
+}
 
 const SECRET_BLOCK = "newsletter";
 const SECRET_FIELD = "apiKey";
@@ -128,21 +147,17 @@ async function rpc<T>(
   return { status: 200, ...body };
 }
 
-/** The v7 session read, as the editor makes it: the draft grant it carries. */
-async function draftGrant(
+/** The session read, as the v8 editor makes it: its CDN draft pointer. */
+async function draftPointer(
   ctx: APIRequestContext,
   project: FastPreviewProject,
   branch: string,
-): Promise<{ version: string; token: string; apiHost: string }> {
+): Promise<{ draft: string | null; version: string | null }> {
   const res = await ctx.get(
     `/api/${project.org}/decofile/${project.vmcpId}/${branch}`,
   );
   expect(res.status()).toBe(200);
-  return (await res.json()) as {
-    version: string;
-    token: string;
-    apiHost: string;
-  };
+  return (await res.json()) as { draft: string | null; version: string | null };
 }
 
 async function enableContentProtocol(
@@ -164,6 +179,7 @@ async function setUp(
   const project = await createFastPreviewProject(ctx, user.orgSlug, {
     owner,
     repo: "site",
+    siteSlug: owner,
   });
   await seedStubRepo(ctx, {
     owner,
@@ -211,10 +227,8 @@ test.describe("content protocol on GitHub", () => {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
       const path = rpcPath(project, "main");
-      const changesPath = path.replace(/\/rpc$/, "/changes");
 
       expect((await rpc(ctx, path, "describe")).status).toBe(404);
-      expect((await ctx.get(changesPath)).status()).toBe(404);
 
       await enableContentProtocol(ctx, project.org);
       const described = await rpc<DescribeResult>(ctx, path, "describe");
@@ -228,64 +242,61 @@ test.describe("content protocol on GitHub", () => {
       });
 
       expect((await rpc(anon, path, "describe")).status).toBe(401);
-      expect((await anon.get(changesPath)).status()).toBe(401);
-      // The v7 read's draft token reads changes, but never calls `rpc`.
-      const { token } = await draftGrant(ctx, project, "main");
-      expect(token).toEqual(expect.any(String));
-      const q = `?token=${encodeURIComponent(token)}`;
-      expect((await anon.get(`${changesPath}${q}`)).status()).toBe(200);
-      expect((await rpc(anon, `${path}${q}`, "describe")).status).toBe(401);
     } finally {
       await ctx.dispose();
       await anon.dispose();
     }
   });
 
-  test("reads the default branch until the first write creates the branch", async ({
-    playwright,
-  }) => {
+  test("saves into the CDN draft, never into git", async ({ playwright }) => {
     const ctx = await newApiContext(playwright);
     try {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
-        ".deco/blocks.gen.json": '{"hero-home":{"__resolveType":"hero"}}',
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
+        ".deco/blocks/promo.json": '{"__resolveType":"hero","title":"Old"}\n',
       });
       await enableContentProtocol(ctx, project.org);
       const path = rpcPath(project, "draft-1");
+      const refsBefore = (await inspectStubRepo(ctx, project.owner, "site"))
+        .refs;
 
       const before = await rpc<BlocksListResult>(ctx, path, "blocks.list");
       expect(before.result).toMatchObject({
         resolvedRef: "main",
         blocks: { "hero-home": { __resolveType: "hero" } },
       });
-      expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual({
-        main: expect.any(String),
-      });
 
+      const hero = { __resolveType: "hero", title: "Hi" };
       const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
-        set: { "pages-Home": { __resolveType: "hero", title: "Hi" } },
+        set: { "hero-home": hero },
+        delete: ["promo"],
       });
-      expect(applied.result?.revision).toEqual(expect.any(String));
+      expect(applied.result?.revision).toMatch(/^[0-9a-f]{40}~/);
 
-      const repo = await inspectStubRepo(ctx, project.owner, "site");
-      expect(repo.refs["draft-1"]).toBe(applied.result?.revision);
-      expect(repo.refs["main"]).not.toBe(repo.refs["draft-1"]);
-      const files = repo.branches["draft-1"]!.files;
-      expect(files[".deco/blocks/pages-Home.json"]).toBe(
-        `${JSON.stringify({ __resolveType: "hero", title: "Hi" }, null, 2)}\n`,
+      // No branch, no commit: git is untouched.
+      expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
+        refsBefore,
       );
-      // The tracked merged artifact is regenerated in the same commit.
-      expect(JSON.parse(files[".deco/blocks.gen.json"]!)).toEqual({
-        "hero-home": { __resolveType: "hero" },
-        "pages-Home": { __resolveType: "hero", title: "Hi" },
+      const drafts = await deliveryObjects(
+        ctx,
+        `sites/${project.owner}/drafts/`,
+      );
+      const [draft] = Object.values(drafts);
+      expect(JSON.parse(draft!.text)).toEqual({
+        set: { "hero-home": hero },
+        delete: ["promo"],
       });
+      expect(draft!.cacheControl).toBe("no-cache, max-age=0, must-revalidate");
 
       const after = await rpc<BlocksListResult>(ctx, path, "blocks.list");
       expect(after.result).toMatchObject({
-        resolvedRef: "draft-1",
         revision: applied.result?.revision,
+        blocks: { "hero-home": hero },
       });
+      expect(
+        (after.result as { blocks?: Record<string, unknown> }).blocks,
+      ).not.toHaveProperty("promo");
     } finally {
       await ctx.dispose();
     }
@@ -385,75 +396,208 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("a draft's pointer answers only what its branch changed", async ({
+  test("the draft pointer names the CDN draft, which the site revalidates", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
-    // The storefront, on its own origin: Studio's CORS reflects only its own
-    // and localhost origins, so a site gets the pointer's `*`.
-    const site = await playwright.request.newContext({
-      baseURL: getE2EAppOrigin(),
-      extraHTTPHeaders: { Origin: "https://storefront.example" },
-    });
+    const site = await playwright.request.newContext();
     try {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
-        ".deco/blocks/promo.json": '{"__resolveType":"hero","title":"Old"}\n',
-        ".deco/blocks/footer.json": '{"__resolveType":"hero","title":"F"}\n',
       });
       await enableContentProtocol(ctx, project.org);
-      const base = `/api/${project.org}/decofile/${project.vmcpId}`;
 
-      // Before the first save the branch doesn't exist: nothing changed.
-      const fresh = await ctx.get(`${base}/draft-1/changes`);
-      expect(fresh.status()).toBe(200);
-      expect(await fresh.json()).toEqual({ format: 1, set: {}, delete: [] });
+      // Nothing saved yet: no draft, so no pointer.
+      expect(await draftPointer(ctx, project, "draft-1")).toEqual({
+        draft: null,
+        version: null,
+      });
 
       const hero = { __resolveType: "hero", title: "Summer" };
-      const applied = await rpc<BlocksApplyResult>(
+      await rpc<BlocksApplyResult>(
         ctx,
         rpcPath(project, "draft-1"),
         "blocks.apply",
-        { set: { "hero-home": hero }, delete: ["promo"] },
+        {
+          set: { "hero-home": hero },
+        },
       );
-      expect(applied.result?.revision).toEqual(expect.any(String));
+      const pointer = await draftPointer(ctx, project, "draft-1");
+      const host = new URL(DELIVERY_STUB_ORIGIN).host;
+      expect(pointer.draft).toMatch(
+        new RegExp(
+          `^${host}/sites/${project.owner}/drafts/[A-Za-z0-9_-]{22}\\.json$`,
+        ),
+      );
+      expect(pointer.version).toEqual(expect.any(String));
 
-      // The grant comes from the v7 read, as the editor makes it on load and
-      // after each save; its version is the save's revision.
-      const grant = await draftGrant(ctx, project, "draft-1");
-      expect(grant.version).toBe(applied.result?.revision);
-      expect(grant.apiHost).toEqual(expect.any(String));
-      const token = grant.token;
-      const q = `?token=${encodeURIComponent(token)}`;
-
-      // What the site's SDK fetches: only the draft's changes, footer inherits production.
-      const changes = await site.get(`${base}/draft-1/changes${q}&v=x`);
-      expect(changes.status()).toBe(200);
-      expect(changes.headers()["cache-control"]).toBe("no-store");
-      expect(changes.headers()["access-control-allow-origin"]).toBe("*");
-      expect(await changes.json()).toEqual({
-        format: 1,
+      // What the site's SDK fetches: the draft, then 304 while it is unchanged.
+      const url = `http://${pointer.draft}?v=${pointer.version}`;
+      const first = await site.get(url);
+      expect(first.status()).toBe(200);
+      expect(await first.json()).toEqual({
         set: { "hero-home": hero },
-        delete: ["promo"],
+        delete: [],
       });
+      const etag = first.headers()["etag"]!;
+      const again = await site.get(url, { headers: { "If-None-Match": etag } });
+      expect(again.status()).toBe(304);
 
-      // The token is scoped to its branch.
-      expect((await site.get(`${base}/main/changes${q}`)).status()).toBe(401);
+      // Another save is a new ETag, so a new pointer version.
+      await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
+        set: { "hero-home": { ...hero, title: "Winter" } },
+      });
+      const next = await draftPointer(ctx, project, "draft-1");
+      expect(next.draft).toBe(pointer.draft);
+      expect(next.version).not.toBe(pointer.version);
       expect(
-        (await site.get(`${base}/draft-1/changes?token=forged`)).status(),
-      ).toBe(401);
-
-      // The v7 pointer is untouched: the whole decofile, as before.
-      const legacy = await site.get(`${base}/draft-1${q}`);
-      expect(legacy.status()).toBe(200);
-      const decofile = (await legacy.json()) as Record<string, unknown>;
-      expect(decofile["hero-home"]).toEqual(hero);
-      expect(decofile.footer).toEqual({ __resolveType: "hero", title: "F" });
-      expect(decofile.promo).toBeUndefined();
+        (await site.get(url, { headers: { "If-None-Match": etag } })).status(),
+      ).toBe(200);
     } finally {
       await ctx.dispose();
       await site.dispose();
+    }
+  });
+
+  test("publish commits the draft to main and releases it; releases roll back", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const project = await setUp(ctx, {
+        ".deco/schema.gen.json": JSON.stringify(schema),
+        ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
+      });
+      await enableContentProtocol(ctx, project.org);
+      const decofile = `/api/${project.org}/decofile/${project.vmcpId}`;
+      const hosted = `/api/${project.org}/hosted/${project.vmcpId}`;
+      const site = project.owner;
+
+      const publish = async (title: string) => {
+        await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
+          set: { "hero-home": { __resolveType: "hero", title } },
+        });
+        const res = await ctx.post(`${decofile}/draft-1/publish`, {
+          data: { note: `Publish ${title}` },
+        });
+        expect(res.status()).toBe(200);
+        return (await res.json()) as { result: string; sha: string };
+      };
+
+      const first = await publish("One");
+      expect(first.result).toBe("published");
+      const repo = await inspectStubRepo(ctx, project.owner, "site");
+      expect(repo.refs.main).toBe(first.sha);
+      expect(repo.branches.main!.files[".deco/blocks/hero-home.json"]).toBe(
+        `${JSON.stringify({ __resolveType: "hero", title: "One" }, null, 2)}\n`,
+      );
+      const objects = await deliveryObjects(ctx, `sites/${site}/`);
+      const revision = objects[`sites/${site}/revisions/${first.sha}.json`]!;
+      expect(JSON.parse(revision.text)).toMatchObject({
+        revision: first.sha,
+        schemaHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        blocks: { "hero-home": { __resolveType: "hero", title: "One" } },
+      });
+      expect(revision.cacheControl).toBe("public, max-age=31536000, immutable");
+      const latest = JSON.parse(objects[`sites/${site}/latest.json`]!.text);
+      expect(Object.keys(latest).sort()).toEqual([
+        "publishedAt",
+        "revision",
+        "schemaHash",
+      ]);
+      expect(latest.revision).toBe(first.sha);
+      // The draft is gone; the next edit starts a new one.
+      expect(Object.keys(objects).some((k) => k.includes("/drafts/"))).toBe(
+        false,
+      );
+
+      const second = await publish("Two");
+      let releases = await (await ctx.get(`${hosted}/releases`)).json();
+      expect(releases).toMatchObject({
+        state: "live",
+        head: second.sha,
+        current: { revision: second.sha },
+      });
+      expect(
+        releases.commits.map((c: { sha: string; published: boolean }) => [
+          c.sha,
+          c.published,
+        ]),
+      ).toEqual([
+        [second.sha, true],
+        [first.sha, true],
+        [expect.any(String), false],
+      ]);
+
+      // Roll back: latest.json only, git stays.
+      const made = await ctx.post(`${hosted}/releases/current`, {
+        data: { sha: first.sha },
+      });
+      expect(made.status()).toBe(200);
+      releases = await (await ctx.get(`${hosted}/releases`)).json();
+      expect(releases).toMatchObject({
+        state: "rolled-back",
+        current: { revision: first.sha },
+        head: second.sha,
+      });
+      // A commit the CMS never published can't be made current.
+      const initial = releases.commits.at(-1).sha as string;
+      expect(
+        (
+          await ctx.post(`${hosted}/releases/current`, {
+            data: { sha: initial },
+          })
+        ).status(),
+      ).toBe(404);
+
+      // Resync asks before overriding the rollback.
+      expect((await ctx.post(`${hosted}/resync`, { data: {} })).status()).toBe(
+        409,
+      );
+      const resynced = await ctx.post(`${hosted}/resync`, {
+        data: { confirm: true },
+      });
+      expect(await resynced.json()).toEqual({
+        result: "published",
+        sha: second.sha,
+      });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("issues site tokens, at most two active", async ({ playwright }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const project = await setUp(ctx, {
+        ".deco/schema.gen.json": JSON.stringify(schema),
+      });
+      await enableContentProtocol(ctx, project.org);
+      const tokens = `/api/${project.org}/hosted/${project.vmcpId}/site-tokens`;
+
+      const issued = await ctx.post(tokens);
+      expect(issued.status()).toBe(200);
+      const { token, record } = (await issued.json()) as {
+        token: string;
+        record: { kid: string };
+      };
+      const payload = JSON.parse(
+        Buffer.from(token.split(".")[1]!, "base64url").toString(),
+      );
+      expect(payload).toEqual({
+        site: project.owner,
+        kid: record.kid,
+        iat: expect.any(Number),
+      });
+      expect((await ctx.post(tokens)).status()).toBe(200);
+      expect((await ctx.post(tokens)).status()).toBe(409);
+      const listed = await (await ctx.get(tokens)).json();
+      expect(listed.site).toBe(project.owner);
+      expect(listed.tokens).toHaveLength(2);
+      expect(JSON.stringify(listed)).not.toContain(token);
+    } finally {
+      await ctx.dispose();
     }
   });
 });
@@ -501,6 +645,7 @@ async function openEditor(
     // The header's PR lookup dials this; a closed port fails fast.
     connectionUrl: "http://127.0.0.1:1/unused",
     previewServerUrl,
+    siteSlug: owner,
   });
   await seedStubRepo(api, {
     owner,

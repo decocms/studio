@@ -674,6 +674,8 @@ export const KEYS = {
   deploymentAdminOrgFlags: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "flags"] as const,
   // An org's pinned billing notice in the deployment-admin editor.
+  deploymentAdminOrgHostedKill: (orgId: string) =>
+    ["deployment-admin", "org-hosted-kill", orgId] as const,
   deploymentAdminOrgNotice: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "notice"] as const,
   // An org's owned site slugs (org_sites) in the deployment-admin editor.
@@ -773,10 +775,15 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
-  // A content-protocol project's v7 decofile read (GitHub backend), made only
-  // for the draft token and API host its answer carries (KEYS.decofileDraft).
+  // A hosted v8 project's draft pointer ({ draft, version }), from the
+  // session decofile read (GitHub backend).
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
+  // Hosted Deco CMS (v8): a project's releases and site tokens.
+  hostedReleases: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-releases", orgSlug, virtualMcpId] as const,
+  hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions

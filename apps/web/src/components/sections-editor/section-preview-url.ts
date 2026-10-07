@@ -74,13 +74,8 @@ export function buildDraftPointer(input: {
   token: string;
   /** Branch head commit sha. */
   version: string;
-  /**
-   * `"/changes"` for a content-protocol (v8) draft: the pointer then names
-   * only what the branch changed against production, not the whole decofile.
-   */
-  suffix?: "/changes";
 }): string {
-  const pointer = `${input.apiHost}/api/${input.orgSlug}/decofile/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}${input.suffix ?? ""}?token=${input.token}`;
+  const pointer = `${input.apiHost}/api/${input.orgSlug}/decofile/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}?token=${input.token}`;
   return `${pointer}@${input.version}`;
 }
 

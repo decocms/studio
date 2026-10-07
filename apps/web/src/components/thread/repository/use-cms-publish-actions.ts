@@ -19,6 +19,12 @@ import {
   type PublishTarget,
 } from "./publish-flow.ts";
 import { discardGitFiles } from "./sandbox-git-api.ts";
+import {
+  HostedPublishError,
+  type HostedPublishResult,
+  publishHostedDraft,
+  resyncHosted,
+} from "./hosted-publish-api.ts";
 
 /** `publish` merges to production; `review` stops at the pull request. */
 export type CmsPublishMode = "publish" | "review";
@@ -38,6 +44,19 @@ interface CmsPublishActionsArgs {
   refresh: () => Promise<unknown>;
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
+  /**
+   * A hosted v8 site: publish commits the CDN draft to main and releases it
+   * (no pull request); a release that didn't go live yet offers Resync.
+   */
+  hosted?: boolean;
+}
+
+/** A hosted publish landed in git but isn't live yet; Resync releases main. */
+interface HostedPending {
+  /** Resync would override a rollback: the next resync must confirm. */
+  needsConfirm: boolean;
+  isResyncing: boolean;
+  resync: () => Promise<void>;
 }
 
 interface CmsPublishActions {
@@ -48,6 +67,8 @@ interface CmsPublishActions {
   submit: () => Promise<void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
+  /** Set while a hosted publish is pending (see {@link HostedPending}). */
+  hostedPending: HostedPending | null;
 }
 
 export function useCmsPublishActions(
@@ -64,17 +85,87 @@ export function useCmsPublishActions(
     refresh,
     onPullRequestChanged,
     onPublished,
+    hosted = false,
   } = args;
   const t = useT();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
 
   const noteParts = () =>
     publishNoteParts(
       note,
       t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
     );
+
+  const published = async () => {
+    toast.success(
+      destinationHost
+        ? t("thread.publishPopover.publishedTo", { host: destinationHost })
+        : t("thread.publishDialog.publishedTo", {
+            baseBranch: target.baseBranch,
+          }),
+    );
+    onOpenChange(false);
+    await onPublished?.();
+  };
+
+  /** A hosted release that went live closes; one that didn't stays open. */
+  const settleHosted = async (result: HostedPublishResult) => {
+    if (result.result === "pending") {
+      setPending(true);
+      setPublishError(t("thread.publishPopover.hostedPending"));
+      await refresh();
+      return;
+    }
+    setPending(false);
+    setNeedsConfirm(false);
+    await published();
+  };
+
+  const publishHosted = async () => {
+    publishLockRef.current = true;
+    setIsPublishing(true);
+    setPublishError(undefined);
+    try {
+      await settleHosted(await publishHostedDraft(target, noteParts().message));
+    } catch (error) {
+      setPublishError(
+        error instanceof HostedPublishError && error.code === "main-moved"
+          ? t("thread.publishPopover.mainMoved")
+          : error instanceof Error
+            ? error.message
+            : t("thread.publishDialog.failedPublish"),
+      );
+      await refresh();
+    } finally {
+      publishLockRef.current = false;
+      setIsPublishing(false);
+    }
+  };
+
+  const resync = async () => {
+    setIsResyncing(true);
+    try {
+      await settleHosted(await resyncHosted(target, needsConfirm));
+    } catch (error) {
+      if (error instanceof HostedPublishError && error.code === "rolled-back") {
+        setNeedsConfirm(true);
+        setPublishError(t("thread.publishPopover.resyncOverridesRollback"));
+        return;
+      }
+      setPublishError(
+        error instanceof Error
+          ? error.message
+          : t("thread.publishDialog.failedPublish"),
+      );
+    } finally {
+      setIsResyncing(false);
+    }
+  };
 
   const publish = async () => {
     publishLockRef.current = true;
@@ -157,7 +248,11 @@ export function useCmsPublishActions(
     isPublishing,
     isDiscarding,
     publishError,
-    submit: mode === "review" ? submitForReview : publish,
+    // OPEN: review mode (submit for review) has no hosted equivalent: the
+    // draft is not a branch, so there is no pull request to open.
+    submit:
+      mode === "review" ? submitForReview : hosted ? publishHosted : publish,
+    hostedPending: pending ? { needsConfirm, isResyncing, resync } : null,
     discardChange: (change) =>
       discardFiles(
         change.filepaths,

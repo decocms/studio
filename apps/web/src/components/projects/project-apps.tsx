@@ -6,6 +6,7 @@
 
 import { Link } from "@tanstack/react-router";
 import {
+  ClockRewind,
   BarChartSquare02,
   BezierCurve02,
   FileSearch02,
@@ -77,6 +78,13 @@ const APPS: Record<
     Icon: Image01,
     to: PROJECT_ROUTE.assets,
     tone: "bg-chart-2/15 text-chart-2",
+  },
+  releases: {
+    labelKey: "projects.apps.releases",
+    captionKey: "projects.apps.releasesCaption",
+    Icon: ClockRewind,
+    to: PROJECT_ROUTE.releases,
+    tone: "bg-chart-3/15 text-chart-3",
   },
   hosting: {
     labelKey: "projects.apps.hosting",
@@ -255,7 +263,8 @@ function ProjectAppTilesBody({
   const apps = launchableApps(project, native ?? undefined).filter(
     (id) =>
       /* Both need a repo, as in the sidebar's presence rules. */
-      ((id !== "site-editor" && id !== "experiments") || hasSource) &&
+      ((id !== "site-editor" && id !== "experiments" && id !== "releases") ||
+        hasSource) &&
       /* Every project has these two, so across an org they bury the apps
          someone actually chose. They stay on each project's own screen. */
       !(showProject && ORG_HIDDEN_APPS.has(id)),

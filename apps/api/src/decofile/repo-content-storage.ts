@@ -1,56 +1,44 @@
 /**
- * The content protocol's storage over a project's Git repository: the site
- * editor's GitHub backend (the hosted side of `deco serve`).
+ * The read side of the content protocol over a project's Git repository: the
+ * file list, file bodies, schema and secrets key of one branch. The hosted v8
+ * editor (`hosted/draft-content-storage.ts`) reads the default branch through
+ * it and layers the CDN draft on top; nothing here writes.
  *
- * One storage is bound to one `(repository, app root, branch)`. The vendored
- * protocol core (`createContentHandler`) owns names, validation, the secret
- * guard and retries; this file only lists, reads and commits files
- * under `<root>/.deco/`, through the same `RepoContentClient`, blob cache and
- * compare-and-swap commit the legacy decofile routes use.
- *
- * Versions are git blob shas and the revision is the branch head sha. Before
- * the first write a missing branch reads as the default branch (reported in
- * `resolvedRef`); the first commit creates it at the head it was read from.
+ * Versions are git blob shas and the revision is the branch head sha. A
+ * missing branch reads as the default branch (reported in `resolvedRef`).
  */
 
-import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
-  blockNameFromFile,
-  type CommitResult,
   type ContentStorage,
-  type StorageDescription,
   type StorageSnapshot,
   type StoredFileBody,
   type StoredSchema,
   StorageNotFoundError,
   StorageUnavailableError,
-  unsupported,
 } from "@decocms/blocks/protocol";
 import {
-  type FileChange,
   type RepoContentClient,
-  RepoWriteConflict,
   repoRateLimitRetryAfterMs,
   requireBranchHead,
 } from "@/git-providers";
-import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 import {
-  type BlockSource,
   blockEntriesInTree,
   blocksDirPath,
-  gitBlobSha,
-  primeBlobCache,
   resolveBlockContents,
 } from "./read-decofile";
 
-export interface RepoContentStorageOptions {
+/** What the hosted draft storage reads from the repository. */
+export type RepoContentReader = Pick<
+  ContentStorage,
+  "snapshot" | "readFiles" | "readSchema" | "readSecretsPublicKey"
+>;
+
+interface RepoContentStorageOptions {
   client: RepoContentClient;
   /** The app root inside the repository; `null` at the repository root. */
   packagePath: string | null;
-  /** The one branch this storage reads and writes. */
+  /** The one branch this storage reads. */
   branch: string;
-  /** Acting user, appended as a `Co-authored-by:` trailer when present. */
-  coAuthor?: CoAuthorIdentity | null;
 }
 
 /**
@@ -93,9 +81,9 @@ async function guarded<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export function createRepoContentStorage(
+export function createRepoContentReader(
   options: RepoContentStorageOptions,
-): ContentStorage {
+): RepoContentReader {
   const { client, packagePath, branch } = options;
   const blocksPrefix = `${blocksDirPath(packagePath)}/`;
 
@@ -142,22 +130,6 @@ export function createRepoContentStorage(
   };
 
   return {
-    describe(): StorageDescription {
-      const description = {
-        kind: "git" as const,
-        root: packagePath ?? ".",
-        readOnly: false,
-        // Uploads go to Studio's own file storage, never into the repository.
-        assets: null,
-        // Only for @decocms/blocks 8.1.0-next.4, whose types require these
-        // two and whose conformance ties `resolvedRef` to `refs`; the
-        // protocol drops both. Delete with the next bump.
-        refs: { default: branch, autoCreate: true },
-        idempotency: null,
-      };
-      return description;
-    },
-
     snapshot: () =>
       guarded(async (): Promise<StorageSnapshot> => {
         const head = await readHead();
@@ -214,90 +186,6 @@ export function createRepoContentStorage(
         return entry?.type === "blob"
           ? readBlobText(entry.path, entry.sha)
           : null;
-      }),
-
-    commit: (attempt) =>
-      guarded(async (): Promise<CommitResult> => {
-        const base = attempt.base.revision;
-        try {
-          // The whole head is the guard: any commit since `base` is stale,
-          // which covers every per-file expectation the core asks for.
-          const current = await client.getBranch(branch);
-          if (current === null) {
-            await client.createBranch(branch, base);
-          } else if (current.sha !== base) {
-            return { status: "stale" };
-          }
-          // Never write a v7 site through the protocol, even by a direct call.
-          const schema = await resolveSchema({ sha: base, ref: branch });
-          if (
-            !schema ||
-            !isV8SchemaText(
-              await readBlobText(schema.entry.path, schema.entry.sha),
-            )
-          ) {
-            throw unsupported("not a Blocks v8 site");
-          }
-          if (attempt.expectedSchemaVersion !== undefined) {
-            if (schema.entry.sha !== attempt.expectedSchemaVersion) {
-              return { status: "stale" };
-            }
-          }
-
-          const tree = await client.listDecofileEntries(base, packagePath);
-          const present = new Set(attempt.base.files.map((f) => f.file));
-          const nextBlocks = new Map<string, BlockSource>(
-            blockEntriesInTree(tree, packagePath).map((e) => [
-              e.path,
-              { stem: e.stem, sha: e.sha },
-            ]),
-          );
-          const changes: FileChange[] = [];
-          const versions: Record<string, string> = {};
-          for (const [file, content] of Object.entries(attempt.put)) {
-            const path = `${blocksPrefix}${file}`;
-            changes.push({ path, content });
-            nextBlocks.set(path, {
-              stem: file.slice(0, -".json".length),
-              content,
-            });
-            versions[file] = gitBlobSha(content);
-            await primeBlobCache(client.repo, content);
-          }
-          for (const file of attempt.delete) {
-            if (!present.has(file)) continue;
-            const path = `${blocksPrefix}${file}`;
-            changes.push({ path, deleted: true });
-            nextBlocks.delete(path);
-          }
-          if (changes.length === 0) {
-            return { status: "committed", revision: base, versions };
-          }
-          const gen = await regenerateGenArtifact({
-            client,
-            tree,
-            packagePath,
-            branch,
-            nextBlocks: nextBlocks.values(),
-            memo: new Map(),
-          });
-          if (gen) changes.push(gen);
-
-          const { sha } = await client.commitFiles({
-            branch,
-            message: decofileCommitMessage(
-              Object.keys(attempt.put).map(blockNameFromFile),
-              attempt.delete.map(blockNameFromFile),
-              options.coAuthor,
-            ),
-            expectedHead: base,
-            changes,
-          });
-          return { status: "committed", revision: sha, versions };
-        } catch (error) {
-          if (error instanceof RepoWriteConflict) return { status: "stale" };
-          throw error;
-        }
       }),
   };
 }

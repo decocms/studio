@@ -80,6 +80,8 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-section";
 import { useProjectSettingsSection } from "./settings/use-settings-section";
+import { SiteTokenSection } from "./settings/site-token-section";
+import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
@@ -882,6 +884,7 @@ function VirtualMcpDetailViewWithData({
 
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
   const { section } = useProjectSettingsSection();
+  const hostedCms = useOrgFlagState("site_editor_content_protocol") === true;
   const views = useProjectViews({
     virtualMcpId: virtualMcp.id,
     form,
@@ -1192,6 +1195,14 @@ function VirtualMcpDetailViewWithData({
                     )}
                   </SettingsCard>
                 </SettingsSection>
+              )}
+
+              {/* Hosted Deco CMS (Blocks v8): the site's telemetry tokens. */}
+              {section === "site" && hostedCms && hasRepository && (
+                <SiteTokenSection
+                  orgSlug={org.slug}
+                  virtualMcpId={virtualMcp.id}
+                />
               )}
 
               {/* Sandbox — the repo it clones and what it runs there. */}

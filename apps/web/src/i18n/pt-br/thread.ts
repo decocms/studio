@@ -232,6 +232,14 @@ export const thread = {
   "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishDialog.visitPreview": "Abrir o Preview",
   "thread.publishPopover.blocksGroup": "Blocos",
+  "thread.publishPopover.hostedPending":
+    "Publicado no git; ainda não está no ar nos sites em execução.",
+  "thread.publishPopover.mainMoved":
+    "A main mudou durante a publicação, então nada foi publicado. Publique novamente.",
+  "thread.publishPopover.resync": "Ressincronizar",
+  "thread.publishPopover.resyncAnyway": "Ressincronizar mesmo assim",
+  "thread.publishPopover.resyncOverridesRollback":
+    "O site está revertido para uma versão anterior. Ressincronizar coloca no ar a versão mais recente da main.",
   "thread.publishPopover.branchMoved":
     "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
   "thread.publishPopover.detailsUnavailable":

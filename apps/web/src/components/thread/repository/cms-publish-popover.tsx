@@ -65,6 +65,7 @@ import {
 import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
 
 export type { CmsPublishMode };
 
@@ -505,6 +506,8 @@ function CmsPublishContent({
     judgeEnabled: !isReview,
   });
 
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
   const commitToOpenPr = openPullRequest?.state === "open";
   const target: PublishTarget = {
     orgSlug,
@@ -528,6 +531,7 @@ function CmsPublishContent({
     submit,
     discardChange,
     discardAll,
+    hostedPending,
   } = useCmsPublishActions({
     mode,
     target,
@@ -539,6 +543,7 @@ function CmsPublishContent({
     refresh,
     onPullRequestChanged,
     onPublished,
+    hosted,
   });
 
   const canSubmit =
@@ -828,6 +833,22 @@ function CmsPublishContent({
               </div>
               {publishError ? (
                 <p className="text-xs text-destructive">{publishError}</p>
+              ) : null}
+              {hostedPending ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void hostedPending.resync()}
+                  disabled={hostedPending.isResyncing}
+                >
+                  {hostedPending.isResyncing ? (
+                    <Spinner className="size-4 motion-reduce:animate-none" />
+                  ) : null}
+                  {hostedPending.needsConfirm
+                    ? t("thread.publishPopover.resyncAnyway")
+                    : t("thread.publishPopover.resync")}
+                </Button>
               ) : null}
             </>
           }

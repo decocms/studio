@@ -10,11 +10,7 @@
  * someone else wrote.
  */
 
-import {
-  type QueryClient,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
@@ -32,10 +28,7 @@ import {
   type DecofilePatchBody,
   type DecofileScopeParams,
   decofileWriteMutationKey,
-  fetchDecofile,
-  useDecofileDraft,
 } from "./decofile-api";
-import { buildDraftPointer } from "./section-preview-url";
 import type { LiveMeta } from "./resolve-schema";
 import { isSchemaAbsent, noSchemaMeta } from "./schemaless";
 
@@ -222,9 +215,10 @@ async function readContent(
 }
 
 /**
- * One `blocks.apply`; adopts the returned revision. On GitHub the commit
- * moved the branch head, so the header's branch status and the draft token
- * (`useProtocolDraft`) are refreshed.
+ * One `blocks.apply`; adopts the returned revision. On GitHub the save
+ * rewrote the project's CDN draft, so the publish status and the draft
+ * pointer (`useProtocolDraft`, whose version is the draft's ETag) are
+ * refreshed.
  * `ifMatch` guards entries by version (`null`: only if it doesn't exist yet);
  * a failed guard rejects the whole patch with a Conflict.
  */
@@ -248,7 +242,6 @@ export async function applyProtocolPatch(
     (seen) => ({ ...seen, revision: result.revision }),
   );
   if (backend.source === "github") {
-    // The v7 save hands out a fresh draft token; this save re-reads it.
     void queryClient.invalidateQueries({
       queryKey: KEYS.protocolDraftRead(
         params.orgSlug,
@@ -268,44 +261,43 @@ export async function applyProtocolPatch(
   return { revision: result.revision };
 }
 
+/** What the session read answers for a hosted v8 project. */
+interface HostedDraftPointer {
+  /** `delivery.decocms.com/sites/<site>/drafts/<slug>.json`; null without a draft. */
+  draft: string | null;
+  /** The draft object's ETag, so each save makes a new pointer. */
+  version: string | null;
+}
+
 /**
- * The `?__draft=` pointer of a project on the GitHub backend: the v7 Fast
- * Preview pointer, naming the branch's `changes` against production. Its
- * token and API host come the v7 way, from the session's decofile read
- * (`fetchDecofile`, stashed under KEYS.decofileDraft), made on load and again
- * after each save (see `applyProtocolPatch`). Its version is the last
- * revision a read or write saw (the branch head, as v7's), so each save
- * refreshes the preview. `params` is `null` for any other backend; the
- * pointer is null until that read answers.
+ * The `?__draft=` pointer of a project on the GitHub backend: its draft on
+ * the delivery CDN, `<draft>@<etag>`, which the site's SDK revalidates on
+ * every render. Read from the session's decofile GET, on load and again
+ * after each save (see `applyProtocolPatch`). `params` is `null` for any
+ * other backend; the pointer is null while there is no draft.
  */
 export function useProtocolDraft(
   params: DecofileScopeParams | null,
-  cacheKey: string,
 ): string | null {
-  const queryClient = useQueryClient();
-  useQuery({
+  const { data } = useQuery({
     queryKey: KEYS.protocolDraftRead(
       params?.orgSlug ?? "",
       params?.virtualMcpId ?? "",
       params?.branch ?? "",
     ),
-    queryFn: async () => {
-      await fetchDecofile(queryClient, params!);
-      return true;
+    queryFn: async (): Promise<HostedDraftPointer> => {
+      const res = await fetch(
+        `/api/${params!.orgSlug}/decofile/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) throw new Error(`draft pointer read failed: ${res.status}`);
+      return (await res.json()) as HostedDraftPointer;
     },
     enabled: !!params,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const revision = useContentRevision(cacheKey);
-  const draft = useDecofileDraft(params);
-  if (!params || !draft) return null;
-  return buildDraftPointer({
-    ...params,
-    token: draft.token,
-    apiHost: draft.apiHost,
-    version: revision ?? draft.version,
-    suffix: "/changes",
-  });
+  if (!params || !data?.draft || !data.version) return null;
+  return `${data.draft}@${data.version}`;
 }
 
 /**

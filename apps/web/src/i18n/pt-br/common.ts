@@ -280,6 +280,7 @@ export const common = {
   "common.mainPanelTabs.code": "Código",
   "common.mainPanelTabs.content": "Conteúdo",
   "common.mainPanelTabs.assets": "Assets",
+  "common.mainPanelTabs.releases": "Versões",
   "common.mainPanelTabs.reviewChanges": "Revisar alterações",
   "common.mainPanelTabs.hosting": "Hospedagem",
   "common.mainPanelTabs.e2e": "E2E",

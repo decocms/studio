@@ -72,6 +72,13 @@ import {
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import {
+  draftGitDiff,
+  draftGitDiscard,
+  draftGitStatus,
+} from "../../hosted/draft-git-compat";
+import { hostedDrafts, mainIsV8, projectSite } from "../../hosted/scope";
 import {
   GitPushAuthError,
   parseRepositoryBinding,
@@ -394,6 +401,64 @@ async function fastPreviewGitClient(c: Context<VmEnv>) {
   return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
+/**
+ * A hosted v8 project's draft, for the sandbox-less git routes: its changes
+ * live on the CDN draft, not on the branch (see hosted/draft-git-compat.ts).
+ * Null for every other project, which keeps the branch-backed answers.
+ */
+async function fastPreviewHostedDraft(c: Context<VmEnv>) {
+  const claim = c.get("vmClaim");
+  const ctx = c.var.studioContext;
+  const organization = requireOrganization(ctx);
+  const site = projectSite(claim.virtualMcpMetadata);
+  const drafts = site ? hostedDrafts(ctx.storage.kv) : null;
+  if (!site || !drafts) return null;
+  const settings = await ctx.storage.organizationSettings.get(organization.id);
+  if (!orgFlagEnabled(settings?.flags, "site_editor_content_protocol")) {
+    return null;
+  }
+  const ref = {
+    organizationId: organization.id,
+    virtualMcpId: claim.virtualMcpId,
+    branch: claim.branch,
+    site,
+  };
+  const client = await fastPreviewGitClient(c);
+  const runtime = claim.virtualMcpMetadata?.runtime as
+    | { path?: string | null }
+    | undefined;
+  const repo = {
+    client,
+    packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
+    mainBranch: await client.getDefaultBranch(),
+  };
+  const draft = await drafts.load(ref);
+  if (!draft && !(await mainIsV8(client, repo.packagePath, repo.mainBranch))) {
+    return null;
+  }
+  return { drafts, ref, repo, draft };
+}
+
+/** `/git/status` without a sandbox: the branch's drift, or a hosted draft's. */
+async function fastPreviewStatus(c: Context<VmEnv>) {
+  const hosted = await fastPreviewHostedDraft(c);
+  if (hosted) {
+    return draftGitStatus(hosted.repo, hosted.ref.branch, hosted.draft);
+  }
+  return repoGitStatus(await fastPreviewGitClient(c), c.get("vmClaim").branch);
+}
+
+/** `/git/diff` without a sandbox: the branch's bodies, or a hosted draft's. */
+async function fastPreviewDiff(c: Context<VmEnv>, base?: string) {
+  const hosted = await fastPreviewHostedDraft(c);
+  if (hosted) return draftGitDiff(hosted.repo, hosted.draft);
+  return repoGitDiff(
+    await fastPreviewGitClient(c),
+    c.get("vmClaim").branch,
+    base,
+  );
+}
+
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
   const message = err instanceof Error ? err.message : String(err);
   /** 429 with the provider's own wait, so the client backs off instead of
@@ -459,8 +524,7 @@ async function proxyPreviewUpstream(
 
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
-    const client = await fastPreviewGitClient(c);
-    const status = await repoGitStatus(client, c.get("vmClaim").branch);
+    const status = await fastPreviewStatus(c);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -956,8 +1020,7 @@ export const createSandboxRoutes = () => {
         const body = (await c.req.json().catch(() => ({}))) as {
           base?: string;
         };
-        const client = await fastPreviewGitClient(c);
-        const diff = await repoGitDiff(client, claim.branch, body.base);
+        const diff = await fastPreviewDiff(c, body.base);
         return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         return fastPreviewGitError(c, err);
@@ -1041,6 +1104,11 @@ export const createSandboxRoutes = () => {
           );
         }
         try {
+          const hosted = await fastPreviewHostedDraft(c);
+          if (hosted) {
+            await draftGitDiscard(hosted.drafts, hosted.ref, filepaths);
+            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+          }
           const client = await fastPreviewGitClient(c);
           await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
@@ -1162,13 +1230,7 @@ export const createSandboxRoutes = () => {
                 ])
               : // Sandbox-less backfill: same GitHub-backed shapes the /git
                 // routes serve (no daemon exists to ask).
-                await (async () => {
-                  const client = await fastPreviewGitClient(c);
-                  return Promise.all([
-                    repoGitStatus(client, claim.branch),
-                    repoGitDiff(client, claim.branch),
-                  ]);
-                })();
+                await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
         // These two routes are the only ones under /sandbox that spend real
         // money: each is one `generateText` on the org's gateway credential,
         // with a prompt the caller sizes (up to the body limit above). They
@@ -1263,13 +1325,7 @@ export const createSandboxRoutes = () => {
                     { userId, projectRef },
                   ),
                 ])
-              : await (async () => {
-                  const client = await fastPreviewGitClient(c);
-                  return Promise.all([
-                    repoGitStatus(client, claim.branch),
-                    repoGitDiff(client, claim.branch),
-                  ]);
-                })();
+              : await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
         // These two routes are the only ones under /sandbox that spend real
         // money: each is one `generateText` on the org's gateway credential,
         // with a prompt the caller sizes (up to the body limit above). They

@@ -145,6 +145,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "board",
   "site-editor",
   "assets",
+  "releases",
   "hosting",
   "e2e",
   "analytics",

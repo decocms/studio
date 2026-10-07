@@ -462,12 +462,26 @@ export function resolveConfig(
     // two can't drift). Set S3_TENANT_ENDPOINT only for a non-AWS S3 store.
     s3TenantEndpoint: envVars.S3_TENANT_ENDPOINT,
     s3TenantPublicUrlBase:
-      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://decoims.com",
+      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://assets.decocms.com",
     awsS3TenantRoleArn: envVars.AWS_S3_TENANT_ROLE_ARN,
     awsS3TenantProvisionerAccessKeyId:
       envVars.AWS_S3_TENANT_PROVISIONER_ACCESS_KEY_ID,
     awsS3TenantProvisionerSecretAccessKey:
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
+
+    // Hosted Deco CMS (Blocks v8): the delivery bucket, site tokens and the
+    // denylist. Unset = the hosted features answer "not configured".
+    deliveryR2AccountId: envVars.DELIVERY_R2_ACCOUNT_ID,
+    deliveryR2AccessKeyId: envVars.DELIVERY_R2_ACCESS_KEY_ID,
+    deliveryR2SecretAccessKey: envVars.DELIVERY_R2_SECRET_ACCESS_KEY,
+    deliveryR2Bucket: envVars.DELIVERY_R2_BUCKET,
+    // test-only: a local S3 store and the origin that serves it.
+    deliveryR2Endpoint: envVars.DELIVERY_R2_ENDPOINT,
+    deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
+    siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
+    cfAccountId: envVars.CF_ACCOUNT_ID,
+    cfDenylistKvNamespaceId: envVars.CF_DENYLIST_KV_NAMESPACE_ID,
+    cfKvApiToken: envVars.CF_KV_API_TOKEN,
   };
 
   // A feature gate is only as trustworthy as this secret. `mintGatewayJwt`
