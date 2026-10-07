@@ -54,6 +54,7 @@ import {
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
 import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
+import { withRunTitle } from "@/harnesses/sandbox-run-title";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
@@ -1563,9 +1564,34 @@ async function prepareRun(
                   : null,
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
-        yield* sandboxHosted
-          ? withHtmlArtifactPreviews(rawHarnessChunks, ctx)
-          : rawHarnessChunks;
+        if (!sandboxHosted) {
+          yield* rawHarnessChunks;
+          return;
+        }
+        // Decopilot titles inside its own loop; a sandbox harness has no such step.
+        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+          currentThreadTitle: mem.thread.title,
+          isSubagent: input.isSubagent === true,
+          userText: materializedRequestMessage.parts
+            .flatMap((part) =>
+              part.type === "text" && typeof part.text === "string"
+                ? [part.text]
+                : [],
+            )
+            .join("\n"),
+          slots: [
+            fastSource && models.fast
+              ? { selection: models.fast, source: fastSource }
+              : undefined,
+            smartSource && models.smart
+              ? { selection: models.smart, source: smartSource }
+              : undefined,
+            thinkingSource
+              ? { selection: models.thinking, source: thinkingSource }
+              : undefined,
+          ],
+          signal: registrySignal,
+        });
       };
 
     // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream
