@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   flattenToolResult,
+  studioToolOutput,
   turnFinishChunks,
   turnStartChunks,
   UiChunkTranslator,
@@ -894,5 +895,27 @@ describe("a call parked for the user", () => {
       { type: "finish-step" },
       { type: "finish", finishReason: "tool-calls" },
     ]);
+  });
+});
+
+describe("studioToolOutput", () => {
+  test("parses the JSON result and drops model-only image blocks", () => {
+    const result = {
+      success: true,
+      images: [{ uri: "studio-storage://k", mediaType: "image/png" }],
+    };
+    expect(
+      studioToolOutput([
+        { type: "text", text: JSON.stringify(result) },
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data: "AAAA" },
+        },
+      ]),
+    ).toEqual(result);
+  });
+
+  test("keeps non-JSON text as text", () => {
+    expect(studioToolOutput([{ type: "text", text: "shown" }])).toBe("shown");
   });
 });

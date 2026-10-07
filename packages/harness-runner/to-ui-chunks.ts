@@ -193,6 +193,33 @@ export function flattenToolResult(content: unknown): unknown {
 }
 
 /**
+ * A Studio tool's chat output is its JSON result, which the Decopilot
+ * renderers read; its image blocks are for the model only.
+ */
+export function studioToolOutput(content: unknown): unknown {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((block) =>
+              isRecord(block) &&
+              block.type === "text" &&
+              typeof block.text === "string"
+                ? [block.text]
+                : [],
+            )
+            .join("\n")
+        : null;
+  if (!text) return flattenToolResult(content);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
  * Translates one turn. Stateful only in the ids it mints, so a caller can feed
  * messages as they arrive and collect chunks, then flush once on `result`.
  */
@@ -496,7 +523,9 @@ export class UiChunkTranslator {
       // panel; letting it through fails the whole run.
       const call = this.announcedToolCalls.get(toolCallId);
       if (!call || this.awaitingUser.has(toolCallId)) continue;
-      const flattened = flattenToolResult(block.content);
+      const flattened = call.name.startsWith(STUDIO_MCP_PREFIX)
+        ? studioToolOutput(block.content)
+        : flattenToolResult(block.content);
       if (block.is_error === true) {
         chunks.push({
           type: "tool-output-error",
