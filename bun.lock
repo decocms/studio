@@ -54,7 +54,7 @@
         "@better-auth/sso": "1.4.1",
         "@decocms/better-auth": "1.5.17",
         "@decocms/bindings": "workspace:*",
-        "@decocms/blocks": "8.1.0-next.6",
+        "@decocms/blocks": "8.1.0-next.7",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -112,7 +112,7 @@
         "@better-auth/sso": "1.6.11",
         "@daveyplate/better-auth-ui": "^3.2.7",
         "@decocms/bindings": "workspace:*",
-        "@decocms/blocks": "8.1.0-next.6",
+        "@decocms/blocks": "8.1.0-next.7",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -232,7 +232,7 @@
       "name": "@decocms/e2e",
       "version": "1.93.4",
       "dependencies": {
-        "@decocms/blocks": "8.1.0-next.6",
+        "@decocms/blocks": "8.1.0-next.7",
         "@decocms/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@playwright/test": "^1.58.2",
@@ -708,7 +708,7 @@
 
     "@decocms/bindings": ["@decocms/bindings@workspace:packages/bindings"],
 
-    "@decocms/blocks": ["@decocms/blocks@8.1.0-next.6", "", { "dependencies": { "ajv": "^8.20.0", "zod": "^4.4.3" }, "peerDependencies": { "react": "^19.0.0", "typescript": "^5.0.0" }, "bin": { "deco": "bin/deco.js" } }, "sha512-EL4ThGoFpJKE3Y15xs+i6uktmy/HUqMkjHXAoYop3JLaZunshdgUhNTDRYX66ryBS0x93RBt5aZ0jtm2NO/MbA=="],
+    "@decocms/blocks": ["@decocms/blocks@8.1.0-next.7", "", { "dependencies": { "ajv": "^8.20.0", "zod": "^4.4.3" }, "peerDependencies": { "react": "^19.0.0", "typescript": "^5.0.0" }, "bin": { "deco": "bin/deco.js" } }, "sha512-ULmBDjpBCjM/w0HikMtgZXHYA46WANE8wvqSbcvfaFGhV8CrpCAtAbSEB8ya/IfOYGd4sVhAFlz+CNarzTBZIA=="],
 
     "@decocms/e2e": ["@decocms/e2e@workspace:packages/e2e"],
 
