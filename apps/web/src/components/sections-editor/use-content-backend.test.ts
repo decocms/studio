@@ -7,7 +7,7 @@ import {
   PROTOCOL_VERSION,
 } from "@decocms/blocks/protocol";
 import { selectContentBackend } from "./content-backend";
-import { probe } from "./use-content-backend";
+import { probe, probeSandbox } from "./use-content-backend";
 
 const deco1 = {
   manifest: { blocks: {} },
@@ -102,5 +102,24 @@ describe("v7/v8 detection over a sandbox's daemon", () => {
   test("a v7 working tree (or none) stays legacy", async () => {
     expect(await decide({ major: 1, ...deco1 })).toBe("legacy");
     expect(await decide(null)).toBe("legacy");
+  });
+});
+
+describe("sandbox probe", () => {
+  const endpoint = "http://studio.test/rpc";
+
+  test("an older daemon answering 404 is v7, not an error", async () => {
+    expect(
+      await probeSandbox(
+        endpoint,
+        async () => new Response("404 page not found", { status: 404 }),
+      ),
+    ).toBe(null);
+  });
+
+  test("any other failure is an error (retried)", async () => {
+    await expect(
+      probeSandbox(endpoint, async () => new Response("boom", { status: 502 })),
+    ).rejects.toThrow();
   });
 });

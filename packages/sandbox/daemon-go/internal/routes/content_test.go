@@ -107,3 +107,73 @@ func TestContentCommitsTakeTheTreeLock(t *testing.T) {
 		t.Errorf("apply: %s", body)
 	}
 }
+
+// A write that can't get the tree lock in time is refused (Unavailable, retry
+// later) and never lands afterwards — the editor has already given up on it.
+func TestContentWritesGiveUpOnABusyTree(t *testing.T) {
+	prev := treeLockWait
+	treeLockWait = 100 * time.Millisecond
+	defer func() { treeLockWait = prev }()
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".deco", "blocks"), 0o755)
+	lock := &worktree.Lock{}
+	c := NewContent(ContentDeps{RepoDir: repo, Store: config.NewStore(), TreeLock: lock})
+
+	release := lock.Acquire()
+	body := rpcPost(t, c, `{"jsonrpc":"2.0","id":1,"method":"blocks.apply","params":{"set":{"x":{}}}}`).Body.String()
+	if !strings.Contains(body, `"message":"the working tree is busy"`) || !strings.Contains(body, `"retryAfterMs":500`) {
+		t.Errorf("busy tree: %s", body)
+	}
+	r := httptest.NewRequest(http.MethodPut, "/_sandbox/assets/logo.png", bytes.NewReader([]byte{1}))
+	r.Header.Set("Content-Type", "image/png")
+	aw := httptest.NewRecorder()
+	c.Assets(aw, r)
+	if aw.Code < 500 {
+		t.Errorf("upload on a busy tree: %d %s", aw.Code, aw.Body)
+	}
+	release()
+	for _, p := range []string{".deco/blocks/x.json", "public/assets/logo.png"} {
+		if _, err := os.Stat(filepath.Join(repo, p)); err == nil {
+			t.Errorf("%s landed after the request was refused", p)
+		}
+	}
+}
+
+// A storage folder symlinked outside the working tree is never read or
+// written through (stricter than the TS storage; see FSOptions.ContainWithin).
+func TestContentStaysInsideTheWorkingTree(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	os.MkdirAll(filepath.Join(outside, "blocks"), 0o755)
+	os.WriteFile(filepath.Join(outside, "blocks", "secret.json"), []byte(`{}`), 0o644)
+	if err := os.Symlink(outside, filepath.Join(repo, ".deco")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	os.MkdirAll(filepath.Join(outside, "pub"), 0o755)
+	os.Symlink(filepath.Join(outside, "pub"), filepath.Join(repo, "public"))
+	c := NewContent(ContentDeps{RepoDir: repo, Store: config.NewStore(), TreeLock: &worktree.Lock{}})
+
+	if w := rpcPost(t, c, `{"jsonrpc":"2.0","id":1,"method":"describe"}`); strings.Contains(w.Body.String(), `"error"`) {
+		t.Errorf("describe: %s", w.Body)
+	}
+	for _, body := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"blocks.list"}`,
+		`{"jsonrpc":"2.0","id":1,"method":"blocks.apply","params":{"set":{"x":{}}}}`,
+	} {
+		if w := rpcPost(t, c, body); !strings.Contains(w.Body.String(), "resolves outside") {
+			t.Errorf("%s: %s", body, w.Body)
+		}
+	}
+	r := httptest.NewRequest(http.MethodPut, "/_sandbox/assets/logo.png", bytes.NewReader([]byte{1}))
+	r.Header.Set("Content-Type", "image/png")
+	aw := httptest.NewRecorder()
+	c.Assets(aw, r)
+	if aw.Code < 400 {
+		t.Errorf("upload: %d %s", aw.Code, aw.Body)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(outside, "pub")); len(entries) != 0 {
+		t.Errorf("wrote outside the tree: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "blocks", "x.json")); err == nil {
+		t.Error("committed outside the tree")
+	}
+}

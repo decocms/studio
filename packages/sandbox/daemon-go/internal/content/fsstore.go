@@ -108,9 +108,16 @@ type FSOptions struct {
 	AssetsMaxBytes int64
 	// LockTimeout bounds the wait for another process's lock (default 10 s).
 	LockTimeout time.Duration
+	// ContainWithin, when set, refuses (as NotFound) to read or write when
+	// .deco, .deco/blocks or the assets folder resolve, through symlinks,
+	// outside it.
+	// OPEN: stricter than the TS FS storage, which follows symlinks.
+	ContainWithin string
 	// Exclusive, when set, is held around every commit and upload (the daemon's
-	// working-tree lock), before the in-process and file locks.
-	Exclusive func() (release func())
+	// working-tree lock), before the in-process and file locks. ok false means
+	// it couldn't be had in time: the write is refused as Unavailable (retry),
+	// never left to land after the client gave up.
+	Exclusive func() (release func(), ok bool)
 }
 
 type fingerprinted struct {
@@ -123,7 +130,8 @@ type FSStore struct {
 	root, repoRoot, decoDir, blocksDir, assetsDir string
 	assetsMaxBytes                                int64
 	lockTimeout, lockStale                        time.Duration
-	exclusive                                     func() func()
+	exclusive                                     func() (func(), bool)
+	containWithin                                 string
 
 	hashMu    sync.Mutex
 	hashCache map[string]fingerprinted
@@ -150,6 +158,7 @@ func NewFSStore(o FSOptions) *FSStore {
 		lockTimeout:    o.LockTimeout,
 		lockStale:      30 * time.Second,
 		exclusive:      o.Exclusive,
+		containWithin:  o.ContainWithin,
 		hashCache:      map[string]fingerprinted{},
 	}
 	if s.assetsMaxBytes <= 0 {
@@ -159,6 +168,51 @@ func NewFSStore(o FSOptions) *FSStore {
 		s.lockTimeout = 10 * time.Second
 	}
 	return s
+}
+
+// checkContained answers storageNotFound when a storage folder resolves
+// outside ContainWithin (see FSOptions).
+func (s *FSStore) checkContained() error {
+	if s.containWithin == "" {
+		return nil
+	}
+	within, err := resolveExisting(s.containWithin)
+	if err != nil {
+		return wrapIOError(err)
+	}
+	for _, dir := range []string{s.decoDir, s.blocksDir, s.assetsDir} {
+		real, err := resolveExisting(dir)
+		if err != nil {
+			return wrapIOError(err)
+		}
+		rel, err := filepath.Rel(within, real)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return &storageNotFound{msg: dir + " resolves outside " + s.containWithin}
+		}
+	}
+	return nil
+}
+
+// resolveExisting resolves the symlinks of path's longest existing prefix
+// and appends the rest (what a later MkdirAll would create).
+func resolveExisting(path string) (string, error) {
+	path = filepath.Clean(path)
+	rest := ""
+	for {
+		real, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			return filepath.Join(real, rest), nil
+		}
+		if !isMissing(err) {
+			return "", err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return filepath.Join(path, rest), nil
+		}
+		rest = filepath.Join(filepath.Base(path), rest)
+		path = parent
+	}
 }
 
 // Root is the absolute app root.
@@ -468,10 +522,28 @@ func sameVersion(a, b *string) bool {
 	return *a == *b
 }
 
-func (s *FSStore) withCommitLock(fn func() (commitResult, error)) (commitResult, error) {
-	if s.exclusive != nil {
-		defer s.exclusive()()
+// errTreeBusy: the working tree stayed locked (a publish, rebase or
+// autosave) for longer than the daemon waits.
+var errTreeBusy = &storageUnavailable{msg: "the working tree is busy", retryAfterMs: 500}
+
+// holdExclusive takes the Exclusive lock, if any.
+func (s *FSStore) holdExclusive() (func(), error) {
+	if s.exclusive == nil {
+		return func() {}, nil
 	}
+	release, ok := s.exclusive()
+	if !ok {
+		return nil, errTreeBusy
+	}
+	return release, nil
+}
+
+func (s *FSStore) withCommitLock(fn func() (commitResult, error)) (commitResult, error) {
+	releaseTree, err := s.holdExclusive()
+	if err != nil {
+		return commitResult{}, err
+	}
+	defer releaseTree()
 	s.commitMu.Lock()
 	defer s.commitMu.Unlock()
 	release, err := acquireFileLock(s.decoDir, s.lockTimeout, s.lockStale)
@@ -766,9 +838,14 @@ func (s *FSStore) putAsset(name string, body []byte) (string, error) {
 	if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
 		return "", errors.New("not an asset file name: " + name)
 	}
-	if s.exclusive != nil {
-		defer s.exclusive()()
+	if err := s.checkContained(); err != nil {
+		return "", err
 	}
+	releaseTree, err := s.holdExclusive()
+	if err != nil {
+		return "", err
+	}
+	defer releaseTree()
 	if err := os.MkdirAll(s.assetsDir, 0o755); err != nil {
 		return "", err
 	}

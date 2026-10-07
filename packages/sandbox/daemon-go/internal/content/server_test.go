@@ -514,10 +514,10 @@ func TestApplyRetriesThenGivesUp(t *testing.T) {
 	version := *s.apply(map[string]any{"set": map[string]any{"g": map[string]any{"v": 2}}}).Versions["g"]
 	// Change the guarded file behind every commit attempt's back.
 	n := 0
-	s.h.store.exclusive = func() func() {
+	s.h.store.exclusive = func() (func(), bool) {
 		n++
 		s.writeFile("g.json", `{"v":"other `+strconv.Itoa(n)+`"}`)
-		return func() {}
+		return func() {}, true
 	}
 	// The guard is rechecked against a fresh snapshot: a Conflict, not a stale write.
 	res := s.call("blocks.apply", map[string]any{"set": map[string]any{"g": map[string]any{"v": 3}}, "ifMatch": map[string]any{"g": version}})
@@ -525,10 +525,10 @@ func TestApplyRetriesThenGivesUp(t *testing.T) {
 		t.Errorf("guard after a move: %+v", res.Error)
 	}
 	// A schema that keeps changing exhausts the attempts.
-	s.h.store.exclusive = func() func() {
+	s.h.store.exclusive = func() (func(), bool) {
 		n++
 		os.WriteFile(filepath.Join(s.root, ".deco", "schema.gen.json"), []byte(`{"n":`+strconv.Itoa(n)+`}`), 0o644)
-		return func() {}
+		return func() {}, true
 	}
 	res = s.call("blocks.apply", map[string]any{"set": map[string]any{"x": map[string]any{}}})
 	if res.Error == nil || res.Error.Code != CodeUnavailable || res.Error.Message != "storage kept changing; gave up after 3 commit attempts" {

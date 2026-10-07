@@ -39,6 +39,9 @@ export interface Probe {
   v8Schema: boolean;
 }
 
+/** The sandbox answered 404 on `/_sandbox/rpc`: its daemon predates it. */
+class NoSandboxProtocolError extends Error {}
+
 /** How often a failed probe is retried, so a backend recovers on its own. */
 const PROBE_RETRY_MS = 5_000;
 
@@ -95,6 +98,34 @@ export async function probe(client: ContentClient): Promise<Probe> {
     };
   }
   throw schema.error;
+}
+
+/**
+ * Probes a sandbox daemon's content protocol: the probe when its working
+ * tree's schema is a v8 one, else null. As on GitHub, only a
+ * `"blocksMajor": 8` schema is a v8 site. A daemon without the protocol (an
+ * older image) answers 404: v7 (null), not an error to poll.
+ */
+export async function probeSandbox(
+  endpoint: string,
+  doFetch: (request: Request) => Promise<Response> = (request) =>
+    fetch(request),
+): Promise<Probe | null> {
+  const client = createContentClient({
+    endpoint,
+    fetch: async (request) => {
+      const response = await doFetch(request);
+      if (response.status === 404) throw new NoSandboxProtocolError();
+      return response;
+    },
+  });
+  try {
+    const result = await probe(client);
+    return result.v8Schema ? result : null;
+  } catch (error) {
+    if (error instanceof NoSandboxProtocolError) return null;
+    throw error;
+  }
 }
 
 /**
@@ -175,18 +206,14 @@ export function useContentBackend(
       threadId ?? "",
     ),
     queryFn: async (): Promise<Probe | null> => {
-      const client = createContentClient({
-        endpoint: sandboxContentEndpoint({
+      return probeSandbox(
+        sandboxContentEndpoint({
           orgSlug: org.slug,
           virtualMcpId: virtualMcpId!,
           branch: branch!,
           threadId,
         }),
-      });
-      const result = await probe(client);
-      // As on GitHub: only a `"blocksMajor": 8` schema is a v8 site. A daemon
-      // without the protocol (an older image) fails the probe: legacy.
-      return result.v8Schema ? result : null;
+      );
     },
     enabled: sandboxEnabled,
     staleTime: Number.POSITIVE_INFINITY,

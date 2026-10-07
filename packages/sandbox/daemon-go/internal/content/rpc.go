@@ -83,6 +83,11 @@ func (h *Handler) run(e *envelope) (any, error) {
 	if perr := validateParams(e.method, e.params, e.hasParams); perr != nil {
 		return nil, perr
 	}
+	if e.method != "describe" {
+		if err := h.store.checkContained(); err != nil {
+			return nil, err
+		}
+	}
 	switch e.method {
 	case "describe":
 		return h.describe()

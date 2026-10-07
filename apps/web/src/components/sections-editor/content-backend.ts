@@ -126,7 +126,7 @@ export type BackendDecision =
  * the background (a site already known to be v8 keeps that answer). A sandbox
  * session, behind the same flag, uses its daemon's content protocol (the
  * working tree, saved like a `deco serve`'s) once the working tree is there
- * and its schema says `"blocksMajor": 8`; before that, and for v7, legacy.
+ * and its schema says `"blocksMajor": 8`; until then, and for v7, legacy.
  */
 export function selectContentBackend(input: {
   /** Whether there is a project to probe (a virtual MCP id). */
@@ -148,15 +148,13 @@ export function selectContentBackend(input: {
   if (input.hasServeConnection) return "protocol-local";
   if (input.hasLocalTunnel) return "legacy";
   if (input.runtime === "sandbox") {
-    const site = input.sandboxSite ?? "unavailable";
-    // Booting: today's sandbox UX, with no wait on the flag.
-    // OPEN: a v8 site opened while its sandbox boots shows legacy until the
-    // working tree lands, then switches (smallest option; no new wait state).
-    if (site === "unavailable") return "legacy";
-    if (input.flagEnabled === undefined) return "pending";
-    if (!input.flagEnabled) return "legacy";
-    if (site === "loading") return "pending";
-    return site === "v8" ? "protocol-sandbox" : "legacy";
+    // Legacy until a v8 site is confirmed: never `pending`, so a v7 sandbox
+    // keeps today's editor with no wait on the flag or the daemon probe.
+    // OPEN: a v8 site shows legacy until the working tree lands and the
+    // probe answers, then switches (smallest option; no new wait state).
+    return input.flagEnabled === true && input.sandboxSite === "v8"
+      ? "protocol-sandbox"
+      : "legacy";
   }
   if (input.flagEnabled === undefined) return "pending";
   if (!input.flagEnabled) return "legacy";

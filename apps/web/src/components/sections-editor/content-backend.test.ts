@@ -81,26 +81,28 @@ describe("selectContentBackend", () => {
     expect(selectContentBackend({ ...sandbox, sandboxSite: "v8" })).toBe(
       "protocol-sandbox",
     );
-    expect(selectContentBackend({ ...sandbox, sandboxSite: "loading" })).toBe(
-      "pending",
-    );
-    // A v7 working tree, or a daemon without the protocol: as before.
-    for (const sandboxSite of ["v7", "error"] as const) {
+    // Never pending: a v7 sandbox keeps the legacy editor mounted while the
+    // probe loads; a v7 working tree, or a failed probe: as before.
+    for (const sandboxSite of ["loading", "v7", "error"] as const) {
       expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe("legacy");
     }
   });
 
   test("a sandbox session is legacy while booting, and with the flag off", () => {
     const sandbox = { ...base, runtime: "sandbox" as const };
-    // Booting: no wait on the flag, today's boot UX.
+    // No wait on the flag or the probe: today's UX until v8 is confirmed.
     for (const flagEnabled of [true, false, undefined]) {
-      expect(
-        selectContentBackend({
-          ...sandbox,
-          flagEnabled,
-          sandboxSite: "unavailable",
-        }),
-      ).toBe("legacy");
+      for (const sandboxSite of [
+        "unavailable",
+        "loading",
+        "v7",
+        "error",
+        undefined,
+      ] as const) {
+        expect(
+          selectContentBackend({ ...sandbox, flagEnabled, sandboxSite }),
+        ).toBe("legacy");
+      }
     }
     expect(
       selectContentBackend({
@@ -115,7 +117,7 @@ describe("selectContentBackend", () => {
         flagEnabled: undefined,
         sandboxSite: "v8",
       }),
-    ).toBe("pending");
+    ).toBe("legacy");
     // A connected deco serve and the tunnel still win.
     expect(
       selectContentBackend({

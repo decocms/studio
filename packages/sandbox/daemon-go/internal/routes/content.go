@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
 	"github.com/decocms/studio/sandbox-daemon/internal/content"
@@ -38,6 +39,9 @@ type Content struct {
 	root    string
 	handler *content.Handler
 }
+
+// treeLockWait bounds a protocol write's wait for the working-tree lock.
+var treeLockWait = 10 * time.Second
 
 func NewContent(deps ContentDeps) *Content {
 	return &Content{deps: deps}
@@ -74,13 +78,17 @@ func (c *Content) current() *content.Handler {
 	gitx.EnsureExclude(c.deps.RepoDir, "/"+decoRel+"/.tx-*/")
 
 	store := content.NewFSStore(content.FSOptions{
-		Root:     root,
-		RepoRoot: c.deps.RepoDir,
-		Exclusive: func() func() {
+		Root:          root,
+		RepoRoot:      c.deps.RepoDir,
+		ContainWithin: c.deps.RepoDir,
+		// Bounded well under Studio's 30 s proxy timeout: a write waiting on
+		// a long publish/rebase/autosave is refused (Unavailable, retry)
+		// instead of landing after the editor already reported it failed.
+		Exclusive: func() (func(), bool) {
 			if c.deps.TreeLock == nil {
-				return func() {}
+				return func() {}, true
 			}
-			return c.deps.TreeLock.Acquire()
+			return c.deps.TreeLock.AcquireWithin(treeLockWait)
 		},
 	})
 	blocksDir := filepath.Join(root, ".deco", "blocks")
