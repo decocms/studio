@@ -25,9 +25,11 @@ export function projectSite(
  * `org_sites`. `metadata.siteSlug` is member-editable, so every hosted write
  * (delivery objects, drafts, site tokens) checks ownership before using it.
  */
-// OPEN: a project whose siteSlug is not claimed in `org_sites` (claimed today
-// by the deco import, the admin claim or the backfill) gets no hosted
-// features until the site is claimed for its organization.
+// A project's siteSlug is claimed for its org when the project is created
+// (hosted/claim-site.ts), by the deco import, the admin claim, or the admin
+// backfill. OPEN: one changed later (`COLLECTION_VIRTUAL_MCP_UPDATE`), or a
+// slug another org or deco.cx has, gets no hosted features until an admin
+// claims it.
 export async function ownedProjectSite(
   orgSites: {
     isOwnedBy(slug: string, organizationId: string): Promise<boolean>;

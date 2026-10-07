@@ -632,6 +632,41 @@ test.describe("content protocol on GitHub", () => {
       await ctx.dispose();
     }
   });
+
+  test("creating a project claims its siteSlug, never another org's", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const other = await newApiContext(playwright);
+    try {
+      // `setUp` creates the project with `siteSlug: owner`; nothing else
+      // claims it, so site tokens working proves the claim.
+      const project = await setUp(ctx, {
+        ".deco/schema.gen.json": JSON.stringify(schema),
+      });
+      await enableContentProtocol(ctx, project.org);
+      const tokens = `/api/${project.org}/hosted/${project.vmcpId}/site-tokens`;
+      expect((await ctx.post(tokens)).status()).toBe(200);
+
+      // Another org naming the same site gets no claim and no hosted features.
+      const user = await signUpViaApi(other);
+      await enableContentProtocol(other, user.orgSlug);
+      const copy = await createFastPreviewProject(other, user.orgSlug, {
+        owner: project.owner,
+        repo: "site",
+        siteSlug: project.owner,
+      });
+      const hosted = `/api/${copy.org}/hosted/${copy.vmcpId}`;
+      expect((await other.post(`${hosted}/site-tokens`)).status()).toBe(404);
+      // And the first org keeps it.
+      expect(
+        ((await (await ctx.get(tokens)).json()) as { site: string }).site,
+      ).toBe(project.owner);
+    } finally {
+      await ctx.dispose();
+      await other.dispose();
+    }
+  });
 });
 
 /** A v7 site's `meta.gen.json`, as the classic editor reads it. */

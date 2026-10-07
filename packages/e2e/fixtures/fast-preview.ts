@@ -10,7 +10,6 @@
 
 import { randomUUID } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
-import { connectDevDb } from "./db";
 import { callSelfMcpTool, createHttpConnection } from "./mcp-tools";
 import { expect } from "./test";
 
@@ -182,25 +181,10 @@ export async function createFastPreviewProject(
   );
   const vmcpId = vmcp.item.id;
   expect(vmcpId).toBeTruthy();
-  // Hosted features need the org to own the site in `org_sites` (the deco
-  // import or an admin claim does it in production).
-  if (params.siteSlug) await claimSite(org, params.siteSlug);
+  // Hosted features need the org to own the site in `org_sites`: creating the
+  // project claimed its `siteSlug` (hosted/claim-site.ts).
 
   return { org, owner, repo, vmcpId, childConnectionId };
-}
-
-async function claimSite(orgSlug: string, slug: string): Promise<void> {
-  const db = await connectDevDb();
-  try {
-    await db.query(
-      `INSERT INTO org_sites (slug, organization_id, source, created_by, updated_by)
-       SELECT $1, id, 'manual', 'e2e', 'e2e' FROM "organization" WHERE slug = $2
-       ON CONFLICT DO NOTHING`,
-      [slug, orgSlug],
-    );
-  } finally {
-    await db.end();
-  }
 }
 
 /** Unique owner per test run keeps the stub's repo namespace parallel-safe. */

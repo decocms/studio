@@ -18,6 +18,7 @@ import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import { claimProjectSite, decoSiteExists } from "../../hosted/claim-site";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -142,6 +143,19 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       organization.id,
       userId,
       dataWithIcon,
+    );
+
+    // The project's site (`metadata.siteSlug`) becomes its org's, so hosted
+    // features work for it — unless another org or deco.cx has it (see
+    // hosted/claim-site.ts). Best-effort: never fails the creation.
+    await claimProjectSite(
+      { orgSites: ctx.storage.orgSites, isDecoSite: decoSiteExists },
+      {
+        organizationId: organization.id,
+        projectId: virtualMcp.id,
+        metadata,
+        by: userId,
+      },
     );
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
