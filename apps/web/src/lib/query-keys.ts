@@ -773,10 +773,10 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
-  // A content-protocol project's draft grant for its `changes` pointer (GitHub
-  // backend), set from its `rpc` answers.
-  protocolDraftGrant: (cacheKey: string) =>
-    ["protocol-draft-grant", cacheKey] as const,
+  // A content-protocol project's v7 decofile read (GitHub backend), made only
+  // for the draft token and API host its answer carries (KEYS.decofileDraft).
+  protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions

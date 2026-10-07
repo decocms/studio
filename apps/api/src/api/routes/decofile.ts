@@ -24,9 +24,8 @@
  * preview. Their previews use the same Fast Preview pointer as v7, naming
  * `changes` instead of the whole decofile: only what the branch changed
  * against production (`decofile/draft-changes.ts`), computed on request.
- * Like the v7 read and write, every `rpc` answer carries a fresh draft token
- * and the API host, here as the `X-Deco-Draft-Token` and `X-Deco-Api-Host`
- * headers, since its body is the protocol's.
+ * The editor gets that pointer's draft token and API host the v7 way, from
+ * the session-authenticated GET read above.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -576,16 +575,7 @@ export function createDecofileRoutes() {
           }),
       },
     );
-    const res = await handler(c.req.raw);
-    // The v7 read/write hand the editor its draft grant; so does `rpc`.
-    const headers = new Headers(res.headers);
-    headers.set("X-Deco-Draft-Token", signScopeDraftToken(scope));
-    headers.set("X-Deco-Api-Host", requestApiHost(c));
-    return new Response(res.body, {
-      status: res.status,
-      statusText: res.statusText,
-      headers,
-    });
+    return handler(c.req.raw);
   });
 
   /**

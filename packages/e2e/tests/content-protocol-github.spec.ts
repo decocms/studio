@@ -5,8 +5,8 @@
  *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc              (session, org flag)
  *   GET  /api/:org/decofile/:virtualMcpId/:branch/changes          (draft token or session, org flag)
  *
- * Like the v7 read/write, every `rpc` answer carries a draft token and the
- * API host (`X-Deco-Draft-Token`, `X-Deco-Api-Host`).
+ * The `changes` pointer's draft token comes the v7 way, from the session's
+ * decofile read (`GET /api/:org/decofile/:virtualMcpId/:branch`).
  *
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts).
@@ -119,19 +119,30 @@ async function rpc<T>(
   path: string,
   method: string,
   params: unknown = {},
-): Promise<{
-  status: number;
-  headers: Record<string, string>;
-  result?: T;
-  error?: { code: number };
-}> {
+): Promise<{ status: number; result?: T; error?: { code: number } }> {
   const res = await ctx.post(path, {
     data: { jsonrpc: "2.0", id: 1, method, params },
   });
-  const headers = res.headers();
-  if (res.status() !== 200) return { status: res.status(), headers };
+  if (res.status() !== 200) return { status: res.status() };
   const body = (await res.json()) as { result?: T; error?: { code: number } };
-  return { status: 200, headers, ...body };
+  return { status: 200, ...body };
+}
+
+/** The v7 session read, as the editor makes it: the draft grant it carries. */
+async function draftGrant(
+  ctx: APIRequestContext,
+  project: FastPreviewProject,
+  branch: string,
+): Promise<{ version: string; token: string; apiHost: string }> {
+  const res = await ctx.get(
+    `/api/${project.org}/decofile/${project.vmcpId}/${branch}`,
+  );
+  expect(res.status()).toBe(200);
+  return (await res.json()) as {
+    version: string;
+    token: string;
+    apiHost: string;
+  };
 }
 
 async function enableContentProtocol(
@@ -218,8 +229,8 @@ test.describe("content protocol on GitHub", () => {
 
       expect((await rpc(anon, path, "describe")).status).toBe(401);
       expect((await anon.get(changesPath)).status()).toBe(401);
-      // The answer's draft token reads changes, but never calls `rpc`.
-      const token = described.headers["x-deco-draft-token"]!;
+      // The v7 read's draft token reads changes, but never calls `rpc`.
+      const { token } = await draftGrant(ctx, project, "main");
       expect(token).toEqual(expect.any(String));
       const q = `?token=${encodeURIComponent(token)}`;
       expect((await anon.get(`${changesPath}${q}`)).status()).toBe(200);
@@ -408,9 +419,12 @@ test.describe("content protocol on GitHub", () => {
       );
       expect(applied.result?.revision).toEqual(expect.any(String));
 
-      // The save's answer carries the grant, as v7's PATCH does.
-      const token = applied.headers["x-deco-draft-token"]!;
-      expect(applied.headers["x-deco-api-host"]).toEqual(expect.any(String));
+      // The grant comes from the v7 read, as the editor makes it on load and
+      // after each save; its version is the save's revision.
+      const grant = await draftGrant(ctx, project, "draft-1");
+      expect(grant.version).toBe(applied.result?.revision);
+      expect(grant.apiHost).toEqual(expect.any(String));
+      const token = grant.token;
       const q = `?token=${encodeURIComponent(token)}`;
 
       // What the site's SDK fetches: only the draft's changes, footer inherits production.

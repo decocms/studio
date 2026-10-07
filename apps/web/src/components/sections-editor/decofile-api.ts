@@ -118,53 +118,6 @@ export function useDecofileDraft(
   return data ?? null;
 }
 
-/** A content-protocol project's draft grant, and when Studio issued it. */
-export interface ProtocolDraftGrant
-  extends Pick<DecofileDraft, "token" | "apiHost"> {
-  issuedAt: number;
-}
-
-/**
- * A draft token lives six hours, and each new one changes the pointer and so
- * reloads the preview: a grant is replaced only an hour before it expires.
- */
-const PROTOCOL_GRANT_REFRESH_MS = 5 * 60 * 60_000;
-
-/**
- * Stashes the grant a content-protocol (`rpc`) answer carried, the v7 way:
- * every authenticated read and write hands one out.
- */
-export function setProtocolDraftGrant(
-  queryClient: QueryClient,
-  params: DecofileScopeParams,
-  grant: Pick<DecofileDraft, "token" | "apiHost">,
-): void {
-  const key = KEYS.protocolDraftGrant(decofileCacheKey(params));
-  const now = Date.now();
-  const held = queryClient.getQueryData<ProtocolDraftGrant>(key);
-  if (held && now - held.issuedAt < PROTOCOL_GRANT_REFRESH_MS) return;
-  queryClient.setQueryData<ProtocolDraftGrant>(key, {
-    ...grant,
-    issuedAt: now,
-  });
-}
-
-/** Subscribe to a content-protocol project's draft grant (see above). */
-export function useProtocolDraftGrant(
-  params: DecofileScopeParams | null,
-): ProtocolDraftGrant | null {
-  const { data } = useQuery<ProtocolDraftGrant>({
-    queryKey: KEYS.protocolDraftGrant(params ? decofileCacheKey(params) : ""),
-    enabled: false,
-    queryFn: async () => {
-      throw new Error("the draft grant is set by content-protocol answers");
-    },
-    staleTime: Number.POSITIVE_INFINITY,
-    gcTime: Number.POSITIVE_INFINITY,
-  });
-  return data ?? null;
-}
-
 /** GET the merged decofile; stashes the draft pointer as a side effect. */
 export async function fetchDecofile(
   queryClient: QueryClient,
