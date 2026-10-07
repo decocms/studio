@@ -1,8 +1,7 @@
 /**
- * The one publish sequence, shared by Fast Preview's publish popover and the
- * coding session's publish dialog. Publishing runs push → sync → open (or
+ * The one publish sequence behind the publish popover. Publishing runs push → sync → open (or
  * update) the pull request → squash-merge; submitting for review runs the same
- * push → open-pr prefix and stops there. Neither surface owns the steps, so a
+ * push → open-pr prefix and stops there. Nothing else owns the steps, so a
  * change to the sequence lands here exactly once.
  */
 

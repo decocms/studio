@@ -1,6 +1,6 @@
 /**
  * The publish dialog's review pane: the selected change rendered by the live
- * site twice — as published, and with this session's `?__draft=` pointer —
+ * site and its {@link CompareDraft} — as published, and with the changes —
  * so content editors compare pages instead of reading block JSON. The raw
  * file diff stays one tab away for changes that have no page to render.
  */
@@ -29,11 +29,13 @@ import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
+  compareDraftUrl,
   comparePageUrl,
   compareSectionUrl,
   initialComparePath,
   isComparePathEditable,
   isolatedSectionKey,
+  type CompareDraft,
 } from "./cms-publish-compare-path.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
@@ -59,8 +61,8 @@ interface PublishCompareProps {
   bodyPending: boolean;
   /** Origin of the live site the draft renders against. */
   previewServerUrl: string | null;
-  /** This session's `?__draft=` pointer; null until a grant is stashed. */
-  draftPointer: string | null;
+  /** Where the changes render; null until Fast Preview stashes a grant. */
+  draft: CompareDraft | null;
   lastPage: LastPreviewPage | null;
 }
 
@@ -69,7 +71,7 @@ export function PublishCompare({
   diff,
   bodyPending,
   previewServerUrl,
-  draftPointer,
+  draft,
   lastPage,
 }: PublishCompareProps) {
   const t = useT();
@@ -87,8 +89,7 @@ export function PublishCompare({
       ? compareSectionUrl(previewServerUrl, sectionKey)
       : comparePageUrl(previewServerUrl, path);
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
-  const afterUrl =
-    url && draftPointer ? withDraftPointer(url.toString(), draftPointer) : null;
+  const afterUrl = url ? compareDraftUrl(url, draft) : null;
 
   const rawDiff: GitDiffResult = {
     diffs: Object.fromEntries(

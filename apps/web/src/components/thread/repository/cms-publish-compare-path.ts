@@ -4,7 +4,10 @@ import {
 } from "@/components/sections-editor/page-path-utils.ts";
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
-import { globalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url.ts";
+import {
+  globalSectionPreviewUrl,
+  withDraftPointer,
+} from "@/components/sections-editor/section-preview-url.ts";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 
@@ -88,6 +91,28 @@ export function comparePageUrl(
       site,
     );
     return url.origin === site.origin ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where the unpublished side renders: Fast Preview's `?__draft=` pointer on
+ *  the live site, or a coding session's sandbox dev server. */
+export type CompareDraft =
+  | { kind: "pointer"; pointer: string }
+  | { kind: "sandbox"; previewUrl: string };
+
+/** The live-site `url` rendered with the unpublished changes, or null without a draft. */
+export function compareDraftUrl(
+  url: URL,
+  draft: CompareDraft | null,
+): string | null {
+  if (!draft) return null;
+  if (draft.kind === "pointer") {
+    return withDraftPointer(url.toString(), draft.pointer);
+  }
+  try {
+    return new URL(`${url.pathname}${url.search}`, draft.previewUrl).href;
   } catch {
     return null;
   }

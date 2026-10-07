@@ -138,10 +138,8 @@ export const thread = {
   "thread.headerActions.openNewPrTooltip":
     "Abrir um novo PR com os últimos commits",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} mesclado em {base}",
-  "thread.headerActions.publish": "Publicar",
   "thread.headerActions.publishAnyway": "Publicar mesmo assim",
   "thread.headerActions.publishedPr": "PR #{prNumber} publicado",
-  "thread.headerActions.publishToProduction": "Publicar em produção",
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
   "thread.headerActions.review": "Revisar",
   "thread.headerActions.saving": "Salvando…",
@@ -169,26 +167,8 @@ export const thread = {
     "Preparando seu ambiente — leva só um instante",
   "thread.publishDialog.allChangesDiscarded":
     "Todas as alterações foram descartadas",
-  "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancelar",
-  "thread.publishDialog.change": "alteração",
-  "thread.publishDialog.changes": "alterações",
   "thread.publishDialog.changesFrom": "Alterações de {branch}",
-  "thread.publishDialog.changesTab": "Alterações",
-  "thread.publishDialog.commitMessage": "Mensagem de commit",
-  "thread.publishDialog.commitTitlePlaceholder": "Título do commit…",
-  "thread.publishDialog.description": "Descrição",
-  "thread.publishDialog.descriptionLabel": "Descrição",
-  "thread.publishDialog.descriptionPlaceholder": "Descrição (opcional)…",
-  "thread.publishDialog.discardAll": "Descartar tudo",
-  "thread.publishDialog.discardConfirmMessage":
-    "Descartar todas as alterações? Isso não pode ser desfeito.",
-  "thread.publishDialog.discardedChanges":
-    "Alterações descartadas para {filepath}",
-  "thread.publishDialog.failedDiscardChanges": "Falha ao descartar alterações",
-  "thread.publishDialog.failedLoad": "Falha ao carregar alterações.",
-  "thread.publishDialog.failedLoadAfterReprovision":
-    "Falha ao carregar alterações após reprovisionar a sandbox.",
   "thread.publishDialog.failedMergePullRequest":
     "Falha ao mesclar pull request",
   "thread.publishDialog.failedOpenPullRequest": "Falha ao abrir pull request",
@@ -196,9 +176,6 @@ export const thread = {
   "thread.publishDialog.failedPushChanges": "Falha ao enviar alterações",
   "thread.publishDialog.failedRebase": "Falha ao rebasar para a base",
   "thread.publishDialog.failedSubmitForReview": "Falha ao enviar para revisão",
-  "thread.publishDialog.generating": "Gerando…",
-  "thread.publishDialog.inThisPr": "neste PR",
-  "thread.publishDialog.loadingChanges": "Carregando alterações…",
   "thread.publishDialog.mergeFailed":
     "Alterações foram enviadas e PR #{prNumber} está aberto, mas a mesclagem falhou: {message}",
   "thread.mergeRefused.conflict":
@@ -210,25 +187,11 @@ export const thread = {
   "thread.mergeRefused.notFound": "Não existe mais.",
   "thread.mergeRefused.error": "Falha ao fazer merge.",
   "thread.publishDialog.openingComparison": "Abrindo a comparação…",
-  "thread.publishDialog.opensPullRequestInto":
-    "Abre um pull request para {baseBranch} para revisão.",
   "thread.publishDialog.publishedTo": "Publicado em {baseBranch}",
-  "thread.publishDialog.publishNeedsReview":
-    "Esta alteração precisa de revisão antes de publicar.",
-  "thread.publishDialog.pullRequest": "Pull request",
-  "thread.publishDialog.regenerate": "Regenerar",
-  "thread.publishDialog.reviewingChanges": "Revisando alterações…",
-  "thread.publishDialog.squashMergesInto":
-    "{publishLabel} faz squash-merge para {baseBranch}.",
-  "thread.publishDialog.submitForReview": "Enviar para revisão",
-  "thread.publishDialog.submitForReviewButton": "Enviar para revisão",
   "thread.publishDialog.submittedForReview":
     "Pull request #{prNumber} enviado para revisão",
-  "thread.publishDialog.title": "Título",
-  "thread.publishDialog.toPublish": "para publicar",
   "thread.publishDialog.viewOnProvider": "Ver no provedor",
   "thread.publishDialog.viewPr": "Ver PR",
-  "thread.publishDialog.visitPreview": "Abrir o Preview",
   "thread.publishPopover.blocksGroup": "Blocos",
   "thread.publishPopover.branchMoved":
     "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",

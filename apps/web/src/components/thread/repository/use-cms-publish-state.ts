@@ -11,7 +11,7 @@
  *
  * Servers that predate the manifest omit `changedFiles`, and the sandbox daemon
  * has no equivalent — then this falls back to deriving everything from the
- * bodies, which is what the surface did before the split.
+ * bodies, and a failure to load them is a load error, not an empty list.
  */
 
 import { skipToken, useQuery, useSuspenseQuery } from "@tanstack/react-query";
@@ -22,7 +22,10 @@ import {
   type PublishChangeSummary,
 } from "./publish-change-summary.ts";
 import {
-  fetchGitDiff,
+  fetchGitStatus,
+  fetchPublishDiff,
+  hasGitLocalWork,
+  isSandboxUnreachable,
   sandboxGitStatusQueryOptions,
   type GitDiffResult,
   type GitStatus,
@@ -34,6 +37,10 @@ interface CmsPublishStateArgs {
   branch: string;
   threadId: string | null;
   baseBranch: string;
+  /** Sandbox-less Fast Preview, answered by the provider API instead of a daemon. */
+  fastPreview: boolean;
+  /** Re-provisions an unreachable sandbox; the read is retried once after it. */
+  recoverSandbox?: () => Promise<unknown>;
 }
 
 export interface CmsPublishState {
@@ -66,6 +73,7 @@ function cmsPublishBodiesQueryKey(
   branch: string,
   baseBranch: string,
   headSha: string | null,
+  localWork: string | null,
 ) {
   return [
     "cms-publish-bodies",
@@ -74,12 +82,26 @@ function cmsPublishBodiesQueryKey(
     branch,
     baseBranch,
     headSha,
+    localWork,
   ] as const;
 }
 
 /** How long file bodies stay valid. They are content-addressed by `headSha`,
  *  so a new head is a new entry rather than a stale one. */
 const BODIES_STALE_MS = 60_000;
+
+/**
+ * A sandbox's uncommitted edits never move its head, so its bodies are keyed
+ * by the working tree's file list as well — a discard is then a new entry.
+ * Null for Fast Preview, which has no working tree.
+ */
+function localWorkKey(status: GitStatus, fastPreview: boolean): string | null {
+  if (fastPreview) return null;
+  return status.files
+    .map((file) => `${file.index}${file.working_dir} ${file.path}`)
+    .sort()
+    .join("\n");
+}
 
 /**
  * Read-only subscription to the decofile the CMS already loaded. It holds the
@@ -100,21 +122,42 @@ function useDecofileHead(
 }
 
 export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
-  const { orgSlug, virtualMcpId, branch, threadId, baseBranch } = args;
+  const {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    threadId,
+    baseBranch,
+    fastPreview,
+    recoverSandbox,
+  } = args;
   const sandboxRef = { orgSlug, virtualMcpId, branch, threadId };
-  const fastPreviewCall = { fastPreview: true } as const;
+  const call = fastPreview ? { fastPreview: true } : undefined;
 
-  const statusQuery = useSuspenseQuery(
-    sandboxGitStatusQueryOptions(sandboxRef, fastPreviewCall),
-  );
+  /** The proxy can hold a stale handle while the preview stays live through
+   *  the gateway; re-provisioning once is the same self-heal the preview runs. */
+  const withRecovery = async <T>(read: () => Promise<T>): Promise<T> => {
+    try {
+      return await read();
+    } catch (error) {
+      if (!recoverSandbox || !isSandboxUnreachable(error)) throw error;
+      await recoverSandbox();
+      return read();
+    }
+  };
+
+  const statusQuery = useSuspenseQuery({
+    ...sandboxGitStatusQueryOptions(sandboxRef, call),
+    queryFn: () => withRecovery(() => fetchGitStatus(sandboxRef, call)),
+  });
   const status = statusQuery.data;
   const manifest = status.changedFiles ?? null;
   const headSha = status.headSha ?? null;
 
-  // Sandbox-less local-work fields are always empty, so drift is the only signal.
+  // Fast Preview's local-work fields are always empty; drift is its only signal.
   const wantsBodies = manifest
     ? manifest.length > 0
-    : (status.aheadOfBase ?? 0) > 0;
+    : (status.aheadOfBase ?? 0) > 0 || hasGitLocalWork(status);
 
   const bodiesQuery = useQuery({
     queryKey: cmsPublishBodiesQueryKey(
@@ -123,11 +166,18 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
       branch,
       baseBranch,
       headSha,
+      localWorkKey(status, fastPreview),
     ),
     queryFn: () =>
-      fetchGitDiff(sandboxRef, { base: baseBranch }, fastPreviewCall),
+      withRecovery(() =>
+        fetchPublishDiff(sandboxRef, status, baseBranch, call),
+      ),
     enabled: wantsBodies,
-    staleTime: BODIES_STALE_MS,
+    // A working tree's contents change under the same key: never reuse them.
+    staleTime: fastPreview ? BODIES_STALE_MS : 0,
+    gcTime: fastPreview ? undefined : 0,
+    // Without a manifest, a failed read must not render as "everything is live".
+    throwOnError: !manifest,
   });
 
   const decofileHead = useDecofileHead(orgSlug, virtualMcpId, branch);

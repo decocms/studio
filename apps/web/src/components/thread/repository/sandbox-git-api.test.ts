@@ -5,6 +5,7 @@ import {
   DEFAULT_PUBLISH_POLICY,
   fetchGitDiff,
   fetchGitStatus,
+  fetchPublishDiff,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasNothingToReview,
@@ -19,7 +20,6 @@ import {
   reviewDiffSignature,
   sandboxGitStatusQueryKey,
   sandboxGitStatusQueryOptions,
-  shouldUseBaseDiff,
   smartReviewGate,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
@@ -304,47 +304,6 @@ describe("hasPublishableLocalWork", () => {
         not_added: [".deco/blocks/a.json"],
       }),
     ).toBe(true);
-  });
-});
-
-describe("shouldUseBaseDiff", () => {
-  const opts = { openPrFromCommits: false, commitToOpenPr: false };
-
-  test("false when the working tree is dirty (show working-tree diff)", () => {
-    expect(
-      shouldUseBaseDiff(
-        { ...cleanStatus, modified: ["a.ts"], aheadOfBase: 3 },
-        opts,
-      ),
-    ).toBe(false);
-  });
-
-  test("true for a clean tree with commits ahead of base", () => {
-    expect(shouldUseBaseDiff({ ...cleanStatus, aheadOfBase: 2 }, opts)).toBe(
-      true,
-    );
-  });
-
-  test("true when opening a PR from existing commits", () => {
-    expect(
-      shouldUseBaseDiff(cleanStatus, {
-        openPrFromCommits: true,
-        commitToOpenPr: false,
-      }),
-    ).toBe(true);
-  });
-
-  test("false when committing to an already-open PR", () => {
-    expect(
-      shouldUseBaseDiff(
-        { ...cleanStatus, aheadOfBase: 2 },
-        { openPrFromCommits: false, commitToOpenPr: true },
-      ),
-    ).toBe(false);
-  });
-
-  test("false for a clean tree with nothing ahead of base", () => {
-    expect(shouldUseBaseDiff(cleanStatus, opts)).toBe(false);
   });
 });
 
@@ -741,5 +700,118 @@ describe("fetchGitDiff request body", () => {
     await fetchGitDiff(ref, { base: "main" });
 
     expect(sent.body).toBe(JSON.stringify({ base: "main" }));
+  });
+});
+
+describe("fetchPublishDiff", () => {
+  const originalFetch = globalThis.fetch;
+  const ref = {
+    orgSlug: "org",
+    virtualMcpId: "vm",
+    branch: "feat",
+    threadId: null,
+  };
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /** Answers a `{ base }` body with the base diff, an empty one with the working tree's. */
+  function serveDiffs(diffs: {
+    base: GitDiffResult["diffs"];
+    working: GitDiffResult["diffs"];
+  }) {
+    const requests: { body: string; fastPreview: boolean }[] = [];
+    globalThis.fetch = ((_url: string, init: RequestInit) => {
+      const body = String(init.body);
+      requests.push({
+        body,
+        fastPreview: new Headers(init.headers).has("x-deco-fast-preview"),
+      });
+      const isBase = body !== "{}";
+      return Promise.resolve(
+        Response.json({
+          diffs: isBase ? diffs.base : diffs.working,
+          ...(isBase ? { mergeBaseSha: "abc" } : {}),
+        }),
+      );
+    }) as unknown as typeof fetch;
+    return requests;
+  }
+
+  test("Fast Preview reads base…head alone, routed to the provider", async () => {
+    const requests = serveDiffs({
+      base: { "a.json": { from: "1", to: "2" } },
+      working: {},
+    });
+
+    const diff = await fetchPublishDiff(
+      ref,
+      { ...cleanStatus, aheadOfBase: 1 },
+      "main",
+      { fastPreview: true },
+    );
+
+    expect(requests).toEqual([
+      { body: JSON.stringify({ base: "main" }), fastPreview: true },
+    ]);
+    expect(Object.keys(diff.diffs)).toEqual(["a.json"]);
+  });
+
+  test("a sandbox combines commits ahead of base with its working tree", async () => {
+    const requests = serveDiffs({
+      base: {
+        "committed.ts": { from: "a", to: "b" },
+        "both.ts": { from: "a", to: "committed" },
+      },
+      working: { "both.ts": { from: "committed", to: "uncommitted" } },
+    });
+
+    const diff = await fetchPublishDiff(
+      ref,
+      { ...cleanStatus, aheadOfBase: 1, modified: ["both.ts"] },
+      "main",
+    );
+
+    expect(requests).toHaveLength(2);
+    expect(requests.some((r) => r.fastPreview)).toBe(false);
+    expect(diff.diffs["committed.ts"]).toEqual({ from: "a", to: "b" });
+    expect(diff.diffs["both.ts"]?.to).toBe("uncommitted");
+    expect(diff.mergeBaseSha).toBe("abc");
+  });
+
+  test("a sandbox with only uncommitted work skips the base diff", async () => {
+    const requests = serveDiffs({
+      base: {},
+      working: { "a.ts": { from: "1", to: "2" } },
+    });
+
+    const diff = await fetchPublishDiff(
+      ref,
+      { ...cleanStatus, modified: ["a.ts"] },
+      "main",
+    );
+
+    expect(requests.map((r) => r.body)).toEqual(["{}"]);
+    expect(Object.keys(diff.diffs)).toEqual(["a.ts"]);
+  });
+
+  test("a clean sandbox with commits ahead reads only base…head", async () => {
+    const requests = serveDiffs({
+      base: { "a.ts": { from: "1", to: "2" } },
+      working: {},
+    });
+
+    const headSha = "a".repeat(40);
+    await fetchPublishDiff(
+      ref,
+      { ...cleanStatus, aheadOfBase: 2, headSha },
+      "main",
+    );
+
+    // The daemon diffs the remote tip unless told which head was shown.
+    expect(requests.map((r) => r.body)).toEqual([
+      JSON.stringify({ base: "main", headSha }),
+    ]);
   });
 });

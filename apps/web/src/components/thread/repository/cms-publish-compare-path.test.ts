@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  compareDraftUrl,
   comparePageUrl,
   compareSectionUrl,
   initialComparePath,
@@ -155,5 +156,47 @@ describe("compareSectionUrl", () => {
 
   test("an unparsable site origin is not renderable", () => {
     expect(compareSectionUrl("not a url", "Header Global")).toBeNull();
+  });
+});
+
+describe("compareDraftUrl", () => {
+  const page = new URL(`${SITE}/sale?color=red`);
+
+  test("no draft yet renders nothing", () => {
+    expect(compareDraftUrl(page, null)).toBeNull();
+  });
+
+  test("Fast Preview keeps the live site and adds the draft pointer", () => {
+    const url = new URL(
+      compareDraftUrl(page, { kind: "pointer", pointer: "p1" }) ?? "",
+    );
+    expect(url.origin).toBe(SITE);
+    expect(url.pathname).toBe("/sale");
+    expect(url.searchParams.get("__draft")).toBe("p1");
+  });
+
+  test("a sandbox renders the same path and query on its dev server", () => {
+    expect(
+      compareDraftUrl(page, {
+        kind: "sandbox",
+        previewUrl: "https://sbx-1.preview.example.dev/",
+      }),
+    ).toBe("https://sbx-1.preview.example.dev/sale?color=red");
+  });
+
+  test("a global section preview keeps its props on the sandbox", () => {
+    const section = compareSectionUrl(SITE, "Header");
+    expect(section).not.toBeNull();
+    const url = new URL(
+      compareDraftUrl(section!, {
+        kind: "sandbox",
+        previewUrl: "https://sbx-1.preview.example.dev",
+      }) ?? "",
+    );
+    expect(url.origin).toBe("https://sbx-1.preview.example.dev");
+    expect(url.pathname).toBe(section!.pathname);
+    expect(url.searchParams.get("props")).toBe(
+      section!.searchParams.get("props"),
+    );
   });
 });
