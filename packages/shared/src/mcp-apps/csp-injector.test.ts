@@ -123,6 +123,17 @@ describe("injectCSP with resourceCsp", () => {
     );
   });
 
+  it("authorizes the WebSocket scheme for each connect domain", () => {
+    // CSP does not derive wss: from an https: source, so the injector adds it.
+    const result = injectCSP(html, {
+      resourceCsp: {
+        connectDomains: ["https://api.example.com", "http://local.test:3001"],
+      },
+    });
+    expect(result).toContain("wss://api.example.com");
+    expect(result).toContain("ws://local.test:3001");
+  });
+
   it("adds frameDomains to frame-src", () => {
     const result = injectCSP(html, {
       resourceCsp: {
