@@ -1051,6 +1051,100 @@ describe("resolveSchema – array branch hidden behind a $ref", () => {
   });
 });
 
+describe("resolveSchema – collapsed array keeps its loader picker", () => {
+  // deco's shape for `LoaderReturnType<Link[] | null>` when no loader returns plain `Link[]`:
+  // the prop is a $ref to a nullable union whose array branch is a bare `type: "array"` def.
+  const meta = metaWithSchema({
+    type: "object",
+    properties: {
+      links: {
+        $ref: "#/definitions/LinkArrayOrNull",
+        title: "Links loader",
+        description: "Loads the links",
+      },
+    },
+  });
+  (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+    LinkArrayOrNull: {
+      anyOf: [
+        { $ref: "#/definitions/LinkArray" },
+        { type: "null" },
+        {
+          title: "site/loaders/links.ts",
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["site/loaders/links.ts"],
+              default: "site/loaders/links.ts",
+            },
+          },
+        },
+        {
+          title: "#site/loaders/links.ts@Footer Links",
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["Footer Links"],
+              default: "Footer Links",
+            },
+          },
+        },
+      ],
+    },
+    LinkArray: {
+      type: "array",
+      items: { $ref: "#/definitions/Link" },
+      title: "[Link]",
+    },
+    Link: {
+      type: "object",
+      properties: { label: { type: "string", title: "Label" } },
+    },
+  };
+
+  test("renders the inline array with the prop's own title", () => {
+    const links = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.links;
+    expect(links?.type).toBe("array");
+    expect(links?.title).toBe("Links loader");
+    expect(links?.description).toBe("Loads the links");
+    expect(links?.items?.properties?.label?.title).toBe("Label");
+  });
+
+  test("carries a picker for the loader and the saved block", () => {
+    const loaderRef = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.links?.loaderRef;
+    expect(loaderRef?.type).toBe("block-ref");
+    expect(loaderRef?.title).toBe("Links loader");
+    expect(loaderRef?.anyOfRefs?.map((r) => r.resolveType)).toEqual([
+      "site/loaders/links.ts",
+      "Footer Links",
+    ]);
+  });
+
+  test("a plain config array without loader siblings has no picker", () => {
+    const plainMeta = metaWithSchema({
+      type: "object",
+      properties: {
+        flags: {
+          anyOf: [
+            { type: "array", items: { type: "string" } },
+            { $ref: "#/definitions/Resolvable" },
+          ],
+        },
+      },
+    });
+    const flags = resolveSchema("site/sections/Test.tsx", plainMeta)?.properties
+      ?.flags;
+    expect(flags?.type).toBe("array");
+    expect(flags?.loaderRef).toBeUndefined();
+  });
+});
+
 describe("resolveSchema – @hide on block-ref fields", () => {
   // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
   // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in
