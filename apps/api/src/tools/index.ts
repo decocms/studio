@@ -49,6 +49,7 @@ import * as GitTools from "./git";
 import * as ChangeRequestTools from "./change-requests";
 import * as SearchTools from "./search";
 import * as BlogTools from "./blog";
+import * as ChatTools from "./chat";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
 export const CORE_TOOLS = [
@@ -93,6 +94,12 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
   TaskBoardTools.TASK_ADD_REPO,
+  // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
+  ChatTools.GENERATE_IMAGE,
+  ChatTools.WEB_SEARCH,
+  ChatTools.DEEP_RESEARCH,
+  ChatTools.SUGGEST_TASK,
+  ChatTools.UPDATE_INTERESTS,
   TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
   TaskBoardTools.TASK_BOARD_DELIVERY,
   TaskBoardTools.TASK_BOARD_STUCK,

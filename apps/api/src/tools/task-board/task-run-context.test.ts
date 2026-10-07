@@ -9,16 +9,19 @@
  */
 import { describe, expect, test } from "bun:test";
 import { runKeyPermissions } from "@/mcp-clients/virtual-mcp/mint-endpoint";
+import { TOOL_BY_NAME } from "..";
 import {
   REVIEW_RUN_TOOL_NAMES,
   JIRA_RUN_TOOL_NAMES,
-  resolveTaskRunToolNames,
+  resolveThreadToolNames,
+  RUN_SCOPED_TOOL_NAMES,
   TASK_RUN_TOOL_NAMES,
+  THREAD_TOOL_NAMES,
 } from "./task-run-context";
 
-describe("resolveTaskRunToolNames", () => {
+describe("resolveThreadToolNames", () => {
   test("a Reviewer run can record its decision", () => {
-    expect(resolveTaskRunToolNames({ title: "Reviewer: Add an H1" })).toContain(
+    expect(resolveThreadToolNames({ title: "Reviewer: Add an H1" })).toContain(
       "TASK_BOARD_REVIEW_DECISION",
     );
   });
@@ -29,7 +32,7 @@ describe("resolveTaskRunToolNames", () => {
   for (const legacy of ["QA Agent", "Code Reviewer"]) {
     test(`a ${legacy} run from before the merge still can`, () => {
       expect(
-        resolveTaskRunToolNames({ title: `${legacy}: Add an H1` }),
+        resolveThreadToolNames({ title: `${legacy}: Add an H1` }),
       ).toContain("TASK_BOARD_REVIEW_DECISION");
     });
   }
@@ -37,17 +40,71 @@ describe("resolveTaskRunToolNames", () => {
   // The invariant the narrow list exists for: the worker must not be able to
   // approve or bounce its own work.
   test("a Super Agent run cannot record a review decision", () => {
-    expect(
-      resolveTaskRunToolNames({ title: "Super Agent: Add an H1" }),
-    ).toEqual(TASK_RUN_TOOL_NAMES);
+    const names = resolveThreadToolNames({ title: "Super Agent: Add an H1" });
+    expect(names).toEqual(THREAD_TOOL_NAMES);
+    expect(names).not.toContain("TASK_BOARD_REVIEW_DECISION");
+    expect(names).not.toContain("TASK_BOARD_PROMOTE_TO_PRODUCTION");
   });
 
-  test("an unknown or missing title falls back to the narrow surface", () => {
+  test("a chat, an unknown title, or a missing thread gets the chat surface", () => {
     for (const title of [null, undefined, "", "Some chat"]) {
-      expect(resolveTaskRunToolNames({ title: title })).toEqual(
-        TASK_RUN_TOOL_NAMES,
-      );
+      expect(resolveThreadToolNames({ title })).toEqual(THREAD_TOOL_NAMES);
     }
+    expect(resolveThreadToolNames(null)).toEqual(THREAD_TOOL_NAMES);
+  });
+
+  // What Decopilot gave a chat as built-ins, now over MCP (spec §4).
+  test("every chat gets the ported built-ins and the Studio tools it used", () => {
+    for (const name of [
+      "generate_image",
+      "web_search",
+      "deep_research",
+      "suggest_task",
+      "update_interests",
+      "COLLECTION_THREADS_LIST",
+      "COLLECTION_THREADS_GET",
+      "COLLECTION_THREAD_MESSAGES_LIST",
+      "TASK_BOARD_ITEM_CREATE",
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      "COLLECTION_CONNECTIONS_LIST",
+      "COLLECTION_CONNECTIONS_GET",
+    ] as const) {
+      expect(THREAD_TOOL_NAMES).toContain(name);
+    }
+  });
+
+  // `TASK_ADD_REPO` replaced `load_repo`, so a chat needs it as much as a run.
+  test("the chat surface includes the whole task-run surface", () => {
+    for (const name of TASK_RUN_TOOL_NAMES) {
+      expect(THREAD_TOOL_NAMES).toContain(name);
+    }
+  });
+
+  // Decopilot only ran these behind an approval, which this path lacks.
+  test("a chat cannot rewrite the board's prompts or automations", () => {
+    for (const name of [
+      "TASK_BOARD_PROMPT_UPSERT",
+      "TASK_BOARD_PROMPT_DELETE",
+      "TASK_BOARD_AUTOMATION_UPSERT",
+      "TASK_BOARD_AUTOMATION_DELETE",
+    ] as const) {
+      expect(THREAD_TOOL_NAMES).not.toContain(name);
+    }
+  });
+
+  // `toolSubsetMCP` skips unknown names, so a typo would silently drop a tool.
+  test("every name a thread can be served is a registered tool", () => {
+    for (const name of [...THREAD_TOOL_NAMES, ...RUN_SCOPED_TOOL_NAMES]) {
+      expect(TOOL_BY_NAME.has(name)).toBe(true);
+    }
+  });
+
+  test("the chat-only tools are not run-scoped", () => {
+    expect(RUN_SCOPED_TOOL_NAMES.has("COLLECTION_VIRTUAL_MCP_DELETE")).toBe(
+      false,
+    );
+    expect(RUN_SCOPED_TOOL_NAMES.has("generate_image")).toBe(false);
+    expect(RUN_SCOPED_TOOL_NAMES.has("TASK_ADD_REPO")).toBe(true);
   });
 
   // A reviewer needs to FIND the PR as well as rule on it: `enable_tool` came
@@ -74,18 +131,18 @@ describe("resolveTaskRunToolNames", () => {
   // tools there would let the agent update a card nobody reads instead of the
   // issue everybody does — so the Jira surface has none of them.
   test("a Jira-triggered run gets the issue's tools and none of the board's", () => {
-    const names = resolveTaskRunToolNames({
+    const names = resolveThreadToolNames({
       title: "Jira EX-12: Fix the checkout button",
       metadata: { source: "jira" },
     });
     expect(names).toEqual(JIRA_RUN_TOOL_NAMES);
     expect(names).toContain("JIRA_COMMENT_ADD");
-    expect(names.some((n) => n.startsWith("TASK_BOARD_"))).toBe(false);
+    expect(names.some((n: string) => n.startsWith("TASK_BOARD_"))).toBe(false);
   });
 
   test("the Jira stamp wins over a title that looks like a reviewer's", () => {
     expect(
-      resolveTaskRunToolNames({
+      resolveThreadToolNames({
         title: "Reviewer: EX-12",
         metadata: { source: "jira" },
       }),
@@ -109,13 +166,14 @@ describe("resolveTaskRunToolNames", () => {
 describe("a run's key covers the surface its endpoint serves", () => {
   const threads = {
     worker: { title: "Super Agent: Add an H1" },
+    chat: { title: "Some chat" },
     reviewer: { title: "Reviewer: Add an H1" },
     jira: { title: "Jira ABC-1: x", metadata: { source: "jira" as const } },
   };
 
   for (const [kind, thread] of Object.entries(threads)) {
     test(`${kind}`, () => {
-      const served = resolveTaskRunToolNames(thread);
+      const served = resolveThreadToolNames(thread);
       const authorized = runKeyPermissions({
         toolNames: served,
         grants: {},
@@ -128,7 +186,7 @@ describe("a run's key covers the surface its endpoint serves", () => {
   test("a Jira run may comment on its issue", () => {
     expect(
       runKeyPermissions({
-        toolNames: resolveTaskRunToolNames(threads.jira),
+        toolNames: resolveThreadToolNames(threads.jira),
         grants: {},
       }).self,
     ).toContain("JIRA_COMMENT_ADD");

@@ -52,7 +52,7 @@ const CompetitorsSchema = z.object({
  * search for them.
  *
  * `mode: "quick"` of the chat harness's research hook reduces to a plain call
- * against the search-capable model (`cluster-research-job.ts` → `runStreamingResearch`),
+ * against the search-capable model (`tools/chat/research-job.ts` → `runStreamingResearch`),
  * so this does the same with `generateText` instead of importing the harness and
  * inventing a `taskId`/`toolCallId` for a durable job it doesn't need.
  *

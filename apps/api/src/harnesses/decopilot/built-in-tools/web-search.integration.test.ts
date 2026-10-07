@@ -46,7 +46,7 @@ import {
 import type { ModelInfo } from "@/harnesses/lib/decopilot/model-info";
 import type { UIMessageStreamWriter } from "ai";
 import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
-import { createClusterResearchJob } from "./cluster-research-job";
+import { createClusterResearchJob } from "@/tools/chat/research-job";
 
 /**
  * Build the converted `web_search` tool the way the cluster wires it: the

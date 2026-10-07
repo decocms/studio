@@ -69,7 +69,7 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       input.taskBoardItemId,
       requireOrg(ctx),
     );
-    // A run's endpoint is sandbox-hosted (task-run-mcp.ts): there an upload's `/api/…` URL can't be fetched, its mounted path can.
+    // A run's endpoint is sandbox-hosted (thread-mcp.ts): there an upload's `/api/…` URL can't be fetched, its mounted path can.
     const orgSlug = ctx.organization?.slug;
     if (!taskRunContextStore.getStore() || !orgSlug) return { comments };
     return {

@@ -68,8 +68,11 @@ import { makeBackgroundable } from "@/harnesses/lib/decopilot/built-in-tools/bac
 import { registerFlip } from "@/harnesses/decopilot/flip-registry";
 import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
-import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
-import { createClusterResearchJob } from "./cluster-research-job";
+import {
+  createWebSearchTool,
+  DEEP_RESEARCH_DESCRIPTION,
+} from "@/harnesses/lib/decopilot/built-in-tools/web-search";
+import { createClusterResearchJob } from "@/tools/chat/research-job";
 import type { PendingImage } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
@@ -243,7 +246,7 @@ async function buildAllTools(
   // anchor nobody reads, so handing it the board tools would have it record its
   // work where no one looks while the issue stayed untouched. The sandbox
   // harness makes the same swap at its run-scoped MCP endpoint
-  // (`resolveTaskRunToolNames`); this is the same rule for the Decopilot path,
+  // (`resolveThreadToolNames`); this is the same rule for the Decopilot path,
   // which an org with no repo to work in takes.
   Object.assign(
     tools,
@@ -433,12 +436,7 @@ async function buildAllTools(
       researchJob,
       toolOutputMap,
       taskId,
-      description:
-        "Run in-depth, multi-source research and synthesize a comprehensive, " +
-        "cited report. Use this when the user needs thorough analysis, a " +
-        "literature/market review, or a question that warrants exploring many " +
-        "sources — accuracy and depth matter more than latency. For quick " +
-        "lookups or fact-checks, use `web_search` instead.",
+      description: DEEP_RESEARCH_DESCRIPTION,
     });
   }
   return tools as {

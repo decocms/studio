@@ -845,6 +845,62 @@ export interface StudioToolIO {
       files?: string | undefined;
     };
   };
+  generate_image: {
+    input: {
+      prompt: string;
+      referenceImages?: { uri: string }[] | undefined;
+      aspectRatio?:
+        | "1:1"
+        | "16:9"
+        | "9:16"
+        | "4:3"
+        | "3:4"
+        | "3:2"
+        | "2:3"
+        | undefined;
+      n?: number | undefined;
+    };
+    output: {
+      success: true;
+      images: { uri: string; mediaType: string }[];
+      prompt: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
+      usedReferenceImages: number;
+    };
+  };
+  web_search: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  deep_research: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  suggest_task: {
+    input: { title: string; summary: string };
+    output: { shown: true };
+  };
+  update_interests: {
+    input: { interests: { title: string; summary: string }[] };
+    output: { ok: true; count: number };
+  };
   TASK_BOARD_ADMIN_ORG_LIST: {
     input: { [x: string]: never };
     output: {
@@ -1139,6 +1195,7 @@ export interface StudioToolIO {
       overview: string;
       metadata?: Record<string, unknown> | null | undefined;
       logo?: string | null | undefined;
+      images?: Record<string, unknown>[] | null | undefined;
       favicon?: string | null | undefined;
       ogImage?: string | null | undefined;
       fonts?:
@@ -1159,7 +1216,6 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
       archivedAt?: string | null | undefined;
       isDefault?: boolean | undefined;
     };
