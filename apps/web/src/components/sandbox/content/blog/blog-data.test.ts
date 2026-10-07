@@ -5,6 +5,7 @@ import {
   buildBlogBlock,
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
+  blogBlockTypeFor,
   discoverBlogBlockTypes,
   emptyBlogPayload,
   listPostsWithMeta,
@@ -258,6 +259,51 @@ describe("discoverBlogBlockTypes", () => {
     )[0]!;
     expect(block.iconName).toBe("Star01");
     expect(block.iconUrl).toBeUndefined();
+  });
+});
+
+describe("blogBlockTypeFor", () => {
+  test("names a block from its resolveType alone (the generic editor's header)", () => {
+    const block = blogBlockTypeFor(
+      "site/sections/Blog/Post/Promo.tsx",
+      metaWithSchemas([
+        {
+          resolveType: "site/sections/Blog/Post/Promo.tsx",
+          title: "Promo banner",
+          description: "A banner with a call to action",
+          icon: "Star01",
+        },
+      ]),
+    );
+    expect(block).toEqual({
+      resolveType: "site/sections/Blog/Post/Promo.tsx",
+      title: "Promo banner",
+      description: "A banner with a call to action",
+      iconName: "Star01",
+      iconUrl: undefined,
+      source: "site",
+    });
+  });
+
+  test("falls back to the humanized component name when the schema says nothing", () => {
+    const block = blogBlockTypeFor(
+      "site/sections/Blog/Post/MyWeirdBlock.tsx",
+      metaWith(["site/sections/Blog/Post/MyWeirdBlock.tsx"]),
+    );
+    expect(block.title).toBe("My weird block");
+    expect(block.iconName).toBe("Box");
+  });
+
+  test("agrees with the inserter for the same block", () => {
+    const meta = metaWithSchemas([
+      {
+        resolveType: "site/sections/Blog/Post/Promo.tsx",
+        title: "Promo banner",
+      },
+    ]);
+    expect(blogBlockTypeFor("site/sections/Blog/Post/Promo.tsx", meta)).toEqual(
+      discoverBlogBlockTypes(meta)[0]!,
+    );
   });
 });
 

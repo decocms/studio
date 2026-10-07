@@ -75,6 +75,8 @@ export const sandbox = {
     "O que a marca afirma, e a evidência disso",
   "sandbox.blogBrand.valuesLabel": "Valores da marca",
   "sandbox.blogBrand.valuesNamePlaceholder": "O valor",
+  "sandbox.blockRegistry.backToFields": "Voltar para a lista de campos",
+  "sandbox.blockRegistry.breadcrumbLabel": "Trilha de campos",
   "sandbox.blockRegistry.unknownBlockType":
     'Tipo de bloco desconhecido{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Escreva algo…",

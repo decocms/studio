@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Box } from "@untitledui/icons";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import type { ReactNode } from "react";
 import {
   Command,
   CommandEmpty,
@@ -14,11 +13,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import { getIconComponent } from "@/components/agent-icon";
 import { useT } from "@/i18n/use-t.ts";
 import type { BlogBlockSource, BlogBlockType } from "./blog-data";
-
-type IconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
+import { BlockIcon } from "./blocks/block-icon";
 
 type GroupLabelKey = Record<
   BlogBlockSource,
@@ -29,27 +26,6 @@ const GROUP_LABEL_KEYS: GroupLabelKey = {
   app: "sandbox.blockPicker.blocksLabel",
   site: "sandbox.blockPicker.customBlocksLabel",
 };
-
-function BlockIcon({
-  iconName,
-  iconUrl,
-  alt,
-}: {
-  iconName: string;
-  iconUrl?: string;
-  alt: string;
-}) {
-  const Icon: IconComponent = getIconComponent(iconName) ?? Box;
-  return (
-    <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
-      {iconUrl ? (
-        <img src={iconUrl} alt={alt} className="size-5 object-contain" />
-      ) : (
-        <Icon size={16} className="text-muted-foreground" />
-      )}
-    </div>
-  );
-}
 
 function BlockItem({
   type,
