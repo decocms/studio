@@ -1167,7 +1167,7 @@ func main() {
 			// link points into. It also does the repoint, so a mount that shows up
 			// mid-wait is picked up.
 			d.orgFsLinks.WaitHomeReady(info.ThreadId)
-			d.orgFsLinks.RestoreSession(info.ThreadId)
+			d.orgFsLinks.RestoreSession(info.Harness, info.ThreadId)
 			// And this one is for the public skill-link sync the repoint kicked off
 			// off-thread. Claude Code scans its skill dirs once at startup, so a
 			// symlink that lands after that is invisible for the entire run.
@@ -1185,7 +1185,7 @@ func main() {
 		// path — a crashed turn's transcript is still what the follow-up needs.
 		AfterRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.AdoptStrayRepoSkills()
-			d.orgFsLinks.SaveSession(info.ThreadId)
+			d.orgFsLinks.SaveSession(info.Harness, info.ThreadId)
 		},
 	}
 

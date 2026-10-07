@@ -154,22 +154,20 @@ describe("daemon e2e: dispatch", () => {
     });
   });
 
-  it("accepts the legacy harnessId envelope during a rolling upgrade", async () => {
+  it("POST /dispatch with a non-string harnessId → 400 bad_harness_id", async () => {
     const res = await fetch(url(d, "/_sandbox/dispatch"), {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({
-        harnessId: "claude-code",
-        runId: "run-legacy-envelope",
+        harnessId: 123,
+        runId: "run-bad-harness",
         input: VALID_INPUT,
       }),
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      chunks: [],
-      done: true,
-      error: { code: "unknown_harness", message: expect.any(String) },
-    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "bad_harness_id",
+    );
   });
 
   it("DELETE /runs/:id with bearer → 204 (idempotent for unknown runs)", async () => {
@@ -221,11 +219,12 @@ describe("daemon e2e: dispatch runs a harness", () => {
   }, HOOK_TIMEOUT_MS);
 
   /** Dispatch one run, asking the stub for `mode`. */
-  const dispatch = (mode: string, runId: string) =>
+  const dispatch = (mode: string, runId: string, harnessId?: string) =>
     fetch(url(d, "/_sandbox/dispatch"), {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({
+        ...(harnessId ? { harnessId } : {}),
         runId,
         input: { ...VALID_INPUT, harness: { stubMode: mode } },
       }),
@@ -235,13 +234,14 @@ describe("daemon e2e: dispatch runs a harness", () => {
   async function result(
     mode: string,
     runId: string,
+    harnessId?: string,
   ): Promise<{
     chunks: unknown[];
     error: DispatchFrame["error"];
     done: boolean;
     at: number[];
   }> {
-    const res = await dispatch(mode, runId);
+    const res = await dispatch(mode, runId, harnessId);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     const chunks: unknown[] = [];
@@ -272,11 +272,25 @@ describe("daemon e2e: dispatch runs a harness", () => {
         (body.chunks[0] as { delta: string }).delta,
       ) as Record<string, unknown>;
       expect(echoed.threadId).toBe("thrd_e2e");
+      // An envelope from a Studio that predates `harnessId` runs claude-code.
+      expect(echoed.harnessId).toBe("claude-code");
       // `/repo` is rebased onto the pod's app root before the harness sees it.
       expect(echoed.cwd).toMatch(/\/repo$/);
       expect(echoed.cwd).not.toBe("/repo");
       // The model credential reaches the harness as its spawn env.
       expect(echoed.hasExpectedApiKey).toBe(true);
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "hands the envelope's harnessId to the runner",
+    async () => {
+      const body = await result("ok", "run-codex", "codex");
+      const echoed = JSON.parse(
+        (body.chunks[0] as { delta: string }).delta,
+      ) as Record<string, unknown>;
+      expect(echoed.harnessId).toBe("codex");
     },
     HOOK_TIMEOUT_MS,
   );

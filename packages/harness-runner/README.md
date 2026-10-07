@@ -11,18 +11,19 @@ Runs coding-agent harnesses inside a sandbox pod, one process per run.
 
 ## Overview
 
-The Go daemon execs this process for each dispatched run, writes `{input}` to
-stdin, and reads NDJSON frames (`{chunks, error}`) off stdout as they are
+The Go daemon execs this process for each dispatched run, writes
+`{harnessId, input}` to stdin, and reads NDJSON frames (`{chunks, error}`) off stdout as they are
 produced. stderr is the pod's log. The daemon adds the run's terminal `done`
 frame itself — this process only emits what the harness produced.
 
 The wire is defined by `daemon-go/internal/dispatch/runner.go`; the frame shape
-is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. The runner
-is hard-coded to `claude-code`, driven by the Claude Agent SDK.
+is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. One
+harness is implemented, `claude-code`, driven by the Claude Agent SDK; any other
+`harnessId` gets an `unknown_harness` error frame and a non-zero exit.
 
 ## Responsibilities
 
-- Read and validate the fixed dispatch envelope from stdin.
+- Read the dispatch envelope from stdin and route it to its harness.
 - Run the harness against the checkout the daemon already prepared.
 - Translate SDK messages into AI SDK `UIMessageChunk`s so nothing downstream of
   the daemon needs new part types.
@@ -41,7 +42,7 @@ is hard-coded to `claude-code`, driven by the Claude Agent SDK.
 Not imported by Studio. The daemon spawns it through `HARNESS_RUNNER_CMD`:
 
 ```bash
-echo '{"input":{ ... }}' | bun packages/harness-runner/main.ts
+echo '{"harnessId":"claude-code","input":{ ... }}' | bun packages/harness-runner/main.ts
 ```
 
 Model access is configured entirely by environment, pushed down as sandbox env
