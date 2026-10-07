@@ -53,6 +53,7 @@ import {
   getBlogPayload,
   listBlogPayloads,
   maskSlugInput,
+  missingFieldsLabel,
   missingPostFields,
   hasDuplicateName,
   POST_STATUSES,
@@ -230,10 +231,10 @@ export function PostEditor({
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         })
       : t("sandbox.postEditor.missingFieldPlural", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         });
 
   return (

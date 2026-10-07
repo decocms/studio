@@ -13,6 +13,7 @@
  */
 import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
+import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
 
@@ -73,7 +74,7 @@ export interface BlogEntry {
   /** Categories only — the slug of the parent category, when nested. */
   parentSlug?: string;
   /** Required fields this record is missing; empty when it is complete. */
-  missing: string[];
+  missing: MissingFieldKey[];
   /** Another record of the same kind carries this same name/title. */
   duplicateName?: boolean;
 }
@@ -368,7 +369,7 @@ export interface PostMeta {
   /** Emails of the post's authors (denormalized). */
   authorEmails: string[];
   /** Required fields the post is missing (empty when valid). */
-  missing: string[];
+  missing: MissingFieldKey[];
   /** Another post carries this same title — a warning, never a block. */
   duplicateTitle?: boolean;
   /** Publication state — see `postStatus`. */
@@ -411,21 +412,53 @@ function authorEmailOf(item: unknown): string {
 }
 
 /**
+ * A required field a blog record can be missing. Identifies the field, never
+ * names it: the name shown to the reader is a translation, resolved by
+ * {@link missingFieldsLabel} at render time.
+ */
+export type MissingFieldKey =
+  | "title"
+  | "slug"
+  | "category"
+  | "excerpt"
+  | "image"
+  | "name";
+
+const MISSING_FIELD_LABEL_KEYS: Record<MissingFieldKey, TranslationKey> = {
+  title: "sandbox.blogField.title",
+  slug: "sandbox.blogField.slug",
+  category: "sandbox.blogField.category",
+  excerpt: "sandbox.blogField.excerpt",
+  image: "sandbox.blogField.image",
+  name: "sandbox.blogField.name",
+};
+
+/** The missing fields as a reader-facing list ("Title, Excerpt"). */
+export function missingFieldsLabel(
+  missing: readonly MissingFieldKey[],
+  t: TFunction,
+): string {
+  return missing.map((key) => t(MISSING_FIELD_LABEL_KEYS[key])).join(", ");
+}
+
+/**
  * Which required fields a post payload is missing (empty ⇒ valid). A post with
  * no title/slug/excerpt or zero categories is incomplete — the list marks it
  * and the editor blocks preview.
  */
-export function missingPostFields(payload: Record<string, unknown>): string[] {
-  const missing: string[] = [];
-  if (!str(payload.title).trim()) missing.push("Title");
-  if (!str(payload.slug).trim()) missing.push("Slug");
+export function missingPostFields(
+  payload: Record<string, unknown>,
+): MissingFieldKey[] {
+  const missing: MissingFieldKey[] = [];
+  if (!str(payload.title).trim()) missing.push("title");
+  if (!str(payload.slug).trim()) missing.push("slug");
   if (
     toArray(payload.categories).map(categorySlugOf).filter(Boolean).length === 0
   ) {
-    missing.push("Category");
+    missing.push("category");
   }
-  if (!str(payload.excerpt).trim()) missing.push("Excerpt");
-  if (!str(payload.image).trim()) missing.push("Cover image");
+  if (!str(payload.excerpt).trim()) missing.push("excerpt");
+  if (!str(payload.image).trim()) missing.push("image");
   return missing;
 }
 
@@ -848,10 +881,10 @@ export function renameCategoryOnPost(
  */
 export function missingCategoryFields(
   payload: Record<string, unknown>,
-): string[] {
-  const missing: string[] = [];
-  if (!str(payload.name).trim()) missing.push("Name");
-  if (!str(payload.slug).trim()) missing.push("Slug");
+): MissingFieldKey[] {
+  const missing: MissingFieldKey[] = [];
+  if (!str(payload.name).trim()) missing.push("name");
+  if (!str(payload.slug).trim()) missing.push("slug");
   return missing;
 }
 

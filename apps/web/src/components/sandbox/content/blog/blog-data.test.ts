@@ -355,7 +355,7 @@ describe("listPostsWithMeta", () => {
         categorySlugs: ["news"],
         authorEmails: ["ada@x.com"],
         // no excerpt or cover image on this fixture
-        missing: ["Excerpt", "Cover image"],
+        missing: ["excerpt", "image"],
         // no `status` on this fixture — posts predating the field are published
         status: "published",
         form: "live",
@@ -421,11 +421,11 @@ describe("missingPostFields", () => {
 
   test("lists every missing required field in order", () => {
     expect(missingPostFields({})).toEqual([
-      "Title",
-      "Slug",
-      "Category",
-      "Excerpt",
-      "Cover image",
+      "title",
+      "slug",
+      "category",
+      "excerpt",
+      "image",
     ]);
   });
 
@@ -438,7 +438,7 @@ describe("missingPostFields", () => {
         excerpt: "\n\t ",
         image: "https://cdn/cover.jpg",
       }),
-    ).toEqual(["Title", "Excerpt"]);
+    ).toEqual(["title", "excerpt"]);
   });
 
   test("needs at least one category with a slug", () => {
@@ -450,7 +450,7 @@ describe("missingPostFields", () => {
         excerpt: "e",
         image: "https://cdn/cover.jpg",
       }),
-    ).toEqual(["Category"]);
+    ).toEqual(["category"]);
   });
 
   test("requires a cover image", () => {
@@ -461,7 +461,7 @@ describe("missingPostFields", () => {
         categories: ["news"],
         excerpt: "e",
       }),
-    ).toEqual(["Cover image"]);
+    ).toEqual(["image"]);
   });
 
   test("accepts plain-string categories", () => {
@@ -1239,19 +1239,19 @@ describe("missingCategoryFields", () => {
   });
 
   test("names both fields when the payload is bare", () => {
-    expect(missingCategoryFields({})).toEqual(["Name", "Slug"]);
+    expect(missingCategoryFields({})).toEqual(["name", "slug"]);
   });
 
   test("treats whitespace as absent", () => {
     expect(missingCategoryFields({ name: "  ", slug: "news" })).toEqual([
-      "Name",
+      "name",
     ]);
   });
 
   test("ignores non-string values", () => {
     expect(missingCategoryFields({ name: 7, slug: null })).toEqual([
-      "Name",
-      "Slug",
+      "name",
+      "slug",
     ]);
   });
 });
@@ -2095,7 +2095,7 @@ describe("buildGeneratedPostPayload", () => {
   test("leaves the cover image empty, so the reviewer is told", () => {
     const payload = buildGeneratedPostPayload(args);
     expect(payload.image).toBe("");
-    expect(missingPostFields(payload)).toEqual(["Cover image"]);
+    expect(missingPostFields(payload)).toEqual(["image"]);
   });
 
   test("avoids a slug another post already holds", () => {

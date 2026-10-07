@@ -103,6 +103,7 @@ import {
   getBlogPayload,
   isBlogKind,
   listAllPostPayloads,
+  missingFieldsLabel,
   postIdOfKey,
   buildPostBlock,
   removeCategoryFromPost,
@@ -1800,7 +1801,7 @@ function ItemList({
                     invalidReason={
                       entry.missing.length > 0
                         ? t("sandbox.itemRow.missingFields", {
-                            fields: entry.missing.join(", "),
+                            fields: missingFieldsLabel(entry.missing, t),
                           })
                         : undefined
                     }
