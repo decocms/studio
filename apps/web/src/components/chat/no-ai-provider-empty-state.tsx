@@ -23,6 +23,8 @@ import { useT } from "@/i18n/use-t.ts";
 interface NoAiProviderEmptyStateProps {
   title?: string;
   description?: string;
+  /** Offer only the providers this accepts. */
+  providerFilter?: (providerId: string) => boolean;
 }
 
 function useDefaultBrand(): BrandContext | null {
@@ -70,6 +72,7 @@ function extractPrimaryColor(brand: BrandContext): string | null {
 export function NoAiProviderEmptyState({
   title,
   description,
+  providerFilter,
 }: NoAiProviderEmptyStateProps = {}) {
   const t = useT();
   const { org } = useProjectContext();
@@ -86,7 +89,9 @@ export function NoAiProviderEmptyState({
     (isMacDesktopBrowser() || isLinuxDesktopBrowser()) && !isDesktopApp;
 
   const aiProviders = useAiProviders();
-  const providers = aiProviders?.providers ?? [];
+  const providers = (aiProviders?.providers ?? []).filter(
+    (provider) => !providerFilter || providerFilter(provider.id),
+  );
 
   const orgName = org.name;
   const primaryColor = brand ? extractPrimaryColor(brand) : null;

@@ -25,6 +25,7 @@ import type { Task } from "@/components/chat/task/types";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
 import { hideAbandonedNewChats } from "@/lib/thread-list-visibility";
 import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { useStudioTools } from "@/lib/studio-tools";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
@@ -101,6 +102,7 @@ export function useThreadsPanel({
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const projectDefaultRuntime = useProjectDefaultRuntime();
+  const sandboxOnlyChats = useOrgFlag("chat_harness_sandbox_only");
 
   const {
     threads: allThreads,
@@ -327,8 +329,11 @@ export function useThreadsPanel({
       setTaskId(existing.id, existing.virtual_mcp_id);
       return;
     }
-    const currentBranch =
-      allThreads.find((thread) => thread.id === activeTaskId)?.branch ?? null;
+    // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
+    const currentBranch = sandboxOnlyChats
+      ? null
+      : (allThreads.find((thread) => thread.id === activeTaskId)?.branch ??
+        null);
     createNewTask(currentAgentId, currentBranch);
   };
 
