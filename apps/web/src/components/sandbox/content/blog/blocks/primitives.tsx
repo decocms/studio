@@ -62,6 +62,15 @@ export function str(value: unknown): string {
 }
 
 /**
+ * An HTML anchor id can hold no whitespace at all — a space anywhere splits it
+ * into two class-like tokens and `#id` stops matching. Strip it everywhere,
+ * not just at the ends.
+ */
+export function normalizeAnchorId(raw: string): string {
+  return raw.replace(/\s+/g, "");
+}
+
+/**
  * InlineText with an explicit "this is editable" affordance: a hover/focus
  * background box plus an always-dimmed pencil icon that brightens on hover.
  * Used for headings that are really text inputs (post title, category name)

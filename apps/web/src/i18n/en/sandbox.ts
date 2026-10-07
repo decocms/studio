@@ -245,6 +245,13 @@ export const sandbox = {
   "sandbox.envVarsField.title": "Environment variables",
   "sandbox.envVarsField.valueLabel": "Value",
   "sandbox.envVarsField.valuePlaceholder": "value",
+  "sandbox.faqBlock.addQuestion": "Add question",
+  "sandbox.faqBlock.anchorIdLabel": "Anchor id",
+  "sandbox.faqBlock.anchorIdPlaceholder": "optional",
+  "sandbox.faqBlock.answerEmpty": "No answer yet. Add a block below.",
+  "sandbox.faqBlock.questionPlaceholder": "Question",
+  "sandbox.faqBlock.removeQuestion": "Remove question",
+  "sandbox.faqBlock.toggleQuestion": "Show or hide the answer",
   "sandbox.fileExplorer.askTheAiPlaceholder": "Ask the AI...",
   "sandbox.fileExplorer.deleteFailed": "Delete failed",
   "sandbox.fileExplorer.discardUnsavedChangesConfirm":

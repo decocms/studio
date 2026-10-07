@@ -1400,7 +1400,8 @@ export interface StudioToolIO {
           | "Quote"
           | "Callout"
           | "Cta"
-          | "Divider";
+          | "Divider"
+          | "FAQ";
         purpose?: string | undefined;
       }[];
       pillar?: { title: string; body: string } | undefined;
@@ -1424,7 +1425,8 @@ export interface StudioToolIO {
           | "Quote"
           | "Callout"
           | "Cta"
-          | "Divider";
+          | "Divider"
+          | "FAQ";
         text?: string | undefined;
         level?: "1" | "2" | "3" | undefined;
         html?: string | undefined;
@@ -1435,6 +1437,7 @@ export interface StudioToolIO {
         body?: string | undefined;
         variant?: "info" | "tip" | "warning" | "product" | undefined;
         href?: string | undefined;
+        faq?: { question: string; answerHtml: string }[] | undefined;
       }[];
     };
   };

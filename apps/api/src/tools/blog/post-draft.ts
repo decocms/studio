@@ -14,6 +14,7 @@ const SECTION_TYPES = [
   "Callout",
   "Cta",
   "Divider",
+  "FAQ",
 ] as const;
 
 /**
@@ -64,6 +65,21 @@ const SectionSchema = z.object({
     .describe(
       "Cta only: a path on this site, e.g. `/colecao/verao`. Never invent an external URL.",
     ),
+  faq: z
+    .array(
+      z.object({
+        question: z
+          .string()
+          .describe("The question, as a reader would ask it."),
+        answerHtml: z
+          .string()
+          .describe(
+            "The answer as simple inline HTML — `<strong>`, `<em>`, `<a href>` and nothing else.",
+          ),
+      }),
+    )
+    .optional()
+    .describe("FAQ only: the questions, in the order they should be read."),
 });
 
 const MAX_NAME_CHARS = 200;

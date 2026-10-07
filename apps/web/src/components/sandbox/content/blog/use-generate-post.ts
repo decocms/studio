@@ -37,6 +37,7 @@ const GENERATABLE = [
   "Callout",
   "Cta",
   "Divider",
+  "FAQ",
 ] as const;
 
 type GeneratableSection = (typeof GENERATABLE)[number];
