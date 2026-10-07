@@ -99,7 +99,7 @@ export interface MainWalk {
  * Walks main 50 commits per page, at most 5 pages, until it has found the
  * newest published commit and latest.json's revision.
  */
-export async function walkMain(
+async function walkMain(
   insights: RepoInsightsClient,
   mainBranch: string,
   published: ReadonlySet<string>,
