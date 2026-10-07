@@ -80,4 +80,11 @@ describe("thread MCP route", () => {
     const res = await listTools("/mcp/thread/thrd_chat");
     expect(res.headers.get("content-type")).toContain("application/json");
   });
+
+  it("offers no standalone GET stream", async () => {
+    const res = await app().request("/mcp/thread/thrd_chat", {
+      headers: { accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(405);
+  });
 });

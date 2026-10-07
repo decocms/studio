@@ -54,6 +54,8 @@ export const createThreadMcpRoutes = () => {
   const app = new Hono<ThreadMcpEnv>();
 
   app.all("/:threadId", async (c) => {
+    // No standalone stream here: one that drops aborts Claude Code's in-flight call.
+    if (c.req.method === "GET") return c.body(null, 405, { Allow: "POST" });
     const ctx = c.get("studioContext");
     const threadId = c.req.param("threadId");
     // From the thread, not an argument the caller could forge with the same key.
