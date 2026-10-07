@@ -15,7 +15,9 @@ import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
 
 /** A claude-code chat can only run Claude models its credential can reach. */
 export function isClaudeCodeChatModel(model: AiProviderModel): boolean {
-  return isChatModel(model) && isClaudeCodeModel(model.providerId, model.modelId);
+  return (
+    isChatModel(model) && isClaudeCodeModel(model.providerId, model.modelId)
+  );
 }
 
 function slotToModel(
