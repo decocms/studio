@@ -9,7 +9,10 @@ import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { orgRelativePath } from "@decocms/shared/organization/home-mount";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  SUPER_AGENT_ASSIGNEE_ID,
+  TASK_COMMENT_AUDIENCES,
+} from "@decocms/shared/task-board";
 import {
   commentUploadsAsSandboxPaths,
   sandboxPathsAsUploads,
@@ -27,6 +30,7 @@ const TaskBoardCommentSchema = z.object({
   authorId: z.string(),
   /** Source run, when this comment was written by an agent. */
   threadId: z.string().nullable().optional(),
+  audience: z.enum(TASK_COMMENT_AUDIENCES),
   body: z.string(),
   /** Thread roots only — a thread is settled or open as a whole. */
   resolved: z.boolean(),
@@ -119,7 +123,9 @@ function bodyFromRun(body: string, threadId: string, orgSlug: string): string {
 
 export const TASK_BOARD_COMMENT_CREATE = defineTool({
   name: "TASK_BOARD_COMMENT_CREATE",
-  description: "Post a comment on a task board item, or a reply to one.",
+  description:
+    "Post a comment on a task board item, or a reply to one. " +
+    'Inside a task run a new comment is `internal` by default: handoff for other agents, hidden from the people reading the task. Pass `audience: "human"` for the note written for them. A reply takes the audience of the comment it answers unless you pass one.',
   annotations: {
     title: "Create Task Comment",
     readOnlyHint: false,
@@ -132,6 +138,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
     body: z.string().trim().min(1).max(MAX_COMMENT_BODY_LENGTH),
     /** Reply target. Replying to a reply lands on its thread root. */
     parentId: z.string().nullish(),
+    audience: z.enum(TASK_COMMENT_AUDIENCES).optional(),
   }),
   outputSchema: z.object({ comment: TaskBoardCommentSchema }),
   handler: async (input, ctx) => {
@@ -158,9 +165,14 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       // Which run wrote it — the only way to tell one agent's comments from
       // another's, since they all share the author id above.
       threadId: taskRun?.threadId ?? null,
+      // A run's new thread is handoff; its reply goes to whoever it answers.
+      audience:
+        input.audience ?? (taskRun && !input.parentId ? "internal" : undefined),
       body,
     });
     if (!comment) throw new Error("Task board item not found");
+    // Nobody is notified about a comment the feed hides from them.
+    if (comment.audience === "internal") return { comment };
     // Not an activity action, hence its own fan-out. The agent has no inbox.
     await ctx.storage.notifications.notify({
       taskBoardItemId: comment.taskBoardItemId,
@@ -227,7 +239,11 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
       );
     }
     // Notify only mentions this edit added, same as an edited description.
-    if (input.body !== undefined && comment.body !== existing?.body) {
+    if (
+      input.body !== undefined &&
+      comment.body !== existing?.body &&
+      comment.audience === "human"
+    ) {
       await ctx.storage.notifications.notifyMentions({
         taskBoardItemId: comment.taskBoardItemId,
         organizationId,

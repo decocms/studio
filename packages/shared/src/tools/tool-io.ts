@@ -764,6 +764,7 @@ export interface StudioToolIO {
         taskBoardItemId: string;
         parentId: string | null;
         authorId: string;
+        audience: "internal" | "human";
         body: string;
         resolved: boolean;
         createdAt: string;
@@ -777,6 +778,7 @@ export interface StudioToolIO {
       taskBoardItemId: string;
       body: string;
       parentId?: string | null | undefined;
+      audience?: "internal" | "human" | undefined;
     };
     output: {
       comment: {
@@ -784,6 +786,7 @@ export interface StudioToolIO {
         taskBoardItemId: string;
         parentId: string | null;
         authorId: string;
+        audience: "internal" | "human";
         body: string;
         resolved: boolean;
         createdAt: string;
@@ -804,6 +807,7 @@ export interface StudioToolIO {
         taskBoardItemId: string;
         parentId: string | null;
         authorId: string;
+        audience: "internal" | "human";
         body: string;
         resolved: boolean;
         createdAt: string;

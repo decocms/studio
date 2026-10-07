@@ -17,6 +17,9 @@ export const taskBoard = {
   "taskBoard.conversation.jumpToLatest": "Jump to latest",
   "taskBoard.conversation.newReplies": "New replies ({count}) · Jump to latest",
   "taskBoard.conversation.replies": "Conversation",
+  "taskBoard.conversation.showBehindTheScenes": "Behind the scenes ({count})",
+  "taskBoard.conversation.hideBehindTheScenes": "Hide behind the scenes",
+  "taskBoard.conversation.behindTheScenesLabel": "Behind the scenes",
   "taskBoard.conversation.sendFailed":
     "Couldn't send your reply. Please try again.",
   "taskBoard.config.priorityHigh": "High",

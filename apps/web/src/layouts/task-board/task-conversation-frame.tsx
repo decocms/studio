@@ -3,7 +3,11 @@ import { useStickToBottom } from "use-stick-to-bottom";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t";
-import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+import {
+  humanFacing,
+  useBehindTheScenes,
+  useTaskBoardComments,
+} from "@/hooks/use-task-board-comments";
 import { toast } from "sonner";
 import type { TaskBoardItem } from "./config";
 import { NewCommentComposer } from "./task-comments";
@@ -21,11 +25,19 @@ export function TaskConversationFrame({
   const t = useT();
   const stick = useStickToBottom({ initial: false, resize: "instant" });
   const comments = useTaskBoardComments(item?.id);
+  const [behindTheScenes] = useBehindTheScenes();
+  const shown = behindTheScenes
+    ? comments.threads
+    : humanFacing(comments.threads);
   const [seenIds, setSeenIds] = useState<string[] | null>(null);
-  const messageIds = comments.threads.flatMap((thread) => [
-    thread.id,
-    ...thread.replies.map((reply) => reply.id),
-  ]);
+  const idsOf = (threads: typeof shown) =>
+    threads.flatMap((thread) => [
+      thread.id,
+      ...thread.replies.map((reply) => reply.id),
+    ]);
+  // Seen covers hidden comments too, so opening behind the scenes doesn't
+  // announce handoff that was already there as new replies.
+  const messageIds = idsOf(comments.threads);
   if (
     !comments.isLoading &&
     (seenIds === null || stick.isAtBottom) &&
@@ -34,7 +46,7 @@ export function TaskConversationFrame({
     setSeenIds(messageIds);
   }
   const unreadCount = seenIds
-    ? messageIds.filter((id) => !seenIds.includes(id)).length
+    ? idsOf(shown).filter((id) => !seenIds.includes(id)).length
     : 0;
 
   if (!item) return <div className="min-w-0 sm:flex-1">{children}</div>;
