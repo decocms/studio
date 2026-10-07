@@ -1593,8 +1593,7 @@ export function ActiveTaskProvider({
         reportHostedLegacyDispatchBlocked();
         return;
       }
-      // Claude Code cannot take an injected tool result: the answer is sent
-      // as the next message and the server resolves the tool part.
+      // Claude Code cannot take an injected tool result; the server resolves the part.
       if (
         action.kind === "toolOutput" &&
         activeTask?.harness_id === "claude-code"
