@@ -35,6 +35,7 @@ import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
 } from "@/layouts/main-panel-tabs/attached-pinned-views";
+import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { track } from "@/lib/posthog-client";
@@ -307,7 +308,10 @@ function ProjectAppTilesBody({
             label={label}
             caption={caption}
             order={rank?.(
-              appOpenKey(project.id, `app:${pv.connectionId}:${pv.toolName}`),
+              appOpenKey(
+                project.id,
+                formatPinnedViewTabId(pv.connectionId, pv.toolName),
+              ),
             )}
             /** The icon and colour picked in Settings › Views; unpicked, the
              *  same name-derived mark that picker previews. */

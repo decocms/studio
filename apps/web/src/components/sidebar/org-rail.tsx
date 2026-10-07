@@ -1,8 +1,8 @@
 /** The always-visible org strip. Which orgs it draws is `railOrgs`; how one
  *  mark is drawn, labelled and marked as current is `RailItem`. */
 
-import { useState, useSyncExternalStore } from "react";
-import { Plus } from "@untitledui/icons";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { Plus, XClose } from "@untitledui/icons";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Tooltip,
@@ -10,11 +10,13 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { AgentAvatar } from "@/components/agent-icon";
 import { OrgIcon } from "@/components/header/org-switcher";
 import { CreateOrganizationDialog } from "@/components/create-organization-dialog";
 import { PROJECT_APPS } from "@/components/projects/project-apps";
 import { useActiveOrganizations } from "@/lib/auth-client";
 import { useAppTakeover } from "@/hooks/use-app-takeover";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import {
   useOpenApp,
   useRecentApps,
@@ -81,49 +83,112 @@ function RailOrgButton({
   );
 }
 
+/** The rail's mark for an entry: the catalogue's for a native app, the one
+ *  picked in Settings › Views for a connection's app. Null for a retired id. */
+function railAppFace(
+  entry: RecentApp,
+  orgSlug: string,
+  t: ReturnType<typeof useT>,
+): {
+  label: string;
+  link: { to: string; params: Record<string, string> };
+  tone?: string;
+  glyph: ReactNode;
+} | null {
+  const params = { org: orgSlug, agentId: entry.projectId };
+  if (entry.connection) {
+    const { label, icon, id, toolName } = entry.connection;
+    return {
+      label,
+      link: {
+        to: PROJECT_ROUTE.app,
+        params: { ...params, connectionId: id, toolName },
+      },
+      glyph: (
+        <AgentAvatar
+          icon={icon}
+          name={label}
+          size="sm+"
+          className="size-9 rounded-xl"
+        />
+      ),
+    };
+  }
+  const app = PROJECT_APPS[entry.app as keyof typeof PROJECT_APPS];
+  if (!app) return null;
+  return {
+    label: t(app.labelKey),
+    link: { to: app.to, params },
+    tone: app.tone,
+    glyph: <app.Icon size={18} />,
+  };
+}
+
 /** One app you had open, under the orgs. Labelled with the APP; the tooltip
  *  carries the project, since two projects can have the same app. */
 function RailAppButton({
   entry,
   orgSlug,
   active,
+  onClose,
 }: {
   entry: RecentApp;
   orgSlug: string;
   active: boolean;
+  onClose: () => void;
 }) {
   const t = useT();
-  const app = PROJECT_APPS[entry.app as keyof typeof PROJECT_APPS];
+  const face = railAppFace(entry, orgSlug, t);
   /** A retired app id: drop the row rather than draw a blank square. */
-  if (!app) return null;
+  if (!face) return null;
 
   return (
-    <RailItem active={active} label={t(app.labelKey)}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            to={app.to}
-            params={{ org: orgSlug, agentId: entry.projectId }}
-            aria-label={`${t(app.labelKey)} · ${entry.projectTitle}`}
-            aria-current={active || undefined}
-            onClick={() => track("org_rail_recent_app_opened")}
-            className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-xl focus-ring",
-              "transition-[opacity,transform] duration-150 ease-out",
-              app.tone,
-              active
-                ? "opacity-100"
-                : "opacity-60 hover:scale-105 hover:opacity-100",
-            )}
-          >
-            <app.Icon size={18} />
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          {t(app.labelKey)}
-          <span className="text-muted-foreground"> · {entry.projectTitle}</span>
-        </TooltipContent>
-      </Tooltip>
+    <RailItem active={active} label={face.label}>
+      <div className="relative">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={face.link.to}
+              params={face.link.params}
+              aria-label={`${face.label} · ${entry.projectTitle}`}
+              aria-current={active || undefined}
+              onClick={() => track("org_rail_recent_app_opened")}
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl focus-ring",
+                "transition-[opacity,transform] duration-150 ease-out",
+                face.tone,
+                active
+                  ? "opacity-100"
+                  : "opacity-60 hover:scale-105 hover:opacity-100",
+              )}
+            >
+              {face.glyph}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {face.label}
+            <span className="text-muted-foreground">
+              {" "}
+              · {entry.projectTitle}
+            </span>
+          </TooltipContent>
+        </Tooltip>
+        <button
+          type="button"
+          aria-label={t("sidebar.rail.closeApp", { name: face.label })}
+          onClick={() => {
+            track("org_rail_recent_app_closed");
+            onClose();
+          }}
+          className={cn(
+            "absolute -top-1.5 -right-1.5 flex size-4 cursor-pointer items-center justify-center rounded-full",
+            "bg-sidebar-accent text-muted-foreground ring-2 ring-sidebar hover:text-foreground",
+            "opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 focus-visible:opacity-100 focus-visible:outline-none",
+          )}
+        >
+          <XClose size={10} />
+        </button>
+      </div>
     </RailItem>
   );
 }
@@ -149,7 +214,7 @@ export function OrgRail() {
   /** The border separates the rail from the SIDEBAR; a launched app takes the
    *  sidebar's place (`useAppTakeover`), leaving nothing to separate. */
   const takeover = useAppTakeover();
-  const { recent } = useRecentApps(currentOrg.slug);
+  const { recent, forget } = useRecentApps(currentOrg.slug);
   /** Which recent is the screen you are on, so the rail marks it the same way
    *  it marks the current org. */
   const openApp = useOpenApp();
@@ -180,9 +245,9 @@ export function OrgRail() {
   return (
     <>
       <div
-        /* `w-18` fits the labels at two lines; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
+        /* `w-20` fits a one-word label like "Automations" inside the labels' padding; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
         className={cn(
-          "flex w-18 shrink-0 flex-col items-center gap-2 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "flex w-20 shrink-0 flex-col items-center gap-2 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           !takeover && "border-r border-sidebar-border",
         )}
         aria-label={t("sidebar.rail.ariaLabel")}
@@ -238,6 +303,7 @@ export function OrgRail() {
                   openApp?.app === entry.app &&
                   openApp.projectId === entry.projectId
                 }
+                onClose={() => forget(entry)}
               />
             ))}
           </>

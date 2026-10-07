@@ -47,7 +47,7 @@ export function RailItem({
         <span
           aria-hidden
           className={cn(
-            "line-clamp-2 w-full px-1 text-center text-2xs break-words transition-colors",
+            "line-clamp-2 w-full px-1.5 text-center text-2xs text-ellipsis transition-colors",
             active
               ? "font-medium text-sidebar-foreground"
               : "text-muted-foreground group-hover/rail:text-sidebar-foreground",
