@@ -58,7 +58,9 @@ through Studio.
    from the link gate, because that gate waits on mounts that exist only after
    this POST.
 4. **Mount.** The sidecar parses the config (`config.ts`) and mounts every
-   volume concurrently (`mount-manager.ts`). Each volume gets its own
+   volume concurrently (`mount-manager.ts`). First it makes `/app/org`
+   writable by the sandbox user, sticky like `/tmp`, when the pod hands it
+   over root-only; otherwise the daemon cannot add its per-run links. Each volume gets its own
    `OrgFsClient`, its own loopback WebDAV server, and its own
    `rclone mount --allow-other` process (`mounter.ts`). A mount counts as live
    once rclone's rc API reports a VFS, within 15 s. A volume that fails is
@@ -193,4 +195,4 @@ Neither is a supported production mode, because Studio prompts still refer to
 - [Sandbox package](../README.md)
 - [Go daemon](../daemon-go/README.md)
 - [sandbox-env chart](../../../deploy/helm/sandbox-env/README.md)
-- [Studio architecture: org filesystem](../../../apps/docs/client/src/content/deco-studio/en/studio/architecture.mdx)
+- [Studio architecture: org filesystem](https://docs.decocms.com/studio/get-started/architecture)

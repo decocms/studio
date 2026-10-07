@@ -9,6 +9,21 @@ export function buildGlobalSectionPreviewUrl(
   livePageResolveType: string,
   blockKey: string,
 ): string {
+  const url = globalSectionPreviewUrl(
+    previewBaseUrl,
+    livePageResolveType,
+    blockKey,
+  );
+  url.searchParams.set("__cb", crypto.randomUUID());
+  return url.toString();
+}
+
+/** {@link buildGlobalSectionPreviewUrl} without the cache-buster, for callers that render it every pass. */
+export function globalSectionPreviewUrl(
+  previewBaseUrl: string,
+  livePageResolveType: string,
+  blockKey: string,
+): URL {
   const origin = new URL(previewBaseUrl).origin;
   const url = new URL(
     `/live/previews/${encodeURIComponent(livePageResolveType)}`,
@@ -25,8 +40,7 @@ export function buildGlobalSectionPreviewUrl(
       }),
     ),
   );
-  url.searchParams.set("__cb", crypto.randomUUID());
-  return url.toString();
+  return url;
 }
 
 /** Query param carrying the Fast Preview draft pointer. */

@@ -9,7 +9,12 @@ import type { StudioContext } from "../core/studio-context";
 import type { StudioDatabase } from "../database";
 import { TaskBoardStorage } from "./task-board";
 import { NotificationStorage } from "./notifications";
-import { TASK_BOARD_COMMENT_UPDATE } from "../tools/task-board/comments";
+import {
+  TASK_BOARD_COMMENT_CREATE,
+  TASK_BOARD_COMMENT_UPDATE,
+} from "../tools/task-board/comments";
+import { taskRunContextStore } from "../tools/task-board/task-run-context";
+import { ensureReviewerCommented } from "../tools/task-board/reviewer-comment";
 import { mentionMarkdown } from "@decocms/shared/mentions";
 
 describe("TaskBoardStorage comments", () => {
@@ -216,5 +221,125 @@ describe("TaskBoardStorage comments", () => {
       resolved: true,
     });
     expect(result).toBeNull();
+  });
+
+  it("gives a reply the audience of the comment it answers", async () => {
+    const handoff = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "super-agent",
+      threadId: "thrd_run",
+      audience: "internal",
+      body: "handoff for the reviewer",
+    });
+    const reply = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "super-agent",
+      threadId: "thrd_reviewer",
+      parentId: handoff!.id,
+      body: "noted",
+    });
+    expect(reply?.audience).toBe("internal");
+
+    const explicit = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      parentId: handoff!.id,
+      audience: "human",
+      body: "a person chiming in",
+    });
+    expect(explicit?.audience).toBe("human");
+
+    const question = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      body: "why this approach?",
+    });
+    expect(question?.audience).toBe("human");
+  });
+
+  it("keeps a run's handoff internal and silent, and notifies on its human note", async () => {
+    const mention = `cc ${mentionMarkdown("user_123", "u123")}`;
+    const unreadCount = async () =>
+      (await notifications.listUnread("user_123", "org_test")).unreadCount;
+    const before = await unreadCount();
+
+    const inRun = <T>(fn: () => Promise<T>) =>
+      taskRunContextStore.run({ threadId: "thrd_run_notify" }, fn);
+
+    const handoff = await inRun(() =>
+      TASK_BOARD_COMMENT_CREATE.handler(
+        { taskBoardItemId: itemId, body: `${mention} handoff` },
+        ctx,
+      ),
+    );
+    expect(handoff.comment.audience).toBe("internal");
+    expect(handoff.comment.authorId).toBe("super-agent");
+    expect(await unreadCount()).toBe(before);
+
+    const note = await inRun(() =>
+      TASK_BOARD_COMMENT_CREATE.handler(
+        {
+          taskBoardItemId: itemId,
+          body: `${mention} ready for review`,
+          audience: "human",
+        },
+        ctx,
+      ),
+    );
+    expect(note.comment.audience).toBe("human");
+    expect(await unreadCount()).toBeGreaterThan(before);
+
+    // Outside a run, a comment is a person's and stays visible.
+    const own = await TASK_BOARD_COMMENT_CREATE.handler(
+      { taskBoardItemId: itemId, body: "thanks" },
+      ctx,
+    );
+    expect(own.comment.audience).toBe("human");
+  });
+
+  it("shows a change request's notes to the person when the reviewer told them nothing", async () => {
+    const task = await storage.create({
+      organizationId: "org_test",
+      title: "Change request without a note",
+      by: "user_test",
+    });
+    await storage.createComment({
+      taskBoardItemId: task.id,
+      organizationId: "org_test",
+      authorId: "super-agent",
+      threadId: "thrd_reviewer_cr",
+      audience: "internal",
+      body: "Reviewer pass: the discount rule in pricing.ts conflicts with the promo engine. NO VISUAL SURFACE, pricing logic only.",
+    });
+
+    const verdict = {
+      decision: "request_changes" as const,
+      notes: "Decide whether member discounts stack with promo codes.",
+    };
+    await ensureReviewerCommented(
+      ctx,
+      task,
+      "reviewer",
+      "thrd_reviewer_cr",
+      verdict,
+    );
+    // A repeated decision call finds the note it just wrote.
+    await ensureReviewerCommented(
+      ctx,
+      task,
+      "reviewer",
+      "thrd_reviewer_cr",
+      verdict,
+    );
+
+    const comments = await storage.listComments(task.id, "org_test");
+    const shown = comments.filter((c) => c.audience === "human");
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.threadId).toBe("thrd_reviewer_cr");
+    expect(shown[0]!.body).toContain("Decide whether member discounts stack");
   });
 });

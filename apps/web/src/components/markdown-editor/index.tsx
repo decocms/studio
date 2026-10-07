@@ -1,19 +1,14 @@
 import { useRef, useState } from "react";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import { Selection } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
-import { Attachment01 } from "@untitledui/icons";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
 import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
 import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
+import { useEditorUploads } from "./editor-uploads";
 import { markdownEditorExtensions } from "./extensions";
 import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
-import { isImageFile, useEditorFileUpload } from "./use-file-upload";
+import { AttachFileButton, UploadStatus } from "./upload-controls";
 
 /**
  * Block styling for the editor surface. Explicit rather than `prose`:
@@ -63,26 +58,6 @@ const PLACEHOLDER_CLASS = [
   "[&_p.is-editor-empty:first-child::before]:h-0",
   "[&_p.is-editor-empty:first-child::before]:pointer-events-none",
 ].join(" ");
-
-/**
- * Insert an uploaded file's node and return the position after it, so a batch
- * of pasted files stacks in the order they were picked instead of every insert
- * landing on the same stale offset.
- */
-function insertUpload(
-  view: EditorView,
-  pos: number,
-  typeName: "image" | "attachment",
-  attrs: Record<string, string>,
-): number {
-  const type = view.state.schema.nodes[typeName];
-  if (!type) return pos;
-  const tr = view.state.tr.replaceWith(pos, pos, type.create(attrs));
-  const after = tr.mapping.map(pos, 1);
-  tr.setSelection(Selection.near(tr.doc.resolve(after)));
-  view.dispatch(tr);
-  return view.state.selection.to;
-}
 
 /**
  * One `@`-mentionable item. `name` is inserted into the markdown verbatim, so
@@ -194,41 +169,15 @@ export function MarkdownEditor({
   /** When set, `@` opens a picker that inserts the item's name as plain text. */
   mentions?: MarkdownMentions;
 }) {
-  const t = useT();
-  const { uploadFile, pending } = useEditorFileUpload();
+  const uploads = useEditorUploads(attachments);
   // One store per editor: created here so it dies with the editor it drives.
   const [mentionStore] = useState(() => new MentionMenuStore());
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The editor is created once, so its handlers would close over the first
   // render's props. Refs keep them current without re-creating the editor.
   const onChangeRef = useRef(onChange);
-  const uploadRef = useRef(uploadFile);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
   onChangeRef.current = onChange;
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
-  uploadRef.current = uploadFile;
-
-  const uploadInto = (view: EditorView, files: File[], at: number) => {
-    if (!attachments || files.length === 0) return false;
-    void (async () => {
-      let pos = at;
-      for (const file of files) {
-        const url = await uploadRef.current(file);
-        if (!url) continue;
-        // The original file name is the only description available, and it
-        // survives into the markdown the agent reads as task context — as an
-        // image's alt text, or as an attachment link's text.
-        pos = isImageFile(file)
-          ? insertUpload(view, pos, "image", { src: url, alt: file.name })
-          : insertUpload(view, pos, "attachment", {
-              href: url,
-              name: file.name,
-            });
-      }
-    })();
-    return true;
-  };
 
   const editor = useEditor({
     // Both pickers answer to `@`, so only one gets installed.
@@ -248,31 +197,8 @@ export function MarkdownEditor({
         "aria-multiline": "true",
         class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
       },
-      handlePaste: (view, event) => {
-        const files = Array.from(event.clipboardData?.files ?? []);
-        if (files.length === 0) return false;
-        // We own this file. Stop it bubbling to the chat composer's
-        // window-level drop/paste listener (input.tsx `useWindowFileDrop`),
-        // which would otherwise upload the same file into the chat input.
-        event.stopPropagation();
-        return uploadInto(view, files, view.state.selection.to);
-      },
-      handleDrop: (view, event, _slice, moved) => {
-        // A drag within the editor is a move, not an upload.
-        if (moved) return false;
-        const files = Array.from(event.dataTransfer?.files ?? []);
-        if (files.length === 0) return false;
-        const at = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        })?.pos;
-        if (at === undefined) return false;
-        // We own this file. Stop it bubbling to the chat composer's
-        // window-level drop listener (input.tsx `useWindowFileDrop`), which
-        // would otherwise upload the same file into the chat input too.
-        event.stopPropagation();
-        return uploadInto(view, files, at);
-      },
+      handlePaste: uploads.handlePaste,
+      handleDrop: uploads.handleDrop,
     },
     onUpdate: ({ editor, transaction }) => {
       // Selection-only transactions carry no steps, and TipTap fires onUpdate
@@ -283,11 +209,6 @@ export function MarkdownEditor({
   });
 
   if (!editor) return null;
-
-  const pickFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    uploadInto(editor.view, Array.from(files), editor.state.selection.to);
-  };
 
   return (
     <div className="flex flex-col">
@@ -306,43 +227,14 @@ export function MarkdownEditor({
       <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground empty:mt-0">
         {editable && mentions?.hint && <span>{mentions.hint}</span>}
         {editable && attachments && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            // Icon-only, so the label has to live on the control itself.
-            aria-label={t("markdownEditor.attachFile")}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Attachment01 size={14} />
-          </Button>
+          <AttachFileButton
+            onFiles={(files) =>
+              uploads.uploadInto(editor.view, files, editor.state.selection.to)
+            }
+          />
         )}
-        {pending > 0 && (
-          <span
-            className="inline-flex items-center gap-1.5"
-            aria-live="polite"
-            role="status"
-          >
-            <Spinner className="size-3" />
-            {pending === 1
-              ? t("markdownEditor.uploading")
-              : t("markdownEditor.uploadingCount", { count: String(pending) })}
-          </span>
-        )}
+        <UploadStatus pending={uploads.pending} />
       </div>
-      {/* No `accept`: images become previews, everything else a download chip,
-          so there's nothing to exclude. */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          pickFiles(e.target.files);
-          // Let the same file be picked again after a failed upload.
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }

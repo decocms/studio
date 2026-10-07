@@ -4,15 +4,15 @@ import {
   ReactNodeViewRenderer,
   type NodeViewProps,
 } from "@tiptap/react";
-import { Download01, File02, X } from "@untitledui/icons";
+import { X } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  ATTACHMENT_CHIP_CLASS,
+  AttachmentChipContent,
+} from "./attachment-chip";
 
-/**
- * A file with nothing to preview (pdf, docx, pptx, txt, …), rendered as a chip
- * you can download. Inline, because in markdown it IS a link — see
- * `renderMarkdown` below.
- */
+/** The chip inside the editor; inline, because in markdown it IS a link. */
 function AttachmentNodeView({
   node,
   selected,
@@ -21,44 +21,31 @@ function AttachmentNodeView({
 }: NodeViewProps) {
   const t = useT();
   const href = typeof node.attrs.href === "string" ? node.attrs.href : "";
-  const attrName = typeof node.attrs.name === "string" ? node.attrs.name : "";
-  const name = attrName || t("markdownEditor.fileNameFallback");
+  const name = typeof node.attrs.name === "string" ? node.attrs.name : "";
 
   return (
     <NodeViewWrapper
       as="span"
       className={cn(
-        "mx-0.5 inline-flex max-w-full select-none items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 align-middle text-sm text-foreground",
+        ATTACHMENT_CHIP_CLASS,
+        // An atom's label isn't text the caret enters; a posted chip's is.
+        "select-none",
         selected && "ring-2 ring-ring ring-offset-2 ring-offset-background",
       )}
     >
-      <File02 size={14} className="shrink-0 text-muted-foreground" />
-      <span className="min-w-0 truncate">{name}</span>
-      {/* The stored file name is a UUID, so `download` is what gives the saved
-          file the name it was uploaded with. */}
-      <a
-        href={href}
-        download={name}
-        aria-label={t("markdownEditor.downloadFile", { name })}
-        // The node view sits outside the editor's own event handling, so a
-        // plain click would first move the selection into the chip. Keep the
-        // mousedown away from PM — the click itself still fires.
-        onMouseDown={(e) => e.preventDefault()}
-        className="shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      >
-        <Download01 size={14} />
-      </a>
-      {editor.isEditable && (
-        <button
-          type="button"
-          aria-label={t("markdownEditor.removeFile")}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={deleteNode}
-          className="shrink-0 rounded-lg p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <X size={14} />
-        </button>
-      )}
+      <AttachmentChipContent href={href} name={name}>
+        {editor.isEditable && (
+          <button
+            type="button"
+            aria-label={t("markdownEditor.removeFile")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={deleteNode}
+            className="shrink-0 rounded-lg p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </AttachmentChipContent>
     </NodeViewWrapper>
   );
 }

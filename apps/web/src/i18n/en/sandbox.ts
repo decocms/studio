@@ -132,6 +132,11 @@ export const sandbox = {
   "sandbox.blockRow.deleteBlock": "Delete block",
   "sandbox.blockRow.dragToReorder": "Drag to reorder",
   "sandbox.blockRow.duplicateBlock": "Duplicate block",
+  "sandbox.blogCustomFields.backToFields": "Back to the field list",
+  "sandbox.blogCustomFields.breadcrumbLabel": "Field trail",
+  "sandbox.blogCustomFields.title": "Other fields",
+  "sandbox.blogCustomFields.description":
+    "Fields this site's own content type declares, beyond the ones above.",
   "sandbox.blogContext.addAuthor": "Add author",
   "sandbox.blogContext.addCategory": "Add category",
   "sandbox.blogContext.authorsEmpty": "No authors yet.",

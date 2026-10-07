@@ -20,14 +20,6 @@ const SHIPPED = new Set<TaskBoardItem["status"]>(["done", "merged"]);
 /** Lanes where nothing more will happen, so the card is not "open". */
 const CLOSED = new Set<TaskBoardItem["status"]>(["done", "merged", "archived"]);
 
-/** The two counts the brief's sentence is made of. */
-export interface DailyPulse {
-  /** Reached `done` or `merged` inside the window. */
-  shipped: number;
-  /** A run failed inside the window. */
-  failed: number;
-}
-
 const WINDOW_MS = PULSE_WINDOW_DAYS * 86_400_000;
 
 /** Age is clamped at zero so sandbox/browser clock skew cannot push a
@@ -39,25 +31,19 @@ function withinWindow(iso: string | null | undefined, now: number): boolean {
   return Math.max(0, now - at) <= WINDOW_MS;
 }
 
-export function dailyPulse(
+/** Cards that reached `done` or `merged` at or after `since` (epoch ms). The
+ *  brief's window is the slot's, not a week: see `pulseWindowStart`. */
+export function shippedSince(
   tasks: readonly TaskBoardItem[],
-  now: number = Date.now(),
-): DailyPulse {
+  since: number,
+): number {
   let shipped = 0;
-  let failed = 0;
   for (const task of tasks) {
-    if (SHIPPED.has(task.status) && withinWindow(task.updatedAt, now))
-      shipped++;
-    if (
-      task.threads.some(
-        (thread) =>
-          thread.status === "failed" && withinWindow(thread.lastActiveAt, now),
-      )
-    ) {
-      failed++;
-    }
+    if (!SHIPPED.has(task.status) || !task.updatedAt) continue;
+    const at = Date.parse(task.updatedAt);
+    if (!Number.isNaN(at) && at >= since) shipped++;
   }
-  return { shipped, failed };
+  return shipped;
 }
 
 /** Cards stopped on a person, OLDEST first — a queue, not a feed. Blocked and

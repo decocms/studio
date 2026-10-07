@@ -29,13 +29,11 @@ import {
 } from "@/jira/issue-prompt";
 import {
   pickIssue,
+  requireIssueKey,
   runCreatedIssueKeys,
   runIssueKeys,
 } from "@/jira/run-issue-scope";
-import {
-  requireTaskRunContext,
-  taskRunContextStore,
-} from "@/tools/task-board/task-run-context";
+import { taskRunContextStore } from "@/tools/task-board/task-run-context";
 import type { OrgJiraIntegration } from "@/storage/types";
 
 const MAX_COMMENT_LENGTH = 50_000;
@@ -52,7 +50,8 @@ const issueKeyInput = z
   .optional()
   .describe(
     "Which issue: any on the board, e.g. one this run's issue links to or " +
-      "one you created. Leave out for this run's issue, when it has one.",
+      "one you created. Leave out for this run's issue, when it has one; " +
+      "required outside a Jira run.",
   );
 
 /**
@@ -60,24 +59,30 @@ const issueKeyInput = z
  *
  * `threadId` is the run's thread. Omitted on the MCP endpoint, where the path
  * already names it; passed explicitly by the built-in path, which has no
- * request scope to read it from.
+ * request scope to read it from. Absent altogether when the call comes from a
+ * chat (`/mcp/self`): then the issue must be named and on the board.
  */
 async function resolveRunIssue(
   ctx: StudioContext,
   requestedKey: string | undefined,
-  threadId = requireTaskRunContext().threadId,
+  threadId = taskRunContextStore.getStore()?.threadId,
 ): Promise<RunIssue> {
   const organization = requireOrganization(ctx);
   const integration = await ctx.storage.jiraIntegrations.getByOrg(
     organization.id,
   );
   if (!integration) throw new Error("Jira is not connected for this org");
-  const thread = await ctx.storage.threads.get(threadId);
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
     integration.apiToken,
   );
+  if (!threadId) {
+    const issueKey = requireIssueKey(requestedKey);
+    await assertOnBoard(client, integration, issueKey);
+    return { integration, client, issueKey };
+  }
+  const thread = await ctx.storage.threads.get(threadId);
   const picked = pickIssue(runIssueKeys(thread?.metadata), requestedKey);
   if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
   return { integration, client, issueKey: picked.key };
@@ -324,7 +329,8 @@ function sameSummary(a: string, b: string): boolean {
 export const JIRA_ISSUE_CREATE = defineTool({
   name: "JIRA_ISSUE_CREATE",
   description:
-    "Create a Jira issue in the project this run works in — a release card, " +
+    "Create a Jira issue in the project this run works in (from a chat: the " +
+    "connected board's project) — a release card, " +
     "a follow-up found along the way — then comment on it, link it and move " +
     "it with the other Jira tools by its key. If an open issue this " +
     "integration created in the last two weeks already has this exact " +
@@ -377,33 +383,49 @@ export const JIRA_ISSUE_CREATE = defineTool({
   handler: async (input, ctx) => {
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    const { threadId } = requireTaskRunContext();
+    // Absent when called from a chat: no run issue, no per-run cap or record.
+    const threadId = taskRunContextStore.getStore()?.threadId;
     const integration = await ctx.storage.jiraIntegrations.getByOrg(
       organization.id,
     );
     if (!integration) throw new Error("Jira is not connected for this org");
-    const thread = await ctx.storage.threads.get(threadId);
-    const runKeys = runIssueKeys(thread?.metadata);
-    if (runKeys.length === 0) {
-      throw new Error("This run is not working on a Jira issue");
-    }
-    const projects = [...new Set(runKeys.map(projectOf))];
-    const projectKey = projects[0];
-    if (projects.length !== 1 || !projectKey || !PROJECT_KEY.test(projectKey)) {
-      throw new Error(
-        `This run works in ${projects.join(", ")}; it can only create in a single project`,
-      );
-    }
     const client = new JiraClient(
       integration.siteUrl,
       integration.email,
       integration.apiToken,
     );
+    const thread = threadId ? await ctx.storage.threads.get(threadId) : null;
+    const runKeys = runIssueKeys(thread?.metadata);
+    let projectKey: string | undefined;
+    if (threadId) {
+      if (runKeys.length === 0) {
+        throw new Error("This run is not working on a Jira issue");
+      }
+      const projects = [...new Set(runKeys.map(projectOf))];
+      projectKey = projects[0];
+      if (projects.length !== 1) {
+        throw new Error(
+          `This run works in ${projects.join(", ")}; it can only create in a single project`,
+        );
+      }
+    } else {
+      if (!integration.boardId) {
+        throw new Error(
+          "Jira has no board connected, so there is no project to create in",
+        );
+      }
+      projectKey = await client.getBoardProjectKey(integration.boardId);
+    }
+    if (!projectKey || !PROJECT_KEY.test(projectKey)) {
+      throw new Error(`"${projectKey}" is not a Jira project key`);
+    }
     // Checked before anything is written: a bad key must not leave an issue
     // behind with half its links.
     const relatesTo: string[] = [];
     for (const requested of input.relatesTo) {
-      const picked = pickIssue(runKeys, requested);
+      const picked = threadId
+        ? pickIssue(runKeys, requested)
+        : { key: requireIssueKey(requested), inRun: false };
       if (relatesTo.includes(picked.key)) continue;
       if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
       relatesTo.push(picked.key);
@@ -456,7 +478,9 @@ export const JIRA_ISSUE_CREATE = defineTool({
       }));
       // Before linking, which can fail: the cap and the repeat check both
       // read this record.
-      await ctx.storage.threads.recordJiraIssueCreated(threadId, key);
+      if (threadId) {
+        await ctx.storage.threads.recordJiraIssueCreated(threadId, key);
+      }
     }
 
     const already = created

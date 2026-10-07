@@ -30,6 +30,7 @@
  */
 
 import type { UIMessageChunk } from "ai";
+import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { sleep } from "@decocms/shared/std";
 import {
   harnessRunResultSchema,
@@ -50,6 +51,7 @@ import {
   MODEL_CLASS_METADATA_KEY,
   type ClaudeCodeCredential,
 } from "@/harnesses/claude-code-env";
+import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
@@ -616,6 +618,7 @@ export class SandboxDispatchClient {
             instructions: [
               wireInput.agent.instructions,
               sandboxStateInstruction(warmPoolAdopted),
+              orgOutputFallbackInstruction(input.threadId),
             ]
               .filter(Boolean)
               .join("\n\n"),
@@ -799,6 +802,25 @@ export function sandboxStateInstruction(warmPoolAdopted: boolean): string {
         "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
         "change rendered, install and start the server ONCE in the background " +
         "and poll until it answers; it is a cold start, so expect minutes.";
+}
+
+/**
+ * Where a run saves what it wants to show when the daemon couldn't link its
+ * `output` folder. That link is per run and best-effort; without it, runs used
+ * to fall back to `/tmp`, which dies with the pod, or to the shared root of the
+ * outputs mount, where runs overwrite each other. The mount path below is the
+ * same folder the link would have pointed at, and task comments render it.
+ */
+export function orgOutputFallbackInstruction(threadId: string): string {
+  // A mount point the run creates holds local files, and rclone won't mount over them.
+  const outputs = orgFsSandboxPath("outputs", "");
+  return (
+    `If \`${SANDBOX_ORG_ROOT}/output\` does not exist in this sandbox but \`${outputs}\` does, ` +
+    "save the files you want to show (screenshots, exports) under " +
+    `\`${orgFsSandboxPath("outputs", threadId)}/\` instead and reference that path: it is ` +
+    `the same folder. Never create \`${outputs}\` yourself, and never use \`/tmp\` ` +
+    "for these files — nothing there reaches the task or the chat."
+  );
 }
 
 /**

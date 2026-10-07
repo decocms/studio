@@ -1,3 +1,7 @@
+import {
+  orgRelativePath,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 
 /**
@@ -8,7 +12,7 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
  * `apps/web/src/components/markdown-editor/uploads.ts`). That URL is relative
  * and cookie-authenticated, so it means nothing inside a sandbox: an agent
  * handed the raw description sees `![image.png](/api/…)` and has no way to
- * fetch it. It reads as text and gets treated as one — the DANI-19 run
+ * fetch it. It reads as text and gets treated as one — an earlier run
  * described an image it had never seen.
  *
  * The same bytes are already mounted in the pod (`/app/org/.uploads/…`), so
@@ -19,26 +23,93 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
  * original URL is at least a link a human can click.
  */
 export function uploadsAsSandboxPaths(description: string): string {
-  return description.replace(
-    // The editor writes `?path=` as the whole query, so everything up to the
-    // closing paren (or whitespace) is the encoded path.
-    /\/api\/[^/\s)]+\/fs\/([^/\s)]+)\/read\?path=([^)\s]+)/g,
-    (url, encodedVolume: string, encodedPath: string) => {
+  return readUrlsAsSandboxPaths(description, READ_URL, () => true);
+}
+
+/**
+ * An org-fs read URL, capturing its org, volume and path still encoded. The
+ * editor writes `?path=` as the whole query, so everything up to the closing
+ * paren (or whitespace) is the path.
+ */
+const READ_URL = /\/api\/([^/\s)]+)\/fs\/([^/\s)]+)\/read\?path=([^)\s]+)/g;
+/** The same URL as a markdown link or image target, all `sandboxPathsAsUploads` restores. */
+const LINKED_READ_URL = new RegExp(
+  String.raw`(?<=\]\()${READ_URL.source}(?=\))`,
+  "g",
+);
+
+function readUrlsAsSandboxPaths(
+  markdown: string,
+  pattern: RegExp,
+  include: (org: string, volume: string, path: string) => boolean,
+): string {
+  return markdown.replace(
+    pattern,
+    (url, encodedOrg: string, encodedVolume: string, encodedPath: string) => {
+      let org: string;
       let volume: string;
       let path: string;
       try {
+        org = decodeURIComponent(encodedOrg);
         volume = decodeURIComponent(encodedVolume);
         path = decodeURIComponent(encodedPath);
       } catch {
         return url;
       }
+      if (!include(org, volume, path)) return url;
       // Checked on the DECODED value: `%2F` hides a climb-out slash from the capture.
-      const climbsOut = (part: string) =>
-        part.startsWith("/") || part.split("/").includes("..");
       if (climbsOut(volume) || climbsOut(path)) return url;
       return orgFsSandboxPath(volume, path);
     },
   );
+}
+
+function climbsOut(part: string): boolean {
+  return part.startsWith("/") || part.split("/").includes("..");
+}
+
+/**
+ * The mounts a comment's links move into for a run, and back out of when it
+ * writes one. Hidden, so no person types their paths; and each names its
+ * volume, where `org/<volume>` could be the run's own `org/output` or `org/upload`.
+ */
+const COMMENT_MOUNTS = ["uploads", "outputs"].map((volume) => ({
+  volume,
+  prefix: `${orgFsSandboxPath(volume, "")}/`,
+}));
+
+/** A comment as a run lists it: only this org's links that `sandboxPathsAsUploads` restores, since a run may post it back. */
+export function commentUploadsAsSandboxPaths(
+  body: string,
+  orgSlug: string,
+): string {
+  return readUrlsAsSandboxPaths(
+    body,
+    LINKED_READ_URL,
+    (org, volume, path) =>
+      org === orgSlug &&
+      COMMENT_MOUNTS.some((m) => m.volume === volume) &&
+      !/[\s)]/.test(path),
+  );
+}
+
+/**
+ * The inverse, for a body a run writes back: no browser can load a mounted
+ * path. Covers the links `commentUploadsAsSandboxPaths` handed the run, and the
+ * screenshots a run saves straight into `/app/org/.outputs/` when its per-run
+ * `/app/org/output` link is missing. Legacy `org/…` paths count too.
+ */
+export function sandboxPathsAsUploads(body: string, orgSlug: string): string {
+  return body.replace(/\]\(([^)\s]+)\)/g, (ref, target: string) => {
+    const rel = orgRelativePath(target);
+    if (rel === null) return ref;
+    const absolute = `${SANDBOX_ORG_ROOT}/${rel}`;
+    const mount = COMMENT_MOUNTS.find((m) => absolute.startsWith(m.prefix));
+    if (!mount) return ref;
+    const path = absolute.slice(mount.prefix.length);
+    if (!path || climbsOut(path)) return ref;
+    return `](/api/${encodeURIComponent(orgSlug)}/fs/${mount.volume}/read?path=${encodeURIComponent(path)})`;
+  });
 }
 
 /**

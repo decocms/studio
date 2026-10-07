@@ -58,14 +58,6 @@ test("existing agent replies share the single task composer", async ({
   await expect(component.getByText(/^On it\./)).toBeVisible();
 });
 
-test("the composer offers no attach control until attachments exist", async ({
-  mount,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-
-  await expect(component.getByLabel("Attach")).toHaveCount(0);
-});
-
 test("the send button still submits, despite the card-wide focus click", async ({
   mount,
 }) => {

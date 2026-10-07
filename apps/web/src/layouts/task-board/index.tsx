@@ -34,6 +34,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
+import { AgenticSetupButton } from "./agentic-setup";
+import { ColumnRulesSheet, useColumnRules } from "./column-rules";
+import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -59,6 +62,7 @@ import {
   Lightning01,
   Plus,
   RefreshCw01,
+  Stars02,
   User01,
   UserPlus01,
   X,
@@ -1130,6 +1134,7 @@ function TaskBoardBody({
   const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
     null,
   );
+  useTaskBoardRulesLive();
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
   const studio = useStudioTools();
@@ -1429,53 +1434,57 @@ function TaskBoardBody({
           </Page.Title>
           <Page.Actions
             secondary={
-              items.length > 0 && (
-                <>
-                  {/* No width swap: these three are ~100px together, so there
+              <>
+                {items.length > 0 && (
+                  <>
+                    {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
                       drawer of the chip pickers they replaced. */}
-                  <div className="flex items-center gap-2">
-                    <SearchToggle
-                      value={filters.search}
-                      onChange={(search) =>
-                        handleFiltersChange({ ...filters, search })
-                      }
-                      label={t("taskBoard.taskFilters.searchLabel")}
-                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
-                    />
-                    <TaskFilterButton
-                      filters={filters}
-                      items={items}
-                      members={members}
-                      tags={orgTags}
-                      index={projectIndex}
-                      onChange={handleFiltersChange}
-                    />
-                    {layout === "list" && (
-                      <>
-                        <GroupByButton {...grouping} />
-                        <SortByButton {...sorting} />
-                      </>
-                    )}
-                    <BoardSettingsButton
-                      onClick={openBoardSettings}
-                      label={boardSettingsLabel}
-                    />
-                  </div>
-                </>
-              )
+                    <div className="flex items-center gap-2">
+                      <SearchToggle
+                        value={filters.search}
+                        onChange={(search) =>
+                          handleFiltersChange({ ...filters, search })
+                        }
+                        label={t("taskBoard.taskFilters.searchLabel")}
+                        placeholder={t(
+                          "taskBoard.taskFilters.searchPlaceholder",
+                        )}
+                        clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
+                      />
+                      <TaskFilterButton
+                        filters={filters}
+                        items={items}
+                        members={members}
+                        tags={orgTags}
+                        index={projectIndex}
+                        onChange={handleFiltersChange}
+                      />
+                      {layout === "list" && (
+                        <>
+                          <GroupByButton {...grouping} />
+                          <SortByButton {...sorting} />
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+                <BoardSettingsButton
+                  onClick={openBoardSettings}
+                  label={boardSettingsLabel}
+                />
+              </>
             }
           >
             <TaskBoardAdminControls />
+            <AgenticSetupButton />
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
               {t("taskBoard.taskBoard.newTask")}
             </Button>
           </Page.Actions>
           {inlineTabs ? (
-            /* A full-bleed rule fences these tabs off from the apps launcher above, so they read as the control of the region below them. */
-            <div className="mt-2 border-t border-border">
+            <div>
               {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
               <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
                 {layoutTabs}
@@ -2601,6 +2610,8 @@ function Lane({
   const t = useT();
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const rules = useColumnRules(status);
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
@@ -2617,6 +2628,12 @@ function Lane({
         isTarget && "bg-muted/50",
       )}
     >
+      <ColumnRulesSheet
+        columnKey={status}
+        label={label}
+        open={rulesOpen}
+        onOpenChange={setRulesOpen}
+      />
       {/* Sticky so the column header stays visible while the cards scroll
           vertically under it — needs an opaque bg for that to hide scrolled-
           under cards, so it tracks the lane's own highlight color (solid,
@@ -2643,17 +2660,24 @@ function Lane({
           {items.length}
         </span>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                lane: label,
-              })}
-              className={cn(LANE_ACTION, "ml-auto")}
-            >
-              <DotsHorizontal size={15} />
-            </button>
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                    lane: label,
+                  })}
+                  className={cn(LANE_ACTION, "ml-auto")}
+                >
+                  <DotsHorizontal size={15} />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+            </TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
               {t("taskBoard.taskBoard.selectAllInLane")}
@@ -2665,17 +2689,50 @@ function Lane({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-            lane: label,
-          })}
-          title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-          onClick={() => onCreate(status)}
-          className={LANE_ACTION}
-        >
-          <Plus size={15} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                lane: label,
+              })}
+              onClick={() => onCreate(status)}
+              className={LANE_ACTION}
+            >
+              <Plus size={15} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t(
+                rules.configured
+                  ? "taskBoard.columnRules.editAriaLabel"
+                  : "taskBoard.columnRules.add",
+                { lane: label },
+              )}
+              onClick={() => setRulesOpen(true)}
+              className={cn(LANE_ACTION, rules.configured && "opacity-100")}
+            >
+              <Stars02
+                size={15}
+                className={cn(rules.configured && "text-special")}
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64">
+            <span className="line-clamp-4">
+              {rules.configured
+                ? rules.summary
+                : t("taskBoard.columnRules.add")}
+            </span>
+          </TooltipContent>
+        </Tooltip>
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-
@@ -2767,7 +2824,9 @@ function SortableTaskCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({
+    id: item.id,
+  });
 
   return (
     // FLIP (see `use-flip-lanes`) owns this wrapper's `transform`/`transition`

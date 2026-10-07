@@ -2,8 +2,6 @@ import { useRef, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Flag01,
   LayersThree01,
   Settings01,
@@ -39,7 +37,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { AddVariantListButton } from "./page-variant-tabs";
 import { SchemaForm } from "./schema-form";
 import type { VariantMatcherOps } from "./variant-matcher-rename";
-import { type Crumb, crumbLabel } from "./schema-form-breadcrumb";
+import { type Crumb } from "./schema-form-breadcrumb";
+import { InlineBreadcrumb } from "./inline-breadcrumb";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import type { FieldProps, SandboxConfig } from "./fields/field-props";
 import { SeoFormFields } from "./seo-form-fields";
@@ -87,52 +86,12 @@ export function VariantRuleForm({
 
   return (
     <div className="space-y-2">
-      {breadcrumbPath.length > 0 && (
-        <nav
-          aria-label={t(
-            "sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb",
-          )}
-          className="flex min-w-0 items-center gap-1 overflow-hidden text-xs"
-        >
-          <button
-            type="button"
-            onClick={() => setBreadcrumbPath([])}
-            className="flex shrink-0 items-center gap-0.5 rounded-[var(--studio-control-radius,var(--radius-md))] px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title={t("sectionsEditor.sectionsEditorPanels.backToRule")}
-          >
-            <ChevronLeft className="size-3.5" />
-          </button>
-          {breadcrumbPath.map((crumb, index) => {
-            const isLast = index === breadcrumbPath.length - 1;
-            const crumbText = crumbLabel(crumb);
-            return (
-              <span
-                key={`${crumbText}-${index}`}
-                className="flex min-w-0 items-center gap-1 overflow-hidden"
-              >
-                {index > 0 && (
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
-                )}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setBreadcrumbPath(breadcrumbPath.slice(0, index + 1))
-                  }
-                  title={crumbText}
-                  className={cn(
-                    "min-w-0 truncate rounded-[var(--studio-control-radius,var(--radius-md))] px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                    isLast
-                      ? "font-medium text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {crumbText}
-                </button>
-              </span>
-            );
-          })}
-        </nav>
-      )}
+      <InlineBreadcrumb
+        path={breadcrumbPath}
+        onNavigate={setBreadcrumbPath}
+        label={t("sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb")}
+        backTitle={t("sectionsEditor.sectionsEditorPanels.backToRule")}
+      />
       <SchemaForm
         schema={schema}
         value={value}

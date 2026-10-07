@@ -148,11 +148,10 @@ import {
   type PreviewEditingMode,
 } from "./editing-mode";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
+import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
-
-type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
 
 /**
  * Logical viewport dimensions per device, matching the legacy admin. The iframe
@@ -182,22 +181,6 @@ const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   tablet: "sandbox.preview.deviceTablet",
   desktop: "sandbox.preview.deviceDesktop",
 };
-
-/**
- * Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`).
- * Falls back to the unmodified `url` on a malformed input instead of throwing
- * mid-render and taking down the whole preview panel (same defensive shape as
- * `previewOrigin` below).
- */
-export function withDeviceHint(url: string, device: PreviewDeviceSize): string {
-  try {
-    const parsed = new URL(url, window.location.href);
-    parsed.searchParams.set("deviceHint", device);
-    return parsed.href;
-  } catch {
-    return url;
-  }
-}
 
 /**
  * Force `__decoFBT=0` and `__deco_ssr=1` on the preview URL — `__decoFBT=0`

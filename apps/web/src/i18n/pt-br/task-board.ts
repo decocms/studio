@@ -20,6 +20,9 @@ export const taskBoard = {
   "taskBoard.conversation.newReplies":
     "Novas respostas ({count}) · Ir para o mais recente",
   "taskBoard.conversation.replies": "Conversa",
+  "taskBoard.conversation.showBehindTheScenes": "Bastidores ({count})",
+  "taskBoard.conversation.hideBehindTheScenes": "Ocultar bastidores",
+  "taskBoard.conversation.behindTheScenesLabel": "Bastidores",
   "taskBoard.conversation.sendFailed":
     "Não foi possível enviar sua resposta. Tente novamente.",
   "taskBoard.config.priorityHigh": "Alta",
@@ -76,6 +79,35 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
   "taskBoard.taskBoard.hideColumn": "Ocultar",
+  "taskBoard.agenticSetup.button": "Configuração com agente",
+  "taskBoard.agenticSetup.message":
+    "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",
+  "taskBoard.agenticSetup.failed":
+    "Não foi possível iniciar o chat de configuração do quadro",
+  "taskBoard.columnRules.add": "Adicionar instruções",
+  "taskBoard.columnRules.editAriaLabel": "Editar regras de {lane}",
+  "taskBoard.columnRules.defaultRun": "Executa o agente",
+  "taskBoard.columnRules.skillsOnly": "{count} skills",
+  "taskBoard.columnRules.runLabel": "Executar o agente",
+  "taskBoard.columnRules.runHint":
+    "Inicia uma execução em cada card que chega aqui, a menos que alguém já seja o responsável.",
+  "taskBoard.columnRules.automationLabel":
+    "O que fazer com um card que chega aqui",
+  "taskBoard.columnRules.automationPlaceholder":
+    "O que o agente deve fazer com um card que chega aqui? Deixe vazio para o comportamento padrão.",
+  "taskBoard.columnRules.promptLabel": "Instruções",
+  "taskBoard.columnRules.promptPlaceholder":
+    "Convenções, ferramentas preferidas, o que nunca tocar",
+  "taskBoard.columnRules.skillsLabel": "Skills",
+  "taskBoard.columnRules.removeSkill": "Remover {skill}",
+  "taskBoard.columnRules.searchSkills": "Buscar skills",
+  "taskBoard.columnRules.noSkills": "Nenhuma skill encontrada",
+  "taskBoard.columnRules.inheritedHint":
+    "Também disponíveis aqui, de Configurações → Tarefas:",
+  "taskBoard.columnRules.cancel": "Cancelar",
+  "taskBoard.columnRules.save": "Salvar",
+  "taskBoard.columnRules.saved": "Regras da coluna salvas",
+  "taskBoard.columnRules.failed": "Não foi possível salvar as regras da coluna",
   "taskBoard.taskBoard.hiddenColumns": "Colunas ocultas",
   "taskBoard.taskBoard.showColumn": "Mostrar",
   "taskBoard.taskBoard.selectedCount": "{count} selecionado(s)",
@@ -183,6 +215,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentActionsAriaLabel": "Ações do comentário",
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
+  "taskBoard.taskDialog.commentDropToAttach": "Solte para anexar",
   "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":

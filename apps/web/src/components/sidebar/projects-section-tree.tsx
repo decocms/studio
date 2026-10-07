@@ -9,9 +9,7 @@ import {
   ChevronRight,
   DotsHorizontal,
   EyeOff,
-  Pin02,
   Plus,
-  XClose,
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -61,7 +59,6 @@ import {
   renameFolder,
   setFolderHidden,
   setProjectState,
-  type SidebarSuggestion,
 } from "@/lib/project-sidebar-model";
 import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -173,69 +170,6 @@ function ProjectRow({
   );
 }
 
-/** A Suggested project: the dot or "New" for why, Pin / Dismiss on hover. */
-function SuggestedRow({
-  suggestion,
-  isActive,
-  onNavigate,
-  onPin,
-  onDismiss,
-}: {
-  suggestion: SidebarSuggestion;
-  isActive: boolean;
-  onNavigate?: () => void;
-  onPin: () => void;
-  onDismiss: () => void;
-}) {
-  const t = useT();
-
-  return (
-    <ProjectRow
-      project={suggestion.project}
-      isActive={isActive}
-      onNavigate={onNavigate}
-      waiting={suggestion.waiting}
-      trailing={
-        <span className="text-2xs text-muted-foreground group-hover/menu-item:invisible">
-          {t("sidebar.projects.newBadge")}
-        </span>
-      }
-    >
-      {/* Beside the row's button, not in it: buttons cannot nest. */}
-      <span className="absolute top-1/2 right-1 hidden -translate-y-1/2 items-center gap-0.5 group-hover/menu-item:flex group-data-[state=collapsed]/sidebar:!hidden">
-        <RowAction label={t("sidebar.projects.pin")} onClick={onPin}>
-          <Pin02 size={14} />
-        </RowAction>
-        <RowAction label={t("sidebar.projects.dismiss")} onClick={onDismiss}>
-          <XClose size={14} />
-        </RowAction>
-      </span>
-    </ProjectRow>
-  );
-}
-
-function RowAction({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-    >
-      {children}
-    </button>
-  );
-}
-
 /** A folder as its own section, Discord-style: the name is a heading at the
  *  level of Pinned and Suggested, it folds like an accordion, and its projects
  *  sit flush under it. Open by default. */
@@ -321,8 +255,6 @@ export function SidebarProjectsTree({
     projects,
     folders: sidebar.folders,
     preferences: sidebar.preferences,
-    joinedAt: sidebar.joinedAt,
-    waitingByProject,
   });
   const hiddenCount =
     model.hidden.length +
@@ -332,36 +264,16 @@ export function SidebarProjectsTree({
   const selectedId =
     leafPath === FLAT_PROJECT_ROUTE ? (search.project?.trim() ?? null) : null;
 
-  /** Undoing a pin or a hide is still a decision: "dismissed" keeps the
-   *  project in its place instead of making it new to you again. */
   const pin = (id: string, on: boolean) => {
     track(on ? "sidebar_project_pinned" : "sidebar_project_unpinned");
     updatePreferences.mutate((prefs) =>
-      setProjectState(prefs, id, on ? "pinned" : "dismissed"),
+      setProjectState(prefs, id, on ? "pinned" : null),
     );
   };
   const hide = (id: string, on: boolean) => {
     track(on ? "sidebar_project_hidden" : "sidebar_project_shown");
     updatePreferences.mutate((prefs) =>
-      setProjectState(prefs, id, on ? "hidden" : "dismissed"),
-    );
-  };
-  const dismiss = (id: string) => {
-    track("sidebar_suggestion_dismissed");
-    updatePreferences.mutate((prefs) =>
-      setProjectState(prefs, id, "dismissed"),
-    );
-  };
-  /** Clearing only takes a project out of Suggested; one with a waiting task
-   *  stays marked in its folder until the task is done. */
-  const dismissableIds = model.clearableIds;
-  const clearSuggested = () => {
-    track("sidebar_suggestions_cleared");
-    updatePreferences.mutate((prefs) =>
-      dismissableIds.reduce(
-        (next, id) => setProjectState(next, id, "dismissed"),
-        prefs,
-      ),
+      setProjectState(prefs, id, on ? "hidden" : null),
     );
   };
   const hideFolder = (id: string, on: boolean) =>
@@ -517,42 +429,6 @@ export function SidebarProjectsTree({
                 )}
                 <SidebarMenu className="gap-1">
                   {projectRows(model.pinned)}
-                </SidebarMenu>
-              </div>
-            )}
-
-            {model.suggested.length > 0 && (
-              /* Ruled off above and below: it is a prompt, not a place. */
-              <div className="flex flex-col gap-1 border-y border-sidebar-border py-3">
-                {!collapsed && (
-                  <SectionLabel
-                    label={t("sidebar.projects.suggested")}
-                    action={
-                      dismissableIds.length > 0 && (
-                        <button
-                          type="button"
-                          aria-label={t("sidebar.projects.clearSuggested")}
-                          title={t("sidebar.projects.clearSuggested")}
-                          onClick={clearSuggested}
-                          className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                        >
-                          <XClose size={12} />
-                        </button>
-                      )
-                    }
-                  />
-                )}
-                <SidebarMenu className="gap-1">
-                  {model.suggested.map((suggestion) => (
-                    <SuggestedRow
-                      key={suggestion.project.id}
-                      suggestion={suggestion}
-                      isActive={suggestion.project.id === selectedId}
-                      onNavigate={onNavigate}
-                      onPin={() => pin(suggestion.project.id, true)}
-                      onDismiss={() => dismiss(suggestion.project.id)}
-                    />
-                  ))}
                 </SidebarMenu>
               </div>
             )}

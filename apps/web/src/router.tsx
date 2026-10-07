@@ -1281,8 +1281,8 @@ const monitoringRoute = createRoute({
     z.object({
       tab: z
         .enum(["overview", "audit", "dashboards", "threads", "automations"])
-        .default("overview"),
-      from: z.string().default("now-30m"),
+        .default("threads"),
+      from: z.string().default("now-24h"),
       to: z.string().default("now"),
       connectionId: z.array(z.string()).optional().default([]),
       virtualMcpId: z.array(z.string()).optional().default([]),
@@ -1513,6 +1513,18 @@ const settingsSkillsRoute = createRoute({
   ),
 });
 
+const settingsMemoryRoute = createRoute({
+  staticData: { pageTitle: "settings.nav.memory" },
+  getParentRoute: () => settingsRoute,
+  path: "/memory",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/memory.tsx"),
+  ),
+  validateSearch: z.lazy(() =>
+    z.object({ scope: z.enum(["user"]).optional() }),
+  ),
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -1525,6 +1537,7 @@ const settingsWithChildren = settingsRoute.addChildren([
   settingsAgentsRoute,
   settingsAutomationsRoute,
   settingsSkillsRoute,
+  settingsMemoryRoute,
   monitoringRoute,
   settingsGeneralRoute,
   settingsConnectRoute,

@@ -34,6 +34,7 @@ import {
   reviewCycleVerdicts,
   statusEnteredAt,
   SUPER_AGENT_ASSIGNEE_ID,
+  type TaskCommentAudience,
 } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
@@ -59,6 +60,7 @@ export interface TaskBoardComment {
    *  one agent's comments from another's — every agent comment shares the same
    *  synthetic author id. */
   threadId: string | null;
+  audience: TaskCommentAudience;
   body: string;
   resolved: boolean;
   createdAt: string;
@@ -90,6 +92,7 @@ function commentFromDbRow(row: {
   parent_id: string | null;
   author_id: string;
   thread_id: string | null;
+  audience: TaskCommentAudience;
   body: string;
   resolved: boolean;
   created_at: Date | string;
@@ -102,6 +105,7 @@ function commentFromDbRow(row: {
     parentId: row.parent_id,
     authorId: row.author_id,
     threadId: row.thread_id,
+    audience: row.audience,
     body: row.body,
     resolved: row.resolved,
     createdAt: iso(row.created_at),
@@ -2634,6 +2638,9 @@ export class TaskBoardStorage {
     authorId: string;
     /** The agent run writing it, when one is. */
     threadId?: string | null;
+    /** Omitted: a reply takes the audience of the comment it answers, and a
+     *  root is for humans. */
+    audience?: TaskCommentAudience;
     body: string;
   }): Promise<TaskBoardComment | null> {
     const task = await this.db
@@ -2647,15 +2654,17 @@ export class TaskBoardStorage {
     // A reply hangs off a root of the same task; replying to a reply would give
     // the UI a depth it can't render, so flatten it onto the root.
     let parentId: string | null = null;
+    let audience = params.audience ?? "human";
     if (params.parentId) {
       const parent = await this.db
         .selectFrom("task_board_comments")
-        .select(["id", "parent_id"])
+        .select(["id", "parent_id", "audience"])
         .where("id", "=", params.parentId)
         .where("task_board_item_id", "=", params.taskBoardItemId)
         .executeTakeFirst();
       if (!parent) return null;
       parentId = parent.parent_id ?? parent.id;
+      audience = params.audience ?? parent.audience;
     }
 
     const row = await this.db
@@ -2666,6 +2675,7 @@ export class TaskBoardStorage {
         parent_id: parentId,
         author_id: params.authorId,
         thread_id: params.threadId ?? null,
+        audience,
         body: params.body,
       })
       .returningAll()

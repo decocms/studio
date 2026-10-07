@@ -100,6 +100,8 @@ async function openTask(page: Page, orgSlug: string, title: string) {
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.click();
   await expect(detail(page)).toBeVisible();
+  // Run posts are agent work, listed behind the scenes.
+  await page.getByRole("button", { name: /^Behind the scenes/ }).click();
 }
 
 test.describe("task run drawer", () => {

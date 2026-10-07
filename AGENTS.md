@@ -93,8 +93,14 @@ rewriting Git history does not revoke them.
 
 ## Documentation
 
-`apps/docs/` describes intended system behavior and architecture. When code
-differs, preserve the specification and identify the implementation gap.
+Public product documentation lives in
+[docs-tanstack](https://github.com/deco-sites/docs-tanstack) and is published at
+[Studio documentation](https://docs.decocms.com/studio). Update product guides
+and architecture there. When code differs, preserve the specification and
+identify the implementation gap.
+
+Keep workspace setup, contributor guidance, and implementation plans in this
+repository's READMEs and engineering documents.
 
 Keep each instruction in one place. Put task-specific guidance near its owner
 and link to it here with a condition for reading it. Let code, schemas, and

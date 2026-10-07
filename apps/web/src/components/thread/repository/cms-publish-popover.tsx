@@ -6,6 +6,16 @@
  */
 
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -142,7 +152,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
         <Dialog open={props.open} onOpenChange={handleOpenChange}>
           <DialogContent
             aria-describedby={undefined}
-            className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-row gap-0 overflow-hidden p-0 sm:max-w-none"
+            className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-row md:h-[calc(100dvh-6rem)] md:w-[calc(100vw-6rem)] gap-0 overflow-hidden p-0 sm:max-w-none"
             closeButtonClassName="top-3.5 right-3.5"
           >
             <DialogTitle className="sr-only">
@@ -193,7 +203,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
   );
 }
 
-/** Visual review: the list column (clear of the close button when alone) beside the review pane. */
+/** Visual review: the review pane beside the list column, whose header clears the close button. */
 function ReviewLayout({
   visualReview,
   list,
@@ -206,10 +216,10 @@ function ReviewLayout({
   if (!visualReview) return list;
   return (
     <>
-      <div className="flex min-h-0 w-full flex-col max-md:pt-8 md:w-[380px] md:shrink-0 md:border-r">
+      {pane}
+      <div className="flex min-h-0 w-full flex-col max-md:pt-8 md:w-[380px] md:shrink-0 md:border-l md:[&>[data-publish-state]>:first-child]:pr-12">
         {list}
       </div>
-      {pane}
     </>
   );
 }
@@ -649,47 +659,47 @@ function CmsPublishContent({
     );
   })();
 
-  const discardAllControl = (() => {
-    // Never offer an all-files action over a set the server truncated.
-    if (summary.count <= 1 || changedFilesTruncated) return null;
-    if (discardAllConfirm) {
-      return (
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
-          <span className="text-destructive">
-            {t("thread.publishPopover.discardAllConfirm")}
-          </span>
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => setDiscardAllConfirm(false)}
-          >
-            {t("thread.publishDialog.cancel")}
-          </button>
-          <button
-            type="button"
-            className="font-medium text-destructive disabled:opacity-50"
-            onClick={() => {
-              setDiscardAllConfirm(false);
-              void discardAll();
-            }}
-            disabled={isDiscarding}
-          >
-            {t("thread.publishPopover.discard")}
-          </button>
-        </span>
-      );
-    }
-    return (
-      <button
-        type="button"
-        className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-        onClick={() => setDiscardAllConfirm(true)}
-        disabled={isPublishing || isDiscarding}
-      >
-        {t("thread.publishPopover.discardAll")}
-      </button>
+  // Never offer an all-files action over a set the server truncated.
+  const discardAllControl =
+    summary.count <= 1 || changedFilesTruncated ? null : (
+      <>
+        <button
+          type="button"
+          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          onClick={() => setDiscardAllConfirm(true)}
+          disabled={isPublishing || isDiscarding}
+        >
+          {t("thread.publishPopover.discardAll")}
+        </button>
+        <AlertDialog
+          open={discardAllConfirm}
+          onOpenChange={setDiscardAllConfirm}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("thread.publishPopover.discardAllTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("thread.publishPopover.discardAllConfirm")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("thread.publishDialog.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => void discardAll()}
+                disabled={isDiscarding}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {t("thread.publishPopover.discardAll")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
     );
-  })();
 
   const body = cardsPending ? (
     <PublishListRegion>

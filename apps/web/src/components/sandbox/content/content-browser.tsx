@@ -1229,6 +1229,8 @@ function ContentBrowserReady({
                   kind="authors"
                   blockKey={selection.key}
                   block={decofile[selection.key] as Record<string, unknown>}
+                  meta={meta}
+                  decofile={decofile}
                 />
               ) : selection.collection === "redirects" ? (
                 <RedirectEditor

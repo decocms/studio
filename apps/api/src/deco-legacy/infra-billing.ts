@@ -1,10 +1,8 @@
 /**
- * Infra billing for a legacy deco.cx site: the daily CDN + shared-infra usage
- * the platform bills on, the site's plan, and its issued invoices.
+ * Infra billing for legacy deco.cx sites: daily usage, plus each team's plan and invoices.
  *
  * Ported from the deco.cx admin's billing dashboard, with two differences:
- *  - scoped to ONE site (admin aggregated a whole legacy "team"), because
- *    Studio's tenancy unit is the org's `org_sites` claim, not the legacy team;
+ *  - scoped to the org's `org_sites` claims, not a whole legacy "team";
  *  - read-only. Plan changes / checkout stay in the legacy admin.
  *
  * Every external read fails soft: an unconfigured or broken warehouse yields an
@@ -12,6 +10,7 @@
  * ownership of the slug (see org_sites).
  */
 
+import { mapBounded } from "@decocms/shared/std";
 import { analyticsQuery, isAnalyticsConfigured } from "./clickhouse-analytics";
 import { dailyPageviews, toOneDollarHostname } from "./onedollarstats";
 import { getDecoSupabaseConfig, supabaseGet } from "./supabase";
@@ -41,20 +40,7 @@ export interface LegacyInvoice {
   bankSlipUrl: string | null;
 }
 
-/**
- * Why `billing` is null. The UI must not tell a user to "narrow the selection"
- * when the real cause is a dead warehouse or a team they only partly own.
- */
-export type BillingUnavailableReason =
-  | "no_team"
-  | "multiple_teams"
-  | "partial_team"
-  | "unavailable";
-
-/**
- * Plan and invoices belong to the legacy TEAM, not the site, so they only make
- * sense when every selected site rolls up to the same team — null otherwise.
- */
+/** Plan and invoices belong to the legacy TEAM, not the site. */
 export interface LegacyTeamBilling {
   planType: PlanType;
   invoices: LegacyInvoice[];
@@ -62,6 +48,15 @@ export interface LegacyTeamBilling {
   nextBillingDate: string | null;
   /** Whether `INFRA_BILLING_PORTAL` has a Stripe customer to open for. */
   canManageSubscription: boolean;
+}
+
+/** One legacy team behind part of the selection. */
+export interface TeamBilling {
+  /** The selected sites this team bills. */
+  siteSlugs: string[];
+  billing: LegacyTeamBilling | null;
+  /** Why `billing` is null. */
+  unavailableReason: "partial_team" | "unavailable" | null;
 }
 
 export interface SiteInfraBilling {
@@ -72,9 +67,12 @@ export interface SiteInfraBilling {
   usage: DailyUsage[];
   /** False when no pageview source answered — the UI must render "—", not 0. */
   pageviewsAvailable: boolean;
-  billing: LegacyTeamBilling | null;
-  /** Set whenever `billing` is null, so the UI can say which cause it was. */
-  billingUnavailableReason: BillingUnavailableReason | null;
+  /** Teams behind the selection, ordered by their first selected site. */
+  teams: TeamBilling[];
+  /** Selected sites no legacy team bills. */
+  siteSlugsWithoutTeam: string[];
+  /** True when the team lookup itself is unconfigured or failed. */
+  billingUnavailable: boolean;
   /**
    * True when usage could not be read at all — warehouse unconfigured OR the
    * query failed. Either way the zeros in `usage` are absence of data, not
@@ -224,61 +222,90 @@ export function planTypeOf(
   return "free";
 }
 
-/** Distinct legacy teams behind a set of sites, in one round trip. */
-async function resolveTeamIds(siteSlugs: string[]): Promise<number[]> {
-  const config = getDecoSupabaseConfig();
-  if (!config || siteSlugs.length === 0) return [];
-  const list = siteSlugs.map((s) => `"${encodeURIComponent(s)}"`).join(",");
-  const rows = await supabaseGet<{ team: number | null }>(
-    config.supabaseUrl,
-    config.serviceKey,
-    `sites?name=in.(${list})&select=team`,
-  );
-  return [...new Set(rows.map((r) => r.team).filter((t): t is number => !!t))];
+interface SiteTeamRow {
+  name: string | null;
+  team: number | null;
 }
 
-/** Every site name belonging to a legacy team. */
-async function teamSiteNames(teamId: number): Promise<string[]> {
-  const config = getDecoSupabaseConfig();
-  if (!config) return [];
-  const rows = await supabaseGet<{ name: string | null }>(
-    config.supabaseUrl,
-    config.serviceKey,
-    `sites?team=eq.${teamId}&select=name`,
-  );
-  return rows.map((r) => r.name).filter((n): n is string => !!n);
+export interface TeamScope {
+  teamId: number;
+  /** The selected sites this team bills. */
+  siteSlugs: string[];
+  /** Whether the org owns every site the team bills. */
+  fullyOwned: boolean;
 }
-
-export type TeamScope =
-  | { ok: true; teamId: number }
-  | { ok: false; reason: BillingUnavailableReason };
 
 /**
- * The legacy team behind `siteSlugs`, but ONLY if the org owns every site that
- * team has.
+ * Groups `siteSlugs` by legacy team.
  *
  * Plan, invoices and the Stripe portal are team-scoped, while `org_sites` is a
  * per-slug claim — so owning one site of a shared team must not hand over the
  * team's invoices (which carry the paying entity's legal name and tax id) or a
  * portal session that can cancel a subscription paying for someone else's site.
  */
-export async function resolveOwnedTeam(
+export function groupSitesByTeam(
+  siteSlugs: string[],
+  selectedRows: SiteTeamRow[],
+  teamRows: SiteTeamRow[],
+  ownedSlugs: string[],
+): { teams: TeamScope[]; withoutTeam: string[] } {
+  const teamBySite = new Map<string, number>();
+  for (const row of selectedRows) {
+    if (row.name && row.team) teamBySite.set(row.name, row.team);
+  }
+
+  const selectedByTeam = new Map<number, string[]>();
+  const withoutTeam: string[] = [];
+  for (const slug of siteSlugs) {
+    const teamId = teamBySite.get(slug);
+    if (!teamId) {
+      withoutTeam.push(slug);
+      continue;
+    }
+    selectedByTeam.set(teamId, [...(selectedByTeam.get(teamId) ?? []), slug]);
+  }
+
+  const owned = new Set(ownedSlugs);
+  const teams = [...selectedByTeam].map(([teamId, slugs]) => {
+    const teamSites = teamRows.filter((row) => row.team === teamId);
+    return {
+      teamId,
+      siteSlugs: slugs,
+      fullyOwned:
+        teamSites.length > 0 &&
+        teamSites.every((row) => !!row.name && owned.has(row.name)),
+    };
+  });
+  return { teams, withoutTeam };
+}
+
+/** The legacy teams behind `siteSlugs`; null when Supabase is unconfigured. */
+export async function resolveTeamScopes(
   siteSlugs: string[],
   ownedSlugs: string[],
-): Promise<TeamScope> {
-  if (!getDecoSupabaseConfig()) return { ok: false, reason: "unavailable" };
+): Promise<{ teams: TeamScope[]; withoutTeam: string[] } | null> {
+  const config = getDecoSupabaseConfig();
+  if (!config) return null;
+  if (siteSlugs.length === 0) return { teams: [], withoutTeam: [] };
 
-  const teams = await resolveTeamIds(siteSlugs);
-  if (teams.length === 0) return { ok: false, reason: "no_team" };
-  if (teams.length > 1) return { ok: false, reason: "multiple_teams" };
-
-  const teamId = teams[0]!;
-  const owned = new Set(ownedSlugs);
-  const teamSites = await teamSiteNames(teamId);
-  if (teamSites.length === 0 || !teamSites.every((name) => owned.has(name))) {
-    return { ok: false, reason: "partial_team" };
-  }
-  return { ok: true, teamId };
+  const list = siteSlugs.map((s) => `"${encodeURIComponent(s)}"`).join(",");
+  const selectedRows = await supabaseGet<SiteTeamRow>(
+    config.supabaseUrl,
+    config.serviceKey,
+    `sites?name=in.(${list})&select=name,team`,
+  );
+  const teamIds = [
+    ...new Set(selectedRows.map((r) => r.team).filter((t): t is number => !!t)),
+  ];
+  const teamRows =
+    teamIds.length === 0
+      ? []
+      : await supabaseGet<SiteTeamRow>(
+          config.supabaseUrl,
+          config.serviceKey,
+          `sites?team=in.(${teamIds.join(",")})&select=name,team`,
+        );
+  return groupSitesByTeam(siteSlugs, selectedRows, teamRows, ownedSlugs);
 }
 
 /**
@@ -405,6 +432,9 @@ async function loadPlanAndInvoices(
   };
 }
 
+/** Each team costs three Supabase reads and a Stripe read. */
+const TEAM_READ_CONCURRENCY = 4;
+
 /** Never report days that haven't happened yet — they'd plot as a crash to 0. */
 export function clampUntil(until: string, now: Date): string {
   const today = now.toISOString().slice(0, 10);
@@ -451,19 +481,37 @@ export async function getSiteInfraBilling(params: {
         failed: true,
       };
     }),
-    (async (): Promise<{
-      billing: LegacyTeamBilling | null;
-      reason: BillingUnavailableReason | null;
-    }> => {
-      const scope = await resolveOwnedTeam(siteSlugs, params.ownedSlugs);
-      if (!scope.ok) return { billing: null, reason: scope.reason };
-      const billing = await loadPlanAndInvoices(scope.teamId);
-      return billing
-        ? { billing, reason: null }
-        : { billing: null, reason: "unavailable" };
+    (async () => {
+      const scopes = await resolveTeamScopes(siteSlugs, params.ownedSlugs);
+      if (!scopes) return { teams: [], withoutTeam: [], unavailable: true };
+      const teams = await mapBounded(
+        scopes.teams,
+        TEAM_READ_CONCURRENCY,
+        async (scope): Promise<TeamBilling> => {
+          if (!scope.fullyOwned) {
+            return {
+              siteSlugs: scope.siteSlugs,
+              billing: null,
+              unavailableReason: "partial_team",
+            };
+          }
+          const billing = await loadPlanAndInvoices(scope.teamId).catch(
+            (err) => {
+              console.error("[deco-legacy] plan/invoices read failed:", err);
+              return null;
+            },
+          );
+          return {
+            siteSlugs: scope.siteSlugs,
+            billing,
+            unavailableReason: billing ? null : "unavailable",
+          };
+        },
+      );
+      return { teams, withoutTeam: scopes.withoutTeam, unavailable: false };
     })().catch((err) => {
-      console.error("[deco-legacy] plan/invoices read failed:", err);
-      return { billing: null, reason: "unavailable" as const };
+      console.error("[deco-legacy] legacy team lookup failed:", err);
+      return { teams: [], withoutTeam: [], unavailable: true };
     }),
   ]);
 
@@ -483,8 +531,9 @@ export async function getSiteInfraBilling(params: {
     until,
     usage,
     pageviewsAvailable: usageResult.pageviews !== null,
-    billing: billingResult.billing,
-    billingUnavailableReason: billingResult.reason,
+    teams: billingResult.teams,
+    siteSlugsWithoutTeam: billingResult.withoutTeam,
+    billingUnavailable: billingResult.unavailable,
     // Not the same as a month with no traffic (a legit all-zeros dashboard).
     usageUnavailable: !isAnalyticsConfigured() || usageResult.failed,
   };

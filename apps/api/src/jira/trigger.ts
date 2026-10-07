@@ -335,6 +335,8 @@ async function dispatchJiraRun(
   try {
     await enqueueSuperAgentForTask(ctx, delegated, {
       instruction: opts.instruction ?? DEFAULT_JIRA_INSTRUCTION,
+      // The anchor sits In Progress, but its rule is the Jira column's, not a lane's.
+      column: null,
       ...(opts.userInitiated ? { userInitiated: true } : {}),
       ...(opts.pr ? { pr: opts.pr } : {}),
       source: {

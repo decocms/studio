@@ -542,6 +542,23 @@ export class JiraClient {
   }
 
   /**
+   * The project a board lives in, from its location. What a chat creates an
+   * issue in: there is no run issue to take the project from.
+   */
+  async getBoardProjectKey(boardId: string): Promise<string> {
+    const board = await this.request<{
+      location?: { projectKey?: string } | null;
+    }>(`/rest/agile/1.0/board/${encodeURIComponent(boardId)}`);
+    const projectKey = board.location?.projectKey;
+    if (!projectKey) {
+      throw new Error(
+        `Jira board ${boardId} is not tied to a single project, so there is no project to create the issue in`,
+      );
+    }
+    return projectKey;
+  }
+
+  /**
    * Whether the issue is on the board — matches the board's own scope, the
    * same query the trigger watches. A key Jira does not know is a 400 from
    * search, and simply not on the board.

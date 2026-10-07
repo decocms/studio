@@ -130,6 +130,7 @@ export function RoutePageHeader({
         </>
       }
       breadcrumbs={breadcrumbs}
+      scope={org.name}
       actions={actions}
       trailingActions={closeAction}
       navigation={navigation}

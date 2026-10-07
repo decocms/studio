@@ -48,13 +48,13 @@ export function isBlogKind(id: string): id is BlogKind {
 }
 
 /** Wrapper field that holds the editable payload for each loader block. */
-const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
+export const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
   posts: "post",
   authors: "author",
   categories: "category",
 };
 
-const RESOLVE_TYPE_FOR_KIND: Record<BlogKind, string> = {
+export const RESOLVE_TYPE_FOR_KIND: Record<BlogKind, string> = {
   posts: BLOG_LOADER_RESOLVE_TYPES.post,
   authors: BLOG_LOADER_RESOLVE_TYPES.author,
   categories: BLOG_LOADER_RESOLVE_TYPES.category,

@@ -1,6 +1,6 @@
 ---
 name: jira-validate-production
-description: Check that the fix a Jira issue carries is live on the PRODUCTION site and behaves as the issue asked, then close the card or send it back with evidence. Insert into the prompt of a run started on a batch of merged issues, or of a Jira post-deploy column rule.
+description: Check that the fix a Jira issue carries is live on the PRODUCTION site and behaves as the issue asked, then close the card, or open a follow-up issue for what failed. Insert into the prompt of a run started on a batch of merged issues, or of a Jira post-deploy column rule.
 disable-model-invocation: true
 ---
 
@@ -14,6 +14,10 @@ issue it is about. On a run about one issue you can leave it out.
 
 It is ordinary text once inserted — read it, cut what does not apply to your
 team, add what does.
+
+With several issues, work through them yourself, one after another, in this
+run. Do not hand them to background agents: the run ends when your turn ends,
+and work still running in the background is lost with it.
 
 ---
 
@@ -48,7 +52,9 @@ change has actually reached production:
   repos/<owner>/<repo>/deployments`). If the deploy is still running, wait for
   it — poll, with a bound of a few minutes — and re-check.
 - If the deploy is still not live when you give up waiting, that is NOT a
-  failed validation. Say so in a comment and leave the card where it is.
+  failed validation. Leave the card as it is, with no comment and no move, and
+  say so in your final message: a later run validates it once the deploy is
+  out. A comment would read as a verdict when there is none.
 
 ## Validate the behaviour, not the code
 
@@ -76,13 +82,24 @@ a run that dies on the tenth issue never writes:
   what you observed. Screenshots go to `/app/org/output/<name>.png` and are
   referenced as `![what it shows](/app/org/output/<name>.png)` so they render inline.
   This comment is the record that someone looked at the live site.
-- `JIRA_ISSUE_TRANSITION` with `issueKey` — on a pass, the column your team
-  closes work in. On a fail, BACK to the column the implementing run works in,
-  and say in the comment that the fix is already merged so the next run amends
-  it rather than re-implementing. Do this LAST, after the comment is on the
-  card. Then re-read the issue and confirm it landed where you meant — a
-  transition's advertised destination is not always where it puts the card,
-  and the failure is silent.
+- On a pass, `JIRA_ISSUE_TRANSITION` with `issueKey` to the column your team
+  closes work in. Do this LAST, after the comment is on the card. Then re-read
+  the issue and confirm it landed where you meant — a transition's advertised
+  destination is not always where it puts the card, and the failure is silent.
+- On a fail, the issue's pull request is already merged: there is nothing left
+  to continue, and sending the card back would point the next run at a closed
+  branch. Leave the card where it is and track the fix in a new issue:
+  1. If an open follow-up issue already relates to this one, comment your
+     findings there instead of opening another.
+  2. Otherwise `JIRA_ISSUE_CREATE` one, `relatesTo` this issue: what failed, on
+     which URLs, the evidence, and the merged pull request and merge commit.
+     Your team's skill may set its title and type. Then move it to the column
+     the implementing run works in, so the fix starts from the default branch.
+  3. On this issue, the verdict comment names the follow-up issue.
+  If the failure breaks the site for its users (pages answering 5xx, a broken
+  checkout, a script error on every page), say so in both places and point at
+  reverting this issue's merge commit as the fast way out. Do not revert it
+  yourself; a person decides.
 - If you cannot tell which column is which, say so in your comment and leave
   the issue where it is. A card parked with an explanation is recoverable; one
   closed without anyone having seen production is the failure this whole step

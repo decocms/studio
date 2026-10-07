@@ -263,8 +263,8 @@ export const thread = {
   "thread.publishPopover.discarded": "Discarded {name}",
   "thread.publishPopover.discard": "Discard",
   "thread.publishPopover.discardAll": "Discard all",
-  "thread.publishPopover.discardAllConfirm":
-    "Discard every change? This can't be undone.",
+  "thread.publishPopover.discardAllConfirm": "This can't be undone.",
+  "thread.publishPopover.discardAllTitle": "Discard all changes?",
   "thread.publishPopover.reviewNote": "Note for reviewers",
   "thread.publishPopover.reviewNotePlaceholder": "What changed and why…",
   "thread.publishPopover.reviewing": "Reviewing content…",
