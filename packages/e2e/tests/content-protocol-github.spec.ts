@@ -266,6 +266,10 @@ test.describe("content protocol on GitHub", () => {
         resolvedRef: "main",
         blocks: { "hero-home": { __resolveType: "hero" } },
       });
+      // The protocol has no refs: `ref` is an unknown parameter.
+      expect(
+        (await rpc(ctx, path, "blocks.list", { ref: "main" })).error?.code,
+      ).toBe(-32602);
 
       const hero = { __resolveType: "hero", title: "Hi" };
       const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {

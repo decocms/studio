@@ -143,11 +143,6 @@ export function createDraftContentStorage(options: {
         readOnly: false,
         // Uploads go to Studio's own file storage, never into the repository.
         assets: null,
-        // Only for @decocms/blocks 8.1.0-next.4, whose types require these
-        // two and whose conformance ties `resolvedRef` to `refs`; the
-        // protocol drops both. Delete with the next bump.
-        refs: { default: options.mainBranch, autoCreate: false },
-        idempotency: null,
       };
       return description;
     },
