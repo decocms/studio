@@ -70,7 +70,7 @@ const hostedEnv = `DELIVERY_R2_ENDPOINT=${deliveryStubOrigin} DELIVERY_R2_BUCKET
 const vaultServiceToken = "e2e-vault-service-token";
 const organizationNoticesApiKey = "e2e-organization-notices-api-key";
 
-const apiServerCommand = `${hostedEnv} MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `${hostedEnv} MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} GITHUB_GRAPHQL_URL=${githubStubOrigin}/graphql JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy
