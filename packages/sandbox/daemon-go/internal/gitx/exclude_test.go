@@ -149,3 +149,44 @@ func TestPublishNeverCommitsDotenv(t *testing.T) {
 		t.Fatalf("publish dropped the user's work too: %q", committed)
 	}
 }
+
+// A generated `.npmrc` holds a live registry token in plaintext, and the
+// autosave loop publishes unattended — so publish must never carry one, wherever
+// it sits. A repo that commits the `${NPM_TOKEN}` form keeps that file untouched
+// in the branch; this only stops the sandbox from pushing a rewritten copy.
+func TestPublishNeverCommitsRegistryCredentials(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature/x")
+	if err := os.MkdirAll(filepath.Join(repo, "apps", "api"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{".npmrc", ".netrc", "apps/api/.npmrc"} {
+		if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(rel)), []byte("//registry.example.com/:_authToken=synthetic-not-a-real-token\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// `.npmignore` shares the prefix and is committed on purpose.
+	if err := os.WriteFile(filepath.Join(repo, ".npmignore"), []byte("test/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "app.ts"), []byte("export const x = 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fails at the push (no remote); the commit it builds first is the artifact.
+	_ = Publish(PublishDeps{RepoDir: repo}, "sync")
+
+	committed := gitIn(t, repo, "show", "--pretty=format:", "--name-only", "HEAD")
+	for _, rel := range []string{".npmrc", ".netrc", "apps/api/.npmrc"} {
+		for _, line := range strings.Split(committed, "\n") {
+			if strings.TrimSpace(line) == rel {
+				t.Fatalf("publish committed %s: %q", rel, committed)
+			}
+		}
+	}
+	if !strings.Contains(committed, ".npmignore") {
+		t.Fatalf("publish dropped .npmignore, which is not a secret: %q", committed)
+	}
+	if !strings.Contains(committed, "app.ts") {
+		t.Fatalf("publish dropped the user's work too: %q", committed)
+	}
+}

@@ -176,9 +176,19 @@ func dotenvName(base string) bool {
 	return base == ".env" || strings.HasPrefix(base, ".env.")
 }
 
+// registryAuthName reports whether a file name is a package-manager or network
+// credential file. These are written by a tool, not by a person: a private
+// registry needs a token in `.npmrc` for `deno`/`npm` to resolve at all, so the
+// repo generates one at boot — and the generated copy holds the live token in
+// plaintext, unlike the `${NPM_TOKEN}` form a repo can safely commit.
+func registryAuthName(base string) bool {
+	return base == ".npmrc" || base == ".netrc" || base == "_netrc"
+}
+
 // dropNeverCommit filters {@link NeverCommit} paths out of a publish's file list.
 //
-// Also drops `.env` files anywhere in the tree. They only reach this list when
+// Also drops `.env` and registry-credential files anywhere in the tree. They
+// only reach this list when
 // the repo forgot to ignore them, but then they hold live credentials and the
 // autosave loop (autosave.go) pushes unattended every couple of minutes — so a
 // secret the agent wrote and would have deleted before finishing reaches the
@@ -192,6 +202,9 @@ func dropNeverCommit(paths []string) []string {
 		reason := ""
 		if dotenvName(path.Base(rel)) {
 			reason = "dotenv file"
+		}
+		if registryAuthName(path.Base(rel)) {
+			reason = "registry credential file"
 		}
 		for _, deny := range NeverCommit {
 			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
