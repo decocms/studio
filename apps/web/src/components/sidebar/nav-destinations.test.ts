@@ -4,13 +4,18 @@ import { NAV_DESTINATION_KEYS, SETTINGS_DESTINATION } from "./nav-destinations";
 /** `NavDestinationsContent` maps over `NAV_DESTINATION_KEYS`, so this constant
  *  IS the render order rather than a description of it. */
 describe("NAV_DESTINATION_KEYS", () => {
-  test("is the org's three destinations, in order", () => {
-    expect(NAV_DESTINATION_KEYS).toEqual(["overview", "tasks", "agents"]);
+  test("is the org's destinations, in order", () => {
+    expect(NAV_DESTINATION_KEYS).toEqual([
+      "overview",
+      "tasks",
+      "agents",
+      "files",
+    ]);
   });
 
-  /** Reports and the Library are reached from Today or from a project, not the spine. */
+  /** Reports is reached from Today or from a project, not the spine. */
   test("holds nothing that is reachable from inside another destination", () => {
-    for (const key of ["reports", "files", "library", "discover"]) {
+    for (const key of ["reports", "discover"]) {
       expect(NAV_DESTINATION_KEYS).not.toContain(key);
     }
   });

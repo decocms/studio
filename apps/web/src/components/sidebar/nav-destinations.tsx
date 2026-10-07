@@ -1,13 +1,14 @@
 /** The org-wide destination rows: real `<Link>`s, so nav paints on the first
  *  frame. Projects are a tree below these, not rows here.
  *
- *  Reports, Board, Library and Settings are reached FROM these rather than
- *  listed beside them: a spine of five equal rows gave all five the same
- *  weight, which made the brief read as a tab. */
+ *  Reports, Board and Settings are reached FROM these rather than listed
+ *  beside them: a spine of five equal rows gave all five the same weight,
+ *  which made the brief read as a tab. Library is the exception: it is a place
+ *  you go to on purpose, not something a row above leads to. */
 
 import type { ReactNode } from "react";
 import { useSearch, type LinkProps } from "@tanstack/react-router";
-import { Columns03, Home02, Lock01, Zap } from "@untitledui/icons";
+import { Columns03, Folder, Home02, Lock01, Zap } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
 import { useTabLocked } from "./use-tab-locked";
@@ -16,6 +17,7 @@ import { useScopeId } from "@/hooks/use-project-scope";
 import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
+  routeExistsInScope,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
 import { track } from "@/lib/posthog-client";
@@ -38,7 +40,7 @@ export const SETTINGS_DESTINATION = "settings";
 
 /** The display order `useNavDestinations` maps over. The keyed record below is
  *  exhaustive over it, so the two cannot drift. */
-export const NAV_DESTINATION_KEYS = ["overview", "tasks", "agents"] as const;
+export const NAV_DESTINATION_KEYS = ["overview", "tasks", "agents", "files"] as const;
 
 type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
 
@@ -51,7 +53,7 @@ function useNavDestinations(): NavDestination[] {
   const { view } = useSearch({ strict: false }) as { view?: "agents" };
 
   /** Keyed, not ordered — `NAV_DESTINATION_KEYS` fixes the order below. */
-  const rows: Record<NavDestinationKey, NavDestination> = {
+  const rows: Record<NavDestinationKey, NavDestination | null> = {
     overview: {
       key: "overview",
       label: t("sidebar.navDestinations.today"),
@@ -96,9 +98,22 @@ function useNavDestinations(): NavDestination[] {
         search: { view: "agents" as const },
       },
     },
+    /** Org-only: it lists the ORG's files, so a project scope drops the row. */
+    files: routeExistsInScope(DESTINATION_ROUTE.library, scopeId)
+      ? {
+          key: "files",
+          label: t("sidebar.navDestinations.library"),
+          icon: <Folder size={16} />,
+          isActive: leafPath === DESTINATION_ROUTE.library,
+          trackAs: "files",
+          link: { to: DESTINATION_ROUTE.library, params: { org: org.slug } },
+        }
+      : null,
   };
 
-  return NAV_DESTINATION_KEYS.map((key) => rows[key]);
+  return NAV_DESTINATION_KEYS.map((key) => rows[key]).filter(
+    (row): row is NavDestination => row !== null,
+  );
 }
 
 /** The destination list; chat opens from the sidebar header instead.
