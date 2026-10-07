@@ -11,7 +11,11 @@ import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
+import { blogCustomFieldsSchema } from "./blog-schema";
+import { CustomFieldsPanel } from "./custom-fields-panel";
 import { str } from "./blocks/primitives";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useAutosave } from "./use-autosave";
@@ -28,6 +32,11 @@ interface FieldDef {
   options?: Array<{ value: string; labelKey: TranslationKey }>;
 }
 
+/**
+ * The author fields Studio gives a curated, localized widget to. Anything else
+ * the site's own `Author` type declares lands in {@link CustomFieldsPanel};
+ * these keep their `useT()` labels rather than the schema's English titles.
+ */
 const FIELDS: Record<RecordKind, FieldDef[]> = {
   authors: [
     { key: "name", labelKey: "sandbox.recordEditor.fieldName", widget: "text" },
@@ -73,6 +82,11 @@ const FIELDS: Record<RecordKind, FieldDef[]> = {
   ],
 };
 
+/** Derived, not a second list, so a field added above can't also render below. */
+const KNOWN_FIELDS: Record<RecordKind, ReadonlySet<string>> = {
+  authors: new Set(FIELDS.authors.map((field) => field.key)),
+};
+
 const TITLE: Record<RecordKind, TranslationKey> = {
   authors: "sandbox.recordEditor.titleAuthor",
 };
@@ -84,6 +98,8 @@ export function RecordEditor({
   kind,
   blockKey,
   block,
+  meta,
+  decofile,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -91,10 +107,14 @@ export function RecordEditor({
   kind: RecordKind;
   blockKey: string;
   block: Record<string, unknown> | undefined;
+  meta: LiveMeta;
+  decofile: Record<string, unknown>;
 }) {
   const t = useT();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, kind);
+  const customFields = blogCustomFieldsSchema(kind, meta, KNOWN_FIELDS[kind]);
 
   const [payload, setPayload] = useAutosave(
     initial,
@@ -175,6 +195,15 @@ export function RecordEditor({
               )}
             </div>
           ))}
+          <CustomFieldsPanel
+            schema={customFields}
+            value={payload}
+            onChange={setPayload}
+            basePath="author"
+            meta={meta}
+            decofile={decofile}
+            sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+          />
         </div>
       </div>
     </div>

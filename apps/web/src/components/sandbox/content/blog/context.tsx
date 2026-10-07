@@ -587,6 +587,8 @@ export function BlogContext({
                 kind="authors"
                 blockKey={key}
                 block={decofile[key] as Record<string, unknown>}
+                meta={meta}
+                decofile={decofile}
               />
             )}
           />

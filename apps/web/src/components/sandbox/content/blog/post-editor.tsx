@@ -40,6 +40,12 @@ import { ResponsiveImageField } from "@/components/sections-editor/fields/respon
 import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { CustomFieldsPanel } from "./custom-fields-panel";
+import {
+  blogCustomFieldsSchema,
+  KNOWN_POST_FIELDS,
+  type KnownPostKey,
+} from "./blog-schema";
 import {
   buildPostBlock,
   canDeletePost,
@@ -165,8 +171,11 @@ export function PostEditor({
     void move.apply(blockKey, next, post);
   };
 
-  const setField = (key: string, value: unknown) =>
+  // Key typed from `KNOWN_POST_KEYS`, so a bespoke field absent from it fails to compile.
+  const setField = (key: KnownPostKey, value: unknown) =>
     setPost({ ...post, [key]: value });
+
+  const customFields = blogCustomFieldsSchema("posts", meta, KNOWN_POST_FIELDS);
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
   const [contentRevision, setContentRevision] = useState(0);
@@ -384,6 +393,15 @@ export function PostEditor({
                   move={move}
                   onMoveStatus={moveStatus}
                 />
+                <CustomFieldsPanel
+                  schema={customFields}
+                  value={post}
+                  onChange={setPost}
+                  basePath="post"
+                  meta={meta}
+                  decofile={decofile}
+                  sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+                />
               </div>
             </TabsContent>
           </Tabs>
@@ -501,7 +519,7 @@ function PostSettings({
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
-  onChange: (key: string, value: unknown) => void;
+  onChange: (key: KnownPostKey, value: unknown) => void;
   blockKey: string;
   move: PostStatusMove;
   onMoveStatus: (next: PostStatus) => void;
