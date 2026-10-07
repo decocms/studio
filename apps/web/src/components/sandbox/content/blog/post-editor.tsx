@@ -41,6 +41,7 @@ import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
+import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
   blogCustomFieldsSchema,
   KNOWN_POST_FIELDS,
@@ -176,6 +177,12 @@ export function PostEditor({
     setPost({ ...post, [key]: value });
 
   const customFields = blogCustomFieldsSchema("posts", meta, KNOWN_POST_FIELDS);
+
+  // Edits to a field pointing at a saved block belong to that block's own
+  // decofile entry, not to this post.
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
+    save.mutate({ blockKey: refKey, data }),
+  );
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
   const [contentRevision, setContentRevision] = useState(0);
@@ -401,6 +408,7 @@ export function PostEditor({
                   meta={meta}
                   decofile={decofile}
                   sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+                  onSaveReferencedBlock={saveReferencedBlock}
                 />
               </div>
             </TabsContent>

@@ -16,6 +16,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
 import { blogCustomFieldsSchema } from "./blog-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
+import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { str } from "./blocks/primitives";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useAutosave } from "./use-autosave";
@@ -115,6 +116,11 @@ export function RecordEditor({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, kind);
   const customFields = blogCustomFieldsSchema(kind, meta, KNOWN_FIELDS[kind]);
+  // Edits to a field pointing at a saved block belong to that block's own
+  // decofile entry, not to this record.
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
+    save.mutate({ blockKey: refKey, data }),
+  );
 
   const [payload, setPayload] = useAutosave(
     initial,
@@ -203,6 +209,7 @@ export function RecordEditor({
             meta={meta}
             decofile={decofile}
             sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+            onSaveReferencedBlock={saveReferencedBlock}
           />
         </div>
       </div>

@@ -8,6 +8,7 @@ import type {
   SchemaProperty,
 } from "@/components/sections-editor/resolve-schema";
 import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { useT } from "@/i18n/use-t.ts";
 import { CollapsibleSection } from "./editor-section";
 
@@ -32,6 +33,7 @@ export function CustomFieldsPanel({
   meta,
   decofile,
   sandbox,
+  onSaveReferencedBlock,
 }: {
   schema: SchemaProperty | null;
   value: Record<string, unknown>;
@@ -40,6 +42,12 @@ export function CustomFieldsPanel({
   meta: LiveMeta;
   decofile?: Record<string, unknown>;
   sandbox?: SandboxConfig;
+  /**
+   * Where to persist edits to a field that points at a saved block. Without it
+   * `AnyOfField` writes the referenced block's props inline and drops the
+   * pointer, detaching the record from the block it was sharing.
+   */
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
 }) {
   const t = useT();
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
@@ -70,6 +78,7 @@ export function CustomFieldsPanel({
         meta={meta}
         decofile={decofile}
         sandbox={sandbox}
+        onSaveReferencedBlock={onSaveReferencedBlock}
       />
     </CollapsibleSection>
   );

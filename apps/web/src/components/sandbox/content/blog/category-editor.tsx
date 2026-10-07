@@ -32,6 +32,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
+import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
   blogCustomFieldsSchema,
   KNOWN_CATEGORY_FIELDS,
@@ -145,6 +146,11 @@ export function CategoryEditor({
     "categories",
     meta,
     KNOWN_CATEGORY_FIELDS,
+  );
+  // Edits to a field pointing at a saved block belong to that block's own
+  // decofile entry, not to this record.
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
+    save.mutate({ blockKey: refKey, data }),
   );
 
   // Only offer a preview when the blog app has a `categorySlug` route
@@ -540,6 +546,7 @@ export function CategoryEditor({
               meta={meta}
               decofile={decofile}
               sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+              onSaveReferencedBlock={saveReferencedBlock}
             />
 
             {/* Category page content — same collapsible panel as the post body */}

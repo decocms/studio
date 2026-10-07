@@ -178,3 +178,103 @@ test("an array item can be opened and navigated back out of", async ({
     component.getByRole("button", { name: "Carousel" }),
   ).toBeVisible();
 });
+
+/**
+ * A custom field can point at a saved block instead of holding its own data.
+ * Editing it then edits THAT block, so the write must go to the block's own
+ * decofile key — otherwise `AnyOfField` inlines its props and drops the
+ * pointer, silently detaching the record from the block it shared.
+ */
+test("editing a field that points at a saved block writes to that block", async ({
+  mount,
+}) => {
+  const BANNER_RT = "site/sections/Banner.tsx";
+  const SAVED_KEY = "banners/shared-hero";
+
+  const meta = {
+    manifest: {
+      blocks: {
+        loaders: { [POST_RESOLVE_TYPE]: { $ref: "#/definitions/Wrapper" } },
+        sections: { [BANNER_RT]: { $ref: "#/definitions/BannerBlock" } },
+      },
+    },
+    schema: {
+      definitions: {
+        Wrapper: {
+          allOf: [{ $ref: "#/definitions/Props" }],
+          properties: {
+            __resolveType: { type: "string", enum: [POST_RESOLVE_TYPE] },
+          },
+        },
+        Props: {
+          type: "object",
+          properties: {
+            post: {
+              type: "object",
+              properties: { hero: { $ref: "#/definitions/Hero" } },
+            },
+          },
+        },
+        // The real shape of a block-typed field: the module implementation
+        // plus one branch per saved block of that type in the decofile.
+        Hero: {
+          anyOf: [
+            { $ref: "#/definitions/BannerBlock" },
+            {
+              title: `#${BANNER_RT}@${SAVED_KEY}`,
+              type: "object",
+              required: ["__resolveType"],
+              properties: {
+                __resolveType: { type: "string", enum: [SAVED_KEY] },
+              },
+            },
+          ],
+        },
+        BannerBlock: {
+          title: "Banner",
+          type: "object",
+          allOf: [{ $ref: "#/definitions/BannerProps" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: { type: "string", enum: [BANNER_RT] },
+          },
+        },
+        BannerProps: {
+          type: "object",
+          properties: { headline: { type: "string", title: "Headline" } },
+        },
+      },
+    },
+  };
+
+  const component = await mount(
+    <BlogCustomFieldsHarness
+      meta={meta}
+      initialValue={{ title: "Hello", hero: { __resolveType: SAVED_KEY } }}
+      decofile={{
+        [SAVED_KEY]: { __resolveType: BANNER_RT, headline: "Shared" },
+      }}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Other fields" }).click();
+
+  // The field reads through the pointer: it shows the shared block's own data.
+  const headline = component.getByLabel("Headline");
+  await expect(headline).toHaveValue("Shared");
+  await headline.fill("Edited");
+
+  // The edit went to the shared block…
+  const saves = JSON.parse(
+    (await component.getByTestId("ref-saves").textContent()) ?? "[]",
+  );
+  expect(saves.at(-1)?.blockKey).toBe(SAVED_KEY);
+  expect(saves.at(-1)?.data?.headline).toBe("Edited");
+
+  // …and the post still points at it rather than inlining its props.
+  const value = JSON.parse(
+    (await component.getByTestId("record-value").textContent()) ?? "{}",
+  );
+  expect(value.hero).toEqual({ __resolveType: SAVED_KEY });
+  expect(value.headline).toBeUndefined();
+});
