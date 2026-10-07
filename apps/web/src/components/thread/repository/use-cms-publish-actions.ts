@@ -248,8 +248,7 @@ export function useCmsPublishActions(
     isPublishing,
     isDiscarding,
     publishError,
-    // OPEN: review mode (submit for review) has no hosted equivalent: the
-    // draft is not a branch, so there is no pull request to open.
+    // Hosted callers never pass review mode (no pull request to open).
     submit:
       mode === "review" ? submitForReview : hosted ? publishHosted : publish,
     hostedPending: pending ? { needsConfirm, isResyncing, resync } : null,

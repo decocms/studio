@@ -20,6 +20,25 @@ export function projectSite(
   return typeof slug === "string" && isValidSiteSlug(slug) ? slug : null;
 }
 
+/**
+ * The project's site id, only when the organization owns that site in
+ * `org_sites`. `metadata.siteSlug` is member-editable, so every hosted write
+ * (delivery objects, drafts, site tokens) checks ownership before using it.
+ */
+// OPEN: a project whose siteSlug is not claimed in `org_sites` (claimed today
+// by the deco import, the admin claim or the backfill) gets no hosted
+// features until the site is claimed for its organization.
+export async function ownedProjectSite(
+  orgSites: {
+    isOwnedBy(slug: string, organizationId: string): Promise<boolean>;
+  },
+  metadata: Record<string, unknown> | null | undefined,
+  organizationId: string,
+): Promise<string | null> {
+  const site = projectSite(metadata);
+  return site && (await orgSites.isOwnedBy(site, organizationId)) ? site : null;
+}
+
 /** The draft store over the delivery bucket, or null when none is configured. */
 export function hostedDrafts(kv: KVStorage): DraftStore | null {
   const store = deliveryStore();

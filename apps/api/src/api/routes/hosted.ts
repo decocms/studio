@@ -15,10 +15,12 @@
 // OPEN: O-S4 — Releases, Make current and Resync have no existing route to
 // reuse, so they are these Studio-internal routes (with site tokens beside them).
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { orgHasFeature } from "@/core/plan-feature-gate";
+import { resolveCallerProjectScope } from "@/core/project-scope";
 import {
   contentClientForProjectRepo,
   insightsClientForProjectRepo,
@@ -35,7 +37,7 @@ import {
   NotPublishedError,
   SchemaMismatchError,
 } from "@/hosted/releases";
-import { projectSite } from "@/hosted/scope";
+import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import {
   createSiteTokens,
   importSigningKey,
@@ -86,8 +88,16 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
   if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
     return c.json({ error: "Virtual MCP not found" }, 404);
   }
+  // A project-scoped role may only act on projects in its allowlist.
+  if (!isProjectAllowed(await resolveCallerProjectScope(ctx), virtualMcpId)) {
+    return c.json({ error: "Virtual MCP not found" }, 404);
+  }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
-  const site = projectSite(metadata);
+  const site = await ownedProjectSite(
+    ctx.storage.orgSites,
+    metadata,
+    organization.id,
+  );
   const repository = parseRepositoryBinding(
     metadata,
     virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
@@ -232,12 +242,27 @@ export function createHostedRoutes() {
     const tokens = siteTokens(c);
     if (!tokens) return c.json({ error: "site tokens not configured" }, 503);
     try {
+      // Site tokens are for Blocks v8 sites only.
+      const client = await contentClientForProjectRepo(
+        c.var.studioContext,
+        project.organizationId,
+        project.repository,
+      );
+      if (
+        !(await mainIsV8(
+          client,
+          project.packagePath,
+          await client.getDefaultBranch(),
+        ))
+      ) {
+        return c.json({ error: "not a Blocks v8 site" }, 409);
+      }
       return c.json(await tokens.issue(project.organizationId, project.site));
     } catch (err) {
       if (err instanceof TooManySiteTokensError) {
         return c.json({ error: "too-many-tokens" }, 409);
       }
-      throw err;
+      return hostedError(c, err);
     }
   });
 

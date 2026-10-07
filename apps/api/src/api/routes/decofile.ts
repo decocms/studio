@@ -65,7 +65,7 @@ import {
 import { createDraftContentStorage } from "@/hosted/draft-content-storage";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
-import { hostedDrafts, mainIsV8, projectSite } from "@/hosted/scope";
+import { hostedDrafts, mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
@@ -236,7 +236,11 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     repository,
     userId,
     previewServerUrl,
-    site: projectSite(metadata),
+    site: await ownedProjectSite(
+      ctx.storage.orgSites,
+      metadata,
+      organization.id,
+    ),
   });
   return next();
 });

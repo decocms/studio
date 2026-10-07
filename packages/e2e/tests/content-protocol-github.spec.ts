@@ -607,6 +607,31 @@ test.describe("content protocol on GitHub", () => {
       await ctx.dispose();
     }
   });
+
+  test("a siteSlug the org doesn't own gets no hosted features", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const project = await setUp(ctx, {
+        ".deco/schema.gen.json": JSON.stringify(schema),
+      });
+      await enableContentProtocol(ctx, project.org);
+      // Another org's site: members can edit metadata.siteSlug, so it must
+      // never decide which site's delivery objects or tokens Studio writes.
+      await callSelfMcpTool(ctx, project.org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
+        id: project.vmcpId,
+        data: { metadata: { siteSlug: uniqueOwner() } },
+      });
+      const hosted = `/api/${project.org}/hosted/${project.vmcpId}`;
+      expect((await ctx.post(`${hosted}/site-tokens`)).status()).toBe(404);
+      expect((await ctx.post(`${hosted}/resync`, { data: {} })).status()).toBe(
+        404,
+      );
+    } finally {
+      await ctx.dispose();
+    }
+  });
 });
 
 /** A v7 site's `meta.gen.json`, as the classic editor reads it. */

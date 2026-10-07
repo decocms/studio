@@ -48,6 +48,32 @@ function setup() {
 }
 
 describe("publishDraft", () => {
+  it("keeps a draft saved during the publish (only the published save goes)", async () => {
+    const { drafts, repo } = setup();
+    const { slug } = await drafts.update(REF, () => ({
+      set: { Home: { path: "/", title: "v2" } },
+      delete: [],
+    }));
+    const result = await publishDraft(
+      repo,
+      drafts,
+      REF,
+      { message: "Update home", coAuthor: null },
+      {
+        beforePointerWrite: async () => {
+          await drafts.update(REF, (body) => ({
+            ...body,
+            set: { ...body.set, Late: { x: 2 } },
+          }));
+        },
+      },
+    );
+    expect(result.result).toBe("published");
+    const kept = await drafts.load(REF);
+    expect(kept?.slug).toBe(slug);
+    expect(Object.keys(kept!.body.set).sort()).toEqual(["Home", "Late"]);
+  });
+
   it("commits to main, writes the revision, then latest.json, then deletes the draft", async () => {
     const { git, delivery, drafts, repo } = setup();
     const { slug } = await drafts.update(REF, () => ({

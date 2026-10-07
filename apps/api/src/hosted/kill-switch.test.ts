@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { createKvRestDenylist } from "./denylist";
-import { memoryKv } from "./hosted-test-helpers";
 import { readKillState, setKilled } from "./kill-switch";
 
 function fakeDenylist() {
-  const keys = new Set<string>();
+  const keys = new Map<string, string>();
   return {
     keys,
     denylist: {
+      get: async (key: string) => keys.get(key) ?? null,
       put: async (key: string) => {
-        keys.add(key);
+        keys.set(key, "2026-10-07T00:00:00.000Z");
       },
       delete: async (key: string) => {
         keys.delete(key);
@@ -20,23 +20,19 @@ function fakeDenylist() {
 
 describe("kill switch", () => {
   it("writes kill:<site> for every site of the org, and restore deletes them", async () => {
-    const kv = memoryKv();
     const { keys, denylist } = fakeDenylist();
-    const killed = await setKilled(
-      { kv, denylist },
-      "org",
-      ["a", "b", "a"],
-      true,
-    );
-    expect(killed.killed).toBe(true);
-    expect([...keys].sort()).toEqual(["kill:a", "kill:b"]);
-    expect((await readKillState(kv, "org")).killed).toBe(true);
-    await setKilled({ kv, denylist }, "org", ["a", "b"], false);
-    expect(keys.size).toBe(0);
-    expect(await readKillState(kv, "org")).toEqual({
+    const killed = await setKilled(denylist, ["a", "b", "a"], true);
+    expect(killed).toEqual({
+      killed: true,
+      killedAt: "2026-10-07T00:00:00.000Z",
+    });
+    expect([...keys.keys()].sort()).toEqual(["kill:a", "kill:b"]);
+    expect((await readKillState(denylist, ["b"])).killed).toBe(true);
+    expect(await setKilled(denylist, ["a", "b"], false)).toEqual({
       killed: false,
       killedAt: null,
     });
+    expect(keys.size).toBe(0);
   });
 });
 
@@ -73,6 +69,20 @@ describe("createKvRestDenylist", () => {
         auth: "Bearer tok",
       },
     ]);
+  });
+
+  it("GET returns the value, or null for an absent key", async () => {
+    const deny = createKvRestDenylist({
+      accountId: "a",
+      namespaceId: "n",
+      apiToken: "t",
+      fetch: (async (url: string) =>
+        url.endsWith("kill%3Ax")
+          ? new Response("2026-10-07T00:00:00.000Z")
+          : new Response(null, { status: 404 })) as unknown as typeof fetch,
+    });
+    expect(await deny.get("kill:x")).toBe("2026-10-07T00:00:00.000Z");
+    expect(await deny.get("kill:y")).toBeNull();
   });
 
   it("throws when a write fails", async () => {

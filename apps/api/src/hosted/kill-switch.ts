@@ -1,48 +1,39 @@
 /**
- * The staff kill switch: drops an account's telemetry and analytics at the
- * edge by writing `kill:<site>` for every site of the organization to the
- * denylist (the ingest answers 403; Deco's collector drops the event).
- * Restoring deletes the keys. The org KV remembers the state for the admin
- * screen.
+ * The staff kill switch: drops an account's hosted telemetry at the edge by
+ * writing `kill:<site>` for every site the organization owns to the denylist
+ * (the ingest answers 403). Restoring deletes the keys. The state shown is
+ * read back from the denylist itself; nothing else stores it.
  */
 
-import type { KVStorage } from "@/storage/kv";
 import { type Denylist, denylistKeys } from "./denylist";
-
-const STATE_KEY = "hosted-kill";
 
 export interface KillState {
   killed: boolean;
   killedAt: string | null;
 }
 
+/** Killed when any of the sites has `kill:<site>`; `killedAt` is its value. */
 export async function readKillState(
-  kv: KVStorage,
-  organizationId: string,
+  denylist: Denylist,
+  sites: string[],
 ): Promise<KillState> {
-  const record = await kv.get(organizationId, STATE_KEY);
-  const killedAt =
-    typeof record?.killedAt === "string" ? record.killedAt : null;
-  return { killed: killedAt !== null, killedAt };
+  for (const site of new Set(sites)) {
+    const killedAt = await denylist.get(denylistKeys.kill(site));
+    if (killedAt !== null) return { killed: true, killedAt };
+  }
+  return { killed: false, killedAt: null };
 }
 
 export async function setKilled(
-  deps: { kv: KVStorage; denylist: Denylist },
-  organizationId: string,
+  denylist: Denylist,
   sites: string[],
   killed: boolean,
 ): Promise<KillState> {
-  // OPEN: O-18 — per account means one `kill:<site>` per site the org has
+  // OPEN: O-18 — per account means one `kill:<site>` per site the org owns
   // now; a site added later is killed by applying the kill again.
   for (const site of new Set(sites)) {
-    if (killed) await deps.denylist.put(denylistKeys.kill(site));
-    else await deps.denylist.delete(denylistKeys.kill(site));
+    if (killed) await denylist.put(denylistKeys.kill(site));
+    else await denylist.delete(denylistKeys.kill(site));
   }
-  if (!killed) {
-    await deps.kv.delete(organizationId, STATE_KEY);
-    return { killed: false, killedAt: null };
-  }
-  const killedAt = new Date().toISOString();
-  await deps.kv.set(organizationId, STATE_KEY, { killedAt });
-  return { killed: true, killedAt };
+  return readKillState(denylist, sites);
 }

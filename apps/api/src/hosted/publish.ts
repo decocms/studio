@@ -273,7 +273,9 @@ export async function publishDraft(
     return { result: "pending", sha };
   } finally {
     // OPEN: O-11 — the draft goes once git has it, even when delivery failed.
-    await drafts.remove(ref).catch((error) =>
+    // Only the save that was published goes: a save made during the publish
+    // keeps the draft (its ETag changed).
+    await drafts.remove(ref, draft.etag).catch((error) =>
       console.error("hosted publish: draft delete failed", {
         site: repo.site,
         error: error instanceof Error ? error.message : String(error),

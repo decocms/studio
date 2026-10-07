@@ -11,6 +11,8 @@
 import { getSettings } from "@/settings";
 
 export interface Denylist {
+  /** The key's value (the ISO time it was written), or null when absent. */
+  get(key: string): Promise<string | null>;
   put(key: string): Promise<void>;
   delete(key: string): Promise<void>;
 }
@@ -44,6 +46,14 @@ export function createKvRestDenylist(config: {
     }
   };
   return {
+    get: async (key) => {
+      const res = await doFetch(url(key), {
+        headers: { authorization: `Bearer ${config.apiToken}` },
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`denylist GET ${key}: HTTP ${res.status}`);
+      return await res.text();
+    },
     put: (key) => send("PUT", key),
     delete: (key) => send("DELETE", key),
   };

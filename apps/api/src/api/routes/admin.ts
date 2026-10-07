@@ -30,10 +30,8 @@ import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
 import { VirtualMCPStorage } from "@/storage/virtual";
-import { KyselyKVStorage } from "@/storage/kv";
 import { denylist } from "@/hosted/denylist";
 import { readKillState, setKilled } from "@/hosted/kill-switch";
-import { projectSite } from "@/hosted/scope";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
@@ -927,9 +925,17 @@ export function createAdminRoutes(): Hono<Env> {
   // Hosted Deco CMS kill switch: drops an account's telemetry and analytics at
   // the edge by writing `kill:<site>` for every site of the org.
   // OPEN: O-22 — "staff only" is this deployment-admin fence.
+  /** The sites the org owns in `org_sites`: what the kill switch covers. */
+  const ownedSites = async (orgId: string) =>
+    (await new OrgSiteStorage(getDb().db).listByOrg(orgId)).map(
+      (site) => site.slug,
+    );
+
   app.get("/orgs/:orgId/hosted-kill", async (c) => {
-    const orgId = c.req.param("orgId");
-    return c.json(await readKillState(new KyselyKVStorage(getDb().db), orgId));
+    const deny = denylist();
+    if (!deny) return c.json({ error: "denylist not configured" }, 503);
+    const sites = await ownedSites(c.req.param("orgId"));
+    return c.json(await readKillState(deny, sites));
   });
 
   app.put("/orgs/:orgId/hosted-kill", async (c) => {
@@ -957,20 +963,8 @@ export function createAdminRoutes(): Hono<Env> {
     if (!actorId) {
       return c.json({ error: "Unauthorized" }, 401);
     }
-    const sites = (await new VirtualMCPStorage(db).list(orgId)).flatMap(
-      (project) => {
-        const site = projectSite(
-          project.metadata as Record<string, unknown> | null,
-        );
-        return site ? [site] : [];
-      },
-    );
-    const state = await setKilled(
-      { kv: new KyselyKVStorage(db), denylist: deny },
-      orgId,
-      sites,
-      raw.killed,
-    );
+    const sites = await ownedSites(orgId);
+    const state = await setKilled(deny, sites, raw.killed);
     auditAdminAction(raw.killed ? "org_hosted_kill" : "org_hosted_restore", {
       actor_user_id: actorId,
       ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),

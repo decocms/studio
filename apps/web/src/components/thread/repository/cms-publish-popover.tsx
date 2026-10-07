@@ -485,7 +485,10 @@ function CmsPublishContent({
     changes.find((change) => changeId(change) === activeId) ??
     changes[0] ??
     null;
-  const isReview = mode === "review";
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  // A hosted v8 draft has no pull request: review mode doesn't apply to it.
+  const isReview = mode === "review" && !hosted;
   const surfaceState: PublishSurfaceState = cardsPending
     ? "loading"
     : bodiesPending
@@ -506,8 +509,6 @@ function CmsPublishContent({
     judgeEnabled: !isReview,
   });
 
-  const backend = useContentBackend(virtualMcpId, branch);
-  const hosted = backend.kind === "protocol" && backend.source === "github";
   const commitToOpenPr = openPullRequest?.state === "open";
   const target: PublishTarget = {
     orgSlug,
@@ -533,7 +534,7 @@ function CmsPublishContent({
     discardAll,
     hostedPending,
   } = useCmsPublishActions({
-    mode,
+    mode: isReview ? "review" : "publish",
     target,
     note,
     allPaths,
@@ -801,6 +802,7 @@ function CmsPublishContent({
               <div className="flex gap-2">
                 <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
                 {!isReview &&
+                !hosted &&
                 summary.count > 0 &&
                 !gate.allowed &&
                 !gate.pending ? (

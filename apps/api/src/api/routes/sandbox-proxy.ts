@@ -78,7 +78,7 @@ import {
   draftGitDiscard,
   draftGitStatus,
 } from "../../hosted/draft-git-compat";
-import { hostedDrafts, mainIsV8, projectSite } from "../../hosted/scope";
+import { hostedDrafts, mainIsV8, ownedProjectSite } from "../../hosted/scope";
 import {
   GitPushAuthError,
   parseRepositoryBinding,
@@ -410,7 +410,11 @@ async function fastPreviewHostedDraft(c: Context<VmEnv>) {
   const claim = c.get("vmClaim");
   const ctx = c.var.studioContext;
   const organization = requireOrganization(ctx);
-  const site = projectSite(claim.virtualMcpMetadata);
+  const site = await ownedProjectSite(
+    ctx.storage.orgSites,
+    claim.virtualMcpMetadata,
+    organization.id,
+  );
   const drafts = site ? hostedDrafts(ctx.storage.kv) : null;
   if (!site || !drafts) return null;
   const settings = await ctx.storage.organizationSettings.get(organization.id);

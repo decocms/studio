@@ -94,8 +94,13 @@ export interface DraftStore {
     ref: HostedDraftRef,
     change: (body: DraftBody) => DraftBody,
   ): Promise<LoadedDraft>;
-  /** Deletes the draft object and forgets its slug. */
-  remove(ref: HostedDraftRef): Promise<void>;
+  /**
+   * Deletes the draft object and forgets its slug. With `expectedEtag`, it
+   * deletes only while the draft is still that save: a save that landed
+   * since (e.g. during a publish) keeps the draft for the next publish.
+   * Returns whether it deleted.
+   */
+  remove(ref: HostedDraftRef, expectedEtag?: string | null): Promise<boolean>;
 }
 
 export function createDraftStore(deps: {
@@ -138,12 +143,16 @@ export function createDraftStore(deps: {
         );
         return { slug, body, etag };
       }),
-    remove: (ref) =>
+    remove: (ref, expectedEtag) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
-        const slug = await slugOf(ref);
-        if (!slug) return;
-        await store.delete(deliveryKeys.draft(ref.site, slug));
+        const current = await load(ref);
+        if (!current) return false;
+        if (expectedEtag !== undefined && current.etag !== expectedEtag) {
+          return false;
+        }
+        await store.delete(deliveryKeys.draft(ref.site, current.slug));
         await kv.delete(ref.organizationId, slugKey(ref));
+        return true;
       }),
   };
 }

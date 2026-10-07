@@ -22,6 +22,7 @@ async function keyPair() {
 function setup(pkcs8: string) {
   const denied: string[] = [];
   const denylist: Denylist = {
+    get: async () => null,
     put: async (key) => {
       denied.push(key);
     },
@@ -86,6 +87,7 @@ describe("site tokens", () => {
       kv,
       signingKey: () => importSigningKey(pkcs8),
       denylist: {
+        get: async () => null,
         put: async () => {
           throw new Error("KV down");
         },
