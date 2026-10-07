@@ -377,11 +377,12 @@ export function buildClaudeCodeTaskPrompt(
     // waiting had no reviewer to pick it up and no signal that a human should —
     // every such card sat untouched. Done is the terminal lane, and the comment
     // is what a human reads to disagree and reopen it.
-    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\`) and move it to "done". There is nothing for a reviewer to review, so leaving it for one would strand it.`,
-    // The board is where a human reads this task, so anything a reviewer needs
-    // to know belongs there too — a final message they never open is not a
-    // report. Optional: a comment per run, not per step.
-    `- Anything a reviewer should know (a decision you made, something you found and deliberately left alone, a question) goes on the task as a comment: \`mcp__studio__TASK_BOARD_COMMENT_CREATE\` with taskBoardItemId "${task.id}". Read what's already there first with \`mcp__studio__TASK_BOARD_COMMENT_LIST\` — a comment may be addressed to you.`,
+    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\` with \`audience: "human"\`) and move it to "done". There is nothing for a reviewer to review, so leaving it for one would strand it.`,
+    // Comments are how runs hand context to each other, and the task feed hides
+    // them by default, so handoff stays as technical as it needs to be. The
+    // person reviewing the task reads the one comment marked "human".
+    `- Anything the reviewer agent should know (a decision you made, something you found and deliberately left alone, a question) goes on the task as a comment: \`mcp__studio__TASK_BOARD_COMMENT_CREATE\` with taskBoardItemId "${task.id}". Comments are internal by default, for other agents only. Read what's already there first with \`mcp__studio__TASK_BOARD_COMMENT_LIST\` — a comment may be addressed to you.`,
+    `- Before you finish, post ONE comment with \`audience: "human"\` for the person who will review this task. They do not read code: say what changed for whoever uses the product, where to see it (the page or flow), and anything they need to decide. No file names, code, commands or engineering jargon (a link to the ${cli.changeRequest} is fine). Write it in the language the task is written in. When the task needed no code change, the comment explaining why is this one.`,
     "",
     `(task id: ${task.id})`,
   );

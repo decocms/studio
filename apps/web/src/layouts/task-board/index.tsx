@@ -35,7 +35,7 @@ import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import { ColumnRulesStrip, useColumnConfigured } from "./column-rules";
+import { ColumnRulesSheet, useColumnRules } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -1434,42 +1434,46 @@ function TaskBoardBody({
           </Page.Title>
           <Page.Actions
             secondary={
-              items.length > 0 && (
-                <>
-                  {/* No width swap: these three are ~100px together, so there
+              <>
+                {items.length > 0 && (
+                  <>
+                    {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
                       drawer of the chip pickers they replaced. */}
-                  <div className="flex items-center gap-2">
-                    <SearchToggle
-                      value={filters.search}
-                      onChange={(search) =>
-                        handleFiltersChange({ ...filters, search })
-                      }
-                      label={t("taskBoard.taskFilters.searchLabel")}
-                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
-                    />
-                    <TaskFilterButton
-                      filters={filters}
-                      items={items}
-                      members={members}
-                      tags={orgTags}
-                      index={projectIndex}
-                      onChange={handleFiltersChange}
-                    />
-                    {layout === "list" && (
-                      <>
-                        <GroupByButton {...grouping} />
-                        <SortByButton {...sorting} />
-                      </>
-                    )}
-                    <BoardSettingsButton
-                      onClick={openBoardSettings}
-                      label={boardSettingsLabel}
-                    />
-                  </div>
-                </>
-              )
+                    <div className="flex items-center gap-2">
+                      <SearchToggle
+                        value={filters.search}
+                        onChange={(search) =>
+                          handleFiltersChange({ ...filters, search })
+                        }
+                        label={t("taskBoard.taskFilters.searchLabel")}
+                        placeholder={t(
+                          "taskBoard.taskFilters.searchPlaceholder",
+                        )}
+                        clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
+                      />
+                      <TaskFilterButton
+                        filters={filters}
+                        items={items}
+                        members={members}
+                        tags={orgTags}
+                        index={projectIndex}
+                        onChange={handleFiltersChange}
+                      />
+                      {layout === "list" && (
+                        <>
+                          <GroupByButton {...grouping} />
+                          <SortByButton {...sorting} />
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+                <BoardSettingsButton
+                  onClick={openBoardSettings}
+                  label={boardSettingsLabel}
+                />
+              </>
             }
           >
             <TaskBoardAdminControls />
@@ -2607,7 +2611,7 @@ function Lane({
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const rulesConfigured = useColumnConfigured(status);
+  const rules = useColumnRules(status);
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
@@ -2624,7 +2628,7 @@ function Lane({
         isTarget && "bg-muted/50",
       )}
     >
-      <ColumnRulesStrip
+      <ColumnRulesSheet
         columnKey={status}
         label={label}
         open={rulesOpen}
@@ -2685,23 +2689,6 @@ function Lane({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        {!rulesConfigured && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={t("taskBoard.columnRules.add")}
-                onClick={() => setRulesOpen(true)}
-                className={LANE_ACTION}
-              >
-                <Stars02 size={15} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {t("taskBoard.columnRules.add")}
-            </TooltipContent>
-          </Tooltip>
-        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -2717,6 +2704,33 @@ function Lane({
           </TooltipTrigger>
           <TooltipContent side="top">
             {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t(
+                rules.configured
+                  ? "taskBoard.columnRules.editAriaLabel"
+                  : "taskBoard.columnRules.add",
+                { lane: label },
+              )}
+              onClick={() => setRulesOpen(true)}
+              className={cn(LANE_ACTION, rules.configured && "opacity-100")}
+            >
+              <Stars02
+                size={15}
+                className={cn(rules.configured && "text-special")}
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64">
+            <span className="line-clamp-4">
+              {rules.configured
+                ? rules.summary
+                : t("taskBoard.columnRules.add")}
+            </span>
           </TooltipContent>
         </Tooltip>
       </div>
@@ -2810,7 +2824,9 @@ function SortableTaskCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({
+    id: item.id,
+  });
 
   return (
     // FLIP (see `use-flip-lanes`) owns this wrapper's `transform`/`transition`

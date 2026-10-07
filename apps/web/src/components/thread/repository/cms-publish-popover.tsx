@@ -6,6 +6,16 @@
  */
 
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -655,47 +665,47 @@ function CmsPublishContent({
     );
   })();
 
-  const discardAllControl = (() => {
-    // Never offer an all-files action over a set the server truncated.
-    if (summary.count <= 1 || changedFilesTruncated) return null;
-    if (discardAllConfirm) {
-      return (
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
-          <span className="text-destructive">
-            {t("thread.publishPopover.discardAllConfirm")}
-          </span>
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => setDiscardAllConfirm(false)}
-          >
-            {t("thread.publishDialog.cancel")}
-          </button>
-          <button
-            type="button"
-            className="font-medium text-destructive disabled:opacity-50"
-            onClick={() => {
-              setDiscardAllConfirm(false);
-              void discardAll();
-            }}
-            disabled={isDiscarding}
-          >
-            {t("thread.publishPopover.discard")}
-          </button>
-        </span>
-      );
-    }
-    return (
-      <button
-        type="button"
-        className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-        onClick={() => setDiscardAllConfirm(true)}
-        disabled={isPublishing || isDiscarding}
-      >
-        {t("thread.publishPopover.discardAll")}
-      </button>
+  // Never offer an all-files action over a set the server truncated.
+  const discardAllControl =
+    summary.count <= 1 || changedFilesTruncated ? null : (
+      <>
+        <button
+          type="button"
+          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          onClick={() => setDiscardAllConfirm(true)}
+          disabled={isPublishing || isDiscarding}
+        >
+          {t("thread.publishPopover.discardAll")}
+        </button>
+        <AlertDialog
+          open={discardAllConfirm}
+          onOpenChange={setDiscardAllConfirm}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("thread.publishPopover.discardAllTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("thread.publishPopover.discardAllConfirm")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("thread.publishDialog.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => void discardAll()}
+                disabled={isDiscarding}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {t("thread.publishPopover.discardAll")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
     );
-  })();
 
   const body = cardsPending ? (
     <PublishListRegion>

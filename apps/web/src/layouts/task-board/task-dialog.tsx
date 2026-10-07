@@ -157,7 +157,12 @@ import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
 import { CommentThreadCard } from "./task-comments";
-import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+import {
+  humanFacing,
+  type TaskBoardCommentThread,
+  useBehindTheScenes,
+  useTaskBoardComments,
+} from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
 import { TaskConversationFrame } from "./task-conversation-frame";
 import { TaskMessage } from "./task-message";
@@ -1754,6 +1759,8 @@ function ThreadActivityItem({
         }
         createdAt={thread.createdAt}
         body={message || thread.title || ""}
+        // Only a run waiting on a person shows outside behind the scenes.
+        muted={thread.status !== "requires_action"}
         onOpenThread={onOpen ? () => onOpen(thread) : undefined}
         metadata={
           state && (
@@ -2400,6 +2407,8 @@ function RunReviewerButton({ item }: { item: TaskBoardItem }) {
 /**
  * Activity feed: the task's change timeline (created, moved, (re)assigned), its
  * linked agent sessions and its comment threads, interleaved oldest-first.
+ * Agent sessions and internal comments are handoff between agents, shown only
+ * behind the scenes.
  * Consecutive timeline events render as one run joined by a rail; a thread or a
  * comment renders as a post. The conversation frame owns the composer.
  */
@@ -2424,6 +2433,21 @@ function ActivitySection({
     image: session?.user?.image,
   };
   const comments = useTaskBoardComments(item.id);
+  const [behindTheScenes, setBehindTheScenes] = useBehindTheScenes();
+  const humanThreads = humanFacing(comments.threads);
+  const liveRuns = item.threads.filter(isLiveAttempt);
+  // A run waiting on a person is talking to them; any other run is the agents'
+  // own work, like their handoff comments.
+  const waitingRuns = liveRuns.filter(
+    (thread) => thread.status === "requires_action",
+  );
+  const messageCount = (threads: TaskBoardCommentThread[]) =>
+    threads.reduce((sum, thread) => sum + 1 + thread.replies.length, 0);
+  const behindTheScenesCount =
+    messageCount(comments.threads) -
+    messageCount(humanThreads) +
+    liveRuns.length -
+    waitingRuns.length;
 
   /** A comment's author, resolved from the org's members; falls back to the id
    *  so a comment from a since-removed member still renders. The Super Agent
@@ -2461,10 +2485,12 @@ function ActivitySection({
       image: member?.user?.image,
     };
   };
-  const threads: TaskComment[] = comments.threads.map((thread) => ({
+  const shownThreads = behindTheScenes ? comments.threads : humanThreads;
+  const threads: TaskComment[] = shownThreads.map((thread) => ({
     id: thread.id,
     author: authorOf(thread.authorId, thread.threadId),
     onOpenThread: openSourceRun(thread.threadId),
+    internal: thread.audience === "internal",
     body: thread.body,
     createdAt: thread.createdAt,
     resolved: thread.resolved,
@@ -2472,6 +2498,7 @@ function ActivitySection({
       id: reply.id,
       author: authorOf(reply.authorId, reply.threadId),
       onOpenThread: openSourceRun(reply.threadId),
+      internal: reply.audience === "internal",
       body: reply.body,
       createdAt: reply.createdAt,
       replies: [],
@@ -2490,7 +2517,7 @@ function ActivitySection({
         activity: a,
       }),
     ),
-    ...item.threads.filter(isLiveAttempt).map(
+    ...(behindTheScenes ? liveRuns : waitingRuns).map(
       (thread): Ev => ({
         kind: "thread",
         at: new Date(thread.createdAt).getTime(),
@@ -2545,6 +2572,21 @@ function ActivitySection({
           {t("taskBoard.conversation.replies")}
         </h2>
         <div className="flex items-center gap-1">
+          {(behindTheScenes || behindTheScenesCount > 0) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setBehindTheScenes(!behindTheScenes)}
+              className="h-7 px-2 text-sm font-normal text-muted-foreground"
+            >
+              {behindTheScenes
+                ? t("taskBoard.conversation.hideBehindTheScenes")
+                : t("taskBoard.conversation.showBehindTheScenes", {
+                    count: behindTheScenesCount,
+                  })}
+            </Button>
+          )}
           <RunReviewerButton item={item} />
           <SubscribeToggle itemId={item.id} members={members} />
         </div>

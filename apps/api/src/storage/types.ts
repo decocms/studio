@@ -28,7 +28,10 @@ import type {
 } from "@decocms/shared/organization/schema";
 import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
-import type { ReviewerKind } from "@decocms/shared/task-board";
+import type {
+  ReviewerKind,
+  TaskCommentAudience,
+} from "@decocms/shared/task-board";
 
 export type {
   OrgSsoConfigPublic,
@@ -1889,6 +1892,12 @@ export interface TaskBoardCommentTable {
   author_id: string;
   /** The agent run that wrote it (migration 187); null for a human's comment. */
   thread_id: string | null;
+  /** Migration 234. */
+  audience: ColumnType<
+    TaskCommentAudience,
+    TaskCommentAudience | undefined,
+    TaskCommentAudience
+  >;
   body: string;
   resolved: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, never>;

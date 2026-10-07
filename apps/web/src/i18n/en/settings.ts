@@ -1131,7 +1131,7 @@ export const settings = {
   "settings.infraBilling.tooManySites":
     "Showing the first {count} sites. Select specific sites to see the rest.",
   "settings.infraBilling.multipleTeams":
-    "Plan and invoices belong to a single legacy team — narrow the selection to see them.",
+    "These sites are billed by {count} legacy teams. Each team's plan and invoices are listed under Invoices.",
   "settings.infraBilling.noTeam":
     "These sites aren't linked to a legacy billing team.",
   "settings.infraBilling.partialTeam":
@@ -1163,7 +1163,7 @@ export const settings = {
   "settings.infraBilling.dataTransfer": "Data transfer",
   "settings.infraBilling.dataTransferDescription":
     "Bandwidth served from the edge and the origin.",
-  "settings.infraBilling.noInvoices": "No invoices issued for this site.",
+  "settings.infraBilling.noInvoices": "No invoices issued for this team.",
   "settings.infraBilling.invoiceReference": "Reference",
   "settings.infraBilling.invoiceDue": "Due date",
   "settings.infraBilling.invoiceAmount": "Amount",
