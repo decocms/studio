@@ -14,6 +14,7 @@ import {
   TASK_BOARD_COMMENT_UPDATE,
 } from "../tools/task-board/comments";
 import { taskRunContextStore } from "../tools/task-board/task-run-context";
+import { ensureReviewerCommented } from "../tools/task-board/reviewer-comment";
 import { mentionMarkdown } from "@decocms/shared/mentions";
 
 describe("TaskBoardStorage comments", () => {
@@ -298,5 +299,47 @@ describe("TaskBoardStorage comments", () => {
       ctx,
     );
     expect(own.comment.audience).toBe("human");
+  });
+
+  it("shows a change request's notes to the person when the reviewer told them nothing", async () => {
+    const task = await storage.create({
+      organizationId: "org_test",
+      title: "Change request without a note",
+      by: "user_test",
+    });
+    await storage.createComment({
+      taskBoardItemId: task.id,
+      organizationId: "org_test",
+      authorId: "super-agent",
+      threadId: "thrd_reviewer_cr",
+      audience: "internal",
+      body: "Reviewer pass: the discount rule in pricing.ts conflicts with the promo engine. NO VISUAL SURFACE, pricing logic only.",
+    });
+
+    const verdict = {
+      decision: "request_changes" as const,
+      notes: "Decide whether member discounts stack with promo codes.",
+    };
+    await ensureReviewerCommented(
+      ctx,
+      task,
+      "reviewer",
+      "thrd_reviewer_cr",
+      verdict,
+    );
+    // A repeated decision call finds the note it just wrote.
+    await ensureReviewerCommented(
+      ctx,
+      task,
+      "reviewer",
+      "thrd_reviewer_cr",
+      verdict,
+    );
+
+    const comments = await storage.listComments(task.id, "org_test");
+    const shown = comments.filter((c) => c.audience === "human");
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.threadId).toBe("thrd_reviewer_cr");
+    expect(shown[0]!.body).toContain("Decide whether member discounts stack");
   });
 });

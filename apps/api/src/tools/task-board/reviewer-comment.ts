@@ -102,23 +102,41 @@ function showsVisualChange(comments: readonly ReviewerComment[]): boolean {
 }
 
 /**
- * What's still owed right after mirroring the verdict notes into an internal
- * comment. Not through `reviewerCommentGap`: the mirrored text IS the
- * reviewer's definitive record regardless of length (a one-word "LGTM" verdict
- * is still a real verdict, not a progress note), so re-applying
- * `MIN_RECORD_LENGTH` would keep flagging a short-but-real approval as
- * "missing" forever.
+ * Whether to mirror the verdict notes into a comment, and for whom. Pure —
+ * unit-tested.
+ *
+ * A change request hands the card to a person, so a run that told them nothing
+ * gets its notes shown to them as they are: the card lands with them now, and a
+ * follow-up turn to reword the notes would arrive minutes later. Otherwise the
+ * mirror only stands in for a missing record, which is the agents'.
+ */
+export function verdictMirrorAudience(
+  comments: readonly ReviewerComment[],
+  threadId: string,
+  decision: "approve" | "request_changes",
+  gap: ReviewerCommentGap | null,
+): TaskCommentAudience | null {
+  const told = comments.some(
+    (c) => c.threadId === threadId && c.audience === "human",
+  );
+  if (decision === "request_changes" && !told) return "human";
+  return gap === "missing" ? "internal" : null;
+}
+
+/**
+ * What's still owed right after mirroring the verdict notes into a comment.
+ * Not through `reviewerCommentGap`: the mirrored text IS the reviewer's
+ * definitive record regardless of length (a one-word "LGTM" verdict is still a
+ * real verdict, not a progress note), so re-applying `MIN_RECORD_LENGTH` would
+ * keep flagging a short-but-real approval as "missing" forever.
  */
 export function nextGapAfterMirror(
   comments: readonly ReviewerComment[],
   threadId: string,
-  mirroredBody: string,
+  mirrored: { audience: TaskCommentAudience; body: string },
 ): ReviewerCommentGap | null {
   const own = comments.filter((c) => c.threadId === threadId);
-  return showsVisualChange([
-    ...own,
-    { threadId, audience: "internal", body: mirroredBody },
-  ])
+  return showsVisualChange([...own, { threadId, ...mirrored }])
     ? null
     : "no_screenshots";
 }
@@ -171,11 +189,16 @@ export async function ensureReviewerCommented(
     item.organizationId,
   );
   let gap = reviewerCommentGap(comments, threadId);
-  if (!gap) return;
+  const mirrorAudience = verdictMirrorAudience(
+    comments,
+    threadId,
+    verdict.decision,
+    gap,
+  );
 
-  // The record itself costs nothing — the reviewer already wrote it, into the
-  // one channel the timeline truncates. Move it where it renders.
-  if (gap === "missing") {
+  // The notes cost nothing — the reviewer already wrote them, into the one
+  // channel the timeline truncates. Move them where they render.
+  if (mirrorAudience) {
     const body = verdictCommentBody(kind, verdict.decision, verdict.notes);
     await ctx.storage.taskBoard.createComment({
       taskBoardItemId: item.id,
@@ -185,18 +208,22 @@ export async function ensureReviewerCommented(
       // to THIS reviewer's run.
       authorId: SUPER_AGENT_ASSIGNEE_ID,
       threadId,
-      // The reviewer's technical notes; a person reads its human-facing comment.
-      audience: "internal",
+      audience: mirrorAudience,
       body,
     });
     console.warn(
-      `[task-board] ${kind} reviewer on ${item.id} recorded no comment — ` +
-        `mirrored its verdict notes`,
+      `[task-board] ${kind} reviewer on ${item.id} left ` +
+        `${mirrorAudience === "human" ? "no note for a person" : "no comment"}` +
+        ` — mirrored its verdict notes`,
     );
-    // A mirrored verdict is a record, but it is not visual evidence.
-    gap = nextGapAfterMirror(comments, threadId, body);
-    if (!gap) return;
+    if (gap) {
+      gap = nextGapAfterMirror(comments, threadId, {
+        audience: mirrorAudience,
+        body,
+      });
+    }
   }
+  if (!gap) return;
 
   const thread = await ctx.storage.threads.get(threadId);
   // Only a v2 thread can take a new turn — dispatch nulls the part emitter for

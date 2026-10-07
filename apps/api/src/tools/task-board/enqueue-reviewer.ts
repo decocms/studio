@@ -765,7 +765,7 @@ async function enqueueReviewerForTask(
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
     "  - NEVER approve on inspection alone: approve only a change you exercised at the PR's latest commit. If you could not exercise it at all, `request_changes` saying which paths you tried and what blocked them — whatever the board's rules say.",
-    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes.",
+    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes, written for that person: if you posted no comment for them, these notes are shown to them as they are.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
     "- `mcp__studio__TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
     "",
