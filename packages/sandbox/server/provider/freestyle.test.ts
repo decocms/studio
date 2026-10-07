@@ -56,4 +56,55 @@ describe("FreestyleSandboxProvider", () => {
     expect(creates.at(-1)).not.toHaveProperty("autoDeleteSeconds");
     provider.close();
   });
+
+  test("warm builds a missing base snapshot once", async () => {
+    const snapshots: string[] = [];
+    const exec: string[] = [];
+    const vm = {
+      exec: async ({ command }: { command: string }) => {
+        exec.push(command);
+        return { statusCode: 0, stdout: "" };
+      },
+      snapshot: async ({ slug }: { slug: string }) => {
+        snapshots.push(slug);
+      },
+      delete: async () => {},
+    };
+    const client = {
+      vms: {
+        snapshots: {
+          get: async (slug: string) => {
+            if (snapshots.includes(slug)) return {};
+            throw new FreestyleApiError(404, { code: "NOT_FOUND" });
+          },
+        },
+        create: async () => ({ vm }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      image: "example/sandbox:1",
+    });
+    await Promise.all([provider.warm(), provider.warm()]);
+    await provider.warm();
+    expect(snapshots).toHaveLength(1);
+    expect(exec.some((c) => c.includes("example/sandbox:1"))).toBe(true);
+    provider.close();
+  });
+
+  test("warm swallows a failed build", async () => {
+    const client = {
+      vms: {
+        snapshots: {
+          get: async () => {
+            throw new FreestyleApiError(500, { code: "INTERNAL" });
+          },
+        },
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.warm();
+    provider.close();
+  });
 });

@@ -183,7 +183,8 @@ under Docker, with the daemon published at `https://<handle>.style.dev`. The
 VM's slug is the handle and its metadata holds the daemon bearer, so it needs
 no state store. An idle VM is paused, and traffic resumes it; a VM paused for
 three days is deleted, or sooner if the Freestyle plan caps it lower. The first
-ensure for an image builds a base snapshot with the image pulled;
+ensure for an image builds a base snapshot with the image pulled, unless the
+host already called `warm()` (the control plane does when it starts);
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
 release of this package's version. Org-fs runs there too, with the sidecar
 as a second container in the VM; see [`orgfs/README.md`](orgfs/README.md).

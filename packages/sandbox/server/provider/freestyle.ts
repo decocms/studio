@@ -219,6 +219,16 @@ export class FreestyleSandboxProvider implements SandboxProvider {
    * A snapshot of a VM with both images already pulled, so a sandbox boots in
    * seconds instead of pulling ~2GB. One per image pair; built on first use.
    */
+  /**
+   * Build this image's base snapshot now, so the first sandbox after an image
+   * bump boots from it instead of waiting on the pull. Never throws.
+   */
+  async warm(): Promise<void> {
+    await this.baseSnapshot().catch((err: unknown) =>
+      console.warn(`[${LOG_LABEL}] base snapshot warm failed: ${errMsg(err)}`),
+    );
+  }
+
   private baseSnapshot(): Promise<string> {
     const { image, sidecarImage } = this;
     const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}`).digest("hex").slice(0, 16)}`;
