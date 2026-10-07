@@ -16,8 +16,10 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { useT } from "@/i18n/use-t.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { type BlogBlockType, discoverBlogBlockTypes } from "./blog-data";
 import { BlockPicker } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
@@ -74,6 +76,8 @@ export function BlockDocument({
   meta,
   decofile,
   sandboxRef,
+  previewBaseUrl,
+  onSaveReferencedBlock,
   emptyMessage = "No content yet. Add your first block below.",
 }: {
   value: RawBlock[];
@@ -81,12 +85,20 @@ export function BlockDocument({
   meta: LiveMeta;
   /** The site's blocks — enables linking to another post from rich text. */
   decofile?: Record<string, unknown>;
-  /** Running sandbox coords — enables the VTEX product picker in blocks. */
-  sandboxRef?: PreviewProxyRef | null;
+  /**
+   * Running sandbox coords — enables the VTEX product picker in blocks, and
+   * the uploads, icon picker and `@options` loaders in the generic editor.
+   */
+  sandboxRef?: SandboxConfig | null;
+  /** Section previews in the generic editor's array fields. */
+  previewBaseUrl?: string | null;
+  /** Where the generic editor persists edits to a field pointing at a saved block. */
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
   emptyMessage?: string;
 }) {
   const t = useT();
-  const blockTypes = discoverBlogBlockTypes(meta);
+  const hideDefaults = useHideDefaultBlogBlocks();
+  const blockTypes = discoverBlogBlockTypes(meta, { hideDefaults });
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     seedBlockItems(value),
@@ -179,6 +191,8 @@ export function BlockDocument({
                 onDuplicate={() => duplicateAt(index)}
                 decofile={decofile}
                 sandboxRef={sandboxRef}
+                previewBaseUrl={previewBaseUrl}
+                onSaveReferencedBlock={onSaveReferencedBlock}
               />
             </div>
           ))}

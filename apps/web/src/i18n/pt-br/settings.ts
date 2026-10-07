@@ -360,6 +360,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
+  "settings.blogBlocks.sectionTitle": "Blocos do blog",
+  "settings.blogBlocks.title": "Esconder os blocos de blog padrão",
+  "settings.blogBlocks.description":
+    "Só os blocos de post do próprio site ficam disponíveis ao escrever, gerar ou importar um post. Blocos já presentes em um post continuam sendo renderizados.",
   "settings.blocksEditor.title": "Novo editor de blocos",
   "settings.blocksEditor.description":
     "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",

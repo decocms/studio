@@ -13,6 +13,7 @@
  */
 import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
+import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
 
@@ -41,13 +42,13 @@ export function isBlogKind(id: string): id is BlogKind {
 }
 
 /** Wrapper field that holds the editable payload for each loader block. */
-const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
+export const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
   posts: "post",
   authors: "author",
   categories: "category",
 };
 
-const RESOLVE_TYPE_FOR_KIND: Record<BlogKind, string> = {
+export const RESOLVE_TYPE_FOR_KIND: Record<BlogKind, string> = {
   posts: BLOG_LOADER_RESOLVE_TYPES.post,
   authors: BLOG_LOADER_RESOLVE_TYPES.author,
   categories: BLOG_LOADER_RESOLVE_TYPES.category,
@@ -73,7 +74,7 @@ export interface BlogEntry {
   /** Categories only — the slug of the parent category, when nested. */
   parentSlug?: string;
   /** Required fields this record is missing; empty when it is complete. */
-  missing: string[];
+  missing: MissingFieldKey[];
   /** Another record of the same kind carries this same name/title. */
   duplicateName?: boolean;
 }
@@ -368,7 +369,7 @@ export interface PostMeta {
   /** Emails of the post's authors (denormalized). */
   authorEmails: string[];
   /** Required fields the post is missing (empty when valid). */
-  missing: string[];
+  missing: MissingFieldKey[];
   /** Another post carries this same title — a warning, never a block. */
   duplicateTitle?: boolean;
   /** Publication state — see `postStatus`. */
@@ -411,21 +412,53 @@ function authorEmailOf(item: unknown): string {
 }
 
 /**
+ * A required field a blog record can be missing. Identifies the field, never
+ * names it: the name shown to the reader is a translation, resolved by
+ * {@link missingFieldsLabel} at render time.
+ */
+export type MissingFieldKey =
+  | "title"
+  | "slug"
+  | "category"
+  | "excerpt"
+  | "image"
+  | "name";
+
+const MISSING_FIELD_LABEL_KEYS: Record<MissingFieldKey, TranslationKey> = {
+  title: "sandbox.blogField.title",
+  slug: "sandbox.blogField.slug",
+  category: "sandbox.blogField.category",
+  excerpt: "sandbox.blogField.excerpt",
+  image: "sandbox.blogField.image",
+  name: "sandbox.blogField.name",
+};
+
+/** The missing fields as a reader-facing list ("Title, Excerpt"). */
+export function missingFieldsLabel(
+  missing: readonly MissingFieldKey[],
+  t: TFunction,
+): string {
+  return missing.map((key) => t(MISSING_FIELD_LABEL_KEYS[key])).join(", ");
+}
+
+/**
  * Which required fields a post payload is missing (empty ⇒ valid). A post with
  * no title/slug/excerpt or zero categories is incomplete — the list marks it
  * and the editor blocks preview.
  */
-export function missingPostFields(payload: Record<string, unknown>): string[] {
-  const missing: string[] = [];
-  if (!str(payload.title).trim()) missing.push("Title");
-  if (!str(payload.slug).trim()) missing.push("Slug");
+export function missingPostFields(
+  payload: Record<string, unknown>,
+): MissingFieldKey[] {
+  const missing: MissingFieldKey[] = [];
+  if (!str(payload.title).trim()) missing.push("title");
+  if (!str(payload.slug).trim()) missing.push("slug");
   if (
     toArray(payload.categories).map(categorySlugOf).filter(Boolean).length === 0
   ) {
-    missing.push("Category");
+    missing.push("category");
   }
-  if (!str(payload.excerpt).trim()) missing.push("Excerpt");
-  if (!str(payload.image).trim()) missing.push("Cover image");
+  if (!str(payload.excerpt).trim()) missing.push("excerpt");
+  if (!str(payload.image).trim()) missing.push("image");
   return missing;
 }
 
@@ -848,10 +881,10 @@ export function renameCategoryOnPost(
  */
 export function missingCategoryFields(
   payload: Record<string, unknown>,
-): string[] {
-  const missing: string[] = [];
-  if (!str(payload.name).trim()) missing.push("Name");
-  if (!str(payload.slug).trim()) missing.push("Slug");
+): MissingFieldKey[] {
+  const missing: MissingFieldKey[] = [];
+  if (!str(payload.name).trim()) missing.push("name");
+  if (!str(payload.slug).trim()) missing.push("slug");
   return missing;
 }
 
@@ -975,6 +1008,12 @@ export interface BlogBlockType {
   iconUrl?: string;
   /** "app" = deco-cms/blog built-ins; "site" = section defined by this site. */
   source: BlogBlockSource;
+}
+
+/** How a caller narrows the blocks a post may be written with. */
+export interface BlogBlockDiscoveryOptions {
+  /** Drop the `deco-cms/blog` built-ins — the `hide_default_blog_blocks` flag. */
+  hideDefaults?: boolean;
 }
 
 /**
@@ -1144,15 +1183,54 @@ function humanizeComponentName(name: string): string {
 }
 
 /**
+ * Title, description and icon for one blog block, with the precedence
+ * described in KNOWN_BLOG_BLOCK_CATALOG. Callers that only hold a stored
+ * block's `__resolveType` (the generic block editor) use this to name what is
+ * being edited; the inserter builds its whole list from it.
+ */
+export function blogBlockTypeFor(
+  resolveType: string,
+  meta: LiveMeta,
+): BlogBlockType {
+  const md = resolveBlockSchemaMetadata(resolveType, meta);
+  const name = blockComponentName(resolveType);
+  const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
+  const source = blogBlockSource(resolveType);
+
+  // Site schema label wins, but only a real one — never a path-like default.
+  const mdTitle = humanLabel(md.title);
+  const mdDescription = humanLabel(md.description);
+  const title =
+    (source === "site"
+      ? pick(mdTitle, catalog?.title)
+      : pick(catalog?.title, mdTitle)) ?? humanizeComponentName(name);
+  const description =
+    source === "site"
+      ? pick(mdDescription, catalog?.description)
+      : pick(catalog?.description, mdDescription);
+
+  // Only a site block's `@icon` is trusted: built-in schemas carry no icon hint.
+  const rawIcon = source === "site" ? md.icon : undefined;
+  const iconUrl = rawIcon && isImageUrl(rawIcon) ? rawIcon : undefined;
+  const iconName =
+    iconUrl !== undefined
+      ? (catalog?.iconName ?? FALLBACK_BLOG_BLOCK_ICON)
+      : (pick(rawIcon, catalog?.iconName) ?? FALLBACK_BLOG_BLOCK_ICON);
+
+  return { resolveType, title, description, iconName, iconUrl, source };
+}
+
+/**
  * Discover the content block types a post can contain from the live
  * manifest, with title/icon metadata for the inserter UI. Recognizes both
  * the `deco-cms/blog` app blocks (`blog/sections/blocks/*`) and
  * site-defined blog blocks (`site/sections/Blog/Post/*`), matching the
  * same set that `isBlogPostBlockResolveType` accepts everywhere else.
- *
- * Precedence depends on the block's source — see KNOWN_BLOG_BLOCK_CATALOG.
  */
-export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
+export function discoverBlogBlockTypes(
+  meta: LiveMeta,
+  { hideDefaults = false }: BlogBlockDiscoveryOptions = {},
+): BlogBlockType[] {
   const seen = new Set<string>();
   const out: BlogBlockType[] = [];
   const groups = meta.manifest?.blocks ?? {};
@@ -1161,42 +1239,9 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
       if (!isBlogPostBlockResolveType(resolveType) || seen.has(resolveType)) {
         continue;
       }
+      if (hideDefaults && blogBlockSource(resolveType) === "app") continue;
       seen.add(resolveType);
-      const md = resolveBlockSchemaMetadata(resolveType, meta);
-      const name = blockComponentName(resolveType);
-      const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
-      const source = blogBlockSource(resolveType);
-
-      // Site schema label wins, but only a real one — never a path-like default.
-      const mdTitle = humanLabel(md.title);
-      const mdDescription = humanLabel(md.description);
-      const title =
-        (source === "site"
-          ? pick(mdTitle, catalog?.title)
-          : pick(catalog?.title, mdTitle)) ?? humanizeComponentName(name);
-      const description =
-        source === "site"
-          ? pick(mdDescription, catalog?.description)
-          : pick(catalog?.description, mdDescription);
-
-      // `@icon` on a site block can be a URL (rendered as <img>) or an
-      // @untitledui/icons component name. App blocks always use the
-      // catalog icon — built-in schemas don't carry useful icon hints.
-      const rawIcon = source === "site" ? md.icon : undefined;
-      const iconUrl = rawIcon && isImageUrl(rawIcon) ? rawIcon : undefined;
-      const iconName =
-        iconUrl !== undefined
-          ? (catalog?.iconName ?? FALLBACK_BLOG_BLOCK_ICON)
-          : (pick(rawIcon, catalog?.iconName) ?? FALLBACK_BLOG_BLOCK_ICON);
-
-      out.push({
-        resolveType,
-        title,
-        description,
-        iconName,
-        iconUrl,
-        source,
-      });
+      out.push(blogBlockTypeFor(resolveType, meta));
     }
   }
   return out.sort((a, b) => a.title.localeCompare(b.title));
@@ -1553,9 +1598,12 @@ export interface MentionableSection {
  * component name, those two are indistinguishable once written. Collapsing them
  * here keeps the picker from listing the same `@Name` twice.
  */
-export function mentionableSections(meta: LiveMeta): MentionableSection[] {
+export function mentionableSections(
+  meta: LiveMeta,
+  options?: BlogBlockDiscoveryOptions,
+): MentionableSection[] {
   const byName = new Map<string, MentionableSection>();
-  for (const block of discoverBlogBlockTypes(meta)) {
+  for (const block of discoverBlogBlockTypes(meta, options)) {
     const name = blockComponentName(block.resolveType);
     if (byName.has(name)) continue;
     byName.set(name, {
@@ -1756,9 +1804,12 @@ export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
  * `site/sections/Blog/Post/Heading.tsx`. Keeping the mapping here means the
  * model never sees a resolveType and so can never invent one.
  */
-export function sectionResolveTypes(meta: LiveMeta): Record<string, string> {
+export function sectionResolveTypes(
+  meta: LiveMeta,
+  options?: BlogBlockDiscoveryOptions,
+): Record<string, string> {
   const byName: Record<string, string> = {};
-  for (const block of discoverBlogBlockTypes(meta)) {
+  for (const block of discoverBlogBlockTypes(meta, options)) {
     const name = blockComponentName(block.resolveType);
     if (!(name in byName)) byName[name] = block.resolveType;
   }
