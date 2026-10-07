@@ -464,7 +464,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
             if (!open) setSurface((current) => ({ ...current, open: false }));
           }}
           orgSlug={org.slug}
-          orgId={org.id}
           virtualMcpId={virtualMcpId}
           branch={branch}
           baseBranch={baseBranch}
@@ -478,7 +477,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           compareDraft={
             draftPointer ? { kind: "pointer", pointer: draftPointer } : null
           }
-          lastPreviewPage={lastPage}
           lastPublishedPr={lastPublishedQuery.data ?? null}
           onRequestApproval={() => openSurface("review")}
           openPullRequest={pr?.state === "open" ? pr : null}

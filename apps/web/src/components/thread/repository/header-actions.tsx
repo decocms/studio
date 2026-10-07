@@ -50,10 +50,6 @@ import { saveChangesDebug } from "./save-changes-debug.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events.ts";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context.tsx";
 import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
-import {
-  lastPreviewPageKey,
-  readLastPreviewPage,
-} from "@/components/sandbox/preview/last-preview-page.ts";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
@@ -140,7 +136,7 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
 /**
  * One split button for the current branch + PR state — the same shape AND
  * language as Fast Preview's `CmsHeaderActions`: "Review & Publish" is the
- * primary happy path (publish popover → PR → squash-merge), with
+ * primary happy path (publish dialog → PR → squash-merge), with
  * "Submit for review", "Get latest" and "View on provider" in the dropdown.
  * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
  * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
@@ -251,7 +247,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     branch: headBranch,
   });
 
-  /** Warmed here so the popover's "last published" line is ready before the
+  /** Warmed here so the dialog's "last published" line is ready before the
    *  click; it is optional copy and must never gate that surface. */
   const lastPublishedQuery = useLastPublishedPr({
     orgId: org.id,
@@ -494,7 +490,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
           if (!open) setSurface((current) => ({ ...current, open: false }));
         }}
         orgSlug={org.slug}
-        orgId={org.id}
         virtualMcpId={virtualMcpId}
         branch={sandboxRouteBranch}
         baseBranch={baseBranch}
@@ -506,9 +501,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
         destinationHost={null}
         previewServerUrl={previewServerUrl}
         compareDraft={previewUrl ? { kind: "sandbox", previewUrl } : null}
-        lastPreviewPage={readLastPreviewPage(
-          lastPreviewPageKey(org.slug, virtualMcpId, sandboxRouteBranch),
-        )}
         lastPublishedPr={lastPublishedQuery.data ?? null}
         onRequestApproval={() =>
           setSurface((current) => ({ ...current, open: true, mode: "review" }))

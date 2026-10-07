@@ -6,6 +6,7 @@ import {
   fetchGitDiff,
   fetchGitStatus,
   fetchPublishDiff,
+  mayHaveCommitsToPublish,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasNothingToReview,
@@ -788,7 +789,7 @@ describe("fetchPublishDiff", () => {
 
     const diff = await fetchPublishDiff(
       ref,
-      { ...cleanStatus, modified: ["a.ts"] },
+      { ...cleanStatus, aheadOfBase: 0, modified: ["a.ts"] },
       "main",
     );
 
@@ -813,5 +814,33 @@ describe("fetchPublishDiff", () => {
     expect(requests.map((r) => r.body)).toEqual([
       JSON.stringify({ base: "main", headSha }),
     ]);
+  });
+});
+
+describe("mayHaveCommitsToPublish", () => {
+  test("a clean branch level with base has none", () => {
+    expect(mayHaveCommitsToPublish({ ...cleanStatus, aheadOfBase: 0 })).toBe(
+      false,
+    );
+  });
+
+  test("commits ahead of base, or not yet pushed, count", () => {
+    expect(mayHaveCommitsToPublish({ ...cleanStatus, aheadOfBase: 1 })).toBe(
+      true,
+    );
+    expect(
+      mayHaveCommitsToPublish({ ...cleanStatus, aheadOfBase: 0, ahead: 2 }),
+    ).toBe(true);
+    expect(
+      mayHaveCommitsToPublish({ ...cleanStatus, aheadOfBase: 0, unpushed: 1 }),
+    ).toBe(true);
+  });
+
+  test("a daemon that omits aheadOfBase is asked, not assumed clean", () => {
+    const { aheadOfBase: _omitted, ...legacy } = {
+      ...cleanStatus,
+      aheadOfBase: 0,
+    };
+    expect(mayHaveCommitsToPublish(legacy)).toBe(true);
   });
 });

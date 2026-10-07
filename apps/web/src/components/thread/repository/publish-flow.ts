@@ -17,8 +17,10 @@ import {
 } from "./change-request-api.ts";
 import {
   fetchGitStatus,
+  fetchPublishDiff,
   publishGitChanges,
   rebaseGitBranch,
+  reviewDiffSignature,
 } from "./sandbox-git-api.ts";
 
 /** The steps a publish runs, in order. Submitting for review stops at `open-pr`. */
@@ -35,10 +37,7 @@ type PublishStep = "verify" | "push" | "sync" | "open-pr" | "merge";
  * time the head is one we wrote, not the one the author confirmed.
  */
 class PublishHeadMovedError extends Error {
-  constructor(
-    readonly expectedHeadSha: string,
-    readonly actualHeadSha: string,
-  ) {
+  constructor() {
     super("The branch changed since these changes were shown");
     this.name = "PublishHeadMovedError";
   }
@@ -87,6 +86,12 @@ export interface PublishTarget {
    * publish whatever the branch holds now.
    */
   expectedHeadSha?: string;
+  /**
+   * {@link reviewDiffSignature} of the confirmed changes. A sandbox's working
+   * tree changes without moving its head, so its publish re-reads the diff and
+   * compares this too.
+   */
+  expectedDiffSignature?: string;
 }
 
 /** Pull-request title/body and the commit message, from one authored note. */
@@ -158,21 +163,31 @@ async function runStep<T>(
 }
 
 /**
- * Fail before mutating anything when the branch head is no longer the one the
- * confirmed change list was read from. A status read that itself fails is not
- * evidence the head moved, so it lets the publish proceed rather than blocking
- * on an unrelated outage.
+ * Fail before mutating anything when the branch no longer holds the confirmed
+ * change list: a moved head, or (sandbox) a different diff. A read that itself
+ * fails is not evidence of change, so it lets the publish proceed rather than
+ * blocking on an unrelated outage.
  */
 async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
-  const expected = target.expectedHeadSha;
-  if (!expected) return;
+  const { expectedHeadSha, expectedDiffSignature } = target;
+  if (!expectedHeadSha && !expectedDiffSignature) return;
   const status = await fetchGitStatus(
     sandboxRef(target),
     sandboxCall(target),
   ).catch(() => null);
-  const actual = status?.headSha;
-  if (actual && actual !== expected) {
-    throw new PublishHeadMovedError(expected, actual);
+  if (!status) return;
+  if (expectedHeadSha && status.headSha && status.headSha !== expectedHeadSha) {
+    throw new PublishHeadMovedError();
+  }
+  if (!expectedDiffSignature) return;
+  const diff = await fetchPublishDiff(
+    sandboxRef(target),
+    status,
+    target.baseBranch,
+    sandboxCall(target),
+  ).catch(() => null);
+  if (diff && reviewDiffSignature(diff) !== expectedDiffSignature) {
+    throw new PublishHeadMovedError();
   }
 }
 

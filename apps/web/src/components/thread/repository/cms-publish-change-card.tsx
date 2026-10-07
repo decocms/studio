@@ -109,7 +109,8 @@ interface PublishChangeCardProps {
   /** Armed = this card shows Cancel/Discard; only one card may be armed. */
   confirming: boolean;
   onConfirmingChange: (confirming: boolean) => void;
-  onDiscard: () => void;
+  /** Absent when the change cannot be reverted here (a sandbox's committed work). */
+  onDiscard?: () => void;
   isPublishing: boolean;
   isDiscarding: boolean;
 }
@@ -178,14 +179,14 @@ export function PublishChangeCard({
               onClick={(e) => {
                 e.stopPropagation();
                 onConfirmingChange(false);
-                onDiscard();
+                onDiscard?.();
               }}
               disabled={isDiscarding}
             >
               {t("thread.publishPopover.discard")}
             </button>
           </div>
-        ) : (
+        ) : onDiscard ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -207,7 +208,7 @@ export function PublishChangeCard({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
+        ) : null}
       </div>
       {subLines.length > 0 ? (
         <div className="mt-1 space-y-0.5 pl-[26px] text-xs text-muted-foreground">

@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   AlertTriangle,
   CheckCircle,
@@ -38,7 +39,10 @@ import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
-import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
+import {
+  lastPreviewPageKey,
+  readLastPreviewPage,
+} from "@/components/sandbox/preview/last-preview-page.ts";
 import { changeId, PublishChangeCard } from "./cms-publish-change-card.tsx";
 import { PublishCompare } from "./cms-publish-compare.tsx";
 import type { CompareDraft } from "./cms-publish-compare-path.ts";
@@ -56,7 +60,11 @@ import {
   type PublishChange,
 } from "./publish-change-summary.ts";
 import type { PublishTarget } from "./publish-flow.ts";
-import { readGitHeadBranch, type PublishPolicy } from "./sandbox-git-api.ts";
+import {
+  readGitHeadBranch,
+  reviewDiffSignature,
+  type PublishPolicy,
+} from "./sandbox-git-api.ts";
 import type { PrSummary } from "./use-pr-data.ts";
 import {
   useCmsPublishActions,
@@ -78,7 +86,6 @@ export interface PublishDialogProps {
   /** Re-provisions a coding session's sandbox when it stops answering. */
   recoverSandbox?: () => Promise<unknown>;
   orgSlug: string;
-  orgId: string;
   virtualMcpId: string;
   branch: string;
   baseBranch: string;
@@ -94,8 +101,6 @@ export interface PublishDialogProps {
   previewServerUrl: string | null;
   /** Where the review pane renders the changes; see {@link CompareDraft}. */
   compareDraft: CompareDraft | null;
-  /** Fills a dynamic page's `:param`s when it is the page last previewed. */
-  lastPreviewPage: LastPreviewPage | null;
   /** The last publish, warmed by the header — never blocks this surface. */
   lastPublishedPr?: PrSummary | null;
   /** Blocked gate: hand this surface over to review mode. */
@@ -121,7 +126,7 @@ export function PublishDialog(props: PublishDialogProps) {
     <Dialog open={props.open} onOpenChange={handleOpenChange}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-row md:h-[calc(100dvh-6rem)] md:w-[calc(100vw-6rem)] gap-0 overflow-hidden p-0 sm:max-w-none"
+        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col md:flex-row md:h-[calc(100dvh-6rem)] md:w-[calc(100vw-6rem)] gap-0 overflow-hidden p-0 sm:max-w-none"
         closeButtonClassName="top-3.5 right-3.5"
       >
         <DialogTitle className="sr-only">
@@ -137,12 +142,20 @@ export function PublishDialog(props: PublishDialogProps) {
   );
 }
 
+/** Only these bases are production; publishing elsewhere is not "in production". */
+function isProductionBranch(base: string): boolean {
+  return ["main", "master"].includes(base.trim().toLowerCase());
+}
+
+/** Above the list on narrow screens, beside it from `md` up. */
+const REVIEW_PANE = "flex h-[45%] min-h-0 min-w-0 shrink-0 md:h-auto md:flex-1";
+
 /** The review pane beside the list column, whose header clears the close button. */
 function ReviewLayout({ list, pane }: { list: ReactNode; pane: ReactNode }) {
   return (
     <>
       {pane}
-      <div className="flex min-h-0 w-full flex-col max-md:pt-8 md:w-[380px] md:shrink-0 md:border-l md:[&>[data-publish-state]>:first-child]:pr-12">
+      <div className="flex min-h-0 w-full flex-1 flex-col max-md:border-t md:w-[380px] md:flex-none md:shrink-0 md:border-l md:[&>[data-publish-state]>:first-child]:pr-12">
         {list}
       </div>
     </>
@@ -151,7 +164,7 @@ function ReviewLayout({ list, pane }: { list: ReactNode; pane: ReactNode }) {
 
 function ReviewPaneGhost() {
   return (
-    <div className="hidden min-w-0 flex-1 bg-muted/40 p-3 md:flex">
+    <div className={cn(REVIEW_PANE, "bg-muted/40 p-3")}>
       <PublishGhost className="h-full w-full rounded-lg" />
     </div>
   );
@@ -278,7 +291,7 @@ function CmsPublishLoadError({
   const t = useT();
   return (
     <ReviewLayout
-      pane={<div className="hidden min-w-0 flex-1 bg-muted/40 md:flex" />}
+      pane={<div className={cn(REVIEW_PANE, "bg-muted/40")} />}
       list={
         <PublishFrame
           state="ready"
@@ -369,7 +382,6 @@ function CmsPublishContent({
   destinationHost,
   previewServerUrl,
   compareDraft,
-  lastPreviewPage,
   lastPublishedPr = null,
   onRequestApproval,
   openPullRequest = null,
@@ -383,10 +395,16 @@ function CmsPublishContent({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const { data: session } = authClient.useSession();
 
+  /** Fills a dynamic page's `:param`s when it is the page last previewed. */
+  const lastPreviewPage = readLastPreviewPage(
+    lastPreviewPageKey(orgSlug, virtualMcpId, branch),
+  );
+
   const {
     status: gitStatus,
     summary,
     allPaths,
+    discardablePaths,
     changedFilesTotal,
     changedFilesTruncated,
     headSha,
@@ -456,6 +474,9 @@ function CmsPublishContent({
     headBranch: readGitHeadBranch(gitStatus) ?? branch,
     coAuthor: coAuthorFromSessionUser(session?.user),
     expectedHeadSha: headSha ?? undefined,
+    ...(!fastPreview && gitDiff
+      ? { expectedDiffSignature: reviewDiffSignature(gitDiff) }
+      : {}),
   };
 
   const {
@@ -478,6 +499,9 @@ function CmsPublishContent({
     onPublished,
   });
 
+  const canDiscard = (paths: readonly string[]) =>
+    discardablePaths === null || paths.every((p) => discardablePaths.has(p));
+
   const canSubmit =
     !isPublishing && summary.count > 0 && (isReview || gate.allowed);
 
@@ -491,11 +515,15 @@ function CmsPublishContent({
           })
     : summary.count === 0
       ? t("thread.publishPopover.publish")
-      : summary.count === 1
-        ? t("thread.publishPopover.publishOneInProduction")
-        : t("thread.publishPopover.publishCountInProduction", {
-            count: summary.count,
-          });
+      : !isProductionBranch(baseBranch)
+        ? summary.count === 1
+          ? t("thread.publishPopover.publishOne")
+          : t("thread.publishPopover.publishCount", { count: summary.count })
+        : summary.count === 1
+          ? t("thread.publishPopover.publishOneInProduction")
+          : t("thread.publishPopover.publishCountInProduction", {
+              count: summary.count,
+            });
 
   /** Review mode names the PR it will update; publish mode, the last release. */
   const subLine = (() => {
@@ -541,7 +569,11 @@ function CmsPublishContent({
               onConfirmingChange={(confirming) =>
                 setConfirmingId(confirming ? id : null)
               }
-              onDiscard={() => void discardChange(change)}
+              onDiscard={
+                canDiscard(change.filepaths)
+                  ? () => void discardChange(change)
+                  : undefined
+              }
               isPublishing={isPublishing}
               isDiscarding={isDiscarding}
             />
@@ -575,7 +607,9 @@ function CmsPublishContent({
 
   // Never offer an all-files action over a set the server truncated.
   const discardAllControl =
-    summary.count <= 1 || changedFilesTruncated ? null : (
+    summary.count <= 1 ||
+    changedFilesTruncated ||
+    !canDiscard(allPaths) ? null : (
       <>
         <button
           type="button"
@@ -660,7 +694,7 @@ function CmsPublishContent({
   const reviewPane = cardsPending ? (
     <ReviewPaneGhost />
   ) : selected ? (
-    <div className="hidden min-w-0 flex-1 md:flex">
+    <div className={REVIEW_PANE}>
       <PublishCompare
         key={changeId(selected)}
         change={selected}
@@ -672,7 +706,7 @@ function CmsPublishContent({
       />
     </div>
   ) : (
-    <div className="hidden min-w-0 flex-1 bg-muted/40 md:flex" />
+    <div className={cn(REVIEW_PANE, "bg-muted/40")} />
   );
 
   return (

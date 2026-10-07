@@ -177,11 +177,9 @@ export async function fetchGitDiff(
 
 /**
  * Drop auto-generated files (Tailwind CSS output, `blocks.gen.json`) from a
- * diff before sending it to `suggest-commit`. Their full-content `from`/`to`
+ * diff before sending it to `judge-review`. Their full-content `from`/`to`
  * bodies can be megabytes on their own and blew past the endpoint's 512KB body
- * limit (413). They carry no signal for an LLM commit message either — the
- * server backfills the diff from the daemon when the client omits it, so a
- * fully-stripped diff still yields a suggestion.
+ * limit (413), and they carry no signal for the judge.
  */
 export function stripGeneratedFilesFromDiff(
   diff: GitDiffResult,
@@ -552,6 +550,16 @@ export function combinePublishDiffs(
   };
 }
 
+/** Commits a publish would carry. A daemon that omits `aheadOfBase` is asked, not assumed clean. */
+export function mayHaveCommitsToPublish(status: GitStatus): boolean {
+  return (
+    status.aheadOfBase === undefined ||
+    status.aheadOfBase > 0 ||
+    status.ahead > 0 ||
+    (status.unpushed ?? 0) > 0
+  );
+}
+
 /**
  * Everything a publish carries. Fast Preview has no working tree, so base…head
  * is the whole of it; a sandbox publish also commits its working tree, and the
@@ -568,7 +576,9 @@ export async function fetchPublishDiff(
     ? { base, headSha: status.headSha }
     : { base };
   const [baseDiff, workingDiff] = await Promise.all([
-    (status.aheadOfBase ?? 0) > 0 ? fetchGitDiff(ref, baseOptions, call) : null,
+    mayHaveCommitsToPublish(status)
+      ? fetchGitDiff(ref, baseOptions, call)
+      : null,
     hasGitLocalWork(status) ? fetchGitDiff(ref, undefined, call) : null,
   ]);
   return combinePublishDiffs(baseDiff, workingDiff);

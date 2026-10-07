@@ -1,7 +1,7 @@
-/** The publish popover's read side, in two lanes.
+/** The publish dialog's read side, in two lanes.
  *
  * The MANIFEST lane is the changed-file list, which rides free on `/git/status`
- * and is already warm in the header — so the popover's real card list, count,
+ * and is already warm in the header — so the dialog's real card list, count,
  * gate and enabled button are decided one request in, and usually zero. It
  * suspends; there is nothing to show without it.
  *
@@ -15,6 +15,7 @@
  */
 
 import { skipToken, useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useRef } from "react";
 import { KEYS } from "@/lib/query-keys.ts";
 import {
   summarizePublishChanges,
@@ -26,6 +27,7 @@ import {
   fetchPublishDiff,
   hasGitLocalWork,
   isSandboxUnreachable,
+  mayHaveCommitsToPublish,
   sandboxGitStatusQueryOptions,
   type GitDiffResult,
   type GitStatus,
@@ -49,6 +51,9 @@ export interface CmsPublishState {
   summary: PublishChangeSummary;
   /** Every changed path including generated artifacts: what "discard all" reverts. */
   allPaths: string[];
+  /** Paths a discard can revert; null when every path can be. A sandbox only
+   *  reverts its working tree — committed changes stay until published. */
+  discardablePaths: ReadonlySet<string> | null;
   /** Changed-path count before the server's cap; may exceed `allPaths.length`. */
   changedFilesTotal: number;
   /** The cap dropped paths — never offer an action over the whole set. */
@@ -63,7 +68,7 @@ export interface CmsPublishState {
   bodiesFailed: boolean;
   /** True while the card list itself is unknown (no manifest, bodies pending). */
   cardsPending: boolean;
-  /** Re-reads the manifest; the popover calls it after a discard. */
+  /** Re-reads the change list; the dialog calls it after a discard or a moved head. */
   refresh: () => Promise<unknown>;
 }
 
@@ -134,6 +139,8 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
   const sandboxRef = { orgSlug, virtualMcpId, branch, threadId };
   const call = fastPreview ? { fastPreview: true } : undefined;
 
+  /** One re-provision per opening, shared by every read that hits it. */
+  const recovery = useRef<Promise<unknown> | null>(null);
   /** The proxy can hold a stale handle while the preview stays live through
    *  the gateway; re-provisioning once is the same self-heal the preview runs. */
   const withRecovery = async <T>(read: () => Promise<T>): Promise<T> => {
@@ -141,7 +148,9 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
       return await read();
     } catch (error) {
       if (!recoverSandbox || !isSandboxUnreachable(error)) throw error;
-      await recoverSandbox();
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- set inside a query fn, not during render
+      recovery.current ??= recoverSandbox();
+      await recovery.current;
       return read();
     }
   };
@@ -157,7 +166,7 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
   // Fast Preview's local-work fields are always empty; drift is its only signal.
   const wantsBodies = manifest
     ? manifest.length > 0
-    : (status.aheadOfBase ?? 0) > 0 || hasGitLocalWork(status);
+    : mayHaveCommitsToPublish(status) || hasGitLocalWork(status);
 
   const bodiesQuery = useQuery({
     queryKey: cmsPublishBodiesQueryKey(
@@ -176,8 +185,9 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
     // A working tree's contents change under the same key: never reuse them.
     staleTime: fastPreview ? BODIES_STALE_MS : 0,
     gcTime: fastPreview ? undefined : 0,
-    // Without a manifest, a failed read must not render as "everything is live".
-    throwOnError: !manifest,
+    // Without a manifest, a failed first read must not render as "everything is live".
+    throwOnError: (_error, query) =>
+      !manifest && query.state.data === undefined,
   });
 
   const decofileHead = useDecofileHead(orgSlug, virtualMcpId, branch);
@@ -193,6 +203,9 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
     allPaths: manifest
       ? manifest.map((file) => file.path)
       : Object.keys(diff?.diffs ?? {}),
+    discardablePaths: fastPreview
+      ? null
+      : new Set(status.files.map((file) => file.path)),
     changedFilesTotal: status.changedFilesTotal ?? summary.count,
     changedFilesTruncated: status.changedFilesTruncated ?? false,
     headSha,
@@ -200,6 +213,11 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
     bodiesPending: wantsBodies && bodiesQuery.isPending,
     bodiesFailed: bodiesQuery.isError,
     cardsPending: !manifest && wantsBodies && bodiesQuery.isPending,
-    refresh: () => statusQuery.refetch(),
+    // A sandbox's bodies can change under an unchanged key, so re-read them too.
+    refresh: () =>
+      Promise.all([
+        statusQuery.refetch(),
+        fastPreview ? null : bodiesQuery.refetch(),
+      ]),
   };
 }

@@ -1,13 +1,3 @@
-import { generateText } from "ai";
-import type { StudioContext } from "../core/studio-context";
-import { resolveTier } from "../core/resolve-tier";
-
-export interface CommitSuggestion {
-  title: string;
-  body: string;
-  message: string;
-}
-
 export interface GitStatusLike {
   modified: string[];
   created: string[];
@@ -32,52 +22,43 @@ export interface GitDiffLike {
   diffs: Record<string, { from: string | null; to: string | null }>;
 }
 
-const COMMIT_SUGGESTION_SYSTEM = `You write git commit messages and pull request descriptions for web project changes.
-Return ONLY valid JSON with this shape:
-{"title":"Short imperative commit title (max 72 chars)","body":"1-3 sentence PR description explaining what changed and why"}
-
-Use sentence case for the title. No markdown fences.`;
-
 function isGeneratedNoise(path: string): boolean {
   return /^static\/.*\.css$/.test(path);
 }
 
 /** Paths from the working tree plus any keys in a base…head diff (committed PR work). */
-function changedPaths(status: GitStatusLike, diff?: GitDiffLike): string[] {
+function changedPaths(status: GitStatusLike, diff: GitDiffLike): string[] {
   const fromStatus = [
     ...status.modified,
     ...status.created,
     ...status.deleted,
     ...status.not_added,
   ].filter((p) => !isGeneratedNoise(p));
-  const fromDiff = diff
-    ? Object.keys(diff.diffs).filter((p) => !isGeneratedNoise(p))
-    : [];
+  const fromDiff = Object.keys(diff.diffs).filter((p) => !isGeneratedNoise(p));
   return [...new Set([...fromStatus, ...fromDiff])];
 }
 
 function pathChangeKind(
   path: string,
   status: GitStatusLike,
-  diff?: GitDiffLike,
+  diff: GitDiffLike,
 ): "add" | "delete" | "update" {
   if (status.created.includes(path) || status.not_added.includes(path)) {
     return "add";
   }
   if (status.deleted.includes(path)) return "delete";
-  const entry = diff?.diffs[path];
+  const entry = diff.diffs[path];
   if (entry) {
     if (!entry.from && entry.to) return "add";
     if (entry.from && !entry.to) return "delete";
   }
-  if (status.modified.includes(path)) return "update";
   return "update";
 }
 
 function pathChangeLabel(
   path: string,
   status: GitStatusLike,
-  diff?: GitDiffLike,
+  diff: GitDiffLike,
 ): string {
   switch (pathChangeKind(path, status, diff)) {
     case "add":
@@ -200,7 +181,7 @@ function changedLines(
   return result.join("\n");
 }
 
-export function buildCommitContextSummary(
+export function buildChangeContextSummary(
   status: GitStatusLike,
   diff: GitDiffLike,
 ): string {
@@ -219,88 +200,4 @@ export function buildCommitContextSummary(
     .join("\n---\n");
 
   return `Changed files:\n${fileLines}\n\nDiff snippets:\n${snippets}`;
-}
-
-export function fallbackCommitSuggestion(
-  status: GitStatusLike,
-  diff?: GitDiffLike,
-): CommitSuggestion {
-  const paths = changedPaths(status, diff);
-  const all = paths.map((f) => {
-    const kind = pathChangeKind(f, status, diff);
-    return `${kind} ${f}`;
-  });
-
-  const label = all.length > 0 ? all[0] : "Update files";
-  const extra = all.length > 1 ? ` and ${all.length - 1} more` : "";
-  const message = `${label}${extra}`;
-  const title = message.charAt(0).toUpperCase() + message.slice(1);
-
-  const bodyPaths = paths.slice(0, 5).join(", ");
-  return {
-    message,
-    title,
-    body: bodyPaths ? `Changes to ${bodyPaths}.` : "",
-  };
-}
-
-export function parseCommitSuggestionJson(
-  text: string,
-): CommitSuggestion | null {
-  const cleaned = text
-    .trim()
-    .replace(/^```(?:json)?\s*\n?/i, "")
-    .replace(/\n?```\s*$/, "")
-    .trim();
-
-  try {
-    const parsed = JSON.parse(cleaned) as { title?: string; body?: string };
-    const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
-    if (!title) return null;
-    return {
-      title: title.slice(0, 120),
-      body: body.slice(0, 4000),
-      message: body ? `${title}\n\n${body}` : title,
-    };
-  } catch {
-    // Non-JSON output (e.g. a leaked scratchpad) must never reach a PR body.
-    return null;
-  }
-}
-
-export async function suggestCommitMessageWithLlm(
-  ctx: StudioContext,
-  status: GitStatusLike,
-  diff: GitDiffLike,
-): Promise<CommitSuggestion> {
-  const paths = changedPaths(status, diff);
-  if (paths.length === 0) {
-    return { title: "No changes", body: "", message: "No changes" };
-  }
-
-  const orgId = ctx.organization?.id;
-  if (!orgId) return fallbackCommitSuggestion(status, diff);
-
-  try {
-    const tier = await resolveTier(ctx, "fast");
-    const provider = await ctx.aiProviders.activate(tier.credentialId, orgId);
-    const model = provider.aiSdk.languageModel(tier.modelId);
-    const summary = buildCommitContextSummary(status, diff);
-
-    const result = await generateText({
-      model,
-      instructions: COMMIT_SUGGESTION_SYSTEM,
-      prompt: summary,
-      maxOutputTokens: 400,
-      temperature: 0.2,
-    });
-
-    const parsed = parseCommitSuggestionJson(result.text);
-    if (parsed) return parsed;
-  } catch (err) {
-    console.warn("[suggest-commit-message] LLM failed, using fallback", err);
-  }
-
-  return fallbackCommitSuggestion(status, diff);
 }
