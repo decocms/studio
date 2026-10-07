@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { serializeBlock } from "@decocms/blocks/protocol";
 import {
-  draftGitDiff,
+  hostedDraftPublishDiff,
   draftGitDiscard,
-  draftGitStatus,
-} from "./draft-git-compat";
+  hostedDraftPublishStatus,
+} from "./draft-publish-status";
 import { createDraftStore, type HostedDraftRef } from "./draft-store";
 import {
   fakeRepo,
@@ -24,7 +24,7 @@ const REF: HostedDraftRef = {
   site: "acme",
 };
 
-describe("draft git compat", () => {
+describe("hosted draft publish status", () => {
   it("shows, diffs and discards the draft's changes against main", async () => {
     const git = fakeRepo({
       ".deco/schema.gen.json": SCHEMA_TEXT,
@@ -42,7 +42,7 @@ describe("draft git compat", () => {
     }));
     const draft = await drafts.load(REF);
 
-    const status = await draftGitStatus(repo, REF.branch, draft);
+    const status = await hostedDraftPublishStatus(repo, REF.branch, draft);
     expect(status.changedFiles).toEqual([
       { path: ".deco/blocks/Home.json", status: "modified" },
       { path: ".deco/blocks/New.json", status: "added" },
@@ -51,7 +51,7 @@ describe("draft git compat", () => {
     expect(status.aheadOfBase).toBe(3);
     expect(status.headSha.startsWith(`${git.head()}~`)).toBe(true);
 
-    const diff = await draftGitDiff(repo, draft);
+    const diff = await hostedDraftPublishDiff(repo, draft);
     expect(diff.diffs[".deco/blocks/Home.json"]).toEqual({
       from: serializeBlock({ v: 1 }),
       to: serializeBlock({ v: 2 }),
@@ -70,7 +70,7 @@ describe("draft git compat", () => {
 
   it("has nothing to publish without a draft", async () => {
     const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
-    const status = await draftGitStatus(
+    const status = await hostedDraftPublishStatus(
       { client: git.client, packagePath: null, mainBranch: "main" },
       "thread-1",
       null,

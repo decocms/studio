@@ -29,12 +29,13 @@ import {
 } from "@/git-providers";
 import { deliveryStore } from "@/hosted/delivery-store";
 import { denylist } from "@/hosted/denylist";
-import { type HostedRepo, RolledBackError, resync } from "@/hosted/publish";
+import { type HostedRepo, RolledBackError } from "@/hosted/publish";
 import { NotV8Site } from "@/hosted/release-objects";
 import {
   listReleases,
   makeCurrent,
   NotPublishedError,
+  resync,
   SchemaMismatchError,
 } from "@/hosted/releases";
 import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
@@ -218,7 +219,15 @@ export function createHostedRoutes() {
     try {
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
-      return c.json(await resync(repo, { confirm: body.confirm === true }));
+      const project = c.get("hostedProject");
+      const insights = await insightsClientForProjectRepo(
+        c.var.studioContext,
+        project.organizationId,
+        project.repository,
+      );
+      return c.json(
+        await resync(repo, insights, { confirm: body.confirm === true }),
+      );
     } catch (err) {
       if (err instanceof RolledBackError) {
         return c.json({ error: "rolled-back" }, 409);

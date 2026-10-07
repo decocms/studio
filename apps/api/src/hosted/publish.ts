@@ -7,9 +7,11 @@
  *   4. delete the draft (once step 1 landed: its changes are in git now).
  *
  * Git is the source of truth: a failure after step 1 leaves the site
- * "pending" (running sites keep what they serve) and Resync reruns steps 2–3
- * from main's head. Rollback (Releases → Make current) rewrites latest.json
- * only, and the next Publish or Resync overrides it.
+ * "pending" (running sites keep what they serve) and Resync (releases.ts)
+ * reruns steps 2–3 from main's head. Rollback (Releases → Make current)
+ * rewrites latest.json only, and the next Publish or Resync overrides it.
+ * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
+ * only when it is later than its bundle's build time.
  */
 
 import {
@@ -53,7 +55,7 @@ import {
   type HostedDraftRef,
   isEmptyDraft,
 } from "./draft-store";
-import { buildRevision } from "./release-objects";
+import { buildRevision, schemaHashAt } from "./release-objects";
 
 /** Main moved while the draft was being committed: nothing was published. */
 export class MainMovedError extends Error {
@@ -210,20 +212,32 @@ async function commitDraftToMain(
 }
 
 /**
- * Steps 2–3 for commit `sha`: the revision object, then the pointer, but only
- * while `sha` is still main's head. Returns whether the pointer was written.
+ * Step 2 for commit `sha`: its revision object, written only when missing
+ * (revisions are immutable). Returns the revision's schemaHash.
  */
-async function releaseCommit(
-  repo: HostedRepo,
-  sha: string,
-  hooks: { beforePointerWrite?: () => Promise<void> } = {},
-): Promise<boolean> {
+async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
+  if (await hasRevision(repo.store, repo.site, sha)) {
+    return schemaHashAt(repo.client, repo.packagePath, sha);
+  }
   const revision = await buildRevision(repo.client, repo.packagePath, sha);
   await repo.store.putJson(
     deliveryKeys.revision(repo.site, sha),
     revision,
     CACHE_REVISION,
   );
+  return revision.schemaHash;
+}
+
+/**
+ * Steps 2–3 for commit `sha`: the revision object, then the pointer, but only
+ * while `sha` is still main's head. Returns whether the pointer was written.
+ */
+export async function releaseCommit(
+  repo: HostedRepo,
+  sha: string,
+  hooks: { beforePointerWrite?: () => Promise<void> } = {},
+): Promise<boolean> {
+  const schemaHash = await ensureRevision(repo, sha);
   await hooks.beforePointerWrite?.();
   const head = await requireBranchHead(repo.client, repo.mainBranch);
   if (head !== sha) return false;
@@ -231,7 +245,7 @@ async function releaseCommit(
   // "Rolled back"/pending in Releases and Resync fixes it.
   const pointer: LatestPointer = {
     revision: sha,
-    schemaHash: revision.schemaHash,
+    schemaHash,
     publishedAt: new Date().toISOString(),
   };
   await repo.store.putJson(
@@ -282,29 +296,4 @@ export async function publishDraft(
       }),
     );
   }
-}
-
-/**
- * Resync: steps 2–3 from main's head. While the site is rolled back
- * (latest.json names another published revision), it needs `confirm`.
- */
-export async function resync(
-  repo: HostedRepo,
-  options: { confirm: boolean },
-): Promise<PublishResult> {
-  const head = await requireBranchHead(repo.client, repo.mainBranch);
-  if (!options.confirm) {
-    const latest = await readLatest(repo.store, repo.site);
-    if (
-      latest &&
-      latest.revision !== head &&
-      (await hasRevision(repo.store, repo.site, latest.revision).catch(
-        () => false,
-      ))
-    ) {
-      throw new RolledBackError();
-    }
-  }
-  const live = await releaseCommit(repo, head);
-  return { result: live ? "published" : "pending", sha: head };
 }

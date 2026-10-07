@@ -525,7 +525,15 @@ test.describe("content protocol on GitHub", () => {
         state: "live",
         head: second.sha,
         current: { revision: second.sha },
+        unpublishedCommits: false,
+        revisionOffMain: false,
+        noRecentRelease: false,
       });
+      const publishedAt = (): Promise<string> =>
+        deliveryObjects(ctx, `sites/${site}/latest.json`).then(
+          (o) => JSON.parse(o[`sites/${site}/latest.json`]!.text).publishedAt,
+        );
+      const secondAt = await publishedAt();
       expect(
         releases.commits.map((c: { sha: string; published: boolean }) => [
           c.sha,
@@ -542,6 +550,9 @@ test.describe("content protocol on GitHub", () => {
         data: { sha: first.sha },
       });
       expect(made.status()).toBe(200);
+      // Every latest.json write is stamped now (the SDK's timeline rule).
+      const rolledBackAt = await publishedAt();
+      expect(Date.parse(rolledBackAt)).toBeGreaterThan(Date.parse(secondAt));
       releases = await (await ctx.get(`${hosted}/releases`)).json();
       expect(releases).toMatchObject({
         state: "rolled-back",
@@ -569,6 +580,9 @@ test.describe("content protocol on GitHub", () => {
         result: "published",
         sha: second.sha,
       });
+      expect(Date.parse(await publishedAt())).toBeGreaterThan(
+        Date.parse(rolledBackAt),
+      );
     } finally {
       await ctx.dispose();
     }

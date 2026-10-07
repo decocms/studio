@@ -11,6 +11,10 @@ export const releases = {
   "releases.state.live": "Live",
   "releases.state.rolledBack": "Rolled back",
   "releases.state.pending": "Not published",
+  "releases.revisionOffMain": "(revision no longer on main)",
+  "releases.unpublishedCommits": "main has unpublished commits",
+  "releases.noRecentRelease":
+    "No CMS-published release in the last {count} commits",
   "releases.current": "Current",
   "releases.notPublished": "Not published by the CMS",
   "releases.actions": "Release actions",

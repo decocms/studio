@@ -41,6 +41,8 @@ import {
 } from "./releases-api";
 
 const short = (sha: string) => sha.slice(0, 7);
+/** The commits the API searches for a CMS-published one (5 pages of 50). */
+const HISTORY_WINDOW = 250;
 
 /** What a confirmation dialog is asking about. */
 type PendingConfirm =
@@ -129,20 +131,27 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
             {t("releases.subtitle")}
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={resync.isPending}
-          onClick={() => void runResync(false)}
-        >
-          {resync.isPending ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <RefreshCw01 size={14} />
-          )}
-          {t("releases.resync")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {first.unpublishedCommits ? (
+            <span className="text-xs text-muted-foreground">
+              {t("releases.unpublishedCommits")}
+            </span>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={resync.isPending}
+            onClick={() => void runResync(false)}
+          >
+            {resync.isPending ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <RefreshCw01 size={14} />
+            )}
+            {t("releases.resync")}
+          </Button>
+        </div>
       </div>
 
       <div className="shrink-0 rounded-xl border border-border/60 p-3">
@@ -151,6 +160,11 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
             {t("releases.serving")}
           </span>
           <StateBadge state={first.state} />
+          {first.state === "rolled-back" && first.revisionOffMain ? (
+            <span className="text-xs text-warning">
+              {t("releases.revisionOffMain")}
+            </span>
+          ) : null}
         </div>
         {serving ? (
           <p className="mt-1 text-sm">
@@ -170,6 +184,11 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         {first.state === "rolled-back" ? (
           <p className="mt-1 text-xs text-warning">
             {t("releases.rolledBackHint", { head: short(first.head) })}
+          </p>
+        ) : null}
+        {serving && first.noRecentRelease ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("releases.noRecentRelease", { count: String(HISTORY_WINDOW) })}
           </p>
         ) : null}
       </div>

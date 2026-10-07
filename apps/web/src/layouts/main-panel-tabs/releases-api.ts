@@ -32,6 +32,12 @@ export interface ReleasesPage {
   head: string;
   headSchemaHash: string | null;
   state: ReleaseState;
+  /** Main's head has no revision on the CDN (a developer's push). */
+  unpublishedCommits: boolean;
+  /** latest.json's revision isn't in main's history. */
+  revisionOffMain: boolean;
+  /** No CMS-published commit in the last 250 of main. */
+  noRecentRelease: boolean;
   commits: ReleaseCommit[];
   nextCursor: string | null;
 }

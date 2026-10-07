@@ -72,13 +72,12 @@ import {
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
-  draftGitDiff,
   draftGitDiscard,
-  draftGitStatus,
-} from "../../hosted/draft-git-compat";
-import { hostedDrafts, mainIsV8, ownedProjectSite } from "../../hosted/scope";
+  hostedDraftPublishDiff,
+  hostedDraftPublishStatus,
+  loadHostedDraft,
+} from "../../hosted/draft-publish-status";
 import {
   GitPushAuthError,
   parseRepositoryBinding,
@@ -401,61 +400,37 @@ async function fastPreviewGitClient(c: Context<VmEnv>) {
   return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
-/**
- * A hosted v8 project's draft, for the sandbox-less git routes: its changes
- * live on the CDN draft, not on the branch (see hosted/draft-git-compat.ts).
- * Null for every other project, which keeps the branch-backed answers.
- */
-async function fastPreviewHostedDraft(c: Context<VmEnv>) {
+/** The hosted v8 project's draft (see hosted/draft-publish-status.ts), or null. */
+function loadHostedDraftFor(c: Context<VmEnv>) {
   const claim = c.get("vmClaim");
   const ctx = c.var.studioContext;
-  const organization = requireOrganization(ctx);
-  const site = await ownedProjectSite(
-    ctx.storage.orgSites,
-    claim.virtualMcpMetadata,
-    organization.id,
-  );
-  const drafts = site ? hostedDrafts(ctx.storage.kv) : null;
-  if (!site || !drafts) return null;
-  const settings = await ctx.storage.organizationSettings.get(organization.id);
-  if (!orgFlagEnabled(settings?.flags, "site_editor_content_protocol")) {
-    return null;
-  }
-  const ref = {
-    organizationId: organization.id,
+  return loadHostedDraft({
+    storage: ctx.storage,
+    organizationId: requireOrganization(ctx).id,
     virtualMcpId: claim.virtualMcpId,
     branch: claim.branch,
-    site,
-  };
-  const client = await fastPreviewGitClient(c);
-  const runtime = claim.virtualMcpMetadata?.runtime as
-    | { path?: string | null }
-    | undefined;
-  const repo = {
-    client,
-    packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
-    mainBranch: await client.getDefaultBranch(),
-  };
-  const draft = await drafts.load(ref);
-  if (!draft && !(await mainIsV8(client, repo.packagePath, repo.mainBranch))) {
-    return null;
-  }
-  return { drafts, ref, repo, draft };
+    metadata: claim.virtualMcpMetadata,
+    gitClient: () => fastPreviewGitClient(c),
+  });
 }
 
 /** `/git/status` without a sandbox: the branch's drift, or a hosted draft's. */
 async function fastPreviewStatus(c: Context<VmEnv>) {
-  const hosted = await fastPreviewHostedDraft(c);
+  const hosted = await loadHostedDraftFor(c);
   if (hosted) {
-    return draftGitStatus(hosted.repo, hosted.ref.branch, hosted.draft);
+    return hostedDraftPublishStatus(
+      hosted.repo,
+      hosted.ref.branch,
+      hosted.draft,
+    );
   }
   return repoGitStatus(await fastPreviewGitClient(c), c.get("vmClaim").branch);
 }
 
 /** `/git/diff` without a sandbox: the branch's bodies, or a hosted draft's. */
 async function fastPreviewDiff(c: Context<VmEnv>, base?: string) {
-  const hosted = await fastPreviewHostedDraft(c);
-  if (hosted) return draftGitDiff(hosted.repo, hosted.draft);
+  const hosted = await loadHostedDraftFor(c);
+  if (hosted) return hostedDraftPublishDiff(hosted.repo, hosted.draft);
   return repoGitDiff(
     await fastPreviewGitClient(c),
     c.get("vmClaim").branch,
@@ -1108,7 +1083,7 @@ export const createSandboxRoutes = () => {
           );
         }
         try {
-          const hosted = await fastPreviewHostedDraft(c);
+          const hosted = await loadHostedDraftFor(c);
           if (hosted) {
             await draftGitDiscard(hosted.drafts, hosted.ref, filepaths);
             return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);

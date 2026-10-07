@@ -1,16 +1,21 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { RepoInsightsClient } from "@/git-providers";
+import { deliveryKeys } from "./delivery-store";
 import {
+  fakeInsights,
   fakeRepo,
   memoryDeliveryStore,
+  SCHEMA_HASH,
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
-import { type HostedRepo, readLatest, resync } from "./publish";
+import { type HostedRepo, RolledBackError, readLatest } from "./publish";
 import {
+  HISTORY_WINDOW,
   listReleases,
   makeCurrent,
   NotPublishedError,
   releaseState,
+  releaseStatus,
+  resync,
   SchemaMismatchError,
 } from "./releases";
 
@@ -31,60 +36,142 @@ function setup() {
     store: delivery.store,
     site: "acme",
   };
-  const insights = {
-    listCommits: async () => ({
-      items: git.history.map((c, i) => ({
-        sha: c.sha,
-        date: new Date(2026, 0, 30 - i).toISOString(),
-        message: c.message,
-        author: { name: "Ana", email: null, login: null },
-      })),
-      nextCursor: null,
-    }),
-  } as unknown as RepoInsightsClient;
+  const insights = fakeInsights(git.history);
   return { git, delivery, repo, insights };
 }
 
+const sha = (c: string) => c.repeat(40);
+
 describe("releaseState", () => {
-  const head = "h".repeat(40);
   const pointer = (revision: string) => ({
     revision,
     schemaHash: "s",
     publishedAt: "t",
   });
-  it("is pending without latest.json, live at head, rolled back elsewhere", () => {
-    expect(releaseState(null, head, new Set())).toBe("pending");
-    expect(releaseState(pointer(head), head, new Set([head]))).toBe("live");
-    expect(releaseState(pointer("c"), head, new Set(["c"]))).toBe(
-      "rolled-back",
-    );
+  const head = sha("h");
+
+  it("is pending without latest.json", () => {
+    expect(
+      releaseState(null, head, new Set(), {
+        newestPublished: null,
+        currentOnMain: null,
+      }).state,
+    ).toBe("pending");
+  });
+
+  it("is live when latest.json is the newest published revision", () => {
+    expect(
+      releaseState(pointer(head), head, new Set([head]), {
+        newestPublished: head,
+        currentOnMain: true,
+      }),
+    ).toEqual({
+      state: "live",
+      unpublishedCommits: false,
+      revisionOffMain: false,
+      noRecentRelease: false,
+    });
+  });
+
+  it("stays live over a developer push, noting the unpublished commits", () => {
+    const a = sha("a");
+    expect(
+      releaseState(pointer(a), head, new Set([a]), {
+        newestPublished: a,
+        currentOnMain: true,
+      }),
+    ).toMatchObject({ state: "live", unpublishedCommits: true });
+  });
+
+  it("is rolled back when an older revision is served", () => {
+    const [a, b] = [sha("a"), sha("b")];
+    expect(
+      releaseState(pointer(a), head, new Set([a, b]), {
+        newestPublished: b,
+        currentOnMain: true,
+      }),
+    ).toMatchObject({ state: "rolled-back", unpublishedCommits: true });
+  });
+
+  it("is rolled back when the revision is no longer on main", () => {
+    expect(
+      releaseState(pointer(sha("x")), head, new Set([sha("x"), head]), {
+        newestPublished: head,
+        currentOnMain: false,
+      }),
+    ).toMatchObject({ state: "rolled-back", revisionOffMain: true });
+  });
+
+  it("flags no published release in the window", () => {
+    expect(
+      releaseState(pointer(sha("x")), head, new Set([sha("x")]), {
+        newestPublished: null,
+        currentOnMain: null,
+      }),
+    ).toMatchObject({ state: "live", noRecentRelease: true });
   });
 });
 
 describe("listReleases / makeCurrent", () => {
   it("marks the commits that have a revision and rolls back to one", async () => {
     const { git, delivery, repo, insights } = setup();
-    await resync(repo, { confirm: false });
+    await resync(repo, insights.client, { confirm: false });
     const first = git.head();
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' }, "direct edit");
-    // A direct commit already reads as rolled back (the literal rule).
-    await resync(repo, { confirm: true });
+    await resync(repo, insights.client, { confirm: false });
     const second = git.head();
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":2}\n' }, "not published");
 
-    const page = await listReleases(repo, insights, null);
+    const page = await listReleases(repo, insights.client, null);
     expect(page.commits.map((c) => [c.message, c.published])).toEqual([
       ["not published", false],
       ["direct edit", true],
       ["initial", true],
     ]);
     expect(page.current?.revision).toBe(second);
-    // Literal rule: latest != head and that revision exists.
-    expect(page.state).toBe("rolled-back");
+    // A developer push keeps it Live, with the note.
+    expect(page.state).toBe("live");
+    expect(page.unpublishedCommits).toBe(true);
 
     await makeCurrent(repo, first, { confirm: false });
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(first);
     expect(git.head()).not.toBe(first);
+    const after = await listReleases(repo, insights.client, null);
+    expect(after.state).toBe("rolled-back");
+    expect(after.unpublishedCommits).toBe(true);
+    expect(after.revisionOffMain).toBe(false);
+  });
+
+  it("is rolled back with the revision no longer on main", async () => {
+    const { delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    const gone = sha("e");
+    await delivery.store.putJson(
+      deliveryKeys.revision("acme", gone),
+      { revision: gone, schemaHash: SCHEMA_HASH, blocks: {} },
+      "x",
+    );
+    await makeCurrent(repo, gone, { confirm: false });
+    const status = await releaseStatus(repo, insights.client);
+    expect(status.state).toBe("rolled-back");
+    expect(status.revisionOffMain).toBe(true);
+  });
+
+  it("walks at most 5 pages of 50 commits looking for a published one", async () => {
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    for (let i = 0; i < HISTORY_WINDOW; i++) {
+      git.pushDirect({ ".deco/blocks/Home.json": `{"i":${i}}\n` }, `dev ${i}`);
+    }
+    insights.calls.length = 0;
+    const page = await listReleases(repo, insights.client, null);
+    expect(insights.calls).toHaveLength(5);
+    expect(insights.calls.every((c) => c.limit === 50)).toBe(true);
+    expect(page.noRecentRelease).toBe(true);
+    expect(page.state).toBe("live");
+    expect(page.commits).toHaveLength(50);
+    expect(page.nextCursor).toBe("50");
+    expect(delivery.objects.size).toBe(2);
   });
 
   it("refuses a commit the CMS never published", async () => {
@@ -95,8 +182,8 @@ describe("listReleases / makeCurrent", () => {
   });
 
   it("warns when the target's schema differs from main's, unless confirmed", async () => {
-    const { git, delivery, repo } = setup();
-    await resync(repo, { confirm: false });
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
     const old = git.head();
     git.pushDirect({
       ".deco/schema.gen.json": SCHEMA_TEXT.replace("next.7", "next.8"),
@@ -106,5 +193,82 @@ describe("listReleases / makeCurrent", () => {
     );
     await makeCurrent(repo, old, { confirm: true });
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(old);
+  });
+});
+
+describe("resync", () => {
+  it("releases main's head when nothing is published yet", async () => {
+    const { git, delivery, repo, insights } = setup();
+    expect(await resync(repo, insights.client, { confirm: false })).toEqual({
+      result: "published",
+      sha: git.head(),
+    });
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
+      git.head(),
+    );
+  });
+
+  it("publishes a developer push without asking (the screen says Live)", async () => {
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    git.pushDirect({ ".deco/blocks/Home.json": "{}\n" });
+    await resync(repo, insights.client, { confirm: false });
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
+      git.head(),
+    );
+  });
+
+  it("asks for confirmation before overriding a rollback", async () => {
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    const rolledTo = git.head();
+    git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' });
+    await resync(repo, insights.client, { confirm: false });
+    await makeCurrent(repo, rolledTo, { confirm: false });
+    await expect(
+      resync(repo, insights.client, { confirm: false }),
+    ).rejects.toThrow(RolledBackError);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(rolledTo);
+    await resync(repo, insights.client, { confirm: true });
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
+      git.head(),
+    );
+  });
+
+  it("repoints to an existing revision without rewriting it", async () => {
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    const head = git.head();
+    await makeCurrent(repo, head, { confirm: false });
+    delivery.log.length = 0;
+    await resync(repo, insights.client, { confirm: true });
+    expect(delivery.log).toEqual([`put ${deliveryKeys.latest("acme")}`]);
+    expect((await readLatest(delivery.store, "acme"))?.schemaHash).toBe(
+      SCHEMA_HASH,
+    );
+  });
+});
+
+describe("publishedAt", () => {
+  it("is stamped now on every latest.json write", async () => {
+    const { git, delivery, repo, insights } = setup();
+    const stamps: string[] = [];
+    const stamp = async () => {
+      const latest = await readLatest(delivery.store, "acme");
+      stamps.push(latest!.publishedAt);
+      await Bun.sleep(2);
+    };
+    await resync(repo, insights.client, { confirm: false });
+    await stamp();
+    const first = git.head();
+    await makeCurrent(repo, first, { confirm: false });
+    await stamp();
+    await resync(repo, insights.client, { confirm: true });
+    await stamp();
+    expect(new Set(stamps).size).toBe(3);
+    const now = Date.now();
+    for (const s of stamps) {
+      expect(now - Date.parse(s)).toBeLessThan(5_000);
+    }
   });
 });

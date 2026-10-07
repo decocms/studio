@@ -8,6 +8,7 @@ import type { RepoRef } from "@decocms/shared/git-providers";
 import {
   type FileChange,
   type RepoContentClient,
+  type RepoInsightsClient,
   RepoWriteConflict,
   type TreeEntry,
 } from "@/git-providers";
@@ -176,6 +177,38 @@ export function fakeRepo(files: Record<string, string>) {
       return commit(tree, message);
     },
   };
+}
+
+/** `listCommits` over a fake repo's history, paged by offset; counts calls. */
+export function fakeInsights(
+  history: ReadonlyArray<{ sha: string; message: string }>,
+) {
+  const calls: Array<{ cursor: string | null; limit: number }> = [];
+  const client = {
+    listCommits: async ({
+      cursor,
+      limit = 50,
+    }: {
+      cursor?: string | null;
+      limit?: number;
+    }) => {
+      calls.push({ cursor: cursor ?? null, limit });
+      const from = cursor ? Number(cursor) : 0;
+      const items = history.slice(from, from + limit).map((c, i) => ({
+        sha: c.sha,
+        date: new Date(
+          Date.UTC(2026, 0, 1) - (from + i) * 60_000,
+        ).toISOString(),
+        message: c.message,
+        author: { name: "Ana", email: null, login: null },
+      }));
+      return {
+        items,
+        nextCursor: from + limit < history.length ? String(from + limit) : null,
+      };
+    },
+  } as unknown as RepoInsightsClient;
+  return { client, calls };
 }
 
 /** The schemaHash test vector shared with @decocms/blocks `deco content`. */

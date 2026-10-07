@@ -13,9 +13,7 @@ import {
   type HostedRepo,
   MainMovedError,
   publishDraft,
-  RolledBackError,
   readLatest,
-  resync,
 } from "./publish";
 
 beforeAll(() => {
@@ -173,33 +171,5 @@ describe("publishDraft", () => {
     expect(
       await publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
     ).toEqual({ result: "up-to-date" });
-  });
-});
-
-describe("resync", () => {
-  it("releases main's head when nothing is published yet", async () => {
-    const { git, delivery, repo } = setup();
-    expect(await resync(repo, { confirm: false })).toEqual({
-      result: "published",
-      sha: git.head(),
-    });
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
-      git.head(),
-    );
-  });
-
-  it("asks for confirmation before overriding a rollback", async () => {
-    const { git, delivery, repo } = setup();
-    await resync(repo, { confirm: false });
-    const rolledTo = git.head();
-    git.pushDirect({ ".deco/blocks/Home.json": "{}\n" });
-    await expect(resync(repo, { confirm: false })).rejects.toThrow(
-      RolledBackError,
-    );
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(rolledTo);
-    await resync(repo, { confirm: true });
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
-      git.head(),
-    );
   });
 });
