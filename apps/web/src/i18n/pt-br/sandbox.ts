@@ -551,7 +551,6 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.collapseLane": "Recolher {lane}",
   "sandbox.postBoard.delete": "Excluir",
-  "sandbox.postBoard.deleteIdea": "Excluir ideia",
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
@@ -567,8 +566,6 @@ export const sandbox = {
   "sandbox.postBoard.ideaNoPillar": "Qualquer pilar",
   "sandbox.postBoard.ideaPillarLabel": "Pilar",
   "sandbox.postBoard.ideasAdded": "{count} ideia(s) adicionada(s)",
-  "sandbox.postBoard.ideasEmpty":
-    "Nenhuma ideia ainda. Gere algumas, ou escreva uma direto num post.",
   "sandbox.postBoard.ideasFailed": "Não foi possível gerar ideias",
   "sandbox.postBoard.ideasTray": "Ideias",
   "sandbox.postBoard.laneEmpty": "Nada aqui ainda",
@@ -605,11 +602,9 @@ export const sandbox = {
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
   "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
   "sandbox.postBoard.untitled": "Post sem título",
-  "sandbox.postBoard.untitledIdea": "Ideia sem título",
   "sandbox.postBoard.usesCredits": "Usa créditos de IA",
   "sandbox.postBoard.viewBoard": "Quadro",
   "sandbox.postBoard.viewList": "Lista",
-  "sandbox.postBoard.writeFromIdea": "Escrever um post",
   "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",
   "sandbox.postCalendar.couldNotReschedule": "Não foi possível reagendar",
   "sandbox.postCalendar.createdScheduledPost": "Post agendado criado",

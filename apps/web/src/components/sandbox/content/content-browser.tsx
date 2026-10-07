@@ -395,7 +395,7 @@ function ContentBrowserReady({
   }
   const [searchQuery, setSearchQuery] = useState("");
   // Posts workspace view + grouping — lifted so they survive opening a post.
-  const [postsView, setPostsView] = useState<PostsView>("board");
+  const [postsView, setPostsView] = useState<PostsView>("list");
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
