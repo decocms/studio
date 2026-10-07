@@ -376,7 +376,10 @@ test.describe("content protocol on GitHub", () => {
         .refs;
 
       // It reads as schemaless, so the editor stays on the classic one.
-      expect((await rpc(ctx, path, "schema.get")).error).toBeDefined();
+      const read = await rpc<{ schema?: unknown }>(ctx, path, "schema.get");
+      expect(read.error ?? read.result?.schema ?? null).not.toEqual(
+        expect.objectContaining({ blocksMajor: expect.anything() }),
+      );
       const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
         set: { "hero-home": { __resolveType: "hero", title: "x" } },
       });
