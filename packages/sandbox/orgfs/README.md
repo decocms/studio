@@ -193,4 +193,4 @@ Neither is a supported production mode, because Studio prompts still refer to
 - [Sandbox package](../README.md)
 - [Go daemon](../daemon-go/README.md)
 - [sandbox-env chart](../../../deploy/helm/sandbox-env/README.md)
-- [Studio architecture: org filesystem](../../../apps/docs/client/src/content/deco-studio/en/studio/architecture.mdx)
+- [Studio architecture: org filesystem](https://docs.decocms.com/studio/get-started/architecture)

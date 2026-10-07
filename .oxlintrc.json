@@ -13,7 +13,6 @@
     "./plugins/ban-git-provider-reachthrough.js",
     "./plugins/ensure-tailwind-design-system-tokens.js"
   ],
-  "ignorePatterns": ["apps/docs/*"],
   "rules": {
     "unicorn/no-useless-fallback-in-spread": "off",
     "no-unused-expressions": "off",
