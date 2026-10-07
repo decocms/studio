@@ -1,6 +1,5 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useMemo } from "react";
 import { useMCPReadResource, useUiResourceHtml } from "@/sdk";
 import type {
   McpUiDisplayMode,
@@ -119,18 +118,14 @@ function MCPAppFrame({
   // Logged-in user → hostContext.user, so an app can attribute edits / cursors.
   const { data: session } = authClient.useSession();
   const sessionUser = session?.user;
-  const user = useMemo(
-    () =>
-      sessionUser
-        ? {
-            id: sessionUser.id,
-            name: sessionUser.name,
-            email: sessionUser.email,
-            avatarUrl: sessionUser.image ?? undefined,
-          }
-        : undefined,
-    [sessionUser],
-  );
+  const user = sessionUser
+    ? {
+        id: sessionUser.id,
+        name: sessionUser.name,
+        email: sessionUser.email,
+        avatarUrl: sessionUser.image ?? undefined,
+      }
+    : undefined;
 
   const { height, isLoading, error, iframeRef } = useAppBridge({
     client,
