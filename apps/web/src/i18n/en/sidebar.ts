@@ -68,6 +68,7 @@ export const sidebar = {
     "More projects than fit here \u2014 keep typing to narrow",
   "sidebar.picker.verbTravel": "Open {name}",
   "sidebar.rail.ariaLabel": "Organizations",
+  "sidebar.rail.closeApp": "Close {name}",
   "sidebar.rail.currentOrganization": "current",
   "sidebar.rail.searchEmpty": "No organization matches that.",
   "sidebar.rail.searchMoreOrganizations": "Search organizations ({count} more)",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   appOpenKey,
+  dropRecentApp,
   pushAppOpen,
   pushRecentApp,
   type RecentApp,
@@ -51,6 +52,27 @@ describe("pushRecentApp", () => {
       [],
     );
     expect(list.map((it) => it.app)).toEqual(["e", "d", "c", "b"]);
+  });
+});
+
+describe("dropRecentApp", () => {
+  test("closes only that app in that project", () => {
+    const list = [
+      entry("hosting", "p1"),
+      entry("hosting", "p2"),
+      entry("assets", "p1"),
+    ];
+    expect(dropRecentApp(list, { app: "hosting", projectId: "p1" })).toEqual([
+      entry("hosting", "p2"),
+      entry("assets", "p1"),
+    ]);
+  });
+
+  test("closing an app that is not there changes nothing", () => {
+    const list = [entry("hosting", "p1")];
+    expect(dropRecentApp(list, { app: "assets", projectId: "p1" })).toEqual(
+      list,
+    );
   });
 });
 
