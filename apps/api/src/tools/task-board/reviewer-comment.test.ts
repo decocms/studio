@@ -17,16 +17,27 @@ describe("reviewerCommentGap", () => {
   });
 
   it("does not credit another run's comment", () => {
-    const comments = [{ threadId: "thrd_other", body: RECORD }];
+    const comments = [
+      { threadId: "thrd_other", audience: "internal" as const, body: RECORD },
+    ];
     expect(reviewerCommentGap(comments, THREAD)).toBe("missing");
     // ...nor a human's.
-    expect(reviewerCommentGap([{ threadId: null, body: RECORD }], THREAD)).toBe(
-      "missing",
-    );
+    expect(
+      reviewerCommentGap(
+        [{ threadId: null, audience: "human" as const, body: RECORD }],
+        THREAD,
+      ),
+    ).toBe("missing");
   });
 
   it("does not credit a progress note", () => {
-    const comments = [{ threadId: THREAD, body: "starting review" }];
+    const comments = [
+      {
+        threadId: THREAD,
+        audience: "internal" as const,
+        body: "starting review",
+      },
+    ];
     expect(reviewerCommentGap(comments, THREAD)).toBe("missing");
   });
 
@@ -35,7 +46,9 @@ describe("reviewerCommentGap", () => {
   // so prose alone is now a gap — the sentinel is how a backend-only change says
   // there was nothing to show.
   it("requires the visual change even from a code-only record", () => {
-    const comments = [{ threadId: THREAD, body: RECORD }];
+    const comments = [
+      { threadId: THREAD, audience: "internal" as const, body: RECORD },
+    ];
     expect(reviewerCommentGap(comments, THREAD)).toBe("no_screenshots");
   });
 
@@ -48,26 +61,50 @@ describe("reviewerCommentGap", () => {
     ]) {
       expect(
         reviewerCommentGap(
-          [{ threadId: THREAD, body: `${RECORD} ${tail}` }],
+          [
+            {
+              threadId: THREAD,
+              audience: "human" as const,
+              body: `${RECORD} ${tail}`,
+            },
+          ],
           THREAD,
         ),
       ).toBe("no_screenshots");
     }
   });
 
-  it("accepts a record with an embedded screenshot", () => {
+  it("accepts screenshots in a comment for the person reviewing the task", () => {
     const comments = [
+      { threadId: THREAD, audience: "internal" as const, body: RECORD },
       {
         threadId: THREAD,
-        body: `${RECORD}\n| ![before](/api/o/fs/outputs/read?path=a) |`,
+        audience: "human" as const,
+        body: "Approved.\n| ![before](/api/o/fs/outputs/read?path=a) |",
       },
     ];
     expect(reviewerCommentGap(comments, THREAD)).toBeNull();
   });
 
+  it("does not count screenshots only the agents see", () => {
+    const comments = [
+      {
+        threadId: THREAD,
+        audience: "internal" as const,
+        body: `${RECORD}\n| ![before](/api/o/fs/outputs/read?path=a) |`,
+      },
+    ];
+    expect(reviewerCommentGap(comments, THREAD)).toBe("no_screenshots");
+  });
+
   it("accepts a record that declares the change free of visual surface", () => {
     const body = `${RECORD}\n${NO_VISUAL_SURFACE} — migration only.`;
-    expect(reviewerCommentGap([{ threadId: THREAD, body }], THREAD)).toBeNull();
+    expect(
+      reviewerCommentGap(
+        [{ threadId: THREAD, audience: "internal", body }],
+        THREAD,
+      ),
+    ).toBeNull();
   });
 });
 
@@ -75,21 +112,43 @@ describe("nextGapAfterMirror", () => {
   it("asks for screenshots when the mirrored notes are prose only", () => {
     // Not "missing": a one-word verdict mirrors under the progress-note floor,
     // and the mirrored text IS the reviewer's record however short.
-    expect(
-      nextGapAfterMirror(verdictCommentBody("reviewer", "approve", "LGTM")),
-    ).toBe("no_screenshots");
-    expect(
-      nextGapAfterMirror(verdictCommentBody("reviewer", "approve", RECORD)),
-    ).toBe("no_screenshots");
+    for (const notes of ["LGTM", RECORD]) {
+      expect(
+        nextGapAfterMirror(
+          [],
+          THREAD,
+          verdictCommentBody("reviewer", "approve", notes),
+        ),
+      ).toBe("no_screenshots");
+    }
   });
 
-  it("accepts a mirrored verdict that already embeds a screenshot", () => {
+  it("does not count a screenshot in the mirror, which is internal", () => {
     const body = verdictCommentBody(
       "reviewer",
       "approve",
       `${RECORD}\n![before](x)`,
     );
-    expect(nextGapAfterMirror(body)).toBeNull();
+    expect(nextGapAfterMirror([], THREAD, body)).toBe("no_screenshots");
+  });
+
+  it("accepts the sentinel in the mirror, or screenshots the run already showed", () => {
+    const sentinel = verdictCommentBody(
+      "reviewer",
+      "approve",
+      `${NO_VISUAL_SURFACE} — config only.`,
+    );
+    expect(nextGapAfterMirror([], THREAD, sentinel)).toBeNull();
+    const shown = [
+      { threadId: THREAD, audience: "human" as const, body: "![after](x)" },
+    ];
+    expect(
+      nextGapAfterMirror(
+        shown,
+        THREAD,
+        verdictCommentBody("reviewer", "approve", "LGTM"),
+      ),
+    ).toBeNull();
   });
 });
 

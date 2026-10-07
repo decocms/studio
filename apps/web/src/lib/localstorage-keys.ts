@@ -26,6 +26,8 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:draft:${locator}:${taskKey}`,
   /** One entry per locator holding that org's recently-viewed task PR cards. */
   taskBoardPrs: (locator: ProjectLocator) => `studio:task-board-prs:${locator}`,
+  /** Whether the task feed shows agent-to-agent handoff and run posts. */
+  taskFeedBehindTheScenes: () => `studio:task-feed:behind-the-scenes`,
   /** The assignee filter the org's task board opens on for this user. */
   taskBoardAssignee: (orgId: string, userId: string) =>
     `studio:task-board-assignee:${orgId}:${userId}`,

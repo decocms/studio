@@ -51,6 +51,7 @@ import {
   REVIEWER_LABEL,
   SUPER_AGENT_ASSIGNEE_ID,
   type ReviewerKind,
+  type TaskCommentAudience,
 } from "@decocms/shared/task-board";
 import { nudgeThreadTurn } from "./nudge-thread";
 
@@ -61,6 +62,12 @@ export type ReviewerCommentGap = "missing" | "no_screenshots";
  *  PR") rather than the record the card needs. */
 const MIN_RECORD_LENGTH = 80;
 
+type ReviewerComment = {
+  threadId: string | null;
+  audience: TaskCommentAudience;
+  body: string;
+};
+
 /**
  * What this reviewer's run failed to record on the card. Pure — unit-tested.
  *
@@ -69,34 +76,51 @@ const MIN_RECORD_LENGTH = 80;
  * Reviewer's comment from the Super Agent's.
  */
 export function reviewerCommentGap(
-  comments: readonly { threadId: string | null; body: string }[],
+  comments: readonly ReviewerComment[],
   threadId: string,
 ): ReviewerCommentGap | null {
-  const own = comments.filter(
-    (c) => c.threadId === threadId && c.body.trim().length >= MIN_RECORD_LENGTH,
-  );
-  if (own.length === 0) return "missing";
-  return own.some((c) => hasVisualEvidence(c.body)) ? null : "no_screenshots";
-}
-
-/** Does this one comment carry the visual evidence the reviewer owes? `![` opens a
- *  markdown image either side of `embedOrgOutputImages`. Pure — unit-tested. */
-function hasVisualEvidence(body: string): boolean {
-  return body.includes("![") || body.includes(NO_VISUAL_SURFACE);
+  const own = comments.filter((c) => c.threadId === threadId);
+  if (!own.some((c) => c.body.trim().length >= MIN_RECORD_LENGTH)) {
+    return "missing";
+  }
+  return showsVisualChange(own) ? null : "no_screenshots";
 }
 
 /**
- * What's still owed right after mirroring the verdict notes into a comment —
- * checked directly against that one comment, NOT through `reviewerCommentGap`.
- * The mirrored text IS the reviewer's definitive record regardless of length
- * (a one-word "LGTM" verdict is still a real verdict, not a progress note),
- * so re-applying `MIN_RECORD_LENGTH` here would keep flagging a short-but-real
- * approval as "missing" forever.
+ * Do these comments carry the visual evidence the reviewer owes? Screenshots
+ * count only where the person reviewing the task sees them, in a `human`
+ * comment: embedded in the internal record they reach no one. The sentinel
+ * counts anywhere. `![` opens a markdown image either side of
+ * `embedOrgOutputImages`.
+ */
+function showsVisualChange(comments: readonly ReviewerComment[]): boolean {
+  return comments.some(
+    (c) =>
+      c.body.includes(NO_VISUAL_SURFACE) ||
+      (c.audience === "human" && c.body.includes("![")),
+  );
+}
+
+/**
+ * What's still owed right after mirroring the verdict notes into an internal
+ * comment. Not through `reviewerCommentGap`: the mirrored text IS the
+ * reviewer's definitive record regardless of length (a one-word "LGTM" verdict
+ * is still a real verdict, not a progress note), so re-applying
+ * `MIN_RECORD_LENGTH` would keep flagging a short-but-real approval as
+ * "missing" forever.
  */
 export function nextGapAfterMirror(
+  comments: readonly ReviewerComment[],
+  threadId: string,
   mirroredBody: string,
 ): ReviewerCommentGap | null {
-  return hasVisualEvidence(mirroredBody) ? null : "no_screenshots";
+  const own = comments.filter((c) => c.threadId === threadId);
+  return showsVisualChange([
+    ...own,
+    { threadId, audience: "internal", body: mirroredBody },
+  ])
+    ? null
+    : "no_screenshots";
 }
 
 /** The mirrored comment's body: the reviewer's own verdict text, headed by which
@@ -113,15 +137,15 @@ export function verdictCommentBody(
 /** The follow-up turn, for the one gap a model has to close: the reviewer
  *  captured (or failed to capture) screenshots, and only it can put them on the
  *  card. */
-function followUpPrompt(kind: ReviewerKind): string {
+function followUpPrompt(): string {
   return [
-    `Your ${REVIEWER_LABEL[kind]} comment carries no screenshots and does not declare the change free of any visual surface. One of the two is required — a pass on a visual change nobody can SEE is not a pass.`,
+    `No comment of yours for the person reviewing this task (\`audience: "human"\`) carries screenshots, and none declares the change free of any visual surface. One of the two is required — a pass on a visual change nobody can SEE is not a pass, and screenshots in your internal record are not seen.`,
     "",
     "Do exactly ONE thing in this run and then stop:",
-    "- Post a comment with `TASK_BOARD_COMMENT_CREATE` carrying the before/after screenshots you captured, embedded as markdown images referencing their `/app/org/output/...` path, each pair in a two-column table.",
+    '- Post a comment with `TASK_BOARD_COMMENT_CREATE` and `audience: "human"` carrying the before/after screenshots you captured, embedded as markdown images referencing their `/app/org/output/...` path, each pair in a two-column table. The person reviewing the task reads it: a short caption per pair, no code.',
     "- If the change genuinely has none, or you could not capture it (no deploy preview, the page would not render), write the exact words `" +
       NO_VISUAL_SURFACE +
-      "` in the comment instead, followed by one sentence naming why. That literal is what the check looks for — no paraphrase and no translation of it counts.",
+      "` in a comment with the default audience instead, followed by one sentence naming why. That literal is what the check looks for — no paraphrase and no translation of it counts.",
     "- Do NOT re-run the review, do NOT call `TASK_BOARD_REVIEW_DECISION` again (your verdict is already recorded), and do NOT change any code.",
     "- If you have already posted such a comment, do nothing and say so.",
   ].join("\n");
@@ -161,6 +185,8 @@ export async function ensureReviewerCommented(
       // to THIS reviewer's run.
       authorId: SUPER_AGENT_ASSIGNEE_ID,
       threadId,
+      // The reviewer's technical notes; a person reads its human-facing comment.
+      audience: "internal",
       body,
     });
     console.warn(
@@ -168,7 +194,7 @@ export async function ensureReviewerCommented(
         `mirrored its verdict notes`,
     );
     // A mirrored verdict is a record, but it is not visual evidence.
-    gap = nextGapAfterMirror(body);
+    gap = nextGapAfterMirror(comments, threadId, body);
     if (!gap) return;
   }
 
@@ -184,7 +210,7 @@ export async function ensureReviewerCommented(
   );
   await nudgeThreadTurn(ctx, item, thread, {
     messageId: `review-comment-${threadId}`,
-    prompt: followUpPrompt(kind),
+    prompt: followUpPrompt(),
     // The fence: one follow-up per reviewer run, however many times a decision
     // is recorded (a reviewer that doesn't recognise the tool result as
     // terminal calls it twice).

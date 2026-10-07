@@ -10,6 +10,7 @@ import * as migration230projectsidebar from "./230-project-sidebar";
 import * as migration231jirachatagent from "./231-jira-chat-agent";
 import * as migration232taskboardpromptskills from "./232-task-board-prompt-skills";
 import * as migration233removejirachatagent from "./233-remove-jira-chat-agent";
+import * as migration234taskboardcommentaudience from "./234-task-board-comment-audience";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -504,6 +505,7 @@ const migrations: Record<string, Migration> = {
   "231-jira-chat-agent": migration231jirachatagent,
   "232-task-board-prompt-skills": migration232taskboardpromptskills,
   "233-remove-jira-chat-agent": migration233removejirachatagent,
+  "234-task-board-comment-audience": migration234taskboardcommentaudience,
 };
 
 export default migrations;
