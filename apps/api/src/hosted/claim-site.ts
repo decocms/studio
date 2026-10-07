@@ -10,6 +10,8 @@
  * access to it first. Neither rule ever takes a slug from another org.
  */
 
+import { type Kysely, sql } from "kysely";
+import type { Database } from "@/storage/types";
 import type { OrgSiteStoragePort } from "@/storage/ports";
 import { OrgSiteConflictError } from "@/storage/org-sites";
 import { getDecoSupabaseConfig, supabaseGet } from "@/deco-legacy/supabase";
@@ -74,9 +76,19 @@ export async function claimSiteSlug(
  * The claim made when a project is created or imported: its `siteSlug`, if it
  * has a valid one. Best-effort — logs and answers null instead of failing the
  * project's creation.
+ *
+ * Like the backfill's `ambiguous` rule, an unowned slug that a project of
+ * another org already names is not claimed (that org may hold assets under
+ * it from before claims existed): it is reported as a conflict with that org.
  */
 export async function claimProjectSite(
-  deps: SiteClaimDeps,
+  deps: SiteClaimDeps & {
+    /** The id of another org with a project naming `slug`, or null. */
+    otherOrgNamingSlug: (
+      slug: string,
+      organizationId: string,
+    ) => Promise<string | null>;
+  },
   input: {
     organizationId: string;
     projectId: string;
@@ -87,12 +99,18 @@ export async function claimProjectSite(
   const slug = projectSite(input.metadata);
   if (!slug) return null;
   try {
-    const outcome = await claimSiteSlug(deps, {
-      slug,
-      organizationId: input.organizationId,
-      by: input.by,
-      source: "project-create",
-    });
+    const owner = await deps.orgSites.getBySlug(slug);
+    const other = owner
+      ? null
+      : await deps.otherOrgNamingSlug(slug, input.organizationId);
+    const outcome: SiteClaimOutcome = other
+      ? { status: "conflict", slug, owner: other }
+      : await claimSiteSlug(deps, {
+          slug,
+          organizationId: input.organizationId,
+          by: input.by,
+          source: "project-create",
+        });
     if (outcome.status === "conflict") {
       console.warn("hosted: project site is owned elsewhere; not claimed", {
         organizationId: input.organizationId,
@@ -116,17 +134,69 @@ export async function claimProjectSite(
 /**
  * Whether deco.cx's admin has a site named `slug`. False on a deployment with
  * no deco.cx Supabase (self-host: there is no deco.cx site to protect). Throws
- * when the lookup fails, so a claim fails closed.
+ * when the lookup fails or takes longer than `timeoutMs`, so a claim fails
+ * closed (and project creation is never held up by deco.cx).
  */
-export async function decoSiteExists(slug: string): Promise<boolean> {
+export async function decoSiteExists(
+  slug: string,
+  timeoutMs = DECO_SITE_LOOKUP_TIMEOUT_MS,
+): Promise<boolean> {
   const config = getDecoSupabaseConfig();
   if (!config) return false;
-  const sites = await supabaseGet<{ name: string }>(
-    config.supabaseUrl,
-    config.serviceKey,
-    `sites?name=eq.${encodeURIComponent(slug)}&select=name&limit=1`,
-  );
-  return sites.length > 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("deco.cx site lookup timed out")),
+      timeoutMs,
+    );
+  });
+  try {
+    const sites = await Promise.race([
+      supabaseGet<{ name: string }>(
+        config.supabaseUrl,
+        config.serviceKey,
+        `sites?name=eq.${encodeURIComponent(slug)}&select=name&limit=1`,
+      ),
+      timeout,
+    ]);
+    return sites.length > 0;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const DECO_SITE_LOOKUP_TIMEOUT_MS = 3_000;
+
+/**
+ * `otherOrgNamingSlug` over the `connections` table: the id of an org other
+ * than `organizationId` with a project (VIRTUAL connection) whose
+ * `metadata.siteSlug` is `slug`. `metadata` is JSON in a text column, so a
+ * LIKE narrows the rows and the match is made on the parsed value.
+ */
+export function otherOrgNamingSlugFromDb(db: Kysely<Database>) {
+  return async (slug: string, organizationId: string) => {
+    const pattern = `%${slug.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    const rows = await db
+      .selectFrom("connections")
+      .select(["organization_id", "metadata"])
+      .where("connection_type", "=", "VIRTUAL")
+      .where("organization_id", "<>", organizationId)
+      .where(sql<string>`metadata::text`, "like", pattern)
+      .execute();
+    for (const row of rows) {
+      let metadata: Record<string, unknown> | null = null;
+      try {
+        metadata =
+          typeof row.metadata === "string"
+            ? (JSON.parse(row.metadata) as Record<string, unknown>)
+            : (row.metadata as Record<string, unknown> | null);
+      } catch {
+        continue;
+      }
+      if (projectSite(metadata) === slug) return row.organization_id;
+    }
+    return null;
+  };
 }
 
 /** A project that names a site, for the backfill. */

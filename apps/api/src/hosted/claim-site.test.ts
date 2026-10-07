@@ -127,11 +127,16 @@ describe("claimSiteSlug", () => {
 });
 
 describe("claimProjectSite", () => {
+  const noOtherOrg = async () => null;
   const project = { organizationId: "org-a", projectId: "p1", by: "u1" };
 
   it("claims the project's siteSlug", async () => {
     const sites = memorySites();
-    const deps = { orgSites: sites.orgSites, isDecoSite: noDecoSites };
+    const deps = {
+      orgSites: sites.orgSites,
+      isDecoSite: noDecoSites,
+      otherOrgNamingSlug: noOtherOrg,
+    };
     expect(
       await claimProjectSite(deps, {
         ...project,
@@ -143,11 +148,51 @@ describe("claimProjectSite", () => {
 
   it("skips a project with no valid siteSlug", async () => {
     const sites = memorySites();
-    const deps = { orgSites: sites.orgSites, isDecoSite: noDecoSites };
+    const deps = {
+      orgSites: sites.orgSites,
+      isDecoSite: noDecoSites,
+      otherOrgNamingSlug: noOtherOrg,
+    };
     for (const metadata of [null, {}, { siteSlug: "Not A Slug" }]) {
       expect(await claimProjectSite(deps, { ...project, metadata })).toBe(null);
     }
     expect(sites.claims).toEqual([]);
+  });
+
+  it("doesn't take an unowned slug another org's project already names", async () => {
+    const sites = memorySites();
+    const asked: [string, string][] = [];
+    const deps = {
+      orgSites: sites.orgSites,
+      isDecoSite: noDecoSites,
+      otherOrgNamingSlug: async (slug: string, organizationId: string) => {
+        asked.push([slug, organizationId]);
+        return "org-b";
+      },
+    };
+    expect(
+      await claimProjectSite(deps, {
+        ...project,
+        metadata: { siteSlug: "shop" },
+      }),
+    ).toEqual({ status: "conflict", slug: "shop", owner: "org-b" });
+    expect(asked).toEqual([["shop", "org-a"]]);
+    expect(sites.claims).toEqual([]);
+  });
+
+  it("an owned slug is answered by its owner, not other orgs' projects", async () => {
+    const sites = memorySites({ shop: "org-a" });
+    const deps = {
+      orgSites: sites.orgSites,
+      isDecoSite: noDecoSites,
+      otherOrgNamingSlug: async () => "org-b",
+    };
+    expect(
+      await claimProjectSite(deps, {
+        ...project,
+        metadata: { siteSlug: "shop" },
+      }),
+    ).toEqual({ status: "already-owned", slug: "shop" });
   });
 
   it("never fails the project's creation", async () => {
@@ -157,6 +202,7 @@ describe("claimProjectSite", () => {
       isDecoSite: async () => {
         throw new Error("supabase down");
       },
+      otherOrgNamingSlug: noOtherOrg,
     };
     expect(
       await claimProjectSite(deps, {
