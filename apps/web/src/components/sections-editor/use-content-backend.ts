@@ -8,6 +8,10 @@ import {
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
 import { useProjectContext } from "@/sdk";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
+import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
@@ -48,6 +52,19 @@ function githubContentEndpoint(params: {
     `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/rpc`,
     window.location.origin,
   ).href;
+}
+
+/**
+ * A sandbox daemon's content protocol, through Studio's sandbox proxy (the
+ * same session auth and claim as the sandbox's other routes).
+ */
+function sandboxContentEndpoint(params: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  threadId: string | null;
+}): string {
+  return new URL(buildSandboxUrl(params, "rpc"), window.location.origin).href;
 }
 
 /**
@@ -95,6 +112,12 @@ export function useContentBackend(
   const { connection } = useDecoServeConnection(virtualMcpId);
   const { url: tunnel } = useLocalPreviewUrl(virtualMcpId);
   const { runtime } = useSessionRuntime(virtualMcpId);
+  const threadId = useOptionalChatTask()?.taskId ?? null;
+  // The daemon answers once the working tree is there; before that the
+  // sandbox is booting and the editor keeps today's (legacy) boot UX.
+  const workingTreeReady = isWorkingTreeReadyPhase(
+    useSandboxEvents().lifecycle.phase,
+  );
 
   const githubEnabled =
     !!org.slug &&
@@ -130,6 +153,44 @@ export function useContentBackend(
     retry: 2,
     // A failed probe reads as v7 (legacy) and is retried quietly. A site
     // already known to be v8 keeps its data through a failed refetch.
+    refetchInterval: (query) =>
+      query.state.status === "error" ? PROBE_RETRY_MS : false,
+  });
+
+  const sandboxEnabled =
+    !!org.slug &&
+    !!flagEnabled &&
+    !connection &&
+    !tunnel &&
+    runtime === "sandbox" &&
+    workingTreeReady &&
+    !!virtualMcpId &&
+    !!branch;
+  const sandbox = useQuery({
+    queryKey: KEYS.contentBackend(
+      org.slug,
+      virtualMcpId ?? "",
+      branch ?? "",
+      "sandbox",
+      threadId ?? "",
+    ),
+    queryFn: async (): Promise<Probe | null> => {
+      const client = createContentClient({
+        endpoint: sandboxContentEndpoint({
+          orgSlug: org.slug,
+          virtualMcpId: virtualMcpId!,
+          branch: branch!,
+          threadId,
+        }),
+      });
+      const result = await probe(client);
+      // As on GitHub: only a `"blocksMajor": 8` schema is a v8 site. A daemon
+      // without the protocol (an older image) fails the probe: legacy.
+      return result.v8Schema ? result : null;
+    },
+    enabled: sandboxEnabled,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: 2,
     refetchInterval: (query) =>
       query.state.status === "error" ? PROBE_RETRY_MS : false,
   });
@@ -176,12 +237,24 @@ export function useContentBackend(
         : github.isError
           ? "error"
           : "loading",
+    sandboxSite: !workingTreeReady
+      ? "unavailable"
+      : sandbox.data
+        ? "v8"
+        : sandbox.data === null
+          ? "v7"
+          : sandbox.isError
+            ? "error"
+            : "loading",
   });
 
   if (decision === "pending") return { kind: "pending" };
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
     return toBackend("github", github.data!, "");
+  }
+  if (decision === "protocol-sandbox") {
+    return toBackend("sandbox", sandbox.data!, ":sandbox");
   }
   if (local.data) {
     return toBackend("local", local.data, `:serve:${connection!.endpoint}`);

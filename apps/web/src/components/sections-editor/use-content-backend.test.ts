@@ -78,3 +78,29 @@ describe("v7/v8 detection over the GitHub backend", () => {
     expect(await decideWithFlagOn(null)).toBe("legacy");
   });
 });
+
+describe("v7/v8 detection over a sandbox's daemon", () => {
+  async function decide(schema: unknown) {
+    const probed = await probe(githubServing(schema));
+    return selectContentBackend({
+      hasProject: true,
+      flagEnabled: true,
+      hasServeConnection: false,
+      hasLocalTunnel: false,
+      runtime: "sandbox",
+      githubSite: "loading",
+      sandboxSite: probed.v8Schema ? "v8" : "v7",
+    });
+  }
+
+  test('a working tree whose schema says "blocksMajor": 8 is a v8 site', async () => {
+    expect(await decide({ major: 1, blocksMajor: 8, ...deco1 })).toBe(
+      "protocol-sandbox",
+    );
+  });
+
+  test("a v7 working tree (or none) stays legacy", async () => {
+    expect(await decide({ major: 1, ...deco1 })).toBe("legacy");
+    expect(await decide(null)).toBe("legacy");
+  });
+});

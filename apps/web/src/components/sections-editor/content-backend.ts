@@ -5,9 +5,9 @@
  *   working tree, or the Fast Preview decofile API — everything that existed
  *   before next-major Blocks.
  * - `protocol`: the Blocks content protocol, which needs only the committed
- *   schema and `.deco/blocks` and never runs the site's code. Served either by
- *   a `deco serve` on the editor's machine (`local`) or by Studio's GitHub
- *   backend (`github`).
+ *   schema and `.deco/blocks` and never runs the site's code. Served by a
+ *   `deco serve` on the editor's machine (`local`), by Studio's GitHub backend
+ *   (`github`), or by a sandbox's daemon over its working tree (`sandbox`).
  *
  * Pure: the selection and the poll merge are unit-tested without mocks.
  */
@@ -15,7 +15,7 @@
 import type { ContentClient, DescribeResult } from "@decocms/blocks/protocol";
 import { isLoopbackEndpoint, type ServeProblem } from "./deco-serve-connection";
 
-export type ContentSource = "github" | "local";
+export type ContentSource = "github" | "local" | "sandbox";
 
 export interface ProtocolBackend {
   kind: "protocol";
@@ -110,7 +110,8 @@ export type BackendDecision =
   | "pending"
   | "legacy"
   | "protocol-local"
-  | "protocol-github";
+  | "protocol-github"
+  | "protocol-sandbox";
 
 /**
  * Which backend a project's editor uses. Outside a project (forms with no
@@ -122,9 +123,10 @@ export type BackendDecision =
  * GitHub backend only when the branch's committed schema says
  * `"blocksMajor": 8` ({@link isV8Schema}). Everything else is v7 and legacy,
  * as before next-major Blocks — including a failed probe, which is retried in
- * the background (a site already known to be v8 keeps that answer). Sandbox
- * sessions stay legacy: their pod's working tree shares the branch, and
- * commits from here would make the two diverge.
+ * the background (a site already known to be v8 keeps that answer). A sandbox
+ * session, behind the same flag, uses its daemon's content protocol (the
+ * working tree, saved like a `deco serve`'s) once the working tree is there
+ * and its schema says `"blocksMajor": 8`; before that, and for v7, legacy.
  */
 export function selectContentBackend(input: {
   /** Whether there is a project to probe (a virtual MCP id). */
@@ -136,10 +138,26 @@ export function selectContentBackend(input: {
   runtime: "cms" | "sandbox";
   /** The GitHub probe: is the branch's committed schema a v8 one? */
   githubSite: "v8" | "v7" | "loading" | "error";
+  /**
+   * The sandbox's daemon probe: is the working tree's schema a v8 one?
+   * `unavailable` until the working tree is there (the sandbox is booting).
+   */
+  sandboxSite?: "v8" | "v7" | "loading" | "error" | "unavailable";
 }): BackendDecision {
   if (!input.hasProject) return "legacy";
   if (input.hasServeConnection) return "protocol-local";
-  if (input.hasLocalTunnel || input.runtime !== "cms") return "legacy";
+  if (input.hasLocalTunnel) return "legacy";
+  if (input.runtime === "sandbox") {
+    const site = input.sandboxSite ?? "unavailable";
+    // Booting: today's sandbox UX, with no wait on the flag.
+    // OPEN: a v8 site opened while its sandbox boots shows legacy until the
+    // working tree lands, then switches (smallest option; no new wait state).
+    if (site === "unavailable") return "legacy";
+    if (input.flagEnabled === undefined) return "pending";
+    if (!input.flagEnabled) return "legacy";
+    if (site === "loading") return "pending";
+    return site === "v8" ? "protocol-sandbox" : "legacy";
+  }
   if (input.flagEnabled === undefined) return "pending";
   if (!input.flagEnabled) return "legacy";
   if (input.githubSite === "loading") return "pending";
