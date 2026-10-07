@@ -429,6 +429,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       port: opts.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts.tenant,
       cloneOnly: opts.cloneOnly === true,
+      repoSetupScript: opts.repoSetupScript === true,
     });
   }
 

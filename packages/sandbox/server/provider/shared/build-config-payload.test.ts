@@ -2,6 +2,24 @@ import { describe, expect, it } from "bun:test";
 import { buildConfigPayload } from "./build-config-payload";
 
 describe("buildConfigPayload", () => {
+  // `false` has to travel: a warm-pool pod inherits the previous claim's config.
+  it("sends repoSetupScript both ways, and omits it when unset", () => {
+    const base = {
+      runtime: "node",
+      packageManager: null,
+      repo: null,
+      tenant: { orgId: "org", userId: "user" },
+    } as const;
+
+    expect(
+      buildConfigPayload({ ...base, repoSetupScript: true })?.repoSetupScript,
+    ).toBe(true);
+    expect(
+      buildConfigPayload({ ...base, repoSetupScript: false })?.repoSetupScript,
+    ).toBe(false);
+    expect(buildConfigPayload(base)).not.toHaveProperty("repoSetupScript");
+  });
+
   it("maps tenant identity to operator", () => {
     const payload = buildConfigPayload({
       runtime: "node",

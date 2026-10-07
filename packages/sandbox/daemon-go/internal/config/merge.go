@@ -12,17 +12,22 @@ func DeepMerge(current *TenantConfig, patch *Patch) *TenantConfig {
 	if patch.CloneOnly != nil {
 		cloneOnly = patch.CloneOnly
 	}
+	repoSetupScript := base.RepoSetupScript
+	if patch.RepoSetupScript != nil {
+		repoSetupScript = patch.RepoSetupScript
+	}
 	orgId := base.OrgId
 	if patch.OrgId != nil {
 		orgId = *patch.OrgId
 	}
 	out := &TenantConfig{
-		Git:         mergeGit(base.Git, patch.Git),
-		Operator:    mergeOperator(base.Operator, patch.Operator),
-		CloneOnly:   cloneOnly,
-		Application: mergeApplication(base.Application, patch.Application),
-		Env:         mergeEnv(base.Env, patch),
-		OrgId:       orgId,
+		Git:             mergeGit(base.Git, patch.Git),
+		Operator:        mergeOperator(base.Operator, patch.Operator),
+		CloneOnly:       cloneOnly,
+		RepoSetupScript: repoSetupScript,
+		Application:     mergeApplication(base.Application, patch.Application),
+		Env:             mergeEnv(base.Env, patch),
+		OrgId:           orgId,
 	}
 	return out
 }

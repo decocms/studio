@@ -889,6 +889,11 @@ export const settings = {
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
+  "settings.sandbox.title": "Sandbox",
+  "settings.sandbox.setupScriptTitle":
+    "Rodar o script de setup do reposit\u00f3rio",
+  "settings.sandbox.setupScriptDescription":
+    "Antes de instalar as depend\u00eancias, o sandbox roda o decocms.setup.sh da raiz do reposit\u00f3rio, com as vari\u00e1veis de ambiente do projeto no escopo. Para reposit\u00f3rios que precisam escrever um arquivo de credencial \u2014 o .npmrc de um registry privado \u2014 antes de qualquer gerenciador de pacotes conseguir resolver. O script roda em todo boot, ent\u00e3o precisa ser seguro repetir.",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

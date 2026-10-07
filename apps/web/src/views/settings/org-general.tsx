@@ -3,6 +3,7 @@ import { OrganizationForm } from "@/components/settings/organization-form";
 import {
   BlocksEditorSettings,
   CodeAgentsSettings,
+  SandboxSettings,
   VoiceModeSettings,
 } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
@@ -33,6 +34,7 @@ export function OrgGeneralPage() {
               <>
                 <OrganizationForm />
                 <CodeAgentsSettings />
+                <SandboxSettings />
                 <VoiceModeSettings />
               </>
             )}

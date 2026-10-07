@@ -174,6 +174,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated Deco Score look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
+  sandbox_setup_script_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run a repository's own decocms.setup.sh after the checkout and before the dependency install, with the sandbox's environment variables in scope. For repos that must write a credential file — a private registry's .npmrc — before any package manager can resolve.",
+    ),
   reviewer_enabled: z
     .boolean()
     .optional()

@@ -77,9 +77,14 @@ type TenantConfig struct {
 	// the lockfile so a tenant who configured nothing still gets a dev server,
 	// and that autodetect is what silently reinstated the install this flag
 	// exists to skip.
-	CloneOnly   *bool             `json:"cloneOnly,omitempty"`
-	Application *Application      `json:"application,omitempty"`
-	Env         map[string]string `json:"env,omitempty"`
+	CloneOnly *bool `json:"cloneOnly,omitempty"`
+	// RepoSetupScript allows the repo's own pre-install hook to run (see
+	// setup.RepoSetupScript). Off unless Studio says otherwise: it executes
+	// repo-controlled shell on the boot path, so it is gated by an organization
+	// flag rather than by anything the repo or its env can set for itself.
+	RepoSetupScript *bool             `json:"repoSetupScript,omitempty"`
+	Application     *Application      `json:"application,omitempty"`
+	Env             map[string]string `json:"env,omitempty"`
 	// Owning organization, stamped by Studio. Nothing in the boot path reads it;
 	// it exists so artifacts that outlive the pod can record whose they are.
 	//
@@ -95,14 +100,20 @@ func (c *TenantConfig) IsCloneOnly() bool {
 	return c != nil && c.CloneOnly != nil && *c.CloneOnly
 }
 
+// IsRepoSetupScriptEnabled reports whether the repo's pre-install hook may run.
+func (c *TenantConfig) IsRepoSetupScriptEnabled() bool {
+	return c != nil && c.RepoSetupScript != nil && *c.RepoSetupScript
+}
+
 // Patch mirrors ConfigPatch: env values may be null (per-key delete).
 type Patch struct {
-	Git         *GitConfig
-	Operator    *Operator
-	CloneOnly   *bool
-	Application *Application
-	Env         map[string]*string
-	HasEnv      bool
+	Git             *GitConfig
+	Operator        *Operator
+	CloneOnly       *bool
+	RepoSetupScript *bool
+	Application     *Application
+	Env             map[string]*string
+	HasEnv          bool
 	// Pointer, not string: DeepMerge rebuilds TenantConfig field by field, so a
 	// field absent from BOTH the patch and the merge is silently dropped on every
 	// apply. Nil here means "not in this patch, keep current".
@@ -128,6 +139,11 @@ func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
 	}
 	if v, ok := raw["cloneOnly"]; ok && !isNull(v) {
 		if err := json.Unmarshal(v, &p.CloneOnly); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := raw["repoSetupScript"]; ok && !isNull(v) {
+		if err := json.Unmarshal(v, &p.RepoSetupScript); err != nil {
 			return nil, err
 		}
 	}

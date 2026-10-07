@@ -1604,7 +1604,10 @@ export class AgentSandboxProvider {
       //
       // Dropped on a bound tenant-pool pod: its clone step would stop the warm dev task.
       ...(opts
-        ? { cloneOnly: opts.cloneOnly === true && !tenantPoolPodBound }
+        ? {
+            cloneOnly: opts.cloneOnly === true && !tenantPoolPodBound,
+            repoSetupScript: opts.repoSetupScript === true,
+          }
         : {}),
     });
   }

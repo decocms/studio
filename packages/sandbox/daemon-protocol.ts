@@ -91,6 +91,14 @@ export interface TenantConfig {
    * nothing still gets a dev server.
    */
   readonly cloneOnly?: boolean;
+  /**
+   * Allow the repo's own `decocms.setup.sh` to run after the checkout and
+   * before the install. Off unless set: it executes repo-controlled shell on
+   * the boot path, so Studio derives it from an organization flag. Deliberately
+   * not read from `env` — that bag is tenant-owned, and a project could then
+   * grant itself the hook.
+   */
+  readonly repoSetupScript?: boolean;
   readonly application?: Application;
   readonly env?: Readonly<Record<string, string>>;
   /**

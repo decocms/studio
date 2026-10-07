@@ -860,6 +860,10 @@ export const settings = {
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
+  "settings.sandbox.title": "Sandbox",
+  "settings.sandbox.setupScriptTitle": "Run the repository's setup script",
+  "settings.sandbox.setupScriptDescription":
+    "Before installing dependencies, a sandbox runs decocms.setup.sh from the repository root, with the project's environment variables in scope. For repositories that must write a credential file \u2014 a private registry's .npmrc \u2014 before any package manager can resolve. The script runs on every boot, so it should be safe to repeat.",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",
