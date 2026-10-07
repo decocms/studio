@@ -26,6 +26,7 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
@@ -152,6 +153,7 @@ export function BlogContext({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   /** Every button here spends org credits, so none of them work without a provider. */
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const hideDefaultBlocks = useHideDefaultBlogBlocks();
 
   const [brand, setBrand] = useAutosave(block ?? EMPTY_BRAND, (next) => {
     save.mutate({ blockKey: BRAND_BLOCK_KEY, data: next });
@@ -172,7 +174,9 @@ export function BlogContext({
     setFormatsData({ ...formatsData, formats: rules });
 
   /** The sections a format's brief may cite, and the `@` picker's contents. */
-  const sections = mentionableSections(meta);
+  const sections = mentionableSections(meta, {
+    hideDefaults: hideDefaultBlocks,
+  });
   const sectionNames = sections.map((s) => s.name);
   const mentions: MarkdownMentions = {
     items: sections,

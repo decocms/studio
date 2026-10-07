@@ -160,6 +160,28 @@ describe("discoverBlogBlockTypes", () => {
     expect(out.map((b) => b.title)).toEqual(["Alpha", "Zeta"]);
   });
 
+  test("hideDefaults drops the app built-ins and keeps the site's own", () => {
+    const out = discoverBlogBlockTypes(
+      metaWith([
+        "blog/sections/blocks/Paragraph.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+        "blog/sections/blocks/Quote.tsx",
+      ]),
+      { hideDefaults: true },
+    );
+    expect(out.map((b) => b.resolveType)).toEqual([
+      "site/sections/Blog/Post/Paragraph.tsx",
+    ]);
+  });
+
+  test("hideDefaults can leave no block eligible at all", () => {
+    expect(
+      discoverBlogBlockTypes(metaWith(["blog/sections/blocks/Paragraph.tsx"]), {
+        hideDefaults: true,
+      }),
+    ).toEqual([]);
+  });
+
   test("tags source as 'app' for blog/sections/blocks and 'site' otherwise", () => {
     const out = discoverBlogBlockTypes(
       metaWith([
@@ -1806,6 +1828,18 @@ describe("sectionResolveTypes", () => {
     expect(sectionResolveTypes(metaWith(["site/sections/Header.tsx"]))).toEqual(
       {},
     );
+  });
+
+  test("hideDefaults keeps generation off the app built-ins", () => {
+    expect(
+      sectionResolveTypes(
+        metaWith([
+          "blog/sections/blocks/Heading.tsx",
+          "site/sections/Blog/Post/Paragraph.tsx",
+        ]),
+        { hideDefaults: true },
+      ),
+    ).toEqual({ Paragraph: "site/sections/Blog/Post/Paragraph.tsx" });
   });
 });
 

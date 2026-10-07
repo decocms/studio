@@ -41,6 +41,7 @@ import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useLocalStorage } from "@/hooks/use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -171,6 +172,7 @@ export function PostsWorkspace({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const hideDefaults = useHideDefaultBlogBlocks();
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -352,7 +354,10 @@ export function PostsWorkspace({
    */
   const importContent = () => {
     const parsed = parseImportedContent(importText);
-    const blocks = sectionsToBlocks(parsed.sections, sectionResolveTypes(meta));
+    const blocks = sectionsToBlocks(
+      parsed.sections,
+      sectionResolveTypes(meta, { hideDefaults }),
+    );
     if (blocks.length === 0 && !parsed.title.trim()) {
       toast.error(t("sandbox.postBoard.importEmpty"));
       return;

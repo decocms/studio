@@ -977,6 +977,12 @@ export interface BlogBlockType {
   source: BlogBlockSource;
 }
 
+/** How a caller narrows the blocks a post may be written with. */
+export interface BlogBlockDiscoveryOptions {
+  /** Drop the `deco-cms/blog` built-ins — the `hide_default_blog_blocks` flag. */
+  hideDefaults?: boolean;
+}
+
 /**
  * Defaults for the well-known blog block component names. Used to give
  * the inserter pretty labels, descriptions and icons.
@@ -1152,7 +1158,10 @@ function humanizeComponentName(name: string): string {
  *
  * Precedence depends on the block's source — see KNOWN_BLOG_BLOCK_CATALOG.
  */
-export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
+export function discoverBlogBlockTypes(
+  meta: LiveMeta,
+  { hideDefaults = false }: BlogBlockDiscoveryOptions = {},
+): BlogBlockType[] {
   const seen = new Set<string>();
   const out: BlogBlockType[] = [];
   const groups = meta.manifest?.blocks ?? {};
@@ -1161,6 +1170,7 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
       if (!isBlogPostBlockResolveType(resolveType) || seen.has(resolveType)) {
         continue;
       }
+      if (hideDefaults && blogBlockSource(resolveType) === "app") continue;
       seen.add(resolveType);
       const md = resolveBlockSchemaMetadata(resolveType, meta);
       const name = blockComponentName(resolveType);
@@ -1553,9 +1563,12 @@ export interface MentionableSection {
  * component name, those two are indistinguishable once written. Collapsing them
  * here keeps the picker from listing the same `@Name` twice.
  */
-export function mentionableSections(meta: LiveMeta): MentionableSection[] {
+export function mentionableSections(
+  meta: LiveMeta,
+  options?: BlogBlockDiscoveryOptions,
+): MentionableSection[] {
   const byName = new Map<string, MentionableSection>();
-  for (const block of discoverBlogBlockTypes(meta)) {
+  for (const block of discoverBlogBlockTypes(meta, options)) {
     const name = blockComponentName(block.resolveType);
     if (byName.has(name)) continue;
     byName.set(name, {
@@ -1756,9 +1769,12 @@ export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
  * `site/sections/Blog/Post/Heading.tsx`. Keeping the mapping here means the
  * model never sees a resolveType and so can never invent one.
  */
-export function sectionResolveTypes(meta: LiveMeta): Record<string, string> {
+export function sectionResolveTypes(
+  meta: LiveMeta,
+  options?: BlogBlockDiscoveryOptions,
+): Record<string, string> {
   const byName: Record<string, string> = {};
-  for (const block of discoverBlogBlockTypes(meta)) {
+  for (const block of discoverBlogBlockTypes(meta, options)) {
     const name = blockComponentName(block.resolveType);
     if (!(name in byName)) byName[name] = block.resolveType;
   }
