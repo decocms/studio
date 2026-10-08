@@ -14,8 +14,8 @@ import { type Kysely, sql } from "kysely";
  *   to. At most one slug per project (partial unique index). `ON DELETE SET
  *   NULL`, so deleting the project keeps the slug reserved for its org.
  * - `linked_at`: set when the slug is first used and never cleared. A used
- *   slug is never released, moved to another org, or linked to another project
- *   without a deployment admin. Every row that exists when this runs is
+ *   slug is never released or moved to another org; after its project is
+ *   deleted, only the same org may link it to another of its projects. Every row that exists when this runs is
  *   treated as used (`linked_at = created_at` when no project is found): each
  *   came from a deco.cx import or backfill, so it is a real public site that
  *   may already have site tokens out.
@@ -23,13 +23,11 @@ import { type Kysely, sql } from "kysely";
  *   `CASCADE`). Deleting an org leaves its slugs behind as tombstones — rows
  *   with no org that no one can claim — instead of freeing them for reuse.
  *
- * Backfill: each slug is linked to the single project in its org that resolves
- * to it, using the same rule as `resolveAgentSiteSlug`: first `metadata.siteSlug`;
- * only when no project has it there, a repo-backed project (a site, not a
- * chat-only agent) with no `metadata.siteSlug` whose title is the slug
- * (pre-`siteSlug` imports). If no project or more than one matches, the row
- * stays unlinked and is counted; nothing is guessed. Project rows are only
- * read, never written.
+ * Backfill: each slug is linked to the single project in its org whose
+ * `metadata.siteSlug` is exactly the slug. Nothing else is a match — not the
+ * project title, not a case- or whitespace-variant. If no project or more than
+ * one matches, the row stays unlinked and is counted; nothing is guessed.
+ * Project rows are only read, never written.
  *
  * Locking: Kysely runs pending migrations in one transaction, so every lock
  * taken here is held until commit while old pods keep serving. The plan is
@@ -48,30 +46,8 @@ const MIGRATION_ACTOR = "migration-235";
 /** Rows per set-based UPDATE when applying the plan. */
 const APPLY_BATCH = 1000;
 
-/** Mirrors `resolveAgentSiteSlug` — frozen here so the migration never drifts. */
-function normalize(value: unknown): string {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-/**
- * A project backed by a repository — a site, not a chat-only agent. Frozen
- * copy of `hasClonableSource` over the stored spellings (`repository` and its
- * database key `githubRepo`, including early `{ owner, name }` bindings).
- */
-function isRepoBacked(metadata: Record<string, unknown>): boolean {
-  for (const key of ["repository", "githubRepo"]) {
-    const binding = metadata[key];
-    if (!binding || typeof binding !== "object") continue;
-    const { url, owner, name } = binding as Record<string, unknown>;
-    if (typeof url === "string" && url.length > 0) return true;
-    if (typeof owner === "string" && owner && typeof name === "string" && name)
-      return true;
-  }
-  return false;
-}
-
 export interface OrgSiteBackfillPlan {
-  links: { slug: string; projectId: string; by: "metadata" | "title" }[];
+  links: { slug: string; projectId: string }[];
   none: number;
   ambiguous: { slug: string; projectIds: string[] }[];
   unparseableMetadata: number;
@@ -89,7 +65,7 @@ async function findOrgFkName(db: Kysely<unknown>): Promise<string | null> {
 
 /**
  * Decide, from reads only, which project each `org_sites` row links to: the
- * single project in its org resolving to the slug. Exported for the test.
+ * single project in its org whose `metadata.siteSlug` is exactly the slug. Exported for the test.
  */
 export async function planOrgSiteProjectLinks(
   db: Kysely<unknown>,
@@ -111,10 +87,9 @@ export async function planOrgSiteProjectLinks(
   const projects = await sql<{
     id: string;
     organization_id: string;
-    title: string | null;
     metadata: string | null;
   }>`
-    SELECT id, organization_id, title, metadata FROM connections
+    SELECT id, organization_id, metadata FROM connections
     WHERE connection_type = 'VIRTUAL'
       AND organization_id IN (
         SELECT organization_id FROM org_sites WHERE organization_id IS NOT NULL
@@ -122,54 +97,36 @@ export async function planOrgSiteProjectLinks(
     ORDER BY organization_id, id
   `.execute(db);
 
-  // `${org}\0${slug}` → project ids, split by where the slug comes from.
+  // `${org}\0${slug}` → ids of the projects whose `metadata.siteSlug` is it.
   const byMetadata = new Map<string, string[]>();
-  const byTitle = new Map<string, string[]>();
-  const add = (map: Map<string, string[]>, key: string, id: string) => {
-    const list = map.get(key) ?? [];
-    list.push(id);
-    map.set(key, list);
-  };
   for (const project of projects.rows) {
-    let parsed: Record<string, unknown> = {};
-    if (project.metadata) {
-      try {
-        const value: unknown = JSON.parse(project.metadata);
-        if (value && typeof value === "object") {
-          parsed = value as Record<string, unknown>;
-        }
-      } catch {
-        // A malformed row can't name a site, nor show it is repo-backed.
-        plan.unparseableMetadata++;
-        continue;
+    if (!project.metadata) continue;
+    let siteSlug: unknown;
+    try {
+      const value: unknown = JSON.parse(project.metadata);
+      if (value && typeof value === "object") {
+        siteSlug = (value as Record<string, unknown>).siteSlug;
       }
-    }
-    const stored = normalize(parsed.siteSlug);
-    if (stored) {
-      add(byMetadata, `${project.organization_id}\0${stored}`, project.id);
+    } catch {
+      // A malformed row can't name a site.
+      plan.unparseableMetadata++;
       continue;
     }
-    const fromTitle = normalize(project.title);
-    if (fromTitle && isRepoBacked(parsed)) {
-      add(byTitle, `${project.organization_id}\0${fromTitle}`, project.id);
-    }
+    if (typeof siteSlug !== "string" || !siteSlug) continue;
+    const key = `${project.organization_id}\0${siteSlug}`;
+    const list = byMetadata.get(key) ?? [];
+    list.push(project.id);
+    byMetadata.set(key, list);
   }
 
   for (const { slug, organization_id } of sites.rows) {
-    const key = `${organization_id}\0${slug}`;
-    const metaCandidates = byMetadata.get(key) ?? [];
-    const candidates =
-      metaCandidates.length > 0 ? metaCandidates : (byTitle.get(key) ?? []);
+    const candidates = byMetadata.get(`${organization_id}\0${slug}`) ?? [];
     if (candidates.length === 0) {
       plan.none++;
     } else if (candidates.length > 1) {
       plan.ambiguous.push({ slug, projectIds: candidates });
     } else {
-      plan.links.push({
-        slug,
-        projectId: candidates[0]!,
-        by: metaCandidates.length > 0 ? "metadata" : "title",
-      });
+      plan.links.push({ slug, projectId: candidates[0]! });
     }
   }
   return plan;
@@ -256,10 +213,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 
   await sql`SET LOCAL lock_timeout = DEFAULT`.execute(db);
 
-  const byMetadata = plan.links.filter((l) => l.by === "metadata").length;
   console.log(
     `[migration 235] org_sites: linked=${linked} ` +
-      `(planned metadata=${byMetadata}, title=${plan.links.length - byMetadata}, ` +
+      `(planned=${plan.links.length}, ` +
       `skipped_deleted_project=${plan.links.length - linked}) ` +
       `none=${plan.none} ambiguous=${plan.ambiguous.length} ` +
       `unlinked_marked_used=${Number(marked.numAffectedRows ?? 0n)} ` +

@@ -776,16 +776,15 @@ export interface OrgSiteStoragePort {
    * Make `slug` the site of `projectId`, once. Idempotent for the same pair;
    * throws OrgSiteLinkError when the slug isn't this org's (not_found,
    * reserved, not_owned), is another project's (linked_elsewhere), the
-   * project already has a different site (project_has_other_slug), or the
-   * slug was used and is unlinked now (relink_requires_admin — only a
-   * deployment admin passes `adminOverride`).
+   * project already has a different site (project_has_other_slug). A slug
+   * whose project was deleted stays the org's: the same org may link it to
+   * another of its projects; another org never can.
    */
   link(params: {
     slug: string;
     organizationId: string;
     projectId: string;
     by: string;
-    adminOverride?: boolean;
   }): Promise<OrgSite>;
   /** Every slug this org owns, slug-ascending. */
   listByOrg(organizationId: string): Promise<OrgSite[]>;
