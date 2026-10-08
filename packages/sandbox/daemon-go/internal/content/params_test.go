@@ -34,4 +34,14 @@ func TestValidateParams(t *testing.T) {
 	fail("blocks.list", `{"zz":1,"ifNoneMatch":5}`, `ifNoneMatch: Invalid input: expected string, received number; unknown parameter "zz"`)
 	fail("schema.get", `{"ifNoneMatch":null}`, "ifNoneMatch: Invalid input: expected string, received null")
 	ok("schema.get", `{"ifNoneMatch":"v"}`)
+	fail("blocks.apply", `{"set":[]}`, "set: Invalid input: expected record, received array")
+	fail("blocks.apply", `{"delete":[1,"a",null]}`, "delete.0: Invalid input: expected string, received number; delete.2: Invalid input: expected string, received null")
+	fail("blocks.apply", `{"ifMatch":{"a.b":5,"10":true,"2":null,"c":""}}`,
+		"ifMatch.10: Invalid input: expected string, received boolean; ifMatch.a.b: Invalid input: expected string, received number; ifMatch.c: Too small: expected string to have >=1 characters")
+	fail("blocks.apply", `{"set":1,"delete":2,"ifMatch":3,"q":1}`,
+		`set: Invalid input: expected record, received number; delete: Invalid input: expected array, received number; ifMatch: Invalid input: expected record, received number; unknown parameter "q"`)
+	for _, removed := range []string{"ref", "refs", "requestKey", "ifSchemaMatch", "ifUnmodifiedSince"} {
+		fail("blocks.apply", `{"set":{},"`+removed+`":"x"}`, `unknown parameter "`+removed+`"`)
+	}
+	ok("blocks.apply", `{"set":{"a":[]},"delete":["a"],"ifMatch":{"a":null,"__proto__":5}}`)
 }

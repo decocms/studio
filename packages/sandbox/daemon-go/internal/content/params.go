@@ -1,11 +1,12 @@
 package content
 
-// Parameter validation for the read methods, ported from params.ts (a zod 4
+// Parameter validation for the four methods, ported from params.ts (a zod 4
 // strictObject per method). Unknown parameters are refused, so a guard the
 // server doesn't understand never turns into an unguarded write. Messages
 // follow zod 4's wording; like zod, a `__proto__` key is never validated.
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -59,9 +60,10 @@ func (is *issues) opaque(path string, v any, nullable bool) {
 }
 
 var paramShapes = map[string][]string{
-	"describe":    {},
-	"schema.get":  {"ifNoneMatch"},
-	"blocks.list": {"ifNoneMatch"},
+	"describe":     {},
+	"schema.get":   {"ifNoneMatch"},
+	"blocks.list":  {"ifNoneMatch"},
+	"blocks.apply": {"set", "delete", "ifMatch"},
 }
 
 // validateParams checks params for method (present is false when the request
@@ -84,6 +86,34 @@ func validateParams(method string, params any, present bool) *ProtocolError {
 		switch key {
 		case "ifNoneMatch":
 			is.opaque(key, v, false)
+		case "set":
+			if _, ok := asObject(v); !ok {
+				is.add(key, "Invalid input: expected record, received "+jsTypeName(v))
+			}
+		case "delete":
+			list, ok := v.([]any)
+			if !ok {
+				is.add(key, "Invalid input: expected array, received "+jsTypeName(v))
+				break
+			}
+			for i, item := range list {
+				if _, ok := item.(string); !ok {
+					is.add(key+"."+strconv.Itoa(i), "Invalid input: expected string, received "+jsTypeName(item))
+				}
+			}
+		case "ifMatch":
+			record, ok := asObject(v)
+			if !ok {
+				is.add(key, "Invalid input: expected record, received "+jsTypeName(v))
+				break
+			}
+			for _, k := range record.Keys() {
+				if k == "__proto__" {
+					continue
+				}
+				item, _ := record.Get(k)
+				is.opaque(key+"."+k, item, true)
+			}
 		}
 	}
 	var unknown []string

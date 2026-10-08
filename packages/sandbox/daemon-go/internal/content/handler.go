@@ -1,6 +1,6 @@
 // Package content serves the Deco content protocol (`deco-content` v1:
-// JSON-RPC 2.0; here the read methods describe, schema.get and blocks.list)
-// over the sandbox's working tree.
+// JSON-RPC 2.0 with describe, schema.get, blocks.list and blocks.apply, plus
+// `PUT …/assets/<name>` uploads) over the sandbox's working tree.
 //
 // It is a port of the TypeScript reference in `@decocms/blocks/protocol`
 // (server/, storage/fs, keys, secrets), behaviour-identical by design: same
@@ -29,32 +29,46 @@ type Options struct {
 	Store         *FSStore
 	ServerName    string
 	ServerVersion string
+	// OnCommit is called after blocks.apply lands, with the block files
+	// (inside .deco/blocks) it wrote or deleted.
+	OnCommit func(files []string)
+	// OnAsset is called after an upload, with the stored file name.
+	OnAsset func(name string)
 	// Logf receives errors that become Internal errors.
 	Logf func(format string, args ...any)
 }
 
-// Handler serves the protocol for one app root.
+// Handler serves the protocol and uploads for one app root.
 type Handler struct {
-	store          *FSStore
-	serverName     string
-	serverVersion  string
-	pollIntervalMs int
-	cache          *bodyCache
-	logFn          func(string, ...any)
-	schemaMu       sync.Mutex
-	schemaVersion  string
-	schemaMeta     *Object
+	store                  *FSStore
+	serverName             string
+	serverVersion          string
+	pollIntervalMs         int
+	maxCommitAttempts      int
+	retryMinMs, retryMaxMs int
+	cache                  *bodyCache
+	onCommit               func([]string)
+	onAsset                func(string)
+	logFn                  func(string, ...any)
+	schemaMu               sync.Mutex
+	schemaVersion          string
+	schemaMeta             *Object
 }
 
 // NewHandler builds a handler over a filesystem storage.
 func NewHandler(o Options) *Handler {
 	h := &Handler{
-		store:          o.Store,
-		serverName:     o.ServerName,
-		serverVersion:  o.ServerVersion,
-		pollIntervalMs: defaultPollMs,
-		cache:          newBodyCache(defaultCacheBytes),
-		logFn:          o.Logf,
+		store:             o.Store,
+		serverName:        o.ServerName,
+		serverVersion:     o.ServerVersion,
+		pollIntervalMs:    defaultPollMs,
+		maxCommitAttempts: defaultCommitTries,
+		retryMinMs:        50,
+		retryMaxMs:        200,
+		cache:             newBodyCache(defaultCacheBytes),
+		onCommit:          o.OnCommit,
+		onAsset:           o.OnAsset,
+		logFn:             o.Logf,
 	}
 	if h.serverName == "" {
 		h.serverName = "deco-blocks"

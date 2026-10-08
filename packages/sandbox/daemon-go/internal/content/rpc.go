@@ -10,7 +10,7 @@ import (
 
 const maxBatchCalls = 10
 
-var methodNames = map[string]bool{"describe": true, "schema.get": true, "blocks.list": true}
+var methodNames = map[string]bool{"describe": true, "schema.get": true, "blocks.list": true, "blocks.apply": true}
 
 var envelopeMembers = map[string]bool{"jsonrpc": true, "id": true, "method": true, "params": true}
 
@@ -93,8 +93,10 @@ func (h *Handler) run(e *envelope) (any, error) {
 		return h.describe()
 	case "schema.get":
 		return h.schemaGet(e.params)
-	default:
+	case "blocks.list":
 		return h.blocksList(e.params)
+	default:
+		return h.blocksApply(e.params)
 	}
 }
 
