@@ -8,7 +8,10 @@
  * migration 077 it carries only `{ tier }`.
  */
 
-import type { DispatchRunInput } from "@/api/routes/decopilot/dispatch-run";
+import type {
+  DispatchRunInput,
+  HostedHarnessId,
+} from "@/api/routes/decopilot/dispatch-run";
 import {
   RUN_CLASS_METADATA_KEY,
   type RunClass,
@@ -91,6 +94,7 @@ export function buildStreamRequest(
   taskId: string,
   resolved: ResolvedAutomationModel,
   runMetadata?: Record<string, string>,
+  harnessId: HostedHarnessId = "decopilot",
 ): DispatchRunInput {
   const rawMessages = JSON.parse(automation.messages);
   // Derive ids from taskId rather than crypto.randomUUID(): fresh ids per run
@@ -135,7 +139,7 @@ export function buildStreamRequest(
     mode: "default",
     organizationId: automation.organization_id,
     userId: automation.created_by,
-    harnessId: "decopilot",
+    harnessId,
     triggerId: triggerId ?? undefined,
     ...(resolvedRunMetadata ? { runMetadata: resolvedRunMetadata } : {}),
     taskId,

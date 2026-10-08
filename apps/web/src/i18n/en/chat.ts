@@ -363,6 +363,10 @@ export const chat = {
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for projects",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Connect an AI provider to start chatting.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Connect a supported AI provider",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Chats run on Claude. Connect Anthropic, OpenRouter or the deco AI Gateway, or link your Claude subscription in Settings.",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
   "chat.outputFileRow.open": "Open",

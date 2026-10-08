@@ -860,6 +860,10 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Discard",
   "settings.agentTools.orgMcpsPickSaved":
     "Saved which connections runs can reach",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Run every chat with Claude Code in its own sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Every new chat runs Claude Code in a sandbox of its own instead of on Decopilot, and existing Decopilot chats switch over on their next message. The first message of a chat waits for its sandbox to start. Needs an Anthropic, OpenRouter or deco AI gateway key, or a Claude subscription.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

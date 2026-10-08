@@ -223,6 +223,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
     ),
+  chat_harness_sandbox_only: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. Off by default: it changes the runtime of every chat, and each chat's first message waits for a sandbox.",
+    ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
     .optional()

@@ -399,6 +399,12 @@ export function CodeAgentsSettings() {
           titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
           descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
         />
+        <FlagToggle
+          flag="chat_harness_sandbox_only"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
+          descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
+        />
       </SettingsCard>
     </SettingsSection>
   );

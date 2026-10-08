@@ -95,6 +95,16 @@ export interface ThreadStoragePort {
     organizationId: string,
     pin: ThreadRuntimePin,
   ): Promise<ThreadRuntimePinResult>;
+  /**
+   * Move a Decopilot thread to claude-code, once. The `harness_id = 'decopilot'`
+   * predicate is the guard, as `harness_id IS NULL` is for `pinRuntimeIfUnset`.
+   * A repo-less branch (`null` or `"ephemeral"`) becomes `branch`.
+   */
+  repinDecopilotToClaudeCode(
+    id: string,
+    organizationId: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult>;
   /** Write `metadata.runtime` only if absent. One guarded statement — see the impl. */
   stampRuntimeIfAbsent(
     id: string,

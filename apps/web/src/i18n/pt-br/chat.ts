@@ -373,6 +373,10 @@ export const chat = {
     "{org} está pronto para projetos",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Conecte um provedor de IA para começar a conversar.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Conecte um provedor de IA compatível",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Os chats rodam no Claude. Conecte Anthropic, OpenRouter ou o deco AI Gateway, ou vincule sua assinatura do Claude nas Configurações.",
   "chat.outputFileRow.download": "Baixar",
   "chat.outputFileRow.downloadFile": "Baixar {filename}",
   "chat.outputFileRow.open": "Abrir",
