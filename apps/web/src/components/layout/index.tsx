@@ -37,9 +37,13 @@ function useLayout() {
 function LayoutRoot({
   children,
   notice,
+  outsideOrg,
 }: {
   children: ReactNode;
   notice?: ReactNode;
+  /** Outside any org (`/site-editor`): no org apps to record, and the org
+   *  rail only when `rail` (a signed-in person, whose orgs it lists). */
+  outsideOrg?: { rail: boolean };
 }) {
   const isMobile = useIsMobile();
 
@@ -56,8 +60,10 @@ function LayoutRoot({
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
           <div className="flex flex-1 flex-row min-h-0">
-            {projectFirstNav && <OpenAppRecorder />}
-            {!isMobile && projectFirstNav && <OrgRail />}
+            {projectFirstNav && !outsideOrg && <OpenAppRecorder />}
+            {!isMobile && projectFirstNav && (outsideOrg?.rail ?? true) && (
+              <OrgRail />
+            )}
             <SidebarLayout
               ref={resize.wrapperRef}
               className="flex-1 bg-sidebar relative min-h-0"

@@ -311,6 +311,45 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
+// The site editor over `deco serve`, which prints
+// `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
+// Its tabs carry the project Site Editor's `staticData` (plus `local`): the
+// same app. Always in the New Layout, whatever the preference says.
+// It wins over `/$org`, so an organization whose slug is `site-editor` would
+// lose its URL. PRE-DEPLOY CHECK (every environment, before this route first
+// ships): `SELECT id FROM organization WHERE slug = 'site-editor'` must return
+// no rows; rename that organization first if it does.
+const siteEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/site-editor",
+  staticData: { pageTitle: "sidebar.projectNav.siteEditor" },
+  component: lazyRouteComponent(() => import("./routes/site-editor.tsx")),
+});
+
+const siteEditorPreviewRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/",
+  staticData: {
+    mainView: "site-editor",
+    siteEditorView: "preview",
+    local: true,
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorPreview",
+  ),
+});
+
+const siteEditorContentRoute = createRoute({
+  getParentRoute: () => siteEditorRoute,
+  path: "/content",
+  staticData: { mainView: "content", siteEditorView: "content", local: true },
+  component: lazyRouteComponent(
+    () => import("./routes/site-editor.tsx"),
+    "SiteEditorContent",
+  ),
+});
+
 // Public report, readable without a session — hence outside the org shell.
 const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -1612,6 +1651,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
+  siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,
