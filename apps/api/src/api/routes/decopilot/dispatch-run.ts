@@ -53,6 +53,8 @@ import {
   isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
+import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
+import { withRunTitle } from "@/harnesses/sandbox-run-title";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
@@ -1427,7 +1429,21 @@ async function prepareRun(
       organizationId: input.organizationId,
       agent: {
         id: input.agent.id,
-        instructions: agentInstructions,
+        // Decopilot renders user context and mode from its run context instead.
+        instructions: sandboxHosted
+          ? [
+              agentInstructions,
+              sandboxRunPrompt({
+                mode: input.mode,
+                threadId: mem.thread.id,
+                agentId: input.agent.id,
+                userEmail: ctx.auth.user?.email,
+                userContext,
+              }),
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : agentInstructions,
         ...(input.agent.disallowedTools
           ? { disallowedTools: input.agent.disallowedTools }
           : {}),
@@ -1495,6 +1511,7 @@ async function prepareRun(
               ctx,
               harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
+              fenceToken: runFenceToken,
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.
               streamBuffer,
@@ -1547,9 +1564,34 @@ async function prepareRun(
                   : null,
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
-        yield* sandboxHosted
-          ? withHtmlArtifactPreviews(rawHarnessChunks, ctx)
-          : rawHarnessChunks;
+        if (!sandboxHosted) {
+          yield* rawHarnessChunks;
+          return;
+        }
+        // Decopilot titles inside its own loop; a sandbox harness has no such step.
+        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+          currentThreadTitle: mem.thread.title,
+          isSubagent: input.isSubagent === true,
+          userText: materializedRequestMessage.parts
+            .flatMap((part) =>
+              part.type === "text" && typeof part.text === "string"
+                ? [part.text]
+                : [],
+            )
+            .join("\n"),
+          slots: [
+            fastSource && models.fast
+              ? { selection: models.fast, source: fastSource }
+              : undefined,
+            smartSource && models.smart
+              ? { selection: models.smart, source: smartSource }
+              : undefined,
+            thinkingSource
+              ? { selection: models.thinking, source: thinkingSource }
+              : undefined,
+          ],
+          signal: registrySignal,
+        });
       };
 
     // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream

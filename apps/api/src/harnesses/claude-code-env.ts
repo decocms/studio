@@ -24,6 +24,8 @@
  * several minutes later, which is much worse than a clear refusal now.
  */
 
+import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
+
 /**
  * Pseudo-provider id for a user's own Claude subscription (linked over OAuth,
  * stored per user). Not an `ai-providers` registry id — it never resolves to a
@@ -35,9 +37,9 @@ export const CLAUDE_SUBSCRIPTION_PROVIDER_ID = "claude-subscription";
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 
 /**
- * Which model a run gets. Not the agent's thinking slot — the SDK drives the
- * `claude` CLI, which only works against Claude models, so the slot's id is not
- * usable here.
+ * Which model a run gets when the chat did not pick a Claude model itself (see
+ * `chosenModel` below) — the SDK drives the `claude` CLI, which only works
+ * against Claude models, so any other slot id is not usable here.
  *
  * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
@@ -185,8 +187,16 @@ export class UnsupportedClaudeCodeProviderError extends Error {
 export function claudeCodeEnvFromCredential(
   credential: ClaudeCodeCredential,
   modelClass: ClaudeCodeModelClass = "default",
+  /** The model the chat picked; honored only for the default class. */
+  chosenModel?: string,
 ): Record<string, string | null> {
   const { providerId, apiKey, baseUrl } = credential;
+  const modelFor = (shape: "anthropic" | "openrouter") =>
+    modelClass === "default" &&
+    chosenModel &&
+    isClaudeCodeModel(shape === "anthropic" ? shape : providerId, chosenModel)
+      ? chosenModel
+      : CLAUDE_CODE_MODEL[shape][modelClass];
   /** Properties of the run, not of the credential — so every shape carries them.
    *  `null` deletes the turn cap, so a sandbox that last ran a reviewer does not
    *  carry that cap into a Super Agent run. */
@@ -199,7 +209,7 @@ export function claudeCodeEnvFromCredential(
   if (providerId === "anthropic") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("anthropic"),
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -212,7 +222,7 @@ export function claudeCodeEnvFromCredential(
     // leftover one outranks it and the run bills the org's API credit instead.
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("anthropic"),
       CLAUDE_CODE_OAUTH_TOKEN: apiKey,
       ANTHROPIC_API_KEY: null,
       ANTHROPIC_AUTH_TOKEN: null,
@@ -222,7 +232,7 @@ export function claudeCodeEnvFromCredential(
   if (providerId === "openrouter" || providerId === "deco") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.openrouter[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("openrouter"),
       // Empty, not absent: a non-empty API key takes precedence over the auth
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",

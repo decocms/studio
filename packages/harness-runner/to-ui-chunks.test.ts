@@ -559,6 +559,41 @@ describe("turn framing", () => {
     ]);
   });
 
+  test("the running model's limits ride on the finish chunk for the context meter", () => {
+    const modelUsage = {
+      "claude-haiku-5": {
+        contextWindow: 200_000,
+        maxOutputTokens: 8_000,
+        inputTokens: 50,
+      },
+      "claude-opus-5-5": {
+        contextWindow: 1_000_000,
+        maxOutputTokens: 64_000,
+        inputTokens: 10,
+      },
+    };
+    const result = {
+      type: "result" as const,
+      subtype: "success",
+      is_error: false,
+      modelUsage,
+    };
+    const [, pinned] = turnFinishChunks(result, 0, "claude-opus-5-5");
+    expect(pinned).toEqual({
+      type: "finish",
+      finishReason: "stop",
+      messageMetadata: {
+        modelLimits: { contextWindow: 1_000_000, maxOutputTokens: 64_000 },
+      },
+    });
+    // Unpinned: the model that read the most input ran the turn.
+    const [, unpinned] = turnFinishChunks(result);
+    expect(
+      (unpinned as { messageMetadata?: { modelLimits?: unknown } })
+        .messageMetadata?.modelLimits,
+    ).toEqual({ contextWindow: 200_000, maxOutputTokens: 8_000 });
+  });
+
   test("usage and cost ride on the finish chunk", () => {
     const [, finish] = turnFinishChunks(
       {
@@ -889,6 +924,7 @@ describe("a call parked for the user", () => {
       turnFinishChunks(
         { type: "result", subtype: "error_during_execution", is_error: true },
         0,
+        undefined,
         t.isAwaitingUser(),
       ),
     ).toEqual([

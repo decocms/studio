@@ -54,6 +54,7 @@ import {
 } from "@/harnesses/claude-code-env";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
+import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
 import {
@@ -85,6 +86,7 @@ import {
   publishRunStatusStage,
   type RunStatusStreamBuffer,
 } from "@/api/routes/decopilot/run-status-stage";
+import { POD_SHUTDOWN_ABORT_REASON } from "@/api/routes/decopilot/run-registry";
 import {
   getThreadRepository,
   getCodingAgentProjectMetadata,
@@ -240,6 +242,7 @@ export class SandboxDispatchClient {
   private readonly harnessId: HarnessId;
   private readonly virtualMcpId: string;
   private readonly branch: string;
+  private readonly fenceToken: string;
   private readonly credential: ClaudeCodeCredential | null;
   private readonly resume: { reason: string } | null;
   private readonly interactive: boolean;
@@ -251,6 +254,8 @@ export class SandboxDispatchClient {
     harnessId: HarnessId;
     virtualMcpId: string;
     branch: string;
+    /** The turn's fence token; with the thread id it names the daemon run. */
+    fenceToken: string;
     /** Resolved thinking-slot credential; becomes the sandbox's model env. */
     credential: ClaudeCodeCredential | null;
     /** The run's chunk stream, for out-of-band status chunks (see
@@ -278,6 +283,7 @@ export class SandboxDispatchClient {
     this.harnessId = args.harnessId;
     this.virtualMcpId = args.virtualMcpId;
     this.branch = args.branch;
+    this.fenceToken = args.fenceToken;
     this.credential = args.credential;
     this.resume = args.resume ?? null;
     this.interactive = args.interactive ?? false;
@@ -499,11 +505,14 @@ export class SandboxDispatchClient {
     }
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
+    const runMetadata = this.ctx.metadata?.runMetadata;
     const modelEnv = claudeCodeEnvFromCredential(
       this.credential,
-      modelClassFromMetadata(
-        this.ctx.metadata?.runMetadata?.[MODEL_CLASS_METADATA_KEY],
-      ),
+      modelClassFromMetadata(runMetadata?.[MODEL_CLASS_METADATA_KEY]),
+      // Task-board runs carry a run class and keep their per-class model.
+      runMetadata?.[RUN_CLASS_METADATA_KEY]
+        ? undefined
+        : input.models.thinking.id,
     );
     const organization = this.ctx.organization;
     if (!organization) {
@@ -555,12 +564,11 @@ export class SandboxDispatchClient {
       workspace: await this.resolveWorkspace(input.threadId, agent),
     };
 
-    // The daemon keys cancellation (`DELETE /_sandbox/runs/:runId`) by this id,
-    // and Studio's run identity is the thread — same key the rest of the hosted
-    // pipeline uses for the run. It is also what makes a re-dispatch a TAKEOVER
-    // rather than a second agent in the same checkout (see the daemon's
-    // `Registry.claim`).
-    const runId = input.threadId;
+    // One daemon run per TURN: a re-dispatch of the same turn (continuation, DBOS
+    // recovery) keeps the fence, so it reattaches or takes over (the daemon's
+    // `Registry.claim`), while the next turn never reattaches to a stopped one or
+    // hits the tombstone `DELETE /_sandbox/runs/:runId` leaves behind.
+    const runId = `${input.threadId}:${this.fenceToken}`;
     const { ctx, harnessId, virtualMcpId, branch, interactive, streamBuffer } =
       this;
     const credentialProviderId = this.credential.providerId;
@@ -654,6 +662,14 @@ export class SandboxDispatchClient {
             : describeTermination(await provider.lastTermination(handle)),
       });
     } finally {
+      // Losing the client only detaches the daemon's run, so a stop has to be said.
+      if (
+        lastHandle &&
+        input.signal?.aborted &&
+        input.signal.reason !== POD_SHUTDOWN_ABORT_REASON
+      ) {
+        await cancelDaemonRun(provider, lastHandle, runId);
+      }
       // The run is over — cleanly, failed, or aborted. This pod is `cloneOnly`:
       // one agent loop, no dev server, nothing serving a preview URL. Left
       // alone it idles to the 15-min claim TTL, which for a 100s run is most of
@@ -927,6 +943,44 @@ export async function pushSandboxEnv(
       throw new SandboxUnreachableError(summary);
     }
     throw new Error(summary);
+  }
+}
+
+/** Bounds the cancel DELETE: a wedged daemon must not hold up the stop. */
+const CANCEL_RUN_TIMEOUT_MS = 5_000;
+
+/**
+ * Stop the harness running `runId` in the sandbox. Best-effort and idempotent:
+ * the daemon answers 204 for a run it no longer has, and any failure leaves the
+ * run to the daemon's own detach grace.
+ */
+export async function cancelDaemonRun(
+  provider: Pick<SandboxProvider, "proxyDaemonRequest">,
+  handle: string,
+  runId: string,
+): Promise<void> {
+  try {
+    const res = await provider.proxyDaemonRequest(
+      handle,
+      `/_sandbox/runs/${encodeURIComponent(runId)}`,
+      {
+        method: "DELETE",
+        headers: new Headers(),
+        body: null,
+        signal: AbortSignal.timeout(CANCEL_RUN_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      console.warn("[sandbox-dispatch] cancel run rejected", {
+        runId,
+        status: res.status,
+      });
+    }
+  } catch (err) {
+    console.warn("[sandbox-dispatch] cancel run failed", {
+      runId,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

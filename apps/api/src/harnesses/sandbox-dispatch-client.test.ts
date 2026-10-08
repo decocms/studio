@@ -4,6 +4,7 @@ import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { withModelMetadata } from "./with-model-metadata";
 import {
+  cancelDaemonRun,
   describeTermination,
   dispatchWithContinuation,
   errorForTerminal,
@@ -365,6 +366,43 @@ describe("pushSandboxEnv", () => {
       }
       expect(thrown).toBeInstanceOf(SandboxUnreachableError);
     }
+  });
+});
+
+describe("cancelDaemonRun", () => {
+  test("DELETEs the turn's run on the daemon", async () => {
+    const calls: { handle: string; path: string; method: string }[] = [];
+    const provider = {
+      proxyDaemonRequest: async (
+        handle: string,
+        path: string,
+        init: { method: string },
+      ) => {
+        calls.push({ handle, path, method: init.method });
+        return new Response(null, { status: 204 });
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await cancelDaemonRun(provider, "handle-1", "thread-1:fence-1");
+    expect(calls).toEqual([
+      {
+        handle: "handle-1",
+        path: "/_sandbox/runs/thread-1%3Afence-1",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  test("never throws: a dead or rejecting daemon leaves the stop to its grace", async () => {
+    const throwing = {
+      proxyDaemonRequest: async () => {
+        throw new Error("connection refused");
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    const rejecting = {
+      proxyDaemonRequest: async () => new Response("nope", { status: 503 }),
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await expect(cancelDaemonRun(throwing, "h", "r")).resolves.toBeUndefined();
+    await expect(cancelDaemonRun(rejecting, "h", "r")).resolves.toBeUndefined();
   });
 });
 

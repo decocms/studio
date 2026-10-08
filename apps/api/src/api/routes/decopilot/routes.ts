@@ -417,10 +417,11 @@ export function assertHostedHarness(
  *
  * `claude-code` belongs here now that its thread takes follow-ups. Cancel
  * reaches it by the same route Decopilot uses: the abort travels to whichever
- * pod owns the turn, aborts the dispatch HTTP request, and the daemon's harness
- * child is spawned on that request's context (`exec.CommandContext`), so the
- * disconnect kills the agent. A turn a user can start and cannot stop is not a
- * boundary, it is a bug.
+ * pod owns the turn and aborts the dispatch HTTP request. The daemon only
+ * detaches on a lost client (the harness keeps running for a reattach), so that
+ * pod's dispatch client also sends `DELETE /_sandbox/runs/:runId`, which kills
+ * the agent. A turn a user can start and cannot stop is not a boundary, it is a
+ * bug.
  */
 export function assertPersistedHostedRuntime(
   harnessId: string | null | undefined,
