@@ -86,6 +86,9 @@
     "apps/web/src/components/sections-editor/content-protocol-api.ts": [
       "exports"
     ],
-    "apps/web/src/hooks/use-new-blocks-editor.ts": ["exports"]
+    "apps/web/src/hooks/use-new-blocks-editor.ts": ["exports"],
+    "apps/web/src/components/sections-editor/deco-serve-notices.tsx": [
+      "exports"
+    ]
   }
 }
