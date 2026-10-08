@@ -6,9 +6,13 @@ import {
 
 /**
  * The org's project whose site is `site`. A slug linked in `org_sites` names
- * its project directly; a slug linked to another org's project — or reserved —
- * is never this org's. Projects not linked yet (several imports of one
- * storefront in an org, slugs never claimed) still match by resolved slug.
+ * its project directly; a slug linked to another org's project — or a
+ * tombstone (its org was deleted) — is never this org's. Projects not linked
+ * yet (several imports of one storefront in an org, slugs never claimed) still
+ * match by resolved slug.
+ *
+ * Known gap, kept for v7 compatibility: an unlinked slug owned by another org
+ * still matches this org's look-alike project.
  */
 async function findOwnedProject(
   ctx: StudioContext,
@@ -19,6 +23,9 @@ async function findOwnedProject(
     ctx.storage.virtualMcps.list(organizationId),
     ctx.storage.orgSites.getBySlug(site),
   ]);
+  if (row && row.organizationId === null) {
+    throw new Error("Site not found in organization");
+  }
   const project = row?.projectId
     ? row.organizationId === organizationId
       ? vms.find((vm) => vm.id === row.projectId)

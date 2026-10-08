@@ -12,8 +12,13 @@ import {
   seedCommonTestPgFixtures,
 } from "../src/database/test-db-pg";
 import type { StudioDatabase } from "../src/database";
+import { OrgSiteLinkError, OrgSiteStorage } from "../src/storage/org-sites";
 import { VirtualMCPStorage } from "../src/storage/virtual";
-import { down as down235, up as up235 } from "./235-org-sites-project-link";
+import {
+  applyOrgSiteProjectLinks,
+  down as down235,
+  up as up235,
+} from "./235-org-sites-project-link";
 
 type Row = {
   slug: string;
@@ -59,6 +64,12 @@ describe("migration 235 — org_sites project link", () => {
     `.execute(db);
   }
 
+  async function setRawMetadata(id: string, raw: string) {
+    await sql`UPDATE connections SET metadata = ${raw} WHERE id = ${id}`.execute(
+      db,
+    );
+  }
+
   async function rows(): Promise<Record<string, Row>> {
     const result = await sql<Row>`
       SELECT slug, organization_id, project_id, linked_at, updated_by
@@ -69,8 +80,21 @@ describe("migration 235 — org_sites project link", () => {
 
   it("links one candidate, leaves none/ambiguous unlinked, never guesses", async () => {
     const byMeta = await project("org_1", "Acme Store", { siteSlug: "acme" });
-    // Pre-siteSlug import: the title is the slug.
+    // Pre-siteSlug import: the title is the slug of a repo-backed project
+    // (stored under the database key `githubRepo`).
     const byTitle = await project("org_1", "Legacy", null);
+    await setRawMetadata(
+      byTitle,
+      JSON.stringify({ githubRepo: { url: "https://github.com/acme/legacy" } }),
+    );
+    // Early `{ owner, name }` binding counts as repo-backed too.
+    const ownerName = await project("org_1", "old-bind", null);
+    await setRawMetadata(
+      ownerName,
+      JSON.stringify({ githubRepo: { owner: "acme", name: "old-bind" } }),
+    );
+    // A chat-only agent named like a site is never linked by its title.
+    await project("org_1", "chatty", null);
     // Two projects claim the same slug in one org: ambiguous.
     const dupA = await project("org_1", "Twin A", { siteSlug: "twins" });
     const dupB = await project("org_1", "Twin B", { siteSlug: "twins" });
@@ -78,11 +102,9 @@ describe("migration 235 — org_sites project link", () => {
     // stores it in metadata → the metadata match is the only candidate.
     const shadowMeta = await project("org_1", "Other", { siteSlug: "shadow" });
     await project("org_1", "shadow", null);
-    // Malformed JSON: counted, falls back to its title.
+    // Malformed JSON: counted; it can't show it is a site, so not linked.
     const broken = await project("org_1", "Broken", null);
-    await sql`UPDATE connections SET metadata = '{oops' WHERE id = ${broken}`.execute(
-      db,
-    );
+    await setRawMetadata(broken, "{oops");
     // Same slug used by a project in another org: not this org's candidate.
     await project("org_456", "Elsewhere", { siteSlug: "nobody" });
 
@@ -93,6 +115,8 @@ describe("migration 235 — org_sites project link", () => {
     await claimOld("shadow", "org_1");
     await claimOld("broken", "org_1");
     await claimOld("nobody", "org_1");
+    await claimOld("old-bind", "org_1");
+    await claimOld("chatty", "org_1");
 
     await up235(db);
 
@@ -102,11 +126,46 @@ describe("migration 235 — org_sites project link", () => {
     expect(after.acme?.updated_by).toBe("migration-235");
     expect(after.legacy?.project_id).toBe(byTitle);
     expect(after.shadow?.project_id).toBe(shadowMeta);
-    expect(after.broken?.project_id).toBe(broken);
+    expect(after["old-bind"]?.project_id).toBe(ownerName);
+    expect(after.broken?.project_id).toBeNull();
+    expect(after.chatty?.project_id).toBeNull();
     expect(after.twins?.project_id).toBeNull();
-    expect(after.twins?.linked_at).toBeNull();
     expect(after.nobody?.project_id).toBeNull();
     expect([dupA, dupB]).not.toContain(after.twins?.project_id);
+
+    // Every pre-existing slug is a real site: unlinked ones are marked used
+    // too, so they are never released, moved or handed to another project.
+    for (const slug of ["twins", "nobody", "broken", "chatty"]) {
+      expect(after[slug]?.linked_at).not.toBeNull();
+      expect(after[slug]?.updated_by).toBe("user_1");
+    }
+    const storage = new OrgSiteStorage(database.db);
+    await expect(storage.releaseSite("nobody", "org_1")).rejects.toThrow(
+      OrgSiteLinkError,
+    );
+    await expect(
+      storage.reassignSite({
+        slug: "twins",
+        organizationId: "org_456",
+        by: "x",
+      }),
+    ).rejects.toThrow(OrgSiteLinkError);
+    await expect(
+      storage.link({
+        slug: "twins",
+        organizationId: "org_1",
+        projectId: dupA,
+        by: "x",
+      }),
+    ).rejects.toThrow(/deployment admin/);
+    const resolved = await storage.link({
+      slug: "twins",
+      organizationId: "org_1",
+      projectId: dupA,
+      by: "admin",
+      adminOverride: true,
+    });
+    expect(resolved.projectId).toBe(dupA);
 
     // Project rows are only read.
     const stored = await sql<{ metadata: string | null }>`
@@ -152,13 +211,35 @@ describe("migration 235 — org_sites project link", () => {
     ).rejects.toThrow();
   });
 
-  it("down restores the old shape (dropping tombstones) and up re-applies", async () => {
+  it("applying a plan skips a project deleted since planning", async () => {
+    const gone = await project("org_1", "Gone", { siteSlug: "gone" });
+    await down235(db);
+    await claimOld("gone", "org_1");
+    await up235(db);
+    await sql`UPDATE org_sites SET project_id = NULL WHERE slug = 'gone'`.execute(
+      db,
+    );
+    await sql`DELETE FROM connections WHERE id = ${gone}`.execute(db);
+    expect(
+      await applyOrgSiteProjectLinks(db, [
+        { slug: "gone", projectId: gone, by: "metadata" },
+      ]),
+    ).toBe(0);
+    expect((await rows()).gone?.project_id).toBeNull();
+  });
+
+  it("down refuses to free tombstones; restores the old shape otherwise", async () => {
     await down235(db);
     await claimOld("a-site", "org_1");
     await claimOld("b-site", "org_456");
     await up235(db);
     await sql`DELETE FROM organization WHERE id = 'org_456'`.execute(db);
 
+    await expect(down235(db)).rejects.toThrow(/tombstoned slugs exist/);
+    expect((await rows())["b-site"]?.organization_id).toBeNull();
+
+    // An operator who accepts freeing them deletes them explicitly.
+    await sql`DELETE FROM org_sites WHERE organization_id IS NULL`.execute(db);
     await down235(db);
     const columns = await sql<{ column_name: string; is_nullable: string }>`
       SELECT column_name, is_nullable FROM information_schema.columns

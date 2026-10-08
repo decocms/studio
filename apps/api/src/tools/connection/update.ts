@@ -25,6 +25,7 @@ import {
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
+import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
   buildVirtualUrl,
   type ConnectionEntity,
@@ -142,13 +143,30 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     }
 
     // A VIRTUAL row is a project: its metadata carries the immutable site slug,
-    // which this generic write must neither change nor drop.
-    if (existing.connection_type === "VIRTUAL" && data.metadata !== undefined) {
+    // which this generic write must neither change nor drop — nor move by a
+    // rename, for a legacy project whose slug is still its title.
+    if (
+      existing.connection_type === "VIRTUAL" &&
+      (data.metadata !== undefined || data.title !== undefined)
+    ) {
       const project = await ctx.storage.virtualMcps.findById(existing.id);
       if (project) {
-        assertSiteSlugUnchanged(project, data.metadata);
-        const siteSlug = project.metadata?.siteSlug;
-        if (siteSlug) data.metadata = { ...data.metadata, siteSlug };
+        if (data.metadata !== undefined) {
+          assertSiteSlugUnchanged(project, data.metadata);
+          const siteSlug = project.metadata?.siteSlug;
+          if (siteSlug) data.metadata = { ...data.metadata, siteSlug };
+        }
+        const pinned = pinnedSiteSlugOnRename({
+          nextTitle: data.title,
+          currentTitle: project.title,
+          currentSiteSlug: project.metadata?.siteSlug,
+        });
+        if (pinned) {
+          data.metadata = {
+            ...(data.metadata ?? project.metadata ?? {}),
+            siteSlug: pinned,
+          };
+        }
       }
     }
 
