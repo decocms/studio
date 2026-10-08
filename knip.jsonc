@@ -76,8 +76,6 @@
   "ignoreDependencies": ["@types/*"],
   // TODO(@camudo): Remove this config once I fix all unused type exports
   "ignoreIssues": {
-    "**/*": ["types"],
-    // Temporary (split stack): hosted modules land before their routes (removed when /_sandbox/rpc lands).
-    "apps/api/src/hosted/*.ts": ["exports"]
+    "**/*": ["types"]
   }
 }

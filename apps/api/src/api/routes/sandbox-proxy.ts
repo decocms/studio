@@ -72,6 +72,12 @@ import {
 } from "../../lib/loader-invoke";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import {
+  draftGitDiscard,
+  hostedDraftPublishDiff,
+  hostedDraftPublishStatus,
+  loadHostedDraft,
+} from "../../hosted/draft-publish-status";
+import {
   GitPushAuthError,
   parseRepositoryBinding,
   refreshSandboxGitCredentials,
@@ -130,6 +136,13 @@ function assertSandboxBranchParam(branch: string): void {
 }
 
 const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
+/**
+ * The content protocol's own caps (`@decocms/blocks/protocol` limits): 8 MiB
+ * per request and 25 MiB per asset (`describe.assets.maxBytes`), plus slack so
+ * the daemon, not this proxy, answers a body right at the limit.
+ */
+const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
+const CONTENT_ASSET_MAX_BODY_BYTES = 25 * 1024 * 1024 + 64 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -393,6 +406,44 @@ async function fastPreviewGitClient(c: Context<VmEnv>) {
   return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
+/** The hosted v8 project's draft (see hosted/draft-publish-status.ts), or null. */
+function loadHostedDraftFor(c: Context<VmEnv>) {
+  const claim = c.get("vmClaim");
+  const ctx = c.var.studioContext;
+  return loadHostedDraft({
+    storage: ctx.storage,
+    organizationId: requireOrganization(ctx).id,
+    virtualMcpId: claim.virtualMcpId,
+    branch: claim.branch,
+    metadata: claim.virtualMcpMetadata,
+    gitClient: () => fastPreviewGitClient(c),
+  });
+}
+
+/** `/git/status` without a sandbox: the branch's drift, or a hosted draft's. */
+async function fastPreviewStatus(c: Context<VmEnv>) {
+  const hosted = await loadHostedDraftFor(c);
+  if (hosted) {
+    return hostedDraftPublishStatus(
+      hosted.repo,
+      hosted.ref.branch,
+      hosted.draft,
+    );
+  }
+  return repoGitStatus(await fastPreviewGitClient(c), c.get("vmClaim").branch);
+}
+
+/** `/git/diff` without a sandbox: the branch's bodies, or a hosted draft's. */
+async function fastPreviewDiff(c: Context<VmEnv>, base?: string) {
+  const hosted = await loadHostedDraftFor(c);
+  if (hosted) return hostedDraftPublishDiff(hosted.repo, hosted.draft);
+  return repoGitDiff(
+    await fastPreviewGitClient(c),
+    c.get("vmClaim").branch,
+    base,
+  );
+}
+
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
   const message = err instanceof Error ? err.message : String(err);
   /** 429 with the provider's own wait, so the client backs off instead of
@@ -458,8 +509,7 @@ async function proxyPreviewUpstream(
 
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
-    const client = await fastPreviewGitClient(c);
-    const status = await repoGitStatus(client, c.get("vmClaim").branch);
+    const status = await fastPreviewStatus(c);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -512,6 +562,12 @@ async function proxyDaemon(
     forwardJsonBody?: boolean;
     /** When set, sent instead of reading the request body. */
     jsonBody?: string;
+    /**
+     * A binary body (an asset upload), sent with `contentType`. Buffered, not
+     * streamed, so the runner can resend it when it retries a 401.
+     */
+    rawBody?: ArrayBuffer;
+    contentType?: string;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -539,10 +595,13 @@ async function proxyDaemon(
 
   const { claimName, userId, projectRef } = c.get("vmClaim");
   const method = opts?.method ?? "POST";
-  let body: string | null = null;
+  let body: string | ArrayBuffer | null = null;
   const headers = new Headers();
 
-  if (opts?.jsonBody !== undefined) {
+  if (opts?.rawBody !== undefined) {
+    body = opts.rawBody;
+    headers.set("content-type", opts.contentType ?? "application/octet-stream");
+  } else if (opts?.jsonBody !== undefined) {
     body = opts.jsonBody;
     headers.set("content-type", "application/json");
   } else if (opts?.forwardJsonBody) {
@@ -651,6 +710,25 @@ async function proxyDaemon(
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
   }
+}
+
+/** `POST …/rpc`: one content-protocol request to the daemon's `/_sandbox/rpc`. */
+export function proxyContentRpc(c: Context<VmEnv>) {
+  return proxyDaemon(c, "/_sandbox/rpc", {
+    forwardJsonBody: true,
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30_000)]),
+  });
+}
+
+/** `PUT …/assets/:name`: an asset upload to the daemon's `/_sandbox/assets/`. */
+export async function proxyContentAsset(c: Context<VmEnv>) {
+  const name = c.req.param("name") ?? "";
+  return proxyDaemon(c, `/_sandbox/assets/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    rawBody: await c.req.arrayBuffer(),
+    contentType: c.req.header("content-type"),
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(60_000)]),
+  });
 }
 
 /**
@@ -805,6 +883,37 @@ export const createSandboxRoutes = () => {
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);
   });
 
+  // -- Content protocol (Blocks v8) -----------------------------------------
+  // The daemon serves the working tree's `.deco/blocks` over the content
+  // protocol, as a `deco serve` would on a developer's machine. A sandbox-less
+  // session has no daemon: 404, which the editor reads as "no protocol".
+  app.post(
+    "/:virtualMcpId/:branch/rpc",
+    bodyLimit({
+      maxSize: CONTENT_RPC_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    proxyContentRpc,
+  );
+  app.put(
+    "/:virtualMcpId/:branch/assets/:name",
+    bodyLimit({
+      maxSize: CONTENT_ASSET_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    proxyContentAsset,
+  );
+
   // -- Tenant config --------------------------------------------------------
   app.get("/:virtualMcpId/:branch/config", (c) =>
     proxyDaemon(c, "/_sandbox/config", {
@@ -955,8 +1064,7 @@ export const createSandboxRoutes = () => {
         const body = (await c.req.json().catch(() => ({}))) as {
           base?: string;
         };
-        const client = await fastPreviewGitClient(c);
-        const diff = await repoGitDiff(client, claim.branch, body.base);
+        const diff = await fastPreviewDiff(c, body.base);
         return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         return fastPreviewGitError(c, err);
@@ -1040,6 +1148,11 @@ export const createSandboxRoutes = () => {
           );
         }
         try {
+          const hosted = await loadHostedDraftFor(c);
+          if (hosted) {
+            await draftGitDiscard(hosted.drafts, hosted.ref, filepaths);
+            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+          }
           const client = await fastPreviewGitClient(c);
           await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
@@ -1167,13 +1280,7 @@ export const createSandboxRoutes = () => {
                 ])
               : // Sandbox-less backfill: same GitHub-backed shapes the /git
                 // routes serve (no daemon exists to ask).
-                await (async () => {
-                  const client = await fastPreviewGitClient(c);
-                  return Promise.all([
-                    repoGitStatus(client, claim.branch),
-                    repoGitDiff(client, claim.branch),
-                  ]);
-                })();
+                await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
         // The only route under /sandbox that spends real money: one model call
         // on the org's gateway credential, with a prompt the caller sizes (up
         // to the body limit above). It is a plain BFF route, so `defineTool`'s
