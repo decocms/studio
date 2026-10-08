@@ -33,7 +33,7 @@ export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
  *     browsers do NOT execute scripts when SVG is loaded as a pure image.
  *   - Top-level navigation, `<object>`, `<iframe>` (e.g. opening the
  *     asset URL in a new tab) DOES execute scripts, but in the CDN
- *     origin (e.g. `decoims.com`), not the app's. As long as the CDN
+ *     origin (e.g. `assets.decocms.com`), not the app's. As long as the CDN
  *     domain doesn't share cookies/auth with the app, the blast radius
  *     is limited to "the SVG can phone home as the visitor."
  * If you ever serve assets from the same eTLD+1 as the app, remove SVG
