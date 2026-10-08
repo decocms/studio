@@ -147,6 +147,9 @@ function isProductionBranch(base: string): boolean {
   return ["main", "master"].includes(base.trim().toLowerCase());
 }
 
+/** Review panes kept alive at once — each holds up to two full-page frames. */
+const MAX_LIVE_PANES = 4;
+
 /** Above the list on narrow screens, beside it from `md` up. */
 const REVIEW_PANE = "flex h-[45%] min-h-0 min-w-0 shrink-0 md:h-auto md:flex-1";
 
@@ -429,6 +432,12 @@ function CmsPublishContent({
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   /** The card shown in the review pane. */
   const [activeId, setActiveId] = useState<string | null>(null);
+  /** Cards visited, most recent first — their panes stay mounted. */
+  const [visitedIds, setVisitedIds] = useState<string[]>([]);
+  const select = (id: string) => {
+    setActiveId(id);
+    setVisitedIds((current) => [id, ...current.filter((v) => v !== id)]);
+  };
   /** Only one card may arm its discard at a time — it is a one-click destroy. */
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
@@ -439,6 +448,18 @@ function CmsPublishContent({
     changes.find((change) => changeId(change) === activeId) ??
     changes[0] ??
     null;
+  const selectedId = selected ? changeId(selected) : null;
+  /** The selected pane, the recently visited ones, then the next in the list —
+   *  mounted (hidden) so switching cards never waits on a page load again. */
+  const liveIds = [
+    ...new Set([
+      ...(selectedId ? [selectedId] : []),
+      ...visitedIds,
+      ...changes.map(changeId),
+    ]),
+  ]
+    .filter((id) => changes.some((change) => changeId(change) === id))
+    .slice(0, MAX_LIVE_PANES);
   const isReview = mode === "review";
   const surfaceState: PublishSurfaceState = cardsPending
     ? "loading"
@@ -564,7 +585,7 @@ function CmsPublishContent({
               change={change}
               bodyPending={bodiesPending}
               selected={selected !== null && changeId(selected) === id}
-              onSelect={() => setActiveId(id)}
+              onSelect={() => select(id)}
               confirming={confirmingId === id}
               onConfirmingChange={(confirming) =>
                 setConfirmingId(confirming ? id : null)
@@ -694,16 +715,27 @@ function CmsPublishContent({
   const reviewPane = cardsPending ? (
     <ReviewPaneGhost />
   ) : selected ? (
-    <div className={REVIEW_PANE}>
-      <PublishCompare
-        key={changeId(selected)}
-        change={selected}
-        diff={gitDiff}
-        bodyPending={bodiesPending}
-        previewServerUrl={previewServerUrl}
-        draft={compareDraft}
-        lastPage={lastPreviewPage}
-      />
+    <div className={cn(REVIEW_PANE, "relative")}>
+      {changes
+        .filter((change) => liveIds.includes(changeId(change)))
+        .map((change) => (
+          <div
+            key={changeId(change)}
+            className={cn(
+              "absolute inset-0 flex",
+              changeId(change) !== selectedId && "hidden",
+            )}
+          >
+            <PublishCompare
+              change={change}
+              diff={gitDiff}
+              bodyPending={bodiesPending}
+              previewServerUrl={previewServerUrl}
+              draft={compareDraft}
+              lastPage={lastPreviewPage}
+            />
+          </div>
+        ))}
     </div>
   ) : (
     <div className={cn(REVIEW_PANE, "bg-muted/40")} />

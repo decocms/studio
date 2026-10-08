@@ -245,20 +245,30 @@ export function PublishCompare({
             </p>
           )}
         </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 gap-3 p-3">
-          {view !== "after" ? (
-            <ComparePane label={t("thread.publishCompare.before")}>
-              {beforePane}
-            </ComparePane>
-          ) : null}
-          {view !== "before" ? (
-            <ComparePane label={t("thread.publishCompare.after")} highlight>
-              {afterPane}
-            </ComparePane>
-          ) : null}
+      ) : null}
+      {canRender ? (
+        // Hidden, never unmounted: switching tabs must not reload the frames.
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 gap-3 p-3",
+            view === "code" && "hidden",
+          )}
+        >
+          <ComparePane
+            label={t("thread.publishCompare.before")}
+            hidden={view === "after"}
+          >
+            {beforePane}
+          </ComparePane>
+          <ComparePane
+            label={t("thread.publishCompare.after")}
+            highlight
+            hidden={view === "before"}
+          >
+            {afterPane}
+          </ComparePane>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -294,14 +304,21 @@ function DeviceButton({
 function ComparePane({
   label,
   highlight = false,
+  hidden = false,
   children,
 }: {
   label: string;
   highlight?: boolean;
+  hidden?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5">
+    <div
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1 flex-col gap-1.5",
+        hidden && "hidden",
+      )}
+    >
       <div className="flex items-center gap-1.5 px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
         <span
           className={cn(
@@ -375,27 +392,26 @@ function CompareFrame({
   const offsetX =
     size.width > 0 ? Math.max((size.width - logicalWidth * scale) / 2, 0) : 0;
 
+  // Mounted even while its pane is hidden (size 0): unmounting would reload the page on return.
   return (
     <div ref={ref} className="absolute inset-0">
-      {size.width > 0 ? (
-        // Cross-origin site, so `allow-same-origin` keeps ITS origin, not ours.
-        <iframe
-          key={src}
-          src={src}
-          title={title}
-          // oxlint-disable-next-line react/iframe-missing-sandbox
-          sandbox="allow-scripts allow-same-origin"
-          onLoad={() => setLoadedSrc(src)}
-          className="absolute top-0 border-0 bg-white"
-          style={{
-            left: offsetX,
-            width: logicalWidth,
-            height: size.height / scale,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-        />
-      ) : null}
+      {/* Cross-origin site, so `allow-same-origin` keeps ITS origin, not ours. */}
+      <iframe
+        key={src}
+        src={src}
+        title={title}
+        // oxlint-disable-next-line react/iframe-missing-sandbox
+        sandbox="allow-scripts allow-same-origin"
+        onLoad={() => setLoadedSrc(src)}
+        className="absolute top-0 border-0 bg-white"
+        style={{
+          left: offsetX,
+          width: logicalWidth,
+          height: size.height > 0 ? size.height / scale : "100%",
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      />
       {loadedSrc !== src ? (
         <div className="absolute inset-0 flex items-center justify-center bg-background/60">
           <Spinner className="size-5 motion-reduce:animate-none" />
