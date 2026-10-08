@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { serializeBlock } from "@decocms/blocks/protocol";
+import { createDeliveryPurge } from "./delivery-purge";
 import { deliveryKeys } from "./delivery-store";
 import { createDraftStore, type HostedDraftRef } from "./draft-store";
 import {
@@ -171,7 +172,7 @@ describe("publishDraft", () => {
     expect(await drafts.load(REF)).not.toBeNull();
   });
 
-  it("fails fast when the purge fails: one purge, no restore, pending, draft kept", async () => {
+  it("fails fast when the purge fails: one purge call, no restore, pending, draft kept", async () => {
     const { git, delivery, drafts, repo } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     delivery.log.length = 0;
@@ -181,7 +182,8 @@ describe("publishDraft", () => {
       coAuthor: null,
     });
     expect(result).toEqual({ result: "pending", sha: git.head() });
-    // Exactly one purge and one pointer write: no retry, no restore.
+    // One purge call (its single retry is inside it) and one pointer write:
+    // no restore.
     expect(delivery.log).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
@@ -191,6 +193,61 @@ describe("publishDraft", () => {
       git.head(),
     );
     expect(await drafts.load(REF)).not.toBeNull();
+  });
+
+  it("is pending with the draft kept when both purge attempts fail (exactly two calls)", async () => {
+    const { git, delivery, drafts, repo } = setup();
+    await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
+    let calls = 0;
+    repo.purge = createDeliveryPurge({
+      zoneId: "z",
+      apiToken: "t",
+      fetch: (async () => {
+        calls++;
+        return new Response(JSON.stringify({ success: false }), {
+          status: 503,
+        });
+      }) as unknown as typeof fetch,
+    });
+    delivery.log.length = 0;
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toEqual({ result: "pending", sha: git.head() });
+    expect(calls).toBe(2);
+    // No restore: the pointer written once stays.
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.revision("acme", git.head())}`,
+      `put ${deliveryKeys.latest("acme")}`,
+    ]);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
+      git.head(),
+    );
+    expect(await drafts.load(REF)).not.toBeNull();
+  });
+
+  it("publishes and deletes the draft when the purge retry succeeds", async () => {
+    const { git, drafts, repo } = setup();
+    await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
+    let calls = 0;
+    repo.purge = createDeliveryPurge({
+      zoneId: "z",
+      apiToken: "t",
+      fetch: (async () => {
+        calls++;
+        return new Response(JSON.stringify({ success: calls > 1 }), {
+          status: calls > 1 ? 200 : 503,
+        });
+      }) as unknown as typeof fetch,
+    });
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toEqual({ result: "published", sha: git.head() });
+    expect(calls).toBe(2);
+    expect(await drafts.load(REF)).toBeNull();
   });
 
   it("does not purge when the latest.json write fails (pending, draft kept)", async () => {

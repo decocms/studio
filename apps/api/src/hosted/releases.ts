@@ -245,7 +245,7 @@ export async function listReleases(
 
 /**
  * Resync: point latest.json at main's head, writing its revision object first
- * when it's missing, and purge it from the edge once. A failed write or purge
+ * when it's missing, and purge it from the edge (one retry). A failed write or purge
  * throws `LatestUpdateError`; the user retries. While the screen says
  * Rolled back, it needs `confirm`.
  */

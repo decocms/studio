@@ -2,10 +2,11 @@
  * Purging latest.json from Cloudflare's edge after Studio rewrites it.
  *
  * latest.json is served `s-maxage=3600`: the edge may hold it up to an hour.
- * Every write (Publish, Make current, Resync) is followed by ONE purge of that
+ * Every write (Publish, Make current, Resync) is followed by a purge of that
  * URL through the zone's purge_cache API, so the new pointer is seen at once.
- * There is no retry: a failed or timed-out purge fails the operation, Studio
- * shows it and the user retries from there. The hour bounds staleness.
+ * Each attempt has a 5 s timeout and a failed attempt is retried exactly once
+ * (two attempts at most). If both fail, the operation fails: Studio shows it
+ * and the user retries from there. The hour bounds staleness.
  */
 
 import { getSettings } from "@/settings";
@@ -16,8 +17,11 @@ export interface DeliveryPurge {
   purge(key: string): Promise<void>;
 }
 
-/** How long the single purge call may take before it counts as failed. */
+/** How long one purge attempt may take before it counts as failed. */
 const PURGE_TIMEOUT_MS = 5000;
+
+/** One attempt plus exactly one retry. */
+const PURGE_ATTEMPTS = 2;
 
 export function createDeliveryPurge(config: {
   zoneId: string | undefined;
@@ -45,30 +49,39 @@ export function createDeliveryPurge(config: {
   return {
     async purge(key) {
       const url = `${origin}/${key}`;
-      let res: Response;
-      try {
-        res = await doFetch(endpoint, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${apiToken}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ files: [url] }),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (error) {
-        const name = (error as { name?: string } | null)?.name;
-        throw new Error(
-          name === "TimeoutError"
-            ? `purge ${url}: timed out after ${timeoutMs} ms`
-            : `purge ${url}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-      const body = (await res.json().catch(() => null)) as {
-        success?: unknown;
-      } | null;
-      if (!res.ok || body?.success !== true) {
-        throw new Error(`purge ${url}: HTTP ${res.status}`);
+      const attempt = async () => {
+        let res: Response;
+        try {
+          res = await doFetch(endpoint, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${apiToken}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ files: [url] }),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+        } catch (error) {
+          const name = (error as { name?: string } | null)?.name;
+          throw new Error(
+            name === "TimeoutError"
+              ? `purge ${url}: timed out after ${timeoutMs} ms`
+              : `purge ${url}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        const body = (await res.json().catch(() => null)) as {
+          success?: unknown;
+        } | null;
+        if (!res.ok || body?.success !== true) {
+          throw new Error(`purge ${url}: HTTP ${res.status}`);
+        }
+      };
+      for (let i = 1; ; i++) {
+        try {
+          return await attempt();
+        } catch (error) {
+          if (i >= PURGE_ATTEMPTS) throw error;
+        }
       }
     },
   };

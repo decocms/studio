@@ -4,11 +4,12 @@
  *   1. commit the draft directly to main (fast-forward only, no PR);
  *   2. PUT sites/<site>/revisions/<commit>.json;
  *   3. re-read main's head; only if it is still that commit, PUT latest.json
- *      and purge its URL from Cloudflare's edge (one attempt, 5 s timeout);
+ *      and purge its URL from Cloudflare's edge (5 s per attempt, one retry);
  *   4. delete the draft, only once steps 2–3 succeeded.
  *
  * Git is the source of truth. A failure after step 1 (a failed pointer write
- * or purge included) fails fast: nothing is retried, restored or rolled back,
+ * or purge included, once the purge's single retry also failed) fails fast:
+ * nothing is restored or rolled back,
  * the publish is "pending" (git has it, running sites may not serve it yet),
  * the draft stays, and the user retries from Studio (Resync reruns steps 2–3
  * from main's head). Rollback (Releases → Make current) rewrites latest.json
@@ -70,8 +71,8 @@ export class MainMovedError extends Error {
 }
 
 /**
- * Writing latest.json or purging it from the edge failed. Nothing is retried
- * or restored: the user retries from Studio.
+ * Writing latest.json or purging it from the edge (after its one retry)
+ * failed. Nothing is restored: the user retries from Studio.
  */
 export class LatestUpdateError extends Error {
   constructor(cause: unknown) {
@@ -250,9 +251,10 @@ async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
 }
 
 /**
- * Writes latest.json, then purges its URL from the edge once. Either failing
- * throws {@link LatestUpdateError} at once: no retry, no restore of the
- * previous pointer (a failed write skips the purge).
+ * Writes latest.json, then purges its URL from the edge (5 s per attempt,
+ * exactly one retry). Either failing throws {@link LatestUpdateError}: no
+ * restore of the previous pointer, no other recovery (a failed write skips
+ * the purge).
  */
 export async function writeLatest(
   repo: Pick<HostedRepo, "store" | "purge" | "site">,

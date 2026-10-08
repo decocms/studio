@@ -277,7 +277,7 @@ describe("purge", () => {
     ]);
   });
 
-  it("Resync fails fast on a failed purge: one purge, no restore; a retry succeeds", async () => {
+  it("Resync fails fast on a failed purge: one purge call, no restore; retrying from Studio succeeds", async () => {
     const { git, delivery, repo, insights } = setup();
     delivery.failPurge(true);
     await expect(
