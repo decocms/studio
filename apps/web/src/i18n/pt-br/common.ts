@@ -3,6 +3,7 @@ import type { common as commonEn } from "../en/common.ts";
 export const common = {
   "common.copy": "Copiar",
   "common.seeAll": "Ver todos os {count} {noun}",
+  "common.soon": "Em breve",
   "common.goBack": "Voltar",
   "common.goHome": "Ir para home",
   "common.accountPopover.account": "Conta",

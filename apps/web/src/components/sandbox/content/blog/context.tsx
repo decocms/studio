@@ -46,19 +46,13 @@ import { extractPages } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { RecordEditor } from "./record-editor";
-import { CategoryEditor } from "./category-editor";
 import {
-  type BlogKind,
   BRAND_BLOCK_KEY,
   type BrandRule,
   CONTEXT_BLOCK_KEY,
-  buildBlogBlock,
   dedupeSuggestedThemes,
   defaultFormatSections,
-  emptyBlogPayload,
   FORMATS_BLOCK_KEY,
-  generateBlogKey,
   mentionableSections,
   filledBrandRules,
   newPillarKey,
@@ -68,7 +62,6 @@ import {
   normalizeVoiceExamples,
   type VoiceExample,
   postStructures,
-  scanBlogEntries,
   scanPillars,
   selectBrandEvidence,
   applyExtractResult,
@@ -116,7 +109,7 @@ const CONTEXT_SECTIONS = [
 type ContextSection = (typeof CONTEXT_SECTIONS)[number]["id"];
 
 /** The tabs of the Context screen. */
-type ContextTab = "brand" | "formats" | "pillars" | "authors" | "categories";
+type ContextTab = "brand" | "formats" | "pillars" | "automations";
 
 /** Steps the extract goes through, in order. See `phase` in BlogContext. */
 type ExtractPhase = Extract<TranslationKey, `sandbox.blogBrand.phase${string}`>;
@@ -162,18 +155,12 @@ export function BlogContext({
   branch,
   decofile,
   meta,
-  onOpenPost,
-  onManageCategoryPosts,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
-  /** Open a post in the Posts area (from a category's post links). */
-  onOpenPost?: (key: string) => void;
-  /** Jump to the Posts area to manage a category's posts. */
-  onManageCategoryPosts?: (slug: string) => void;
 }) {
   const storedBrand = asBlock(decofile[BRAND_BLOCK_KEY]);
   const storedContext = asBlock(decofile[CONTEXT_BLOCK_KEY]);
@@ -649,17 +636,10 @@ export function BlogContext({
           >
             {t("sandbox.blogContext.tabPillars")}
           </TabButton>
-          <TabButton
-            active={tab === "authors"}
-            onClick={() => setTab("authors")}
-          >
-            {t("sandbox.blogContext.tabAuthors")}
-          </TabButton>
-          <TabButton
-            active={tab === "categories"}
-            onClick={() => setTab("categories")}
-          >
-            {t("sandbox.blogContext.tabCategories")}
+          {/* Wired as a tab so the shape is visible; the panel comes later. */}
+          <TabButton active={false} disabled onClick={() => {}}>
+            {t("sandbox.blogContext.tabAutomations")}
+            <Badge variant="secondary">{t("common.soon")}</Badge>
           </TabButton>
         </div>
         {tab === "brand" && (
@@ -791,56 +771,7 @@ export function BlogContext({
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {tab === "authors" ? (
-          <EntityPanel
-            kind="authors"
-            orgSlug={orgSlug}
-            virtualMcpId={virtualMcpId}
-            branch={branch}
-            decofile={decofile}
-            hint={t("sandbox.blogContext.authorsHint")}
-            addLabel={t("sandbox.blogContext.addAuthor")}
-            emptyLabel={t("sandbox.blogContext.authorsEmpty")}
-            renderEditor={(key) => (
-              <RecordEditor
-                key={`author:${key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                kind="authors"
-                blockKey={key}
-                block={decofile[key] as Record<string, unknown>}
-                meta={meta}
-                decofile={decofile}
-              />
-            )}
-          />
-        ) : tab === "categories" ? (
-          <EntityPanel
-            kind="categories"
-            orgSlug={orgSlug}
-            virtualMcpId={virtualMcpId}
-            branch={branch}
-            decofile={decofile}
-            hint={t("sandbox.blogContext.categoriesHint")}
-            addLabel={t("sandbox.blogContext.addCategory")}
-            emptyLabel={t("sandbox.blogContext.categoriesEmpty")}
-            renderEditor={(key) => (
-              <CategoryEditor
-                key={`category:${key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={key}
-                block={decofile[key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                onManagePosts={(slug) => onManageCategoryPosts?.(slug)}
-                onOpenPost={(postKey) => onOpenPost?.(postKey)}
-              />
-            )}
-          />
-        ) : tab === "pillars" ? (
+        {tab === "pillars" ? (
           <PillarsPanel
             orgSlug={orgSlug}
             virtualMcpId={virtualMcpId}
@@ -903,21 +834,28 @@ export function BlogContext({
 function TabButton({
   active,
   onClick,
+  disabled,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  /** A tab whose panel is not built yet: visible, never reachable. */
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        "-mb-px border-b-2 px-3 py-3 text-sm transition-colors cursor-pointer",
+        "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm transition-colors",
+        disabled && "cursor-not-allowed text-muted-foreground opacity-70",
+        !disabled && "cursor-pointer",
         active
           ? "border-foreground font-medium text-foreground"
-          : "border-transparent text-muted-foreground hover:text-foreground",
+          : "border-transparent text-muted-foreground",
+        !disabled && !active && "hover:text-foreground",
       )}
     >
       {children}
@@ -1506,102 +1444,5 @@ function PillarRow({
         </div>
       )}
     </li>
-  );
-}
-
-/**
- * Master-detail for a blog reference collection (authors / categories): a list
- * on the left with add/remove, the existing editor on the right. Lets Authors
- * and Categories live inside Context instead of their own sidebar rows.
- */
-function EntityPanel({
-  kind,
-  orgSlug,
-  virtualMcpId,
-  branch,
-  decofile,
-  hint,
-  addLabel,
-  emptyLabel,
-  renderEditor,
-}: {
-  kind: BlogKind;
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  decofile: Record<string, unknown>;
-  hint: string;
-  addLabel: string;
-  emptyLabel: string;
-  renderEditor: (key: string) => React.ReactNode;
-}) {
-  const t = useT();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const del = useDeleteBlock({ orgSlug, virtualMcpId, branch });
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  const entries = scanBlogEntries(decofile)[kind];
-
-  const add = () => {
-    const key = generateBlogKey(decofile, kind);
-    save.mutate({
-      blockKey: key,
-      data: buildBlogBlock(key, kind, emptyBlogPayload(kind)),
-    });
-    setOpenKey(key);
-  };
-
-  return (
-    <div className="min-w-0 max-w-3xl space-y-3 px-8 py-6">
-      <p className="text-xs text-muted-foreground">{hint}</p>
-      {entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
-      ) : (
-        <ul className="divide-y overflow-hidden rounded-lg border">
-          {entries.map((entry) => {
-            const open = openKey === entry.key;
-            return (
-              <li key={entry.key} className="group/item bg-card">
-                <div className="flex items-center gap-1 pr-2">
-                  <button
-                    type="button"
-                    onClick={() => setOpenKey(open ? null : entry.key)}
-                    aria-expanded={open}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
-                  >
-                    {open ? (
-                      <ChevronDown size={14} className="shrink-0" />
-                    ) : (
-                      <ChevronRight
-                        size={14}
-                        className="shrink-0 text-muted-foreground"
-                      />
-                    )}
-                    <span className="truncate">{entry.label}</span>
-                    {entry.subtitle && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {entry.subtitle}
-                      </span>
-                    )}
-                  </button>
-                  <RemoveButton
-                    label={t("sandbox.blogContext.removeEntry")}
-                    onClick={() => {
-                      del.mutate({ blockKey: entry.key });
-                      if (open) setOpenKey(null);
-                    }}
-                  />
-                </div>
-                {open && (
-                  <div className="border-t bg-background px-4 py-4">
-                    {renderEditor(entry.key)}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <AddButton label={addLabel} onClick={add} />
-    </div>
   );
 }

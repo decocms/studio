@@ -1100,18 +1100,6 @@ function ContentBrowserReady({
                 branch={branch}
                 decofile={decofile}
                 meta={meta}
-                onOpenPost={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-                onManageCategoryPosts={() => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection(null);
-                  setOpenPageSeoKey(null);
-                }}
               />
             ) : activeCollection === "seo" ? (
               <SeoEditor

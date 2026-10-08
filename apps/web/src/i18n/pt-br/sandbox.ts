@@ -136,20 +136,11 @@ export const sandbox = {
   "sandbox.blogCustomFields.title": "Outros campos",
   "sandbox.blogCustomFields.description":
     "Campos que o tipo de conteúdo deste site declara, além dos acima.",
-  "sandbox.blogContext.addAuthor": "Adicionar autor",
-  "sandbox.blogContext.addCategory": "Adicionar categoria",
-  "sandbox.blogContext.authorsEmpty": "Nenhum autor ainda.",
-  "sandbox.blogContext.authorsHint":
-    "As pessoas a quem seus posts são atribuídos. Adicione uma e abra para editar.",
-  "sandbox.blogContext.categoriesEmpty": "Nenhuma categoria ainda.",
-  "sandbox.blogContext.categoriesHint":
-    "Os temas sob os quais seus posts são classificados. Adicione um e abra para editar.",
   "sandbox.blogContext.removeEntry": "Remover",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
-  "sandbox.blogContext.tabAuthors": "Autores",
+  "sandbox.blogContext.tabAutomations": "Automações",
   "sandbox.blogContext.tabBrand": "Marca",
-  "sandbox.blogContext.tabCategories": "Categorias",
   "sandbox.blogContext.tabFormats": "Formatos",
   "sandbox.blogContext.tabPillars": "Pilares de conteúdo",
   "sandbox.blogContext.title": "Contexto",
