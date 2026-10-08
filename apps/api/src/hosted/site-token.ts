@@ -5,41 +5,18 @@
  *   header  {"alg":"EdDSA","typ":"JWT"}
  *   payload {"site":"<site>","kid":"<token id>","iat":<unix seconds>}
  *
- * No expiry: a token lives until it is revoked, which writes `revoked:<kid>`
- * to the denylist the edge checks. Studio keeps at most two unrevoked tokens
- * per site (issue the new one, deploy it, revoke the old one); that is a
- * hygiene rule here only, the edge checks just the signature and denylist.
- * The token itself is shown once and never stored.
+ * No expiry and no revocation: the edge checks only the signature, and stamps
+ * the telemetry with the token's site. Issuing always works; Studio lists the
+ * tokens it issued (kid and time). The token itself is shown once and never
+ * stored.
  */
 
 import type { KVStorage } from "@/storage/kv";
-import { type Denylist, denylistKeys } from "./denylist";
-
-const MAX_ACTIVE_TOKENS = 2;
 
 export interface SiteTokenRecord {
   kid: string;
   /** Issued at, Unix seconds (the token's `iat`). */
   iat: number;
-  /** ISO time of revocation; absent while active. */
-  revokedAt?: string;
-}
-
-/** A third active token was asked for. */
-export class TooManySiteTokensError extends Error {
-  constructor() {
-    super(
-      `a site can have at most ${MAX_ACTIVE_TOKENS} active tokens; revoke one first`,
-    );
-    this.name = "TooManySiteTokensError";
-  }
-}
-
-export class SiteTokenNotFoundError extends Error {
-  constructor() {
-    super("site token not found");
-    this.name = "SiteTokenNotFoundError";
-  }
 }
 
 // OPEN: O-S2 — token records live in the org KV per site; no migration.
@@ -99,7 +76,6 @@ async function signSiteToken(
 export function createSiteTokens(deps: {
   kv: KVStorage;
   signingKey: () => Promise<CryptoKey>;
-  denylist: Denylist;
 }) {
   const list = async (organizationId: string, site: string) =>
     parseRecords(await deps.kv.get(organizationId, recordsKey(site)));
@@ -109,9 +85,6 @@ export function createSiteTokens(deps: {
 
     async issue(organizationId: string, site: string) {
       const records = await list(organizationId, site);
-      if (records.filter((r) => !r.revokedAt).length >= MAX_ACTIVE_TOKENS) {
-        throw new TooManySiteTokensError();
-      }
       // OPEN: O-15 — kid is this token's id: 16 random bytes, base64url.
       const record: SiteTokenRecord = {
         kid: b64u(crypto.getRandomValues(new Uint8Array(16))),
@@ -125,20 +98,6 @@ export function createSiteTokens(deps: {
         tokens: [...records, record],
       });
       return { token, record };
-    },
-
-    async revoke(organizationId: string, site: string, kid: string) {
-      const records = await list(organizationId, site);
-      const target = records.find((r) => r.kid === kid);
-      if (!target) throw new SiteTokenNotFoundError();
-      if (target.revokedAt) return target;
-      // The edge's denylist first: a token is only "revoked" once it is.
-      await deps.denylist.put(denylistKeys.revoked(kid));
-      const revoked = { ...target, revokedAt: new Date().toISOString() };
-      await deps.kv.set(organizationId, recordsKey(site), {
-        tokens: records.map((r) => (r.kid === kid ? revoked : r)),
-      });
-      return revoked;
     },
   };
 }

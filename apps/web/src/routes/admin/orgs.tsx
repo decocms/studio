@@ -850,89 +850,6 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
 }
 
 /**
- * The hosted Deco CMS kill switch for one org: writes (or deletes)
- * `kill:<site>` on the edge denylist for every site of the org.
- */
-function KillSwitchDialog({ org }: { org: DeploymentAdminOrg }) {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const queryClient = useQueryClient();
-  const { data: state } = useQuery({
-    queryKey: KEYS.deploymentAdminOrgHostedKill(org.id),
-    queryFn: () =>
-      adminFetch<{ killed: boolean; killedAt: string | null }>(
-        `/api/_admin/orgs/${org.id}/hosted-kill`,
-      ),
-    enabled: open,
-  });
-  const set = useMutation({
-    mutationFn: (killed: boolean) =>
-      adminFetch<{ killed: boolean; killedAt: string | null }>(
-        `/api/_admin/orgs/${org.id}/hosted-kill`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ killed }),
-        },
-      ),
-    onSuccess: (next) => {
-      queryClient.setQueryData(KEYS.deploymentAdminOrgHostedKill(org.id), next);
-      toast.success(
-        next.killed
-          ? t("admin.orgs.killed", { org: org.name })
-          : t("admin.orgs.restored", { org: org.name }),
-      );
-    },
-    onError: (error) => toast.error(error.message),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          {t("admin.orgs.killSwitch")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {t("admin.orgs.killSwitchFor", { org: org.name })}
-          </DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.orgs.killSwitchDescription")}
-        </p>
-        <p className="text-sm">
-          {state?.killed && state.killedAt
-            ? t("admin.orgs.killSwitchKilled", {
-                when: new Date(state.killedAt).toLocaleString(),
-              })
-            : t("admin.orgs.killSwitchLive")}
-        </p>
-        <DialogFooter>
-          {state?.killed ? (
-            <Button
-              variant="outline"
-              disabled={set.isPending}
-              onClick={() => set.mutate(false)}
-            >
-              {t("admin.orgs.restore")}
-            </Button>
-          ) : null}
-          <Button
-            variant="destructive"
-            disabled={set.isPending || !state}
-            onClick={() => set.mutate(true)}
-          >
-            {t("admin.orgs.kill")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/**
  * Pins (or lifts) the billing notice on one org: a `warn` banner, or a `block`
  * that takes the org's UI and control-plane writes away until it is resolved.
  * The copy is typed here and shown verbatim to that org's members.
@@ -1346,7 +1263,6 @@ export default function AdminOrgsPage() {
           <FlagsDialog org={org} />
           <SitesDialog org={org} />
           <NoticeDialog org={org} />
-          <KillSwitchDialog org={org} />
           <AddMemberDialog org={org} />
         </div>
       ),

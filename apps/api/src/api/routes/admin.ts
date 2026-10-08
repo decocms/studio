@@ -30,8 +30,6 @@ import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
 import { VirtualMCPStorage } from "@/storage/virtual";
-import { denylist } from "@/hosted/denylist";
-import { readKillState, setKilled } from "@/hosted/kill-switch";
 import {
   backfillSiteClaims,
   decoSiteExists,
@@ -928,58 +926,6 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
-  });
-
-  // Hosted Deco CMS kill switch: drops an account's telemetry and analytics at
-  // the edge by writing `kill:<site>` for every site of the org.
-  // OPEN: O-22 — "staff only" is this deployment-admin fence.
-  /** The sites the org owns in `org_sites`: what the kill switch covers. */
-  const ownedSites = async (orgId: string) =>
-    (await new OrgSiteStorage(getDb().db).listByOrg(orgId)).map(
-      (site) => site.slug,
-    );
-
-  app.get("/orgs/:orgId/hosted-kill", async (c) => {
-    const deny = denylist();
-    if (!deny) return c.json({ error: "denylist not configured" }, 503);
-    const sites = await ownedSites(c.req.param("orgId"));
-    return c.json(await readKillState(deny, sites));
-  });
-
-  app.put("/orgs/:orgId/hosted-kill", async (c) => {
-    const orgId = c.req.param("orgId");
-    const raw = (await c.req.json().catch(() => null)) as {
-      killed?: unknown;
-    } | null;
-    if (typeof raw?.killed !== "boolean") {
-      return c.json({ error: "killed must be a boolean" }, 400);
-    }
-    const deny = denylist();
-    if (!deny) return c.json({ error: "denylist not configured" }, 503);
-    const db = getDb().db;
-    const org = await db
-      .selectFrom("organization")
-      .select("id")
-      .where("id", "=", orgId)
-      .executeTakeFirst();
-    if (!org) {
-      return c.json({ error: "Organization not found" }, 404);
-    }
-    const { actorId: effectiveActorId, impersonatedBy } =
-      await getAuditActor(c);
-    const actorId = impersonatedBy ?? effectiveActorId;
-    if (!actorId) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const sites = await ownedSites(orgId);
-    const state = await setKilled(deny, sites, raw.killed);
-    auditAdminAction(raw.killed ? "org_hosted_kill" : "org_hosted_restore", {
-      actor_user_id: actorId,
-      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
-      organization_id: orgId,
-      sites: sites.length,
-    });
-    return c.json(state);
   });
 
   /**

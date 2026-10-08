@@ -1,25 +1,14 @@
 /**
  * Site tokens of a hosted v8 site: what the site passes as
  * `createCMS({ site, token })` to send telemetry. A token is shown once;
- * at most two are active at a time (issue the new one, deploy it, revoke
- * the old one). Revoking takes effect at the edge.
+ * issuing always works, and the list shows every token issued.
  */
 
 import { useState } from "react";
-import { Copy01, Key01, Plus, Trash01 } from "@untitledui/icons";
+import { Copy01, Key01, Plus } from "@untitledui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   Dialog,
   DialogContent,
@@ -39,12 +28,9 @@ import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
 import { KEYS } from "@/lib/query-keys";
 
-const MAX_ACTIVE = 2;
-
 interface SiteTokenRecord {
   kid: string;
   iat: number;
-  revokedAt?: string;
 }
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -65,7 +51,6 @@ export function SiteTokenSection({
   const base = `/api/${orgSlug}/hosted/${encodeURIComponent(virtualMcpId)}/site-tokens`;
   const key = KEYS.hostedSiteTokens(orgSlug, virtualMcpId);
   const [created, setCreated] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<SiteTokenRecord | null>(null);
 
   const list = useQuery({
     queryKey: key,
@@ -76,26 +61,10 @@ export function SiteTokenSection({
     mutationFn: async () =>
       readJson<{ token: string }>(await fetch(base, { method: "POST" })),
     onSuccess: ({ token }) => setCreated(token),
-    onError: (error) =>
-      toast.error(
-        error.message === "too-many-tokens"
-          ? t("siteTokens.tooMany")
-          : error.message,
-      ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
-  });
-  const revoke = useMutation({
-    mutationFn: async (kid: string) =>
-      readJson<unknown>(
-        await fetch(`${base}/${encodeURIComponent(kid)}`, { method: "DELETE" }),
-      ),
-    onSuccess: () => toast.success(t("siteTokens.revoked")),
     onError: (error) => toast.error(error.message),
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
-
   const tokens = list.data?.tokens ?? [];
-  const active = tokens.filter((token) => !token.revokedAt).length;
 
   return (
     <SettingsSection
@@ -114,8 +83,7 @@ export function SiteTokenSection({
             <Button
               type="button"
               size="sm"
-              disabled={!list.data || active >= MAX_ACTIVE || issue.isPending}
-              title={active >= MAX_ACTIVE ? t("siteTokens.tooMany") : undefined}
+              disabled={!list.data || issue.isPending}
               onClick={() => issue.mutate()}
             >
               {issue.isPending ? (
@@ -134,34 +102,16 @@ export function SiteTokenSection({
         ) : null}
         {tokens.map((token) => (
           <SettingsCardRow key={token.kid}>
-            <div className="flex w-full items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <Key01 size={16} className="shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
-                  <p className="truncate font-mono text-xs">{token.kid}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {token.revokedAt
-                      ? t("siteTokens.revokedAgo", {
-                          when: formatTimeAgo(new Date(token.revokedAt)),
-                        })
-                      : t("siteTokens.issuedAgo", {
-                          when: formatTimeAgo(new Date(token.iat * 1000)),
-                        })}
-                  </p>
-                </div>
+            <div className="flex min-w-0 items-center gap-3">
+              <Key01 size={16} className="shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="truncate font-mono text-xs">{token.kid}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("siteTokens.issuedAgo", {
+                    when: formatTimeAgo(new Date(token.iat * 1000)),
+                  })}
+                </p>
               </div>
-              {token.revokedAt ? null : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={revoke.isPending}
-                  onClick={() => setRevoking(token)}
-                >
-                  <Trash01 size={14} />
-                  {t("siteTokens.revoke")}
-                </Button>
-              )}
             </div>
           </SettingsCardRow>
         ))}
@@ -205,31 +155,6 @@ export function SiteTokenSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog
-        open={revoking !== null}
-        onOpenChange={(o) => !o && setRevoking(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("siteTokens.revokeTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("siteTokens.revokeDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("siteTokens.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (revoking) revoke.mutate(revoking.kid);
-                setRevoking(null);
-              }}
-            >
-              {t("siteTokens.revoke")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </SettingsSection>
   );
 }

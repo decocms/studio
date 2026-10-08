@@ -576,7 +576,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("issues site tokens, at most two active", async ({ playwright }) => {
+  test("issues site tokens, with no limit", async ({ playwright }) => {
     const ctx = await newApiContext(playwright);
     try {
       const project = await setUp(ctx, {
@@ -600,10 +600,10 @@ test.describe("content protocol on GitHub", () => {
         iat: expect.any(Number),
       });
       expect((await ctx.post(tokens)).status()).toBe(200);
-      expect((await ctx.post(tokens)).status()).toBe(409);
+      expect((await ctx.post(tokens)).status()).toBe(200);
       const listed = await (await ctx.get(tokens)).json();
       expect(listed.site).toBe(project.owner);
-      expect(listed.tokens).toHaveLength(2);
+      expect(listed.tokens).toHaveLength(3);
       expect(JSON.stringify(listed)).not.toContain(token);
     } finally {
       await ctx.dispose();

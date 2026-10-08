@@ -341,10 +341,6 @@ export interface Settings {
   deliveryPublicOrigin: string | undefined;
   /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
   siteTokenSigningKey: string | undefined;
-  /** Cloudflare KV namespace holding the site-token denylist and kill keys. */
-  cfAccountId: string | undefined;
-  cfDenylistKvNamespaceId: string | undefined;
-  cfKvApiToken: string | undefined;
   /**
    * The Cloudflare zone serving the delivery bucket and a token with Zone →
    * Cache Purge on it: latest.json is purged after every write. Unset = the

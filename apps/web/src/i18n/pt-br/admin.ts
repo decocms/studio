@@ -13,17 +13,6 @@ export const admin = {
   "admin.layout.usersTab": "Usuários",
   "admin.orgs.archived": "Arquivada",
   "admin.orgs.notice": "Aviso",
-  "admin.orgs.killSwitch": "Desligar",
-  "admin.orgs.killSwitchFor": "Telemetria e analytics de {org}",
-  "admin.orgs.killSwitchDescription":
-    "Desligar descarta na borda a telemetria hospedada e o analytics da Deco desta conta, para todos os sites da organização, em cerca de um minuto. Restaurar volta a aceitá-los. Aplique de novo para cobrir sites adicionados depois.",
-  "admin.orgs.killSwitchKilled": "Desligado {when}",
-  "admin.orgs.killSwitchLive":
-    "Telemetria e analytics funcionando normalmente.",
-  "admin.orgs.kill": "Desligar telemetria e analytics",
-  "admin.orgs.restore": "Restaurar",
-  "admin.orgs.killed": "{org}: telemetria e analytics desligados",
-  "admin.orgs.restored": "{org}: telemetria e analytics restaurados",
   "admin.orgs.noticeFor": "Aviso de cobrança de {org}",
   "admin.orgs.noticeDescription":
     "Um aviso aparece como banner na org. Um bloqueio substitui a UI da org por este texto e recusa escritas até ser removido — o faturamento continua acessível.",

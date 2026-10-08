@@ -678,8 +678,6 @@ export const KEYS = {
   deploymentAdminOrgFlags: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "flags"] as const,
   // An org's pinned billing notice in the deployment-admin editor.
-  deploymentAdminOrgHostedKill: (orgId: string) =>
-    ["deployment-admin", "org-hosted-kill", orgId] as const,
   deploymentAdminOrgNotice: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "notice"] as const,
   // An org's owned site slugs (org_sites) in the deployment-admin editor.

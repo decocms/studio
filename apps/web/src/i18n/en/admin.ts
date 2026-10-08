@@ -11,16 +11,6 @@ export const admin = {
   "admin.layout.usersTab": "Users",
   "admin.orgs.archived": "Archived",
   "admin.orgs.notice": "Notice",
-  "admin.orgs.killSwitch": "Kill switch",
-  "admin.orgs.killSwitchFor": "Telemetry and analytics for {org}",
-  "admin.orgs.killSwitchDescription":
-    "Killing drops this account's hosted telemetry and Deco analytics at the edge, for every site of the organization, within about a minute. Restoring lets them through again. Apply it again to cover sites added since.",
-  "admin.orgs.killSwitchKilled": "Killed {when}",
-  "admin.orgs.killSwitchLive": "Telemetry and analytics flow normally.",
-  "admin.orgs.kill": "Kill telemetry and analytics",
-  "admin.orgs.restore": "Restore",
-  "admin.orgs.killed": "{org}: telemetry and analytics killed",
-  "admin.orgs.restored": "{org}: telemetry and analytics restored",
   "admin.orgs.noticeFor": "Billing notice for {org}",
   "admin.orgs.noticeDescription":
     "A warning shows as a banner over the org. A block replaces the org's UI with this text and refuses writes until it is cleared — billing stays reachable.",

@@ -5,7 +5,6 @@
  *   POST   /api/:org/hosted/:virtualMcpId/releases/current   Make current { sha, confirm? }
  *   GET    /api/:org/hosted/:virtualMcpId/site-tokens        list
  *   POST   /api/:org/hosted/:virtualMcpId/site-tokens        issue (shown once)
- *   DELETE /api/:org/hosted/:virtualMcpId/site-tokens/:kid   revoke
  *
  * Publish lives with the draft it publishes (`decofile.ts`). These are
  * Studio-internal routes; nothing outside Studio calls them.
@@ -28,7 +27,6 @@ import {
 } from "@/git-providers";
 import { deliveryStore } from "@/hosted/delivery-store";
 import { deliveryPurge } from "@/hosted/delivery-purge";
-import { denylist } from "@/hosted/denylist";
 import { type HostedRepo, LatestUpdateError } from "@/hosted/publish";
 import { NotV8Site } from "@/hosted/release-objects";
 import {
@@ -38,12 +36,7 @@ import {
   SchemaMismatchError,
 } from "@/hosted/releases";
 import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
-import {
-  createSiteTokens,
-  importSigningKey,
-  SiteTokenNotFoundError,
-  TooManySiteTokensError,
-} from "@/hosted/site-token";
+import { createSiteTokens, importSigningKey } from "@/hosted/site-token";
 import { getSettings } from "@/settings";
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
@@ -139,12 +132,10 @@ async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
 
 function siteTokens(c: Context<HostedEnv>) {
   const signingKey = getSettings().siteTokenSigningKey;
-  const deny = denylist();
-  if (!signingKey || !deny) return null;
+  if (!signingKey) return null;
   return createSiteTokens({
     kv: c.var.studioContext.storage.kv,
     signingKey: () => importSigningKey(signingKey),
-    denylist: deny,
   });
 }
 
@@ -250,29 +241,7 @@ export function createHostedRoutes() {
       }
       return c.json(await tokens.issue(project.organizationId, project.site));
     } catch (err) {
-      if (err instanceof TooManySiteTokensError) {
-        return c.json({ error: "too-many-tokens" }, 409);
-      }
       return hostedError(c, err);
-    }
-  });
-
-  app.delete("/:virtualMcpId/site-tokens/:kid", async (c) => {
-    const project = c.get("hostedProject");
-    const tokens = siteTokens(c);
-    if (!tokens) return c.json({ error: "site tokens not configured" }, 503);
-    try {
-      const record = await tokens.revoke(
-        project.organizationId,
-        project.site,
-        c.req.param("kid"),
-      );
-      return c.json({ record });
-    } catch (err) {
-      if (err instanceof SiteTokenNotFoundError) {
-        return c.json({ error: err.message }, 404);
-      }
-      throw err;
     }
   });
 
