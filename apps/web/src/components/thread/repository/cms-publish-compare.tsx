@@ -29,6 +29,7 @@ import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
+  canRenderCompare,
   compareDraftUrl,
   comparePageUrl,
   compareSectionUrl,
@@ -75,7 +76,7 @@ export function PublishCompare({
   lastPage,
 }: PublishCompareProps) {
   const t = useT();
-  const canRender = change.kind !== "other" && previewServerUrl !== null;
+  const canRender = canRenderCompare(change.kind, previewServerUrl, draft);
   const [view, setView] = useState<CompareView>(canRender ? "split" : "code");
   const [device, setDevice] = useState<CompareDevice>("desktop");
   const [path, setPath] = useState(() => initialComparePath(change, lastPage));
@@ -104,7 +105,7 @@ export function PublishCompare({
   const pathHint =
     sectionKey !== null
       ? null
-      : change.kind === "block"
+      : change.kind !== "page"
         ? t("thread.publishCompare.globalHint")
         : change.pagePath && extractPathParams(change.pagePath).length > 0
           ? t("thread.publishCompare.dynamicHint", {
@@ -112,8 +113,9 @@ export function PublishCompare({
             })
           : null;
 
+  // A new or removed code file says nothing about whether the page existed.
   const beforePane =
-    change.status === "new" ? (
+    change.status === "new" && change.kind !== "other" ? (
       <ComparePlaceholder
         icon={<Plus className="size-5 text-brand" />}
         title={t("thread.publishCompare.newTitle")}
@@ -129,7 +131,7 @@ export function PublishCompare({
     );
 
   const afterPane =
-    change.status === "removed" ? (
+    change.status === "removed" && change.kind !== "other" ? (
       <ComparePlaceholder
         icon={<Trash01 className="size-5 text-destructive" />}
         title={t("thread.publishCompare.removedTitle")}

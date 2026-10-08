@@ -56,15 +56,15 @@ export function compareSectionUrl(
 
 /**
  * The concrete path to render for a change, or "" when it needs one typed in.
- * Global blocks and site settings have no page of their own; the home page is
- * where most of them show. A dynamic page reuses the values last typed into
+ * Global blocks, site settings and code have no page of their own; the home
+ * page is where most of them show. A dynamic page reuses the values last typed into
  * the preview's path bar for that same template.
  */
 export function initialComparePath(
   change: Pick<PublishChange, "kind" | "pagePath">,
   lastPage: LastPreviewPage | null,
 ): string {
-  if (change.kind === "block") return "/";
+  if (change.kind !== "page") return "/";
   const template = change.pagePath;
   if (!template) return "";
   if (extractPathParams(template).length === 0) return template;
@@ -116,4 +116,14 @@ export function compareDraftUrl(
   } catch {
     return null;
   }
+}
+
+/** Content renders on the live site either way; a code change only renders on a sandbox. */
+export function canRenderCompare(
+  kind: PublishChange["kind"],
+  previewServerUrl: string | null,
+  draft: CompareDraft | null,
+): boolean {
+  if (previewServerUrl === null) return false;
+  return kind !== "other" || draft?.kind === "sandbox";
 }

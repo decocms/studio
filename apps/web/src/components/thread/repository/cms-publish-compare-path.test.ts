@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canRenderCompare,
   compareDraftUrl,
   comparePageUrl,
   compareSectionUrl,
@@ -19,6 +20,12 @@ describe("initialComparePath", () => {
 
   test("global blocks and site settings render the home page", () => {
     expect(initialComparePath({ kind: "block", pagePath: null }, null)).toBe(
+      "/",
+    );
+  });
+
+  test("code changes start on the home page too", () => {
+    expect(initialComparePath({ kind: "other", pagePath: null }, null)).toBe(
       "/",
     );
   });
@@ -198,5 +205,30 @@ describe("compareDraftUrl", () => {
     expect(url.searchParams.get("props")).toBe(
       section!.searchParams.get("props"),
     );
+  });
+});
+
+describe("canRenderCompare", () => {
+  const sandbox = {
+    kind: "sandbox",
+    previewUrl: "https://sbx-1.preview.example.dev",
+  } as const;
+  const pointer = { kind: "pointer", pointer: "p1" } as const;
+
+  test("content renders against the live site in either runtime", () => {
+    expect(canRenderCompare("page", SITE, pointer)).toBe(true);
+    expect(canRenderCompare("block", SITE, sandbox)).toBe(true);
+    expect(canRenderCompare("block", SITE, null)).toBe(true);
+  });
+
+  test("code renders only on a sandbox, the one place it already runs", () => {
+    expect(canRenderCompare("other", SITE, sandbox)).toBe(true);
+    expect(canRenderCompare("other", SITE, pointer)).toBe(false);
+    expect(canRenderCompare("other", SITE, null)).toBe(false);
+  });
+
+  test("nothing renders without a live site to compare against", () => {
+    expect(canRenderCompare("page", null, pointer)).toBe(false);
+    expect(canRenderCompare("other", null, sandbox)).toBe(false);
   });
 });
