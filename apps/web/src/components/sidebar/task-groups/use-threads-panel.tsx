@@ -25,7 +25,7 @@ import type { Task } from "@/components/chat/task/types";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
 import { hideAbandonedNewChats } from "@/lib/thread-list-visibility";
 import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { useSandboxOnlyChats } from "@/hooks/use-organization-settings";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { useStudioTools } from "@/lib/studio-tools";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
@@ -102,7 +102,7 @@ export function useThreadsPanel({
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const projectDefaultRuntime = useProjectDefaultRuntime();
-  const sandboxOnlyChats = useOrgFlag("chat_harness_sandbox_only");
+  const sandboxOnlyChats = useSandboxOnlyChats();
 
   const {
     threads: allThreads,
