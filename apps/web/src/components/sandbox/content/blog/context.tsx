@@ -82,10 +82,6 @@ import {
   unknownCitations,
 } from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
-import {
-  fetchCatalogEvidence,
-  hasVtexCatalog,
-} from "./blocks/catalog-evidence";
 
 /** Stable empty seed — `useAutosave` re-seeds on reference change. */
 const EMPTY_FORMATS: Record<string, unknown> = {};
@@ -289,19 +285,14 @@ export function BlogContext({
     if (evidence.blocks.length === 0) return;
     setIsExtracting(true);
     setPhase(PHASE_READING);
-    // Starts now so it overlaps the first model call instead of adding to it.
-    const catalogRead = hasVtexCatalog(meta)
-      ? fetchCatalogEvidence({ orgSlug, virtualMcpId, branch, threadId: null })
-      : Promise.resolve("");
     const timers = [
       setTimeout(() => setPhase("sandbox.blogBrand.phaseResearching"), 15_000),
     ];
     try {
-      const catalog = await catalogRead;
       const brandResult = await studio.call("BLOG_BRAND_EXTRACT", {
+        virtualMcpId,
         blocks: evidence.blocks,
         seo: evidence.seo,
-        catalog: catalog || undefined,
       });
       // What the writing pass needs even when the gate blanked it — it is told
       // to write in `language`, so a missing one sets the whole pass adrift.

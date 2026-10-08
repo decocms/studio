@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   BRAND_EVIDENCE_MAX_BLOCKS,
-  CATALOG_EVIDENCE_MAX_CHARS,
   SEO_EVIDENCE_MAX_ENTRIES,
   SEO_EVIDENCE_MAX_ENTRY_CHARS,
 } from "@decocms/shared/blog-brand-evidence";
@@ -45,18 +44,9 @@ export const EvidenceSeoSchema = z
     "The site's SEO titles and descriptions, the site-wide default first. This is a site's most deliberately written copy — one line per page, rewritten until a team agreed it says what they want a stranger to think they are.",
   );
 
-export const EvidenceCatalogSchema = z
-  .string()
-  .max(CATALOG_EVIDENCE_MAX_CHARS)
-  .optional()
-  .describe(
-    "The store's category tree and a sample of its products, as markdown. Absent when the site is not a store, or its catalog could not be read.",
-  );
-
 export interface EvidenceInput {
   blocks: { key: string; content: string }[];
   seo?: { key: string; content: string }[];
-  catalog?: string;
 }
 
 /**
@@ -81,10 +71,6 @@ export function renderEvidence(input: EvidenceInput): string {
       .map((block) => `## Block: ${block.key}\n\n${block.content}`)
       .join("\n\n---\n\n")}`,
   );
-
-  if (input.catalog?.trim()) {
-    sections.push(`# The store's catalog\n\n${input.catalog}`);
-  }
 
   return sections.join("\n\n---\n\n");
 }

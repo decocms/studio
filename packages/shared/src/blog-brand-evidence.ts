@@ -17,6 +17,3 @@ export const SEO_EVIDENCE_MAX_CHARS = 8_000;
 
 /** One SEO entry — a title and a description, never a whole page. */
 export const SEO_EVIDENCE_MAX_ENTRY_CHARS = 2_000;
-
-/** Chars reserved for the catalog sample, which is fetched, not sampled. */
-export const CATALOG_EVIDENCE_MAX_CHARS = 8_000;

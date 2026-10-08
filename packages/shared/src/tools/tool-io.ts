@@ -1304,7 +1304,7 @@ export interface StudioToolIO {
     input: {
       blocks: { key: string; content: string }[];
       seo?: { key: string; content: string }[] | undefined;
-      catalog?: string | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: {
       companyName: string;

@@ -1670,12 +1670,11 @@ export interface BrandEvidence {
 }
 
 /**
- * Everything the extract reads, most telling first: posts, then categories, then pages — home, institutional, commerce. A PDP is a template with a product name substituted in, so the thousandth teaches nothing the first did not; an institutional page is written once, by hand, about the brand. SEO travels in its own array because folded into `blocks` it could trip `BRAND_EVIDENCE_MAX_BLOCKS`, which rejects the whole call. `catalogChars` reserves room for the caller's catalog sample: without it the loop below, which stops at the first block that overflows, would eat the new sections on exactly the large sites they are for.
+ * Everything the extract reads, most telling first: posts, then categories, then pages — home, institutional, commerce. A PDP is a template with a product name substituted in, so the thousandth teaches nothing the first did not; an institutional page is written once, by hand, about the brand. SEO travels in its own array because folded into `blocks` it could trip `BRAND_EVIDENCE_MAX_BLOCKS`, which rejects the whole call.
  */
 export function selectBrandEvidence(
   decofile: Record<string, unknown>,
   pages: PageEntry[],
-  catalogChars = 0,
 ): BrandEvidence {
   const prose = new Map<string, string>();
   const proseFor = (key: string) => {
@@ -1713,10 +1712,7 @@ export function selectBrandEvidence(
 
   const selected: BrandEvidenceBlock[] = [];
   const seen = new Set<string>();
-  let remaining = Math.max(
-    0,
-    BRAND_EVIDENCE_MAX_CHARS - seoChars - catalogChars,
-  );
+  let remaining = Math.max(0, BRAND_EVIDENCE_MAX_CHARS - seoChars);
 
   for (const key of ordered) {
     if (selected.length >= BRAND_EVIDENCE_MAX_BLOCKS) break;
