@@ -2,7 +2,7 @@
  * Purging latest.json from Cloudflare's edge after Studio rewrites it.
  *
  * latest.json is served `s-maxage=3600`: the edge may hold it up to an hour.
- * Every write (Publish, Make current, Resync) is followed by a purge of that
+ * Every write (Publish, Make current) is followed by a purge of that
  * URL through the zone's purge_cache API, so the new pointer is seen at once.
  * Each attempt has a 5 s timeout and a failed attempt is retried exactly once
  * (two attempts at most). If both fail, the operation fails: Studio shows it

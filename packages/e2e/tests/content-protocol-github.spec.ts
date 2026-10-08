@@ -6,7 +6,7 @@
  *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc        (session, org flag)
  *   GET  /api/:org/decofile/:virtualMcpId/:branch            the draft pointer (session)
  *   POST /api/:org/decofile/:virtualMcpId/:branch/publish    commit + release
- *   /api/:org/hosted/:virtualMcpId/{releases,resync,site-tokens}
+ *   /api/:org/hosted/:virtualMcpId/{releases,releases/current,site-tokens}
  *
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts)
@@ -467,7 +467,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("publish commits the draft to main and releases it; releases roll back", async ({
+  test("publish commits the draft to main and makes its release current; Make current switches the CDN", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -489,11 +489,15 @@ test.describe("content protocol on GitHub", () => {
           data: { note: `Publish ${title}` },
         });
         expect(res.status()).toBe(200);
-        return (await res.json()) as { result: string; sha: string };
+        return (await res.json()) as {
+          result: string;
+          sha: string;
+          release: string;
+        };
       };
 
       const first = await publish("One");
-      expect(first.result).toBe("published");
+      expect(first).toMatchObject({ result: "merged", release: "current" });
       const repo = await inspectStubRepo(ctx, project.owner, "site");
       expect(repo.refs.main).toBe(first.sha);
       expect(repo.branches.main!.files[".deco/blocks/hero-home.json"]).toBe(
@@ -521,23 +525,16 @@ test.describe("content protocol on GitHub", () => {
 
       const second = await publish("Two");
       let releases = await (await ctx.get(`${hosted}/releases`)).json();
-      expect(releases).toMatchObject({
-        state: "live",
-        head: second.sha,
-        current: { revision: second.sha },
-        unpublishedCommits: false,
-        revisionOffMain: false,
-        noRecentRelease: false,
-      });
+      expect(releases).toMatchObject({ current: { revision: second.sha } });
       const publishedAt = (): Promise<string> =>
         deliveryObjects(ctx, `sites/${site}/latest.json`).then(
           (o) => JSON.parse(o[`sites/${site}/latest.json`]!.text).publishedAt,
         );
       const secondAt = await publishedAt();
       expect(
-        releases.commits.map((c: { sha: string; published: boolean }) => [
+        releases.commits.map((c: { sha: string; hasRelease: boolean }) => [
           c.sha,
-          c.published,
+          c.hasRelease,
         ]),
       ).toEqual([
         [second.sha, true],
@@ -545,7 +542,7 @@ test.describe("content protocol on GitHub", () => {
         [expect.any(String), false],
       ]);
 
-      // Roll back: latest.json only, git stays.
+      // Make an older release current: latest.json only, git stays.
       const made = await ctx.post(`${hosted}/releases/current`, {
         data: { sha: first.sha },
       });
@@ -554,12 +551,8 @@ test.describe("content protocol on GitHub", () => {
       const rolledBackAt = await publishedAt();
       expect(Date.parse(rolledBackAt)).toBeGreaterThan(Date.parse(secondAt));
       releases = await (await ctx.get(`${hosted}/releases`)).json();
-      expect(releases).toMatchObject({
-        state: "rolled-back",
-        current: { revision: first.sha },
-        head: second.sha,
-      });
-      // A commit the CMS never published can't be made current.
+      expect(releases).toMatchObject({ current: { revision: first.sha } });
+      // A commit without a companion release can't be made current.
       const initial = releases.commits.at(-1).sha as string;
       expect(
         (
@@ -569,20 +562,15 @@ test.describe("content protocol on GitHub", () => {
         ).status(),
       ).toBe(404);
 
-      // Resync asks before overriding the rollback.
-      expect((await ctx.post(`${hosted}/resync`, { data: {} })).status()).toBe(
-        409,
-      );
-      const resynced = await ctx.post(`${hosted}/resync`, {
-        data: { confirm: true },
+      // A Publish that commits nothing leaves latest.json alone.
+      await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
+        set: { "hero-home": { __resolveType: "hero", title: "Two" } },
       });
-      expect(await resynced.json()).toEqual({
-        result: "published",
-        sha: second.sha,
+      const noop = await ctx.post(`${decofile}/draft-1/publish`, {
+        data: { note: "" },
       });
-      expect(Date.parse(await publishedAt())).toBeGreaterThan(
-        Date.parse(rolledBackAt),
-      );
+      expect(await noop.json()).toEqual({ result: "up-to-date" });
+      expect(await publishedAt()).toBe(rolledBackAt);
     } finally {
       await ctx.dispose();
     }

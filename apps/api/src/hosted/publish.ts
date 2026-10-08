@@ -1,19 +1,19 @@
 /**
- * Publish and Resync for a hosted v8 site, in the order the product decided:
+ * Publish for a hosted v8 site:
  *
  *   1. commit the draft directly to main (fast-forward only, no PR);
- *   2. delete the draft: Publish is done once the commit is on main;
- *   3. PUT sites/<site>/revisions/<commit>.json;
- *   4. re-read main's head; only if it is still that commit, PUT latest.json
- *      and purge its URL from Cloudflare's edge (5 s per attempt, one retry).
+ *   2. delete the draft: the merge is done;
+ *   3. write the commit's companion release, the immutable
+ *      sites/<site>/revisions/<commit>.json;
+ *   4. make it current: write latest.json and purge its URL from Cloudflare's
+ *      edge (5 s per attempt, one retry), only while the commit is still
+ *      main's head, so an older Publish never replaces a newer one.
  *
- * Git is the source of truth. A failed commit fails Publish and keeps the
- * draft. A failure in steps 3–4 (main moved, a failed pointer write or purge)
- * doesn't fail it: the result is "merged" with `cdn: "failed"`, nothing is
- * restored or rolled back, and Releases shows the newest release as Failed
- * until a Resync (steps 3–4 from main's head) makes it live. Rollback
- * (Releases → Make current) rewrites latest.json only, and the next Publish
- * or Resync overrides it.
+ * Git is the source of truth for content; latest.json alone says what the CDN
+ * serves ("Current"). A failed commit fails Publish and keeps the draft. A
+ * failure in step 3 or 4 doesn't undo the merge: the result says which step
+ * failed, nothing is restored, and Releases → Make current retries step 4. A
+ * draft that commits nothing leaves latest.json alone.
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
  */
@@ -44,6 +44,7 @@ import {
   type BlockSource,
   blockEntriesInTree,
   blocksDirPath,
+  gitBlobSha,
   primeBlobCache,
 } from "@/decofile/read-decofile";
 import {
@@ -72,24 +73,16 @@ export class MainMovedError extends Error {
 
 /**
  * Writing latest.json or purging it from the edge (after its one retry)
- * failed. Nothing is restored: the user resyncs from Releases.
+ * failed. Nothing is restored: the user tries Make current again.
  */
 export class LatestUpdateError extends Error {
   constructor(cause: unknown) {
     super(
-      `Couldn't update the live version on the CDN (${
+      `Making it current on the CDN failed (${
         cause instanceof Error ? cause.message : String(cause)
-      }). Running sites may not serve it yet. Try again.`,
+      }). Try again.`,
     );
     this.name = "LatestUpdateError";
-  }
-}
-
-/** Resync would override a rollback and wasn't confirmed. */
-export class RolledBackError extends Error {
-  constructor() {
-    super("rolled-back");
-    this.name = "RolledBackError";
   }
 }
 
@@ -142,18 +135,23 @@ export interface HostedRepo {
   site: string;
 }
 
-/** Whether the CDN step made a commit live on running sites. */
-export type CdnStatus = "live" | "failed";
+/**
+ * What a merged Publish did on the CDN: `current` (companion written and made
+ * current), `created` (companion written, making it current failed) or
+ * `none` (no companion: the next Publish includes these changes).
+ */
+export type ReleaseOutcome = "current" | "created" | "none";
 
-/** "merged": the draft is on main (Publish is done); `cdn` says if it's live. */
+/** "merged": the draft is on main (Publish is done); `release` says the rest. */
 export type PublishResult =
-  | { result: "merged"; sha: string; cdn: CdnStatus }
+  | { result: "merged"; sha: string; release: ReleaseOutcome }
   | { result: "up-to-date" };
 
 /**
  * The file changes that apply a draft to the tree at `headSha`: a set name
- * writes its existing spelling's file (else the protocol's file name) and
- * drops its other spellings; a delete name removes every spelling.
+ * writes its existing spelling's file (else the protocol's file name), unless
+ * that file already holds exactly this content, and drops its other
+ * spellings; a delete name removes every spelling.
  */
 export async function draftFileChanges(
   repo: Pick<HostedRepo, "client" | "packagePath">,
@@ -170,6 +168,7 @@ export async function draftFileChanges(
   const next = new Map<string, BlockSource>(
     entries.map((e) => [e.path, { stem: e.stem, sha: e.sha }]),
   );
+  const blobShaAt = new Map(entries.map((e) => [e.path, e.sha]));
   const groups = new Map<string, string[]>();
   for (const entry of entries) {
     const group = fullyDecodeFileName(entry.path.slice(prefix.length)).name;
@@ -188,13 +187,15 @@ export async function draftFileChanges(
         (p) => blockNameFromFile(p.slice(prefix.length)) === name,
       ) ?? `${prefix}${blockFileName(name)}`;
     const content = serializeBlock(entry);
+    for (const other of spellings) if (other !== path) remove(other);
+    // Already on main byte for byte: nothing to commit for this name.
+    if (blobShaAt.get(path) === gitBlobSha(content)) continue;
     changes.push({ path, content });
     next.set(path, {
       stem: path.slice(prefix.length, -".json".length),
       content,
     });
     await primeBlobCache(repo.client.repo, content);
-    for (const other of spellings) if (other !== path) remove(other);
   }
   for (const name of draft.delete) {
     for (const path of groups.get(spellingKey(name)) ?? []) remove(path);
@@ -202,15 +203,18 @@ export async function draftFileChanges(
   return { changes, tree, next };
 }
 
-/** Step 1: one fast-forward commit on main. Returns the commit sha. */
+/**
+ * Step 1: one fast-forward commit on main. Returns the commit sha, or null
+ * when the draft changes nothing on main.
+ */
 async function commitDraftToMain(
   repo: HostedRepo,
   draft: DraftBody,
   message: string,
-): Promise<string> {
+): Promise<string | null> {
   const headSha = await requireBranchHead(repo.client, repo.mainBranch);
   const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
-  if (changes.length === 0) return headSha;
+  if (changes.length === 0) return null;
   const gen = await regenerateGenArtifact({
     client: repo.client,
     tree,
@@ -237,8 +241,8 @@ async function commitDraftToMain(
 }
 
 /**
- * Step 3 for commit `sha`: its revision object, written only when missing
- * (revisions are immutable). Returns the revision's schemaHash.
+ * Step 3 for commit `sha`: its companion release, written only when missing
+ * (it is immutable). Returns its schemaHash.
  */
 async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
   if (await hasRevision(repo.store, repo.site, sha)) {
@@ -273,28 +277,44 @@ export async function writeLatest(
 }
 
 /**
- * Steps 3–4 for commit `sha`: the revision object, then the pointer and its
- * purge, but only while `sha` is still main's head. Returns whether the
- * pointer was written.
+ * Step 4 for commit `sha`, whose companion has `schemaHash`: make it current,
+ * only while `sha` is still main's head. Returns whether latest.json was
+ * written; a failed write or purge throws {@link LatestUpdateError}.
  */
-export async function releaseCommit(
+async function makeCommitCurrent(
   repo: HostedRepo,
   sha: string,
-  hooks: { beforePointerWrite?: () => Promise<void> } = {},
+  schemaHash: string,
+  hooks: PublishHooks,
 ): Promise<boolean> {
-  const schemaHash = await ensureRevision(repo, sha);
   await hooks.beforePointerWrite?.();
+  // OPEN: O-10 — a plain PUT after the head check; a race lost in between is
+  // fixed with Make current.
   const head = await requireBranchHead(repo.client, repo.mainBranch);
   if (head !== sha) return false;
-  // OPEN: O-10 — a plain PUT; a race lost after the head check shows as
-  // Failed in Releases and Resync fixes it.
-  const pointer: LatestPointer = {
+  await writeLatest(repo, {
     revision: sha,
     schemaHash,
     publishedAt: new Date().toISOString(),
-  };
-  await writeLatest(repo, pointer);
+  });
   return true;
+}
+
+export interface PublishHooks {
+  beforePointerWrite?: () => Promise<void>;
+}
+
+function logCdnFailure(
+  repo: HostedRepo,
+  sha: string,
+  step: string,
+  error: unknown,
+) {
+  console.error(`hosted publish: ${step} failed`, {
+    site: repo.site,
+    sha,
+    error: error instanceof Error ? error.message : String(error),
+  });
 }
 
 /** Publish: steps 1–4 for the draft of `ref`. */
@@ -303,38 +323,51 @@ export async function publishDraft(
   drafts: DraftStore,
   ref: HostedDraftRef,
   note: { message: string; coAuthor?: CoAuthorIdentity | null },
-  hooks: { beforePointerWrite?: () => Promise<void> } = {},
+  hooks: PublishHooks = {},
 ): Promise<PublishResult> {
   const draft = await drafts.load(ref);
   // OPEN: O-26 — nothing to publish answers the popover's existing no-changes state.
-  if (!draft || isEmptyDraft(draft.body)) return { result: "up-to-date" };
-  const message = note.message.trim()
-    ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
-    : decofileCommitMessage(
-        Object.keys(draft.body.set),
-        draft.body.delete,
-        note.coAuthor,
+  if (!draft) return { result: "up-to-date" };
+  const removeDraft = () =>
+    // Only the save that was published goes: a save made during the publish
+    // keeps the draft (its ETag changed).
+    drafts
+      .remove(ref, draft.etag)
+      .catch((error) =>
+        console.error("hosted publish: draft delete failed", {
+          site: repo.site,
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
-  const sha = await commitDraftToMain(repo, draft.body, message);
-  // Publish is done once the commit is on main: the draft goes now, whatever
-  // the CDN step does. Only the save that was published goes: a save made
-  // during the publish keeps the draft (its ETag changed).
-  await drafts.remove(ref, draft.etag).catch((error) =>
-    console.error("hosted publish: draft delete failed", {
-      site: repo.site,
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  const sha = isEmptyDraft(draft.body)
+    ? null
+    : await commitDraftToMain(
+        repo,
+        draft.body,
+        note.message.trim()
+          ? appendCoAuthorTrailer(note.message.trim(), note.coAuthor)
+          : decofileCommitMessage(
+              Object.keys(draft.body.set),
+              draft.body.delete,
+              note.coAuthor,
+            ),
+      );
+  // The draft goes once it is merged, or when it commits nothing.
+  await removeDraft();
+  // Nothing committed: latest.json is left alone.
+  if (sha === null) return { result: "up-to-date" };
+  let schemaHash: string;
   try {
-    const live = await releaseCommit(repo, sha, hooks);
-    return { result: "merged", sha, cdn: live ? "live" : "failed" };
+    schemaHash = await ensureRevision(repo, sha);
   } catch (error) {
-    // Merged, but the CDN step failed: Releases offers Resync.
-    console.error("hosted publish: CDN update failed", {
-      site: repo.site,
-      sha,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { result: "merged", sha, cdn: "failed" };
+    logCdnFailure(repo, sha, "release write", error);
+    return { result: "merged", sha, release: "none" };
+  }
+  try {
+    const current = await makeCommitCurrent(repo, sha, schemaHash, hooks);
+    return { result: "merged", sha, release: current ? "current" : "created" };
+  } catch (error) {
+    logCdnFailure(repo, sha, "make current", error);
+    return { result: "merged", sha, release: "created" };
   }
 }

@@ -1,8 +1,7 @@
 /**
- * The Releases screen's reads and writes (`/api/:org/hosted/:vmcp/*`): what
- * latest.json serves, main's history (every commit merged) with the commits
- * that have a release on the CDN, "Make current" (rewrites latest.json only)
- * and Resync.
+ * The Releases screen's reads and writes (`/api/:org/hosted/:vmcp/*`): the
+ * timeline of main's commits with the ones that have a companion release,
+ * what latest.json names (Current), and "Make current".
  */
 
 import {
@@ -11,12 +10,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
-
-/**
- * Derived by the API from latest.json against main's head: live, failed (the
- * newest release isn't live: Resync), or rolled back (Make current).
- */
-export type ReleaseState = "live" | "failed" | "rolled-back";
 
 export interface ReleasePointer {
   revision: string;
@@ -29,19 +22,18 @@ export interface ReleaseCommit {
   date: string;
   message: string;
   author: string | null;
-  published: boolean;
+  /** Has a companion release on the CDN: it can be made current. */
+  hasRelease: boolean;
 }
 
 export interface ReleasesPage {
+  /** What latest.json names; null when there is none. */
   current: ReleasePointer | null;
-  head: string;
-  headSchemaHash: string | null;
-  state: ReleaseState;
   commits: ReleaseCommit[];
   nextCursor: string | null;
 }
 
-/** A refused write, with the API's error code (`schema-mismatch`, `rolled-back`). */
+/** A refused write, with the API's error code (`schema-mismatch`). */
 export class HostedRequestError extends Error {
   constructor(
     message: string,
@@ -98,7 +90,7 @@ function useHostedWrite<TVars>(
   });
 }
 
-/** "Make current": point latest.json at a published commit. */
+/** "Make current": point latest.json at a commit's companion release. */
 export function useMakeCurrent(orgSlug: string, virtualMcpId: string) {
   return useHostedWrite(
     orgSlug,
@@ -109,22 +101,5 @@ export function useMakeCurrent(orgSlug: string, virtualMcpId: string) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(vars),
       }),
-  );
-}
-
-/** Resync's answer: `cdn: "failed"` when main moved meanwhile. */
-export interface ResyncResult {
-  sha: string;
-  cdn: "live" | "failed";
-}
-
-/** Resync: release main's head again (confirm overrides a rollback). */
-export function useResync(orgSlug: string, virtualMcpId: string) {
-  return useHostedWrite(orgSlug, virtualMcpId, (vars: { confirm: boolean }) =>
-    fetch(hostedUrl(orgSlug, virtualMcpId, "resync"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(vars),
-    }),
   );
 }

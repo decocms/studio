@@ -1,15 +1,13 @@
 /**
- * Releases tab — a hosted v8 site's releases on the delivery CDN: what
- * latest.json serves now, and main's git history. Every commit is Merged;
- * the one latest.json serves is Live, and the newest shows Failed with Resync
- * when it isn't (the API derives it, nothing is stored). A commit that has a
- * release can be made current (a temporary rollback: only latest.json
- * changes, and the next Publish or Resync overrides it); a commit the CMS
- * never published is listed without an action.
+ * Releases tab — a hosted v8 site's timeline: main's commits, newest first.
+ * A commit with a companion release on the CDN can be made current; the one
+ * latest.json names is Current (read, never inferred). A commit without a
+ * companion (a developer push, or a Publish whose release write failed) is
+ * just a merge: listed, with no badge and no action.
  */
 
 import { useState } from "react";
-import { ClockRewind, DotsVertical, RefreshCw01 } from "@untitledui/icons";
+import { ClockRewind, DotsVertical } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -36,27 +34,24 @@ import { useProjectContext } from "@/sdk";
 import {
   HostedRequestError,
   type ReleaseCommit,
-  type ReleaseState,
-  type ResyncResult,
   useMakeCurrent,
   useReleases,
-  useResync,
 } from "./releases-api";
 
 const short = (sha: string) => sha.slice(0, 7);
 
-/** What a confirmation dialog is asking about. */
-type PendingConfirm =
-  | { kind: "make-current"; commit: ReleaseCommit }
-  | { kind: "schema-mismatch"; commit: ReleaseCommit }
-  | { kind: "resync-over-rollback" };
+/** What the confirmation dialog is asking about. */
+type PendingConfirm = {
+  commit: ReleaseCommit;
+  /** The target's schema differs from main's: the second, explicit ask. */
+  schemaMismatch: boolean;
+};
 
 export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const releases = useReleases(org.slug, virtualMcpId);
   const makeCurrent = useMakeCurrent(org.slug, virtualMcpId);
-  const resync = useResync(org.slug, virtualMcpId);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
 
   if (releases.isPending) {
@@ -77,9 +72,9 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  const first = releases.data.pages[0]!;
   const commits = releases.data.pages.flatMap((page) => page.commits);
-  const { current: serving } = first;
+  // What latest.json names, as the first page read it.
+  const { current } = releases.data.pages[0]!;
 
   const runMakeCurrent = async (commit: ReleaseCommit, confirmed: boolean) => {
     try {
@@ -90,25 +85,10 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         error instanceof HostedRequestError &&
         error.code === "schema-mismatch"
       ) {
-        setConfirm({ kind: "schema-mismatch", commit });
+        setConfirm({ commit, schemaMismatch: true });
         return;
       }
-      toast.error(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const runResync = async (confirmed: boolean) => {
-    try {
-      const result = (await resync.mutateAsync({
-        confirm: confirmed,
-      })) as ResyncResult;
-      if (result.cdn === "failed") toast.warning(t("releases.resyncMainMoved"));
-      else toast.success(t("releases.resynced"));
-    } catch (error) {
-      if (error instanceof HostedRequestError && error.code === "rolled-back") {
-        setConfirm({ kind: "resync-over-rollback" });
-        return;
-      }
+      // Failed: the badge stays where latest.json says (the list refetches).
       toast.error(error instanceof Error ? error.message : String(error));
     }
   };
@@ -116,80 +96,42 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const onConfirm = () => {
     const pending = confirm;
     setConfirm(null);
-    if (!pending) return;
-    if (pending.kind === "resync-over-rollback") void runResync(true);
-    else
-      void runMakeCurrent(pending.commit, pending.kind === "schema-mismatch");
+    if (pending) void runMakeCurrent(pending.commit, pending.schemaMismatch);
   };
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{t("releases.title")}</h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {t("releases.subtitle")}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={resync.isPending}
-            onClick={() => void runResync(false)}
-          >
-            {resync.isPending ? (
-              <Spinner className="size-3.5" />
-            ) : (
-              <RefreshCw01 size={14} />
-            )}
-            {t("releases.resync")}
-          </Button>
-        </div>
-      </div>
-
-      <div className="shrink-0 rounded-xl border border-border/60 p-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {t("releases.serving")}
-          </span>
-          <StateBadge state={first.state} nothingServed={!serving} />
-        </div>
-        {serving ? (
-          <p className="mt-1 text-sm">
-            <span className="font-mono">{short(serving.revision)}</span>
+      <div className="min-w-0 shrink-0">
+        <h2 className="text-sm font-semibold">{t("releases.title")}</h2>
+        <p className="text-xs text-muted-foreground">
+          {t("releases.subtitle")}
+        </p>
+        <p className="mt-2 text-sm">
+          {current ? (
+            <>
+              <span className="text-muted-foreground">
+                {t("releases.currentOnCdn")}{" "}
+              </span>
+              <span className="font-mono">{short(current.revision)}</span>
+              <span className="text-muted-foreground">
+                {" · "}
+                {t("releases.madeCurrentAgo", {
+                  when: formatTimeAgo(new Date(current.publishedAt)),
+                })}
+              </span>
+            </>
+          ) : (
             <span className="text-muted-foreground">
-              {" · "}
-              {t("releases.publishedAgo", {
-                when: formatTimeAgo(new Date(serving.publishedAt)),
-              })}
+              {t("releases.nothingOnCdn")}
             </span>
-          </p>
-        ) : (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("releases.nothingPublished")}
-          </p>
-        )}
-        {first.state === "rolled-back" ? (
-          <p className="mt-1 text-xs text-warning">
-            {t("releases.rolledBackHint", { head: short(first.head) })}
-          </p>
-        ) : null}
-        {first.state === "failed" && serving ? (
-          <p className="mt-1 text-xs text-destructive">
-            {t("releases.failedHint")}
-          </p>
-        ) : null}
+          )}
+        </p>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <ul className="divide-y divide-border/60">
           {commits.map((commit) => {
-            const isCurrent = commit.sha === serving?.revision;
-            // The newest release, when latest.json doesn't serve it.
-            const isFailed =
-              first.state === "failed" && commit.sha === first.head;
+            const isCurrent = commit.sha === current?.revision;
             return (
               <li
                 key={commit.sha}
@@ -209,30 +151,11 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       .join(" · ")}
                   </p>
                 </div>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {t("releases.merged")}
-                </span>
                 {isCurrent ? (
                   <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
-                    {t("releases.state.live")}
+                    {t("releases.current")}
                   </span>
-                ) : isFailed ? (
-                  <span className="flex items-center gap-1">
-                    <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
-                      {t("releases.failed")}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      disabled={resync.isPending}
-                      onClick={() => void runResync(false)}
-                    >
-                      {t("releases.resync")}
-                    </Button>
-                  </span>
-                ) : commit.published ? (
+                ) : commit.hasRelease ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -249,7 +172,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       <DropdownMenuItem
                         disabled={makeCurrent.isPending}
                         onSelect={() =>
-                          setConfirm({ kind: "make-current", commit })
+                          setConfirm({ commit, schemaMismatch: false })
                         }
                       >
                         <ClockRewind size={14} />
@@ -257,11 +180,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    {t("releases.notPublished")}
-                  </span>
-                )}
+                ) : null}
               </li>
             );
           })}
@@ -293,61 +212,24 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm?.kind === "resync-over-rollback"
-                ? t("releases.resyncConfirmTitle")
-                : t("releases.makeCurrentTitle", {
-                    sha: confirm ? short(confirm.commit.sha) : "",
-                  })}
+              {t("releases.makeCurrentTitle", {
+                sha: confirm ? short(confirm.commit.sha) : "",
+              })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirm?.kind === "resync-over-rollback"
-                ? t("releases.resyncConfirmBody")
-                : confirm?.kind === "schema-mismatch"
-                  ? t("releases.schemaMismatchBody")
-                  : t("releases.makeCurrentBody")}
+              {confirm?.schemaMismatch
+                ? t("releases.schemaMismatchBody")
+                : t("releases.makeCurrentBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("releases.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={onConfirm}>
-              {confirm?.kind === "resync-over-rollback"
-                ? t("releases.resync")
-                : t("releases.makeCurrent")}
+              {t("releases.makeCurrent")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  );
-}
-
-function StateBadge({
-  state,
-  nothingServed,
-}: {
-  state: ReleaseState;
-  /** No latest.json yet: nothing failed, the site just isn't live. */
-  nothingServed: boolean;
-}) {
-  const t = useT();
-  const label =
-    state === "live"
-      ? t("releases.state.live")
-      : state === "rolled-back"
-        ? t("releases.state.rolledBack")
-        : nothingServed
-          ? t("releases.state.notLive")
-          : t("releases.state.failed");
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-xs",
-        state === "live" && "bg-success/10 text-success",
-        state === "rolled-back" && "bg-warning/10 text-warning",
-        state === "failed" && "bg-destructive/10 text-destructive",
-      )}
-    >
-      {label}
-    </span>
   );
 }

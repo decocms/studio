@@ -46,9 +46,9 @@ interface CmsPublishActionsArgs {
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
   /**
-   * A hosted v8 site: publish commits the CDN draft to main and releases it
-   * (no pull request). It's done once merged; a CDN update that failed is
-   * resynced from the Releases screen.
+   * A hosted v8 site: publish commits the CDN draft to main, creates its
+   * release and makes it current (no pull request). It's done once merged; a
+   * release that isn't current is made current from the Releases screen.
    */
   hosted?: boolean;
 }
@@ -91,16 +91,18 @@ export function useCmsPublishActions(
       t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
     );
 
-  /** Merged is done: the popover closes, saying whether the CDN is live. */
+  /** Merged is done: the popover closes, saying what the CDN serves. */
   const settleHosted = async (result: HostedPublishResult) => {
     if (result.result === "up-to-date") {
-      toast.success(t("thread.headerActions.upToDate"));
-    } else if (result.cdn === "failed") {
-      toast.warning(t("thread.publishPopover.mergedCdnFailed"));
+      toast.success(t("thread.publishPopover.upToDate"));
+    } else if (result.release === "current") {
+      toast.success(t("thread.publishPopover.mergedCurrent"));
+    } else if (result.release === "created") {
+      toast.warning(t("thread.publishPopover.mergedNotCurrent"));
     } else {
-      toast.success(t("thread.publishPopover.mergedLive"));
+      toast.warning(t("thread.publishPopover.mergedNoRelease"));
     }
-    // A mounted Releases screen shows the new commit and its CDN status.
+    // A mounted Releases screen shows the new commit and what is Current.
     void queryClient.invalidateQueries({
       queryKey: KEYS.hostedReleases(target.orgSlug, target.virtualMcpId),
     });

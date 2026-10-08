@@ -1,12 +1,13 @@
 /**
  * Publish for a hosted v8 site (Blocks v8 on GitHub): commits the project's
- * CDN draft straight to main, then releases that commit on the delivery CDN.
- * Publish is done once it's merged; `cdn: "failed"` means running sites don't
- * serve it yet, and Resync on the Releases screen fixes that.
+ * CDN draft straight to main, writes that commit's companion release and
+ * makes it current on the CDN. `release` says how far the CDN steps got:
+ * `current`, `created` (making it current failed: Make current on Releases)
+ * or `none` (no release: the next Publish includes these changes).
  */
 
 export type HostedPublishResult =
-  | { result: "merged"; sha: string; cdn: "live" | "failed" }
+  | { result: "merged"; sha: string; release: "current" | "created" | "none" }
   | { result: "up-to-date" };
 
 /** A refused publish, with the API's error code (`main-moved`). */

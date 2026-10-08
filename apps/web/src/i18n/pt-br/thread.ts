@@ -232,9 +232,12 @@ export const thread = {
   "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishDialog.visitPreview": "Abrir o Preview",
   "thread.publishPopover.blocksGroup": "Blocos",
-  "thread.publishPopover.mergedLive": "Mesclado · No ar",
-  "thread.publishPopover.mergedCdnFailed":
-    "Mesclado · Falha ao atualizar a CDN. Ressincronize em Versões.",
+  "thread.publishPopover.mergedCurrent": "Mesclado · Atual na CDN",
+  "thread.publishPopover.mergedNotCurrent":
+    "Mesclado · versão criada, mas não foi possível torná-la atual — use Tornar atual em Versões",
+  "thread.publishPopover.mergedNoRelease":
+    "Mesclado · nenhuma versão criada (a próxima publicação inclui estas alterações)",
+  "thread.publishPopover.upToDate": "Tudo atualizado, nada para publicar",
   "thread.publishPopover.mainMoved":
     "A main mudou durante a publicação, então nada foi publicado. Publique novamente.",
   "thread.publishPopover.branchMoved":

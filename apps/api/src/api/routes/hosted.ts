@@ -3,7 +3,6 @@
  *
  *   GET    /api/:org/hosted/:virtualMcpId/releases?cursor=   Releases screen
  *   POST   /api/:org/hosted/:virtualMcpId/releases/current   Make current { sha, confirm? }
- *   POST   /api/:org/hosted/:virtualMcpId/resync             Resync { confirm? }
  *   GET    /api/:org/hosted/:virtualMcpId/site-tokens        list
  *   POST   /api/:org/hosted/:virtualMcpId/site-tokens        issue (shown once)
  *   DELETE /api/:org/hosted/:virtualMcpId/site-tokens/:kid   revoke
@@ -12,7 +11,7 @@
  * Studio-internal routes; nothing outside Studio calls them.
  */
 
-// OPEN: O-S4 — Releases, Make current and Resync have no existing route to
+// OPEN: O-S4 — Releases and Make current have no existing route to
 // reuse, so they are these Studio-internal routes (with site tokens beside them).
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
@@ -30,17 +29,12 @@ import {
 import { deliveryStore } from "@/hosted/delivery-store";
 import { deliveryPurge } from "@/hosted/delivery-purge";
 import { denylist } from "@/hosted/denylist";
-import {
-  type HostedRepo,
-  LatestUpdateError,
-  RolledBackError,
-} from "@/hosted/publish";
+import { type HostedRepo, LatestUpdateError } from "@/hosted/publish";
 import { NotV8Site } from "@/hosted/release-objects";
 import {
   listReleases,
   makeCurrent,
   NotPublishedError,
-  resync,
   SchemaMismatchError,
 } from "@/hosted/releases";
 import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
@@ -218,30 +212,6 @@ export function createHostedRoutes() {
           { error: "schema-mismatch", target: err.target, head: err.head },
           409,
         );
-      }
-      return hostedError(c, err);
-    }
-  });
-
-  app.post("/:virtualMcpId/resync", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      confirm?: unknown;
-    };
-    try {
-      const repo = await hostedRepo(c);
-      if (!repo) return c.json(NOT_CONFIGURED, 503);
-      const project = c.get("hostedProject");
-      const insights = await insightsClientForProjectRepo(
-        c.var.studioContext,
-        project.organizationId,
-        project.repository,
-      );
-      return c.json(
-        await resync(repo, insights, { confirm: body.confirm === true }),
-      );
-    } catch (err) {
-      if (err instanceof RolledBackError) {
-        return c.json({ error: "rolled-back" }, 409);
       }
       return hostedError(c, err);
     }
