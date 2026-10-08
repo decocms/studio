@@ -151,7 +151,7 @@ describe("site slug lifecycle", () => {
       expect(await linkError(link("theirs", b))).toBe("reserved");
     });
 
-    it("after its project is deleted, only a deployment admin relinks it; linked_at is kept", async () => {
+    it("after its project is deleted, the same org relinks it itself; linked_at is kept", async () => {
       const first = await newProject("First");
       await claim("relink");
       const linked = await link("relink", first);
@@ -161,30 +161,31 @@ describe("site slug lifecycle", () => {
       expect(row?.linkedAt).toBe(linked.linkedAt);
 
       const second = await newProject("Second");
-      expect(await linkError(link("relink", second))).toBe(
-        "relink_requires_admin",
-      );
-      const relinked = await sites.link({
-        slug: "relink",
-        organizationId: ORG,
-        projectId: second,
-        by: USER,
-        adminOverride: true,
-      });
+      const relinked = await link("relink", second);
       expect(relinked.projectId).toBe(second);
       expect(relinked.linkedAt).toBe(linked.linkedAt);
 
-      // The override keeps every other rule.
+      // Linked again, so every other rule holds.
       const third = await newProject("Third");
-      await expect(
-        sites.link({
-          slug: "relink",
-          organizationId: ORG,
-          projectId: third,
-          by: USER,
-          adminOverride: true,
-        }),
-      ).rejects.toThrow(OrgSiteLinkError);
+      expect(await linkError(link("relink", third))).toBe("linked_elsewhere");
+    });
+
+    it("another org never relinks a used slug; a tombstone is nobody's", async () => {
+      const first = await newProject("First", null, OTHER_ORG);
+      await claim("theirs", OTHER_ORG);
+      await link("theirs", first, OTHER_ORG);
+      await projects.delete(first);
+      const ours = await newProject("Ours");
+      expect(await linkError(link("theirs", ours))).toBe("not_owned");
+      await expect(claim("theirs")).rejects.toBeInstanceOf(
+        OrgSiteConflictError,
+      );
+
+      await sql`DELETE FROM organization WHERE id = ${OTHER_ORG}`.execute(
+        database.db,
+      );
+      expect(await linkError(link("theirs", ours))).toBe("reserved");
+      expect(await linkError(claim("theirs"))).toBe("reserved");
     });
   });
 

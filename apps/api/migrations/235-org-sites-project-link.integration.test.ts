@@ -1,6 +1,7 @@
 /**
- * Migration 235 links each org_sites slug to the one project that uses it,
- * guesses nothing when zero or several do, and keeps slugs when an org or a
+ * Migration 235 links each org_sites slug to the one project whose
+ * `metadata.siteSlug` is exactly it, guesses nothing otherwise (no title
+ * match), and keeps slugs when an org or a
  * project is deleted.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -78,31 +79,24 @@ describe("migration 235 — org_sites project link", () => {
     return Object.fromEntries(result.rows.map((r) => [r.slug, r]));
   }
 
-  it("links one candidate, leaves none/ambiguous unlinked, never guesses", async () => {
+  it("links only an exact metadata.siteSlug match, never guesses", async () => {
     const byMeta = await project("org_1", "Acme Store", { siteSlug: "acme" });
-    // Pre-siteSlug import: the title is the slug of a repo-backed project
-    // (stored under the database key `githubRepo`).
+    // Pre-siteSlug import: the title is the slug of a repo-backed project.
+    // A title is never a match — the row stays unlinked.
     const byTitle = await project("org_1", "Legacy", null);
     await setRawMetadata(
       byTitle,
       JSON.stringify({ githubRepo: { url: "https://github.com/acme/legacy" } }),
     );
-    // Early `{ owner, name }` binding counts as repo-backed too.
-    const ownerName = await project("org_1", "old-bind", null);
+    // A case/whitespace variant isn't an exact match either.
     await setRawMetadata(
-      ownerName,
-      JSON.stringify({ githubRepo: { owner: "acme", name: "old-bind" } }),
+      await project("org_1", "Variant", null),
+      JSON.stringify({ siteSlug: " Shouty " }),
     );
-    // A chat-only agent named like a site is never linked by its title.
-    await project("org_1", "chatty", null);
     // Two projects claim the same slug in one org: ambiguous.
     const dupA = await project("org_1", "Twin A", { siteSlug: "twins" });
     const dupB = await project("org_1", "Twin B", { siteSlug: "twins" });
-    // metadata wins over title: "shadow" is title-only, but another project
-    // stores it in metadata → the metadata match is the only candidate.
-    const shadowMeta = await project("org_1", "Other", { siteSlug: "shadow" });
-    await project("org_1", "shadow", null);
-    // Malformed JSON: counted; it can't show it is a site, so not linked.
+    // Malformed JSON: counted, not linked.
     const broken = await project("org_1", "Broken", null);
     await setRawMetadata(broken, "{oops");
     // Same slug used by a project in another org: not this org's candidate.
@@ -111,12 +105,10 @@ describe("migration 235 — org_sites project link", () => {
     await down235(db);
     await claimOld("acme", "org_1");
     await claimOld("legacy", "org_1");
+    await claimOld("shouty", "org_1");
     await claimOld("twins", "org_1");
-    await claimOld("shadow", "org_1");
     await claimOld("broken", "org_1");
     await claimOld("nobody", "org_1");
-    await claimOld("old-bind", "org_1");
-    await claimOld("chatty", "org_1");
 
     await up235(db);
 
@@ -124,18 +116,14 @@ describe("migration 235 — org_sites project link", () => {
     expect(after.acme?.project_id).toBe(byMeta);
     expect(after.acme?.linked_at).not.toBeNull();
     expect(after.acme?.updated_by).toBe("migration-235");
-    expect(after.legacy?.project_id).toBe(byTitle);
-    expect(after.shadow?.project_id).toBe(shadowMeta);
-    expect(after["old-bind"]?.project_id).toBe(ownerName);
-    expect(after.broken?.project_id).toBeNull();
-    expect(after.chatty?.project_id).toBeNull();
-    expect(after.twins?.project_id).toBeNull();
-    expect(after.nobody?.project_id).toBeNull();
+    for (const slug of ["legacy", "shouty", "broken", "twins", "nobody"]) {
+      expect(after[slug]?.project_id).toBeNull();
+    }
     expect([dupA, dupB]).not.toContain(after.twins?.project_id);
 
     // Every pre-existing slug is a real site: unlinked ones are marked used
-    // too, so they are never released, moved or handed to another project.
-    for (const slug of ["twins", "nobody", "broken", "chatty"]) {
+    // too, so they are never released or moved to another org.
+    for (const slug of ["legacy", "shouty", "twins", "nobody", "broken"]) {
       expect(after[slug]?.linked_at).not.toBeNull();
       expect(after[slug]?.updated_by).toBe("user_1");
     }
@@ -150,22 +138,25 @@ describe("migration 235 — org_sites project link", () => {
         by: "x",
       }),
     ).rejects.toThrow(OrgSiteLinkError);
-    await expect(
-      storage.link({
-        slug: "twins",
-        organizationId: "org_1",
-        projectId: dupA,
-        by: "x",
-      }),
-    ).rejects.toThrow(/deployment admin/);
+    // The org links an unlinked slug to one of its projects itself, keeping
+    // the first use; another org can't.
     const resolved = await storage.link({
       slug: "twins",
       organizationId: "org_1",
       projectId: dupA,
-      by: "admin",
-      adminOverride: true,
+      by: "x",
     });
     expect(resolved.projectId).toBe(dupA);
+    expect(resolved.linkedAt).toBe(after.twins!.linked_at!.toISOString());
+    const foreign = await project("org_456", "Foreign", null);
+    await expect(
+      storage.link({
+        slug: "legacy",
+        organizationId: "org_456",
+        projectId: foreign,
+        by: "x",
+      }),
+    ).rejects.toThrow(/another organization/);
 
     // Project rows are only read.
     const stored = await sql<{ metadata: string | null }>`
@@ -221,9 +212,7 @@ describe("migration 235 — org_sites project link", () => {
     );
     await sql`DELETE FROM connections WHERE id = ${gone}`.execute(db);
     expect(
-      await applyOrgSiteProjectLinks(db, [
-        { slug: "gone", projectId: gone, by: "metadata" },
-      ]),
+      await applyOrgSiteProjectLinks(db, [{ slug: "gone", projectId: gone }]),
     ).toBe(0);
     expect((await rows()).gone?.project_id).toBeNull();
   });

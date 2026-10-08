@@ -748,63 +748,6 @@ export function createAdminRoutes(): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // Link a used, unlinked slug (its project was deleted, or it predates the
-  // link) to one of the org's projects. Orgs can't do this themselves: a used
-  // site id is never handed to another project without a deployment admin.
-  app.post("/orgs/:orgId/sites/:slug/link", async (c) => {
-    const orgId = c.req.param("orgId");
-    const slug = c.req.param("slug");
-    const raw = (await c.req.json().catch(() => null)) as {
-      projectId?: unknown;
-    } | null;
-    const projectId =
-      typeof raw?.projectId === "string" ? raw.projectId.trim() : "";
-    if (!projectId) {
-      return c.json({ error: "projectId is required" }, 400);
-    }
-
-    const { actorId: effectiveActorId, impersonatedBy } =
-      await getAuditActor(c);
-    const actorId = impersonatedBy ?? effectiveActorId;
-    if (!actorId) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    let site: Awaited<ReturnType<OrgSiteStorage["link"]>>;
-    try {
-      site = await new OrgSiteStorage(getDb().db).link({
-        slug,
-        organizationId: orgId,
-        projectId,
-        by: actorId,
-        adminOverride: true,
-      });
-    } catch (error) {
-      if (!(error instanceof OrgSiteLinkError)) throw error;
-      return c.json({ error: error.code, message: error.message }, 409);
-    }
-
-    auditAdminAction("org_site_link", {
-      actor_user_id: actorId,
-      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
-      organization_id: orgId,
-      slug,
-      project_id: projectId,
-    });
-    posthog.capture({
-      distinctId: actorId,
-      event: "deployment_admin_org_site_link",
-      groups: { organization: orgId },
-      properties: {
-        actor_user_id: actorId,
-        organization_id: orgId,
-        slug,
-        project_id: projectId,
-      },
-    });
-    return c.json({ site });
-  });
-
   // Site projects and the metadata keys `ADMIN_PROJECT_METADATA_FIELDS` allows editing.
   app.get("/orgs/:orgId/projects", async (c) => {
     const orgId = c.req.param("orgId");
