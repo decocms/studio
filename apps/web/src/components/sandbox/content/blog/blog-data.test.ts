@@ -72,6 +72,7 @@ import {
   uniqueSlug,
   uniquePostSlug,
   unknownCitations,
+  linkifyCitations,
 } from "./blog-data";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -1774,17 +1775,60 @@ describe("citedSections", () => {
   test("finds nothing in prose without mentions", () => {
     expect(citedSections("Um formato de guia prático.")).toEqual([]);
   });
+
+  test("reads the linked form as the resolveType it points at", () => {
+    expect(
+      citedSections("Abre com [@Heading](site/sections/Blog/Post/Heading.tsx)"),
+    ).toEqual(["site/sections/Blog/Post/Heading.tsx"]);
+  });
+
+  test("resolves a bare name through the site's inventory when given one", () => {
+    expect(
+      citedSections("@Heading", {
+        Heading: "blog/sections/blocks/Heading.tsx",
+      }),
+    ).toEqual(["blog/sections/blocks/Heading.tsx"]);
+  });
+
+  test("a link label is never also read as a bare citation", () => {
+    expect(
+      citedSections("[@Heading](blog/sections/blocks/Heading.tsx)"),
+    ).toEqual(["blog/sections/blocks/Heading.tsx"]);
+  });
 });
 
 describe("unknownCitations", () => {
+  const BY_NAME = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Paragraph: "blog/sections/blocks/Paragraph.tsx",
+  };
+  const AVAILABLE = Object.values(BY_NAME);
+
   test("reports only the citations the site does not have", () => {
     expect(
-      unknownCitations("@Heading e @Removida", ["Heading", "Paragraph"]),
+      unknownCitations("@Heading e @Removida", AVAILABLE, BY_NAME),
     ).toEqual(["Removida"]);
   });
 
   test("nothing to report when every citation resolves", () => {
-    expect(unknownCitations("@Heading", ["Heading"])).toEqual([]);
+    expect(unknownCitations("@Heading", AVAILABLE, BY_NAME)).toEqual([]);
+  });
+
+  test("a linked citation is checked by its resolveType, not its label", () => {
+    expect(
+      unknownCitations(
+        "[@Heading](blog/sections/blocks/Heading.tsx)",
+        AVAILABLE,
+        BY_NAME,
+      ),
+    ).toEqual([]);
+    expect(
+      unknownCitations(
+        "[@Heading](site/sections/Blog/Post/Heading.tsx)",
+        AVAILABLE,
+        BY_NAME,
+      ),
+    ).toEqual(["site/sections/Blog/Post/Heading.tsx"]);
   });
 
   test("every citation is unknown on a site with no blog sections", () => {
@@ -1792,15 +1836,52 @@ describe("unknownCitations", () => {
   });
 });
 
+describe("linkifyCitations", () => {
+  const BY_NAME = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Cta: "site/sections/Blog/Post/Cta.tsx",
+  };
+
+  test("turns a bare citation into a link to the block it names", () => {
+    expect(linkifyCitations("Abre com @Heading.", BY_NAME)).toBe(
+      "Abre com [@Heading](blog/sections/blocks/Heading.tsx).",
+    );
+  });
+
+  test("leaves a name this site has no block for alone, so it stays reportable", () => {
+    expect(linkifyCitations("usa @Removida", BY_NAME)).toBe("usa @Removida");
+  });
+
+  test("never re-wraps a citation that is already linked", () => {
+    const already = "[@Heading](blog/sections/blocks/Heading.tsx) e @Cta";
+    expect(linkifyCitations(already, BY_NAME)).toBe(
+      "[@Heading](blog/sections/blocks/Heading.tsx) e [@Cta](site/sections/Blog/Post/Cta.tsx)",
+    );
+  });
+
+  test("an email is not a citation", () => {
+    expect(linkifyCitations("fale com contato@marca.com.br", BY_NAME)).toBe(
+      "fale com contato@marca.com.br",
+    );
+  });
+});
+
 describe("defaultFormatSections", () => {
   test("keeps the preferred order and drops what the site lacks", () => {
     expect(
-      defaultFormatSections(["Cta", "Paragraph", "Heading", "Shelf"]),
+      defaultFormatSections({
+        Cta: "blog/sections/blocks/Cta.tsx",
+        Paragraph: "blog/sections/blocks/Paragraph.tsx",
+        Heading: "blog/sections/blocks/Heading.tsx",
+        Shelf: "blog/sections/blocks/Shelf.tsx",
+      }),
     ).toEqual(["Heading", "Paragraph", "Cta"]);
   });
 
   test("returns nothing when the site has none of them", () => {
-    expect(defaultFormatSections(["Shelf"])).toEqual([]);
+    expect(
+      defaultFormatSections({ Shelf: "blog/sections/blocks/Shelf.tsx" }),
+    ).toEqual([]);
   });
 });
 

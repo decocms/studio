@@ -73,6 +73,8 @@ import {
   BRAND_FIELDS,
   CONTEXT_FIELDS,
   unknownCitations,
+  sectionResolveTypes,
+  linkifyCitations,
 } from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
 
@@ -129,6 +131,7 @@ const PILLAR_PHASE_READING =
  * A plain format anyone can start from, written locally: no model, no credits,
  * and so nothing to fail. Cites only sections the site actually has.
  */
+/** Bare `@Name` citations; `addFormats` linkifies them like any other brief. */
 function starterFormat(
   t: ReturnType<typeof useT>,
   sections: string[],
@@ -220,9 +223,13 @@ export function BlogContext({
   const sections = mentionableSections(meta, {
     hideDefaults: hideDefaultBlocks,
   });
-  const sectionNames = sections.map((s) => s.name);
+  /** Component name → resolveType, for reading briefs that cite the bare name. */
+  const sectionsByName = sectionResolveTypes(meta, {
+    hideDefaults: hideDefaultBlocks,
+  });
+  const sectionRefs = sections.map((s) => s.resolveType);
   const mentions: MarkdownMentions = {
-    items: sections,
+    items: sections.map((s) => ({ ...s, href: s.resolveType })),
     hint: t("sandbox.formats.mentionHint"),
     emptyLabel: t("sandbox.formats.mentionEmpty"),
   };
@@ -360,9 +367,10 @@ export function BlogContext({
   /** Append formats whose name isn't taken yet; returns how many landed. */
   const addFormats = (proposed: BrandRule[]) => {
     const taken = new Set(formats.map((f) => normalizeTitleKey(f.name)));
-    const fresh = proposed.filter(
-      (f) => f.name.trim() && !taken.has(normalizeTitleKey(f.name)),
-    );
+    const fresh = proposed
+      .filter((f) => f.name.trim() && !taken.has(normalizeTitleKey(f.name)))
+      // The model writes `@Name`; one stored shape regardless of the author.
+      .map((f) => ({ ...f, value: linkifyCitations(f.value, sectionsByName) }));
     if (fresh.length === 0) return 0;
     setFormats([...formats, ...fresh]);
     setEditorRevision((n) => n + 1);
@@ -372,7 +380,7 @@ export function BlogContext({
   /** The starter format, written locally — no model, no credits, no failure. */
   const addStarterFormat = () => {
     const added = addFormats([
-      starterFormat(t, defaultFormatSections(sectionNames)),
+      starterFormat(t, defaultFormatSections(sectionsByName)),
     ]);
     if (added === 0) {
       toast.info(t("sandbox.formats.noNewFormats"));
@@ -393,7 +401,16 @@ export function BlogContext({
       const result = await studio.call("BLOG_FORMAT_SUGGEST", {
         virtualMcpId,
         brand: contextForTools({ ...brand, ...context }),
-        sections,
+        // One entry per component name: the model cites `@Name`, so a site's
+        // override of an app block would otherwise list the same token twice.
+        sections: Object.keys(sectionsByName).map((name) => {
+          const section = sections.find((s) => s.name === name);
+          return {
+            name,
+            title: section?.title ?? name,
+            description: section?.description,
+          };
+        }),
         postStructures: postStructures(decofile).map((post) => ({
           title: post.title,
           sections: post.sections,
@@ -794,7 +811,11 @@ export function BlogContext({
               bodyPlaceholder={t("sandbox.formats.bodyPlaceholder")}
               mentions={mentions}
               citationWarning={(value) => {
-                const unknown = unknownCitations(value, sectionNames);
+                const unknown = unknownCitations(
+                  value,
+                  sectionRefs,
+                  sectionsByName,
+                );
                 return unknown.length === 0
                   ? null
                   : t("sandbox.formats.unknownCitations", {

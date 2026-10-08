@@ -60,11 +60,16 @@ const PLACEHOLDER_CLASS = [
 ].join(" ");
 
 /**
- * One `@`-mentionable item. `name` is inserted into the markdown verbatim, so
- * it has to be a single word — tiptap's suggestion stops at the first space.
+ * One `@`-mentionable item. `name` is the visible label, and must be a single
+ * word — tiptap's suggestion stops at the first space.
  */
 export interface MarkdownMention {
   name: string;
+  /**
+   * What the mention points at, stored as the link href. Without it the label
+   * is the only record, and a label that two things share identifies neither.
+   */
+  href?: string;
   title?: string;
   description?: string;
 }
@@ -77,12 +82,12 @@ export interface MarkdownMentions {
 }
 
 /**
- * The `@` picker for a fixed list, inserting PLAIN TEXT (`@Name`).
+ * The `@` picker for a fixed list.
  *
- * Distinct from the org-member picker in `mention-suggestion.tsx`, which
- * inserts a node that serializes to a markdown link. Here the literal `@Name`
- * in the markdown IS the contract — a blog format's brief cites a section, and
- * both the prompt that reads it and `citedSections` match on that text.
+ * Inserts `@Name` carrying a link to `href`, so the markdown round-trips as
+ * `[@Name](<href>)` — the same shape the member picker uses, and for the same
+ * reason its module gives: the label repeats, the target does not. Falls back
+ * to plain text when an item has no href.
  *
  * ponytail: two `@` implementations on one component is real duplication.
  * Folding this into the member picker means making its item source, its item
@@ -130,8 +135,18 @@ function SectionMentionMenu({
         editor
           .chain()
           .focus()
-          /** A JSON text node — `insertContent` with a string parses HTML. */
-          .insertContentAt(range, [{ type: "text", text: `@${item.name} ` }])
+          /** JSON text nodes — `insertContent` with a string parses HTML. The
+           *  trailing space is unmarked, so typing on does not extend the link. */
+          .insertContentAt(range, [
+            {
+              type: "text",
+              text: `@${item.name}`,
+              marks: item.href
+                ? [{ type: "link", attrs: { href: item.href } }]
+                : undefined,
+            },
+            { type: "text", text: " " },
+          ])
           .run();
       }}
     />

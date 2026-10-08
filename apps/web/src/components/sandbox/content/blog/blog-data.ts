@@ -1874,60 +1874,110 @@ export function postStructures(
 }
 
 export interface MentionableSection {
-  /** The token a brief cites, and what gets inserted: `ProductShelf`. */
+  /** The label a citation shows: `ProductShelf`. */
   name: string;
+  /** What the citation actually points at — the block it resolves to. */
+  resolveType: string;
   title: string;
   description?: string;
 }
 
 /**
- * The sections a format's brief may cite, deduped by component name.
+ * The sections a format's brief may cite.
  *
- * `discoverBlogBlockTypes` dedupes by `resolveType`, so an app and a site
- * variant of the same component both survive — and since a citation is the bare
- * component name, those two are indistinguishable once written. Collapsing them
- * here keeps the picker from listing the same `@Name` twice.
+ * Every discovered block, not one per component name: a site that overrides an
+ * app block has two `Heading`s, and they are different blocks. Collapsing them
+ * was only tenable while a citation was the bare name, which could not tell
+ * them apart; now that it carries the `resolveType` they are distinguishable,
+ * and hiding one meant a brief could never cite it.
  */
 export function mentionableSections(
   meta: LiveMeta,
   options?: BlogBlockDiscoveryOptions,
 ): MentionableSection[] {
-  const byName = new Map<string, MentionableSection>();
-  for (const block of discoverBlogBlockTypes(meta, options)) {
-    const name = blockComponentName(block.resolveType);
-    if (byName.has(name)) continue;
-    byName.set(name, {
-      name,
-      title: block.title,
-      description: block.description,
-    });
-  }
-  return [...byName.values()];
+  return discoverBlogBlockTypes(meta, options).map((block) => ({
+    name: blockComponentName(block.resolveType),
+    resolveType: block.resolveType,
+    title: block.title,
+    description: block.description,
+  }));
 }
 
 /**
- * `@Name` mentions in a format's brief. Requires a word boundary before the
- * `@` so an email address in the prose isn't read as a citation, matching when
- * the editor's picker fires.
+ * The blocks a brief cites, as resolveTypes.
+ *
+ * A citation is the markdown link `[@Heading](<resolveType>)` — the same shape
+ * `@decocms/shared/mentions` uses for people, and for the same reason: a
+ * component name repeats across an app block and a site's override of it, so
+ * which block renders must not depend on the name.
+ *
+ * A bare `@Name` still reads, because briefs written before this and briefs a
+ * model writes both use it. It resolves through `byName` when the site has that
+ * component, and is returned as-is when it does not, so an unknown citation
+ * stays visible as one.
  */
-export function citedSections(markdown: string): string[] {
+export function citedSections(
+  markdown: string,
+  byName: Record<string, string> = {},
+): string[] {
   const cited = new Set<string>();
-  for (const match of markdown.matchAll(/(?:^|[\s([{>])@([A-Za-z][\w-]*)/g)) {
+  const linked = /\[@[^\]]+\]\(([^)\s]+)\)/g;
+  for (const match of markdown.matchAll(linked)) {
     if (match[1]) cited.add(match[1]);
+  }
+  const bare = /(?:^|[\s([{>])@([A-Za-z][\w-]*)/g;
+  for (const match of markdown.replace(linked, " ").matchAll(bare)) {
+    const name = match[1];
+    if (name) cited.add(byName[name] ?? name);
   }
   return [...cited];
 }
 
 /**
- * Cited sections the site no longer has. Without surfacing these, a format
- * keeps pointing at a renamed section and only the generated post shows it.
+ * Cited blocks the site no longer has. Without surfacing these, a format keeps
+ * pointing at a renamed section and only the generated post shows it.
  */
 export function unknownCitations(
   markdown: string,
   available: string[],
+  byName: Record<string, string> = {},
 ): string[] {
   const known = new Set(available);
-  return citedSections(markdown).filter((name) => !known.has(name));
+  return citedSections(markdown, byName).filter((ref) => !known.has(ref));
+}
+
+/**
+ * Rewrite bare `@Name` citations into the linked form.
+ *
+ * Run over whatever a model proposes and over the starter format, so one shape
+ * is persisted no matter who wrote the brief. A name this site has no block for
+ * is left alone — turning it into a link would invent a target, and leaving it
+ * bare is what keeps `unknownCitations` able to report it.
+ */
+export function linkifyCitations(
+  markdown: string,
+  byName: Record<string, string>,
+): string {
+  const linked = /\[@[^\]]+\]\([^)\s]+\)/g;
+  const parts: string[] = [];
+  let last = 0;
+  for (const match of markdown.matchAll(linked)) {
+    const at = match.index ?? 0;
+    parts.push(linkifyBare(markdown.slice(last, at), byName), match[0]);
+    last = at + match[0].length;
+  }
+  parts.push(linkifyBare(markdown.slice(last), byName));
+  return parts.join("");
+}
+
+function linkifyBare(text: string, byName: Record<string, string>): string {
+  return text.replace(
+    /(^|[\s([{>])@([A-Za-z][\w-]*)/g,
+    (whole, before: string, name: string) => {
+      const resolveType = byName[name];
+      return resolveType ? `${before}[@${name}](${resolveType})` : whole;
+    },
+  );
 }
 
 /**
@@ -1943,9 +1993,10 @@ const DEFAULT_FORMAT_SECTIONS = [
   "Cta",
 ] as const;
 
-export function defaultFormatSections(available: string[]): string[] {
-  const known = new Set(available);
-  return DEFAULT_FORMAT_SECTIONS.filter((name) => known.has(name));
+export function defaultFormatSections(
+  byName: Record<string, string>,
+): string[] {
+  return DEFAULT_FORMAT_SECTIONS.filter((name) => name in byName);
 }
 
 /** Casing, accents and spacing are presentation, not identity. */
