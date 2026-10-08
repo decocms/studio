@@ -2629,7 +2629,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -2902,7 +2901,6 @@ export interface StudioToolIO {
               previewServerUrl?: string | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
-              publishVisualReview?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
               releases?:
                 | {
@@ -3089,7 +3087,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3318,7 +3315,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3538,7 +3534,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3763,7 +3758,6 @@ export interface StudioToolIO {
               previewServerUrl?: string | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
-              publishVisualReview?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
               releases?:
                 | {
@@ -3958,7 +3952,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -4176,7 +4169,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -5536,7 +5528,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {

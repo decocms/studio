@@ -1,8 +1,8 @@
 /**
- * Change-request panel data hooks. The branch's change request, its CI runs,
- * its review state and its comments all come from ONE polled read — the
+ * Change-request panel data hooks. The branch's change request, its CI runs
+ * and its review state all come from ONE polled read — the
  * `CHANGE_REQUEST_STATE` tool. The hooks below are selectors over that one
- * cache entry (they share `KEYS.githubPrState`), so mounting all four costs
+ * cache entry (they share `KEYS.githubPrState`), so mounting all of them costs
  * one request and every surface reads the same instant of it.
  *
  * Nothing here knows which provider answered. The panel used to hold a GitHub
@@ -20,7 +20,6 @@ import {
   repoTargetKey,
 } from "@/lib/repository-binding";
 import { KEYS } from "@/lib/query-keys";
-import type { CheckRunOutput } from "./check-run-output.ts";
 
 export interface PrSummary {
   number: number;
@@ -100,14 +99,6 @@ export interface CheckRun {
     | null;
   htmlUrl: string;
   durationMs: number | null;
-}
-
-export interface PrComment {
-  id: string;
-  author: string;
-  body: string;
-  createdAt: string;
-  htmlUrl: string;
 }
 
 type ChangeRequestState = Awaited<
@@ -213,24 +204,6 @@ export function useChecks(args: RepoArgs & { branch: string | null }) {
   });
 }
 
-/**
- * Comments on the change request itself. Does NOT include review comments tied
- * to a file + line — those belong near the diff on the Changes tab.
- */
-export function usePrComments(args: RepoArgs & { branch: string | null }) {
-  return useQuery({
-    ...prStateQueryOptions(args),
-    select: (r): PrComment[] =>
-      (r.changeRequest?.comments ?? []).map((c) => ({
-        id: c.id,
-        author: c.author,
-        body: c.body,
-        createdAt: c.createdAt,
-        htmlUrl: c.url,
-      })),
-  });
-}
-
 /** The last publish changes only when someone publishes — cheap to keep. */
 const LAST_PUBLISHED_STALE = 5 * 60_000;
 
@@ -291,42 +264,5 @@ export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
       (args.enabled ?? true) && hasRepoCredential(target) && !!owner && !!repo,
     staleTime: STALE,
     select: (r): PrSummary[] => r.changeRequests.map(toPrSummary),
-  });
-}
-
-/**
- * One CI run's full report — GitHub's check-run `output` markdown, or the tail
- * of a GitLab job's trace. The unified read returns a minimal run shape
- * without it, so the Checks tab loads this lazily when a row is expanded.
- */
-export function useCheckRunDetail(
-  args: RepoArgs & { checkRunId: string | null; enabled: boolean },
-) {
-  const { orgSlug, target, owner, repo, checkRunId } = args;
-  return useQuery({
-    queryKey: KEYS.githubCheckRun(
-      orgSlug,
-      repoTargetKey(target),
-      owner,
-      repo,
-      checkRunId,
-    ),
-    queryFn: () =>
-      callStudioTool(orgSlug, "CHANGE_REQUEST_CHECK_LOG", {
-        ...target,
-        checkId: checkRunId as string,
-      }),
-    enabled: args.enabled && !!checkRunId,
-    staleTime: STALE,
-    /**
-     * The neutral read answers one body of text, where GitHub's check-run
-     * output had a title, a summary and a text. `summary` is where the panel
-     * already renders markdown, so the report goes there.
-     */
-    select: (r): CheckRunOutput => ({
-      title: null,
-      summary: r.report,
-      text: null,
-    }),
   });
 }

@@ -25,16 +25,8 @@ import {
 } from "@/sdk";
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
-import {
-  agentHasClonableSource,
-  agentHasConnectedRepository,
-} from "@/lib/agent-capabilities";
+import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useChatTask } from "@/components/chat/index";
-import {
-  getActiveRepository,
-  repoToolTarget,
-} from "@/lib/repository-binding.ts";
-import { usePrByBranch } from "@/components/thread/repository/use-pr-data.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import type { ThreadExpandedTool } from "@decocms/shared/entities";
@@ -119,17 +111,6 @@ export function useMainPanelTabs(ctx: {
   const { currentBranch, activeTask } = useChatTask();
   const isDesktopApp = useIsDesktopApp();
 
-  const repository = getActiveRepository(entity);
-  const prQuery = usePrByBranch({
-    orgId: org.id,
-    orgSlug: org.slug,
-    target: repoToolTarget(repository),
-    owner: repository?.owner ?? "",
-    repo: repository?.name ?? "",
-    branch: repository ? currentBranch : null,
-  });
-  const hasOpenPr = prQuery.data?.state === "open";
-
   const entityLayout = entity?.metadata.ui?.layout ?? null;
   const layoutTabs: AgentTabDef[] = entityLayout?.tabs ?? [];
 
@@ -138,7 +119,6 @@ export function useMainPanelTabs(ctx: {
   // app below — no pairing / live-partner config involved.
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
-  const hasActiveRepository = agentHasConnectedRepository(entity);
   const reportsOnly = useReportsOnly();
   const { scopeId, project: scopedProject } = useProjectScope();
   const mainViewContext = resolveProjectMainViewContext(
@@ -246,23 +226,19 @@ export function useMainPanelTabs(ctx: {
     siteAccess: nativeViews.siteAccessPending,
   };
 
-  const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
-    resolveActiveTabAndOpen({
-      panelTabId,
-      mainPanelParam: search.mainpanel,
-      routeDefaultMain,
-      metadata:
-        effectiveDefaultMainView || entityLayout
-          ? {
-              defaultMainView: effectiveDefaultMainView,
-              tabs: layoutTabs.map((t) => ({ id: t.id })),
-            }
-          : null,
-    });
+  const { activeTab: rawActiveTab, mainOpen } = resolveActiveTabAndOpen({
+    panelTabId,
+    mainPanelParam: search.mainpanel,
+    routeDefaultMain,
+    metadata:
+      effectiveDefaultMainView || entityLayout
+        ? {
+            defaultMainView: effectiveDefaultMainView,
+            tabs: layoutTabs.map((t) => ({ id: t.id })),
+          }
+        : null,
+  });
 
-  const gitTabVisible =
-    hasActiveRepository &&
-    (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
   const layoutForDefault =
     effectiveDefaultMainView || entityLayout
       ? {
@@ -328,17 +304,11 @@ export function useMainPanelTabs(ctx: {
   const activeTab =
     !panelTabId && !routeDefaultMain && defaultTabHidden
       ? visibleDefaultTabId
-      : rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      : rawActiveTab === "content" && !showContent
         ? visibleDefaultTabId
-        : rawActiveTab === "content" && !showContent
+        : codeTabHidden || projectViewHidden
           ? visibleDefaultTabId
-          : codeTabHidden || projectViewHidden
-            ? visibleDefaultTabId
-            : rawActiveTab;
-  const mainOpen =
-    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
-      ? false
-      : rawMainOpen;
+          : rawActiveTab;
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
@@ -348,15 +318,6 @@ export function useMainPanelTabs(ctx: {
       : id === "content"
         ? t("common.mainPanelTabs.content")
         : t("common.mainPanelTabs.code");
-  // Review changes is contextual to the open PR, so it remains in the panel
-  // header. The five durable native views are navigated from the sidebar.
-  const contextualSystemTabs: Array<{ id: string; title: string }> = [];
-  if (gitTabVisible) {
-    contextualSystemTabs.push({
-      id: "git",
-      title: t("common.mainPanelTabs.reviewChanges"),
-    });
-  }
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the
   // virtual-MCP–configured label/icon survives even if the same tool was
@@ -478,21 +439,11 @@ export function useMainPanelTabs(ctx: {
       }))
     : [];
 
-  /** The bar carries controls local to the active surface, contextual system
-   *  views, agent-declared tabs, and ephemeral per-thread views. Native and
+  /** The bar carries controls local to the active surface, agent-declared
+   *  tabs, and ephemeral per-thread views. Native and
    *  pinned-app project navigation belongs to the sidebar. */
   const allTabs: Tab[] = [
     ...surfaceTabs,
-    ...contextualSystemTabs.map((t) => ({
-      id: t.id,
-      title: t.title,
-      kind: "system" as const,
-      icon: resolveTabIcon({
-        tabId: t.id,
-        kind: "system",
-        connections,
-      }),
-    })),
     ...fileTabs,
     ...deckTabs,
     ...libraryFileTabs,
@@ -522,7 +473,7 @@ export function useMainPanelTabs(ctx: {
   ];
 
   /** One button per id, first occurrence wins. Agent-declared ids are not
-   *  guaranteed unique and may collide with contextual or ephemeral tabs. */
+   *  guaranteed unique and may collide with surface or ephemeral tabs. */
   const seenTabIds = new Set<string>();
   const tabs: Tab[] = allTabs.filter((tab) => {
     if (seenTabIds.has(tab.id)) return false;

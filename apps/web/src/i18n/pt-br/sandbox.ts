@@ -888,9 +888,6 @@ export const sandbox = {
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
   "sandbox.previewServerUrlField.label": "Servidor de preview",
   "sandbox.previewServerUrlField.placeholder": "https://exemplo.com",
-  "sandbox.publishVisualReviewField.label": "Revisão visual na publicação",
-  "sandbox.publishVisualReviewField.description":
-    "Ao publicar, mostra cada página alterada antes e depois, lado a lado, em vez das alterações no código.",
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",

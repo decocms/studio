@@ -3,7 +3,7 @@
  *  and falling back would put one project's rows under an organization header.
  *  Configurable rows share their presence gates with Layout and additionally
  *  require the project's sidebar selection. The main panel bar keeps
- *  contextual and per-thread views, such as Review changes or an open file,
+ *  per-thread views, such as an open file,
  *  which do not belong in durable navigation. */
 
 import type { ReactNode } from "react";

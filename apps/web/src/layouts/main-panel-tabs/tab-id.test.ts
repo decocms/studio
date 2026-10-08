@@ -282,9 +282,9 @@ describe("resolveDefaultTabId", () => {
     );
   });
 
-  test("git → 'git'", () => {
+  test("retired git → 'site-editor'", () => {
     expect(resolveDefaultTabId({ defaultMainView: { type: "git" } })).toBe(
-      "git",
+      "site-editor",
     );
   });
 
@@ -436,10 +436,10 @@ describe("resolveActiveTabAndOpen", () => {
     ).toEqual({ mainOpen: true, activeTab: "automation:abc" });
   });
 
-  test("segment 'git' → open, tab = 'git'", () => {
+  test("retired segment 'git' → open, tab = 'site-editor'", () => {
     expect(
       resolveActiveTabAndOpen({ panelTabId: "git", metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "git" });
+    ).toEqual({ mainOpen: true, activeTab: "site-editor" });
   });
 });
 

@@ -5,7 +5,6 @@ import {
   Code02,
   File02,
   Folder,
-  GitBranch01,
   Globe01,
   Globe02,
   Home02,
@@ -37,7 +36,6 @@ export type SystemTabId =
   | "e2e"
   | "analytics"
   | "cdn"
-  | "git"
   | "files";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
@@ -52,7 +50,6 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   e2e: CheckDone01,
   analytics: BarChartSquare02,
   cdn: Globe02,
-  git: GitBranch01,
   files: Folder,
 };
 
