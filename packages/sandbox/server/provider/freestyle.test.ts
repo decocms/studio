@@ -108,3 +108,72 @@ describe("FreestyleSandboxProvider", () => {
     provider.close();
   });
 });
+
+describe("pauseIdle", () => {
+  const old = new Date(Date.now() - 60 * 60_000).toISOString();
+  const vm = (slug: string, extra: Record<string, unknown> = {}) => ({
+    id: `id-${slug}`,
+    slug,
+    state: "running",
+    metadata: { "studio-daemon-token": "t" },
+    createdAt: old,
+    ...extra,
+  });
+
+  test("pauses only VMs whose daemon has been unused for idlePauseMs", async () => {
+    const idle: Record<string, number> = {
+      quiet: 11 * 60_000,
+      busy: 30_000,
+      fresh: 60 * 60_000,
+      foreign: 60 * 60_000,
+    };
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        const host = new URL(String(input)).hostname.split(".")[0]!;
+        if (host === "silent") throw new Error("unreachable");
+        return Response.json({ idleMs: idle[host] });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const pauses: string[] = [];
+    const client = {
+      vms: {
+        list: async () => ({
+          vms: [
+            vm("quiet"),
+            vm("busy"),
+            vm("silent"),
+            vm("fresh", { createdAt: new Date().toISOString() }),
+            vm("foreign", { metadata: {} }),
+          ],
+        }),
+        ref: (id: string) => ({
+          pause: async () => {
+            pauses.push(id);
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 10 * 60_000,
+    });
+    expect(await provider.pauseIdle()).toEqual(["quiet"]);
+    expect(pauses).toEqual(["id-quiet"]);
+    provider.close();
+  });
+
+  test("swallows a failed listing", async () => {
+    const client = {
+      vms: {
+        list: async () => {
+          throw new FreestyleApiError(500, { code: "INTERNAL" });
+        },
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    expect(await provider.pauseIdle()).toEqual([]);
+    provider.close();
+  });
+});
