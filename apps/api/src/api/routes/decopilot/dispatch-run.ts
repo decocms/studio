@@ -1492,6 +1492,7 @@ async function prepareRun(
         const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
+              harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.

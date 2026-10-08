@@ -1,3 +1,4 @@
+import type { HarnessId } from "@decocms/shared/harness/types";
 import { z } from "zod";
 
 /**
@@ -154,3 +155,14 @@ export const harnessStreamInputSchema = z
   .strict();
 
 export type HarnessStreamInputWire = z.infer<typeof harnessStreamInputSchema>;
+
+/**
+ * Body of `POST /_sandbox/dispatch`. The daemon runs an envelope without
+ * `harnessId` as `claude-code`: Studio and the daemon roll out independently.
+ */
+export interface HarnessDispatchEnvelope {
+  harnessId: HarnessId;
+  runId: string;
+  /** Checked by the daemon against `harnessStreamInputSchema`. */
+  input: unknown;
+}

@@ -84,23 +84,57 @@ func TestValidateHarnessInputRejectsEmpty(t *testing.T) {
 	}
 }
 
+const minimalHarnessInput = `{
+	"threadId": "t1",
+	"userMessage": {"role": "user"},
+	"harness": {},
+	"workspace": {"cwd": null},
+	"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
+	"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
+	"mode": "default",
+	"temperature": 0.5,
+	"toolApprovalLevel": "auto",
+	"user": {"id": "u", "email": "u@example.com"},
+	"organizationId": "org",
+	"agent": {"id": "a"}
+}`
+
 func TestValidateHarnessInputAcceptsMinimalFrame(t *testing.T) {
-	input := `{
-		"threadId": "t1",
-		"userMessage": {"role": "user"},
-		"harness": {},
-		"workspace": {"cwd": null},
-		"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
-		"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
-		"mode": "default",
-		"temperature": 0.5,
-		"toolApprovalLevel": "auto",
-		"user": {"id": "u", "email": "u@example.com"},
-		"organizationId": "org",
-		"agent": {"id": "a"}
-	}`
-	if reason := ValidateHarnessInput(json.RawMessage(input)); reason != "" {
+	if reason := ValidateHarnessInput(json.RawMessage(minimalHarnessInput)); reason != "" {
 		t.Fatalf("minimal frame rejected: %s", reason)
+	}
+}
+
+// An envelope without `harnessId` (older Studio) still runs claude-code.
+func TestDispatchCarriesTheEnvelopeHarness(t *testing.T) {
+	const token = "tkn"
+	dispatch := func(envelope string) (int, string) {
+		t.Helper()
+		var seen string
+		req := httptest.NewRequest("POST", "/dispatch", strings.NewReader(envelope))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		NewRegistry().HandleDispatch(rec, req, Deps{
+			DaemonToken: func() string { return token },
+			BeforeRun:   func(info RunInfo) { seen = info.Harness },
+		})
+		return rec.Code, seen
+	}
+	cases := []struct{ name, harness, want string }{
+		{"absent defaults to claude-code", ``, "claude-code"},
+		{"null defaults to claude-code", `"harnessId": null,`, "claude-code"},
+		{"passed through", `"harnessId": "codex",`, "codex"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, seen := dispatch(`{` + tc.harness + `"runId": "r", "input": ` + minimalHarnessInput + `}`)
+			if code != 200 || seen != tc.want {
+				t.Fatalf("got status %d harness %q, want 200 %q", code, seen, tc.want)
+			}
+		})
+	}
+	if code, _ := dispatch(`{"harnessId": 1, "runId": "r", "input": ` + minimalHarnessInput + `}`); code != 400 {
+		t.Fatalf("a non-string harnessId returned %d, want 400", code)
 	}
 }
 
