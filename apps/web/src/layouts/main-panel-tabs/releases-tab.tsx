@@ -1,6 +1,8 @@
 /**
  * Releases tab — a hosted v8 site's releases on the delivery CDN: what
- * latest.json serves now, and main's git history. A commit that has a
+ * latest.json serves now, and main's git history. Every commit is Merged;
+ * the one latest.json serves is Live, and the newest shows Failed with Resync
+ * when it isn't (the API derives it, nothing is stored). A commit that has a
  * release can be made current (a temporary rollback: only latest.json
  * changes, and the next Publish or Resync overrides it); a commit the CMS
  * never published is listed without an action.
@@ -35,14 +37,13 @@ import {
   HostedRequestError,
   type ReleaseCommit,
   type ReleaseState,
+  type ResyncResult,
   useMakeCurrent,
   useReleases,
   useResync,
 } from "./releases-api";
 
 const short = (sha: string) => sha.slice(0, 7);
-/** The commits the API searches for a CMS-published one (5 pages of 50). */
-const HISTORY_WINDOW = 250;
 
 /** What a confirmation dialog is asking about. */
 type PendingConfirm =
@@ -98,11 +99,10 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   const runResync = async (confirmed: boolean) => {
     try {
-      const result = (await resync.mutateAsync({ confirm: confirmed })) as {
-        result?: string;
-      };
-      if (result.result === "pending")
-        toast.warning(t("releases.resyncPending"));
+      const result = (await resync.mutateAsync({
+        confirm: confirmed,
+      })) as ResyncResult;
+      if (result.cdn === "failed") toast.warning(t("releases.resyncMainMoved"));
       else toast.success(t("releases.resynced"));
     } catch (error) {
       if (error instanceof HostedRequestError && error.code === "rolled-back") {
@@ -132,11 +132,6 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {first.unpublishedCommits ? (
-            <span className="text-xs text-muted-foreground">
-              {t("releases.unpublishedCommits")}
-            </span>
-          ) : null}
           <Button
             type="button"
             size="sm"
@@ -160,11 +155,6 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
             {t("releases.serving")}
           </span>
           <StateBadge state={first.state} />
-          {first.state === "rolled-back" && first.revisionOffMain ? (
-            <span className="text-xs text-warning">
-              {t("releases.revisionOffMain")}
-            </span>
-          ) : null}
         </div>
         {serving ? (
           <p className="mt-1 text-sm">
@@ -186,9 +176,9 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
             {t("releases.rolledBackHint", { head: short(first.head) })}
           </p>
         ) : null}
-        {serving && first.noRecentRelease ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("releases.noRecentRelease", { count: String(HISTORY_WINDOW) })}
+        {first.state === "failed" ? (
+          <p className="mt-1 text-xs text-destructive">
+            {t("releases.failedHint")}
           </p>
         ) : null}
       </div>
@@ -197,6 +187,9 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         <ul className="divide-y divide-border/60">
           {commits.map((commit) => {
             const isCurrent = commit.sha === serving?.revision;
+            // The newest release, when latest.json doesn't serve it.
+            const isFailed =
+              first.state === "failed" && commit.sha === first.head;
             return (
               <li
                 key={commit.sha}
@@ -216,9 +209,28 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       .join(" · ")}
                   </p>
                 </div>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  {t("releases.merged")}
+                </span>
                 {isCurrent ? (
                   <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
-                    {t("releases.current")}
+                    {t("releases.state.live")}
+                  </span>
+                ) : isFailed ? (
+                  <span className="flex items-center gap-1">
+                    <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+                      {t("releases.failed")}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      disabled={resync.isPending}
+                      onClick={() => void runResync(false)}
+                    >
+                      {t("releases.resync")}
+                    </Button>
                   </span>
                 ) : commit.published ? (
                   <DropdownMenu>
@@ -316,14 +328,14 @@ function StateBadge({ state }: { state: ReleaseState }) {
       ? t("releases.state.live")
       : state === "rolled-back"
         ? t("releases.state.rolledBack")
-        : t("releases.state.pending");
+        : t("releases.state.failed");
   return (
     <span
       className={cn(
         "rounded-full px-2 py-0.5 text-xs",
         state === "live" && "bg-success/10 text-success",
         state === "rolled-back" && "bg-warning/10 text-warning",
-        state === "pending" && "bg-muted text-muted-foreground",
+        state === "failed" && "bg-destructive/10 text-destructive",
       )}
     >
       {label}

@@ -1,15 +1,15 @@
 /**
- * Publish and Resync for a hosted v8 site (Blocks v8 on GitHub). Publish
- * commits the project's CDN draft straight to main, then releases that commit
- * on the delivery CDN; Resync releases main's head again. "pending" means git
- * has the content but running sites don't serve it yet.
+ * Publish for a hosted v8 site (Blocks v8 on GitHub): commits the project's
+ * CDN draft straight to main, then releases that commit on the delivery CDN.
+ * Publish is done once it's merged; `cdn: "failed"` means running sites don't
+ * serve it yet, and Resync on the Releases screen fixes that.
  */
 
 export type HostedPublishResult =
-  | { result: "published" | "pending"; sha: string }
+  | { result: "merged"; sha: string; cdn: "live" | "failed" }
   | { result: "up-to-date" };
 
-/** A refused publish or resync, with the API's error code (`main-moved`, `rolled-back`). */
+/** A refused publish, with the API's error code (`main-moved`). */
 export class HostedPublishError extends Error {
   constructor(
     message: string,
@@ -45,15 +45,5 @@ export function publishHostedDraft(
   return post(
     `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/publish`,
     { note },
-  );
-}
-
-export function resyncHosted(
-  params: { orgSlug: string; virtualMcpId: string },
-  confirm: boolean,
-): Promise<HostedPublishResult> {
-  return post(
-    `/api/${params.orgSlug}/hosted/${encodeURIComponent(params.virtualMcpId)}/resync`,
-    { confirm },
   );
 }

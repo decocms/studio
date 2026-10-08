@@ -1,4 +1,11 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  setSystemTime,
+} from "bun:test";
 import { deliveryKeys } from "./delivery-store";
 import {
   fakeInsights,
@@ -14,7 +21,6 @@ import {
   readLatest,
 } from "./publish";
 import {
-  HISTORY_WINDOW,
   listReleases,
   makeCurrent,
   NotPublishedError,
@@ -27,6 +33,11 @@ import {
 beforeAll(() => {
   process.env.FAST_PREVIEW_CACHE_DIR = "";
 });
+
+// Git dates have whole seconds: each step moves the clock 2 s on.
+let clock = Date.UTC(2026, 9, 1);
+const tick = () => setSystemTime(new Date((clock += 2_000)));
+afterEach(() => setSystemTime());
 
 function setup() {
   const git = fakeRepo({
@@ -49,83 +60,56 @@ function setup() {
 const sha = (c: string) => c.repeat(40);
 
 describe("releaseState", () => {
-  const pointer = (revision: string) => ({
+  const pointer = (revision: string, publishedAt: string) => ({
     revision,
     schemaHash: "s",
-    publishedAt: "t",
+    publishedAt,
   });
   const head = sha("h");
+  const at = "2026-10-01T12:00:00Z";
 
-  it("is pending without latest.json", () => {
-    expect(
-      releaseState(null, head, new Set(), {
-        newestPublished: null,
-        currentOnMain: null,
-      }).state,
-    ).toBe("pending");
+  it("is failed without latest.json", () => {
+    expect(releaseState(null, head, at)).toBe("failed");
   });
 
-  it("is live when latest.json is the newest published revision", () => {
-    expect(
-      releaseState(pointer(head), head, new Set([head]), {
-        newestPublished: head,
-        currentOnMain: true,
-      }),
-    ).toEqual({
-      state: "live",
-      unpublishedCommits: false,
-      revisionOffMain: false,
-      noRecentRelease: false,
-    });
+  it("is live when latest.json names main's head", () => {
+    expect(releaseState(pointer(head, at), head, at)).toBe("live");
   });
 
-  it("stays live over a developer push, noting the unpublished commits", () => {
-    const a = sha("a");
+  it("is failed when main's head was committed after latest.json was written", () => {
     expect(
-      releaseState(pointer(a), head, new Set([a]), {
-        newestPublished: a,
-        currentOnMain: true,
-      }),
-    ).toMatchObject({ state: "live", unpublishedCommits: true });
+      releaseState(pointer(sha("a"), "2026-10-01T11:59:00Z"), head, at),
+    ).toBe("failed");
   });
 
-  it("is rolled back when an older revision is served", () => {
-    const [a, b] = [sha("a"), sha("b")];
+  it("is rolled back when an older release was made current after the head", () => {
     expect(
-      releaseState(pointer(a), head, new Set([a, b]), {
-        newestPublished: b,
-        currentOnMain: true,
-      }),
-    ).toMatchObject({ state: "rolled-back", unpublishedCommits: true });
+      releaseState(pointer(sha("a"), "2026-10-01T12:05:00Z"), head, at),
+    ).toBe("rolled-back");
   });
 
-  it("is rolled back when the revision is no longer on main", () => {
+  it("compares whole seconds and is failed when the head's date is unknown", () => {
     expect(
-      releaseState(pointer(sha("x")), head, new Set([sha("x"), head]), {
-        newestPublished: head,
-        currentOnMain: false,
-      }),
-    ).toMatchObject({ state: "rolled-back", revisionOffMain: true });
-  });
-
-  it("flags no published release in the window", () => {
+      releaseState(pointer(sha("a"), "2026-10-01T12:00:00.900Z"), head, at),
+    ).toBe("failed");
     expect(
-      releaseState(pointer(sha("x")), head, new Set([sha("x")]), {
-        newestPublished: null,
-        currentOnMain: null,
-      }),
-    ).toMatchObject({ state: "live", noRecentRelease: true });
+      releaseState(pointer(sha("a"), "2026-10-01T12:05:00Z"), head, null),
+    ).toBe("failed");
   });
 });
 
 describe("listReleases / makeCurrent", () => {
-  it("marks the commits that have a revision and rolls back to one", async () => {
+  it("marks the commits that have a revision; Make current rolls back, Resync makes the head live", async () => {
     const { git, delivery, repo, insights } = setup();
+    tick();
     await resync(repo, insights.client, { confirm: false });
     const first = git.head();
+    tick();
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' }, "direct edit");
+    tick();
     await resync(repo, insights.client, { confirm: false });
     const second = git.head();
+    tick();
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":2}\n' }, "not published");
 
     const page = await listReleases(repo, insights.client, null);
@@ -135,49 +119,40 @@ describe("listReleases / makeCurrent", () => {
       ["initial", true],
     ]);
     expect(page.current?.revision).toBe(second);
-    // A developer push keeps it Live, with the note.
-    expect(page.state).toBe("live");
-    expect(page.unpublishedCommits).toBe(true);
+    // The newest release isn't the one latest.json names: Failed · Resync.
+    expect(page.state).toBe("failed");
 
+    tick();
     await makeCurrent(repo, first, { confirm: false });
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(first);
     expect(git.head()).not.toBe(first);
-    const after = await listReleases(repo, insights.client, null);
-    expect(after.state).toBe("rolled-back");
-    expect(after.unpublishedCommits).toBe(true);
-    expect(after.revisionOffMain).toBe(false);
-  });
-
-  it("is rolled back with the revision no longer on main", async () => {
-    const { delivery, repo, insights } = setup();
-    await resync(repo, insights.client, { confirm: false });
-    const gone = sha("e");
-    await delivery.store.putJson(
-      deliveryKeys.revision("acme", gone),
-      { revision: gone, schemaHash: SCHEMA_HASH, blocks: {} },
-      "x",
+    expect((await listReleases(repo, insights.client, null)).state).toBe(
+      "rolled-back",
     );
-    await makeCurrent(repo, gone, { confirm: false });
-    const status = await releaseStatus(repo, insights.client);
-    expect(status.state).toBe("rolled-back");
-    expect(status.revisionOffMain).toBe(true);
+
+    tick();
+    await resync(repo, insights.client, { confirm: true });
+    const live = await listReleases(repo, insights.client, null);
+    expect(live.state).toBe("live");
+    expect(live.current?.revision).toBe(git.head());
   });
 
-  it("walks at most 5 pages of 50 commits looking for a published one", async () => {
-    const { git, delivery, repo, insights } = setup();
-    await resync(repo, insights.client, { confirm: false });
-    for (let i = 0; i < HISTORY_WINDOW; i++) {
+  it("is failed when latest.json is missing", async () => {
+    const { repo, insights } = setup();
+    const status = await releaseStatus(repo, insights.client);
+    expect(status).toMatchObject({ current: null, state: "failed" });
+  });
+
+  it("reads one page of 50 commits", async () => {
+    const { git, repo, insights } = setup();
+    for (let i = 0; i < 60; i++) {
       git.pushDirect({ ".deco/blocks/Home.json": `{"i":${i}}\n` }, `dev ${i}`);
     }
     insights.calls.length = 0;
     const page = await listReleases(repo, insights.client, null);
-    expect(insights.calls).toHaveLength(5);
-    expect(insights.calls.every((c) => c.limit === 50)).toBe(true);
-    expect(page.noRecentRelease).toBe(true);
-    expect(page.state).toBe("live");
+    expect(insights.calls).toEqual([{ cursor: null, limit: 50 }]);
     expect(page.commits).toHaveLength(50);
     expect(page.nextCursor).toBe("50");
-    expect(delivery.objects.size).toBe(2);
   });
 
   it("refuses a commit the CMS never published", async () => {
@@ -206,15 +181,15 @@ describe("resync", () => {
   it("releases main's head when nothing is published yet", async () => {
     const { git, delivery, repo, insights } = setup();
     expect(await resync(repo, insights.client, { confirm: false })).toEqual({
-      result: "published",
       sha: git.head(),
+      cdn: "live",
     });
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
   });
 
-  it("publishes a developer push without asking (the screen says Live)", async () => {
+  it("publishes a developer push without asking (the screen says Failed)", async () => {
     const { git, delivery, repo, insights } = setup();
     await resync(repo, insights.client, { confirm: false });
     git.pushDirect({ ".deco/blocks/Home.json": "{}\n" });
@@ -226,10 +201,13 @@ describe("resync", () => {
 
   it("asks for confirmation before overriding a rollback", async () => {
     const { git, delivery, repo, insights } = setup();
+    tick();
     await resync(repo, insights.client, { confirm: false });
     const rolledTo = git.head();
+    tick();
     git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' });
     await resync(repo, insights.client, { confirm: false });
+    tick();
     await makeCurrent(repo, rolledTo, { confirm: false });
     await expect(
       resync(repo, insights.client, { confirm: false }),
@@ -289,8 +267,8 @@ describe("purge", () => {
     delivery.failPurge(false);
     delivery.log.length = 0;
     expect(await resync(repo, insights.client, { confirm: false })).toEqual({
-      result: "published",
       sha: git.head(),
+      cdn: "live",
     });
     expect(delivery.log).toEqual([
       `put ${deliveryKeys.latest("acme")}`,

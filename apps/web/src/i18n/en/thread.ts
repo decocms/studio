@@ -222,14 +222,11 @@ export const thread = {
   "thread.publishDialog.viewPr": "View PR",
   "thread.publishDialog.visitPreview": "Visit preview",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.hostedPending":
-    "Published to git, but not live on running sites yet. Resync to try again.",
+  "thread.publishPopover.mergedLive": "Merged · Live",
+  "thread.publishPopover.mergedCdnFailed":
+    "Merged · CDN update failed. Resync it from Releases.",
   "thread.publishPopover.mainMoved":
     "Main changed while publishing, so nothing was published. Publish again.",
-  "thread.publishPopover.resync": "Resync",
-  "thread.publishPopover.resyncAnyway": "Resync anyway",
-  "thread.publishPopover.resyncOverridesRollback":
-    "The site is rolled back to an earlier release. Resync makes main's latest version live instead.",
   "thread.publishPopover.branchMoved":
     "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":

@@ -92,14 +92,15 @@ const REPO: RepoRef = {
 export function fakeRepo(files: Record<string, string>) {
   const blobs = new Map<string, string>();
   const commits = new Map<string, Map<string, string>>();
-  const history: Array<{ sha: string; message: string }> = [];
+  // Each commit is dated now (tests move the clock with setSystemTime).
+  const history: Array<{ sha: string; message: string; date: string }> = [];
   let head = "";
   let n = 0;
   const commit = (tree: Map<string, string>, message: string) => {
     const sha = createHash("sha1").update(`commit ${++n}`).digest("hex");
     for (const content of tree.values()) blobs.set(blobSha(content), content);
     commits.set(sha, tree);
-    history.unshift({ sha, message });
+    history.unshift({ sha, message, date: new Date().toISOString() });
     head = sha;
     return sha;
   };
@@ -198,7 +199,7 @@ export function fakeRepo(files: Record<string, string>) {
 
 /** `listCommits` over a fake repo's history, paged by offset; counts calls. */
 export function fakeInsights(
-  history: ReadonlyArray<{ sha: string; message: string }>,
+  history: ReadonlyArray<{ sha: string; message: string; date: string }>,
 ) {
   const calls: Array<{ cursor: string | null; limit: number }> = [];
   const client = {
@@ -211,11 +212,9 @@ export function fakeInsights(
     }) => {
       calls.push({ cursor: cursor ?? null, limit });
       const from = cursor ? Number(cursor) : 0;
-      const items = history.slice(from, from + limit).map((c, i) => ({
+      const items = history.slice(from, from + limit).map((c) => ({
         sha: c.sha,
-        date: new Date(
-          Date.UTC(2026, 0, 1) - (from + i) * 60_000,
-        ).toISOString(),
+        date: c.date,
         message: c.message,
         author: { name: "Ana", email: null, login: null },
       }));

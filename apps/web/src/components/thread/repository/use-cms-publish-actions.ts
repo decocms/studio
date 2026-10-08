@@ -23,7 +23,6 @@ import {
   HostedPublishError,
   type HostedPublishResult,
   publishHostedDraft,
-  resyncHosted,
 } from "./hosted-publish-api.ts";
 
 /** `publish` merges to production; `review` stops at the pull request. */
@@ -46,17 +45,10 @@ interface CmsPublishActionsArgs {
   onPublished?: () => void | Promise<void>;
   /**
    * A hosted v8 site: publish commits the CDN draft to main and releases it
-   * (no pull request); a release that didn't go live yet offers Resync.
+   * (no pull request). It's done once merged; a CDN update that failed is
+   * resynced from the Releases screen.
    */
   hosted?: boolean;
-}
-
-/** A hosted publish landed in git but isn't live yet; Resync releases main. */
-interface HostedPending {
-  /** Resync would override a rollback: the next resync must confirm. */
-  needsConfirm: boolean;
-  isResyncing: boolean;
-  resync: () => Promise<void>;
 }
 
 interface CmsPublishActions {
@@ -67,8 +59,6 @@ interface CmsPublishActions {
   submit: () => Promise<void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
-  /** Set while a hosted publish is pending (see {@link HostedPending}). */
-  hostedPending: HostedPending | null;
 }
 
 export function useCmsPublishActions(
@@ -91,9 +81,6 @@ export function useCmsPublishActions(
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
-  const [pending, setPending] = useState(false);
-  const [needsConfirm, setNeedsConfirm] = useState(false);
-  const [isResyncing, setIsResyncing] = useState(false);
 
   const noteParts = () =>
     publishNoteParts(
@@ -101,29 +88,17 @@ export function useCmsPublishActions(
       t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
     );
 
-  const published = async () => {
-    toast.success(
-      destinationHost
-        ? t("thread.publishPopover.publishedTo", { host: destinationHost })
-        : t("thread.publishDialog.publishedTo", {
-            baseBranch: target.baseBranch,
-          }),
-    );
+  /** Merged is done: the popover closes, saying whether the CDN is live. */
+  const settleHosted = async (result: HostedPublishResult) => {
+    if (result.result === "up-to-date") {
+      toast.success(t("thread.headerActions.upToDate"));
+    } else if (result.cdn === "failed") {
+      toast.warning(t("thread.publishPopover.mergedCdnFailed"));
+    } else {
+      toast.success(t("thread.publishPopover.mergedLive"));
+    }
     onOpenChange(false);
     await onPublished?.();
-  };
-
-  /** A hosted release that went live closes; one that didn't stays open. */
-  const settleHosted = async (result: HostedPublishResult) => {
-    if (result.result === "pending") {
-      setPending(true);
-      setPublishError(t("thread.publishPopover.hostedPending"));
-      await refresh();
-      return;
-    }
-    setPending(false);
-    setNeedsConfirm(false);
-    await published();
   };
 
   const publishHosted = async () => {
@@ -144,26 +119,6 @@ export function useCmsPublishActions(
     } finally {
       publishLockRef.current = false;
       setIsPublishing(false);
-    }
-  };
-
-  const resync = async () => {
-    setIsResyncing(true);
-    try {
-      await settleHosted(await resyncHosted(target, needsConfirm));
-    } catch (error) {
-      if (error instanceof HostedPublishError && error.code === "rolled-back") {
-        setNeedsConfirm(true);
-        setPublishError(t("thread.publishPopover.resyncOverridesRollback"));
-        return;
-      }
-      setPublishError(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishDialog.failedPublish"),
-      );
-    } finally {
-      setIsResyncing(false);
     }
   };
 
@@ -251,7 +206,6 @@ export function useCmsPublishActions(
     // Hosted callers never pass review mode (no pull request to open).
     submit:
       mode === "review" ? submitForReview : hosted ? publishHosted : publish,
-    hostedPending: pending ? { needsConfirm, isResyncing, resync } : null,
     discardChange: (change) =>
       discardFiles(
         change.filepaths,

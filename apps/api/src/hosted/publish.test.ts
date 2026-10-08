@@ -54,27 +54,25 @@ describe("publishDraft", () => {
       set: { Home: { path: "/", title: "v2" } },
       delete: [],
     }));
-    const result = await publishDraft(
-      repo,
-      drafts,
-      REF,
-      { message: "Update home", coAuthor: null },
-      {
-        beforePointerWrite: async () => {
-          await drafts.update(REF, (body) => ({
-            ...body,
-            set: { ...body.set, Late: { x: 2 } },
-          }));
-        },
-      },
-    );
-    expect(result.result).toBe("published");
+    const commitFiles = repo.client.commitFiles;
+    repo.client.commitFiles = async (params) => {
+      await drafts.update(REF, (body) => ({
+        ...body,
+        set: { ...body.set, Late: { x: 2 } },
+      }));
+      return commitFiles(params);
+    };
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "Update home",
+      coAuthor: null,
+    });
+    expect(result).toMatchObject({ result: "merged", cdn: "live" });
     const kept = await drafts.load(REF);
     expect(kept?.slug).toBe(slug);
     expect(Object.keys(kept!.body.set).sort()).toEqual(["Home", "Late"]);
   });
 
-  it("commits to main, writes the revision, then latest.json, then deletes the draft", async () => {
+  it("commits to main, deletes the draft, then writes the revision and latest.json (Merged · Live)", async () => {
     const { git, delivery, drafts, repo } = setup();
     const { slug } = await drafts.update(REF, () => ({
       set: { Home: { path: "/", title: "v2" } },
@@ -90,17 +88,17 @@ describe("publishDraft", () => {
 
     const sha = git.head();
     expect(sha).not.toBe(before);
-    expect(result).toEqual({ result: "published", sha });
+    expect(result).toEqual({ result: "merged", sha, cdn: "live" });
     expect(git.history[0]!.message).toBe("Update home");
     expect(git.filesAt(sha)).toEqual({
       ".deco/schema.gen.json": SCHEMA_TEXT,
       ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "v2" }),
     });
     expect(delivery.log).toEqual([
+      `delete ${deliveryKeys.draft("acme", slug)}`,
       `put ${deliveryKeys.revision("acme", sha)}`,
       `put ${deliveryKeys.latest("acme")}`,
       `purge ${deliveryKeys.latest("acme")}`,
-      `delete ${deliveryKeys.draft("acme", slug)}`,
     ]);
     const revision = delivery.objects.get(deliveryKeys.revision("acme", sha))!;
     expect(JSON.parse(revision.text)).toEqual({
@@ -121,7 +119,7 @@ describe("publishDraft", () => {
     expect(await drafts.load(REF)).toBeNull();
   });
 
-  it("does not write latest.json when main moved after the commit (pending)", async () => {
+  it("is Merged · CDN failed when main moved after the commit: no latest.json, draft deleted", async () => {
     const { git, delivery, drafts, repo } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     const result = await publishDraft(
@@ -135,13 +133,13 @@ describe("publishDraft", () => {
         },
       },
     );
-    expect(result.result).toBe("pending");
+    expect(result).toMatchObject({ result: "merged", cdn: "failed" });
     expect(await readLatest(delivery.store, "acme")).toBeNull();
-    // The draft goes only after the pointer write and its purge succeeded.
-    expect(await drafts.load(REF)).not.toBeNull();
+    // Publish is done once the commit is on main.
+    expect(await drafts.load(REF)).toBeNull();
   });
 
-  it("stops before anything is published when main moved under the commit", async () => {
+  it("fails and keeps the draft when main moved under the commit", async () => {
     const { git, delivery, drafts, repo } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     const commitFiles = git.client.commitFiles;
@@ -156,7 +154,7 @@ describe("publishDraft", () => {
     expect(await readLatest(delivery.store, "acme")).toBeNull();
   });
 
-  it("is pending when the revision write fails after git, and keeps the draft", async () => {
+  it("is Merged · CDN failed when the revision write fails, and deletes the draft", async () => {
     const { drafts, repo, delivery } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     const put = delivery.store.putJson;
@@ -168,11 +166,11 @@ describe("publishDraft", () => {
       message: "",
       coAuthor: null,
     });
-    expect(result.result).toBe("pending");
-    expect(await drafts.load(REF)).not.toBeNull();
+    expect(result).toMatchObject({ result: "merged", cdn: "failed" });
+    expect(await drafts.load(REF)).toBeNull();
   });
 
-  it("fails fast when the purge fails: one purge call, no restore, pending, draft kept", async () => {
+  it("fails fast when the purge fails: one purge call, no restore, Merged · CDN failed, draft deleted", async () => {
     const { git, delivery, drafts, repo } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     delivery.log.length = 0;
@@ -181,10 +179,14 @@ describe("publishDraft", () => {
       message: "",
       coAuthor: null,
     });
-    expect(result).toEqual({ result: "pending", sha: git.head() });
+    expect(result).toEqual({
+      result: "merged",
+      sha: git.head(),
+      cdn: "failed",
+    });
     // One purge call (its single retry is inside it) and one pointer write:
     // no restore.
-    expect(delivery.log).toEqual([
+    expect(delivery.log.slice(1)).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
       `purge ${deliveryKeys.latest("acme")}`,
@@ -192,10 +194,10 @@ describe("publishDraft", () => {
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
-    expect(await drafts.load(REF)).not.toBeNull();
+    expect(await drafts.load(REF)).toBeNull();
   });
 
-  it("is pending with the draft kept when both purge attempts fail (exactly two calls)", async () => {
+  it("is Merged · CDN failed when both purge attempts fail (exactly two calls)", async () => {
     const { git, delivery, drafts, repo } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     let calls = 0;
@@ -214,17 +216,21 @@ describe("publishDraft", () => {
       message: "",
       coAuthor: null,
     });
-    expect(result).toEqual({ result: "pending", sha: git.head() });
+    expect(result).toEqual({
+      result: "merged",
+      sha: git.head(),
+      cdn: "failed",
+    });
     expect(calls).toBe(2);
     // No restore: the pointer written once stays.
-    expect(delivery.log).toEqual([
+    expect(delivery.log.slice(1)).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
     ]);
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(
       git.head(),
     );
-    expect(await drafts.load(REF)).not.toBeNull();
+    expect(await drafts.load(REF)).toBeNull();
   });
 
   it("publishes and deletes the draft when the purge retry succeeds", async () => {
@@ -245,12 +251,12 @@ describe("publishDraft", () => {
       message: "",
       coAuthor: null,
     });
-    expect(result).toEqual({ result: "published", sha: git.head() });
+    expect(result).toEqual({ result: "merged", sha: git.head(), cdn: "live" });
     expect(calls).toBe(2);
     expect(await drafts.load(REF)).toBeNull();
   });
 
-  it("does not purge when the latest.json write fails (pending, draft kept)", async () => {
+  it("does not purge when the latest.json write fails (Merged · CDN failed)", async () => {
     const { git, delivery, drafts, repo } = setup();
     await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
     delivery.log.length = 0;
@@ -263,11 +269,29 @@ describe("publishDraft", () => {
       message: "",
       coAuthor: null,
     });
-    expect(result).toEqual({ result: "pending", sha: git.head() });
-    expect(delivery.log).toEqual([
+    expect(result).toEqual({
+      result: "merged",
+      sha: git.head(),
+      cdn: "failed",
+    });
+    expect(delivery.log.slice(1)).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
     ]);
+    expect(await drafts.load(REF)).toBeNull();
+  });
+
+  it("keeps the draft and fails when the commit fails", async () => {
+    const { delivery, drafts, repo } = setup();
+    await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
+    delivery.log.length = 0;
+    repo.client.commitFiles = async () => {
+      throw new Error("GitHub down");
+    };
+    await expect(
+      publishDraft(repo, drafts, REF, { message: "", coAuthor: null }),
+    ).rejects.toThrow("GitHub down");
     expect(await drafts.load(REF)).not.toBeNull();
+    expect(delivery.log).toEqual([]);
   });
 
   it("answers up-to-date without a draft", async () => {

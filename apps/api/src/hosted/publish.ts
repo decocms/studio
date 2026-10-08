@@ -2,18 +2,18 @@
  * Publish and Resync for a hosted v8 site, in the order the product decided:
  *
  *   1. commit the draft directly to main (fast-forward only, no PR);
- *   2. PUT sites/<site>/revisions/<commit>.json;
- *   3. re-read main's head; only if it is still that commit, PUT latest.json
- *      and purge its URL from Cloudflare's edge (5 s per attempt, one retry);
- *   4. delete the draft, only once steps 2–3 succeeded.
+ *   2. delete the draft: Publish is done once the commit is on main;
+ *   3. PUT sites/<site>/revisions/<commit>.json;
+ *   4. re-read main's head; only if it is still that commit, PUT latest.json
+ *      and purge its URL from Cloudflare's edge (5 s per attempt, one retry).
  *
- * Git is the source of truth. A failure after step 1 (a failed pointer write
- * or purge included, once the purge's single retry also failed) fails fast:
- * nothing is restored or rolled back,
- * the publish is "pending" (git has it, running sites may not serve it yet),
- * the draft stays, and the user retries from Studio (Resync reruns steps 2–3
- * from main's head). Rollback (Releases → Make current) rewrites latest.json
- * only, and the next Publish or Resync overrides it.
+ * Git is the source of truth. A failed commit fails Publish and keeps the
+ * draft. A failure in steps 3–4 (main moved, a failed pointer write or purge)
+ * doesn't fail it: the result is "merged" with `cdn: "failed"`, nothing is
+ * restored or rolled back, and Releases shows the newest release as Failed
+ * until a Resync (steps 3–4 from main's head) makes it live. Rollback
+ * (Releases → Make current) rewrites latest.json only, and the next Publish
+ * or Resync overrides it.
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
  */
@@ -72,7 +72,7 @@ export class MainMovedError extends Error {
 
 /**
  * Writing latest.json or purging it from the edge (after its one retry)
- * failed. Nothing is restored: the user retries from Studio.
+ * failed. Nothing is restored: the user resyncs from Releases.
  */
 export class LatestUpdateError extends Error {
   constructor(cause: unknown) {
@@ -142,9 +142,12 @@ export interface HostedRepo {
   site: string;
 }
 
+/** Whether the CDN step made a commit live on running sites. */
+export type CdnStatus = "live" | "failed";
+
+/** "merged": the draft is on main (Publish is done); `cdn` says if it's live. */
 export type PublishResult =
-  | { result: "published"; sha: string }
-  | { result: "pending"; sha: string }
+  | { result: "merged"; sha: string; cdn: CdnStatus }
   | { result: "up-to-date" };
 
 /**
@@ -234,7 +237,7 @@ async function commitDraftToMain(
 }
 
 /**
- * Step 2 for commit `sha`: its revision object, written only when missing
+ * Step 3 for commit `sha`: its revision object, written only when missing
  * (revisions are immutable). Returns the revision's schemaHash.
  */
 async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
@@ -270,7 +273,7 @@ export async function writeLatest(
 }
 
 /**
- * Steps 2–3 for commit `sha`: the revision object, then the pointer and its
+ * Steps 3–4 for commit `sha`: the revision object, then the pointer and its
  * purge, but only while `sha` is still main's head. Returns whether the
  * pointer was written.
  */
@@ -284,7 +287,7 @@ export async function releaseCommit(
   const head = await requireBranchHead(repo.client, repo.mainBranch);
   if (head !== sha) return false;
   // OPEN: O-10 — a plain PUT; a race lost after the head check shows as
-  // "Rolled back"/pending in Releases and Resync fixes it.
+  // Failed in Releases and Resync fixes it.
   const pointer: LatestPointer = {
     revision: sha,
     schemaHash,
@@ -313,28 +316,25 @@ export async function publishDraft(
         note.coAuthor,
       );
   const sha = await commitDraftToMain(repo, draft.body, message);
-  let live: boolean;
-  try {
-    live = await releaseCommit(repo, sha, hooks);
-  } catch (error) {
-    // Fail fast: git has the commit, the CDN step failed; the draft stays and
-    // the user retries from Studio.
-    console.error("hosted publish: delivery update failed; pending", {
-      site: repo.site,
-      sha,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { result: "pending", sha };
-  }
-  if (!live) return { result: "pending", sha };
-  // The draft goes only once the pointer write and its purge succeeded. Only
-  // the save that was published goes: a save made during the publish keeps
-  // the draft (its ETag changed).
+  // Publish is done once the commit is on main: the draft goes now, whatever
+  // the CDN step does. Only the save that was published goes: a save made
+  // during the publish keeps the draft (its ETag changed).
   await drafts.remove(ref, draft.etag).catch((error) =>
     console.error("hosted publish: draft delete failed", {
       site: repo.site,
       error: error instanceof Error ? error.message : String(error),
     }),
   );
-  return { result: "published", sha };
+  try {
+    const live = await releaseCommit(repo, sha, hooks);
+    return { result: "merged", sha, cdn: live ? "live" : "failed" };
+  } catch (error) {
+    // Merged, but the CDN step failed: Releases offers Resync.
+    console.error("hosted publish: CDN update failed", {
+      site: repo.site,
+      sha,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { result: "merged", sha, cdn: "failed" };
+  }
 }

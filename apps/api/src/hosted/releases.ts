@@ -1,9 +1,10 @@
 /**
- * The Releases screen: what latest.json serves, main's git history, and which
- * commits have a revision on the CDN (one listing of the site's prefix
- * intersected with the log). "Make current" rewrites latest.json only; the
- * history is git plus that listing, with no log of its own. Resync lives here
- * too, since it asks for confirmation by the screen's own rule.
+ * The Releases screen: what latest.json serves, main's git history (every
+ * commit is a merged release), and which commits have a revision on the CDN
+ * (one listing of the site's prefix). The CDN status is derived, never
+ * stored: latest.json against main's head. "Make current" rewrites
+ * latest.json only; Resync makes main's head live again and asks for
+ * confirmation by the screen's own rule.
  */
 
 import {
@@ -18,9 +19,9 @@ import {
   listRevisionShas,
 } from "./delivery-store";
 import {
+  type CdnStatus,
   type HostedRepo,
   type LatestPointer,
-  type PublishResult,
   RolledBackError,
   readLatest,
   releaseCommit,
@@ -28,7 +29,12 @@ import {
 } from "./publish";
 import { NotV8Site, schemaHashAt } from "./release-objects";
 
-export type ReleaseState = "live" | "rolled-back" | "pending";
+/**
+ * live: latest.json serves main's head. failed: it doesn't (a CDN step that
+ * failed, a push outside the CMS, or nothing published yet): Resync. rolled
+ * back: someone made an older release current after main's head was made.
+ */
+export type ReleaseState = "live" | "failed" | "rolled-back";
 
 export interface ReleaseCommit {
   sha: string;
@@ -43,12 +49,6 @@ export interface ReleaseStatus {
   current: LatestPointer | null;
   head: string;
   state: ReleaseState;
-  /** Main's head has no revision object: commits the CMS didn't publish. */
-  unpublishedCommits: boolean;
-  /** latest.json's revision isn't in main's history (force-push/rewrite). */
-  revisionOffMain: boolean;
-  /** No CMS-published commit in the last {@link HISTORY_WINDOW} of main. */
-  noRecentRelease: boolean;
 }
 
 export interface ReleasesPage extends ReleaseStatus {
@@ -77,102 +77,27 @@ export class SchemaMismatchError extends Error {
 }
 
 const PAGE_SIZE = 50;
-const MAX_PAGES = 5;
-/** How many of main's commits the state search walks: 5 pages of 50. */
-export const HISTORY_WINDOW = PAGE_SIZE * MAX_PAGES;
 // OPEN: O-S5 — listCommits needs `since`; the whole history, paged by cursor.
 const SINCE_EPOCH = "1970-01-01T00:00:00Z";
 
-/** What a walk of main's history (newest first) found. */
-export interface MainWalk {
-  /** The newest commit with a revision object, or null in the window. */
-  newestPublished: string | null;
-  /**
-   * Whether latest.json's revision is on main: null when the window ran out
-   * before it was found (it may just be older).
-   */
-  currentOnMain: boolean | null;
-  firstPage: RepoCommitPage;
-}
-
 /**
- * Walks main 50 commits per page, at most 5 pages, until it has found the
- * newest published commit and latest.json's revision.
- */
-async function walkMain(
-  insights: RepoInsightsClient,
-  mainBranch: string,
-  published: ReadonlySet<string>,
-  currentRevision: string | null,
-): Promise<MainWalk> {
-  let newestPublished: string | null = null;
-  let currentFound = false;
-  let firstPage: RepoCommitPage | null = null;
-  let cursor: string | null = null;
-  for (let pages = 0; pages < MAX_PAGES; pages++) {
-    const page = await insights.listCommits({
-      ref: mainBranch,
-      since: SINCE_EPOCH,
-      cursor,
-      limit: PAGE_SIZE,
-    });
-    firstPage ??= page;
-    for (const commit of page.items) {
-      if (newestPublished === null && published.has(commit.sha)) {
-        newestPublished = commit.sha;
-      }
-      if (commit.sha === currentRevision) currentFound = true;
-    }
-    const done =
-      newestPublished !== null && (currentFound || currentRevision === null);
-    if (done) break;
-    if (!page.nextCursor) {
-      return { newestPublished, currentOnMain: currentFound, firstPage };
-    }
-    cursor = page.nextCursor;
-  }
-  return {
-    newestPublished,
-    currentOnMain: currentFound ? true : null,
-    firstPage: firstPage!,
-  };
-}
-
-/**
- * Pending: nothing published yet. Rolled back: latest.json names a revision
- * older (in main's history) than the newest CMS-published one, or one no
- * longer on main. Live: otherwise — a head the CMS didn't publish (a
- * developer's push) keeps it Live, with `unpublishedCommits`.
+ * The CDN status, derived: Live when latest.json names main's head; Rolled
+ * back when it names another commit and was written after main's head was
+ * committed (a Make current); Failed otherwise, latest.json missing included.
+ * `headDate` is null when it isn't known (main moved while reading). Git
+ * dates have whole seconds, so both sides compare in seconds.
  */
 export function releaseState(
   current: LatestPointer | null,
   head: string,
-  published: ReadonlySet<string>,
-  walk: Pick<MainWalk, "newestPublished" | "currentOnMain">,
-): Omit<ReleaseStatus, "current" | "head"> {
-  const unpublishedCommits = current !== null && !published.has(head);
-  const revisionOffMain = current !== null && walk.currentOnMain === false;
-  const noRecentRelease = walk.newestPublished === null;
-  if (!current) {
-    return {
-      state: "pending",
-      unpublishedCommits,
-      revisionOffMain,
-      noRecentRelease,
-    };
-  }
-  const rolledBack =
-    revisionOffMain ||
-    (walk.newestPublished !== null &&
-      walk.newestPublished !== current.revision);
-  return {
-    // OPEN: a revision past the window (currentOnMain null) with a newer
-    // published commit is Rolled back without "(revision no longer on main)".
-    state: rolledBack ? "rolled-back" : "live",
-    unpublishedCommits,
-    revisionOffMain,
-    noRecentRelease,
-  };
+  headDate: string | null,
+): ReleaseState {
+  if (!current) return "failed";
+  if (current.revision === head) return "live";
+  const seconds = (iso: string) => Math.floor(Date.parse(iso) / 1000);
+  return headDate !== null && seconds(current.publishedAt) > seconds(headDate)
+    ? "rolled-back"
+    : "failed";
 }
 
 async function headSchemaHashOf(repo: HostedRepo, head: string) {
@@ -184,24 +109,32 @@ async function headSchemaHashOf(repo: HostedRepo, head: string) {
   }
 }
 
-async function statusAndWalk(repo: HostedRepo, insights: RepoInsightsClient) {
+async function statusAndFirstPage(
+  repo: HostedRepo,
+  insights: RepoInsightsClient,
+): Promise<{
+  status: ReleaseStatus;
+  firstPage: RepoCommitPage;
+  published: Set<string>;
+}> {
   const head = await requireBranchHead(repo.client, repo.mainBranch);
-  const [current, published] = await Promise.all([
+  const [current, published, firstPage] = await Promise.all([
     readLatest(repo.store, repo.site),
     listRevisionShas(repo.store, repo.site),
+    insights.listCommits({
+      ref: repo.mainBranch,
+      since: SINCE_EPOCH,
+      cursor: null,
+      limit: PAGE_SIZE,
+    }),
   ]);
-  const walk = await walkMain(
-    insights,
-    repo.mainBranch,
+  const newest = firstPage.items[0];
+  const headDate = newest?.sha === head ? newest.date : null;
+  return {
+    status: { current, head, state: releaseState(current, head, headDate) },
+    firstPage,
     published,
-    current?.revision ?? null,
-  );
-  const status: ReleaseStatus = {
-    current,
-    head,
-    ...releaseState(current, head, published, walk),
   };
-  return { status, walk, published };
 }
 
 /** The screen's header: what latest.json serves against main. */
@@ -209,7 +142,7 @@ export async function releaseStatus(
   repo: HostedRepo,
   insights: RepoInsightsClient,
 ): Promise<ReleaseStatus> {
-  return (await statusAndWalk(repo, insights)).status;
+  return (await statusAndFirstPage(repo, insights)).status;
 }
 
 export async function listReleases(
@@ -217,7 +150,10 @@ export async function listReleases(
   insights: RepoInsightsClient,
   cursor: string | null,
 ): Promise<ReleasesPage> {
-  const { status, walk, published } = await statusAndWalk(repo, insights);
+  const { status, firstPage, published } = await statusAndFirstPage(
+    repo,
+    insights,
+  );
   const [headSchemaHash, page] = await Promise.all([
     headSchemaHashOf(repo, status.head),
     cursor
@@ -227,7 +163,7 @@ export async function listReleases(
           cursor,
           limit: PAGE_SIZE,
         })
-      : walk.firstPage,
+      : firstPage,
   ]);
   return {
     ...status,
@@ -245,22 +181,23 @@ export async function listReleases(
 
 /**
  * Resync: point latest.json at main's head, writing its revision object first
- * when it's missing, and purge it from the edge (one retry). A failed write or purge
- * throws `LatestUpdateError`; the user retries. While the screen says
- * Rolled back, it needs `confirm`.
+ * when it's missing, and purge it from the edge (one retry). A failed write or
+ * purge throws `LatestUpdateError` and the status stays Failed; `cdn:
+ * "failed"` means main moved meanwhile. While the screen says Rolled back, it
+ * needs `confirm`.
  */
 export async function resync(
   repo: HostedRepo,
   insights: RepoInsightsClient,
   options: { confirm: boolean },
-): Promise<PublishResult> {
+): Promise<{ sha: string; cdn: CdnStatus }> {
   if (!options.confirm) {
     const status = await releaseStatus(repo, insights);
     if (status.state === "rolled-back") throw new RolledBackError();
   }
   const head = await requireBranchHead(repo.client, repo.mainBranch);
   const live = await releaseCommit(repo, head);
-  return { result: live ? "published" : "pending", sha: head };
+  return { sha: head, cdn: live ? "live" : "failed" };
 }
 
 /**

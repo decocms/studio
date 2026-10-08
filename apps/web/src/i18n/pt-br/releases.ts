@@ -5,19 +5,20 @@ export const releases = {
   "releases.subtitle":
     "O que o seu site serve, e todas as versões da main. Reverter é temporário: a próxima publicação ou ressincronização coloca a main no ar de novo.",
   "releases.loadFailed": "Não foi possível carregar as versões",
-  "releases.serving": "No ar nos sites em execução",
+  "releases.serving": "Nos sites em execução",
   "releases.nothingPublished": "Nada foi publicado pelo CMS ainda.",
   "releases.publishedAgo": "publicada {when}",
   "releases.rolledBackHint":
     "Revertido: a main está em {head}. A próxima publicação ou ressincronização substitui esta versão.",
   "releases.state.live": "No ar",
   "releases.state.rolledBack": "Revertido",
-  "releases.state.pending": "Não publicado",
-  "releases.revisionOffMain": "(revisão não está mais na main)",
-  "releases.unpublishedCommits": "a main tem commits não publicados",
-  "releases.noRecentRelease":
-    "Nenhuma versão publicada pelo CMS nos últimos {count} commits",
-  "releases.current": "Atual",
+  "releases.state.failed": "Falha ao atualizar a CDN",
+  "releases.failedHint":
+    "A versão mais recente da main ainda não está no ar na CDN. Ressincronize para colocá-la no ar.",
+  "releases.merged": "Mesclada",
+  "releases.failed": "Falhou",
+  "releases.resyncMainMoved":
+    "A main mudou durante a ressincronização, então a CDN não foi atualizada. Ressincronize de novo.",
   "releases.notPublished": "Não publicada pelo CMS",
   "releases.actions": "Ações da versão",
   "releases.makeCurrent": "Tornar atual",
@@ -29,8 +30,6 @@ export const releases = {
   "releases.madeCurrent": "{sha} agora é a versão atual",
   "releases.resync": "Ressincronizar",
   "releases.resynced": "A main está no ar de novo",
-  "releases.resyncPending":
-    "A main mudou durante a ressincronização; nada mudou. Tente novamente.",
   "releases.resyncConfirmTitle": "Substituir a reversão?",
   "releases.resyncConfirmBody":
     "O site está revertido para uma versão anterior. Ressincronizar coloca no ar a versão mais recente da main.",

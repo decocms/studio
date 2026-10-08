@@ -1,7 +1,8 @@
 /**
  * The Releases screen's reads and writes (`/api/:org/hosted/:vmcp/*`): what
- * latest.json serves, main's history with the commits that have a release
- * on the CDN, "Make current" (rewrites latest.json only) and Resync.
+ * latest.json serves, main's history (every commit merged) with the commits
+ * that have a release on the CDN, "Make current" (rewrites latest.json only)
+ * and Resync.
  */
 
 import {
@@ -11,7 +12,11 @@ import {
 } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 
-export type ReleaseState = "live" | "rolled-back" | "pending";
+/**
+ * Derived by the API from latest.json against main's head: live, failed (the
+ * newest release isn't live: Resync), or rolled back (Make current).
+ */
+export type ReleaseState = "live" | "failed" | "rolled-back";
 
 export interface ReleasePointer {
   revision: string;
@@ -32,12 +37,6 @@ export interface ReleasesPage {
   head: string;
   headSchemaHash: string | null;
   state: ReleaseState;
-  /** Main's head has no revision on the CDN (a developer's push). */
-  unpublishedCommits: boolean;
-  /** latest.json's revision isn't in main's history. */
-  revisionOffMain: boolean;
-  /** No CMS-published commit in the last 250 of main. */
-  noRecentRelease: boolean;
   commits: ReleaseCommit[];
   nextCursor: string | null;
 }
@@ -111,6 +110,12 @@ export function useMakeCurrent(orgSlug: string, virtualMcpId: string) {
         body: JSON.stringify(vars),
       }),
   );
+}
+
+/** Resync's answer: `cdn: "failed"` when main moved meanwhile. */
+export interface ResyncResult {
+  sha: string;
+  cdn: "live" | "failed";
 }
 
 /** Resync: release main's head again (confirm overrides a rollback). */

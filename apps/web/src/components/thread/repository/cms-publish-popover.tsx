@@ -542,7 +542,6 @@ function CmsPublishContent({
     submit,
     discardChange,
     discardAll,
-    hostedPending,
   } = useCmsPublishActions({
     mode: isReview ? "review" : "publish",
     target,
@@ -845,22 +844,6 @@ function CmsPublishContent({
               </div>
               {publishError ? (
                 <p className="text-xs text-destructive">{publishError}</p>
-              ) : null}
-              {hostedPending ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void hostedPending.resync()}
-                  disabled={hostedPending.isResyncing}
-                >
-                  {hostedPending.isResyncing ? (
-                    <Spinner className="size-4 motion-reduce:animate-none" />
-                  ) : null}
-                  {hostedPending.needsConfirm
-                    ? t("thread.publishPopover.resyncAnyway")
-                    : t("thread.publishPopover.resync")}
-                </Button>
               ) : null}
             </>
           }

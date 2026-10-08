@@ -3,19 +3,20 @@ export const releases = {
   "releases.subtitle":
     "What your site serves, and every version of main. Rolling back is temporary: the next Publish or Resync makes main live again.",
   "releases.loadFailed": "Couldn't load releases",
-  "releases.serving": "Live on running sites",
+  "releases.serving": "On running sites",
   "releases.nothingPublished": "Nothing published by the CMS yet.",
   "releases.publishedAgo": "published {when}",
   "releases.rolledBackHint":
     "Rolled back: main is at {head}. The next Publish or Resync replaces this.",
   "releases.state.live": "Live",
   "releases.state.rolledBack": "Rolled back",
-  "releases.state.pending": "Not published",
-  "releases.revisionOffMain": "(revision no longer on main)",
-  "releases.unpublishedCommits": "main has unpublished commits",
-  "releases.noRecentRelease":
-    "No CMS-published release in the last {count} commits",
-  "releases.current": "Current",
+  "releases.state.failed": "CDN update failed",
+  "releases.failedHint":
+    "Main's newest release isn't live on the CDN yet. Resync to make it live.",
+  "releases.merged": "Merged",
+  "releases.failed": "Failed",
+  "releases.resyncMainMoved":
+    "Main moved while resyncing, so the CDN wasn't updated. Resync again.",
   "releases.notPublished": "Not published by the CMS",
   "releases.actions": "Release actions",
   "releases.makeCurrent": "Make current",
@@ -27,8 +28,6 @@ export const releases = {
   "releases.madeCurrent": "{sha} is now current",
   "releases.resync": "Resync",
   "releases.resynced": "Main is live again",
-  "releases.resyncPending":
-    "Main moved while resyncing; nothing changed. Try again.",
   "releases.resyncConfirmTitle": "Override the rollback?",
   "releases.resyncConfirmBody":
     "The site is rolled back to an earlier version. Resync makes main's latest version live instead.",
