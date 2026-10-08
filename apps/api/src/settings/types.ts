@@ -345,6 +345,13 @@ export interface Settings {
   cfAccountId: string | undefined;
   cfDenylistKvNamespaceId: string | undefined;
   cfKvApiToken: string | undefined;
+  /**
+   * The Cloudflare zone serving the delivery bucket and a token with Zone →
+   * Cache Purge on it: latest.json is purged after every write. Unset = the
+   * purge is skipped with a warning (local/dev/tests).
+   */
+  cfDeliveryZoneId: string | undefined;
+  cfPurgeApiToken: string | undefined;
 }
 
 export interface CliFlags {

@@ -13,6 +13,7 @@ import {
   type TreeEntry,
 } from "@/git-providers";
 import type { KVStorage } from "@/storage/kv";
+import type { DeliveryPurge } from "./delivery-purge";
 import type { DeliveryStore } from "./delivery-store";
 
 export function memoryDeliveryStore() {
@@ -41,7 +42,23 @@ export function memoryDeliveryStore() {
       return [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
     },
   };
-  return { store, objects, log };
+  /** Logs `purge <key>` into the same log; `failPurge` makes it throw. */
+  const purgeState = { fail: false };
+  const purge: DeliveryPurge = {
+    async purge(key) {
+      log.push(`purge ${key}`);
+      if (purgeState.fail) throw new Error("purge failed");
+    },
+  };
+  return {
+    store,
+    objects,
+    log,
+    purge,
+    failPurge: (fail: boolean) => {
+      purgeState.fail = fail;
+    },
+  };
 }
 
 export function memoryKv(): KVStorage {

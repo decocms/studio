@@ -482,6 +482,8 @@ export function resolveConfig(
     cfAccountId: envVars.CF_ACCOUNT_ID,
     cfDenylistKvNamespaceId: envVars.CF_DENYLIST_KV_NAMESPACE_ID,
     cfKvApiToken: envVars.CF_KV_API_TOKEN,
+    cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
+    cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,
   };
 
   // A feature gate is only as trustworthy as this secret. `mintGatewayJwt`

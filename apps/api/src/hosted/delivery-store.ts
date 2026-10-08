@@ -20,14 +20,18 @@ import {
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { getSettings } from "@/settings";
 
-const DELIVERY_ORIGIN = "https://delivery.decocms.com";
+export const DELIVERY_ORIGIN = "https://delivery.decocms.com";
 
 /** A git commit sha (SHA-1): a revision id. */
 const COMMIT_SHA_RE = /^[0-9a-f]{40}$/;
 /** 16 random bytes, base64url without padding. */
 const DRAFT_SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
 
-export const CACHE_LATEST = "public, max-age=10, must-revalidate";
+/**
+ * The edge holds latest.json up to 1 h (purged after every write); browsers
+ * and servers revalidate on every read, so no unchecked stale pointer is used.
+ */
+export const CACHE_LATEST = "public, max-age=0, s-maxage=3600, must-revalidate";
 export const CACHE_REVISION = "public, max-age=31536000, immutable";
 export const CACHE_DRAFT = "no-cache, max-age=0, must-revalidate";
 

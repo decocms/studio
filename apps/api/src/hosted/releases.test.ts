@@ -34,6 +34,7 @@ function setup() {
     packagePath: null,
     mainBranch: "main",
     store: delivery.store,
+    purge: delivery.purge,
     site: "acme",
   };
   const insights = fakeInsights(git.history);
@@ -242,10 +243,51 @@ describe("resync", () => {
     await makeCurrent(repo, head, { confirm: false });
     delivery.log.length = 0;
     await resync(repo, insights.client, { confirm: true });
-    expect(delivery.log).toEqual([`put ${deliveryKeys.latest("acme")}`]);
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.latest("acme")}`,
+      `purge ${deliveryKeys.latest("acme")}`,
+    ]);
     expect((await readLatest(delivery.store, "acme"))?.schemaHash).toBe(
       SCHEMA_HASH,
     );
+  });
+});
+
+describe("purge", () => {
+  it("follows every latest.json write: Resync and Make current", async () => {
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    const first = git.head();
+    expect(delivery.log.slice(-2)).toEqual([
+      `put ${deliveryKeys.latest("acme")}`,
+      `purge ${deliveryKeys.latest("acme")}`,
+    ]);
+    git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' });
+    await resync(repo, insights.client, { confirm: false });
+    delivery.log.length = 0;
+    await makeCurrent(repo, first, { confirm: false });
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.latest("acme")}`,
+      `purge ${deliveryKeys.latest("acme")}`,
+    ]);
+  });
+
+  it("Resync reruns the pointer write and the purge after a failed purge", async () => {
+    const { git, delivery, repo, insights } = setup();
+    delivery.failPurge(true);
+    await expect(
+      resync(repo, insights.client, { confirm: false }),
+    ).rejects.toThrow("purge failed");
+    delivery.failPurge(false);
+    delivery.log.length = 0;
+    expect(await resync(repo, insights.client, { confirm: false })).toEqual({
+      result: "published",
+      sha: git.head(),
+    });
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.latest("acme")}`,
+      `purge ${deliveryKeys.latest("acme")}`,
+    ]);
   });
 });
 

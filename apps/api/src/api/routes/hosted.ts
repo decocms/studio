@@ -28,6 +28,7 @@ import {
   type RepoContentClient,
 } from "@/git-providers";
 import { deliveryStore } from "@/hosted/delivery-store";
+import { deliveryPurge } from "@/hosted/delivery-purge";
 import { denylist } from "@/hosted/denylist";
 import { type HostedRepo, RolledBackError } from "@/hosted/publish";
 import { NotV8Site } from "@/hosted/release-objects";
@@ -133,6 +134,7 @@ async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
     packagePath: project.packagePath,
     mainBranch: await client.getDefaultBranch(),
     store,
+    purge: deliveryPurge(),
     site: project.site,
   };
 }

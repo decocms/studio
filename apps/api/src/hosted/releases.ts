@@ -12,7 +12,6 @@ import {
   requireBranchHead,
 } from "@/git-providers";
 import {
-  CACHE_LATEST,
   deliveryKeys,
   getJson,
   isCommitSha,
@@ -25,6 +24,7 @@ import {
   RolledBackError,
   readLatest,
   releaseCommit,
+  writeLatest,
 } from "./publish";
 import { NotV8Site, schemaHashAt } from "./release-objects";
 
@@ -245,7 +245,7 @@ export async function listReleases(
 
 /**
  * Resync: point latest.json at main's head, writing its revision object first
- * when it's missing. While the screen says Rolled back, it needs `confirm`.
+ * when it's missing, and purge it from the edge. While the screen says Rolled back, it needs `confirm`.
  */
 export async function resync(
   repo: HostedRepo,
@@ -291,10 +291,6 @@ export async function makeCurrent(
     // when publishedAt is later than its bundle's build time.
     publishedAt: new Date().toISOString(),
   };
-  await repo.store.putJson(
-    deliveryKeys.latest(repo.site),
-    pointer,
-    CACHE_LATEST,
-  );
+  await writeLatest(repo, pointer);
   return pointer;
 }

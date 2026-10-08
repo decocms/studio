@@ -40,6 +40,7 @@ function setup() {
     packagePath: null,
     mainBranch: "main",
     store: delivery.store,
+    purge: delivery.purge,
     site: "acme",
   };
   return { git, delivery, drafts, repo };
@@ -97,6 +98,7 @@ describe("publishDraft", () => {
     expect(delivery.log).toEqual([
       `put ${deliveryKeys.revision("acme", sha)}`,
       `put ${deliveryKeys.latest("acme")}`,
+      `purge ${deliveryKeys.latest("acme")}`,
       `delete ${deliveryKeys.draft("acme", slug)}`,
     ]);
     const revision = delivery.objects.get(deliveryKeys.revision("acme", sha))!;
@@ -112,7 +114,9 @@ describe("publishDraft", () => {
       "revision",
       "schemaHash",
     ]);
-    expect(latest.cacheControl).toBe("public, max-age=10, must-revalidate");
+    expect(latest.cacheControl).toBe(
+      "public, max-age=0, s-maxage=3600, must-revalidate",
+    );
     expect(await drafts.load(REF)).toBeNull();
   });
 
@@ -163,6 +167,19 @@ describe("publishDraft", () => {
       coAuthor: null,
     });
     expect(result.result).toBe("pending");
+    expect(await drafts.load(REF)).toBeNull();
+  });
+
+  it("is pending when the purge still fails after its retries, and drops the draft", async () => {
+    const { git, delivery, drafts, repo } = setup();
+    await drafts.update(REF, () => ({ set: { New: { a: 1 } }, delete: [] }));
+    delivery.failPurge(true);
+    const result = await publishDraft(repo, drafts, REF, {
+      message: "",
+      coAuthor: null,
+    });
+    expect(result).toEqual({ result: "pending", sha: git.head() });
+    expect(delivery.log).toContain(`purge ${deliveryKeys.latest("acme")}`);
     expect(await drafts.load(REF)).toBeNull();
   });
 

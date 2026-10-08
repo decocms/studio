@@ -62,6 +62,7 @@ import {
   deliveryStore,
   draftPointerTarget,
 } from "@/hosted/delivery-store";
+import { deliveryPurge } from "@/hosted/delivery-purge";
 import { createDraftContentStorage } from "@/hosted/draft-content-storage";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
@@ -551,6 +552,7 @@ export function createDecofileRoutes() {
               packagePath: scope.packagePath,
               mainBranch: baseBranch,
               store,
+              purge: deliveryPurge(),
               site: hosted.ref.site,
             },
             hosted.drafts,

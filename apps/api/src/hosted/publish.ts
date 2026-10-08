@@ -3,12 +3,14 @@
  *
  *   1. commit the draft directly to main (fast-forward only, no PR);
  *   2. PUT sites/<site>/revisions/<commit>.json;
- *   3. re-read main's head; only if it is still that commit, PUT latest.json;
+ *   3. re-read main's head; only if it is still that commit, PUT latest.json
+ *      and purge its URL from Cloudflare's edge;
  *   4. delete the draft (once step 1 landed: its changes are in git now).
  *
- * Git is the source of truth: a failure after step 1 leaves the site
- * "pending" (running sites keep what they serve) and Resync (releases.ts)
- * reruns steps 2–3 from main's head. Rollback (Releases → Make current)
+ * Git is the source of truth: a failure after step 1 (a purge still failing
+ * after its retries included) leaves the publish "pending" (running sites
+ * keep what they serve) and Resync (releases.ts) reruns steps 2–3 from main's
+ * head, the pointer write and the purge both. Rollback (Releases → Make current)
  * rewrites latest.json only, and the next Publish or Resync overrides it.
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
@@ -49,6 +51,7 @@ import {
   deliveryKeys,
   getJson,
 } from "./delivery-store";
+import type { DeliveryPurge } from "./delivery-purge";
 import {
   type DraftBody,
   type DraftStore,
@@ -117,6 +120,8 @@ export interface HostedRepo {
   packagePath: string | null;
   mainBranch: string;
   store: DeliveryStore;
+  /** Purges latest.json from the edge after each write of it. */
+  purge: DeliveryPurge;
   site: string;
 }
 
@@ -229,8 +234,22 @@ async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
 }
 
 /**
- * Steps 2–3 for commit `sha`: the revision object, then the pointer, but only
- * while `sha` is still main's head. Returns whether the pointer was written.
+ * Writes latest.json, then purges its URL from the edge (the purge retries on
+ * its own). Throws when either fails: the caller's state is then pending.
+ */
+export async function writeLatest(
+  repo: Pick<HostedRepo, "store" | "purge" | "site">,
+  pointer: LatestPointer,
+): Promise<void> {
+  const key = deliveryKeys.latest(repo.site);
+  await repo.store.putJson(key, pointer, CACHE_LATEST);
+  await repo.purge.purge(key);
+}
+
+/**
+ * Steps 2–3 for commit `sha`: the revision object, then the pointer and its
+ * purge, but only while `sha` is still main's head. Returns whether the
+ * pointer was written.
  */
 export async function releaseCommit(
   repo: HostedRepo,
@@ -248,11 +267,7 @@ export async function releaseCommit(
     schemaHash,
     publishedAt: new Date().toISOString(),
   };
-  await repo.store.putJson(
-    deliveryKeys.latest(repo.site),
-    pointer,
-    CACHE_LATEST,
-  );
+  await writeLatest(repo, pointer);
   return true;
 }
 
