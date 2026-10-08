@@ -243,10 +243,10 @@ All steps in the existing single `release` job, in this order:
    - Workflow-header caveats to record: GitHub's opt-in "immutable releases"
      repo setting would break the clobber; clobbered same-name assets can
      serve stale from the CDN briefly (tolerable at daily cadence).
-8. **Failure alerting** (new step, concrete): `if: failure()` step following
-   the fork-safe webhook pattern of `release-studio.yaml`'s docs-agent step
-   (skip-when-unconfigured, warn on non-2xx) — or, with no webhook secret
-   configured, create/update a pinned GitHub issue via `gh`. Rationale: a
+8. **Failure alerting** (new step, concrete): `if: failure()` step calling
+   an optional webhook (skip when unconfigured or on forks; warn on non-2xx),
+   or, with no webhook secret configured, create/update a pinned GitHub issue
+   via `gh`. Rationale: a
    failed release today means unbounded, invisible staleness (drift is
    suppressed by design), and a throttle bug that always skips exits
    *successfully* — so also emit a `::notice::` with the promotion decision

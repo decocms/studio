@@ -3,6 +3,7 @@ import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 import { renderField, SchemaForm } from "./schema-form";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import { ArrayField } from "./fields/array-field";
 import { BooleanField } from "./fields/boolean-field";
 import { NumberField } from "./fields/number-field";
 import { StringField } from "./fields/string-field";
@@ -123,6 +124,50 @@ describe("renderField – collapsed loader-ref value routing", () => {
       meta: loaderMeta,
     });
     expect(typeOf(el)).toBe(AnyOfField);
+  });
+});
+
+describe("renderField – collapsed array with a loader picker", () => {
+  const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
+  const schema = {
+    type: "array",
+    items: { type: "object", properties: { label: { type: "string" } } },
+    loaderRef: {
+      type: "block-ref",
+      anyOfRefs: [
+        { resolveType: "site/loaders/links.ts", title: "Links" },
+        { resolveType: "Footer Links", title: "Footer Links" },
+      ],
+    },
+  };
+  const baseProps = { onChange: () => {}, path: "links", label: "Links" };
+
+  // Regression: a saved-block ref on a collapsed array rendered nothing.
+  test("saved-block reference renders the picker", () => {
+    const el = renderField({
+      ...baseProps,
+      schema,
+      value: { __resolveType: "Footer Links" },
+    });
+    expect(typeOf(el)).toBe(AnyOfField);
+  });
+
+  test("inline loader reference renders the picker", () => {
+    const el = renderField({
+      ...baseProps,
+      schema,
+      value: { __resolveType: "site/loaders/links.ts" },
+    });
+    expect(typeOf(el)).toBe(AnyOfField);
+  });
+
+  test("inline array still renders the array editor", () => {
+    const el = renderField({
+      ...baseProps,
+      schema,
+      value: [{ label: "Home" }],
+    });
+    expect(typeOf(el)).toBe(ArrayField);
   });
 });
 

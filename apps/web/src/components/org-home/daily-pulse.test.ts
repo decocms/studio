@@ -4,13 +4,13 @@ import {
   attentionReason,
   costSeriesForProjectMonthToDate,
   costSeriesMonthToDate,
-  dailyPulse,
   monthlyCost,
   projectSummaries,
   runningAgents,
   runsSeries,
   runsToday,
   shippedSeries,
+  shippedSince,
   tasksNeedingMe,
 } from "./daily-pulse.ts";
 
@@ -43,59 +43,45 @@ const task = (over: Record<string, unknown> = {}) =>
     ...over,
   }) as never;
 
-describe("dailyPulse", () => {
-  test("counts done and merged inside the window as shipped", () => {
-    const pulse = dailyPulse(
-      [
-        task({ status: "done", updatedAt: daysAgo(1) }),
-        task({ status: "merged", updatedAt: daysAgo(6) }),
-      ],
-      NOW,
-    );
-    expect(pulse.shipped).toBe(2);
+describe("shippedSince", () => {
+  const since = NOW - 86_400_000;
+
+  test("counts done and merged at or after the window start", () => {
+    expect(
+      shippedSince(
+        [
+          task({ status: "done", updatedAt: daysAgo(0.5) }),
+          task({ status: "merged", updatedAt: new Date(since).toISOString() }),
+        ],
+        since,
+      ),
+    ).toBe(2);
   });
 
   test("does not count what shipped before the window", () => {
     expect(
-      dailyPulse([task({ status: "done", updatedAt: daysAgo(8) })], NOW)
-        .shipped,
+      shippedSince([task({ status: "done", updatedAt: daysAgo(2) })], since),
     ).toBe(0);
   });
 
   test("an archived card did not ship", () => {
     expect(
-      dailyPulse([task({ status: "archived", updatedAt: daysAgo(1) })], NOW)
-        .shipped,
+      shippedSince(
+        [task({ status: "archived", updatedAt: daysAgo(0.5) })],
+        since,
+      ),
     ).toBe(0);
   });
 
-  test("a card is counted once however many runs it has", () => {
-    const pulse = dailyPulse(
-      [
-        task({
-          threads: [thread("failed", daysAgo(1)), thread("failed", daysAgo(2))],
-        }),
-      ],
-      NOW,
-    );
-    expect(pulse.failed).toBe(1);
-  });
-
-  test("failures are counted only inside the window", () => {
-    const pulse = dailyPulse(
-      [
-        task({ threads: [thread("failed", daysAgo(2))] }),
-        task({ threads: [thread("failed", daysAgo(30))] }),
-      ],
-      NOW,
-    );
-    expect(pulse.failed).toBe(1);
-  });
-
-  test("an unparseable timestamp never counts", () => {
+  test("an unparseable or missing timestamp never counts", () => {
     expect(
-      dailyPulse([task({ status: "done", updatedAt: "not a date" })], NOW)
-        .shipped,
+      shippedSince(
+        [
+          task({ status: "done", updatedAt: "not a date" }),
+          task({ status: "done", updatedAt: null }),
+        ],
+        since,
+      ),
     ).toBe(0);
   });
 });

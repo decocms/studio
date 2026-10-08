@@ -8,56 +8,53 @@
 
 import type { ReactNode } from "react";
 import { useT } from "@/i18n/use-t.ts";
-import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
-import type { DailyPulse } from "./daily-pulse";
-
-/**
- * Three clauses, each its own key, each omitted at zero. Composed from counted
- * noun phrases rather than eight pre-written variants, so the dictionary stays
- * small; the phrases carry their own singular.
- */
-function phrase(
-  t: TFunction,
-  keys: readonly [TranslationKey, TranslationKey],
-  count: number,
-): string {
-  return t(keys[count === 1 ? 0 : 1], { count });
-}
-
-const CHANGES = [
-  "home.brief.changeOne",
-  "home.brief.changeMany",
-] as const satisfies readonly [TranslationKey, TranslationKey];
-const INCIDENTS = [
-  "home.brief.incidentOne",
-  "home.brief.incidentMany",
-] as const satisfies readonly [TranslationKey, TranslationKey];
-const WAITING = [
-  "home.brief.waitingOne",
-  "home.brief.waitingMany",
-] as const satisfies readonly [TranslationKey, TranslationKey];
+import type { TFunction } from "@/i18n/use-t.ts";
+import type { PulseWindow } from "./greeting";
 
 function leadSentence(
   t: TFunction,
-  pulse: DailyPulse,
+  shipped: number,
+  window: PulseWindow,
   waiting: number,
+  running: number,
   greeting: string | null,
 ): string {
   const clauses: string[] = [];
   if (greeting) clauses.push(greeting);
 
-  const changes = phrase(t, CHANGES, pulse.shipped);
-  const incidents = phrase(t, INCIDENTS, pulse.failed);
-  if (pulse.shipped > 0 && pulse.failed > 0) {
-    clauses.push(t("home.brief.overnightBoth", { changes, incidents }));
-  } else if (pulse.shipped > 0) {
-    clauses.push(t("home.brief.overnightShipped", { changes }));
-  } else if (pulse.failed > 0) {
-    clauses.push(t("home.brief.overnightFailed", { incidents }));
+  if (shipped > 0) {
+    const changes = t(
+      shipped === 1 ? "home.brief.changeOne" : "home.brief.changeMany",
+      { count: shipped },
+    );
+    clauses.push(
+      t(
+        window === "overnight"
+          ? "home.brief.overnightShipped"
+          : "home.brief.todayShipped",
+        { changes },
+      ),
+    );
+  }
+
+  if (shipped === 0 && waiting === 0) {
+    clauses.push(
+      t(
+        running > 0
+          ? "home.brief.working"
+          : window === "overnight"
+            ? "home.brief.quietNight"
+            : "home.brief.quietDay",
+      ),
+    );
   }
 
   clauses.push(
-    waiting > 0 ? phrase(t, WAITING, waiting) : t("home.brief.waitingNone"),
+    waiting === 0
+      ? t("home.brief.waitingNone")
+      : t(waiting === 1 ? "home.brief.waitingOne" : "home.brief.waitingMany", {
+          count: waiting,
+        }),
   );
   return clauses.join(" ");
 }
@@ -76,15 +73,22 @@ export function BriefHeadline({
   eyebrow,
   /** Opens the sentence ("Good morning, Rafael.") when there is one. */
   greeting,
-  pulse,
+  shipped,
+  window,
   waiting,
+  running,
   /** Rendered under the lead — a workflow's paragraph. */
   children,
 }: {
   eyebrow: string;
   greeting?: string;
-  pulse: DailyPulse;
+  /** Cards shipped inside `window`. */
+  shipped: number;
+  window: PulseWindow;
+  /** Cards stopped on the reader. */
   waiting: number;
+  /** Agent runs in progress right now. */
+  running: number;
   children?: ReactNode;
 }) {
   const t = useT();
@@ -97,7 +101,7 @@ export function BriefHeadline({
           see the `font-display` utility. Smaller on a phone, where the
           display size turned one sentence into six lines. */}
       <h1 className="font-display max-w-[40ch] text-2xl leading-[1.22] text-foreground sm:text-[2.125rem] sm:leading-[1.18]">
-        {leadSentence(t, pulse, waiting, greeting ?? null)}
+        {leadSentence(t, shipped, window, waiting, running, greeting ?? null)}
       </h1>
       {children}
     </div>

@@ -18,6 +18,7 @@ export function TaskMessage({
   isReply,
   commentId,
   muted,
+  editor,
 }: {
   id: string;
   author: string;
@@ -32,6 +33,8 @@ export function TaskMessage({
   /** Agent handoff, shown only behind the scenes: dimmed so the messages
    *  written for people stand out. */
   muted?: boolean;
+  /** Takes the body's place while the message is being edited. */
+  editor?: ReactNode;
 }) {
   const t = useT();
   return (
@@ -70,7 +73,7 @@ export function TaskMessage({
           {actions}
         </div>
       </div>
-      {body && (
+      {(editor || body) && (
         <div
           className={cn(
             "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
@@ -79,7 +82,7 @@ export function TaskMessage({
             isReply && "ml-3 border-l border-border pl-5",
           )}
         >
-          <MemoizedMarkdown id={id} text={body} imageGallery />
+          {editor ?? <MemoizedMarkdown id={id} text={body} imageGallery />}
         </div>
       )}
     </article>

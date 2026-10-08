@@ -254,6 +254,17 @@ export function renderField(props: FieldProps) {
     }
   }
 
+  // Array field whose stored value is a loader or saved-block reference.
+  if (
+    schema.loaderRef &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).__resolveType === "string"
+  ) {
+    return renderField({ ...props, schema: schema.loaderRef });
+  }
+
   // Block-ref field (loader/section selector with anyOfRefs)
   if (
     schema.type === "block-ref" ||
