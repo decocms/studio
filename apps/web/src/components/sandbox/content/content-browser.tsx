@@ -42,6 +42,7 @@ import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
+import { hasCmsSettingsType } from "./cms-settings";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
@@ -58,6 +59,7 @@ import {
 import type { AppCatalogEntry } from "./app-catalog";
 import { ListEmpty } from "./list-empty";
 import { useDecoAppsCatalog } from "@/hooks/use-deco-apps-catalog";
+import { useNewBlocksEditorState } from "@/hooks/use-new-blocks-editor";
 import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
 import {
   appendPageVariantSections,
@@ -70,6 +72,8 @@ import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
+import { SchemalessEditor } from "./schemaless-editor";
+import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
 import { resolveContentSandboxGate } from "./content-sandbox-gate";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
@@ -124,6 +128,11 @@ import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import {
+  isProtocolProject,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
 import {
   categoryAncestors,
   type CategoryTreeRow,
@@ -136,6 +145,12 @@ import {
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
+);
+
+const CmsSettingsEditor = lazy(() =>
+  import("./cms-settings-editor").then((m) => ({
+    default: m.CmsSettingsEditor,
+  })),
 );
 
 const PostEditor = lazy(() =>
@@ -188,6 +203,7 @@ export type CollectionId =
   | "apps"
   | "site"
   | "seo"
+  | "settings"
   | "calendar"
   | "post-schedule"
   | "loaders"
@@ -261,8 +277,11 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const lifecycle = useSandboxLifecycle();
   const { runtime, previewServerUrl } = useSessionRuntime(virtualMcpId);
   const fastPreviewActive = runtime === "cms";
+  // A content-protocol backend has nothing to boot either.
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const protocolActive = isProtocolProject(contentBackend);
   const gate = resolveContentSandboxGate({
-    fastPreviewActive,
+    fastPreviewActive: fastPreviewActive || protocolActive,
     previewState: lifecycle.previewState,
     lifecyclePhase: vmEvents.lifecycle.phase,
   });
@@ -288,9 +307,14 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       branch={branch}
-      previewUrl={lifecycle.previewUrl}
+      // The protocol never runs site code: nothing executes against a pod.
+      previewUrl={protocolActive ? null : lifecycle.previewUrl}
       sitePreviewUrl={
-        fastPreviewActive ? previewServerUrl : lifecycle.previewUrl
+        contentBackend.kind === "protocol" && contentBackend.source === "local"
+          ? servePreviewUrl(contentBackend)
+          : fastPreviewActive
+            ? previewServerUrl
+            : lifecycle.previewUrl
       }
       deepLinkPage={deepLinkPage}
       devServerReady={gate.devServerReady}
@@ -350,6 +374,13 @@ function ContentBrowserReady({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
+  // The protocol never runs site code: no app install, no Run.
+  const runsSiteCode = !isProtocolProject(
+    useContentBackend(virtualMcpId, branch),
+  );
+  // Which editor this site gets (v8: the new one): waited on with the data,
+  // so neither editor shows and then swaps to the other.
+  const editorUndecided = useNewBlocksEditorState() === undefined;
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
@@ -375,38 +406,6 @@ function ContentBrowserReady({
   );
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
-  // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
-  const hasDeepLink = !!(
-    deepLinkPage?.pageId ||
-    deepLinkPage?.path ||
-    deepLinkPage?.pathTemplate
-  );
-  const [seededDeepLink, setSeededDeepLink] = useState(false);
-  if (hasDeepLink && !seededDeepLink && selection === null && decofile) {
-    setSeededDeepLink(true);
-    const match = resolveDeepLinkPage(
-      extractPages(decofile),
-      deepLinkPage ?? {},
-    );
-    if (match) {
-      setActiveCollection("pages");
-      setSelection({ collection: "pages", key: match.key, path: match.path });
-    }
-  }
-  const [searchQuery, setSearchQuery] = useState("");
-  // Posts workspace view + grouping — lifted so they survive opening a post.
-  const [postsView, setPostsView] = useState<PostsView>("list");
-  const selectItem = (next: Selection) => {
-    setSelection(next);
-    setOpenPageSeoKey(null);
-  };
-  // Reset search when switching collections (derived-state sync pattern).
-  const [prevCollection, setPrevCollection] = useState(activeCollection);
-  if (prevCollection !== activeCollection) {
-    setPrevCollection(activeCollection);
-    setSearchQuery("");
-  }
-
   const {
     data: meta,
     isLoading: metaLoading,
@@ -451,6 +450,44 @@ function ContentBrowserReady({
       return false;
     },
   });
+  // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
+  const hasDeepLink = !!(
+    deepLinkPage?.pageId ||
+    deepLinkPage?.path ||
+    deepLinkPage?.pathTemplate
+  );
+  const [seededDeepLink, setSeededDeepLink] = useState(false);
+  // Waits for the schema too: it says which block types are pages.
+  if (
+    hasDeepLink &&
+    !seededDeepLink &&
+    selection === null &&
+    decofile &&
+    !metaLoading
+  ) {
+    setSeededDeepLink(true);
+    const match = resolveDeepLinkPage(
+      extractPages(decofile, meta),
+      deepLinkPage ?? {},
+    );
+    if (match) {
+      setActiveCollection("pages");
+      setSelection({ collection: "pages", key: match.key, path: match.path });
+    }
+  }
+  const [searchQuery, setSearchQuery] = useState("");
+  // Posts workspace view + grouping — lifted so they survive opening a post.
+  const [postsView, setPostsView] = useState<PostsView>("list");
+  const selectItem = (next: Selection) => {
+    setSelection(next);
+    setOpenPageSeoKey(null);
+  };
+  // Reset search when switching collections (derived-state sync pattern).
+  const [prevCollection, setPrevCollection] = useState(activeCollection);
+  if (prevCollection !== activeCollection) {
+    setPrevCollection(activeCollection);
+    setSearchQuery("");
+  }
 
   const isAppSchemaLoading = (
     resolveType: string | undefined,
@@ -461,7 +498,7 @@ function ContentBrowserReady({
 
   const { catalog: appCatalog, isLoading: appCatalogLoading } =
     useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
-      enabled: activeCollection === "apps",
+      enabled: runsSiteCode && activeCollection === "apps",
     });
 
   const saveBlock = useSaveBlock(fetchParams);
@@ -498,7 +535,12 @@ function ContentBrowserReady({
   // terminal phase — or the dev server is up but the fetch failed — fall
   // through to the error below instead of spinning forever.
   const dataMissing = !decofile || !meta;
-  if (decofileLoading || metaLoading || (dataMissing && sandboxWarming)) {
+  if (
+    decofileLoading ||
+    metaLoading ||
+    editorUndecided ||
+    (dataMissing && sandboxWarming)
+  ) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />
@@ -510,7 +552,19 @@ function ContentBrowserReady({
     return <EmptyMessage title="Could not load site data." />;
   }
 
-  const pages = extractPages(decofile).sort((a, b) =>
+  // No schema yet: every block, as plain fields, until it appears.
+  if (isNoSchemaMeta(meta)) {
+    return (
+      <SchemalessEditor
+        orgSlug={orgSlug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
+        decofile={decofile}
+      />
+    );
+  }
+
+  const pages = extractPages(decofile, meta).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
   const redirects = extractRedirects(decofile).sort((a, b) =>
@@ -529,8 +583,21 @@ function ContentBrowserReady({
     ? allBlogEntries[activeCollection]
     : [];
 
+  // Listed (and their saved blocks edited) on every backend; only Run needs
+  // site code.
   const loadersCount = countAvailableRunnables(meta, "loaders");
   const actionsCount = countAvailableRunnables(meta, "actions");
+  // What a content-protocol site has no use for: app installs (no site code
+  // runs), v7's site app block, and an empty Actions folder.
+  const hiddenCollections: CollectionId[] = runsSiteCode
+    ? ["settings"]
+    : [
+        "apps",
+        ...(siteApp ? [] : (["site"] as const)),
+        ...(actionsCount === 0 ? (["actions"] as const) : []),
+        // The CMS settings block, when the site's framework has the type.
+        ...(hasCmsSettingsType(meta) ? [] : (["settings"] as const)),
+      ];
 
   // Loader/action-only sites are still editable — don't gate them out.
   if (
@@ -551,7 +618,7 @@ function ContentBrowserReady({
   const counts: CollectionCounts = {
     pages: pages.length,
     sections: globalSections.length,
-    apps: appCatalog.length,
+    apps: runsSiteCode ? appCatalog.length : 0,
     loaders: loadersCount,
     actions: actionsCount,
     redirects: redirects.length,
@@ -959,6 +1026,7 @@ function ContentBrowserReady({
       <CollectionsSidebar
         active={activeCollection}
         counts={counts}
+        hidden={hiddenCollections}
         showBlog={showBlog}
         onSelect={(id) => {
           setActiveCollection(id);
@@ -968,6 +1036,7 @@ function ContentBrowserReady({
       />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
+        activeCollection !== "settings" &&
         activeCollection !== "context" &&
         activeCollection !== "calendar" &&
         activeCollection !== "post-schedule" &&
@@ -1094,6 +1163,14 @@ function ContentBrowserReady({
                   description="This project doesn't have a site app block (site/apps/site.ts)."
                 />
               )
+            ) : activeCollection === "settings" ? (
+              <CmsSettingsEditor
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+                meta={meta}
+              />
             ) : activeCollection === "context" ? (
               // Behind a veil until the brand context is good enough to ship.
               <SoonOverlay
@@ -1761,7 +1838,7 @@ function ItemList({
                     selection?.collection === "redirects" &&
                     selection.key === entry.key
                   }
-                  trailing={<RedirectTypeBadge type={entry.type} />}
+                  trailing={<RedirectTypeBadge redirect={entry} />}
                   onClick={() =>
                     onSelect({ collection: "redirects", key: entry.key })
                   }
