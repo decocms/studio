@@ -11,8 +11,10 @@ import {
   ChevronRight,
   Loading02,
   Stars02,
+  X,
 } from "@untitledui/icons";
 import { toast } from "sonner";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
@@ -61,6 +63,7 @@ import {
   filledBrandRules,
   newPillarKey,
   normalizeBrandRules,
+  normalizeTerms,
   normalizeTitleKey,
   normalizeVoiceExamples,
   type VoiceExample,
@@ -93,11 +96,11 @@ const BRAND_TEXT_FIELDS = ["description", "targetAudience"] as const;
 const BRAND_RULE_FIELDS = [
   "values",
   "competitors",
-  "keywords",
-  "differentiators",
   "commercialPolicies",
   "specialDates",
 ] as const;
+/** Brand fields holding a plain list of terms. */
+const BRAND_TERM_FIELDS = ["keywords"] as const;
 /** Writing-context fields holding `{ name, value }` rules. */
 const CONTEXT_RULE_FIELDS = ["dos", "avoid", "vocabulary"] as const;
 /** Fields holding example sentences, which are not `{ name, value }` rules. */
@@ -300,11 +303,20 @@ export function BlogContext({
         seo: evidence.seo,
         catalog: catalog || undefined,
       });
+      // What the writing pass needs even when the gate blanked it — it is told
+      // to write in `language`, so a missing one sets the whole pass adrift.
+      const scalarFallback = {
+        companyName: brandResult.companyName || str(brand.companyName),
+        language: brandResult.language || str(brand.language),
+        description: brandResult.description || str(brand.description),
+        targetAudience: brandResult.targetAudience || str(brand.targetAudience),
+      };
       const nextBrand: Record<string, unknown> = { ...brand };
       const filled = applyExtractResult(nextBrand, brandResult, {
         mode,
         textFields: ["companyName", "language", ...BRAND_TEXT_FIELDS],
         ruleFields: BRAND_RULE_FIELDS,
+        termFields: BRAND_TERM_FIELDS,
       });
       setBrand(nextBrand);
 
@@ -312,7 +324,9 @@ export function BlogContext({
       for (const timer of timers) clearTimeout(timer);
       setPhase("sandbox.blogBrand.phaseInferring");
       const contextResult = await studio.call("BLOG_CONTEXT_EXTRACT", {
-        brand: brandResult,
+        // Only the form obeys the gate; the prompt chain falls back to what is
+        // already written rather than running against a blank profile.
+        brand: { ...brandResult, ...scalarFallback },
         blocks: evidence.blocks,
         seo: evidence.seo,
       });
@@ -328,6 +342,7 @@ export function BlogContext({
       setContext(nextContext);
 
       setEditorRevision((n) => n + 1);
+      const discarded = brandResult.discarded + contextResult.discarded;
       toast.success(
         filled.length > 0
           ? t(
@@ -336,7 +351,18 @@ export function BlogContext({
                 : "sandbox.blogBrand.extractFilled",
               { count: String(filled.length) },
             )
-          : t("sandbox.blogBrand.extractNothingEmpty"),
+          : t(
+              discarded > 0
+                ? "sandbox.blogBrand.extractAllDiscarded"
+                : "sandbox.blogBrand.extractNothingEmpty",
+            ),
+        discarded > 0 && filled.length > 0
+          ? {
+              description: t("sandbox.blogBrand.extractDiscarded", {
+                count: String(discarded),
+              }),
+            }
+          : undefined,
       );
       if (brandResult.searched && brandResult.competitors.length === 0) {
         toast.info(t("sandbox.blogBrand.noCompetitorsFound"));
@@ -555,31 +581,16 @@ export function BlogContext({
             </section>
 
             <section className="space-y-2">
-              <Label>{t("sandbox.blogBrand.differentiatorsLabel")}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t("sandbox.blogBrand.differentiatorsHint")}
-              </p>
-              {ruleListFor("differentiators", {
-                add: t("sandbox.blogBrand.addDifferentiator"),
-                namePlaceholder: t(
-                  "sandbox.blogBrand.differentiatorsNamePlaceholder",
-                ),
-                bodyPlaceholder: t(
-                  "sandbox.blogBrand.differentiatorsBodyPlaceholder",
-                ),
-              })}
-            </section>
-
-            <section className="space-y-2">
               <Label>{t("sandbox.blogBrand.keywordsLabel")}</Label>
               <p className="text-xs text-muted-foreground">
                 {t("sandbox.blogBrand.keywordsHint")}
               </p>
-              {ruleListFor("keywords", {
-                add: t("sandbox.blogBrand.addKeyword"),
-                namePlaceholder: t("sandbox.blogBrand.keywordsNamePlaceholder"),
-                bodyPlaceholder: t("sandbox.blogBrand.keywordsBodyPlaceholder"),
-              })}
+              <TermsInput
+                terms={normalizeTerms(brand.keywords)}
+                onChange={(next) => setField("keywords", next)}
+                placeholder={t("sandbox.blogBrand.keywordsPlaceholder")}
+                removeLabel={t("sandbox.blogBrand.removeKeyword")}
+              />
             </section>
 
             <section className="space-y-2">
@@ -973,6 +984,79 @@ function TextAreaField({
         value={value}
         rows={rows}
         onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+/**
+ * A list of plain terms, as chips.
+ *
+ * Keywords have no body to write, and a column of one-field rows reads as a
+ * form with a missing half. Chips also make the list scannable at the length
+ * this field actually reaches, which is twenty terms, not three.
+ */
+function TermsInput({
+  terms,
+  onChange,
+  placeholder,
+  removeLabel,
+}: {
+  terms: string[];
+  onChange: (terms: string[]) => void;
+  placeholder: string;
+  removeLabel: string;
+}) {
+  const [draft, setDraft] = useState("");
+
+  /** Commits whatever is typed, splitting on commas so a paste lands as chips. */
+  const commit = (text: string) => {
+    const fresh = text
+      .split(",")
+      .map((term) => term.trim())
+      .filter((term) => term && !terms.includes(term));
+    if (fresh.length > 0) onChange([...terms, ...fresh]);
+    setDraft("");
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-card p-2">
+      {terms.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {terms.map((term, index) => (
+            <li key={`${term}-${index}`}>
+              <Badge variant="secondary" className="gap-1 pr-1">
+                <span className="truncate">{term}</span>
+                <button
+                  type="button"
+                  aria-label={`${removeLabel}: ${term}`}
+                  onClick={() => onChange(terms.filter((_, i) => i !== index))}
+                  className="cursor-pointer rounded-sm p-0.5 hover:bg-foreground/10"
+                >
+                  <X size={11} />
+                </button>
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Input
+        value={draft}
+        placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        // Blur commits too: a typed term left uncommitted would vanish silently.
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit(draft);
+            return;
+          }
+          if (e.key === "Backspace" && draft === "" && terms.length > 0) {
+            onChange(terms.slice(0, -1));
+          }
+        }}
+        className="border-0 shadow-none focus-visible:ring-0"
       />
     </div>
   );

@@ -62,14 +62,9 @@ export const BlogBrandSchema = z.object({
       "Competitors named explicitly in the content. A brand rarely names them in its own copy — return an empty array unless a name is actually there, and never guess from the market segment. When one is named, `name` is the competitor and `value` is what the content says about it.",
     ),
   keywords: z
-    .array(BrandRuleSchema)
+    .array(z.string())
     .describe(
-      "Search terms this brand should be found by: what a customer types when looking for what it sells. `name` is the term, exactly as someone would search it, in the brand'''s language. `value` says who searches it and what they are after — the intent behind the words. Take them from what the site sells and how it names things: product and category terms belong here, and so do the questions its audience asks around them. Not a list of the brand'''s themes, and never the brand'''s own name alone.",
-    ),
-  differentiators: z
-    .array(BrandRuleSchema)
-    .describe(
-      "What this brand has that a competitor cannot claim — an exclusive process, a material, a service, an origin story with evidence. `name` names it, `value` states the claim and what backs it. A differentiator a rival could copy verbatim into its own site is not one.",
+      "Search terms this brand should be found by: what a customer types when looking for what it sells. One term per entry, written exactly as someone would search it, in the brand's language — nothing else, no explanation. Take them from what the site sells and how it names things: product and category terms belong here, and so do the questions its audience asks around them. Not a list of the brand's themes, and never the brand's own name alone.",
     ),
   commercialPolicies: z
     .array(BrandRuleSchema)

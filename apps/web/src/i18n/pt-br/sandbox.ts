@@ -46,23 +46,15 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
-  "sandbox.blogBrand.addDifferentiator": "Adicionar diferencial",
   "sandbox.blogBrand.addKeyword": "Adicionar palavra-chave",
   "sandbox.blogBrand.addPolicy": "Adicionar política",
   "sandbox.blogBrand.addSpecialDate": "Adicionar data",
   "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
-  "sandbox.blogBrand.differentiatorsBodyPlaceholder":
-    "A afirmação, e o que a sustenta",
-  "sandbox.blogBrand.differentiatorsHint":
-    "O que esta marca tem que um concorrente não pode alegar. Se um rival copiaria para o site dele, não é diferencial.",
-  "sandbox.blogBrand.differentiatorsLabel": "Diferenciais",
-  "sandbox.blogBrand.differentiatorsNamePlaceholder": "Qual é o diferencial",
-  "sandbox.blogBrand.keywordsBodyPlaceholder":
-    "Quem busca por isso, e o que essa pessoa quer encontrar",
   "sandbox.blogBrand.keywordsHint":
-    "Os termos pelos quais a marca quer ser encontrada — o que alguém digita procurando o que ela vende.",
+    "Os termos pelos quais a marca quer ser encontrada — o que alguém digita procurando o que ela vende. Enter ou vírgula adiciona.",
   "sandbox.blogBrand.keywordsLabel": "Palavras-chave da marca",
-  "sandbox.blogBrand.keywordsNamePlaceholder": "O termo, como alguém busca",
+  "sandbox.blogBrand.keywordsPlaceholder": "Escreva um termo e tecle Enter",
+  "sandbox.blogBrand.removeKeyword": "Remover termo",
   "sandbox.blogBrand.phaseResearching": "Pesquisando a marca na web…",
   "sandbox.blogBrand.policiesBodyPlaceholder":
     "Os termos, com os números e condições reais",
@@ -102,6 +94,10 @@ export const sandbox = {
   "sandbox.blogBrand.extractButton": "Preencher",
   "sandbox.blogBrand.extractFailed":
     "Não foi possível ler a marca a partir do conteúdo deste site",
+  "sandbox.blogBrand.extractAllDiscarded":
+    "Nada foi preenchido — tudo o que foi encontrado ficou abaixo da barra de confiança. A evidência são as páginas do próprio site; páginas rasas dão respostas rasas.",
+  "sandbox.blogBrand.extractDiscarded":
+    "{count} informação(ões) descartada(s) por baixa confiança ou relevância",
   "sandbox.blogBrand.extractFilled": "{count} campo(s) vazio(s) preenchido(s)",
   "sandbox.blogBrand.extractHint":
     "Lê {count} bloco(s) deste site — posts existentes primeiro, porque é a marca escrevendo post de verdade.",

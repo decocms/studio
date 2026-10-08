@@ -43,25 +43,15 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instructions every generated post must follow. Write instructions, not adjectives.",
   "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
-  "sandbox.blogBrand.addDifferentiator": "Add differentiator",
   "sandbox.blogBrand.addKeyword": "Add keyword",
   "sandbox.blogBrand.addPolicy": "Add policy",
   "sandbox.blogBrand.addSpecialDate": "Add date",
   "sandbox.blogBrand.addVocabulary": "Add word",
-  "sandbox.blogBrand.differentiatorsBodyPlaceholder":
-    "The claim, and what backs it",
-  "sandbox.blogBrand.differentiatorsHint":
-    "What this brand has that a competitor cannot claim. If a rival could copy it onto their own site, it is not one.",
-  "sandbox.blogBrand.differentiatorsLabel": "Differentiators",
-  "sandbox.blogBrand.differentiatorsNamePlaceholder":
-    "What the differentiator is",
-  "sandbox.blogBrand.keywordsBodyPlaceholder":
-    "Who searches for it, and what they are after",
   "sandbox.blogBrand.keywordsHint":
-    "The terms this brand should be found by — what someone types looking for what it sells.",
+    "The terms this brand should be found by — what someone types looking for what it sells. Enter or a comma adds one.",
   "sandbox.blogBrand.keywordsLabel": "Brand keywords",
-  "sandbox.blogBrand.keywordsNamePlaceholder":
-    "The term, as someone searches it",
+  "sandbox.blogBrand.keywordsPlaceholder": "Add a term and press Enter",
+  "sandbox.blogBrand.removeKeyword": "Remove term",
   "sandbox.blogBrand.phaseResearching": "Researching the brand on the web…",
   "sandbox.blogBrand.policiesBodyPlaceholder":
     "The terms, with their actual numbers and conditions",
@@ -101,6 +91,10 @@ export const sandbox = {
   "sandbox.blogBrand.extractButton": "Fill",
   "sandbox.blogBrand.extractFailed":
     "Could not read the brand from this site's content",
+  "sandbox.blogBrand.extractAllDiscarded":
+    "Nothing was filled — everything found fell below the confidence bar. The site's own pages are the evidence; thin pages give thin answers.",
+  "sandbox.blogBrand.extractDiscarded":
+    "{count} finding(s) discarded for low confidence or relevance",
   "sandbox.blogBrand.extractFilled": "Filled {count} empty field(s)",
   "sandbox.blogBrand.extractHint":
     "Reads {count} block(s) from this site — existing posts first, since that's the brand actually writing posts.",

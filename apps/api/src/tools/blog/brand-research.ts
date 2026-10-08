@@ -1,10 +1,9 @@
 /**
  * What the web knows about a brand that the brand's own site does not say.
  *
- * Three fields are structurally unanswerable from a site's own blocks: a brand
- * does not name its rivals, does not argue why it beats them, and does not
- * publish the commercial calendar it plans around. Reading harder does not
- * help; only searching does.
+ * Two fields are structurally unanswerable from a site's own blocks: a brand
+ * does not name its rivals, and does not publish the commercial calendar it
+ * plans around. Reading harder does not help; only searching does.
  *
  * Runs on the org's `web_search` tier when it has one, and is pure enrichment:
  * every failure path returns empty and lets the extract succeed without it.
@@ -18,7 +17,7 @@ import { BrandRuleSchema } from "./schema";
 
 const SYSTEM = `You turn a web-research summary into a structured brand profile.
 
-Split the research into three lists. \`competitors\`: who this brand competes with, \`name\` the rival and \`value\` how it positions itself and where it differs — the angle a writer needs in order not to sound like them. \`differentiators\`: what this brand has that a rival cannot claim, \`value\` stating the claim and what backs it. \`specialDates\`: the commercial moments this brand's year turns around, \`value\` explaining what the date means FOR THIS BRAND — what it sells then, what it says then.
+Split the research into two lists. \`competitors\`: who this brand competes with, \`name\` the rival and \`value\` how it positions itself and where it differs from this brand — the angle a writer needs in order not to sound like them. \`specialDates\`: the commercial moments this brand's year turns around, \`value\` explaining what the date means FOR THIS BRAND — what it sells then, what it says then.
 
 Write every \`value\` in the language given as the brand's, not in the language of the research text or of these instructions. This sits alongside the rest of the brand profile and is fed to a model that copies the language it sees.
 
@@ -28,7 +27,6 @@ Special dates are the one place this is tempting, because every retailer has a B
 
 const BrandResearchObjectSchema = z.object({
   competitors: z.array(BrandRuleSchema),
-  differentiators: z.array(BrandRuleSchema),
   specialDates: z.array(BrandRuleSchema),
 });
 
@@ -36,17 +34,26 @@ export interface BrandResearch
   extends z.infer<typeof BrandResearchObjectSchema> {
   /** URLs the search model cited, deduped. What makes a claim checkable. */
   sources: string[];
+  /**
+   * The research prose itself, capped. The confidence judge scores the
+   * research-derived claims against it — without it, every one of them reads as
+   * unsupported, since none of them is in the site's own blocks.
+   */
+  text: string;
   /** False when the org has no `web_search` tier, or the search failed. */
   searched: boolean;
 }
 
 const EMPTY: BrandResearch = {
   competitors: [],
-  differentiators: [],
   specialDates: [],
   sources: [],
+  text: "",
   searched: false,
 };
+
+/** How much research prose travels on to the judge. */
+const MAX_RESEARCH_CHARS = 12_000;
 
 /** Citation URLs the search model reported, deduped and capped. */
 const MAX_SOURCES = 20;
@@ -102,11 +109,10 @@ export async function researchBrand(
         brand.description && `What it does: ${brand.description}`,
         brand.targetAudience && `Who it sells to: ${brand.targetAudience}`,
         "",
-        "Answer these four, in order, naming your sources:",
+        "Answer these three, in order, naming your sources:",
         `1. Who are its main competitors? For each, how it positions itself and how it differs from ${brand.companyName}.`,
-        `2. What is ${brand.companyName} known for that its competitors are not? Name the evidence.`,
-        `3. Which commercial dates does it actually run campaigns on? Include both its own recurring moments (a brand-named week or anniversary sale) and the general retail dates of its country and segment, but only those you can tie to this brand. For each, say what it does on that date.`,
-        `4. How do the market and the press describe its positioning?`,
+        `2. Which commercial dates does it actually run campaigns on? Include both its own recurring moments (a brand-named week or anniversary sale) and the general retail dates of its country and segment, but only those you can tie to this brand. For each, say what it does on that date.`,
+        `3. How do the market and the press describe its positioning?`,
         "",
         `Search in the brand's own market and language (${brand.language || "unknown"}) — local sources matter more than global ones. Say so plainly where you find little, rather than filling the gap.`,
       ]
@@ -134,7 +140,12 @@ export async function researchBrand(
       ].join("\n"),
     });
 
-    return { ...object, sources: citations, searched: true };
+    return {
+      ...object,
+      sources: citations,
+      text: text.slice(0, MAX_RESEARCH_CHARS),
+      searched: true,
+    };
   } catch (err) {
     console.warn("[BLOG_BRAND_EXTRACT] brand research failed", err);
     return EMPTY;

@@ -102,6 +102,16 @@ function renderRules(
     .join("\n")}`;
 }
 
+/** A plain list, for a field whose entries carry no body of their own. */
+function renderTerms(
+  label: string,
+  terms: string[] | undefined,
+): string | null {
+  const filled = terms?.filter((term) => term.trim());
+  if (!filled?.length) return null;
+  return `## ${label}\n${filled.map((term) => `- ${term}`).join("\n")}`;
+}
+
 /**
  * Example sentences as two lists. Splitting them is the whole value: a model
  * handed a flat list of sentences imitates all of them, including the ones
@@ -279,7 +289,10 @@ export const BLOG_POST_DRAFT = defineTool({
         brand.vocabulary,
       ),
       renderVoiceExamples(brand.voiceExamples),
-      renderRules("Subjects this brand keeps returning to", brand.keywords),
+      renderTerms(
+        "Search terms this brand wants to be found by — work them in where they fit, never at the cost of a sentence",
+        brand.keywords,
+      ),
       renderRules(
         "Commercial policies — state these only if the post needs them, and copy the numbers exactly",
         brand.commercialPolicies,

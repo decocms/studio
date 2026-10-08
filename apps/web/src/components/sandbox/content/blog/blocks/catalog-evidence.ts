@@ -1,10 +1,11 @@
 /**
  * The store's own catalog, as evidence for the brand profile.
  *
- * What a shop sells, under what names, in what price band, is what grounds
- * keywords and differentiators — none of which a site states about itself in
- * prose. The category tree gives the taxonomy; a page of products gives the
- * naming conventions and the price positioning.
+ * What a shop sells, under what names, in what price band, is what grounds the
+ * keywords — the words a catalog uses for what it sells are the words a
+ * customer types, and a site states them nowhere in prose. The category tree
+ * gives the taxonomy; a page of products gives the naming conventions and the
+ * price positioning.
  *
  * Read through the same `catalog-invoke` proxy the product picker uses, so the
  * VTEX account and credentials stay in the running site's own app and never

@@ -9,6 +9,14 @@ import {
   EvidenceSeoSchema,
   renderEvidence,
 } from "./evidence-prompt";
+import {
+  applyVerdicts,
+  type FieldSpec,
+  flattenClaims,
+  judgeClaims,
+  logDiscarded,
+  verbatimExamples,
+} from "./confidence";
 
 const SYSTEM = `You are writing down HOW a brand writes, so that blogposts generated later read as if the brand wrote them itself. Every field of the output schema says what it wants and where to find it — work through them field by field.
 
@@ -69,6 +77,19 @@ function renderBrand(brand: Partial<z.infer<typeof BlogBrandSchema>>): string {
   );
 }
 
+/**
+ * What the gate judges. `categories` is left out on purpose: it is a taxonomy
+ * of plain names, where "is this true" has no meaning and the UI discards it
+ * anyway.
+ */
+const CONTEXT_FIELD_SPECS: readonly FieldSpec[] = [
+  { field: "tone", kind: "text", origin: "blocks" },
+  { field: "dos", kind: "rules", origin: "blocks" },
+  { field: "avoid", kind: "rules", origin: "blocks" },
+  { field: "vocabulary", kind: "rules", origin: "blocks" },
+  { field: "voiceExamples", kind: "examples", origin: "blocks" },
+];
+
 export const BLOG_CONTEXT_EXTRACT = defineTool({
   name: "BLOG_CONTEXT_EXTRACT",
   description:
@@ -90,10 +111,20 @@ export const BLOG_CONTEXT_EXTRACT = defineTool({
 
   outputSchema: BlogGenerationSchema.extend({
     sources: z.array(z.string()).describe("Block keys the inference read"),
+    discarded: z
+      .number()
+      .describe(
+        "Claims the confidence judge rejected, and that this result therefore omits. Their text and scores go to the server log, never on the wire.",
+      ),
+    judged: z
+      .boolean()
+      .describe(
+        "False when the judge was unavailable or answered incompletely — then nothing was filtered and every field is the raw extraction.",
+      ),
   }),
 
   modelSummary: (r) =>
-    `Writing context inferred from ${r.sources.length} block(s): tone captured, ${r.dos.length} dos, ${r.avoid.length} don'ts, ${r.categories.length} categories. Not yet saved.`,
+    `Writing context inferred from ${r.sources.length} block(s): tone captured, ${r.dos.length} dos, ${r.avoid.length} don'ts, ${r.categories.length} categories. ${r.judged ? `${r.discarded} claim(s) fell below the confidence bar and were dropped` : "The confidence judge did not run, so nothing was filtered"}. Not yet saved.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -112,16 +143,43 @@ export const BLOG_CONTEXT_EXTRACT = defineTool({
       organizationId,
     );
 
+    const evidence = renderEvidence(input);
     const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: BlogGenerationSchema,
       system: SYSTEM,
       prompt: [
         `# The brand, already established\n\n${renderBrand(input.brand)}`,
-        renderEvidence(input),
+        evidence,
       ].join("\n\n---\n\n"),
     });
 
-    return { ...object, sources: input.blocks.map((b) => b.key) };
+    const written: Record<string, unknown> = {
+      ...object,
+      // A quote that isn't in the evidence isn't a quote, and no judge is
+      // needed to say so.
+      voiceExamples: verbatimExamples(object.voiceExamples, evidence),
+    };
+
+    const claims = flattenClaims(written, CONTEXT_FIELD_SPECS);
+    const gate = applyVerdicts(
+      written,
+      claims,
+      await judgeClaims(
+        ctx,
+        organizationId,
+        { evidence, claims },
+        "BLOG_CONTEXT_EXTRACT",
+      ),
+      CONTEXT_FIELD_SPECS,
+    );
+    logDiscarded("BLOG_CONTEXT_EXTRACT", gate);
+
+    return {
+      ...(gate.kept as z.infer<typeof BlogGenerationSchema>),
+      discarded: gate.discarded.length,
+      judged: gate.judged,
+      sources: input.blocks.map((b) => b.key),
+    };
   },
 });

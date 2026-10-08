@@ -22,6 +22,8 @@ import {
   extractBlockProse,
   filledBrandRules,
   normalizeBrandRules,
+  normalizeTerms,
+  filledTerms,
   selectBrandEvidence,
   setPostStatus,
   stampPostModified,
@@ -2273,6 +2275,97 @@ describe("contextForTools", () => {
       vocabulary: [],
       voiceExamples: [],
     });
+  });
+
+  test("hands keywords on as plain terms, including from the legacy rule shape", () => {
+    const { merged } = splitBlogContext(
+      {
+        keywords: [
+          { name: "linho crú", value: "quem procura tecido natural" },
+          { name: "", value: "" },
+        ],
+      },
+      {},
+    );
+    expect(contextForTools(merged).keywords).toEqual(["linho crú"]);
+  });
+});
+
+describe("normalizeTerms", () => {
+  test("passes a plain term list through", () => {
+    expect(normalizeTerms(["linho", "vestido de festa"])).toEqual([
+      "linho",
+      "vestido de festa",
+    ]);
+  });
+
+  test("reads the term out of the legacy { name, value } row", () => {
+    expect(
+      normalizeTerms([{ name: "linho", value: "quem busca tecido natural" }]),
+    ).toEqual(["linho"]);
+  });
+
+  test("falls back to the body when a legacy row only had one", () => {
+    expect(normalizeTerms([{ name: "", value: "linho" }])).toEqual(["linho"]);
+  });
+
+  test("keeps a blank row, which is a row someone just added", () => {
+    expect(normalizeTerms(["", "linho"])).toEqual(["", "linho"]);
+    expect(filledTerms(normalizeTerms(["", "linho"]))).toEqual(["linho"]);
+  });
+
+  test("anything that is not a list is no terms at all", () => {
+    expect(normalizeTerms(undefined)).toEqual([]);
+    expect(normalizeTerms("linho")).toEqual([]);
+    expect(normalizeTerms([42, null])).toEqual([]);
+  });
+});
+
+describe("applyExtractResult, term fields", () => {
+  test("writes a plain string list, never re-objectified into rules", () => {
+    const target: Record<string, unknown> = { keywords: [] };
+    const touched = applyExtractResult(
+      target,
+      { keywords: ["linho crú", "vestido de festa"] },
+      {
+        mode: "empty",
+        textFields: [],
+        ruleFields: [],
+        termFields: ["keywords"],
+      },
+    );
+    expect(touched).toEqual(["keywords"]);
+    expect(target.keywords).toEqual(["linho crú", "vestido de festa"]);
+  });
+
+  test("empty mode leaves terms a person already chose", () => {
+    const target: Record<string, unknown> = { keywords: ["linho"] };
+    applyExtractResult(
+      target,
+      { keywords: ["seda"] },
+      {
+        mode: "empty",
+        textFields: [],
+        ruleFields: [],
+        termFields: ["keywords"],
+      },
+    );
+    expect(target.keywords).toEqual(["linho"]);
+  });
+
+  test("a list of only blank terms is not an answer", () => {
+    const target: Record<string, unknown> = { keywords: ["linho"] };
+    applyExtractResult(
+      target,
+      { keywords: ["", "  "] },
+      {
+        mode: "replace",
+        textFields: [],
+        ruleFields: [],
+        termFields: ["keywords"],
+      },
+    );
+    expect(target.keywords).toEqual(["linho"]);
   });
 });
 

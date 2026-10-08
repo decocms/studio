@@ -6,8 +6,16 @@ import { resolveTier } from "../../core/resolve-tier";
 import { BlogBrandSchema } from "./schema";
 import { researchBrand } from "./brand-research";
 import {
+  applyVerdicts,
+  type FieldSpec,
+  flattenClaims,
+  judgeClaims,
+  logDiscarded,
+} from "./confidence";
+import {
   EvidenceBlocksSchema,
   EvidenceCatalogSchema,
+  type EvidenceInput,
   EvidenceSeoSchema,
   renderEvidence,
 } from "./evidence-prompt";
@@ -30,7 +38,7 @@ Two of your sections are not block prose, and are worth more per character.
 
 THE SEO SECTION IS THE BRAND'S OWN ONE-LINE PITCH. A title and a description are rewritten until a team agrees they say what they want a stranger to think they are — that makes them the densest statement of positioning a site has. The entry keyed \`site\` is the default every page inherits, so it describes the company; the rest describe one page each. A title carrying \`%s\` is a template, so read the words around the slot, not the slot.
 
-THE CATALOG SECTION IS WHAT THE COMPANY ACTUALLY SELLS. The category tree is the shape of the business; the product sample shows how it names things and what it charges. It is the best source for \`keywords\`, which are search terms rather than themes: the words the catalog uses for what it sells are the words customers type. Use it for \`description\` too, and to keep \`differentiators\` honest.
+THE CATALOG SECTION IS WHAT THE COMPANY ACTUALLY SELLS. The category tree is the shape of the business; the product sample shows how it names things and what it charges. It is the best source for \`keywords\`, which are search terms rather than themes: the words the catalog uses for what it sells are the words customers type. Use it for \`description\` too.
 
 Template placeholders like \`{size}\` or \`{name}\` are slots the site fills at render time. Read the sentence around them; never copy the placeholder into your answer.
 
@@ -40,16 +48,45 @@ Three rules that override everything else:
 3. No evidence means empty — an empty string or an empty array. A plausible-sounding guess is worse than a blank field, because someone will read it as fact and every post generated afterwards inherits it. A human reviews this afterwards and can fill a blank; they cannot un-read a confident invention.`;
 
 /**
- * What the blocks alone can answer — a site publishes neither its commercial calendar nor an argument against rivals it never names, so `specialDates` and `differentiators` come from `researchBrand` instead.
+ * What the blocks alone can answer — a site does not publish the commercial
+ * calendar it plans around, so `specialDates` comes from `researchBrand`.
  */
-const BlockPassSchema = BlogBrandSchema.omit({
-  specialDates: true,
-  differentiators: true,
-});
+const BlockPassSchema = BlogBrandSchema.omit({ specialDates: true });
+
+/**
+ * The shape of the profile for the gate, and which evidence each field is
+ * judged against. `competitors` is marked block-derived because `preferFilled`
+ * prefers the site's own answer; when research supplied it instead the judge
+ * still finds it, since both sections are in the evidence it reads.
+ */
+const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
+  { field: "companyName", kind: "text", origin: "blocks" },
+  { field: "description", kind: "text", origin: "blocks" },
+  { field: "language", kind: "text", origin: "blocks" },
+  { field: "targetAudience", kind: "text", origin: "blocks" },
+  { field: "values", kind: "rules", origin: "blocks" },
+  { field: "competitors", kind: "rules", origin: "blocks" },
+  { field: "keywords", kind: "terms", origin: "blocks" },
+  { field: "commercialPolicies", kind: "rules", origin: "blocks" },
+  { field: "specialDates", kind: "rules", origin: "research" },
+];
 
 /** The site's own answer wins; research is what fills a blank. */
 function preferFilled<T>(own: T[], researched: T[]): T[] {
   return own.length > 0 ? own : researched;
+}
+
+/** The evidence plus the research prose, so web-derived claims are checkable. */
+function judgeEvidence(
+  input: EvidenceInput,
+  research: { text: string; sources: string[] },
+): string {
+  const evidence = renderEvidence(input);
+  if (!research.text.trim()) return evidence;
+  const citations = research.sources.length
+    ? `\n\nSources cited:\n${research.sources.join("\n")}`
+    : "";
+  return `${evidence}\n\n---\n\n# Web research about this brand\n\n${research.text}${citations}`;
 }
 
 export const BLOG_BRAND_EXTRACT = defineTool({
@@ -79,10 +116,20 @@ export const BLOG_BRAND_EXTRACT = defineTool({
     searched: z
       .boolean()
       .describe("True when web research ran and returned something."),
+    discarded: z
+      .number()
+      .describe(
+        "Claims the confidence judge rejected, and that this result therefore omits. Their text and scores go to the server log, never on the wire.",
+      ),
+    judged: z
+      .boolean()
+      .describe(
+        "False when the judge was unavailable or answered incompletely — then nothing was filtered and every field is the raw extraction.",
+      ),
   }),
 
   modelSummary: (r) =>
-    `Brand inferred for ${r.companyName} from ${r.sources.length} block(s): ${r.language || "unknown"} language, ${r.values.length} values, ${r.competitors.length} competitors, ${r.specialDates.length} dates, ${r.differentiators.length} differentiators${r.searched ? ` (web research, ${r.researchSources.length} source(s))` : ""}. Not yet saved; writing rules come from BLOG_CONTEXT_EXTRACT.`,
+    `Brand inferred for ${r.companyName || "an unnamed brand"} from ${r.sources.length} block(s): ${r.language || "unknown"} language, ${r.values.length} values, ${r.competitors.length} competitors, ${r.specialDates.length} dates${r.searched ? ` (web research, ${r.researchSources.length} source(s))` : ""}. ${r.judged ? `${r.discarded} claim(s) fell below the confidence bar and were dropped` : "The confidence judge did not run, so nothing was filtered"}. Not yet saved; writing rules come from BLOG_CONTEXT_EXTRACT.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -108,16 +155,37 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       prompt: renderEvidence(input),
     });
 
+    // After the research, never before: `researchBrand` gives up on a blank
+    // `companyName`, so gating first could cost the whole web pass in silence.
     const research = await researchBrand(ctx, organizationId, object);
 
-    return {
+    const profile: Record<string, unknown> = {
       ...object,
       // Research only fills what the site's own copy could not answer.
       competitors: preferFilled(object.competitors, research.competitors),
       specialDates: research.specialDates,
-      differentiators: research.differentiators,
+    };
+
+    const claims = flattenClaims(profile, BRAND_FIELD_SPECS);
+    const gate = applyVerdicts(
+      profile,
+      claims,
+      await judgeClaims(
+        ctx,
+        organizationId,
+        { evidence: judgeEvidence(input, research), claims },
+        "BLOG_BRAND_EXTRACT",
+      ),
+      BRAND_FIELD_SPECS,
+    );
+    logDiscarded("BLOG_BRAND_EXTRACT", gate);
+
+    return {
+      ...(gate.kept as z.infer<typeof BlogBrandSchema>),
       researchSources: research.sources,
       searched: research.searched,
+      discarded: gate.discarded.length,
+      judged: gate.judged,
       sources: input.blocks.map((b) => b.key),
     };
   },

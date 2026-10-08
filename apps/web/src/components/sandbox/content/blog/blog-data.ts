@@ -1296,7 +1296,6 @@ export const BRAND_FIELDS = [
   "values",
   "competitors",
   "keywords",
-  "differentiators",
   "commercialPolicies",
   "specialDates",
 ] as const;
@@ -1403,7 +1402,7 @@ export function contextForTools(merged: Record<string, unknown>) {
     values: filledBrandRules(normalizeBrandRules(merged.values)),
     dos: filledBrandRules(normalizeBrandRules(merged.dos)),
     avoid: filledBrandRules(normalizeBrandRules(merged.avoid)),
-    keywords: filledBrandRules(normalizeBrandRules(merged.keywords)),
+    keywords: filledTerms(normalizeTerms(merged.keywords)),
     commercialPolicies: filledBrandRules(
       normalizeBrandRules(merged.commercialPolicies),
     ),
@@ -1481,6 +1480,8 @@ export function applyExtractResult(
     ruleFields: readonly string[];
     /** Fields holding {@link VoiceExample}s, which normalize differently. */
     exampleFields?: readonly string[];
+    /** Fields holding a plain `string[]`, which normalize differently again. */
+    termFields?: readonly string[];
   },
 ): string[] {
   const touched: string[] = [];
@@ -1503,6 +1504,18 @@ export function applyExtractResult(
     target[field] = proposed;
     touched.push(field);
   }
+  for (const field of options.termFields ?? []) {
+    const proposed = filledTerms(normalizeTerms(result[field]));
+    if (proposed.length === 0) continue;
+    if (
+      options.mode === "empty" &&
+      filledTerms(normalizeTerms(target[field])).length > 0
+    ) {
+      continue;
+    }
+    target[field] = proposed;
+    touched.push(field);
+  }
   for (const field of options.exampleFields ?? []) {
     const proposed = filledVoiceExamples(normalizeVoiceExamples(result[field]));
     if (proposed.length === 0) continue;
@@ -1516,6 +1529,38 @@ export function applyExtractResult(
     touched.push(field);
   }
   return touched;
+}
+
+/**
+ * Read a plain term list, tolerating the `{name, value}` rows this field held
+ * before it became a list of search terms. The object's `name` was the term, so
+ * it carries over and the block picks up the new shape on the next save — no
+ * migration, the same way {@link normalizeBrandRules} absorbed the shape before
+ * it.
+ *
+ * Keeping `keywords` out of the rule-field path is load-bearing, not tidiness:
+ * {@link normalizeBrandRules} happily maps a bare string back to
+ * `{name, value}`, so routing terms through it would silently re-objectify them
+ * on the next autosave and undo the change with no error anywhere.
+ */
+export function normalizeTerms(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const terms: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      terms.push(entry);
+      continue;
+    }
+    const record = asRecord(entry);
+    if (!record) continue;
+    terms.push(str(record.name) || str(record.value));
+  }
+  return terms;
+}
+
+/** Terms a reader would consider written — see {@link filledBrandRules}. */
+export function filledTerms(terms: string[]): string[] {
+  return terms.filter((term) => term.trim());
 }
 
 /**
