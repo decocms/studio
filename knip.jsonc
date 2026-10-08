@@ -81,6 +81,10 @@
     // consumer in a later PR of the stack, which removes its entry.
     "apps/web/src/components/sections-editor/deco-serve-connection.ts": [
       "exports"
-    ]
+    ],
+    "apps/web/src/components/sections-editor/use-content-backend.ts": [
+      "exports"
+    ],
+    "apps/web/src/hooks/use-deco-serve-connection.ts": ["exports"]
   }
 }

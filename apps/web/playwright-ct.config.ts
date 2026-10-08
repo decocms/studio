@@ -80,6 +80,13 @@ export default defineConfig({
             find: /^@\/hooks\/use-new-blocks-editor$/,
             replacement: stub("use-new-blocks-editor.ts"),
           },
+          // The content backend reads the org flag and project via
+          // useProjectContext(); fields are tested as v7 (legacy) sites see them.
+          // Matches the fields' relative `../use-content-backend` import too.
+          {
+            find: /^.*\/use-content-backend$/,
+            replacement: stub("use-content-backend.ts"),
+          },
           // Editor uploads PUT to the org filesystem via useProjectContext(), which a bare mount lacks.
           {
             find: /^@\/components\/markdown-editor\/use-file-upload$/,
