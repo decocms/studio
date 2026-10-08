@@ -57,25 +57,6 @@ export const thread = {
   "thread.branchPicker.searchPullRequests": "Pesquisar pull requests…",
   "thread.branchPicker.selectBranch": "Selecione uma branch…",
   "thread.branchPicker.yourBranches": "Suas branches",
-  "thread.changesTab.couldntLoadPrChanges":
-    "Não foi possível carregar mudanças do PR.",
-  "thread.changesTab.loadingChanges": "Carregando mudanças…",
-  "thread.changesTab.noCommittedChanges":
-    "Nenhuma mudança confirmada neste pull request",
-  "thread.checksTab.couldntLoadCheckDetail":
-    "Não foi possível carregar o detalhe desta verificação.",
-  "thread.checksTab.couldntLoadCheckRuns":
-    "Não foi possível carregar as verificações.",
-  "thread.checksTab.failure": "Falha",
-  "thread.checksTab.inProgress": "Em progresso",
-  "thread.checksTab.loadingCheckDetail": "Carregando detalhe…",
-  "thread.checksTab.loadingChecks": "Carregando verificações…",
-  "thread.checksTab.noCheckDetail": "Esta verificação não tem detalhe.",
-  "thread.checksTab.noCheckRunsOnPrHeadCommit":
-    "Nenhuma verificação no commit principal do PR.",
-  "thread.checksTab.rerun": "Executar novamente",
-  "thread.checksTab.success": "Sucesso",
-  "thread.checksTab.viewRun": "Ver execução",
   "thread.cmsActions.checksFailing":
     "{failed} de {total} verificações não estão passando",
   "thread.cmsActions.checksRunning": "Verificando {done} de {total} concluídas",
@@ -90,23 +71,6 @@ export const thread = {
   "thread.cmsActions.reviewAndPublish": "Revisar e publicar",
   "thread.cmsActions.viewOnProvider": "Ver no provedor",
   "thread.cmsActions.waitingForReview": "Aguardando revisão",
-  "thread.gitTab.by": "por @{author}",
-  "thread.gitTab.closed": "✗ Fechado",
-  "thread.gitTab.couldNotLoadPrState":
-    "Não foi possível carregar o status da PR. A conexão GitHub pode estar quebrada.",
-  "thread.gitTab.into": "em {base}",
-  "thread.gitTab.loadingPrState": "Carregando status da PR…",
-  "thread.gitTab.merged": "✓ Mesclado",
-  "thread.gitTab.noBranchSelected": "Nenhuma branch selecionada.",
-  "thread.gitTab.noPrYet":
-    'Esta branch não tem uma pull request aberta. Use "Revisar e publicar" no cabeçalho (ou "Enviar para revisão" no menu) para abrir uma; o agente rascunhará o título e resumo do estado atual da branch.',
-  "thread.gitTab.notLinkedToGithub":
-    "Este virtualmcp não está vinculado a um repositório GitHub.",
-  "thread.gitTab.openBranchOnGithub": "Abrir branch no GitHub",
-  "thread.gitTab.openPrAriaLabel": "Abrir PR #{number} no GitHub",
-  "thread.gitTab.pickBranchForPrStatus":
-    "Escolha uma branch no cabeçalho para ver o status da PR.",
-  "thread.gitTab.prNumber": "PR #{number}",
   "thread.headerActions.addressFeedback": "Tratar feedback",
   "thread.headerActions.branchInSyncTooltip": "Branch sincronizada com {base}",
   "thread.headerActions.chatIsRunning": "Chat está em execução",

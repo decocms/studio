@@ -15,7 +15,6 @@ describe("SYSTEM_TAB_ICONS", () => {
     expect(SYSTEM_TAB_ICONS.settings).toBe(LayoutAlt04);
     expect(SYSTEM_TAB_ICONS.automations).toBe(Lightning01);
     expect(SYSTEM_TAB_ICONS["site-editor"]).toBeDefined();
-    expect(SYSTEM_TAB_ICONS.git).toBeDefined();
     expect(SYSTEM_TAB_ICONS.code).toBeDefined();
   });
 });
