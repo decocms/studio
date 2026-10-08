@@ -656,15 +656,13 @@ export function newPostId(): string {
 }
 
 /**
- * The planning brief a card carries before (and after) generation: which pillar
- * it belongs to, the format it should follow, and the free-text angle. Stored
- * under `payload.planning`; consumed by generation and shown on the card.
+ * The planning brief a card carries before (and after) generation: the format
+ * it should follow and the free-text angle. Stored under `payload.planning`;
+ * consumed by generation and shown on the card.
  */
 export interface PlanningMeta {
   /** The idea this post was written from, when it was written from one. */
   ideaKey?: string;
-  pillarKey?: string;
-  pillarTitle?: string;
   format?: BrandRule;
   brief?: string;
 }
@@ -675,8 +673,6 @@ export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
   const format = asRecord(record.format);
   return {
     ideaKey: str(record.ideaKey) || undefined,
-    pillarKey: str(record.pillarKey) || undefined,
-    pillarTitle: str(record.pillarTitle) || undefined,
     format: format
       ? { name: str(format.name), value: str(format.value) }
       : undefined,
@@ -1739,8 +1735,6 @@ export interface IdeaEntry {
   title: string;
   /** The brief: the angle, who it is for, what it must cover. */
   body: string;
-  /** The pillar this idea sits in, when it sits in one. */
-  pillarKey?: string;
   createdAt: string;
 }
 
@@ -1757,7 +1751,6 @@ export function buildIdeaBlock(
     name: key,
     title: idea.title,
     body: idea.body,
-    pillarKey: idea.pillarKey ?? "",
     createdAt: idea.createdAt,
   };
 }
@@ -1773,7 +1766,6 @@ export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
       key,
       title: str(record.title),
       body: str(record.body),
-      pillarKey: str(record.pillarKey) || undefined,
       createdAt: str(record.createdAt),
     });
   }
@@ -1783,52 +1775,222 @@ export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
   );
 }
 
-// ------------------ Content pillars (recurring territories) ------------------
+// ------------------ Campaigns (temporary pillars) ----------------------------
 
 /**
- * Pillars are the reconceived themes: broad, durable communication territories
- * ("Product updates", "Customer cases") a blog returns to, each usable by
- * several formats. Like themes, they are Studio-only planning blocks (no
- * `__resolveType`), one per block under this prefix so a suggestion appending
- * several never clobbers the one being edited.
+ * A campaign is a content pillar with an end date.
+ *
+ * The durable territory a brand always returns to already lives in the brand
+ * context — its values, its keywords, its calendar. What pulls a post into
+ * existence is a moment: Black Friday 2026, a line launching, a search the
+ * brand does not answer, stock that has to move. A campaign is that moment,
+ * named, with the targeting and guardrails a generated post needs.
+ *
+ * Studio-only planning blocks (no `__resolveType`), one per block under this
+ * prefix so a write never clobbers the campaign being edited. Replaces
+ * `blog-manager/pillars/`, which is no longer read.
  */
-export const PILLAR_KEY_PREFIX = "blog-manager/pillars/";
+export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
 
-/** A pillar: a title, a markdown brief, and the formats it tends to use. */
-export interface PillarEntry {
+export const CAMPAIGN_STATUSES = [
+  "draft",
+  "active",
+  "paused",
+  "finished",
+] as const;
+export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
+
+/**
+ * Why the campaign exists. A closed set on purpose: it is the axis a board
+ * groups by and, later, what the generator reads to pick an angle. Free text
+ * here would be a field nobody could group or reason about.
+ */
+export const CAMPAIGN_TRIGGERS = [
+  "launch",
+  "seasonal",
+  "trend",
+  "seo_gap",
+  "inventory",
+  "partnership",
+  "reputation",
+] as const;
+export type CampaignTrigger = (typeof CAMPAIGN_TRIGGERS)[number];
+
+export const CAMPAIGN_OBJECTIVES = [
+  "awareness",
+  "education",
+  "conversion",
+  "retention",
+  "repositioning",
+] as const;
+export type CampaignObjective = (typeof CAMPAIGN_OBJECTIVES)[number];
+
+export const CAMPAIGN_TARGET_KINDS = [
+  "product",
+  "category",
+  "collection",
+] as const;
+export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];
+
+/**
+ * What the campaign sells. Platform-agnostic by design: the URL is the
+ * identifier, because it is the one thing every storefront has and the only one
+ * a reader can open. A product id would tie this to whoever issued it.
+ */
+export interface CampaignTarget {
+  kind: CampaignTargetKind;
+  url: string;
+  label: string;
+}
+
+export interface CampaignEntry {
   key: string;
-  title: string;
-  body: string;
+  name: string;
+  status: CampaignStatus;
+  /** `YYYY-MM-DD`, both optional — not every campaign has dates pinned. */
+  period: { start: string | null; end: string | null };
+  trigger: { type: CampaignTrigger; note: string };
+  intent: {
+    objective: CampaignObjective;
+    targets: CampaignTarget[];
+    keywords: string[];
+  };
+  guardrails: {
+    /** Added to the context's `avoid`, never replacing it. */
+    avoidComplements: BrandRule[];
+    /** Replaces the brand's `tone` while this campaign runs. */
+    toneOverrides: string;
+  };
   createdAt: string;
-  /** Names of the formats this pillar tends to use (optional). */
-  formats: string[];
+  updatedAt: string;
 }
 
-export function newPillarKey(): string {
-  return `${PILLAR_KEY_PREFIX}${crypto.randomUUID()}`;
+export function newCampaignKey(): string {
+  return `${CAMPAIGN_KEY_PREFIX}${crypto.randomUUID()}`;
 }
 
-/** Every pillar, newest first. */
-export function scanPillars(decofile: Record<string, unknown>): PillarEntry[] {
-  const pillars: PillarEntry[] = [];
-  for (const [key, value] of Object.entries(decofile)) {
-    if (!key.startsWith(PILLAR_KEY_PREFIX)) continue;
-    const record = asRecord(value);
+/** A stored value narrowed to a closed set, or the default. */
+function oneOf<T extends string>(
+  allowed: readonly T[],
+  value: unknown,
+  fallback: T,
+): T {
+  return allowed.find((option) => option === value) ?? fallback;
+}
+
+/** A date the editor wrote, or null — never an empty string downstream. */
+function dateOrNull(value: unknown): string | null {
+  return str(value) || null;
+}
+
+export function readCampaignTargets(value: unknown): CampaignTarget[] {
+  const targets: CampaignTarget[] = [];
+  for (const entry of toArray(value)) {
+    const record = asRecord(entry);
     if (!record) continue;
-    pillars.push({
-      key,
-      title: str(record.title),
-      body: str(record.body),
-      createdAt: str(record.createdAt),
-      formats: toArray(record.formats)
-        .map((f) => str(f))
-        .filter(Boolean),
+    targets.push({
+      kind: oneOf(CAMPAIGN_TARGET_KINDS, record.kind, "product"),
+      url: str(record.url),
+      label: str(record.label),
     });
   }
-  return pillars.sort(
+  return targets;
+}
+
+/**
+ * Rebuild a campaign block. Every optional is coalesced rather than omitted, so
+ * the JSON on disk has one shape whatever the editor had filled in.
+ *
+ * `campaignName` rather than `name`, because `name` is the block-key field
+ * every planning block carries.
+ */
+export function buildCampaignBlock(
+  key: string,
+  campaign: Omit<CampaignEntry, "key">,
+): Record<string, unknown> {
+  return {
+    name: key,
+    campaignName: campaign.name,
+    status: campaign.status,
+    period: {
+      start: campaign.period.start ?? "",
+      end: campaign.period.end ?? "",
+    },
+    trigger: { type: campaign.trigger.type, note: campaign.trigger.note },
+    intent: {
+      objective: campaign.intent.objective,
+      targets: campaign.intent.targets,
+      keywords: campaign.intent.keywords,
+    },
+    guardrails: {
+      avoidComplements: campaign.guardrails.avoidComplements,
+      toneOverrides: campaign.guardrails.toneOverrides,
+    },
+    createdAt: campaign.createdAt,
+    updatedAt: campaign.updatedAt,
+  };
+}
+
+/**
+ * Every campaign, newest first.
+ *
+ * Tolerant of a partial block the way `scanIdeas` is: a half-written campaign is
+ * the normal case while someone is still filling the form, and an unknown enum
+ * value reads as the default rather than breaking the board.
+ */
+export function scanCampaigns(
+  decofile: Record<string, unknown>,
+): CampaignEntry[] {
+  const campaigns: CampaignEntry[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!key.startsWith(CAMPAIGN_KEY_PREFIX)) continue;
+    const record = asRecord(value);
+    if (!record) continue;
+    const period = asRecord(record.period) ?? {};
+    const trigger = asRecord(record.trigger) ?? {};
+    const intent = asRecord(record.intent) ?? {};
+    const guardrails = asRecord(record.guardrails) ?? {};
+    campaigns.push({
+      key,
+      name: str(record.campaignName),
+      status: oneOf(CAMPAIGN_STATUSES, record.status, "draft"),
+      period: { start: dateOrNull(period.start), end: dateOrNull(period.end) },
+      trigger: {
+        type: oneOf(CAMPAIGN_TRIGGERS, trigger.type, "seasonal"),
+        note: str(trigger.note),
+      },
+      intent: {
+        objective: oneOf(CAMPAIGN_OBJECTIVES, intent.objective, "awareness"),
+        targets: readCampaignTargets(intent.targets),
+        keywords: filledTerms(normalizeTerms(intent.keywords)),
+      },
+      guardrails: {
+        avoidComplements: normalizeBrandRules(guardrails.avoidComplements),
+        toneOverrides: str(guardrails.toneOverrides),
+      },
+      createdAt: str(record.createdAt),
+      updatedAt: str(record.updatedAt),
+    });
+  }
+  return campaigns.sort(
     (a, b) =>
-      b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
+      b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name),
   );
+}
+
+/** A campaign as it is born: empty, in draft, nothing pinned. */
+export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
+  const stamp = now.toISOString();
+  return {
+    name: "",
+    status: "draft",
+    period: { start: null, end: null },
+    trigger: { type: "seasonal", note: "" },
+    intent: { objective: "awareness", targets: [], keywords: [] },
+    guardrails: { avoidComplements: [], toneOverrides: "" },
+    createdAt: stamp,
+    updatedAt: stamp,
+  };
 }
 
 // ------------------ Formats (loose post templates) ---------------------------

@@ -136,13 +136,87 @@ export const sandbox = {
   "sandbox.blogCustomFields.title": "Outros campos",
   "sandbox.blogCustomFields.description":
     "Campos que o tipo de conteúdo deste site declara, além dos acima.",
+  "sandbox.campaigns.add": "Nova campanha",
+  "sandbox.campaigns.addAvoid": "Adicionar guardrail",
+  "sandbox.campaigns.addTarget": "Adicionar alvo",
+  "sandbox.campaigns.avoidBodyPlaceholder":
+    "O que não pode acontecer, e por que esta campanha em especial precisa disso dito",
+  "sandbox.campaigns.avoidHint":
+    "Soma aos guardrails da marca só nesta campanha — nunca os substitui.",
+  "sandbox.campaigns.avoidLabel": "Guardrails extras",
+  "sandbox.campaigns.avoidNamePlaceholder": "Sobre o que é este guardrail",
+  "sandbox.campaigns.close": "Fechar",
+  "sandbox.campaigns.collapseLane": "Recolher {lane}",
+  "sandbox.campaigns.empty":
+    "Nenhuma campanha ainda. Campanha é um momento que vale escrever — um lançamento, uma data, uma busca que você não responde.",
+  "sandbox.campaigns.expandLane": "Expandir {lane}",
+  "sandbox.campaigns.keywordsHint":
+    "Os termos pelos quais esta campanha quer ser encontrada. Enter ou vírgula adiciona.",
+  "sandbox.campaigns.keywordsLabel": "Palavras-chave",
+  "sandbox.campaigns.keywordsPlaceholder": "Escreva um termo e tecle Enter",
+  "sandbox.campaigns.laneEmpty": "Nada aqui",
+  "sandbox.campaigns.moveFailed": "Não foi possível mover a campanha",
+  "sandbox.campaigns.nameLabel": "Nome",
+  "sandbox.campaigns.namePlaceholder": "ex: Black Friday 2026",
+  "sandbox.campaigns.noMatches": "Nenhuma campanha corresponde a isso.",
+  "sandbox.campaigns.objectiveAwareness": "Awareness",
+  "sandbox.campaigns.objectiveConversion": "Conversão",
+  "sandbox.campaigns.objectiveEducation": "Educação",
+  "sandbox.campaigns.objectiveHint":
+    "O que um post escrito para esta campanha quer alcançar.",
+  "sandbox.campaigns.objectiveLabel": "Objetivo",
+  "sandbox.campaigns.objectiveRepositioning": "Reposicionamento",
+  "sandbox.campaigns.objectiveRetention": "Retenção",
+  "sandbox.campaigns.periodClear": "Limpar o período",
+  "sandbox.campaigns.periodEmpty": "Sem datas",
+  "sandbox.campaigns.periodLabel": "Período",
+  "sandbox.campaigns.remove": "Excluir campanha",
+  "sandbox.campaigns.removeKeyword": "Remover termo",
+  "sandbox.campaigns.removeTarget": "Remover alvo",
+  "sandbox.campaigns.searchPlaceholder": "Buscar campanhas",
+  "sandbox.campaigns.selectPrompt": "Escolha uma campanha para editar.",
+  "sandbox.campaigns.statusActive": "Ativas",
+  "sandbox.campaigns.statusDraft": "Rascunhos",
+  "sandbox.campaigns.statusFinished": "Finalizadas",
+  "sandbox.campaigns.statusLabel": "Status",
+  "sandbox.campaigns.statusPaused": "Pausadas",
+  "sandbox.campaigns.targetCategory": "Categoria",
+  "sandbox.campaigns.targetCollection": "Coleção",
+  "sandbox.campaigns.targetLabelPlaceholder": "Como você chama",
+  "sandbox.campaigns.targetProduct": "Produto",
+  "sandbox.campaigns.targetUrlPlaceholder": "https://…",
+  "sandbox.campaigns.targetUrlRequired":
+    "Um alvo precisa da URL — é para ela que o post vai linkar.",
+  "sandbox.campaigns.targetsHint":
+    "O que esta campanha vende. Qualquer loja: a URL é o que identifica.",
+  "sandbox.campaigns.targetsLabel": "Alvos",
+  "sandbox.campaigns.toneHint":
+    "Substitui o tom da marca enquanto a campanha roda. Deixe vazio para manter.",
+  "sandbox.campaigns.toneLabel": "Tom sobrescrito",
+  "sandbox.campaigns.tonePlaceholder":
+    "ex: frases mais curtas, mais urgência, sem piadas",
+  "sandbox.campaigns.triggerHint":
+    "Por que esta campanha existe. A nota é o que um escritor lê para entender o momento.",
+  "sandbox.campaigns.triggerInventory": "Estoque",
+  "sandbox.campaigns.triggerLabel": "Gatilho",
+  "sandbox.campaigns.triggerLaunch": "Lançamento",
+  "sandbox.campaigns.triggerNotePlaceholder":
+    "O que está acontecendo, e por que vale escrever sobre isso agora",
+  "sandbox.campaigns.triggerPartnership": "Parceria",
+  "sandbox.campaigns.triggerReputation": "Reputação",
+  "sandbox.campaigns.triggerSeasonal": "Sazonal",
+  "sandbox.campaigns.triggerSeoGap": "Gap de SEO",
+  "sandbox.campaigns.triggerTrend": "Trend",
+  "sandbox.campaigns.untitled": "Campanha sem título",
+  "sandbox.campaigns.viewBoard": "Quadro",
+  "sandbox.campaigns.viewList": "Lista",
   "sandbox.blogContext.removeEntry": "Remover",
   "sandbox.blogContext.subtitle":
-    "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
+    "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
   "sandbox.blogContext.tabAutomations": "Automações",
   "sandbox.blogContext.tabBrand": "Marca",
   "sandbox.blogContext.tabFormats": "Formatos",
-  "sandbox.blogContext.tabPillars": "Pilares de conteúdo",
+  "sandbox.blogContext.tabCampaigns": "Campanhas",
   "sandbox.blogContext.title": "Contexto",
   "sandbox.blogField.title": "Título",
   "sandbox.blogField.slug": "Slug",
@@ -433,8 +507,6 @@ export const sandbox = {
     "Para quem é e o que deve cobrir. Opcional.",
   "sandbox.generatePost.ideaHint":
     "Um ângulo só, específico o bastante para virar um post.",
-  "sandbox.generatePost.ideaHintInPillar":
-    'Um ângulo dentro de "{pillar}" — específico o bastante para virar um post, não o território inteiro.',
   "sandbox.generatePost.ideaTitleLabel": "Sobre o que é o post?",
   "sandbox.generatePost.ideaTitlePlaceholder": "ex.: Por que o linho amassa",
   "sandbox.generatePost.inferHint":
@@ -445,7 +517,7 @@ export const sandbox = {
   "sandbox.generatePost.stepFormat": "Formato",
   "sandbox.generatePost.stepIdea": "Ideia",
   "sandbox.generatePost.subtitle":
-    "Uma ideia, o pilar a que ela pertence, o formato que ela segue — e o que mais você quiser definir.",
+    "Uma ideia e o formato que ela segue — e o que mais você quiser definir.",
   "sandbox.generatePost.suggestFailed": "Não foi possível sugerir",
   "sandbox.generatePost.suggestIdeas": "Sugerir ideias",
   "sandbox.generatePost.suggestIdeasHint":
@@ -555,29 +627,6 @@ export const sandbox = {
     "Procurar {options} ou digite um valor…",
   "sandbox.pathParamPickerChip.useRawValue":
     'Usar "{rawTerm}" como {paramLabel}',
-  "sandbox.pillars.add": "Adicionar pilar",
-  "sandbox.pillars.bodyPlaceholder":
-    "O que esse território cobre e por que sua marca sempre volta a ele.",
-  "sandbox.pillars.empty": "Nenhum pilar de conteúdo ainda.",
-  "sandbox.pillars.guidanceHint":
-    "Sobre o que os pilares devem ser, nas suas palavras. Opcional.",
-  "sandbox.pillars.guidanceLabel": "Algo específico?",
-  "sandbox.pillars.guidancePlaceholder": "ex.: foco em educação pós-compra",
-  "sandbox.pillars.hint":
-    "Pilares são os territórios recorrentes aos quais seu blog volta — novidades de produto, casos de clientes, tendências. Cada um pode ser escrito em vários formatos.",
-  "sandbox.pillars.namePlaceholder":
-    "Nomeie o território — ex.: Casos de clientes",
-  "sandbox.pillars.noNew": "Nenhum pilar novo para adicionar",
-  "sandbox.pillars.phaseReading": "Lendo seu contexto de marca…",
-  "sandbox.pillars.phaseWriting": "Nomeando os territórios…",
-  "sandbox.pillars.remove": "Remover pilar",
-  "sandbox.pillars.suggest": "Sugerir pilares",
-  "sandbox.pillars.suggestFailed": "Não foi possível sugerir pilares",
-  "sandbox.pillars.suggestHint":
-    "Propor pilares a partir do seu contexto de marca.",
-  "sandbox.pillars.suggestNoBrand": "Preencha a aba Marca primeiro.",
-  "sandbox.pillars.suggested": "{count} pilar(es) adicionado(s)",
-  "sandbox.pillars.untitled": "Pilar sem título",
   "sandbox.plainBlocks.bulletedLabel": "Com marcadores",
   "sandbox.plainBlocks.codePlaceholder": "Código",
   "sandbox.plainBlocks.headingLevel1": "Título 1",
@@ -607,8 +656,6 @@ export const sandbox = {
   "sandbox.postBoard.ideaGuidanceLabel": "Ideias soltas ou um foco",
   "sandbox.postBoard.ideaGuidancePlaceholder":
     "ex.: um texto sobre escolher a gramatura do tecido",
-  "sandbox.postBoard.ideaNoPillar": "Qualquer pilar",
-  "sandbox.postBoard.ideaPillarLabel": "Pilar",
   "sandbox.postBoard.ideasAdded": "{count} ideia(s) adicionada(s)",
   "sandbox.postBoard.ideasEmpty":
     "Nenhuma ideia ainda. Gere algumas, ou escreva uma direto num post.",

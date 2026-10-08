@@ -83,8 +83,6 @@ WRITE THE WHOLE POST IN THE BRAND'S OWN LANGUAGE — the one reported as \`langu
 
 THE BRAND PROFILE IS BINDING, NOT BACKGROUND. Its \`tone\` says how to sound, and you reproduce it rather than approximating it — pronoun, sentence length, formality, casing. Its \`dos\` are instructions you follow. Its \`avoid\` entries are prohibitions: a post that breaks one is a failure however well written. Where the brand renames an ordinary thing, use the brand's word.
 
-THE PILLAR IS THE GROUND, THE THEME IS THE ANGLE. A pillar is a territory this brand returns to across many posts; the theme is the one angle this post takes within it. Write the angle, not the territory — a post that restates the pillar is the article the brand already published.
-
 THE THEME IS THE BRIEF, THE FORMAT IS THE SHAPE. The theme's body says the angle, who it is for and what to cover — cover it. The format describes how a post like this usually opens, develops and closes, and cites sections as \`@Name\`; treat those citations as what this brand reaches for, not as a fixed running order. You choose the actual sequence and how many of each, because that depends on this theme.
 
 USE ONLY THE SECTION KINDS YOU ARE GIVEN. Each has a listed purpose. A kind that isn't listed does not exist on this site, and emitting one loses that part of the post silently.
@@ -159,15 +157,6 @@ export const BLOG_POST_DRAFT = defineTool({
     brand: BlogContextSchema.partial().describe(
       "The site's editorial brand context. companyName, language, description, tone, targetAudience, dos and avoid are all required here — a post written without them is generic.",
     ),
-    pillar: z
-      .object({
-        title: z.string().max(MAX_NAME_CHARS),
-        body: z.string().max(MAX_BODY_CHARS),
-      })
-      .optional()
-      .describe(
-        "The recurring territory this post belongs to — the ground the brand keeps returning to, which the theme is one angle within.",
-      ),
     theme: z
       .object({
         title: z.string().max(MAX_NAME_CHARS),
@@ -316,9 +305,6 @@ export const BLOG_POST_DRAFT = defineTool({
         "Commercial policies — state these only if the post needs them, and copy the numbers exactly",
         brand.commercialPolicies,
       ),
-      input.pillar
-        ? `## Pillar: ${input.pillar.title}\n${input.pillar.body}`
-        : null,
       `## Theme: ${input.theme.title}\n${input.theme.body}`,
       `## Format: ${input.format.name}\n${input.format.value}`,
       `## Section kinds available\n${input.sections

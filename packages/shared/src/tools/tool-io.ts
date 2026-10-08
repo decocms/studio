@@ -1351,33 +1351,6 @@ export interface StudioToolIO {
       judged: boolean;
     };
   };
-  BLOG_PILLAR_SUGGEST: {
-    input: {
-      brand: {
-        companyName?: string | undefined;
-        description?: string | undefined;
-        language?: string | undefined;
-        targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
-        keywords?: string[] | undefined;
-        commercialPolicies?: { name: string; value: string }[] | undefined;
-        specialDates?: { name: string; value: string }[] | undefined;
-        tone?: string | undefined;
-        dos?: { name: string; value: string }[] | undefined;
-        avoid?: { name: string; value: string }[] | undefined;
-        categories?: string[] | undefined;
-        vocabulary?: { name: string; value: string }[] | undefined;
-        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
-      };
-      existingPillars?: string[] | undefined;
-      categories?: string[] | undefined;
-      guidance?: string | undefined;
-      count?: number | undefined;
-      virtualMcpId?: string | undefined;
-    };
-    output: { pillars: { title: string; body: string }[] };
-  };
   BLOG_THEME_SUGGEST: {
     input: {
       brand: {
@@ -1400,7 +1373,6 @@ export interface StudioToolIO {
       existingTitles?: string[] | undefined;
       categories?: string[] | undefined;
       guidance?: string | undefined;
-      pillar?: { title: string; body: string } | undefined;
       formats?: string[] | undefined;
       count?: number | undefined;
       virtualMcpId?: string | undefined;
@@ -1468,7 +1440,6 @@ export interface StudioToolIO {
           | "Divider";
         purpose?: string | undefined;
       }[];
-      pillar?: { title: string; body: string } | undefined;
       categories?: { name: string; slug: string }[] | undefined;
       authors?:
         | { name: string; email: string; bio?: string | undefined }[]

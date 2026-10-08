@@ -31,9 +31,11 @@ import {
   newIdeaKey,
   scanIdeas,
   IDEA_KEY_PREFIX,
-  scanPillars,
-  newPillarKey,
-  PILLAR_KEY_PREFIX,
+  scanCampaigns,
+  buildCampaignBlock,
+  emptyCampaign,
+  newCampaignKey,
+  CAMPAIGN_KEY_PREFIX,
   PLANNING_POST_KEY_PREFIX,
   emptyDraftPostPayload,
   planningMeta,
@@ -697,50 +699,139 @@ describe("setPostStatus", () => {
   });
 });
 
-describe("scanPillars", () => {
-  test("reads pillars newest-first with their formats", () => {
-    const pillars = scanPillars({
-      [`${PILLAR_KEY_PREFIX}a`]: {
-        title: "Product updates",
-        body: "What shipped.",
+describe("scanCampaigns", () => {
+  const key = `${CAMPAIGN_KEY_PREFIX}a`;
+
+  test("reads a full campaign back", () => {
+    const [campaign] = scanCampaigns({
+      [key]: buildCampaignBlock(key, {
+        name: "Black Friday 2026",
+        status: "active",
+        period: { start: "2026-11-20", end: "2026-11-30" },
+        trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
+        intent: {
+          objective: "conversion",
+          targets: [
+            { kind: "category", url: "https://loja.com/ar", label: "Ar" },
+          ],
+          keywords: ["ar condicionado"],
+        },
+        guardrails: {
+          avoidComplements: [{ name: "Preço", value: "Nunca no título" }],
+          toneOverrides: "Mais urgência",
+        },
         createdAt: "2026-01-01",
-        formats: ["Changelog", "Deep dive"],
+        updatedAt: "2026-01-02",
+      }),
+    });
+    expect(campaign).toEqual({
+      key,
+      name: "Black Friday 2026",
+      status: "active",
+      period: { start: "2026-11-20", end: "2026-11-30" },
+      trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
+      intent: {
+        objective: "conversion",
+        targets: [
+          { kind: "category", url: "https://loja.com/ar", label: "Ar" },
+        ],
+        keywords: ["ar condicionado"],
       },
-      [`${PILLAR_KEY_PREFIX}b`]: {
-        title: "Customer cases",
-        body: "How they win.",
+      guardrails: {
+        avoidComplements: [{ name: "Preço", value: "Nunca no título" }],
+        toneOverrides: "Mais urgência",
+      },
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-02",
+    });
+  });
+
+  test("a half-written campaign reads, because that is the normal case", () => {
+    const [campaign] = scanCampaigns({ [key]: { campaignName: "Rascunho" } });
+    expect(campaign?.name).toBe("Rascunho");
+    expect(campaign?.status).toBe("draft");
+    expect(campaign?.trigger.type).toBe("seasonal");
+    expect(campaign?.intent.objective).toBe("awareness");
+    expect(campaign?.period).toEqual({ start: null, end: null });
+  });
+
+  test("an unknown enum value reads as the default, never breaking the board", () => {
+    const [campaign] = scanCampaigns({
+      [key]: {
+        status: "cancelled",
+        trigger: { type: "vibes" },
+        intent: { objective: "virality", targets: [{ kind: "sku", url: "u" }] },
+      },
+    });
+    expect(campaign?.status).toBe("draft");
+    expect(campaign?.trigger.type).toBe("seasonal");
+    expect(campaign?.intent.objective).toBe("awareness");
+    expect(campaign?.intent.targets[0]?.kind).toBe("product");
+  });
+
+  test("a blank date is null, not an empty string", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { period: { start: "2026-01-01", end: "" } },
+    });
+    expect(campaign?.period).toEqual({ start: "2026-01-01", end: null });
+  });
+
+  test("newest first, falling back to the name", () => {
+    const campaigns = scanCampaigns({
+      [`${CAMPAIGN_KEY_PREFIX}a`]: {
+        campaignName: "Antiga",
+        createdAt: "2026-01-01",
+      },
+      [`${CAMPAIGN_KEY_PREFIX}b`]: {
+        campaignName: "Nova",
         createdAt: "2026-02-01",
-        formats: [],
       },
     });
-    expect(pillars.map((p) => p.title)).toEqual([
-      "Customer cases",
-      "Product updates",
-    ]);
-    expect(pillars[1]?.formats).toEqual(["Changelog", "Deep dive"]);
+    expect(campaigns.map((c) => c.name)).toEqual(["Nova", "Antiga"]);
   });
 
-  test("leaves the ideas queue alone — those blocks were always ideas", () => {
-    const pillars = scanPillars({
-      [`${PILLAR_KEY_PREFIX}a`]: { title: "New pillar", createdAt: "2026-02" },
-      [`${IDEA_KEY_PREFIX}b`]: { title: "An idea", createdAt: "2026-01" },
-    });
-    expect(pillars.map((p) => p.title)).toEqual(["New pillar"]);
+  test("leaves every other planning block alone", () => {
+    expect(
+      scanCampaigns({
+        [`${IDEA_KEY_PREFIX}b`]: { title: "An idea" },
+        "blog-manager-brand": { campaignName: "nope" },
+      }),
+    ).toEqual([]);
   });
 
-  test("ignores non-object and unrelated blocks", () => {
-    expect(scanPillars({ [`${PILLAR_KEY_PREFIX}x`]: "corrupt" })).toEqual([]);
-    expect(scanPillars({ "blog-manager-brand": { title: "nope" } })).toEqual(
-      [],
-    );
+  test("ignores a corrupt block rather than throwing", () => {
+    expect(scanCampaigns({ [key]: "corrupt" })).toEqual([]);
   });
 });
 
-describe("newPillarKey", () => {
-  test("is under the pillars prefix and unique", () => {
-    const a = newPillarKey();
-    const b = newPillarKey();
-    expect(a.startsWith(PILLAR_KEY_PREFIX)).toBe(true);
+describe("buildCampaignBlock", () => {
+  test("round-trips through scanCampaigns", () => {
+    const key = newCampaignKey();
+    const campaign = emptyCampaign(new Date("2026-03-04T05:06:07.000Z"));
+    const [read] = scanCampaigns({
+      [key]: buildCampaignBlock(key, campaign),
+    });
+    expect(read).toEqual({ key, ...campaign });
+  });
+
+  test("carries the block key in `name`, like every planning block", () => {
+    const key = newCampaignKey();
+    const block = buildCampaignBlock(key, emptyCampaign(new Date()));
+    expect(block.name).toBe(key);
+  });
+
+  test("writes an absent date as an empty string, so the shape is stable", () => {
+    const key = newCampaignKey();
+    const block = buildCampaignBlock(key, emptyCampaign(new Date()));
+    expect(block.period).toEqual({ start: "", end: "" });
+  });
+});
+
+describe("newCampaignKey", () => {
+  test("is under the campaigns prefix and unique", () => {
+    const a = newCampaignKey();
+    const b = newCampaignKey();
+    expect(a.startsWith(CAMPAIGN_KEY_PREFIX)).toBe(true);
     expect(a).not.toBe(b);
   });
 });
@@ -751,14 +842,14 @@ describe("emptyDraftPostPayload / planningMeta", () => {
   test("starts a post as a briefing with no body", () => {
     const payload = emptyDraftPostPayload({
       title: "How to read a label",
-      planning: { pillarKey: "p1", brief: "Angle." },
+      planning: { ideaKey: "i1", brief: "Angle." },
       now,
     });
     expect(payload.status).toBe("draft");
     expect(payload.sections).toEqual([]);
     expect(postStatus(payload)).toBe("draft");
     expect(planningMeta(payload).brief).toBe("Angle.");
-    expect(planningMeta(payload).pillarKey).toBe("p1");
+    expect(planningMeta(payload).ideaKey).toBe("i1");
   });
 
   test("planningMeta tolerates a missing planning object", () => {
@@ -1627,7 +1718,6 @@ describe("scanIdeas", () => {
         key: `${IDEA_KEY_PREFIX}new`,
         title: "",
         body: "",
-        pillarKey: undefined,
         createdAt: "",
       },
     ]);
@@ -2239,12 +2329,12 @@ describe("buildGeneratedPostPayload", () => {
     expect(payload.authors).toEqual([]);
   });
 
-  test("keeps the briefing, so the card still shows its pillar and format", () => {
+  test("keeps the briefing, so the card still shows its format", () => {
     const payload = buildGeneratedPostPayload({
       ...args,
-      planning: { pillarTitle: "Casos de clientes", brief: "Angle." },
+      planning: { format: { name: "Guia", value: "Passo a passo" } },
     });
-    expect(planningMeta(payload).pillarTitle).toBe("Casos de clientes");
+    expect(planningMeta(payload).format?.name).toBe("Guia");
   });
 
   test("leaves the cover image empty, so the reviewer is told", () => {

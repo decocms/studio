@@ -48,8 +48,6 @@ function isGeneratable(name: string): name is GeneratableSection {
 /** Everything the wizard collected — what one post gets written from. */
 export interface PostBriefing {
   idea: { key?: string; title: string; body: string };
-  /** The territory the idea sits in — steers the writing, and labels the card. */
-  pillar?: { key?: string; title: string; body: string };
   format: { name: string; value: string };
   /** Left empty to let the model file the post itself. */
   category?: CategoryRef;
@@ -101,8 +99,6 @@ export function useGeneratePost({
     const key = planningPostKey(newPostId());
     const planning: PlanningMeta = {
       ideaKey: briefing.idea.key,
-      pillarKey: briefing.pillar?.key,
-      pillarTitle: briefing.pillar?.title,
       format: briefing.format,
       brief: briefing.idea.body,
     };
@@ -138,9 +134,6 @@ export function useGeneratePost({
       const draft = await studio.call("BLOG_POST_DRAFT", {
         virtualMcpId,
         brand: contextForTools(merged),
-        pillar: briefing.pillar
-          ? { title: briefing.pillar.title, body: briefing.pillar.body }
-          : undefined,
         theme: { title: briefing.idea.title, body: briefing.idea.body },
         format: briefing.format,
         sections: mentionableSections(meta, { hideDefaults })

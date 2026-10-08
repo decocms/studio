@@ -1,7 +1,7 @@
 /**
  * The Posts area: one workspace with two views of the same lifecycle — a Kanban
  * Board (lanes by status, drag to advance) and a grouped List (by status by
- * default, switchable to format or pillar). Opening a post swaps to the editor;
+ * default). Opening a post swaps to the editor;
  * the caller renders that with a Back button. Statuses are the blog app's own
  * `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
  */
@@ -74,7 +74,6 @@ import {
   planningMeta,
   planningPostKey,
   scanIdeas,
-  scanPillars,
   type PostMeta,
   type PostStatus,
   POST_STATUSES,
@@ -87,7 +86,7 @@ import {
   sectionsToBlocks,
 } from "./import-content";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
-import { PickList, str } from "./blocks/primitives";
+import { str } from "./blocks/primitives";
 import {
   PostFilterBar,
   PostSearchInput,
@@ -186,7 +185,6 @@ export function PostsWorkspace({
   const [askOpen, setAskOpen] = useState(false);
   const [guidance, setGuidance] = useState("");
   const [count, setCount] = useState(3);
-  const [ideaPillarKey, setIdeaPillarKey] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateSeed, setGenerateSeed] = useState<IdeaSeed | undefined>();
@@ -217,9 +215,6 @@ export function PostsWorkspace({
 
   const posts = listAllPostsWithMeta(decofile);
   const ideas = scanIdeas(decofile);
-  const pillars = scanPillars(decofile);
-  const pillarTitleOf = (key?: string) =>
-    pillars.find((pillar) => pillar.key === key)?.title;
   const ideasCollapsed = isLaneCollapsed(IDEAS_LANE, ideas.length === 0);
   const payloadOf = (key: string) =>
     getBlogPayload(
@@ -388,7 +383,6 @@ export function PostsWorkspace({
   /** Propose ideas from the brand context and store them as idea blocks. */
   const generateIdeas = async () => {
     setIsGenerating(true);
-    const pillar = pillars.find((entry) => entry.key === ideaPillarKey);
     try {
       const { merged } = readBlogContext(decofile);
       const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
@@ -402,14 +396,7 @@ export function PostsWorkspace({
         brand: contextForTools(merged),
         existingTitles: ideas.map((idea) => idea.title).filter(Boolean),
         formats: formatNames,
-        guidance:
-          [
-            pillar &&
-              `Every idea must be one angle inside the pillar "${pillar.title}": ${pillar.body}`,
-            guidance.trim(),
-          ]
-            .filter(Boolean)
-            .join("\n\n") || undefined,
+        guidance: guidance.trim() || undefined,
         count,
       });
 
@@ -432,7 +419,6 @@ export function PostsWorkspace({
             data: buildIdeaBlock(key, {
               title: idea.title,
               body: idea.body,
-              pillarKey: pillar?.key,
               createdAt: new Date().toISOString(),
             }),
           });
@@ -513,27 +499,6 @@ export function PostsWorkspace({
                   placeholder={t("sandbox.postBoard.ideaGuidancePlaceholder")}
                   className="resize-none text-sm"
                 />
-                {pillars.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">
-                      {t("sandbox.postBoard.ideaPillarLabel")}
-                    </Label>
-                    <PickList
-                      options={pillars.map((pillar) => pillar.title)}
-                      value={
-                        pillars.find((pillar) => pillar.key === ideaPillarKey)
-                          ?.title ?? ""
-                      }
-                      emptyLabel={t("sandbox.postBoard.ideaNoPillar")}
-                      onChange={(title) =>
-                        setIdeaPillarKey(
-                          pillars.find((pillar) => pillar.title === title)
-                            ?.key ?? "",
-                        )
-                      }
-                    />
-                  </div>
-                )}
                 <div className="flex items-center gap-2">
                   <Label htmlFor="idea-count" className="text-xs">
                     {t("sandbox.postBoard.ideaCount")}
@@ -697,7 +662,6 @@ export function PostsWorkspace({
           <IdeaTray
             ideas={ideas}
             collapsed={ideasCollapsed}
-            pillarTitleOf={pillarTitleOf}
             onToggleCollapsed={() =>
               setLaneCollapsed(IDEAS_LANE, !ideasCollapsed)
             }
@@ -1142,19 +1106,10 @@ function PostCard({
           {post.title || t("sandbox.postBoard.untitled")}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {post.status === "draft" && (
-            <>
-              {plan.pillarTitle && (
-                <Badge variant="secondary" className="max-w-full truncate">
-                  {plan.pillarTitle}
-                </Badge>
-              )}
-              {plan.format?.name && (
-                <Badge variant="outline" className="max-w-full truncate">
-                  {plan.format.name}
-                </Badge>
-              )}
-            </>
+          {post.status === "draft" && plan.format?.name && (
+            <Badge variant="outline" className="max-w-full truncate">
+              {plan.format.name}
+            </Badge>
           )}
           {post.status === "generating" && (
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1204,14 +1159,12 @@ function PostCard({
 function IdeaTray({
   ideas,
   collapsed,
-  pillarTitleOf,
   onToggleCollapsed,
   onGenerate,
   onDelete,
 }: {
   ideas: IdeaEntry[];
   collapsed: boolean;
-  pillarTitleOf: (key?: string) => string | undefined;
   onToggleCollapsed: () => void;
   onGenerate: (idea: IdeaEntry) => void;
   onDelete: (idea: IdeaEntry) => void;
@@ -1258,52 +1211,41 @@ function IdeaTray({
             {t("sandbox.postBoard.ideasEmpty")}
           </p>
         ) : (
-          ideas.map((idea) => {
-            const pillar = pillarTitleOf(idea.pillarKey);
-            return (
-              <div
-                key={idea.key}
-                className="group/card relative rounded-lg border border-dashed bg-card shadow-sm transition-colors hover:border-primary/40"
-              >
-                <ArchiveButton
-                  label={t("sandbox.postBoard.deleteIdea")}
-                  onArchive={() => onDelete(idea)}
-                  className="top-2"
-                />
-                <div className="p-3">
-                  <p className="line-clamp-2 pr-6 text-sm font-medium">
-                    {idea.title || t("sandbox.postBoard.untitledIdea")}
+          ideas.map((idea) => (
+            <div
+              key={idea.key}
+              className="group/card relative rounded-lg border border-dashed bg-card shadow-sm transition-colors hover:border-primary/40"
+            >
+              <ArchiveButton
+                label={t("sandbox.postBoard.deleteIdea")}
+                onArchive={() => onDelete(idea)}
+                className="top-2"
+              />
+              <div className="p-3">
+                <p className="line-clamp-2 pr-6 text-sm font-medium">
+                  {idea.title || t("sandbox.postBoard.untitledIdea")}
+                </p>
+                {idea.body && (
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {idea.body}
                   </p>
-                  {idea.body && (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {idea.body}
-                    </p>
-                  )}
-                  {pillar && (
-                    <Badge
-                      variant="secondary"
-                      className="mt-2 max-w-full truncate"
-                    >
-                      {pillar}
-                    </Badge>
-                  )}
-                </div>
-                <div className="border-t px-3 py-2">
-                  {/* The other door into the same generation dialog. */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-full justify-start px-1.5 text-xs"
-                    onClick={() => onGenerate(idea)}
-                  >
-                    <Stars02 size={13} />
-                    {t("sandbox.postBoard.writeFromIdea")}
-                  </Button>
-                </div>
+                )}
               </div>
-            );
-          })
+              <div className="border-t px-3 py-2">
+                {/* The other door into the same generation dialog. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-full justify-start px-1.5 text-xs"
+                  onClick={() => onGenerate(idea)}
+                >
+                  <Stars02 size={13} />
+                  {t("sandbox.postBoard.writeFromIdea")}
+                </Button>
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>

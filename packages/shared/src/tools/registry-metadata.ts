@@ -67,7 +67,6 @@ const ALL_TOOL_NAMES = [
   "BRAND_CONTEXT_EXTRACT",
   "BLOG_BRAND_EXTRACT",
   "BLOG_CONTEXT_EXTRACT",
-  "BLOG_PILLAR_SUGGEST",
   "BLOG_THEME_SUGGEST",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
@@ -432,11 +431,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_CONTEXT_EXTRACT",
     description:
       "Infer a blog's writing context (tone, dos and don'ts) from a site",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_PILLAR_SUGGEST",
-    description: "Propose content pillars from a brand's editorial context",
     category: "Blog",
   },
   {

@@ -6,13 +6,7 @@
  * of the blog, and generation only produces the drafts it schedules.
  */
 import { useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Loading02,
-  Stars02,
-  X,
-} from "@untitledui/icons";
+import { Loading02, Stars02 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -34,15 +28,12 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
-import { MarkdownEditor } from "@/components/markdown-editor";
 import type { MarkdownMentions } from "@/components/markdown-editor";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { extractPages } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useAutosave } from "./use-autosave";
@@ -51,25 +42,21 @@ import {
   BRAND_BLOCK_KEY,
   type BrandRule,
   CONTEXT_BLOCK_KEY,
-  dedupeSuggestedThemes,
   defaultFormatSections,
   FORMATS_BLOCK_KEY,
   mentionableSections,
   filledBrandRules,
-  newPillarKey,
   normalizeBrandRules,
   normalizeTerms,
   normalizeTitleKey,
   normalizeVoiceExamples,
   type VoiceExample,
   postStructures,
-  scanPillars,
   selectBrandEvidence,
   applyExtractResult,
   asBlock,
   type FillMode,
   contextForTools,
-  readBlogContext,
   pickBlogFields,
   BRAND_FIELDS,
   CONTEXT_FIELDS,
@@ -78,6 +65,8 @@ import {
   linkifyCitations,
 } from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
+import { RuleList, TermsInput } from "./blocks/rule-list";
+import { CampaignsPanel } from "./campaigns-panel";
 
 /** Stable empty seed — `useAutosave` re-seeds on reference change. */
 const EMPTY_FORMATS: Record<string, unknown> = {};
@@ -112,7 +101,7 @@ const CONTEXT_SECTIONS = [
 type ContextSection = (typeof CONTEXT_SECTIONS)[number]["id"];
 
 /** The tabs of the Context screen. */
-type ContextTab = "brand" | "formats" | "pillars" | "automations";
+type ContextTab = "brand" | "formats" | "campaigns" | "automations";
 
 /** Steps the extract goes through, in order. See `phase` in BlogContext. */
 type ExtractPhase = Extract<TranslationKey, `sandbox.blogBrand.phase${string}`>;
@@ -122,11 +111,6 @@ const PHASE_READING = "sandbox.blogBrand.phaseReading" satisfies ExtractPhase;
 type FormatPhase = Extract<TranslationKey, `sandbox.formats.phase${string}`>;
 const FORMAT_PHASE_READING =
   "sandbox.formats.phaseReading" satisfies FormatPhase;
-
-/** Steps the pillar suggestion goes through, in order. */
-type PillarPhase = Extract<TranslationKey, `sandbox.pillars.phase${string}`>;
-const PILLAR_PHASE_READING =
-  "sandbox.pillars.phaseReading" satisfies PillarPhase;
 
 /**
  * A plain format anyone can start from, written locally: no model, no credits,
@@ -148,10 +132,9 @@ function starterFormat(
 }
 
 /**
- * The blog's editorial Context: Brand, Formats, Content pillars, plus the
- * Authors and Categories reference data — each persisted to the site's own
- * `.deco/blocks/`. Replaces the old "Autonomous content" shell; generation now
- * lives on the Posts board, and themes are reconceived as pillars here.
+ * The blog's editorial Context: Brand, Formats and Campaigns, each persisted to
+ * the site's own `.deco/blocks/`. Replaces the old "Autonomous content" shell;
+ * generation lives on the Posts board.
  */
 export function BlogContext({
   orgSlug,
@@ -654,10 +637,10 @@ export function BlogContext({
             {t("sandbox.blogContext.tabFormats")}
           </TabButton>
           <TabButton
-            active={tab === "pillars"}
-            onClick={() => setTab("pillars")}
+            active={tab === "campaigns"}
+            onClick={() => setTab("campaigns")}
           >
-            {t("sandbox.blogContext.tabPillars")}
+            {t("sandbox.blogContext.tabCampaigns")}
           </TabButton>
           {/* Wired as a tab so the shape is visible; the panel comes later. */}
           <TabButton active={false} disabled onClick={() => {}}>
@@ -853,13 +836,12 @@ export function BlogContext({
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {tab === "pillars" ? (
-          <PillarsPanel
+        {tab === "campaigns" ? (
+          <CampaignsPanel
             orgSlug={orgSlug}
             virtualMcpId={virtualMcpId}
             branch={branch}
             decofile={decofile}
-            hasAi={hasAi}
           />
         ) : tab === "formats" ? (
           <div className="min-w-0 max-w-3xl space-y-3 px-8 py-6">
@@ -1006,79 +988,6 @@ function TextAreaField({
 }
 
 /**
- * A list of plain terms, as chips.
- *
- * Keywords have no body to write, and a column of one-field rows reads as a
- * form with a missing half. Chips also make the list scannable at the length
- * this field actually reaches, which is twenty terms, not three.
- */
-function TermsInput({
-  terms,
-  onChange,
-  placeholder,
-  removeLabel,
-}: {
-  terms: string[];
-  onChange: (terms: string[]) => void;
-  placeholder: string;
-  removeLabel: string;
-}) {
-  const [draft, setDraft] = useState("");
-
-  /** Commits whatever is typed, splitting on commas so a paste lands as chips. */
-  const commit = (text: string) => {
-    const fresh = text
-      .split(",")
-      .map((term) => term.trim())
-      .filter((term) => term && !terms.includes(term));
-    if (fresh.length > 0) onChange([...terms, ...fresh]);
-    setDraft("");
-  };
-
-  return (
-    <div className="space-y-2 rounded-lg border bg-card p-2">
-      {terms.length > 0 && (
-        <ul className="flex flex-wrap gap-1.5">
-          {terms.map((term, index) => (
-            <li key={`${term}-${index}`}>
-              <Badge variant="secondary" className="gap-1 pr-1">
-                <span className="truncate">{term}</span>
-                <button
-                  type="button"
-                  aria-label={`${removeLabel}: ${term}`}
-                  onClick={() => onChange(terms.filter((_, i) => i !== index))}
-                  className="cursor-pointer rounded-sm p-0.5 hover:bg-foreground/10"
-                >
-                  <X size={11} />
-                </button>
-              </Badge>
-            </li>
-          ))}
-        </ul>
-      )}
-      <Input
-        value={draft}
-        placeholder={placeholder}
-        onChange={(e) => setDraft(e.target.value)}
-        // Blur commits too: a typed term left uncommitted would vanish silently.
-        onBlur={() => commit(draft)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            commit(draft);
-            return;
-          }
-          if (e.key === "Backspace" && draft === "" && terms.length > 0) {
-            onChange(terms.slice(0, -1));
-          }
-        }}
-        className="border-0 shadow-none focus-visible:ring-0"
-      />
-    </div>
-  );
-}
-
-/**
  * Example sentences, each with the side of the line it sits on.
  *
  * Flat rows rather than the collapsible {@link RuleList}: there is nothing to
@@ -1139,436 +1048,5 @@ function VoiceExampleList({
         onClick={() => onChange([...examples, { text: "", sounds: true }])}
       />
     </div>
-  );
-}
-
-/**
- * List of `{ name, value }` rules. A row shows the name; clicking it opens that
- * rule's markdown body, and only one is open at a time — a column of editors is
- * unreadable once there are more than two rules. Rows key by index (no stable
- * id, no reordering); `revision` keys the editors so an outside fill remounts
- * them.
- */
-function RuleList({
-  rules,
-  onChange,
-  revision,
-  idPrefix,
-  add,
-  namePlaceholder,
-  bodyPlaceholder,
-  mentions,
-  citationWarning,
-}: {
-  rules: BrandRule[];
-  onChange: (rules: BrandRule[]) => void;
-  revision: number;
-  idPrefix: string;
-  add: string;
-  namePlaceholder: string;
-  bodyPlaceholder: string;
-  /** Enables `@` in the body editor. Only formats cite site sections. */
-  mentions?: MarkdownMentions;
-  /** Message for a body citing something that doesn't exist, or null. */
-  citationWarning?: (value: string) => string | null;
-}) {
-  const t = useT();
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const replaceAt = (index: number, patch: Partial<BrandRule>) =>
-    onChange(rules.map((r, i) => (i === index ? { ...r, ...patch } : r)));
-
-  const remove = (index: number) => {
-    onChange(rules.filter((_, i) => i !== index));
-    // Indices shift on delete, so anything but the untouched prefix is stale.
-    setOpenIndex((open) => (open === null || open < index ? open : null));
-  };
-
-  return (
-    <div className="space-y-2">
-      <ul className="divide-y overflow-hidden rounded-lg border">
-        {rules.map((rule, index) => {
-          const open = openIndex === index;
-          return (
-            <li key={index} className="group/item bg-card">
-              <div className="flex items-center gap-1 pr-2">
-                <button
-                  type="button"
-                  onClick={() => setOpenIndex(open ? null : index)}
-                  aria-expanded={open}
-                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
-                >
-                  {open ? (
-                    <ChevronDown size={14} className="shrink-0" />
-                  ) : (
-                    <ChevronRight
-                      size={14}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                  )}
-                  <span
-                    className={cn(
-                      "truncate",
-                      !rule.name && "text-muted-foreground",
-                    )}
-                  >
-                    {rule.name || t("sandbox.blogBrand.untitledRule")}
-                  </span>
-                </button>
-                <RemoveButton
-                  label={t("sandbox.blogBrand.removeItem")}
-                  onClick={() => remove(index)}
-                />
-              </div>
-              {open && (
-                <RuleBody
-                  rule={rule}
-                  editorKey={`${idPrefix}-${index}-${revision}`}
-                  namePlaceholder={namePlaceholder}
-                  bodyPlaceholder={bodyPlaceholder}
-                  mentions={mentions}
-                  citationWarning={citationWarning}
-                  onPatch={(patch) => replaceAt(index, patch)}
-                />
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      <AddButton
-        label={add}
-        onClick={() => {
-          onChange([...rules, { name: "", value: "" }]);
-          setOpenIndex(rules.length);
-        }}
-      />
-    </div>
-  );
-}
-
-/**
- * How long a citation may look broken while it is still being typed.
- *
- * `@Heading` passes through `@H`, `@He`, `@Hea` on the way in, and every one of
- * them is a name this site has no block for. Warning on each made the message
- * flash under the editor on every keystroke, which reads as the editor lagging.
- * Whether a brief cites something real is a question about settled text.
- */
-const CITATION_SETTLE_MS = 600;
-
-/** The open row's fields. Its own component so the warning can settle per row. */
-function RuleBody({
-  rule,
-  editorKey,
-  namePlaceholder,
-  bodyPlaceholder,
-  mentions,
-  citationWarning,
-  onPatch,
-}: {
-  rule: BrandRule;
-  editorKey: string;
-  namePlaceholder: string;
-  bodyPlaceholder: string;
-  mentions?: MarkdownMentions;
-  citationWarning?: (value: string) => string | null;
-  onPatch: (patch: Partial<BrandRule>) => void;
-}) {
-  const settled = useDebouncedValue(rule.value, CITATION_SETTLE_MS);
-  const warning = citationWarning?.(settled);
-  return (
-    <div className="space-y-3 border-t bg-background px-3 py-3">
-      <Input
-        value={rule.name}
-        placeholder={namePlaceholder}
-        onChange={(e) => onPatch({ name: e.target.value })}
-        className="h-9 font-medium"
-      />
-      <MarkdownEditor
-        key={editorKey}
-        defaultValue={rule.value}
-        placeholder={bodyPlaceholder}
-        attachments={false}
-        mentions={mentions}
-        onChange={(markdown) => onPatch({ value: markdown })}
-      />
-      {warning && <p className="text-xs text-warning">{warning}</p>}
-    </div>
-  );
-}
-
-/**
- * The pillars tab: the editorial queue of recurring territories. One block per
- * pillar under `blog-manager/pillars/` (reads the legacy themes prefix too), so
- * appending suggestions can't clobber the one being edited.
- */
-function PillarsPanel({
-  orgSlug,
-  virtualMcpId,
-  branch,
-  decofile,
-  hasAi,
-}: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  decofile: Record<string, unknown>;
-  hasAi: boolean;
-}) {
-  const t = useT();
-  const studio = useStudioTools();
-  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
-
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  const [guidance, setGuidance] = useState("");
-  const [askOpen, setAskOpen] = useState(false);
-  const [isSuggesting, setIsSuggesting] = useState(false);
-  const [phase, setPhase] = useState<PillarPhase>(PILLAR_PHASE_READING);
-
-  const pillars = scanPillars(decofile);
-  const { merged } = readBlogContext(decofile);
-  const hasBrand = Boolean(str(merged.companyName) || str(merged.description));
-
-  const addPillar = () => {
-    const blockKey = newPillarKey();
-    save.mutate({
-      blockKey,
-      data: { title: "", body: "", createdAt: new Date().toISOString() },
-    });
-    setOpenKey(blockKey);
-  };
-
-  const suggest = async () => {
-    setIsSuggesting(true);
-    setPhase(PILLAR_PHASE_READING);
-    const timer = setTimeout(
-      () => setPhase("sandbox.pillars.phaseWriting"),
-      4_000,
-    );
-    try {
-      const result = await studio.call("BLOG_PILLAR_SUGGEST", {
-        virtualMcpId,
-        brand: contextForTools(merged),
-        existingPillars: pillars.map((p) => p.title).filter(Boolean),
-        guidance: guidance.trim() || undefined,
-      });
-
-      const fresh = dedupeSuggestedThemes(
-        pillars.map((p) => p.title),
-        result.pillars,
-      );
-      if (fresh.length === 0) {
-        toast.info(t("sandbox.pillars.noNew"));
-        return;
-      }
-
-      const now = Date.now();
-      let created = 0;
-      // One at a time — parallel writes race the fast-preview decofile cache.
-      for (const [index, pillar] of fresh.entries()) {
-        try {
-          await save.mutateAsync({
-            blockKey: newPillarKey(),
-            data: {
-              title: pillar.title,
-              body: pillar.body,
-              createdAt: new Date(now - index).toISOString(),
-            },
-          });
-          created++;
-        } catch (err) {
-          console.warn("[pillars] could not save a suggested pillar", err);
-        }
-      }
-
-      if (created === 0) {
-        toast.error(t("sandbox.pillars.suggestFailed"));
-        return;
-      }
-      toast.success(t("sandbox.pillars.suggested", { count: String(created) }));
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t("sandbox.pillars.suggestFailed"),
-      );
-    } finally {
-      clearTimeout(timer);
-      setIsSuggesting(false);
-    }
-  };
-
-  return (
-    <div className="flex h-full min-w-0 flex-col">
-      <div className="flex items-start justify-between gap-3 px-8 pb-3 pt-4">
-        <p className="max-w-xl text-xs text-muted-foreground">
-          {t("sandbox.pillars.hint")}
-        </p>
-        <div className="flex shrink-0 items-center gap-3">
-          {isSuggesting && (
-            <span
-              className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
-              aria-live="polite"
-              role="status"
-            >
-              <Loading02 size={12} className="shrink-0 animate-spin" />
-              <span className="truncate">{t(phase)}</span>
-            </span>
-          )}
-          <Popover open={askOpen} onOpenChange={setAskOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                disabled={isSuggesting || !hasBrand || !hasAi}
-                title={
-                  !hasAi
-                    ? t("sandbox.autonomous.noAiProvider")
-                    : hasBrand
-                      ? t("sandbox.pillars.suggestHint")
-                      : t("sandbox.pillars.suggestNoBrand")
-                }
-              >
-                <Stars02 size={14} />
-                {t("sandbox.pillars.suggest")}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-80 space-y-3">
-              <div className="space-y-1">
-                <Label htmlFor="pillar-guidance">
-                  {t("sandbox.pillars.guidanceLabel")}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("sandbox.pillars.guidanceHint")}
-                </p>
-              </div>
-              <Input
-                id="pillar-guidance"
-                value={guidance}
-                onChange={(e) => setGuidance(e.target.value)}
-                placeholder={t("sandbox.pillars.guidancePlaceholder")}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  setAskOpen(false);
-                  void suggest();
-                }}
-                className="h-9"
-              />
-              <Button
-                type="button"
-                size="sm"
-                className="w-full"
-                onClick={() => {
-                  setAskOpen(false);
-                  void suggest();
-                }}
-              >
-                <Stars02 size={14} />
-                {t("sandbox.pillars.suggest")}
-              </Button>
-            </PopoverContent>
-          </Popover>
-          <SaveStatus
-            isPending={save.isPending || deleteBlock.isPending}
-            isError={save.isError || deleteBlock.isError}
-          />
-        </div>
-      </div>
-
-      <div className="min-w-0 flex-1 space-y-3 overflow-y-auto px-8 pb-6">
-        {pillars.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("sandbox.pillars.empty")}
-          </p>
-        ) : (
-          <ul className="divide-y overflow-hidden rounded-lg border">
-            {pillars.map((pillar) => (
-              <PillarRow
-                key={pillar.key}
-                blockKey={pillar.key}
-                block={decofile[pillar.key] as Record<string, unknown>}
-                open={openKey === pillar.key}
-                onToggle={() =>
-                  setOpenKey((open) =>
-                    open === pillar.key ? null : pillar.key,
-                  )
-                }
-                onRemove={() => {
-                  deleteBlock.mutate({ blockKey: pillar.key });
-                  setOpenKey((open) => (open === pillar.key ? null : open));
-                }}
-                onSave={(data) => save.mutate({ blockKey: pillar.key, data })}
-              />
-            ))}
-          </ul>
-        )}
-        <AddButton label={t("sandbox.pillars.add")} onClick={addPillar} />
-      </div>
-    </div>
-  );
-}
-
-/** One pillar, collapsed to its title until clicked. Owns its own draft. */
-function PillarRow({
-  blockKey,
-  block,
-  open,
-  onToggle,
-  onRemove,
-  onSave,
-}: {
-  blockKey: string;
-  block: Record<string, unknown>;
-  open: boolean;
-  onToggle: () => void;
-  onRemove: () => void;
-  onSave: (data: Record<string, unknown>) => void;
-}) {
-  const t = useT();
-  const [draft, setDraft] = useAutosave(block, onSave);
-  const title = str(draft.title);
-
-  return (
-    <li className="group/item bg-card">
-      <div className="flex items-center gap-1 pr-2">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
-        >
-          {open ? (
-            <ChevronDown size={14} className="shrink-0" />
-          ) : (
-            <ChevronRight
-              size={14}
-              className="shrink-0 text-muted-foreground"
-            />
-          )}
-          <span className={cn("truncate", !title && "text-muted-foreground")}>
-            {title || t("sandbox.pillars.untitled")}
-          </span>
-        </button>
-        <RemoveButton label={t("sandbox.pillars.remove")} onClick={onRemove} />
-      </div>
-      {open && (
-        <div className="space-y-3 border-t bg-background px-3 py-3">
-          <Input
-            value={title}
-            placeholder={t("sandbox.pillars.namePlaceholder")}
-            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-            className="h-9 font-medium"
-          />
-          <MarkdownEditor
-            key={blockKey}
-            defaultValue={str(draft.body)}
-            placeholder={t("sandbox.pillars.bodyPlaceholder")}
-            attachments={false}
-            onChange={(markdown) => setDraft({ ...draft, body: markdown })}
-          />
-        </div>
-      )}
-    </li>
   );
 }

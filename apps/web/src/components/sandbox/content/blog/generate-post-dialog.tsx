@@ -30,7 +30,6 @@ import {
   missingBrandForGeneration,
   normalizeBrandRules,
   scanIdeas,
-  scanPillars,
 } from "./blog-data";
 import { PickList, str } from "./blocks/primitives";
 import type { PostBriefing } from "./use-generate-post";
@@ -69,9 +68,7 @@ interface Suggestion {
 /**
  * The generation happy path: which idea, in what shape, with what details.
  *
- * There is no pillar step — the idea carries its own pillar, and asking twice
- * would let the two disagree. Given a `seed` the idea is settled and the wizard
- * opens on the format.
+ * Given a `seed` the idea is settled and the wizard opens on the format.
  *
  * Category and author are the one place where leaving a field empty is itself a
  * choice: the model then files and attributes the post.
@@ -116,10 +113,6 @@ export function GeneratePostDialog({
 
   const ideas = scanIdeas(decofile);
   const pickedIdea = ideas.find((entry) => entry.key === ideaKey);
-  /** The pillar is the idea's — asking for it again would let the two disagree. */
-  const pillar = scanPillars(decofile).find(
-    (entry) => entry.key === pickedIdea?.pillarKey,
-  );
   const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
     | Record<string, unknown>
     | undefined;
@@ -158,9 +151,6 @@ export function GeneratePostDialog({
         brand: brandForTools,
         existingTitles: [],
         formats: formats.map((f) => f.name).filter(Boolean),
-        guidance: pillar
-          ? `Every idea must be one angle inside the pillar "${pillar.title}": ${pillar.body}`
-          : undefined,
         count: 4,
       });
       setIdeaSuggestions(result.themes);
@@ -175,7 +165,7 @@ export function GeneratePostDialog({
     }
   };
 
-  // Seeded, the pillar and the angle are settled — only the shape is still open.
+  // Seeded, the angle is settled — only the shape is still open.
   const steps = seed ? STEPS.filter((entry) => entry.id !== "idea") : STEPS;
   const stepIndex = steps.findIndex((entry) => entry.id === step);
   const canAdvance =
@@ -193,9 +183,6 @@ export function GeneratePostDialog({
         title: ideaTitle.trim(),
         body: ideaBody.trim(),
       },
-      pillar: pillar
-        ? { key: pillar.key, title: pillar.title, body: pillar.body }
-        : undefined,
       format: { name: formatName.trim(), value: formatValue.trim() },
       category: categories.find((c) => c.slug === categorySlug),
       author: authors.find((a) => a.email === authorEmail),
@@ -246,11 +233,7 @@ export function GeneratePostDialog({
               {step === "idea" && (
                 <>
                   <p className="text-xs text-muted-foreground">
-                    {pillar
-                      ? t("sandbox.generatePost.ideaHintInPillar", {
-                          pillar: pillar.title,
-                        })
-                      : t("sandbox.generatePost.ideaHint")}
+                    {t("sandbox.generatePost.ideaHint")}
                   </p>
                   {ideas.length > 0 && (
                     <PickList

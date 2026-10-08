@@ -174,15 +174,6 @@ export const BLOG_THEME_SUGGEST = defineTool({
       .describe(
         "What the operator wants themes about, in their own words — including any rough seed ideas to develop. Outranks every inference from the brand profile.",
       ),
-    pillar: z
-      .object({
-        title: z.string().max(MAX_TITLE_CHARS),
-        body: z.string().max(MAX_GUIDANCE_CHARS),
-      })
-      .optional()
-      .describe(
-        "The content pillar these themes must serve — the recurring territory they belong to. When set, every theme stays inside it.",
-      ),
     formats: z
       .array(z.string().max(MAX_TITLE_CHARS))
       .max(MAX_CATEGORIES)
@@ -251,8 +242,6 @@ export const BLOG_THEME_SUGGEST = defineTool({
 
     const prompt = [
       renderBrand(input.brand),
-      input.pillar &&
-        `## Content pillar these themes must serve\n${input.pillar.title}${input.pillar.body ? `\n${input.pillar.body}` : ""}`,
       input.formats.length > 0 &&
         `## Formats the blog writes in\n${input.formats.join(", ")}`,
       input.categories.length > 0 &&

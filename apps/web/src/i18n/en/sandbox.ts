@@ -133,13 +133,87 @@ export const sandbox = {
   "sandbox.blogCustomFields.title": "Other fields",
   "sandbox.blogCustomFields.description":
     "Fields this site's own content type declares, beyond the ones above.",
+  "sandbox.campaigns.add": "New campaign",
+  "sandbox.campaigns.addAvoid": "Add guardrail",
+  "sandbox.campaigns.addTarget": "Add target",
+  "sandbox.campaigns.avoidBodyPlaceholder":
+    "What must not happen, and why this campaign in particular needs it said",
+  "sandbox.campaigns.avoidHint":
+    "Added to the brand's guardrails for this campaign only — it never replaces them.",
+  "sandbox.campaigns.avoidLabel": "Extra guardrails",
+  "sandbox.campaigns.avoidNamePlaceholder": "What this guardrail is about",
+  "sandbox.campaigns.close": "Close",
+  "sandbox.campaigns.collapseLane": "Collapse {lane}",
+  "sandbox.campaigns.empty":
+    "No campaigns yet. A campaign is a moment worth writing for — a launch, a date, a search you do not answer.",
+  "sandbox.campaigns.expandLane": "Expand {lane}",
+  "sandbox.campaigns.keywordsHint":
+    "The terms this campaign should be found by. Enter or a comma adds one.",
+  "sandbox.campaigns.keywordsLabel": "Keywords",
+  "sandbox.campaigns.keywordsPlaceholder": "Add a term and press Enter",
+  "sandbox.campaigns.laneEmpty": "Nothing here",
+  "sandbox.campaigns.moveFailed": "Could not move the campaign",
+  "sandbox.campaigns.nameLabel": "Name",
+  "sandbox.campaigns.namePlaceholder": "e.g. Black Friday 2026",
+  "sandbox.campaigns.noMatches": "No campaign matches that.",
+  "sandbox.campaigns.objectiveAwareness": "Awareness",
+  "sandbox.campaigns.objectiveConversion": "Conversion",
+  "sandbox.campaigns.objectiveEducation": "Education",
+  "sandbox.campaigns.objectiveHint":
+    "What a post written for this campaign is trying to achieve.",
+  "sandbox.campaigns.objectiveLabel": "Objective",
+  "sandbox.campaigns.objectiveRepositioning": "Repositioning",
+  "sandbox.campaigns.objectiveRetention": "Retention",
+  "sandbox.campaigns.periodClear": "Clear the period",
+  "sandbox.campaigns.periodEmpty": "No dates",
+  "sandbox.campaigns.periodLabel": "Period",
+  "sandbox.campaigns.remove": "Delete campaign",
+  "sandbox.campaigns.removeKeyword": "Remove term",
+  "sandbox.campaigns.removeTarget": "Remove target",
+  "sandbox.campaigns.searchPlaceholder": "Search campaigns",
+  "sandbox.campaigns.selectPrompt": "Pick a campaign to edit it.",
+  "sandbox.campaigns.statusActive": "Active",
+  "sandbox.campaigns.statusDraft": "Drafts",
+  "sandbox.campaigns.statusFinished": "Finished",
+  "sandbox.campaigns.statusLabel": "Status",
+  "sandbox.campaigns.statusPaused": "Paused",
+  "sandbox.campaigns.targetCategory": "Category",
+  "sandbox.campaigns.targetCollection": "Collection",
+  "sandbox.campaigns.targetLabelPlaceholder": "How you call it",
+  "sandbox.campaigns.targetProduct": "Product",
+  "sandbox.campaigns.targetUrlPlaceholder": "https://…",
+  "sandbox.campaigns.targetUrlRequired":
+    "A target needs its URL — it is what a post links to.",
+  "sandbox.campaigns.targetsHint":
+    "What this campaign sells. Any storefront: the URL is what identifies it.",
+  "sandbox.campaigns.targetsLabel": "Targets",
+  "sandbox.campaigns.toneHint":
+    "Replaces the brand's tone while this campaign runs. Leave empty to keep it.",
+  "sandbox.campaigns.toneLabel": "Tone override",
+  "sandbox.campaigns.tonePlaceholder":
+    "e.g. shorter sentences, more urgency, no jokes",
+  "sandbox.campaigns.triggerHint":
+    "Why this campaign exists. The note is what a writer reads to understand the moment.",
+  "sandbox.campaigns.triggerInventory": "Inventory",
+  "sandbox.campaigns.triggerLabel": "Trigger",
+  "sandbox.campaigns.triggerLaunch": "Launch",
+  "sandbox.campaigns.triggerNotePlaceholder":
+    "What is happening, and why it is worth writing about now",
+  "sandbox.campaigns.triggerPartnership": "Partnership",
+  "sandbox.campaigns.triggerReputation": "Reputation",
+  "sandbox.campaigns.triggerSeasonal": "Seasonal",
+  "sandbox.campaigns.triggerSeoGap": "SEO gap",
+  "sandbox.campaigns.triggerTrend": "Trend",
+  "sandbox.campaigns.untitled": "Untitled campaign",
+  "sandbox.campaigns.viewBoard": "Board",
+  "sandbox.campaigns.viewList": "List",
   "sandbox.blogContext.removeEntry": "Remove",
   "sandbox.blogContext.subtitle":
-    "The brand context your blog is written from — voice, formats and the pillars it keeps returning to.",
+    "The brand context your blog is written from — voice, formats and the campaigns it writes for.",
   "sandbox.blogContext.tabAutomations": "Automations",
   "sandbox.blogContext.tabBrand": "Brand",
   "sandbox.blogContext.tabFormats": "Formats",
-  "sandbox.blogContext.tabPillars": "Content pillars",
+  "sandbox.blogContext.tabCampaigns": "Campaigns",
   "sandbox.blogContext.title": "Context",
   "sandbox.blogField.title": "Title",
   "sandbox.blogField.slug": "Slug",
@@ -423,8 +497,6 @@ export const sandbox = {
     "Who it's for and what it should cover. Optional.",
   "sandbox.generatePost.ideaHint":
     "One angle, specific enough to be a single post.",
-  "sandbox.generatePost.ideaHintInPillar":
-    'One angle inside "{pillar}" — specific enough to be a single post, not the territory itself.',
   "sandbox.generatePost.ideaTitleLabel": "What is the post about?",
   "sandbox.generatePost.ideaTitlePlaceholder": "e.g. Why linen creases",
   "sandbox.generatePost.inferHint":
@@ -435,7 +507,7 @@ export const sandbox = {
   "sandbox.generatePost.stepFormat": "Format",
   "sandbox.generatePost.stepIdea": "Idea",
   "sandbox.generatePost.subtitle":
-    "An idea, the pillar it belongs to, the format it follows — then anything else you want to pin down.",
+    "An idea and the format it follows — then anything else you want to pin down.",
   "sandbox.generatePost.suggestFailed": "Could not suggest",
   "sandbox.generatePost.suggestIdeas": "Suggest ideas",
   "sandbox.generatePost.suggestIdeasHint":
@@ -544,28 +616,6 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Search {options} or enter a value…",
   "sandbox.pathParamPickerChip.useRawValue": 'Use "{rawTerm}" as {paramLabel}',
-  "sandbox.pillars.add": "Add pillar",
-  "sandbox.pillars.bodyPlaceholder":
-    "What this territory covers and why it's one your brand keeps returning to.",
-  "sandbox.pillars.empty": "No content pillars yet.",
-  "sandbox.pillars.guidanceHint":
-    "What the pillars should be about, in your words. Optional.",
-  "sandbox.pillars.guidanceLabel": "Anything specific?",
-  "sandbox.pillars.guidancePlaceholder":
-    "e.g. focus on post-purchase education",
-  "sandbox.pillars.hint":
-    "Pillars are the recurring territories your blog returns to — product updates, customer cases, market trends. Each can be written in several formats.",
-  "sandbox.pillars.namePlaceholder": "Name the territory — e.g. Customer cases",
-  "sandbox.pillars.noNew": "No new pillars to add",
-  "sandbox.pillars.phaseReading": "Reading your brand context…",
-  "sandbox.pillars.phaseWriting": "Naming the territories…",
-  "sandbox.pillars.remove": "Remove pillar",
-  "sandbox.pillars.suggest": "Suggest pillars",
-  "sandbox.pillars.suggestFailed": "Could not suggest pillars",
-  "sandbox.pillars.suggestHint": "Propose pillars from your brand context.",
-  "sandbox.pillars.suggestNoBrand": "Fill in the Brand tab first.",
-  "sandbox.pillars.suggested": "Added {count} pillar(s)",
-  "sandbox.pillars.untitled": "Untitled pillar",
   "sandbox.plainBlocks.bulletedLabel": "Bulleted",
   "sandbox.plainBlocks.codePlaceholder": "Code",
   "sandbox.plainBlocks.headingLevel1": "Heading 1",
@@ -595,8 +645,6 @@ export const sandbox = {
   "sandbox.postBoard.ideaGuidanceLabel": "Rough ideas or a focus",
   "sandbox.postBoard.ideaGuidancePlaceholder":
     "e.g. a piece on choosing fabric weight",
-  "sandbox.postBoard.ideaNoPillar": "Any pillar",
-  "sandbox.postBoard.ideaPillarLabel": "Pillar",
   "sandbox.postBoard.ideasAdded": "Added {count} idea(s)",
   "sandbox.postBoard.ideasEmpty":
     "No ideas yet. Generate a few, or write one straight into a post.",
