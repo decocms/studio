@@ -8,12 +8,22 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, flag)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
  * session needs to render and to commit. The project's `fastPreview` switch
  * does NOT gate it; that switch only picks the runtime a NEW thread is stamped
  * with, and gating this on it would strand an already-stamped session.
+ *
+ * The content-protocol routes serve Blocks v8 sites on the hosted Deco CMS
+ * (see `hosted/`) and exist only behind the `site_editor_content_protocol`
+ * org flag. The editor's draft is an object on the delivery CDN
+ * (`hosted/draft-content-storage.ts`), never a git branch: `rpc` reads main
+ * with the draft layered on and saves into the draft; the session GET answers
+ * a v8 project's `?__draft=` pointer (`{ draft, version }`) instead of the
+ * decofile; publish commits the draft to main and releases it. `rpc` doesn't
+ * need a preview server: the protocol never renders.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -47,6 +57,18 @@ import {
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import {
+  bareEtag,
+  deliveryStore,
+  draftPointerTarget,
+} from "@/hosted/delivery-store";
+import { deliveryPurge } from "@/hosted/delivery-purge";
+import { createDraftContentStorage } from "@/hosted/draft-content-storage";
+import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
+import { MainMovedError, publishDraft } from "@/hosted/publish";
+import { hostedDrafts, mainIsV8, ownedProjectSite } from "@/hosted/scope";
+import { createContentHandler } from "@decocms/blocks/protocol/server";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -59,6 +81,9 @@ interface DecofileScope {
   repository: RepositoryBinding;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
+  previewServerUrl: string | null;
+  /** The public site id (`metadata.siteSlug`), the hosted CMS's key. */
+  site: string | null;
 }
 
 type DecofileEnv = Env & {
@@ -192,7 +217,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
    *  threads, and gating the data plane on it would strand a session already
    *  stamped `cms` the moment someone flips the switch off. */
   const previewServerUrl = resolvePreviewServerUrl(metadata);
-  if (!previewServerUrl) {
+  if (!previewServerUrl && !isContentProtocolPath(c.req.path)) {
     return c.json({ error: "Project has no preview server configured" }, 404);
   }
 
@@ -211,9 +236,74 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     repository,
     userId,
+    previewServerUrl,
+    site: await ownedProjectSite(
+      ctx.storage.orgSites,
+      virtualMcpId,
+      organization.id,
+    ),
   });
   return next();
 });
+
+/** Content-protocol routes that work without a preview server. */
+function isContentProtocolPath(path: string): boolean {
+  return path.endsWith("/rpc");
+}
+
+/**
+ * The `site_editor_content_protocol` org flag, read before a content-protocol
+ * route does anything (and so before any commit). A failed read is "off":
+ * the route answers 404 and the editor stays on the v7 path.
+ */
+async function contentProtocolEnabled(
+  c: Context<DecofileEnv>,
+): Promise<boolean> {
+  const ctx = c.var.studioContext;
+  const organizationId = c.get("decofileScope").organizationId;
+  try {
+    const settings = await ctx.storage.organizationSettings.get(organizationId);
+    return orgFlagEnabled(settings?.flags, "site_editor_content_protocol");
+  } catch (error) {
+    console.error("decofile: org settings read failed; protocol off", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+/**
+ * The draft store and this session's draft, for a member on a flag-on org
+ * with a delivery bucket configured. Null otherwise; whether the project is
+ * a v8 one is the caller's question.
+ */
+async function hostedScope(
+  c: Context<DecofileEnv>,
+): Promise<{ drafts: DraftStore; ref: HostedDraftRef } | null> {
+  const scope = c.get("decofileScope");
+  if (!scope.userId || !scope.site) return null;
+  if (!(await contentProtocolEnabled(c))) return null;
+  const drafts = hostedDrafts(c.var.studioContext.storage.kv);
+  if (!drafts) return null;
+  return {
+    drafts,
+    ref: {
+      organizationId: scope.organizationId,
+      virtualMcpId: scope.virtualMcpId,
+      branch: scope.branch,
+      site: scope.site,
+    },
+  };
+}
+
+function signScopeDraftToken(scope: DecofileScope): string {
+  return signDraftToken({
+    organizationId: scope.organizationId,
+    virtualMcpId: scope.virtualMcpId,
+    branch: scope.branch,
+  });
+}
 
 /**
  * The authority (host[:port]) the editor should bake into the `?__draft=`
@@ -266,6 +356,33 @@ export function createDecofileRoutes() {
     const scope = c.get("decofileScope");
     try {
       const client = await contentClientForScope(c);
+      // OPEN: O-S3 — a v8 project's editor reads its `?__draft=` pointer
+      // here, in place of v7's decofile, token and API host.
+      const hosted = await hostedScope(c);
+      if (hosted) {
+        const draft = await hosted.drafts.load(hosted.ref);
+        if (
+          draft ||
+          (await mainIsV8(
+            client,
+            scope.packagePath,
+            await client.getDefaultBranch(),
+          ))
+        ) {
+          const version = bareEtag(draft?.etag);
+          return c.json(
+            {
+              draft:
+                draft && version
+                  ? draftPointerTarget(hosted.ref.site, draft.slug)
+                  : null,
+              version,
+            },
+            200,
+            { "Cache-Control": "no-store" },
+          );
+        }
+      }
       const snapshot = await readDecofileSnapshot(
         client,
         scope.branch,
@@ -300,11 +417,7 @@ export function createDecofileRoutes() {
           "content-type": "application/json",
         });
       }
-      const token = signDraftToken({
-        organizationId: scope.organizationId,
-        virtualMcpId: scope.virtualMcpId,
-        branch: scope.branch,
-      });
+      const token = signScopeDraftToken(scope);
       return c.body(
         `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${snapshot.decofile}}`,
         200,
@@ -407,11 +520,7 @@ export function createDecofileRoutes() {
         },
         patch,
       );
-      const token = signDraftToken({
-        organizationId: scope.organizationId,
-        virtualMcpId: scope.virtualMcpId,
-        branch: scope.branch,
-      });
+      const token = signScopeDraftToken(scope);
       return c.json({ version: sha, token, apiHost: requestApiHost(c) });
     } catch (err) {
       return errorResponse(c, err);
@@ -423,6 +532,44 @@ export function createDecofileRoutes() {
     try {
       const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
+      const hosted = await hostedScope(c);
+      if (
+        hosted &&
+        ((await hosted.drafts.load(hosted.ref)) ||
+          (await mainIsV8(client, scope.packagePath, baseBranch)))
+      ) {
+        const store = deliveryStore();
+        if (!store) {
+          return c.json({ error: "hosted delivery not configured" }, 503);
+        }
+        const body = (await c.req.json().catch(() => ({}))) as {
+          note?: unknown;
+        };
+        try {
+          const result = await publishDraft(
+            {
+              client,
+              packagePath: scope.packagePath,
+              mainBranch: baseBranch,
+              store,
+              purge: deliveryPurge(),
+              site: hosted.ref.site,
+            },
+            hosted.drafts,
+            hosted.ref,
+            {
+              message: typeof body.note === "string" ? body.note : "",
+              coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+            },
+          );
+          return c.json(result);
+        } catch (err) {
+          if (err instanceof MainMovedError) {
+            return c.json({ error: "main-moved" }, 409);
+          }
+          throw err;
+        }
+      }
       if (baseBranch === scope.branch) {
         return c.json({ error: "Branch is already the default branch" }, 400);
       }
@@ -494,6 +641,44 @@ export function createDecofileRoutes() {
     } catch (err) {
       return errorResponse(c, err);
     }
+  });
+
+  app.post("/:virtualMcpId/:branch/rpc", async (c) => {
+    if (!(await contentProtocolEnabled(c))) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    const scope = c.get("decofileScope");
+    const hosted = await hostedScope(c);
+    if (!hosted) {
+      return c.json({ error: "hosted delivery not configured" }, 503);
+    }
+    const client = await contentClientForScope(c);
+    // Per request: the storage carries this caller's repository credential.
+    // The body cache is off for the same reason, and the blob cache under
+    // the storage already makes repeated reads cheap.
+    const handler = createContentHandler(
+      createDraftContentStorage({
+        client,
+        packagePath: scope.packagePath,
+        mainBranch: await client.getDefaultBranch(),
+        drafts: hosted.drafts,
+        ref: hosted.ref,
+      }),
+      {
+        server: { name: "studio-github", version: "1" },
+        preview: scope.previewServerUrl
+          ? { url: new URL(scope.previewServerUrl).origin }
+          : null,
+        bodyCacheBytes: 0,
+        onError: (error) =>
+          console.error("content protocol: internal error", {
+            organizationId: scope.organizationId,
+            virtualMcpId: scope.virtualMcpId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      },
+    );
+    return handler(c.req.raw);
   });
 
   return app;
