@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import { Calendar } from "@decocms/ui/components/calendar.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
@@ -22,6 +23,13 @@ import {
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@decocms/ui/components/dialog.tsx";
+import {
   CalendarDate,
   HelpCircle,
   SearchSm,
@@ -31,6 +39,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { useAutosave } from "./use-autosave";
 import { AddButton, PickList, RemoveButton } from "./blocks/primitives";
+import { CollapsibleList, CollapsibleRow } from "./blocks/collapsible-row";
 import { RuleList, TermsInput } from "./blocks/rule-list";
 import { CategoryTreeList } from "./blocks/category-tree-list";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
@@ -49,6 +58,7 @@ import {
   type CampaignTarget,
   type CampaignTargetKind,
   type CampaignTrigger,
+  MAX_CAMPAIGN_PRODUCT_IMAGES,
   normalizeBrandRules,
   readCampaignProducts,
   readCampaignTargets,
@@ -165,6 +175,8 @@ export function CampaignEditor({
 }) {
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [openTarget, setOpenTarget] = useState<number | null>(null);
+  const [openProduct, setOpenProduct] = useState<number | null>(null);
   const [draft, setDraft, syncDraft] = useAutosave(
     block ?? EMPTY_BLOCK,
     (next) => onSave(next),
@@ -213,6 +225,31 @@ export function CampaignEditor({
   const commitTarget = (index: number, change: Partial<CampaignTarget>) =>
     setTargets(withTarget(index, change));
 
+  /** A new entry opens straight away — nobody adds a row to leave it closed. */
+  const addTarget = (seed: Partial<CampaignTarget>) => {
+    setTargets([
+      ...targets,
+      { kind: "category", id: "", name: "", url: "", description: "", ...seed },
+    ]);
+    setOpenTarget(targets.length);
+  };
+  const removeTarget = (index: number) => {
+    setTargets(targets.filter((_, i) => i !== index));
+    setOpenTarget((open) => (open === null || open < index ? open : null));
+  };
+
+  const addProduct = () => {
+    setProducts([
+      ...products,
+      { id: "", name: "", url: "", images: [], category: "", description: "" },
+    ]);
+    setOpenProduct(products.length);
+  };
+  const removeProduct = (index: number) => {
+    setProducts(products.filter((_, i) => i !== index));
+    setOpenProduct((open) => (open === null || open < index ? open : null));
+  };
+
   const patchProduct = (index: number, change: Partial<CampaignProduct>) =>
     patch({
       intent: {
@@ -240,7 +277,7 @@ export function CampaignEditor({
         id: option.id,
         name: option.label,
         url: option.url ?? "",
-        image: option.image ?? "",
+        images: (option.images ?? []).slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES),
         category: option.category ?? "",
         description: option.description ?? "",
       },
@@ -368,13 +405,25 @@ export function CampaignEditor({
           {t("sandbox.campaigns.targetsHint")}
         </p>
         {targets.length > 0 && (
-          <ul className="space-y-2">
+          <CollapsibleList>
             {targets.map((target, index) => (
-              <li
+              <CollapsibleRow
                 key={index}
-                className="space-y-2 rounded-lg border bg-card p-3"
+                open={openTarget === index}
+                onToggle={() =>
+                  setOpenTarget(openTarget === index ? null : index)
+                }
+                title={target.name}
+                untitledLabel={t("sandbox.campaigns.untitledTarget")}
+                removeLabel={t("sandbox.campaigns.removeTarget")}
+                onRemove={() => removeTarget(index)}
+                leading={
+                  <Badge variant="secondary" className="shrink-0">
+                    {t(TARGET_KIND_LABEL[target.kind])}
+                  </Badge>
+                }
               >
-                <div className="flex items-center gap-2">
+                <div className="space-y-2 border-t px-3 py-3">
                   <PickList
                     options={CAMPAIGN_TARGET_KINDS.map((k) =>
                       t(TARGET_KIND_LABEL[k]),
@@ -387,66 +436,60 @@ export function CampaignEditor({
                       if (kind) commitTarget(index, { kind });
                     }}
                   />
-                  <div className="flex-1" />
-                  {target.kind === "category" && sandboxRef && (
-                    <CategoryTargetPicker
-                      sandboxRef={sandboxRef}
-                      onPick={(picked) => commitTarget(index, picked)}
-                    />
-                  )}
-                  <RemoveButton
-                    label={t("sandbox.campaigns.removeTarget")}
-                    onClick={() =>
-                      setTargets(targets.filter((_, i) => i !== index))
+                  <Input
+                    value={target.name}
+                    placeholder={t("sandbox.campaigns.targetNamePlaceholder")}
+                    onChange={(e) =>
+                      patchTarget(index, { name: e.target.value })
+                    }
+                    className="h-9"
+                  />
+                  <Input
+                    value={target.url}
+                    placeholder={t("sandbox.campaigns.targetUrlPlaceholder")}
+                    onChange={(e) =>
+                      patchTarget(index, { url: e.target.value })
+                    }
+                    className="h-9"
+                  />
+                  <Input
+                    value={target.id}
+                    placeholder={t("sandbox.campaigns.targetIdPlaceholder")}
+                    onChange={(e) => patchTarget(index, { id: e.target.value })}
+                    className="h-9"
+                  />
+                  <Textarea
+                    value={target.description}
+                    rows={2}
+                    placeholder={t(
+                      "sandbox.campaigns.targetDescriptionPlaceholder",
+                    )}
+                    onChange={(e) =>
+                      patchTarget(index, { description: e.target.value })
                     }
                   />
-                </div>
-                <Input
-                  value={target.name}
-                  placeholder={t("sandbox.campaigns.targetNamePlaceholder")}
-                  onChange={(e) => patchTarget(index, { name: e.target.value })}
-                  className="h-9"
-                />
-                <Input
-                  value={target.url}
-                  placeholder={t("sandbox.campaigns.targetUrlPlaceholder")}
-                  onChange={(e) => patchTarget(index, { url: e.target.value })}
-                  className="h-9"
-                />
-                <Input
-                  value={target.id}
-                  placeholder={t("sandbox.campaigns.targetIdPlaceholder")}
-                  onChange={(e) => patchTarget(index, { id: e.target.value })}
-                  className="h-9"
-                />
-                <Textarea
-                  value={target.description}
-                  rows={2}
-                  placeholder={t(
-                    "sandbox.campaigns.targetDescriptionPlaceholder",
+                  {!target.url.trim() && (
+                    <p className="text-xs text-warning">
+                      {t("sandbox.campaigns.targetUrlRequired")}
+                    </p>
                   )}
-                  onChange={(e) =>
-                    patchTarget(index, { description: e.target.value })
-                  }
-                />
-                {!target.url.trim() && (
-                  <p className="text-xs text-warning">
-                    {t("sandbox.campaigns.targetUrlRequired")}
-                  </p>
-                )}
-              </li>
+                </div>
+              </CollapsibleRow>
             ))}
-          </ul>
+          </CollapsibleList>
         )}
-        <AddButton
-          label={t("sandbox.campaigns.addTarget")}
-          onClick={() =>
-            setTargets([
-              ...targets,
-              { kind: "category", id: "", name: "", url: "", description: "" },
-            ])
-          }
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {sandboxRef && (
+            <CategoryTargetPicker
+              sandboxRef={sandboxRef}
+              onPick={(picked) => addTarget(picked)}
+            />
+          )}
+          <AddButton
+            label={t("sandbox.campaigns.addTarget")}
+            onClick={() => addTarget({})}
+          />
+        </div>
       </section>
 
       <section className="space-y-2">
@@ -455,84 +498,85 @@ export function CampaignEditor({
           {t("sandbox.campaigns.productsHint")}
         </p>
         {products.length > 0 && (
-          <ul className="space-y-2">
+          <CollapsibleList>
             {products.map((product, index) => (
-              <li
+              <CollapsibleRow
                 key={`${product.id}-${index}`}
-                className="space-y-2 rounded-lg border bg-card p-3"
-              >
-                <div className="flex items-start gap-3">
-                  {product.image ? (
+                open={openProduct === index}
+                onToggle={() =>
+                  setOpenProduct(openProduct === index ? null : index)
+                }
+                title={product.name}
+                untitledLabel={t("sandbox.campaigns.untitledProduct")}
+                removeLabel={t("sandbox.campaigns.removeProduct")}
+                onRemove={() => removeProduct(index)}
+                leading={
+                  product.images[0] ? (
                     <img
-                      src={product.image}
+                      src={product.images[0]}
                       alt=""
-                      className="size-12 shrink-0 rounded-md border object-cover"
+                      className="size-6 shrink-0 rounded border object-cover"
                     />
                   ) : (
-                    <div className="size-12 shrink-0 rounded-md border bg-muted" />
-                  )}
-                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="size-6 shrink-0 rounded border bg-muted" />
+                  )
+                }
+              >
+                <div className="space-y-2 border-t px-3 py-3">
+                  <Input
+                    value={product.name}
+                    placeholder={t("sandbox.campaigns.productNamePlaceholder")}
+                    onChange={(e) =>
+                      patchProduct(index, { name: e.target.value })
+                    }
+                    className="h-9"
+                  />
+                  <Input
+                    value={product.url}
+                    placeholder={t("sandbox.campaigns.productUrlPlaceholder")}
+                    onChange={(e) =>
+                      patchProduct(index, { url: e.target.value })
+                    }
+                    className="h-9"
+                  />
+                  <div className="flex gap-2">
                     <Input
-                      value={product.name}
-                      placeholder={t(
-                        "sandbox.campaigns.productNamePlaceholder",
-                      )}
+                      value={product.id}
+                      placeholder={t("sandbox.campaigns.productIdPlaceholder")}
                       onChange={(e) =>
-                        patchProduct(index, { name: e.target.value })
+                        patchProduct(index, { id: e.target.value })
                       }
                       className="h-9"
                     />
                     <Input
-                      value={product.url}
-                      placeholder={t("sandbox.campaigns.productUrlPlaceholder")}
-                      onChange={(e) =>
-                        patchProduct(index, { url: e.target.value })
-                      }
-                      className="h-9"
-                    />
-                    <div className="flex gap-2">
-                      <Input
-                        value={product.id}
-                        placeholder={t(
-                          "sandbox.campaigns.productIdPlaceholder",
-                        )}
-                        onChange={(e) =>
-                          patchProduct(index, { id: e.target.value })
-                        }
-                        className="h-9"
-                      />
-                      <Input
-                        value={product.category}
-                        placeholder={t(
-                          "sandbox.campaigns.productCategoryPlaceholder",
-                        )}
-                        onChange={(e) =>
-                          patchProduct(index, { category: e.target.value })
-                        }
-                        className="h-9"
-                      />
-                    </div>
-                    <Textarea
-                      value={product.description}
-                      rows={2}
+                      value={product.category}
                       placeholder={t(
-                        "sandbox.campaigns.productDescriptionPlaceholder",
+                        "sandbox.campaigns.productCategoryPlaceholder",
                       )}
                       onChange={(e) =>
-                        patchProduct(index, { description: e.target.value })
+                        patchProduct(index, { category: e.target.value })
                       }
+                      className="h-9"
                     />
                   </div>
-                  <RemoveButton
-                    label={t("sandbox.campaigns.removeProduct")}
-                    onClick={() =>
-                      setProducts(products.filter((_, i) => i !== index))
+                  <Textarea
+                    value={product.description}
+                    rows={2}
+                    placeholder={t(
+                      "sandbox.campaigns.productDescriptionPlaceholder",
+                    )}
+                    onChange={(e) =>
+                      patchProduct(index, { description: e.target.value })
                     }
                   />
+                  <ProductImages
+                    images={product.images}
+                    onChange={(images) => patchProduct(index, { images })}
+                  />
                 </div>
-              </li>
+              </CollapsibleRow>
             ))}
-          </ul>
+          </CollapsibleList>
         )}
         <div className="flex flex-wrap items-center gap-2">
           {sandboxRef && (
@@ -548,19 +592,7 @@ export function CampaignEditor({
           )}
           <AddButton
             label={t("sandbox.campaigns.addProduct")}
-            onClick={() =>
-              setProducts([
-                ...products,
-                {
-                  id: "",
-                  name: "",
-                  url: "",
-                  image: "",
-                  category: "",
-                  description: "",
-                },
-              ])
-            }
+            onClick={() => addProduct()}
           />
         </div>
         {sandboxRef && (
@@ -647,6 +679,52 @@ export function CampaignEditor({
   );
 }
 
+/** Up to three image URLs. The picker brings them; both lists stay editable. */
+function ProductImages({
+  images,
+  onChange,
+}: {
+  images: string[];
+  onChange: (images: string[]) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="space-y-2">
+      {images.map((image, index) => (
+        <div key={index} className="flex items-center gap-2">
+          {image ? (
+            <img
+              src={image}
+              alt=""
+              className="size-9 shrink-0 rounded border object-cover"
+            />
+          ) : (
+            <div className="size-9 shrink-0 rounded border bg-muted" />
+          )}
+          <Input
+            value={image}
+            placeholder={t("sandbox.campaigns.productImagePlaceholder")}
+            onChange={(e) =>
+              onChange(images.map((v, i) => (i === index ? e.target.value : v)))
+            }
+            className="h-9"
+          />
+          <RemoveButton
+            label={t("sandbox.campaigns.removeImage")}
+            onClick={() => onChange(images.filter((_, i) => i !== index))}
+          />
+        </div>
+      ))}
+      {images.length < MAX_CAMPAIGN_PRODUCT_IMAGES && (
+        <AddButton
+          label={t("sandbox.campaigns.addImage")}
+          onClick={() => onChange([...images, ""])}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * Fills a category target from the store's own tree. A shortcut, never a gate:
  * every field stays typable, which is the only thing that works for a
@@ -678,7 +756,7 @@ function CategoryTargetPicker({
             onPick({
               id: category.path,
               name: category.label,
-              url: `/${category.path}`,
+              url: category.url,
             });
             setOpen(false);
           }}
@@ -697,8 +775,8 @@ function OptionHelp({
   options: { name: string; help: string }[];
 }) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <Dialog>
+      <DialogTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -708,16 +786,21 @@ function OptionHelp({
         >
           <HelpCircle size={14} />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 space-y-2 text-sm">
-        {options.map((option) => (
-          <div key={option.name}>
-            <p className="font-medium">{option.name}</p>
-            <p className="text-xs text-muted-foreground">{option.help}</p>
-          </div>
-        ))}
-      </PopoverContent>
-    </Popover>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+        </DialogHeader>
+        <dl className="space-y-3">
+          {options.map((option) => (
+            <div key={option.name}>
+              <dt className="text-sm font-medium">{option.name}</dt>
+              <dd className="text-sm text-muted-foreground">{option.help}</dd>
+            </div>
+          ))}
+        </dl>
+      </DialogContent>
+    </Dialog>
   );
 }
 

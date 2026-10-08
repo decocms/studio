@@ -1855,11 +1855,14 @@ export interface CampaignProduct {
   id: string;
   name: string;
   url: string;
-  image: string;
+  /** Up to `MAX_CAMPAIGN_PRODUCT_IMAGES`; the post picks one to run with. */
+  images: string[];
   /** The product's main category, as the storefront reports it. */
   category: string;
   description: string;
 }
+
+export const MAX_CAMPAIGN_PRODUCT_IMAGES = 3;
 
 export interface CampaignEntry {
   key: string;
@@ -1919,6 +1922,15 @@ export function readCampaignTargets(value: unknown): CampaignTarget[] {
   return targets;
 }
 
+/** Image URLs, capped. Tolerates the single `image` an earlier shape wrote. */
+function readProductImages(record: Record<string, unknown>): string[] {
+  const listed = toArray(record.images)
+    .map((entry) => str(entry))
+    .filter(Boolean);
+  const all = listed.length > 0 ? listed : [str(record.image)].filter(Boolean);
+  return all.slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES);
+}
+
 export function readCampaignProducts(value: unknown): CampaignProduct[] {
   const products: CampaignProduct[] = [];
   for (const entry of toArray(value)) {
@@ -1928,7 +1940,7 @@ export function readCampaignProducts(value: unknown): CampaignProduct[] {
       id: str(record.id),
       name: str(record.name),
       url: str(record.url),
-      image: str(record.image),
+      images: readProductImages(record),
       category: str(record.category),
       description: str(record.description),
     });

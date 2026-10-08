@@ -29,6 +29,9 @@ export interface ProductPickerOption {
   image?: string;
   /** PDP path/URL, when the loader reports one — used to link to the product. */
   url?: string;
+  /** Every image URL the payload lists, `image` being the first. The caller
+   *  decides how many to keep. */
+  images?: string[];
   /** Main category, as the storefront reports it. */
   category?: string;
   /** Short description, when the payload carries one. */
@@ -41,6 +44,8 @@ export interface CategoryOption {
   path: string;
   /** `Parent › Child` breadcrumb for display. */
   label: string;
+  /** The URL the tree reports, kept whole — absolute when the store says so. */
+  url: string;
 }
 
 /** A single loader invoke: resolveType + the flat props the loader receives. */
@@ -155,11 +160,8 @@ export function productOptionsFromPayload(
       (typeof variant?.name === "string" && variant.name) ||
       (typeof product.name === "string" && product.name) ||
       id;
-    const imageEntry = Array.isArray(product.image)
-      ? asRecord(product.image[0])
-      : null;
-    const image =
-      typeof imageEntry?.url === "string" ? imageEntry.url : undefined;
+    const images = imageUrls(product.image);
+    const image = images[0];
     const url =
       (typeof product.url === "string" && product.url) ||
       (typeof variant?.url === "string" && variant.url) ||
@@ -168,12 +170,28 @@ export function productOptionsFromPayload(
       id,
       label,
       image,
+      images,
       url,
       category: mainCategory(product.category),
       description: shortDescription(product, variant),
     });
   }
   return options;
+}
+
+/**
+ * Every `image[].url`, deduped. A post picks one of these to run with, so
+ * bringing a single one would mean going back to the store to change it.
+ */
+function imageUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const urls: string[] = [];
+  for (const entry of value) {
+    const record = asRecord(entry);
+    const url = typeof record?.url === "string" ? record.url : "";
+    if (url && !urls.includes(url)) urls.push(url);
+  }
+  return urls;
 }
 
 /**
@@ -242,7 +260,13 @@ export function categoryOptionsFromPayload(data: unknown): CategoryOption[] {
     const path = categoryPathFromUrl(rec.url);
     if (path && !seen.has(path)) {
       seen.add(path);
-      options.push({ path, label: nextTrail.join(" › ") || path });
+      options.push({
+        path,
+        label: nextTrail.join(" › ") || path,
+        // The node's own URL, untouched: it is already what a reader opens, and
+        // rebuilding one from the path would drop the store's origin.
+        url: typeof rec.url === "string" ? rec.url : `/${path}`,
+      });
     }
     if (Array.isArray(rec.children)) {
       for (const child of rec.children) walk(child, nextTrail);

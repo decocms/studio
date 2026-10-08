@@ -175,6 +175,11 @@ export const sandbox = {
     "People are searching for this and the brand does not show up.",
   "sandbox.campaigns.triggerTrendHelp":
     "Something is happening in the market or the culture right now, and it will pass.",
+  "sandbox.campaigns.addImage": "Add image",
+  "sandbox.campaigns.productImagePlaceholder": "https://… (image URL)",
+  "sandbox.campaigns.removeImage": "Remove image",
+  "sandbox.campaigns.untitledProduct": "Unnamed product",
+  "sandbox.campaigns.untitledTarget": "Unnamed target",
   "sandbox.campaigns.add": "New campaign",
   "sandbox.campaigns.addAvoid": "Add guardrail",
   "sandbox.campaigns.addTarget": "Add target",

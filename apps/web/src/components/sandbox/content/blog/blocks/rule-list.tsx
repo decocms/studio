@@ -9,17 +9,17 @@
  */
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, X } from "@untitledui/icons";
+import { X } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   MarkdownEditor,
   type MarkdownMentions,
 } from "@/components/markdown-editor";
-import { AddButton, RemoveButton } from "./primitives";
+import { AddButton } from "./primitives";
+import { CollapsibleList, CollapsibleRow } from "./collapsible-row";
 import type { BrandRule } from "../blog-data";
 
 /**
@@ -138,55 +138,29 @@ export function RuleList({
 
   return (
     <div className="space-y-2">
-      <ul className="divide-y overflow-hidden rounded-lg border">
-        {rules.map((rule, index) => {
-          const open = openIndex === index;
-          return (
-            <li key={index} className="group/item bg-card">
-              <div className="flex items-center gap-1 pr-2">
-                <button
-                  type="button"
-                  onClick={() => setOpenIndex(open ? null : index)}
-                  aria-expanded={open}
-                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
-                >
-                  {open ? (
-                    <ChevronDown size={14} className="shrink-0" />
-                  ) : (
-                    <ChevronRight
-                      size={14}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                  )}
-                  <span
-                    className={cn(
-                      "truncate",
-                      !rule.name && "text-muted-foreground",
-                    )}
-                  >
-                    {rule.name || t("sandbox.blogBrand.untitledRule")}
-                  </span>
-                </button>
-                <RemoveButton
-                  label={t("sandbox.blogBrand.removeItem")}
-                  onClick={() => remove(index)}
-                />
-              </div>
-              {open && (
-                <RuleBody
-                  rule={rule}
-                  editorKey={`${idPrefix}-${index}-${revision}`}
-                  namePlaceholder={namePlaceholder}
-                  bodyPlaceholder={bodyPlaceholder}
-                  mentions={mentions}
-                  citationWarning={citationWarning}
-                  onPatch={(patch) => replaceAt(index, patch)}
-                />
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <CollapsibleList>
+        {rules.map((rule, index) => (
+          <CollapsibleRow
+            key={index}
+            open={openIndex === index}
+            onToggle={() => setOpenIndex(openIndex === index ? null : index)}
+            title={rule.name}
+            untitledLabel={t("sandbox.blogBrand.untitledRule")}
+            removeLabel={t("sandbox.blogBrand.removeItem")}
+            onRemove={() => remove(index)}
+          >
+            <RuleBody
+              rule={rule}
+              editorKey={`${idPrefix}-${index}-${revision}`}
+              namePlaceholder={namePlaceholder}
+              bodyPlaceholder={bodyPlaceholder}
+              mentions={mentions}
+              citationWarning={citationWarning}
+              onPatch={(patch) => replaceAt(index, patch)}
+            />
+          </CollapsibleRow>
+        ))}
+      </CollapsibleList>
       <AddButton
         label={add}
         onClick={() => {

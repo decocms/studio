@@ -178,6 +178,11 @@ export const sandbox = {
     "Tem gente buscando por isso e a marca não aparece.",
   "sandbox.campaigns.triggerTrendHelp":
     "Algo está acontecendo no mercado ou na cultura agora, e passa.",
+  "sandbox.campaigns.addImage": "Adicionar imagem",
+  "sandbox.campaigns.productImagePlaceholder": "https://… (URL da imagem)",
+  "sandbox.campaigns.removeImage": "Remover imagem",
+  "sandbox.campaigns.untitledProduct": "Produto sem nome",
+  "sandbox.campaigns.untitledTarget": "Alvo sem nome",
   "sandbox.campaigns.add": "Nova campanha",
   "sandbox.campaigns.addAvoid": "Adicionar guardrail",
   "sandbox.campaigns.addTarget": "Adicionar alvo",
