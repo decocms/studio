@@ -414,6 +414,7 @@ export function useProjectViews({
     board: t("sidebar.navDestinations.tasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
     assets: t("common.mainPanelTabs.assets"),
+    releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
     analytics: t("common.mainPanelTabs.analytics"),

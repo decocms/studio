@@ -815,6 +815,21 @@ const agentAssetsRoute = createRoute({
   ),
 });
 
+const agentReleasesRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/releases",
+  staticData: {
+    pageTitle: "common.mainPanelTabs.releases",
+    defaultMain: "releases",
+    mainView: "releases",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-releases.tsx"),
+  ),
+});
+
 const agentHostingRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1598,6 +1613,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentSettingsRoute,
   agentLibraryRoute,
   agentAssetsRoute,
+  agentReleasesRoute,
   agentHostingRoute,
   agentE2eRoute,
   agentAnalyticsRoute,

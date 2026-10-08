@@ -78,6 +78,7 @@ describe("launchableApps", () => {
       analytics: false,
       cdn: false,
       experiments: false,
+      releases: false,
     };
     expect(
       launchableApps(

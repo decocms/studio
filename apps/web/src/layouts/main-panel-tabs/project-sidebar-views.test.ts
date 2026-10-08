@@ -24,6 +24,7 @@ const nativePresence = (
   present: Array<keyof ProjectNativeViewPresence>,
 ): ProjectNativeViewPresence => ({
   assets: present.includes("assets"),
+  releases: present.includes("releases"),
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
   analytics: present.includes("analytics"),
@@ -271,31 +272,35 @@ describe("project sidebar views", () => {
       projectSidebarViewUnavailable("assets", none, {
         assets: true,
         siteAccess: false,
+        releases: false,
       }),
     ).toBe(false);
     expect(
       projectSidebarViewUnavailable("hosting", none, {
         assets: false,
         siteAccess: true,
+        releases: false,
       }),
     ).toBe(false);
     expect(
       projectSidebarViewUnavailable("assets", none, {
         assets: false,
         siteAccess: false,
+        releases: false,
       }),
     ).toBe(true);
     expect(
       projectSidebarViewUnavailable("git", none, {
         assets: false,
         siteAccess: false,
+        releases: false,
       }),
     ).toBe(false);
   });
 
   test("rejects source-backed views immediately when source is absent", () => {
     const none = projectSidebarViewPresence(false, nativePresence([]));
-    const pending = { assets: true, siteAccess: true };
+    const pending = { assets: true, siteAccess: true, releases: false };
 
     for (const viewId of ["overview", "reports", "board", "site-editor"]) {
       expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
@@ -308,7 +313,7 @@ describe("project sidebar views", () => {
   test("rejects unavailable Site Editor and retired surface defaults", () => {
     const absent = projectSidebarViewPresence(false, nativePresence([]));
     const present = projectSidebarViewPresence(true, nativePresence([]));
-    const settled = { assets: false, siteAccess: false };
+    const settled = { assets: false, siteAccess: false, releases: false };
 
     expect(
       projectDefaultViewUnavailable("preview", absent, settled, [], true),
