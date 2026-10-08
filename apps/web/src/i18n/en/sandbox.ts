@@ -851,9 +851,6 @@ export const sandbox = {
     "Your live server's address, used to preview content. Required for Fast Preview.",
   "sandbox.previewServerUrlField.label": "Preview server",
   "sandbox.previewServerUrlField.placeholder": "https://example.com",
-  "sandbox.publishVisualReviewField.label": "Visual publish review",
-  "sandbox.publishVisualReviewField.description":
-    "When publishing, show each changed page before and after, side by side, instead of the code changes.",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",

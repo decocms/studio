@@ -131,10 +131,8 @@ export const thread = {
   "thread.headerActions.openNewPrTooltip":
     "Open a new PR with the latest commits",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
-  "thread.headerActions.publish": "Publish",
   "thread.headerActions.publishAnyway": "Publish anyway",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
-  "thread.headerActions.publishToProduction": "Publish to production",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.review": "Review",
   "thread.headerActions.saving": "Saving…",
@@ -161,34 +159,14 @@ export const thread = {
   "thread.headerActions.waitingForSandboxBranchTooltip":
     "Getting your environment ready — this only takes a moment",
   "thread.publishDialog.allChangesDiscarded": "All changes discarded",
-  "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancel",
-  "thread.publishDialog.change": "change",
-  "thread.publishDialog.changes": "changes",
   "thread.publishDialog.changesFrom": "Changes from {branch}",
-  "thread.publishDialog.changesTab": "Changes",
-  "thread.publishDialog.commitMessage": "Commit message",
-  "thread.publishDialog.commitTitlePlaceholder": "Commit title…",
-  "thread.publishDialog.description": "Description",
-  "thread.publishDialog.descriptionLabel": "Description",
-  "thread.publishDialog.descriptionPlaceholder": "Description (optional)…",
-  "thread.publishDialog.discardAll": "Discard all",
-  "thread.publishDialog.discardConfirmMessage":
-    "Discard all changes? This cannot be undone.",
-  "thread.publishDialog.discardedChanges": "Discarded changes to {filepath}",
-  "thread.publishDialog.failedDiscardChanges": "Failed to discard changes",
-  "thread.publishDialog.failedLoad": "Failed to load changes.",
-  "thread.publishDialog.failedLoadAfterReprovision":
-    "Failed to load changes after re-provisioning the sandbox.",
   "thread.publishDialog.failedMergePullRequest": "Failed to merge pull request",
   "thread.publishDialog.failedOpenPullRequest": "Failed to open pull request",
   "thread.publishDialog.failedPublish": "Failed to publish",
   "thread.publishDialog.failedPushChanges": "Failed to push changes",
   "thread.publishDialog.failedRebase": "Failed to rebase onto base",
   "thread.publishDialog.failedSubmitForReview": "Failed to submit for review",
-  "thread.publishDialog.generating": "Generating…",
-  "thread.publishDialog.inThisPr": "in this PR",
-  "thread.publishDialog.loadingChanges": "Loading changes…",
   "thread.publishDialog.mergeFailed":
     "Changes were pushed and PR #{prNumber} is open, but merge failed: {message}",
   "thread.mergeRefused.conflict":
@@ -200,25 +178,11 @@ export const thread = {
   "thread.mergeRefused.notFound": "It no longer exists.",
   "thread.mergeRefused.error": "Failed to merge.",
   "thread.publishDialog.openingComparison": "Opening the comparison…",
-  "thread.publishDialog.opensPullRequestInto":
-    "Opens a pull request into {baseBranch} for review.",
   "thread.publishDialog.publishedTo": "Published to {baseBranch}",
-  "thread.publishDialog.publishNeedsReview":
-    "This change needs review before publishing.",
-  "thread.publishDialog.pullRequest": "Pull request",
-  "thread.publishDialog.regenerate": "Regenerate",
-  "thread.publishDialog.reviewingChanges": "Reviewing changes…",
-  "thread.publishDialog.squashMergesInto":
-    "{publishLabel} squash-merges into {baseBranch}.",
-  "thread.publishDialog.submitForReview": "Submit for review",
-  "thread.publishDialog.submitForReviewButton": "Submit for review",
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
-  "thread.publishDialog.title": "Title",
-  "thread.publishDialog.toPublish": "to publish",
   "thread.publishDialog.viewOnProvider": "View on provider",
   "thread.publishDialog.viewPr": "View PR",
-  "thread.publishDialog.visitPreview": "Visit preview",
   "thread.publishPopover.blocksGroup": "Blocks",
   "thread.publishPopover.branchMoved":
     "This branch changed since these changes were shown. Close and reopen to review what will be published.",
