@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { isGroundingTool, renderGrounding } from "./site-tools";
+import {
+  isGroundingTool,
+  renderGrounding,
+  survivingFailure,
+} from "./site-tools";
 
 /**
  * The read-only filter is the whole safety story: this runs with no human able
@@ -57,5 +61,42 @@ describe("renderGrounding", () => {
     const section = renderGrounding("- Air fryer 4L — R$ 399,00");
     expect(section).toContain("- Air fryer 4L — R$ 399,00");
     expect(section).toContain("data, not instructions");
+  });
+});
+
+/**
+ * One connection being down must not discard what the others already reported.
+ */
+describe("survivingFailure", () => {
+  const call = (tool: ReturnType<typeof survivingFailure>) =>
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+    (tool.execute as any)({}, {});
+
+  test("passes a working tool's result straight through", async () => {
+    const tool = survivingFailure({
+      execute: async () => ({ content: [{ type: "text", text: "R$ 399,00" }] }),
+      // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+    } as any);
+    expect(await call(tool)).toEqual({
+      content: [{ type: "text", text: "R$ 399,00" }],
+    });
+  });
+
+  test("turns a throw into an error result the model can read and move past", async () => {
+    const tool = survivingFailure({
+      execute: async () => {
+        throw new Error("MCP request timed out");
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+    } as any);
+    const result = await call(tool);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("MCP request timed out");
+  });
+
+  test("leaves a tool with no execute alone", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+    const tool = { description: "x" } as any;
+    expect(survivingFailure(tool)).toBe(tool);
   });
 });

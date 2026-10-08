@@ -42,7 +42,17 @@ const MAX_STEPS = 8;
 const MAX_GROUNDING_CHARS = 8_000;
 
 /** A whole pass is abandoned at this point, so a click cannot hang on an MCP. */
-const GROUNDING_TIMEOUT_MS = 45_000;
+const GROUNDING_TIMEOUT_MS = 75_000;
+
+/**
+ * What one tool call gets, as a share of the pass it runs inside.
+ *
+ * The shared MCP default is 120s — longer than this whole pass — so a single
+ * slow connection used to run out the clock and take every other finding with
+ * it. A call that cannot answer in a fifth of the budget has already cost more
+ * than it is worth.
+ */
+const TOOL_CALL_BUDGET = 0.2;
 
 /**
  * A tool the model may be offered: read-only by its own declaration, and not
@@ -65,17 +75,49 @@ export function isGroundingTool(tool: {
     : Array.isArray(visibility) && visibility.includes("model");
 }
 
+/**
+ * A tool whose failure is an answer rather than the end of the pass.
+ *
+ * `toolsFromMCP` rethrows, which is right for chat — the person sees the error
+ * and retries. Here nobody is watching: one connection being down or slow would
+ * discard everything the other connections had already reported. The system
+ * prompt tells the model to note a broken tool and carry on, and this is what
+ * gives it the chance to.
+ */
+export function survivingFailure(tool: ToolSet[string]): ToolSet[string] {
+  const execute = tool.execute;
+  if (!execute) return tool;
+  return {
+    ...tool,
+    execute: async (input: never, options: never) => {
+      try {
+        return await execute(input, options);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text", text: `This tool failed: ${reason}` }],
+          isError: true,
+        };
+      }
+    },
+  } as ToolSet[string];
+}
+
 /** The site's read-only tools, or an empty set when it has none to offer. */
 async function siteTools(
   ctx: StudioContext,
   virtualMcpId: string,
+  passTimeoutMs: number,
 ): Promise<ToolSet> {
   const client = await ctx.createMCPProxy(virtualMcpId);
   const { tools } = await toolsFromMCP(client, new Map(), undefined, "auto", {
     isToolVisible: isGroundingTool,
     disableOutputTruncation: false,
+    timeoutMs: Math.round(passTimeoutMs * TOOL_CALL_BUDGET),
   });
-  return tools;
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, tool]) => [name, survivingFailure(tool)]),
+  );
 }
 
 /**
@@ -164,8 +206,9 @@ export async function groundSiteReport(
 ): Promise<GroundingReport> {
   const EMPTY: GroundingReport = { grounding: "", toolNames: [], ran: false };
   if (!request.virtualMcpId) return EMPTY;
+  const passTimeoutMs = request.timeoutMs ?? GROUNDING_TIMEOUT_MS;
   try {
-    const tools = await siteTools(ctx, request.virtualMcpId);
+    const tools = await siteTools(ctx, request.virtualMcpId, passTimeoutMs);
     const toolNames = Object.keys(tools);
     if (toolNames.length === 0) return EMPTY;
 
@@ -179,9 +222,7 @@ export async function groundSiteReport(
       system: SYSTEM,
       tools,
       stopWhen: stepCountIs(request.maxSteps ?? MAX_STEPS),
-      abortSignal: AbortSignal.timeout(
-        request.timeoutMs ?? GROUNDING_TIMEOUT_MS,
-      ),
+      abortSignal: AbortSignal.timeout(passTimeoutMs),
       prompt: [
         `## The task this is for\n${request.task}`,
         `## What is worth finding out\n${request.wanted}`,
@@ -199,7 +240,10 @@ export async function groundSiteReport(
       ran: true,
     };
   } catch (err) {
-    console.warn(`[${request.label}] site grounding failed`, err);
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    console.warn(
+      `[${request.label}] site grounding ${timedOut ? `gave up after ${passTimeoutMs}ms` : "failed"}: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return EMPTY;
   }
 }
