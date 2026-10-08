@@ -66,6 +66,7 @@ import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-regi
 import { broadcastFlip } from "./flip-broadcast";
 import { PartEmitter } from "./part-emitter";
 import { uploadFileParts } from "./file-materializer";
+import { answerPrompt, toolOutputAnswer } from "./tool-answer";
 import {
   cancelThreadGateHead,
   cancelThreadGateWorkflow,
@@ -769,11 +770,29 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
 
-      const requestMessage = input.messages.find((m) => m.role !== "system");
+      let requestMessage = input.messages.find((m) => m.role !== "system");
       if (!requestMessage) {
         throw new HTTPException(400, {
           message: "No user message found in input",
         });
+      }
+      const answer =
+        pinnedHarness === "claude-code" && requestMessage.role === "user"
+          ? toolOutputAnswer(requestMessage.metadata)
+          : null;
+      if (answer) {
+        const answered = await ctx.storage.threads
+          .messageParts()
+          .answerToolCall(taskId, answer.toolCallId, answer.output);
+        if (!answered) {
+          throw new HTTPException(409, {
+            message: "The answered tool call is not in this thread",
+          });
+        }
+        requestMessage = {
+          ...requestMessage,
+          parts: [{ type: "text", text: answerPrompt(answered) }],
+        };
       }
       const materializedRequestMessage = (
         await uploadFileParts([requestMessage], ctx, {

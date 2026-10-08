@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   flattenToolResult,
+  studioToolOutput,
   turnFinishChunks,
   turnStartChunks,
   UiChunkTranslator,
@@ -59,15 +60,20 @@ describe("UiChunkTranslator", () => {
   test("tool_use becomes tool-input-available", () => {
     const chunks = new UiChunkTranslator().translate(
       assistant([
-        { type: "tool_use", id: "t1", name: "Read", input: { file: "a.ts" } },
+        {
+          type: "tool_use",
+          id: "t1",
+          name: "Read",
+          input: { file_path: "a.ts" },
+        },
       ]),
     );
     expect(chunks).toEqual([
       {
         type: "tool-input-available",
         toolCallId: "t1",
-        toolName: "Read",
-        input: { file: "a.ts" },
+        toolName: "read",
+        input: { path: "a.ts" },
       },
     ]);
   });
@@ -90,6 +96,11 @@ describe("UiChunkTranslator", () => {
     });
     expect(chunks).toEqual([
       { type: "tool-output-available", toolCallId: "t1", output: "body" },
+      {
+        type: "data-tool-metadata",
+        id: "t1",
+        data: { latencyMs: expect.any(Number) },
+      },
     ]);
   });
 
@@ -111,6 +122,11 @@ describe("UiChunkTranslator", () => {
     });
     expect(chunks).toEqual([
       { type: "tool-output-error", toolCallId: "t1", errorText: "boom" },
+      {
+        type: "data-tool-metadata",
+        id: "t1",
+        data: { latencyMs: expect.any(Number) },
+      },
     ]);
   });
 
@@ -319,7 +335,7 @@ describe("UiChunkTranslator — token streaming (includePartialMessages)", () =>
       {
         type: "tool-input-available",
         toolCallId: "call-1",
-        toolName: "Bash",
+        toolName: "bash",
         input: { cmd: "ls" },
       },
     ]);
@@ -355,7 +371,7 @@ describe("UiChunkTranslator — token streaming (includePartialMessages)", () =>
       {
         type: "tool-input-available",
         toolCallId: "call-1",
-        toolName: "Bash",
+        toolName: "bash",
         input: {},
       },
     ]);
@@ -637,5 +653,269 @@ describe("turn framing", () => {
       type: "error",
       errorText: "claude-code run failed (error_max_turns)",
     });
+  });
+});
+
+describe("canonical part vocabulary", () => {
+  const cases: Array<{
+    name: string;
+    input: unknown;
+    toolName: string;
+    expected: unknown;
+  }> = [
+    {
+      name: "Bash",
+      input: { command: "ls", timeout: 1000 },
+      toolName: "bash",
+      expected: { command: "ls", timeout: 1000 },
+    },
+    {
+      name: "Read",
+      input: { file_path: "/w/a.ts", offset: 2 },
+      toolName: "read",
+      expected: { path: "/w/a.ts", offset: 2 },
+    },
+    {
+      name: "Write",
+      input: { file_path: "/app/org/output/a.md", content: "x" },
+      toolName: "write",
+      expected: { path: "/app/org/output/a.md", content: "x" },
+    },
+    {
+      name: "Edit",
+      input: { file_path: "a.ts", old_string: "a", new_string: "b" },
+      toolName: "edit",
+      expected: { path: "a.ts", old_string: "a", new_string: "b" },
+    },
+    {
+      name: "Grep",
+      input: { pattern: "x", path: "src" },
+      toolName: "grep",
+      expected: { pattern: "x", path: "src" },
+    },
+    {
+      name: "Glob",
+      input: { pattern: "**/*.ts" },
+      toolName: "glob",
+      expected: { pattern: "**/*.ts" },
+    },
+    {
+      name: "TodoWrite",
+      input: {
+        todos: [{ content: "Do", status: "pending", activeForm: "Doing" }],
+      },
+      toolName: "todo_write",
+      expected: {
+        todos: [{ content: "Do", status: "pending", activeForm: "Doing" }],
+      },
+    },
+    {
+      name: "Task",
+      input: { description: "d", prompt: "look", subagent_type: "general" },
+      toolName: "subtask",
+      expected: { description: "d", prompt: "look", subagent_type: "general" },
+    },
+    {
+      name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            question: "Which color?",
+            header: "Color",
+            options: [
+              { label: "Red", description: "warm" },
+              { label: "Blue", description: "cool" },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+      toolName: "user_ask",
+      expected: {
+        prompt: "Which color?",
+        type: "choice",
+        options: ["Red", "Blue"],
+      },
+    },
+    {
+      name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            question: "Which color?",
+            options: [{ label: "Red" }, { label: "Blue" }],
+          },
+          { question: "Why?", options: [] },
+        ],
+      },
+      toolName: "user_ask",
+      expected: { prompt: "Which color? (Red / Blue)\nWhy?", type: "text" },
+    },
+    {
+      name: "ExitPlanMode",
+      input: { plan: "1. do it", planFilePath: "/h/.claude/plans/p.md" },
+      toolName: "propose_plan",
+      expected: { plan: "1. do it" },
+    },
+    {
+      name: "mcp__studio__generate_image",
+      input: { prompt: "a cat" },
+      toolName: "generate_image",
+      expected: { prompt: "a cat" },
+    },
+    {
+      name: "mcp__github__create_pr",
+      input: { title: "t" },
+      toolName: "mcp__github__create_pr",
+      expected: { title: "t" },
+    },
+  ];
+
+  for (const { name, input, toolName, expected } of cases) {
+    test(`${name} → ${toolName}`, () => {
+      const chunks = new UiChunkTranslator().translate(
+        assistant([{ type: "tool_use", id: "t1", name, input }]),
+      );
+      expect(chunks).toEqual([
+        {
+          type: "tool-input-available",
+          toolCallId: "t1",
+          toolName,
+          input: expected,
+        },
+      ]);
+    });
+  }
+});
+
+describe("subagent messages", () => {
+  const subagent = (content: unknown[]) => ({
+    ...assistant(content, "sub"),
+    parent_tool_use_id: "task-1",
+  });
+
+  test("stream as the subtask's preliminary output, never as main text", () => {
+    const t = new UiChunkTranslator();
+    t.translate(
+      assistant([
+        {
+          type: "tool_use",
+          id: "task-1",
+          name: "Task",
+          input: { prompt: "p" },
+        },
+      ]),
+    );
+    expect(
+      t.translate({
+        type: "stream_event",
+        event: { type: "message_start" },
+        parent_tool_use_id: "task-1",
+      } as never),
+    ).toEqual([]);
+    expect(t.translate(subagent([{ type: "text", text: "looking" }]))).toEqual([
+      {
+        type: "tool-output-available",
+        toolCallId: "task-1",
+        output: { text: "looking" },
+        preliminary: true,
+      },
+    ]);
+    expect(
+      t.translate(
+        subagent([
+          { type: "tool_use", id: "inner", name: "Read", input: {} },
+          { type: "text", text: "found it" },
+        ]),
+      ),
+    ).toEqual([
+      {
+        type: "tool-output-available",
+        toolCallId: "task-1",
+        output: { text: "looking\n\nfound it" },
+        preliminary: true,
+      },
+    ]);
+    const final = t.translate({
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "task-1",
+            content: [{ type: "text", text: "report" }],
+          },
+        ],
+      },
+    });
+    expect(final[0]).toEqual({
+      type: "tool-output-available",
+      toolCallId: "task-1",
+      output: { text: "report" },
+    });
+  });
+});
+
+describe("a call parked for the user", () => {
+  test("drops its denial and finishes the turn as tool-calls", () => {
+    const t = new UiChunkTranslator();
+    t.translate(
+      assistant([
+        {
+          type: "tool_use",
+          id: "ask-1",
+          name: "AskUserQuestion",
+          input: { questions: [{ question: "Why?" }] },
+        },
+      ]),
+    );
+    t.awaitUser("ask-1");
+    expect(
+      t.translate({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "ask-1",
+              content: "rejected",
+              is_error: true,
+            },
+          ],
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      turnFinishChunks(
+        { type: "result", subtype: "error_during_execution", is_error: true },
+        0,
+        t.isAwaitingUser(),
+      ),
+    ).toEqual([
+      { type: "finish-step" },
+      { type: "finish", finishReason: "tool-calls" },
+    ]);
+  });
+});
+
+describe("studioToolOutput", () => {
+  test("parses the JSON result and drops model-only image blocks", () => {
+    const result = {
+      success: true,
+      images: [{ uri: "studio-storage://k", mediaType: "image/png" }],
+    };
+    expect(
+      studioToolOutput([
+        { type: "text", text: JSON.stringify(result) },
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data: "AAAA" },
+        },
+      ]),
+    ).toEqual(result);
+  });
+
+  test("keeps non-JSON text as text", () => {
+    expect(studioToolOutput([{ type: "text", text: "shown" }])).toBe("shown");
   });
 });

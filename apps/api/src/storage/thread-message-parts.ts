@@ -291,6 +291,34 @@ export class SqlThreadMessagePartStorage {
   }
 
   /**
+   * Resolve a tool call the user answered: its part becomes
+   * `output-available` with `output`. Returns the updated tool part payload,
+   * or null when the thread has no assistant tool part with that id.
+   */
+  async answerToolCall(
+    threadId: string,
+    toolCallId: string,
+    output: unknown,
+  ): Promise<Record<string, unknown> | null> {
+    const patch = serializePayload({ state: "output-available", output });
+    const rows = await this.db
+      .updateTable("thread_message_parts")
+      .set({
+        kind: "tool_result",
+        payload: sql`payload || ${patch}::jsonb`,
+      })
+      .where("thread_id", "=", threadId)
+      .where("role", "=", "assistant")
+      .where(sql<string>`payload->>'toolCallId'`, "=", toolCallId)
+      .returning("payload")
+      .execute();
+    const payload = rows[0]?.payload;
+    return typeof payload === "object" && payload !== null
+      ? (payload as Record<string, unknown>)
+      : null;
+  }
+
+  /**
    * Hard-delete every part row (including the finish anchor) of one message.
    * Used when a QUEUED user turn is removed from the thread's gate queue —
    * the request message was persisted at POST time, so cancelling the gate

@@ -67,6 +67,7 @@ import type {
 } from "@/harnesses/lib/types";
 import { createSecretModelSource } from "@/harnesses/lib/types";
 import { streamDecopilot } from "@/harnesses/decopilot/stream";
+import { withHtmlArtifactPreviews } from "@/harnesses/html-artifact-watcher";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -1546,7 +1547,9 @@ async function prepareRun(
                   : null,
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
-        yield* rawHarnessChunks;
+        yield* sandboxHosted
+          ? withHtmlArtifactPreviews(rawHarnessChunks, ctx)
+          : rawHarnessChunks;
       };
 
     // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream

@@ -10,7 +10,9 @@
  * created via bash (the `slides-create` CLI) are caught the same as
  * `write`-tool edits. The cursor snapshots at run start; `sweep()` is hooked
  * into `onStepFinish` (and once more at run end — rclone's vfs write-back can
- * land a few seconds after the file is closed in the sandbox).
+ * land a few seconds after the file is closed in the sandbox). Sandbox-hosted
+ * harnesses write through the same mount, so `withHtmlArtifactPreviews` sweeps
+ * on their step boundaries instead.
  *
  * Parts use a stable `id` per artifact path so the AI SDK reconciles repeated
  * updates into one part per artifact. (`data-deck-updated` is the legacy wire
@@ -23,7 +25,7 @@ import {
   SANDBOX_ORG_ROOT,
 } from "@decocms/shared/organization/home-mount";
 import { matchOwnHtmlArtifact } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/html-artifact-paths";
-import type { UIMessageStreamWriter } from "ai";
+import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 const HOME_VOLUME = "home";
 const PAGE_SIZE = 200;
@@ -45,7 +47,7 @@ export interface HtmlArtifactUpdatedData {
 
 export function createHtmlArtifactWatcher(
   ctx: StudioContext,
-  writer: UIMessageStreamWriter,
+  writer: Pick<UIMessageStreamWriter, "write">,
 ): HtmlArtifactWatcher {
   const orgFs = ctx.orgFs;
   const orgSlug = ctx.organization?.slug ?? null;
@@ -123,4 +125,30 @@ export function createHtmlArtifactWatcher(
   };
 
   return { sweep };
+}
+
+/**
+ * A sandbox-hosted harness's chunks with this run's deck/page previews
+ * interleaved: swept after every step and before `finish`, so each preview
+ * lands on the message that wrote it.
+ */
+export async function* withHtmlArtifactPreviews(
+  chunks: AsyncIterable<UIMessageChunk>,
+  ctx: StudioContext,
+): AsyncIterable<UIMessageChunk> {
+  const swept: UIMessageChunk[] = [];
+  const watcher = createHtmlArtifactWatcher(ctx, {
+    write: (chunk) => swept.push(chunk),
+  });
+  for await (const chunk of chunks) {
+    if (chunk.type === "finish") {
+      await watcher.sweep();
+      yield* swept.splice(0);
+    }
+    yield chunk;
+    if (chunk.type === "finish-step") {
+      await watcher.sweep();
+      yield* swept.splice(0);
+    }
+  }
 }

@@ -60,7 +60,10 @@ by Studio and reaching this process as its spawn environment:
 
 - `main.ts` — the wire: stdin envelope in, NDJSON frames out.
 - `claude-code.ts` — SDK options policy, the per-turn loop, session persistence.
-- `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s.
+- `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s, with Claude
+  Code's tools renamed to the canonical part names the chat UI renders
+  (`Bash` → `bash`, `AskUserQuestion` → `user_ask`, `mcp__studio__<name>` →
+  `<name>`, …).
 
 ## Development
 
@@ -81,7 +84,10 @@ bun run --cwd=packages/harness-runner test
   Studio's tree so the image installs it standalone.
 - Permissions are bypassed by design: the pod is the isolation boundary and
   there is no approval UI upstream. Do not add a prompt path that would block a
-  run forever.
+  run forever. `AskUserQuestion` and `ExitPlanMode` are answered at once: the
+  call is denied, the turn ends, and the user's answer arrives as the next
+  turn's prompt. Plan mode (`mode: "plan"`) runs the SDK in its `plan`
+  permission mode.
 
 ## Related documentation
 

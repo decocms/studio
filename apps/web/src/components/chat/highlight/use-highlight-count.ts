@@ -16,6 +16,7 @@ import type { Todo } from "@decocms/shared/harness/todo-write";
 import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";
+import { isSuggestTaskPending } from "./is-suggest-task-pending";
 import { isCreditError } from "../is-credit-error";
 import { planRefusalKind, type PlanRefusalKind } from "../chat-post-error";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
@@ -92,6 +93,7 @@ export function deriveHighlightFlags(
     toolCallId?: string;
     toolName?: string;
     input?: unknown;
+    output?: unknown;
   };
   const looseParts = assistantParts as LoosePart[];
   const userAskParts = looseParts.filter(
@@ -101,10 +103,7 @@ export function deriveHighlightFlags(
     (p) => p.state !== "output-available",
   ).length;
 
-  const hasTaskSuggestion = looseParts.some(
-    (part) =>
-      part.type === "tool-suggest_task" && part.state === "input-available",
-  );
+  const hasTaskSuggestion = looseParts.some(isSuggestTaskPending);
 
   const pendingPlans = extractPendingPlans(
     assistantParts as Parameters<typeof extractPendingPlans>[0],

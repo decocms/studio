@@ -4,6 +4,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { ClipboardCheck } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import type { SuggestTaskToolPart } from "../../../types.ts";
+import { isSuggestTaskPending } from "../../../highlight/is-suggest-task-pending.ts";
 
 /**
  * Transcript trace for a resolved `suggest_task` offer — the live card lives
@@ -12,7 +13,9 @@ import type { SuggestTaskToolPart } from "../../../types.ts";
  */
 export function SuggestTaskPart({ part }: { part: SuggestTaskToolPart }) {
   const t = useT();
-  if (!part.state.startsWith("output-")) return null;
+  if (!part.state.startsWith("output-") || isSuggestTaskPending(part)) {
+    return null;
+  }
 
   const accepted = part.output?.accepted === true;
 

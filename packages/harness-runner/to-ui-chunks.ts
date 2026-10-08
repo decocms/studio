@@ -94,6 +94,84 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Claude Code's built-in tools under the names Decopilot gave the same tools,
+ * so a thread renders through the same chat components whichever harness ran
+ * it. `Agent` is the subagent tool's newer CLI name.
+ */
+const CANONICAL_TOOL_NAMES: Record<string, string> = {
+  Bash: "bash",
+  Read: "read",
+  Write: "write",
+  Edit: "edit",
+  Grep: "grep",
+  Glob: "glob",
+  TodoWrite: "todo_write",
+  Task: "subtask",
+  Agent: "subtask",
+  AskUserQuestion: "user_ask",
+  ExitPlanMode: "propose_plan",
+};
+
+const STUDIO_MCP_PREFIX = "mcp__studio__";
+
+function canonicalToolName(name: string): string {
+  if (name.startsWith(STUDIO_MCP_PREFIX)) {
+    return name.slice(STUDIO_MCP_PREFIX.length);
+  }
+  return CANONICAL_TOOL_NAMES[name] ?? name;
+}
+
+/** Renames only the input fields the canonical part's renderer reads. */
+function canonicalToolInput(name: string, input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  if (name === "Read" || name === "Write" || name === "Edit") {
+    const { file_path, ...rest } = input;
+    return file_path === undefined ? input : { ...rest, path: file_path };
+  }
+  if (name === "ExitPlanMode") {
+    return { plan: typeof input.plan === "string" ? input.plan : "" };
+  }
+  if (name === "AskUserQuestion") return userAskInput(input);
+  return input;
+}
+
+/**
+ * `AskUserQuestion` takes up to four questions with described options;
+ * `user_ask` asks one. A single question keeps its options as a choice;
+ * several are folded into one free-text prompt.
+ */
+function userAskInput(input: Record<string, unknown>): Record<string, unknown> {
+  const questions = Array.isArray(input.questions)
+    ? input.questions.filter(isRecord)
+    : [];
+  const labels = (question: Record<string, unknown>): string[] =>
+    Array.isArray(question.options)
+      ? question.options
+          .filter(isRecord)
+          .map((option) => option.label)
+          .filter((label): label is string => typeof label === "string")
+      : [];
+  const [only] = questions;
+  if (
+    questions.length === 1 &&
+    only &&
+    typeof only.question === "string" &&
+    labels(only).length >= 2
+  ) {
+    return { prompt: only.question, type: "choice", options: labels(only) };
+  }
+  const prompt = questions
+    .map((question) => {
+      const options = labels(question);
+      const text =
+        typeof question.question === "string" ? question.question : "";
+      return options.length > 0 ? `${text} (${options.join(" / ")})` : text;
+    })
+    .join("\n");
+  return { prompt, type: "text" };
+}
+
+/**
  * Flatten a `tool_result` content payload to something the UI can render.
  * The SDK hands back either a string or Anthropic content blocks; anything
  * else is passed through untouched so a future block type is preserved in the
@@ -115,12 +193,47 @@ export function flattenToolResult(content: unknown): unknown {
 }
 
 /**
+ * A Studio tool's chat output is its JSON result, which the Decopilot
+ * renderers read; its image blocks are for the model only.
+ */
+export function studioToolOutput(content: unknown): unknown {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((block) =>
+              isRecord(block) &&
+              block.type === "text" &&
+              typeof block.text === "string"
+                ? [block.text]
+                : [],
+            )
+            .join("\n")
+        : null;
+  if (!text) return flattenToolResult(content);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
  * Translates one turn. Stateful only in the ids it mints, so a caller can feed
  * messages as they arrive and collect chunks, then flush once on `result`.
  */
 export class UiChunkTranslator {
-  /** tool_use ids seen this turn — guards the ordering contract above. */
-  private readonly announcedToolCalls = new Set<string>();
+  /** tool_use id → native tool name and when it was announced, for every call
+   *  seen this turn — guards the ordering contract above. */
+  private readonly announcedToolCalls = new Map<
+    string,
+    { name: string; announcedAt: number }
+  >();
+  /** Subagent text so far, keyed by the `Task` call that started it. */
+  private readonly subtaskText = new Map<string, string>();
+  /** Interactive calls parked for the user; their denial is not a result. */
+  private readonly awaitingUser = new Set<string>();
   private blockSeq = 0;
   /**
    * Text/reasoning blocks announced by `stream_event` and not yet closed, keyed
@@ -170,6 +283,11 @@ export class UiChunkTranslator {
    * because the SDK grew a message kind Studio does not render yet.
    */
   translate(message: TranslatableSdkMessage): UIMessageChunk[] {
+    const parent = (message as { parent_tool_use_id?: unknown })
+      .parent_tool_use_id;
+    if (typeof parent === "string") {
+      return this.translateSubagent(parent, message);
+    }
     if (message.type === "assistant" && "message" in message) {
       return this.translateAssistant(message as SdkAssistantMessage);
     }
@@ -182,6 +300,52 @@ export class UiChunkTranslator {
       );
     }
     return [];
+  }
+
+  /**
+   * Park an interactive call until the user answers: its denial is dropped
+   * and the turn finishes as `tool-calls`, which is what puts the thread in
+   * `requires_action`.
+   */
+  awaitUser(toolCallId: string): void {
+    this.awaitingUser.add(toolCallId);
+  }
+
+  isAwaitingUser(): boolean {
+    return this.awaitingUser.size > 0;
+  }
+
+  /**
+   * A subagent's messages stay out of the main message: its text becomes the
+   * `subtask` part's preliminary output, and its own tool calls are not shown.
+   */
+  private translateSubagent(
+    parentToolCallId: string,
+    message: TranslatableSdkMessage,
+  ): UIMessageChunk[] {
+    if (message.type !== "assistant" || !("message" in message)) return [];
+    if (!this.announcedToolCalls.has(parentToolCallId)) return [];
+    const texts = (message as SdkAssistantMessage).message.content
+      .filter(isRecord)
+      .map((block) =>
+        block.type === "text" && typeof block.text === "string"
+          ? block.text
+          : "",
+      )
+      .filter((text) => text.length > 0);
+    if (texts.length === 0) return [];
+    const text = [this.subtaskText.get(parentToolCallId), ...texts]
+      .filter(Boolean)
+      .join("\n\n");
+    this.subtaskText.set(parentToolCallId, text);
+    return [
+      {
+        type: "tool-output-available",
+        toolCallId: parentToolCallId,
+        output: { text },
+        preliminary: true,
+      },
+    ];
   }
 
   /**
@@ -328,12 +492,15 @@ export class UiChunkTranslator {
         typeof block.id === "string" &&
         typeof block.name === "string"
       ) {
-        this.announcedToolCalls.add(block.id);
+        this.announcedToolCalls.set(block.id, {
+          name: block.name,
+          announcedAt: Date.now(),
+        });
         chunks.push({
           type: "tool-input-available",
           toolCallId: block.id,
-          toolName: block.name,
-          input: block.input ?? {},
+          toolName: canonicalToolName(block.name),
+          input: canonicalToolInput(block.name, block.input ?? {}),
         });
       }
     }
@@ -354,9 +521,12 @@ export class UiChunkTranslator {
       // Ordering contract: a result whose call we never announced would make
       // the projector's part reassembly throw. Dropping it loses one tool
       // panel; letting it through fails the whole run.
-      if (!this.announcedToolCalls.has(toolCallId)) continue;
+      const call = this.announcedToolCalls.get(toolCallId);
+      if (!call || this.awaitingUser.has(toolCallId)) continue;
+      const flattened = call.name.startsWith(STUDIO_MCP_PREFIX)
+        ? studioToolOutput(block.content)
+        : flattenToolResult(block.content);
       if (block.is_error === true) {
-        const flattened = flattenToolResult(block.content);
         chunks.push({
           type: "tool-output-error",
           toolCallId,
@@ -365,12 +535,22 @@ export class UiChunkTranslator {
               ? flattened
               : JSON.stringify(flattened),
         });
-        continue;
+      } else {
+        chunks.push({
+          type: "tool-output-available",
+          toolCallId,
+          // The `subtask` renderer reads the subagent's report as `text`.
+          output:
+            canonicalToolName(call.name) === "subtask" &&
+            typeof flattened === "string"
+              ? { text: flattened }
+              : flattened,
+        });
       }
       chunks.push({
-        type: "tool-output-available",
-        toolCallId,
-        output: flattenToolResult(block.content),
+        type: "data-tool-metadata",
+        id: toolCallId,
+        data: { latencyMs: Date.now() - call.announcedAt },
       });
     }
     return chunks;
@@ -393,13 +573,18 @@ export function turnStartChunks(messageId: string): UIMessageChunk[] {
  * (only the durable projector special-cases a missing reason as completed). A
  * turn that opened its PR and then reported `failed` is exactly what omitting it
  * produced.
+ *
+ * A turn stopped to wait for the user ends `tool-calls`, never as an error:
+ * the SDK reports that interrupt as `error_during_execution`.
  */
 export function turnFinishChunks(
   result: SdkResultMessage,
   contextTokens = 0,
+  awaitingUser = false,
 ): UIMessageChunk[] {
   const chunks: UIMessageChunk[] = [];
-  if (result.is_error) {
+  const failed = result.is_error && !awaitingUser;
+  if (failed) {
     chunks.push({
       type: "error",
       errorText: result.result ?? `claude-code run failed (${result.subtype})`,
@@ -409,7 +594,11 @@ export function turnFinishChunks(
   const usage = turnUsage(result, contextTokens);
   chunks.push({
     type: "finish",
-    finishReason: result.is_error ? ("error" as const) : ("stop" as const),
+    finishReason: awaitingUser
+      ? ("tool-calls" as const)
+      : failed
+        ? ("error" as const)
+        : ("stop" as const),
     ...(usage ? { messageMetadata: { usage } } : {}),
   });
   return chunks;
