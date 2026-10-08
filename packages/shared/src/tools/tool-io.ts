@@ -1430,6 +1430,7 @@ export interface StudioToolIO {
         | { name: string; title: string; description?: string | undefined }[]
         | undefined;
       postStructures?: { title: string; sections: string[] }[] | undefined;
+      guidance?: string | undefined;
       count?: number | undefined;
       virtualMcpId?: string | undefined;
     };

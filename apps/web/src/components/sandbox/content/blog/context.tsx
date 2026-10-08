@@ -238,6 +238,9 @@ export function BlogContext({
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [formatPhase, setFormatPhase] =
     useState<FormatPhase>(FORMAT_PHASE_READING);
+  const [formatAskOpen, setFormatAskOpen] = useState(false);
+  const [formatGuidance, setFormatGuidance] = useState("");
+  const [formatCount, setFormatCount] = useState(3);
 
   const [isExtracting, setIsExtracting] = useState(false);
   const [fillOpen, setFillOpen] = useState(false);
@@ -416,6 +419,8 @@ export function BlogContext({
           title: post.title,
           sections: post.sections,
         })),
+        guidance: formatGuidance.trim() || undefined,
+        count: formatCount,
       });
 
       const fresh = addFormats(result.formats);
@@ -768,22 +773,81 @@ export function BlogContext({
             >
               {t("sandbox.formats.starterButton")}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="my-2 shrink-0"
-              disabled={isSuggesting || !hasAi}
-              title={
-                hasAi
-                  ? t("sandbox.formats.suggestHint")
-                  : t("sandbox.autonomous.noAiProvider")
-              }
-              onClick={() => void suggestFormats()}
-            >
-              <Stars02 size={14} />
-              {t("sandbox.formats.suggestButton")}
-            </Button>
+            <Popover open={formatAskOpen} onOpenChange={setFormatAskOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="my-2 shrink-0"
+                  disabled={isSuggesting || !hasAi}
+                  title={
+                    hasAi
+                      ? t("sandbox.formats.suggestHint")
+                      : t("sandbox.autonomous.noAiProvider")
+                  }
+                >
+                  <Stars02 size={14} />
+                  {t("sandbox.formats.suggestButton")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="format-guidance">
+                    {t("sandbox.formats.guidanceLabel")}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("sandbox.formats.guidanceHint")}
+                  </p>
+                </div>
+                <Input
+                  id="format-guidance"
+                  value={formatGuidance}
+                  onChange={(e) => setFormatGuidance(e.target.value)}
+                  placeholder={t("sandbox.formats.guidancePlaceholder")}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    setFormatAskOpen(false);
+                    void suggestFormats();
+                  }}
+                  className="h-9"
+                />
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="format-count" className="text-xs">
+                    {t("sandbox.formats.countLabel")}
+                  </Label>
+                  <Input
+                    id="format-count"
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={formatCount}
+                    onChange={(e) =>
+                      setFormatCount(
+                        Math.max(1, Math.min(5, Number(e.target.value) || 1)),
+                      )
+                    }
+                    className="h-9 w-16"
+                  />
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {t("sandbox.postBoard.usesCredits")}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    setFormatAskOpen(false);
+                    void suggestFormats();
+                  }}
+                >
+                  <Stars02 size={14} />
+                  {t("sandbox.formats.suggestButton")}
+                </Button>
+              </PopoverContent>
+            </Popover>
           </div>
         )}
       </div>

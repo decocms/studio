@@ -368,6 +368,11 @@ export const sandbox = {
   "sandbox.formats.add": "New format",
   "sandbox.formats.bodyPlaceholder":
     "When to use it, how it opens and closes, roughly how long, and which sections carry it…",
+  "sandbox.formats.countLabel": "How many",
+  "sandbox.formats.guidanceHint":
+    "Optional. What these formats should cover — a campaign, a season, a kind of post the blog keeps needing.",
+  "sandbox.formats.guidanceLabel": "Extra instructions",
+  "sandbox.formats.guidancePlaceholder": "e.g. one format for product launches",
   "sandbox.formats.hint":
     "A format guides generation, it doesn't dictate it — describe the intent and let the model decide the order. Type @ to cite one of your sections.",
   "sandbox.formats.mentionEmpty": "No matching section",

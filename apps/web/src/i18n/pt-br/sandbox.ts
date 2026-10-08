@@ -377,6 +377,12 @@ export const sandbox = {
   "sandbox.formats.add": "Novo formato",
   "sandbox.formats.bodyPlaceholder":
     "Quando usar, como abre e fecha, mais ou menos o tamanho, e quais sections sustentam ele…",
+  "sandbox.formats.countLabel": "Quantos",
+  "sandbox.formats.guidanceHint":
+    "Opcional. O que estes formatos devem cobrir — uma campanha, uma época, um tipo de post que o blog vive precisando.",
+  "sandbox.formats.guidanceLabel": "Instruções extras",
+  "sandbox.formats.guidancePlaceholder":
+    "ex: um formato para lançamento de produto",
   "sandbox.formats.hint":
     "Um formato orienta a geração, não dita — descreva a intenção e deixe o modelo decidir a ordem. Digite @ para citar uma das suas sections.",
   "sandbox.formats.mentionEmpty": "Nenhuma section corresponde",

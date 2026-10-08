@@ -33,6 +33,7 @@ const MAX_SECTIONS = 60;
 const MAX_POSTS = 40;
 const MAX_NAME_CHARS = 200;
 const MAX_DESCRIPTION_CHARS = 1_000;
+const MAX_GUIDANCE_CHARS = 2_000;
 
 const SYSTEM = `You name and describe the formats a blog writes in, so that generated posts are built the way this blog builds posts.
 
@@ -46,7 +47,9 @@ READ THE EXISTING POSTS' STRUCTURES FOR THE FORMATS ALREADY IN USE. You are give
 
 With no posts to read, propose formats from the brand profile and the section inventory: what would this brand plausibly publish, built from what this site can render.
 
-Propose fewer, sharper formats over more. Three formats a writer can tell apart beat five that overlap — and two formats whose briefs would guide the same post are one format.`;
+Propose fewer, sharper formats over more. Three formats a writer can tell apart beat five that overlap — and two formats whose briefs would guide the same post are one format.
+
+WHAT THE OPERATOR ASKED FOR OUTRANKS WHAT YOU READ. When that section is present it is a person telling you what this blog is for, which the posts and the profile can only be evidence about. Follow it even where the existing posts suggest otherwise — and if it asks for a format this site has no sections to build, say so in the brief rather than quietly proposing something else.`;
 
 function renderRules(
   label: string,
@@ -123,6 +126,13 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       .describe(
         "How each existing post is built. The shape of the posts, not their prose — this is what reveals the formats already in use.",
       ),
+    guidance: z
+      .string()
+      .max(MAX_GUIDANCE_CHARS)
+      .optional()
+      .describe(
+        "What the operator wants these formats to cover, in their own words. Outranks every inference from the existing posts and the brand profile.",
+      ),
     count: z
       .number()
       .int()
@@ -189,6 +199,7 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
             .join("\n")}`
         : "## How the existing posts are built\nThis blog has no posts yet.",
       renderGrounding(grounding),
+      input.guidance && `## What the operator asked for\n${input.guidance}`,
       `## Your task\nPropose at most ${input.count} formats.`,
     ]
       .filter(Boolean)
