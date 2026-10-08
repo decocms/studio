@@ -87,6 +87,7 @@ import {
   type RunStatusStreamBuffer,
 } from "@/api/routes/decopilot/run-status-stage";
 import { POD_SHUTDOWN_ABORT_REASON } from "@/api/routes/decopilot/run-registry";
+import { endTurnClock, markTurn } from "./turn-latency";
 import {
   getThreadRepository,
   getCodingAgentProjectMetadata,
@@ -497,6 +498,7 @@ export class SandboxDispatchClient {
   private async *stream(
     input: HarnessStreamInput,
   ): AsyncIterable<UIMessageChunk> {
+    markTurn(input.threadId, "sandbox-client");
     if (!this.credential) {
       throw new Error(
         `the ${SANDBOX_HOSTED_HARNESS} harness needs a resolved model credential; ` +
@@ -563,6 +565,7 @@ export class SandboxDispatchClient {
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId, agent),
     };
+    markTurn(input.threadId, "mcp-and-workspace-resolved");
 
     // One daemon run per TURN: a re-dispatch of the same turn (continuation, DBOS
     // recovery) keeps the fence, so it reattaches or takes over (the daemon's
@@ -605,20 +608,24 @@ export class SandboxDispatchClient {
             onBound: (info) => {
               warmPoolAdopted = info.warmPoolAdopted;
             },
-            onColdStart: () =>
-              publishRunStatusStage({
+            onColdStart: () => {
+              markTurn(runId, "cold-start");
+              return publishRunStatusStage({
                 streamBuffer,
                 harnessId: SANDBOX_HOSTED_HARNESS,
                 taskId: runId,
                 stage: "starting-sandbox",
-              }),
+              });
+            },
           },
           ctx,
         );
+        markTurn(runId, "sandbox-bound", { warmPoolAdopted });
         lastHandle = sandbox.sandboxHandle;
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
         await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
+        markTurn(runId, "env-pushed");
         // Assembled HERE, not at enqueue: the prompt is written before a pod
         // exists, and which kind this run gets is decided by the claim above.
         const boundInput = {
@@ -1086,6 +1093,7 @@ async function* dispatchToDaemon(args: {
     throw new Error(summary);
   }
   if (!res.body) throw new SandboxUnreachableError("dispatch returned no body");
+  markTurn(args.runId, "daemon-responded");
   // Hold the pod open for as long as this run streams.
   //
   // A claim is created with `spec.lifecycle.shutdownTime = now + 15min`
@@ -1111,6 +1119,8 @@ async function* dispatchToDaemon(args: {
   // the FIRST reason is the real one.
   let error: { code: string; message: string } | null = null;
   let done = false;
+  let frames = 0;
+  let firstToken = false;
   try {
     for await (const line of ndjsonLines(res.body, args.signal)) {
       const parsed = harnessRunResultSchema.safeParse(line);
@@ -1118,6 +1128,25 @@ async function* dispatchToDaemon(args: {
         throw new Error(
           `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
         );
+      }
+      if (frames++ === 0) {
+        const runnerMs = parsed.data.timings?.emit;
+        markTurn(args.runId, "first-frame", {
+          // Daemon handling + runner process boot: request-to-first-frame minus the runner's own time.
+          ...(runnerMs !== undefined
+            ? {
+                daemonAndSpawnMs: Date.now() - startedAt - Math.round(runnerMs),
+              }
+            : {}),
+          runner: parsed.data.timings ?? null,
+        });
+      }
+      if (!firstToken) {
+        const token = parsed.data.chunks.find(isFirstTokenChunk);
+        if (token) {
+          firstToken = true;
+          endTurnClock(args.runId, { chunk: token.type });
+        }
       }
       total += parsed.data.chunks.length;
       yield* parsed.data.chunks as UIMessageChunk[];
@@ -1186,6 +1215,16 @@ export function errorForTerminal(code: string, message: string): Error {
  * `withLivenessHeartbeat` keeps publishing on Studio's clock, so the run looks
  * healthy to the reaper and holds its thread's queue slot indefinitely.
  */
+/** What the user sees as the answer starting: text, reasoning, or a tool call. */
+function isFirstTokenChunk(chunk: unknown): chunk is { type: string } {
+  const type = (chunk as { type?: unknown } | null)?.type;
+  return (
+    type === "text-delta" ||
+    type === "reasoning-delta" ||
+    type === "tool-input-start"
+  );
+}
+
 export async function* ndjsonLines(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -122,8 +123,8 @@ type Deps struct {
 	// is in place produces a confident wrong answer rather than an error, so
 	// waiting is the safer failure. It must bound its own wait (Studio's dispatch
 	// has no separate readiness deadline to fall back on) and it must never fail
-	// the run: at its ceiling it proceeds without. Optional.
-	BeforeRun func(RunInfo)
+	// the run: at its ceiling it proceeds without. Optional. Returns ms per step.
+	BeforeRun func(RunInfo) map[string]int64
 	// AfterRun settles the workspace once the harness has exited, however it
 	// exited (success, crash, cancel): whatever must outlive the pod — stray
 	// skills, the agent's session transcript — gets moved to where it does. Same
@@ -741,8 +742,9 @@ func (reg *Registry) runHarness(
 	// Per-run workspace state, before the harness can touch the workspace.
 	info := runInfoOf(input)
 	info.Harness = entry.harness
+	var prepMs map[string]int64
 	if deps.BeforeRun != nil {
-		deps.BeforeRun(info)
+		prepMs = deps.BeforeRun(info)
 	}
 	// Deferred, not placed after RunHarness: every terminal path below returns
 	// early (crash, cancel, unavailable runner), and the run that crashed
@@ -764,9 +766,13 @@ func (reg *Registry) runHarness(
 		return
 	}
 
-	var runEnv map[string]string
+	runEnv := map[string]string{}
 	if deps.RunEnv != nil {
-		runEnv = deps.RunEnv()
+		maps.Copy(runEnv, deps.RunEnv())
+	}
+	// The runner reports these with its own timings, so Studio's log shows them.
+	if b, err := json.Marshal(prepMs); err == nil && prepMs != nil {
+		runEnv["HARNESS_BEFORE_RUN_MS"] = string(b)
 	}
 
 	// One line per frame: without it a streaming run and a buffering one look

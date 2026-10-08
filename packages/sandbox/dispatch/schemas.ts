@@ -28,6 +28,8 @@ export const harnessRunResultSchema = z.object({
     .object({ code: z.string(), message: z.string() })
     .nullish()
     .transform((e) => e ?? null),
+  /** Runner-side ms since its process started, on its first frame only; `emit` is when that frame left. */
+  timings: z.record(z.string(), z.number()).optional(),
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 

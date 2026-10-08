@@ -497,8 +497,17 @@ describe("createDeltaCoalescer", () => {
     delta: text,
   });
 
+  test("a block's first delta goes out at once: it is the first token", () => {
+    const c = createDeltaCoalescer(100);
+    expect(c.push([delta("a", "H")])).toEqual([delta("a", "H")]);
+    expect(c.push([{ type: "reasoning-delta", id: "a", delta: "t" }])).toEqual([
+      { type: "reasoning-delta", id: "a", delta: "t" },
+    ]);
+  });
+
   test("holds a short delta until something forces it out", () => {
     const c = createDeltaCoalescer(10);
+    c.push([delta("a", "H")]);
     expect(c.push([delta("a", "hi")])).toEqual([]);
     expect(c.drain()).toEqual([delta("a", "hi")]);
     // Drained once; nothing left to emit twice.
@@ -507,6 +516,7 @@ describe("createDeltaCoalescer", () => {
 
   test("concatenates same-block deltas and flushes at the threshold", () => {
     const c = createDeltaCoalescer(5);
+    c.push([delta("a", "H")]);
     expect(c.push([delta("a", "ab")])).toEqual([]);
     expect(c.push([delta("a", "cd")])).toEqual([]);
     expect(c.push([delta("a", "ef")])).toEqual([delta("a", "abcdef")]);
@@ -524,6 +534,7 @@ describe("createDeltaCoalescer", () => {
 
   test("a different block flushes the previous one rather than merging", () => {
     const c = createDeltaCoalescer(100);
+    c.push([delta("a", "A"), delta("b", "B")]);
     c.push([delta("a", "one")]);
     expect(c.push([delta("b", "two")])).toEqual([delta("a", "one")]);
     expect(c.drain()).toEqual([delta("b", "two")]);
@@ -531,6 +542,7 @@ describe("createDeltaCoalescer", () => {
 
   test("reasoning and text deltas are not merged into each other", () => {
     const c = createDeltaCoalescer(100);
+    c.push([{ type: "reasoning-delta", id: "a", delta: "T" }, delta("a", "S")]);
     c.push([{ type: "reasoning-delta", id: "a", delta: "think" }]);
     // Same id, different kind — merging would put reasoning into a text part.
     expect(c.push([delta("a", "say")])).toEqual([
@@ -557,6 +569,7 @@ describe("createDeltaCoalescer", () => {
 
   test("discard drops what is held instead of emitting it", () => {
     const c = createDeltaCoalescer(100);
+    c.push([delta("a", "H")]);
     c.push([delta("a", "abandoned")]);
     c.discard();
     expect(c.drain()).toEqual([]);

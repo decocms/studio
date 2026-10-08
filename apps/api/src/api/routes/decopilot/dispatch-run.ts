@@ -54,6 +54,7 @@ import {
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
 import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
+import { markTurn } from "@/harnesses/turn-latency";
 import { withRunTitle } from "@/harnesses/sandbox-run-title";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
@@ -650,6 +651,7 @@ export async function dispatchRunAndWait(
   return traced(
     "decopilot.dispatchRunAndWait",
     async (rootSpan) => {
+      if (input.taskId) markTurn(input.taskId, "gate-dispatch");
       const { taskId, uiStream, registrySignal } = await prepareRun(
         input,
         ctx,

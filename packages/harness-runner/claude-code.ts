@@ -84,6 +84,7 @@ const WAIT_IN_TURN_INSTRUCTION =
 export interface HarnessRunResult {
   chunks: unknown[];
   error?: { code: string; message: string } | null;
+  timings?: Record<string, number>;
 }
 
 /**
@@ -620,6 +621,8 @@ export function createOrphanEndGuard(): (chunks: unknown[]) => unknown[] {
  * Ordering is preserved exactly: a non-delta chunk flushes whatever is held
  * before it goes out, so `text-end` can never overtake its own text.
  *
+ * A block's first delta is never held: it is the time to first token.
+ *
  * ponytail: size-based, no timer. ~200 chars is well under a second at model
  * output rates, and a timer would need a flush race at every turn exit for no
  * visible gain. If a slow model ever feels chunky, add the timer here.
@@ -630,6 +633,7 @@ export function createDeltaCoalescer(flushChars = 200): {
   discard(): void;
 } {
   let held: { type: string; id: string; delta: string } | null = null;
+  const startedBlocks = new Set<string>();
 
   const asDelta = (
     chunk: unknown,
@@ -659,6 +663,14 @@ export function createDeltaCoalescer(flushChars = 200): {
         // Both type AND id: ids are minted distinctly today, but merging a
         // reasoning delta into a text part on an id collision would corrupt
         // the part rather than just misorder it.
+        const block = `${delta.type}:${delta.id}`;
+        if (!startedBlocks.has(block)) {
+          startedBlocks.add(block);
+          if (held) out.push(held);
+          held = null;
+          out.push(chunk);
+          continue;
+        }
         if (held && held.type === delta.type && held.id === delta.id) {
           held.delta += delta.delta;
         } else {
@@ -691,8 +703,30 @@ export function createDeltaCoalescer(flushChars = 200): {
  */
 export async function runClaudeCode(
   input: HarnessStreamInputWire,
-  emit: EmitFrame,
+  emitFrame: EmitFrame,
 ): Promise<void> {
+  // ms since process start, sent on the first frame to split Studio's TTFT.
+  const timings: Record<string, number> = {
+    input: Math.round(performance.now()),
+  };
+  // The daemon's workspace prep before it exec'd this process.
+  try {
+    const prep = JSON.parse(process.env.HARNESS_BEFORE_RUN_MS ?? "{}");
+    for (const [step, ms] of Object.entries(prep)) {
+      if (typeof ms === "number") timings[`daemon-${step}`] = ms;
+    }
+  } catch {}
+  const mark = (name: string) => {
+    timings[name] ??= Math.round(performance.now());
+  };
+  let timed = false;
+  const emit: EmitFrame = (frame) => {
+    if (timed) return emitFrame(frame);
+    timed = true;
+    mark("emit");
+    console.error(`[claude-code] timings ${JSON.stringify(timings)}`);
+    emitFrame({ ...frame, timings });
+  };
   const file = sessionFile(input.threadId);
   const stored = (
     await Bun.file(file)
@@ -713,6 +747,8 @@ export async function runClaudeCode(
   // produces before the first assistant message waits here, never longer.
   const pending: unknown[] = [];
   let started = false;
+  // The turn was opened by `message_start`; its first `assistant` is not a new step.
+  let openedOnStream = false;
   const guard = createOrphanEndGuard();
   const startTurn = (id: string) => {
     if (started) return;
@@ -871,6 +907,7 @@ export async function runClaudeCode(
    * `null` once the turn has been reported, however it ended.
    */
   async function attemptTurn(): Promise<string | null> {
+    mark("query");
     const stream = query({
       prompt: promptForRun(input),
       options: buildOptions({
@@ -898,6 +935,13 @@ export async function runClaudeCode(
   ): Promise<string | null> {
     const startedAt = Date.now();
     for await (const message of stream) {
+      mark(`sdk-${message.type}`);
+      if (
+        message.type === "stream_event" &&
+        message.event.type === "content_block_delta"
+      ) {
+        mark("first-delta");
+      }
       // Every SDK message, with the seconds it took to arrive. Without this a
       // run stalled on the model, on a tool, or on MCP looks exactly like a run
       // that is working — both are silence in the pod log.
@@ -955,6 +999,18 @@ export async function runClaudeCode(
       // step whose call produced them, which is why the close happens here and
       // not when they arrive.
       // A subagent's messages belong to its `subtask` part, not to a step here.
+      // The first API message opens the turn on `message_start`, so its text
+      // streams out instead of waiting in `pending` for the whole first block.
+      if (
+        !started &&
+        message.type === "stream_event" &&
+        message.parent_tool_use_id === null &&
+        message.event.type === "message_start"
+      ) {
+        messageId ??= message.event.message.id;
+        startTurn(messageId);
+        openedOnStream = true;
+      }
       if (message.type === "assistant" && message.parent_tool_use_id === null) {
         const id = message.message.id;
         if (!messageId && typeof id === "string" && id.length > 0) {
@@ -963,7 +1019,8 @@ export async function runClaudeCode(
         // Close whatever `stream_event` left open BEFORE the step boundary —
         // the SDK reducer drops its open parts on `finish-step`, so an end
         // emitted after it is an orphan that throws and kills the run.
-        if (started)
+        if (openedOnStream) openedOnStream = false;
+        else if (started)
           push([
             ...translator.closeOpenStreamBlocks(),
             { type: "finish-step" },

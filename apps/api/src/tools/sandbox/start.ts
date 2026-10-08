@@ -9,6 +9,7 @@
  * callers that have a branch must pass it or they get a second sandbox.
  */
 
+import { markTurn } from "@/harnesses/turn-latency";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
@@ -495,6 +496,9 @@ async function provisionSandbox(params: StartParams): Promise<{
     purpose,
     provider,
   } = params;
+  const turnId = threadIdFromBranch(branch) ?? ctx.metadata?.threadId;
+  const mark = (stage: string) =>
+    turnId && markTurn(turnId, `provision:${stage}`);
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
   // Set from the primary repository below, once it is resolved.
@@ -765,7 +769,9 @@ async function provisionSandbox(params: StartParams): Promise<{
       purpose: purpose ?? "interactive",
     },
     async () => {
+      mark("prep");
       await waitForSchedulableCapacity(runner);
+      mark("capacity");
       return ensureOrRephrase(
         runner,
         { userId: sandboxUserId, projectRef },
@@ -807,6 +813,7 @@ async function provisionSandbox(params: StartParams): Promise<{
   // Resolve declared env (literals + secret refs) and push to the daemon
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
   // already-claimed sandbox stays idempotent.
+  mark("provider-ensure");
   const envEntries = readValidatedRuntimeEnv(metadata);
   await resolveAndPushEnv({
     ctx,
@@ -816,6 +823,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     userId,
     entries: envEntries,
   });
+  mark("env");
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
   // timer doesn't reset on re-run.
@@ -857,6 +865,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     await setThreadSandboxMapEntry(ctx, threadId, sandboxUserId, branch, entry);
   }
 
+  mark("map-writes");
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
   return { entry, isNewVm, warmPoolAdopted: sandbox.warmPoolAdopted };

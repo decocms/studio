@@ -116,7 +116,7 @@ func TestDispatchCarriesTheEnvelopeHarness(t *testing.T) {
 		rec := httptest.NewRecorder()
 		NewRegistry().HandleDispatch(rec, req, Deps{
 			DaemonToken: func() string { return token },
-			BeforeRun:   func(info RunInfo) { seen = info.Harness },
+			BeforeRun:   func(info RunInfo) map[string]int64 { seen = info.Harness; return nil },
 		})
 		return rec.Code, seen
 	}
