@@ -45,6 +45,8 @@ import { CategoryTreeList } from "./blocks/category-tree-list";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
 import type { ProductPickerOption } from "./blocks/product-picker-source";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { ImageField } from "@/components/sections-editor/fields/image-field";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import {
   buildCampaignBlock,
   CAMPAIGN_OBJECTIVES,
@@ -637,6 +639,8 @@ export function CampaignEditor({
                   />
                   <ProductImages
                     images={product.images}
+                    idPrefix={`${blockKey}-product-${index}`}
+                    sandbox={sandboxRef}
                     onChange={(images) => patchProduct(index, { images })}
                   />
                 </div>
@@ -745,36 +749,49 @@ export function CampaignEditor({
   );
 }
 
-/** Up to three image URLs. The picker brings them; both lists stay editable. */
+/**
+ * Up to three images per product.
+ *
+ * Each slot is the Studio image field, the same one the post cover and the
+ * author avatar use: it browses the org's assets, takes a pasted address and
+ * accepts a drop. Rolling a plain URL input here would have meant the one place
+ * in the product that cannot reach the images the brand already uploaded.
+ */
 function ProductImages({
   images,
+  idPrefix,
+  sandbox,
   onChange,
 }: {
   images: string[];
+  idPrefix: string;
+  sandbox?: SandboxConfig | null;
   onChange: (images: string[]) => void;
 }) {
   const t = useT();
   return (
     <div className="space-y-2">
       {images.map((image, index) => (
-        <div key={index} className="flex items-center gap-2">
-          {image ? (
-            <img
-              src={image}
-              alt=""
-              className="size-9 shrink-0 rounded border object-cover"
+        <div key={index} className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <ImageField
+              schema={{
+                type: "string",
+                format: "image-uri",
+                title: t("sandbox.campaigns.productImageLabel"),
+              }}
+              value={image}
+              onChange={(next) =>
+                onChange(
+                  images.map((v, i) => (i === index ? String(next ?? "") : v)),
+                )
+              }
+              path={`${idPrefix}-image-${index}`}
+              label=""
+              sandbox={sandbox}
+              compact
             />
-          ) : (
-            <div className="size-9 shrink-0 rounded border bg-muted" />
-          )}
-          <Input
-            value={image}
-            placeholder={t("sandbox.campaigns.productImagePlaceholder")}
-            onChange={(e) =>
-              onChange(images.map((v, i) => (i === index ? e.target.value : v)))
-            }
-            className="h-9"
-          />
+          </div>
           <RemoveButton
             label={t("sandbox.campaigns.removeImage")}
             onClick={() => onChange(images.filter((_, i) => i !== index))}

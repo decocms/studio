@@ -169,7 +169,6 @@ export const sandbox = {
   "sandbox.campaigns.triggerTrendHelp":
     "Algo está acontecendo no mercado ou na cultura agora, e passa.",
   "sandbox.campaigns.addImage": "Adicionar imagem",
-  "sandbox.campaigns.productImagePlaceholder": "https://… (URL da imagem)",
   "sandbox.campaigns.removeImage": "Remover imagem",
   "sandbox.campaigns.untitledProduct": "Produto sem nome",
   "sandbox.campaigns.untitledTarget": "Alvo sem nome",
@@ -230,6 +229,7 @@ export const sandbox = {
     "Recompra, frequência, retorno de clientes.",
   "sandbox.campaigns.objectiveRetentionProduct":
     "O que ele já tem — e o que acompanha bem.",
+  "sandbox.campaigns.productImageLabel": "Imagem do produto",
   "sandbox.campaigns.add": "Nova campanha",
   "sandbox.campaigns.addAvoid": "Adicionar guardrail",
   "sandbox.campaigns.addTarget": "Adicionar alvo",
