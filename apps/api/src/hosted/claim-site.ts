@@ -4,12 +4,13 @@
  *
  * The site id is public and immutable: a project is linked once, and a slug
  * never leaves its org (a deleted org's slug stays reserved). After its
- * project is deleted, the same org may link it to another of its projects. `org_sites` ownership
- * also lets an org mint asset-storage credentials for `<slug>/*` (`managed`
- * file configs), and the slug a project is created with is caller-chosen. So a
- * slug no org owns is claimed only when it isn't a deco.cx site (the deco
- * import claims those, after proving access) and no other org's project names
- * it. Nothing here ever takes a slug from another org or another project.
+ * project is deleted, the same org may link it to another of its projects.
+ * `org_sites` ownership also lets an org mint asset-storage credentials for
+ * `<slug>/*` (`managed` file configs), and the slug a project is created with
+ * is caller-chosen. So a slug no org owns is claimed only when it isn't a
+ * deco.cx site (the deco import claims those, after proving access) and no
+ * other org's project names it. Nothing here ever takes a slug from another
+ * org or another project.
  */
 
 import { type Kysely, sql } from "kysely";
