@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
 import {
   checkModelPermission,
   extractModelPermissions,
@@ -54,6 +55,16 @@ describe("checkModelPermission", () => {
   const modelClaude = "anthropic/claude-sonnet-4.5";
   const modelGemini = "google/gemini-2.5-flash";
   const modelWithColon = "xiaomi/mimo-v2-flash:free";
+
+  it("allows the user's own Claude subscription under any role restriction", () => {
+    expect(
+      checkModelPermission(
+        [`${connA}:*`],
+        CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+        "claude-opus-5-5",
+      ),
+    ).toBe(true);
+  });
 
   describe("when models is undefined (no key in permission)", () => {
     it("should allow all models (backward compat)", () => {

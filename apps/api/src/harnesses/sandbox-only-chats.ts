@@ -58,6 +58,14 @@ export async function hasClaudeCodeCredential(
 ): Promise<boolean> {
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
   if (keys.some((key) => supportsClaudeCode(key.providerId))) return true;
+  return hasLiveClaudeSubscription(ctx, userId);
+}
+
+/** Whether the user linked a Claude subscription that has not expired. */
+export async function hasLiveClaudeSubscription(
+  ctx: StudioContext,
+  userId: string,
+): Promise<boolean> {
   const subscription = await ctx.storage.claudeSubscriptions.find(userId);
   return (
     subscription !== null &&
