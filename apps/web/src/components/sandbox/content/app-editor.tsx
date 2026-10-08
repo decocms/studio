@@ -1,7 +1,7 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronRight } from "@untitledui/icons";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
@@ -12,6 +12,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
+  type SaveGuard,
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
@@ -38,6 +39,8 @@ export function AppEditor({
   excludeFields,
   schemaPending = false,
   previewBaseUrl = null,
+  notice,
+  saveGuard,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -51,6 +54,10 @@ export function AppEditor({
   excludeFields?: readonly string[];
   schemaPending?: boolean;
   previewBaseUrl?: string | null;
+  /** Shown above the form (e.g. that the block is not saved yet). */
+  notice?: ReactNode;
+  /** A version guard for this block's autosaves (e.g. create-only on the first save). */
+  saveGuard?: SaveGuard;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -58,6 +65,7 @@ export function AppEditor({
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
     virtualMcpId,
+    branch,
     sandboxUrl: previewBaseUrl,
   });
   const resolveType =
@@ -68,11 +76,10 @@ export function AppEditor({
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
-  const { save, flush, isPending } = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
+  const { save, flush, isPending } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { guard: saveGuard },
+  );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
     save(refKey, data),
@@ -212,6 +219,7 @@ export function AppEditor({
       <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="px-6 py-6">
           <div className="mx-auto max-w-xl">
+            {notice}
             {hasEditableFields ? (
               <SchemaForm
                 key={`${blockKey}:${formResetKey}`}

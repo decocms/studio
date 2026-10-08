@@ -22,7 +22,12 @@ import {
   BlocksEmptyState,
   BlocksErrorState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
+import { SchemalessEditor } from "@/components/sandbox/content/schemaless-editor";
+import { useNewBlocksEditorState } from "@/hooks/use-new-blocks-editor";
 
 const SectionsEditor = lazy(() =>
   import("@/components/sections-editor/sections-editor").then((m) => ({
@@ -67,6 +72,7 @@ export function BlocksPanel({
         previewUrl,
       }
     : null;
+  const contentBackend = useContentBackend(virtualMcpId, currentBranch);
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
@@ -74,8 +80,14 @@ export function BlocksPanel({
     decofile: toBlocksQueryState(decofile),
     meta: toBlocksQueryState(meta),
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
-    fastPreviewActive: useSessionRuntime(virtualMcpId).runtime === "cms",
+    fastPreviewActive:
+      useSessionRuntime(virtualMcpId).runtime === "cms" ||
+      isProtocolProject(contentBackend),
   });
+
+  // Which editor this site gets (v8: the new one) waits on the same
+  // detection, so neither editor shows and then swaps to the other.
+  const editorUndecided = useNewBlocksEditorState() === undefined;
 
   const panel = (children: ReactNode) => (
     <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
@@ -83,7 +95,26 @@ export function BlocksPanel({
     </div>
   );
 
-  if (state.kind === "loading") return panel(<PanelLoading />);
+  if (state.kind === "loading" || editorUndecided) {
+    return panel(<PanelLoading />);
+  }
+  // No schema yet: the page (or any block) as plain fields, never an error.
+  if (decofile.data && isNoSchemaMeta(meta.data)) {
+    const target = workspace.state.target;
+    const initialKey =
+      target?.kind === "page" || target?.kind === "section" ? target.key : null;
+    return panel(
+      <SchemalessEditor
+        key={initialKey ?? ""}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? ""}
+        decofile={decofile.data}
+        initialKey={initialKey}
+        compact
+      />,
+    );
+  }
   if (state.kind === "empty") return panel(<BlocksEmptyState />);
   if (state.kind === "error") {
     const retry = () => {

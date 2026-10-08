@@ -21,7 +21,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef, useEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { useChatTask } from "@/components/chat/context";
+import { useChatTask, useOptionalChatStream } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
@@ -54,8 +54,16 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { Panel } from "@/components/panel";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useDecofileCacheKey,
+} from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+import {
+  buildServeDraftPointer,
+  withForcedVariantsInDraftUrl,
+} from "@/components/sections-editor/variant-draft-pointer";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -118,7 +126,7 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector } from "./cms-controls";
+import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
@@ -147,6 +155,12 @@ import {
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
+import {
+  isProtocolProject,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
 
@@ -339,6 +353,11 @@ function reloadIframeOrFallback(
   }
 }
 
+/** How long after a `deco serve` save the frame may take to reload itself
+ *  before the editor reloads it: a dev server that reloads pages on content
+ *  changes does so within a few hundred ms of the save. */
+const SERVE_SELF_RELOAD_WAIT_MS = 1500;
+
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
@@ -349,6 +368,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     taskId: activeTaskId,
     virtualMcpId: sessionAgentId,
   } = useChatTask();
+  /** Visual editing asks the chat about a clicked element: none without one
+   *  (the account-less `/site-editor`). */
+  const hasChat = !!useOptionalChatStream();
   const workspace = useBlocksPreviewWorkspace();
   const agent = useVirtualMCPNonBlocking(
     sessionAgentId === virtualMcpId ? virtualMcpId : null,
@@ -467,7 +489,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * iframe, and the editor bridge all target it — and the boot gating is
    * bypassed (the tunnel is already up), so no pod ever boots.
    */
-  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const { url: tunnelUrl } = useLocalPreviewUrl(virtualMcpId);
+  /**
+   * A connected `deco serve` (content protocol) stands in the same way: its
+   * app preview is the dev server on this machine. The protocol never runs
+   * site code, so nothing renders in place: the frame is the real app.
+   */
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
+  const runsSiteCode = !isProtocolProject(contentBackend);
+  const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
   const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
   const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
 
@@ -485,11 +516,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const projectDefaultsToCms = session.projectDefault === "cms";
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
-  const sectionPreviewBase = resolveSectionPreviewBase({
-    sandboxUrl: previewUrl,
-    previewServerUrl,
-    fastPreviewActive: fastPreviewEnabled,
-  });
+  const sectionPreviewBase = runsSiteCode
+    ? resolveSectionPreviewBase({
+        sandboxUrl: previewUrl,
+        previewServerUrl,
+        fastPreviewActive: fastPreviewEnabled,
+      })
+    : null;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -515,7 +548,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const decofile = decofileQuery.data;
   const meta = metaQuery.data;
   const pages = decofile
-    ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
+    ? extractPages(decofile, meta).sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -523,7 +556,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
-    decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
+    runsSiteCode && decofile && meta
+      ? listSavedRunnables(meta, decofile, "loaders")
+      : [];
   const filteredPages = !pagesSearch
     ? pages
     : (() => {
@@ -593,7 +628,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whatever product-search / category loader the running site actually ships.
   // A param with no resolvable source keeps the plain inline input.
   const pathParamSources: Record<string, OptionSource[]> = {};
-  if (devServerReady && previewUrl && meta && decofile) {
+  if (runsSiteCode && devServerReady && previewUrl && meta && decofile) {
     const manifestLoaders = manifestLoaderResolveTypes(meta, "loaders");
     const pageBlock = currentPageKey ? decofile[currentPageKey] : undefined;
     const pageLoaders = collectPageLoaderResolveTypes(
@@ -759,15 +794,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const inPlaceRenderEnabled =
     agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
   // Local renders fake edits in place against the tunnel's `/live/previews`.
-  const inPlaceRenderActive = localPreviewUrl
-    ? display.mode === "sandbox" &&
-      blocksEditingEnabled &&
-      editingMode === "blocks"
-    : display.mode === "production" &&
-      fastPreviewEnabled &&
-      inPlaceRenderEnabled &&
-      blocksEditingEnabled &&
-      editingMode === "blocks";
+  const inPlaceRenderActive = !runsSiteCode
+    ? false
+    : localPreviewUrl
+      ? display.mode === "sandbox" &&
+        blocksEditingEnabled &&
+        editingMode === "blocks"
+      : display.mode === "production" &&
+        fastPreviewEnabled &&
+        inPlaceRenderEnabled &&
+        blocksEditingEnabled &&
+        editingMode === "blocks";
   // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
   const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
   const { pin: nextPinnedDraft, effective: effectiveDraftPreviewUrl } =
@@ -780,32 +817,51 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- persist the frozen/relatched pin for the next render's decision
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
+  // The selected variant: forced variants in the `?__draft=` pointer on a
+  // content-protocol (v8) site, `x-deco-matchers-override` on a legacy one.
+  const variantOverride = workspace.state.variantOverride ?? [];
+  const matcherOverride = runsSiteCode ? variantOverride : [];
+  const forcedVariants = runsSiteCode ? [] : variantOverride;
+  // A connected `deco serve` has no drafts: a pointer to it carries only the
+  // forced variants. With none, `off` drops a pointer the draft cookie kept.
+  const servePointer =
+    serveConnection && servePreviewUrl(contentBackend)
+      ? (buildServeDraftPointer(serveConnection.endpoint, forcedVariants) ??
+        DRAFT_OFF)
+      : null;
+
   const iframeSrc = withDecoFBT(
     display.mode === "sandbox" && externalOriginReady
       ? withVariantMatcherOverride(
           withDeviceHint(
-            directPreviewUrl ??
-              resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-              display.iframeBase!,
+            withDraftPointer(
+              directPreviewUrl ??
+                resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                display.iframeBase!,
+              servePointer,
+            ),
             previewDeviceSize,
           ),
-          workspace.state.variantOverride ?? [],
+          matcherOverride,
         )
       : display.mode === "production" && externalOriginReady
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              // Waking pill up ⇒ no draft is renderable yet, so ask for published.
-              withDraftPointer(
-                directPreviewUrl ??
-                  effectiveDraftPreviewUrl ??
-                  resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
-                  display.iframeBase!,
-                display.showWakingPill ? DRAFT_OFF : null,
+              withForcedVariantsInDraftUrl(
+                // Waking pill up ⇒ no draft is renderable yet, so ask for published.
+                withDraftPointer(
+                  directPreviewUrl ??
+                    effectiveDraftPreviewUrl ??
+                    resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                    display.iframeBase!,
+                  display.showWakingPill ? DRAFT_OFF : null,
+                ),
+                forcedVariants,
               ),
               previewDeviceSize,
             ),
-            workspace.state.variantOverride ?? [],
+            matcherOverride,
           )
         : null,
   );
@@ -856,8 +912,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production"
       ? productionOpenTabBase
         ? withVariantMatcherOverride(
-            productionOpenTabBase,
-            workspace.state.variantOverride ?? [],
+            withForcedVariantsInDraftUrl(productionOpenTabBase, forcedVariants),
+            matcherOverride,
           )
         : null
       : (iframeSrc ?? display.iframeBase);
@@ -1042,10 +1098,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     });
     if (!req) return;
     // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
-    const src = withVariantMatcherOverride(
-      req.src,
-      workspace.state.variantOverride ?? [],
-    );
+    const src = withVariantMatcherOverride(req.src, matcherOverride);
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },
       origin,
@@ -1315,6 +1368,37 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Only a moved or restarted dev server; file edits reload the page themselves.
   useSandboxReloadHandler(reloadPreviewPreservingScroll);
 
+  // A connected `deco serve` is the exception: a save rewrites the site's
+  // content module, which only the server imports, so the dev server may
+  // swap it without reloading the page in the frame. A new content revision
+  // (a save here, or a read that found the files changed) waits for the
+  // frame to reload itself, as a dev server that reloads on content changes
+  // does, and reloads it otherwise.
+  const contentCacheKey = useDecofileCacheKey(createPageParams);
+  const contentRevision = useContentRevision(
+    servePreviewUrl(contentBackend) ? contentCacheKey : "",
+  );
+  const shownRevisionRef = useRef(contentRevision);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative iframe reload in response to a content revision the query cache moved
+  useEffect(() => {
+    const shown = shownRevisionRef.current;
+    shownRevisionRef.current = contentRevision;
+    if (!shown || !contentRevision || shown === contentRevision) return;
+    const iframe = previewIframeRef.current;
+    if (!iframe) return;
+    const reloadedItself = () => clearTimeout(timer);
+    iframe.addEventListener("load", reloadedItself, { once: true });
+    const timer = setTimeout(() => {
+      iframe.removeEventListener("load", reloadedItself);
+      reloadPreviewPreservingScroll();
+    }, SERVE_SELF_RELOAD_WAIT_MS);
+    return () => {
+      clearTimeout(timer);
+      iframe.removeEventListener("load", reloadedItself);
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload on a revision change only; the reload reads refs
+  }, [contentRevision]);
+
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
     setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
@@ -1456,8 +1540,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar =
-    previewSurfaceActive && (daemonReady || display.mode === "production");
+  const showPreviewToolbar = showPreviewToolbarFor({
+    previewSurfaceActive,
+    daemonReady,
+    production: display.mode === "production",
+    servePreviewUrl: servePreviewUrl(contentBackend),
+  });
 
   /** The page selector shares the exact project-level gate used by Content and
    *  Blocks. Session runtime and metadata readiness do not change the topbar's
@@ -1722,7 +1810,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Desktop composition (portaled into the panel header's centre slot).
 
-  const canVisualEdit = display.mode === "sandbox";
+  // A v7 site keeps visual editing as before; a v8 one needs a chat to ask
+  // (none in the account-less `/site-editor`).
+  const canVisualEdit = (runsSiteCode || hasChat) && display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
   const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
