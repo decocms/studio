@@ -57,6 +57,7 @@ export function TaskCommentsHarness({
         <CommentThreadCard
           thread={thread}
           me={ME}
+          onEdit={async () => true}
           onDelete={(commentId) =>
             setThread((prev) => {
               if (!prev) return prev;

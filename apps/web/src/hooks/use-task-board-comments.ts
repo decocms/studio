@@ -1,6 +1,6 @@
-/** A task's comment threads, plus the mutations that post, resolve and delete
- *  them. Comments come back flat and are nested here — a reply's `parentId` is
- *  always a thread root, so the tree is one level deep. */
+/** A task's comment threads, plus the mutations that post, edit, resolve and
+ *  delete them. Comments come back flat and are nested here — a reply's
+ *  `parentId` is always a thread root, so the tree is one level deep. */
 
 import { useProjectContext } from "@/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -80,6 +80,12 @@ export function useTaskBoardComments(itemId: string | undefined) {
     onSuccess: invalidate,
   });
 
+  const edit = useMutation({
+    mutationFn: (input: { id: string; body: string }) =>
+      studio.call("TASK_BOARD_COMMENT_UPDATE", input),
+    onSuccess: invalidate,
+  });
+
   const setResolved = useMutation({
     mutationFn: (input: { id: string; resolved: boolean }) =>
       studio.call("TASK_BOARD_COMMENT_UPDATE", input),
@@ -96,6 +102,7 @@ export function useTaskBoardComments(itemId: string | undefined) {
     threads: query.data ?? [],
     isLoading: query.isPending,
     post,
+    edit,
     setResolved,
     remove,
   };
