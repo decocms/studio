@@ -218,7 +218,8 @@ async function readContent(
  * One `blocks.apply`; adopts the returned revision. On GitHub the save
  * rewrote the project's CDN draft, so the publish status and the draft
  * pointer (`useProtocolDraft`, whose version is the draft's ETag) are
- * refreshed.
+ * refreshed. In a sandbox the save is a working-tree change, so the header's
+ * status is refreshed.
  * `ifMatch` guards entries by version (`null`: only if it doesn't exist yet);
  * a failed guard rejects the whole patch with a Conflict.
  */
@@ -250,6 +251,17 @@ export async function applyProtocolPatch(
       ),
     });
     await queryClient.invalidateQueries({
+      queryKey: sandboxGitStatusQueryKey({
+        orgSlug: params.orgSlug,
+        virtualMcpId: params.virtualMcpId,
+        branch: params.branch,
+        threadId: params.threadId ?? null,
+      }),
+    });
+  }
+  if (backend.source === "sandbox") {
+    // The save changed the working tree: the header's changes count moves.
+    void queryClient.invalidateQueries({
       queryKey: sandboxGitStatusQueryKey({
         orgSlug: params.orgSlug,
         virtualMcpId: params.virtualMcpId,

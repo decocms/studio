@@ -72,6 +72,69 @@ describe("selectContentBackend", () => {
     );
   });
 
+  test("a sandbox session follows its working tree's blocksMajor", () => {
+    const sandbox = {
+      ...base,
+      runtime: "sandbox" as const,
+      githubSite: "v7" as const,
+    };
+    expect(selectContentBackend({ ...sandbox, sandboxSite: "v8" })).toBe(
+      "protocol-sandbox",
+    );
+    // Never pending: a v7 sandbox keeps the legacy editor mounted while the
+    // probe loads; a v7 working tree, or a failed probe: as before.
+    for (const sandboxSite of ["loading", "v7", "error"] as const) {
+      expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe("legacy");
+    }
+  });
+
+  test("a sandbox session is legacy while booting, and with the flag off", () => {
+    const sandbox = { ...base, runtime: "sandbox" as const };
+    // No wait on the flag or the probe: today's UX until v8 is confirmed.
+    for (const flagEnabled of [true, false, undefined]) {
+      for (const sandboxSite of [
+        "unavailable",
+        "loading",
+        "v7",
+        "error",
+        undefined,
+      ] as const) {
+        expect(
+          selectContentBackend({ ...sandbox, flagEnabled, sandboxSite }),
+        ).toBe("legacy");
+      }
+    }
+    expect(
+      selectContentBackend({
+        ...sandbox,
+        flagEnabled: false,
+        sandboxSite: "v8",
+      }),
+    ).toBe("legacy");
+    expect(
+      selectContentBackend({
+        ...sandbox,
+        flagEnabled: undefined,
+        sandboxSite: "v8",
+      }),
+    ).toBe("legacy");
+    // A connected deco serve and the tunnel still win.
+    expect(
+      selectContentBackend({
+        ...sandbox,
+        sandboxSite: "v8",
+        hasServeConnection: true,
+      }),
+    ).toBe("protocol-local");
+    expect(
+      selectContentBackend({
+        ...sandbox,
+        sandboxSite: "v8",
+        hasLocalTunnel: true,
+      }),
+    ).toBe("legacy");
+  });
+
   test("a cms session follows the committed schema's blocksMajor", () => {
     expect(selectContentBackend(base)).toBe("protocol-github");
     expect(selectContentBackend({ ...base, githubSite: "v7" })).toBe("legacy");

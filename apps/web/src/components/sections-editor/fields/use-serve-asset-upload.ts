@@ -1,5 +1,6 @@
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { servePreviewUrl } from "../content-backend";
 import { useContentBackend } from "../use-content-backend";
 import type { SandboxConfig } from "./field-props";
@@ -7,8 +8,9 @@ import type { SandboxConfig } from "./field-props";
 /**
  * Uploads to a connected `deco serve`, when it takes them (`describe.assets`):
  * `PUT <server>/assets/<name>`, answered with the path the
- * field stores (`/assets/<name>`). `null` otherwise — on GitHub uploads keep
- * going to Studio's file storage.
+ * field stores (`/assets/<name>`). A sandbox's daemon takes them the same way,
+ * through Studio's sandbox proxy, into its working tree. `null` otherwise —
+ * on GitHub uploads keep going to Studio's file storage.
  */
 export function useServeAssetUpload(
   sandbox: SandboxConfig | null | undefined,
@@ -18,14 +20,17 @@ export function useServeAssetUpload(
   const { connection } = useDecoServeConnection(sandbox?.virtualMcpId);
   if (
     backend.kind !== "protocol" ||
-    backend.source !== "local" ||
     !backend.describe.assets ||
-    !connection
+    !sandbox ||
+    (backend.source === "local" ? !connection : backend.source !== "sandbox")
   ) {
     return null;
   }
   const { maxBytes } = backend.describe.assets;
-  const origin = new URL(connection.endpoint).origin;
+  const uploadUrl = (name: string) =>
+    backend.source === "sandbox"
+      ? buildSandboxUrl(sandbox, `assets/${encodeURIComponent(name)}`)
+      : `${new URL(connection!.endpoint).origin}/assets/${encodeURIComponent(name)}`;
   return async (file) => {
     if (file.size > maxBytes) {
       throw new Error(
@@ -39,7 +44,7 @@ export function useServeAssetUpload(
     }
     let res: Response;
     try {
-      res = await fetch(`${origin}/assets/${encodeURIComponent(file.name)}`, {
+      res = await fetch(uploadUrl(file.name), {
         method: "PUT",
         headers: {
           "content-type": file.type || "application/octet-stream",
@@ -68,14 +73,18 @@ export function useServeAssetUpload(
 
 /**
  * Where a stored path such as `/assets/logo.png` loads from: on a connected
- * `deco serve`, the site's own dev app, not Studio's origin.
+ * `deco serve`, the site's own dev app, not Studio's origin; in a sandbox,
+ * its dev server.
  */
 export function useServeAssetSrc(
   sandbox: SandboxConfig | null | undefined,
   path: string,
 ): string {
   const backend = useContentBackend(sandbox?.virtualMcpId, sandbox?.branch);
-  const preview = servePreviewUrl(backend);
+  const preview =
+    backend.kind === "protocol" && backend.source === "sandbox"
+      ? (sandbox?.previewUrl ?? null)
+      : servePreviewUrl(backend);
   return preview && path.startsWith("/") && !path.startsWith("//")
     ? new URL(path, preview).href
     : path;

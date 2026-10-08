@@ -136,6 +136,13 @@ function assertSandboxBranchParam(branch: string): void {
 }
 
 const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
+/**
+ * The content protocol's own caps (`@decocms/blocks/protocol` limits): 8 MiB
+ * per request and 25 MiB per asset (`describe.assets.maxBytes`), plus slack so
+ * the daemon, not this proxy, answers a body right at the limit.
+ */
+const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
+const CONTENT_ASSET_MAX_BODY_BYTES = 25 * 1024 * 1024 + 64 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -555,6 +562,12 @@ async function proxyDaemon(
     forwardJsonBody?: boolean;
     /** When set, sent instead of reading the request body. */
     jsonBody?: string;
+    /**
+     * A binary body (an asset upload), sent with `contentType`. Buffered, not
+     * streamed, so the runner can resend it when it retries a 401.
+     */
+    rawBody?: ArrayBuffer;
+    contentType?: string;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -582,10 +595,13 @@ async function proxyDaemon(
 
   const { claimName, userId, projectRef } = c.get("vmClaim");
   const method = opts?.method ?? "POST";
-  let body: string | null = null;
+  let body: string | ArrayBuffer | null = null;
   const headers = new Headers();
 
-  if (opts?.jsonBody !== undefined) {
+  if (opts?.rawBody !== undefined) {
+    body = opts.rawBody;
+    headers.set("content-type", opts.contentType ?? "application/octet-stream");
+  } else if (opts?.jsonBody !== undefined) {
     body = opts.jsonBody;
     headers.set("content-type", "application/json");
   } else if (opts?.forwardJsonBody) {
@@ -694,6 +710,25 @@ async function proxyDaemon(
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
   }
+}
+
+/** `POST …/rpc`: one content-protocol request to the daemon's `/_sandbox/rpc`. */
+export function proxyContentRpc(c: Context<VmEnv>) {
+  return proxyDaemon(c, "/_sandbox/rpc", {
+    forwardJsonBody: true,
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30_000)]),
+  });
+}
+
+/** `PUT …/assets/:name`: an asset upload to the daemon's `/_sandbox/assets/`. */
+export async function proxyContentAsset(c: Context<VmEnv>) {
+  const name = c.req.param("name") ?? "";
+  return proxyDaemon(c, `/_sandbox/assets/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    rawBody: await c.req.arrayBuffer(),
+    contentType: c.req.header("content-type"),
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(60_000)]),
+  });
 }
 
 /**
@@ -847,6 +882,37 @@ export const createSandboxRoutes = () => {
     if (!script) return c.json({ error: "missing script name" }, 400);
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);
   });
+
+  // -- Content protocol (Blocks v8) -----------------------------------------
+  // The daemon serves the working tree's `.deco/blocks` over the content
+  // protocol, as a `deco serve` would on a developer's machine. A sandbox-less
+  // session has no daemon: 404, which the editor reads as "no protocol".
+  app.post(
+    "/:virtualMcpId/:branch/rpc",
+    bodyLimit({
+      maxSize: CONTENT_RPC_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    proxyContentRpc,
+  );
+  app.put(
+    "/:virtualMcpId/:branch/assets/:name",
+    bodyLimit({
+      maxSize: CONTENT_ASSET_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    proxyContentAsset,
+  );
 
   // -- Tenant config --------------------------------------------------------
   app.get("/:virtualMcpId/:branch/config", (c) =>
