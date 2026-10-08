@@ -34,6 +34,7 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -1123,7 +1124,6 @@ function RuleList({
       <ul className="divide-y overflow-hidden rounded-lg border">
         {rules.map((rule, index) => {
           const open = openIndex === index;
-          const warning = open ? citationWarning?.(rule.value) : null;
           return (
             <li key={index} className="group/item bg-card">
               <div className="flex items-center gap-1 pr-2">
@@ -1156,25 +1156,15 @@ function RuleList({
                 />
               </div>
               {open && (
-                <div className="space-y-3 border-t bg-background px-3 py-3">
-                  <Input
-                    value={rule.name}
-                    placeholder={namePlaceholder}
-                    onChange={(e) => replaceAt(index, { name: e.target.value })}
-                    className="h-9 font-medium"
-                  />
-                  <MarkdownEditor
-                    key={`${idPrefix}-${index}-${revision}`}
-                    defaultValue={rule.value}
-                    placeholder={bodyPlaceholder}
-                    attachments={false}
-                    mentions={mentions}
-                    onChange={(markdown) =>
-                      replaceAt(index, { value: markdown })
-                    }
-                  />
-                  {warning && <p className="text-xs text-warning">{warning}</p>}
-                </div>
+                <RuleBody
+                  rule={rule}
+                  editorKey={`${idPrefix}-${index}-${revision}`}
+                  namePlaceholder={namePlaceholder}
+                  bodyPlaceholder={bodyPlaceholder}
+                  mentions={mentions}
+                  citationWarning={citationWarning}
+                  onPatch={(patch) => replaceAt(index, patch)}
+                />
               )}
             </li>
           );
@@ -1187,6 +1177,57 @@ function RuleList({
           setOpenIndex(rules.length);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * How long a citation may look broken while it is still being typed.
+ *
+ * `@Heading` passes through `@H`, `@He`, `@Hea` on the way in, and every one of
+ * them is a name this site has no block for. Warning on each made the message
+ * flash under the editor on every keystroke, which reads as the editor lagging.
+ * Whether a brief cites something real is a question about settled text.
+ */
+const CITATION_SETTLE_MS = 600;
+
+/** The open row's fields. Its own component so the warning can settle per row. */
+function RuleBody({
+  rule,
+  editorKey,
+  namePlaceholder,
+  bodyPlaceholder,
+  mentions,
+  citationWarning,
+  onPatch,
+}: {
+  rule: BrandRule;
+  editorKey: string;
+  namePlaceholder: string;
+  bodyPlaceholder: string;
+  mentions?: MarkdownMentions;
+  citationWarning?: (value: string) => string | null;
+  onPatch: (patch: Partial<BrandRule>) => void;
+}) {
+  const settled = useDebouncedValue(rule.value, CITATION_SETTLE_MS);
+  const warning = citationWarning?.(settled);
+  return (
+    <div className="space-y-3 border-t bg-background px-3 py-3">
+      <Input
+        value={rule.name}
+        placeholder={namePlaceholder}
+        onChange={(e) => onPatch({ name: e.target.value })}
+        className="h-9 font-medium"
+      />
+      <MarkdownEditor
+        key={editorKey}
+        defaultValue={rule.value}
+        placeholder={bodyPlaceholder}
+        attachments={false}
+        mentions={mentions}
+        onChange={(markdown) => onPatch({ value: markdown })}
+      />
+      {warning && <p className="text-xs text-warning">{warning}</p>}
     </div>
   );
 }
