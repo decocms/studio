@@ -4,7 +4,7 @@
  * View id grammar:
  *   - Fixed system/destination: "overview" | "settings" | "automations" |
  *     "site-editor" | "content" | "code" | "assets" | "hosting" | "e2e" |
- *     "analytics" | "cdn" | "git"
+ *     "analytics" | "cdn"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: "agent-view:<encoded agentTab.id>"
  *     (from virtualMcp.metadata.ui.layout.tabs)
@@ -22,8 +22,7 @@
  * `?mainpanel`, a separate boolean, so a closed panel still remembers its view.
  *
  * The "settings" tab bundles what used to be separate instructions,
- * connections, and layout tabs. GitHub-linked Virtual MCPs expose an
- * additional "git" tab (branch/PR panel) alongside settings.
+ * connections, and layout tabs.
  */
 
 export interface EntityLayoutMetadata {
@@ -218,7 +217,6 @@ export const FIXED_SYSTEM_TABS = [
   "e2e",
   "analytics",
   "cdn",
-  "git",
 ] as const;
 
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
@@ -282,6 +280,8 @@ export function isPerThreadTab(tabId: string): boolean {
 const RENAMED_PANEL_SEGMENTS: ReadonlyMap<string, string> = new Map([
   /** The one surface Preview, Content and Code are tabs on. */
   ["preview", "site-editor"],
+  /** The retired Review changes view; PR controls live in the Site Editor header. */
+  ["git", "site-editor"],
 ]);
 
 /**
