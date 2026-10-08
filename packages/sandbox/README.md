@@ -97,6 +97,45 @@ Studio API -> AgentSandboxProvider -> authenticated daemon -> process/filesystem
 For `agent-sandbox`, the provider resolves the Kubernetes workload and its routed
 daemon URL.
 
+## Repository setup hook
+
+A repo may ship `decocms.setup.sh` in its root. The daemon runs it with `sh`,
+from the repo root, after the checkout and before the dependency install, with
+the sandbox's configured environment variables in scope. The name is
+deco-specific on purpose: a bare `setup.sh` is already a developer-bootstrap
+script in plenty of repos, and running one on boot is not what its author meant.
+
+It exists for credentials a package manager needs *before* it can resolve
+anything — a private registry's `.npmrc` is the case that forced it. The dev
+script cannot produce that file: a runtime resolves every import of a script
+before executing its first line, so a generator that needs the registry to load
+its own dependencies can never bootstrap one. Deno has no install step at all,
+so for a Deno repo there is otherwise no point between the clone and
+`deno task dev` where anything of the tenant's can run.
+
+```sh
+# decocms.setup.sh — NPM_TOKEN comes from the sandbox env vars
+cat > "$HOME/.npmrc" <<EOF
+@acme:registry=https://registry.example.com/
+//registry.example.com/:_authToken=${NPM_TOKEN}
+EOF
+```
+
+Write credential files to `$HOME`, not the repo. Package managers read
+`$HOME/.npmrc` too, and a plaintext token inside the working tree is one
+`git add` away from a branch. Publish drops `.npmrc` and `.netrc` for that
+reason, but the hook should not rely on it.
+
+A non-zero exit fails the boot and reports `install-failed`: the hook exists to
+make install and dev possible, so continuing would only trade its error for a
+resolution failure naming the wrong cause.
+
+Gated by `repoSetupScript` in the sandbox config, which Studio sets from the
+`sandbox_setup_script_enabled` organization flag (Settings → Organization →
+Sandbox). Default off. Deliberately not read from the sandbox env: that bag is
+tenant-owned, so a project could otherwise grant itself shell on its own boot
+path.
+
 ## Development
 
 Run package checks from the repository root:

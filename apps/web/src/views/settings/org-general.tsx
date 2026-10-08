@@ -4,6 +4,7 @@ import {
   BlocksEditorSettings,
   BlogBlocksSettings,
   CodeAgentsSettings,
+  SandboxSettings,
   VoiceModeSettings,
 } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
@@ -34,6 +35,7 @@ export function OrgGeneralPage() {
               <>
                 <OrganizationForm />
                 <CodeAgentsSettings />
+                <SandboxSettings />
                 <VoiceModeSettings />
                 <BlogBlocksSettings />
               </>

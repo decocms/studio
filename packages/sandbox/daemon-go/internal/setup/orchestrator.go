@@ -326,11 +326,17 @@ func (o *Orchestrator) runStep(step Step) {
 		if !o.stepClone() {
 			return
 		}
+		if !o.stepSetup() {
+			return
+		}
 		if !o.stepInstall() {
 			return
 		}
 		o.stepStart()
 	case StepInstall:
+		if !o.stepSetup() {
+			return
+		}
 		if !o.stepInstall() {
 			return
 		}
@@ -354,6 +360,45 @@ func (o *Orchestrator) stepClone() bool {
 
 func (o *Orchestrator) stepInstall() bool {
 	return timedPhase("install", o.stepInstallInner)
+}
+
+func (o *Orchestrator) stepSetup() bool {
+	return timedPhase("setup", o.stepSetupInner)
+}
+
+// stepSetupInner runs the repo's own pre-install hook (see RepoSetupScript).
+//
+// It sits ahead of install on BOTH queued paths rather than inside
+// stepInstallInner, because install short-circuits on a golden restore and on a
+// matching fingerprint — and the credential this hook writes is needed by the
+// dev script too, not only by the install. For Deno there is no install at all.
+//
+// No phase transition on success: install owns PhaseInstalling, and claiming it
+// here would leave a sandbox reporting `installing` for the whole boot whenever
+// install then short-circuits.
+func (o *Orchestrator) stepSetupInner() bool {
+	cfg := o.deps.Store.Read()
+	if cfg == nil {
+		return true
+	}
+	// Clone-only wants the files and nothing else — same reasoning as install.
+	if cfg.IsCloneOnly() {
+		return true
+	}
+	code, ran := SpawnRepoSetup(cfg, o.deps.RepoDir, func(data string) { o.rawChunk(data) })
+	if !ran {
+		return true
+	}
+	if code != 0 {
+		// Fatal, not best-effort: the hook exists to make install and dev
+		// possible, so continuing past a failure only trades this error for a
+		// resolution failure that names the wrong cause.
+		errMsg := fmt.Sprintf("%s exited with code %d", RepoSetupScript, code)
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] repo setup script failed (%s)\r\n", errMsg))
+		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
+		return false
+	}
+	return true
 }
 
 // startOutcome is what a start attempt actually did. "skipped" is not a boot

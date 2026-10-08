@@ -12,11 +12,11 @@
  */
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { expect } from "bun:test";
@@ -378,7 +378,12 @@ export interface BareRepo {
  * deps so `npm install --offline` is deterministic.
  */
 export function setupBareRepo(
-  opts: { withPackageJson?: boolean; scripts?: Record<string, string> } = {},
+  opts: {
+    withPackageJson?: boolean;
+    scripts?: Record<string, string>;
+    /** Extra files in the seed commit, keyed by repo-relative POSIX path. */
+    files?: Record<string, string>;
+  } = {},
 ): BareRepo {
   const root = mkdtempSync(join(tmpdir(), "daemon-e2e-repo-"));
   const bare = join(root, "origin.git");
@@ -422,6 +427,11 @@ export function setupBareRepo(
         2,
       ),
     );
+  }
+  for (const [rel, content] of Object.entries(opts.files ?? {})) {
+    const dest = join(seed, ...rel.split("/"));
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, content);
   }
   execSync(`git ${cfg} -C ${seed} add .`, o);
   execSync(`git ${cfg} -C ${seed} commit -m initial`, o);

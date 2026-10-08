@@ -20,6 +20,8 @@ export function buildConfigPayload(args: {
   tenant?: EnsureOptions["tenant"];
   /** Checkout only — the daemon skips install + dev server. */
   cloneOnly?: boolean;
+  /** Let the repo's own pre-install hook run; see `EnsureOptions`. */
+  repoSetupScript?: boolean;
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -93,6 +95,7 @@ export function buildConfigPayload(args: {
     !application &&
     !operator &&
     args.cloneOnly === undefined &&
+    args.repoSetupScript === undefined &&
     !orgId
   ) {
     return null;
@@ -110,6 +113,10 @@ export function buildConfigPayload(args: {
     // from a warm pool carries the previous claim's config, so the flag has to
     // be able to turn itself back off on a normal (dev-server) provision.
     ...(args.cloneOnly !== undefined ? { cloneOnly: args.cloneOnly } : {}),
+    // Sent either way, same reason as `cloneOnly` above.
+    ...(args.repoSetupScript !== undefined
+      ? { repoSetupScript: args.repoSetupScript }
+      : {}),
     ...(application ? { application } : {}),
   };
 }

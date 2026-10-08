@@ -200,6 +200,12 @@ export interface EnsureOptions {
    * config names none, and then installs.
    */
   cloneOnly?: boolean;
+  /**
+   * Allow the repo's own `decocms.setup.sh` to run after the checkout and
+   * before the install. Resolved by the caller from an organization flag —
+   * never from the sandbox env, which the tenant owns.
+   */
+  repoSetupScript?: boolean;
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;
   /**

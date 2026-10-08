@@ -76,6 +76,7 @@ import {
   threadIdFromBranch,
 } from "./thread-repo";
 import { pickGitBranch } from "../../sandbox/head-ref";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
@@ -497,6 +498,12 @@ async function provisionSandbox(params: StartParams): Promise<{
   } = params;
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
+  // Not from the sandbox env: that bag is tenant-owned, so a project would be
+  // granting itself shell on its own boot path.
+  const repoSetupScript = orgFlagEnabled(
+    (await ctx.storage.organizationSettings.get(orgId))?.flags,
+    "sandbox_setup_script_enabled",
+  );
   // Set from the primary repository below, once it is resolved.
   let sandboxImage: SandboxImage = "default";
 
@@ -781,6 +788,7 @@ async function provisionSandbox(params: StartParams): Promise<{
           // omitted workload still installed (404 packages, competing with the run
           // that only wanted the checkout).
           cloneOnly,
+          repoSetupScript,
           ...(purpose ? { purpose } : {}),
           ...(provider ? { provider } : {}),
           ...(sandboxImage !== "default" ? { sandboxImage } : {}),

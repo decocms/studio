@@ -16,6 +16,7 @@ import {
   Rocket01,
   SearchLg,
   Terminal,
+  TerminalBrowser,
   UserSquare,
 } from "@untitledui/icons";
 import {
@@ -398,6 +399,27 @@ export function CodeAgentsSettings() {
           icon={<Terminal size={16} />}
           titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
           descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Whether a sandbox runs the repository's own pre-install hook. Its own section
+ * rather than a row under Code Agents: it is about how a checkout is prepared,
+ * not about which agent answers a chat.
+ */
+export function SandboxSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.sandbox.title")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="sandbox_setup_script_enabled"
+          icon={<TerminalBrowser size={16} />}
+          titleKey="settings.sandbox.setupScriptTitle"
+          descriptionKey="settings.sandbox.setupScriptDescription"
         />
       </SettingsCard>
     </SettingsSection>
