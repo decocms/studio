@@ -1,5 +1,7 @@
 import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
 import { useDecofileDraft } from "./decofile-api";
+import { useProtocolDraft } from "./content-protocol-api";
+import { useContentBackend } from "./use-content-backend";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 
 interface DraftParams {
@@ -10,7 +12,9 @@ interface DraftParams {
 
 /**
  * This session's `?__draft=` pointer, or `null` when Fast Preview is off or no
- * decofile read/write has stashed a grant yet (KEYS.decofileDraft).
+ * pointer is ready yet: a v7 site's decofile read/write stashes a grant
+ * (KEYS.decofileDraft); a hosted v8 site points at its draft on the
+ * delivery CDN ({@link useProtocolDraft}).
  *
  * The Fast Preview gate is load-bearing: a coding session shares the CMS
  * draft's branch, and the grant cache never expires, so without it a
@@ -23,10 +27,13 @@ interface DraftParams {
 export function useDraftPointer(params: DraftParams | null): string | null {
   const fastPreviewActive =
     useSessionRuntime(params?.virtualMcpId).runtime === "cms";
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const github = backend.kind === "protocol" && backend.source === "github";
   const draft = useDecofileDraft(params);
-  return params && draft && fastPreviewActive
-    ? buildDraftPointer({ ...params, ...draft })
-    : null;
+  const protocolPointer = useProtocolDraft(github ? params : null);
+  if (!params || !fastPreviewActive) return null;
+  if (github) return protocolPointer;
+  return draft ? buildDraftPointer({ ...params, ...draft }) : null;
 }
 
 export interface FastPreviewDraftUrl {
