@@ -37,11 +37,13 @@ describe("categoryPathToFacets", () => {
 });
 
 describe("buildProductRequests", () => {
-  test("blank search term browses the default catalog listing", () => {
+  test("blank search term browses the catalog, still with a discriminator", () => {
+    // `{ count }` alone matches no variant of the loader's props union, and the
+    // runtime answers `Unknown props` — the empty browse needs `query` too.
     const expected = [
       {
         resolveType: VTEX_PRODUCT_LIST_RESOLVE_TYPE,
-        props: { count: PRODUCT_PICKER_COUNT },
+        props: { query: "", count: PRODUCT_PICKER_COUNT },
       },
     ];
     expect(buildProductRequests("search", "")).toEqual(expected);

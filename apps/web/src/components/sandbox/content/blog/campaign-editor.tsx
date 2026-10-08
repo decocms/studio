@@ -10,6 +10,7 @@
  * silently overrides the brand context is a trap.
  */
 
+import { useState } from "react";
 import { Calendar } from "@decocms/ui/components/calendar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -20,11 +21,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import { CalendarDate, Trash01, X } from "@untitledui/icons";
+import {
+  CalendarDate,
+  HelpCircle,
+  SearchSm,
+  Trash01,
+  X,
+} from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { useAutosave } from "./use-autosave";
 import { AddButton, PickList, RemoveButton } from "./blocks/primitives";
 import { RuleList, TermsInput } from "./blocks/rule-list";
+import { CategoryTreeList } from "./blocks/category-tree-list";
+import { ProductPickerDialog } from "./blocks/product-picker-dialog";
+import type { ProductPickerOption } from "./blocks/product-picker-source";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import {
   buildCampaignBlock,
   CAMPAIGN_OBJECTIVES,
@@ -33,11 +44,13 @@ import {
   CAMPAIGN_TRIGGERS,
   type CampaignEntry,
   type CampaignObjective,
+  type CampaignProduct,
   type CampaignStatus,
   type CampaignTarget,
   type CampaignTargetKind,
   type CampaignTrigger,
   normalizeBrandRules,
+  readCampaignProducts,
   readCampaignTargets,
   scanCampaigns,
 } from "./blog-data";
@@ -56,10 +69,38 @@ const OBJECTIVE_LABEL: Record<CampaignObjective, TranslationKey> = {
 };
 
 const TARGET_KIND_LABEL: Record<CampaignTargetKind, TranslationKey> = {
-  product: "sandbox.campaigns.targetProduct",
   category: "sandbox.campaigns.targetCategory",
   collection: "sandbox.campaigns.targetCollection",
 };
+
+/**
+ * When to reach for each option. These are the two fields generation leans on
+ * hardest, and the bare labels are jargon — "awareness" tells someone who
+ * already knows the vocabulary nothing they did not know, and everyone else
+ * nothing at all. Kept beside the chips rather than under them: a permanent
+ * twelve-line legend would bury the form.
+ */
+const TRIGGER_HELP: Record<CampaignTrigger, TranslationKey> = {
+  launch: "sandbox.campaigns.triggerLaunchHelp",
+  seasonal: "sandbox.campaigns.triggerSeasonalHelp",
+  trend: "sandbox.campaigns.triggerTrendHelp",
+  seo_gap: "sandbox.campaigns.triggerSeoGapHelp",
+  inventory: "sandbox.campaigns.triggerInventoryHelp",
+  partnership: "sandbox.campaigns.triggerPartnershipHelp",
+  reputation: "sandbox.campaigns.triggerReputationHelp",
+};
+
+const OBJECTIVE_HELP: Record<CampaignObjective, TranslationKey> = {
+  awareness: "sandbox.campaigns.objectiveAwarenessHelp",
+  education: "sandbox.campaigns.objectiveEducationHelp",
+  conversion: "sandbox.campaigns.objectiveConversionHelp",
+  retention: "sandbox.campaigns.objectiveRetentionHelp",
+  repositioning: "sandbox.campaigns.objectiveRepositioningHelp",
+};
+
+/** Stable empty seed — `useAutosave` re-seeds on reference change, so a fresh
+ *  `{}` each render would re-seed on every render instead of only on a refetch. */
+const EMPTY_BLOCK: Record<string, unknown> = {};
 
 /** `YYYY-MM-DD` from a picked day, in local time — not `toISOString`, which
  *  shifts the date backwards for anyone west of UTC. */
@@ -90,6 +131,7 @@ function readCampaign(
     intent: {
       objective: "awareness" as CampaignObjective,
       targets: [],
+      products: [],
       keywords: [],
     },
     guardrails: { avoidComplements: [], toneOverrides: "" },
@@ -105,6 +147,8 @@ export function CampaignEditor({
   onSave,
   onRemove,
   onClose,
+  isSaving,
+  sandboxRef,
 }: {
   blockKey: string;
   block: Record<string, unknown> | undefined;
@@ -112,31 +156,96 @@ export function CampaignEditor({
   onRemove: () => void;
   /** Only the board shows a close affordance; the list pane is always open. */
   onClose?: () => void;
+  /** Blocks `useAutosave` from re-seeding mid-write: the decofile refetch that
+   *  follows a save can still carry the pre-rebuild block, and re-seeding from
+   *  it reverts the edit that caused the save. */
+  isSaving?: boolean;
+  /** Absent outside a sandbox session — the store pickers hide, typing stays. */
+  sandboxRef?: PreviewProxyRef;
 }) {
   const t = useT();
-  const [draft, setDraft] = useAutosave(block ?? {}, (next) => onSave(next));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [draft, setDraft, syncDraft] = useAutosave(
+    block ?? EMPTY_BLOCK,
+    (next) => onSave(next),
+    { isSaving },
+  );
 
   const campaign = readCampaign(blockKey, draft);
   /** Every edit stamps `updatedAt`, so the list can sort by last touched. */
+  const nextBlock = (next: Partial<Omit<CampaignEntry, "key">>) =>
+    buildCampaignBlock(blockKey, {
+      ...campaign,
+      ...next,
+      updatedAt: new Date().toISOString(),
+    });
+
   const patch = (next: Partial<Omit<CampaignEntry, "key">>) =>
-    setDraft(
-      buildCampaignBlock(blockKey, {
-        ...campaign,
-        ...next,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
+    setDraft(nextBlock(next));
+
+  /**
+   * Picking from a closed set is already the final value — there is no next
+   * keystroke to wait for. Debouncing it only widens the window in which an
+   * external re-seed can land on top of the click, so these save at once.
+   */
+  const commit = (next: Partial<Omit<CampaignEntry, "key">>) => {
+    const data = nextBlock(next);
+    syncDraft(data);
+    onSave(data);
+  };
 
   const targets = readCampaignTargets(campaign.intent.targets);
+  const products = readCampaignProducts(campaign.intent.products);
+
+  const setTargets = (next: CampaignTarget[]) =>
+    commit({ intent: { ...campaign.intent, targets: next } });
+  const setProducts = (next: CampaignProduct[]) =>
+    commit({ intent: { ...campaign.intent, products: next } });
+
+  const withTarget = (index: number, change: Partial<CampaignTarget>) =>
+    targets.map((target, i) =>
+      i === index ? { ...target, ...change } : target,
+    );
   const patchTarget = (index: number, change: Partial<CampaignTarget>) =>
+    patch({
+      intent: { ...campaign.intent, targets: withTarget(index, change) },
+    });
+  const commitTarget = (index: number, change: Partial<CampaignTarget>) =>
+    setTargets(withTarget(index, change));
+
+  const patchProduct = (index: number, change: Partial<CampaignProduct>) =>
     patch({
       intent: {
         ...campaign.intent,
-        targets: targets.map((target, i) =>
-          i === index ? { ...target, ...change } : target,
+        products: products.map((product, i) =>
+          i === index ? { ...product, ...change } : product,
         ),
       },
     });
+
+  /**
+   * The picker owns neither list: it reports a toggle and we keep the copy.
+   * Matching on id alone means a hand-typed product (no id) is never touched
+   * by the picker, which is what someone who typed it would expect.
+   */
+  const togglePicked = (option: ProductPickerOption, selected: boolean) => {
+    if (!selected) {
+      setProducts(products.filter((product) => product.id !== option.id));
+      return;
+    }
+    if (products.some((product) => product.id === option.id)) return;
+    setProducts([
+      ...products,
+      {
+        id: option.id,
+        name: option.label,
+        url: option.url ?? "",
+        image: option.image ?? "",
+        category: option.category ?? "",
+        description: option.description ?? "",
+      },
+    ]);
+  };
 
   return (
     <div className="min-w-0 max-w-3xl space-y-6 px-8 py-6">
@@ -176,7 +285,7 @@ export function CampaignEditor({
               const next = CAMPAIGN_STATUSES.find(
                 (s) => t(CAMPAIGN_STATUS_LABEL[s]) === label,
               );
-              if (next) patch({ status: next });
+              if (next) commit({ status: next });
             }}
           />
         </div>
@@ -190,7 +299,16 @@ export function CampaignEditor({
       </div>
 
       <section className="space-y-2">
-        <Label>{t("sandbox.campaigns.triggerLabel")}</Label>
+        <div className="flex items-center gap-1">
+          <Label>{t("sandbox.campaigns.triggerLabel")}</Label>
+          <OptionHelp
+            label={t("sandbox.campaigns.triggerHelpLabel")}
+            options={CAMPAIGN_TRIGGERS.map((v) => ({
+              name: t(CAMPAIGN_TRIGGER_LABEL[v]),
+              help: t(TRIGGER_HELP[v]),
+            }))}
+          />
+        </div>
         <p className="text-xs text-muted-foreground">
           {t("sandbox.campaigns.triggerHint")}
         </p>
@@ -202,7 +320,7 @@ export function CampaignEditor({
               (v) => t(CAMPAIGN_TRIGGER_LABEL[v]) === label,
             );
             if (next) {
-              patch({ trigger: { ...campaign.trigger, type: next } });
+              commit({ trigger: { ...campaign.trigger, type: next } });
             }
           }}
         />
@@ -217,7 +335,16 @@ export function CampaignEditor({
       </section>
 
       <section className="space-y-2">
-        <Label>{t("sandbox.campaigns.objectiveLabel")}</Label>
+        <div className="flex items-center gap-1">
+          <Label>{t("sandbox.campaigns.objectiveLabel")}</Label>
+          <OptionHelp
+            label={t("sandbox.campaigns.objectiveHelpLabel")}
+            options={CAMPAIGN_OBJECTIVES.map((v) => ({
+              name: t(OBJECTIVE_LABEL[v]),
+              help: t(OBJECTIVE_HELP[v]),
+            }))}
+          />
+        </div>
         <p className="text-xs text-muted-foreground">
           {t("sandbox.campaigns.objectiveHint")}
         </p>
@@ -229,7 +356,7 @@ export function CampaignEditor({
               (v) => t(OBJECTIVE_LABEL[v]) === label,
             );
             if (next) {
-              patch({ intent: { ...campaign.intent, objective: next } });
+              commit({ intent: { ...campaign.intent, objective: next } });
             }
           }}
         />
@@ -241,9 +368,12 @@ export function CampaignEditor({
           {t("sandbox.campaigns.targetsHint")}
         </p>
         {targets.length > 0 && (
-          <ul className="divide-y overflow-hidden rounded-lg border">
+          <ul className="space-y-2">
             {targets.map((target, index) => (
-              <li key={index} className="space-y-2 bg-card p-3">
+              <li
+                key={index}
+                className="space-y-2 rounded-lg border bg-card p-3"
+              >
                 <div className="flex items-center gap-2">
                   <PickList
                     options={CAMPAIGN_TARGET_KINDS.map((k) =>
@@ -254,34 +384,50 @@ export function CampaignEditor({
                       const kind = CAMPAIGN_TARGET_KINDS.find(
                         (k) => t(TARGET_KIND_LABEL[k]) === label,
                       );
-                      if (kind) patchTarget(index, { kind });
+                      if (kind) commitTarget(index, { kind });
                     }}
                   />
-                  <Input
-                    value={target.label}
-                    placeholder={t("sandbox.campaigns.targetLabelPlaceholder")}
-                    onChange={(e) =>
-                      patchTarget(index, { label: e.target.value })
-                    }
-                    className="h-9 min-w-0 flex-1"
-                  />
+                  <div className="flex-1" />
+                  {target.kind === "category" && sandboxRef && (
+                    <CategoryTargetPicker
+                      sandboxRef={sandboxRef}
+                      onPick={(picked) => commitTarget(index, picked)}
+                    />
+                  )}
                   <RemoveButton
                     label={t("sandbox.campaigns.removeTarget")}
                     onClick={() =>
-                      patch({
-                        intent: {
-                          ...campaign.intent,
-                          targets: targets.filter((_, i) => i !== index),
-                        },
-                      })
+                      setTargets(targets.filter((_, i) => i !== index))
                     }
                   />
                 </div>
+                <Input
+                  value={target.name}
+                  placeholder={t("sandbox.campaigns.targetNamePlaceholder")}
+                  onChange={(e) => patchTarget(index, { name: e.target.value })}
+                  className="h-9"
+                />
                 <Input
                   value={target.url}
                   placeholder={t("sandbox.campaigns.targetUrlPlaceholder")}
                   onChange={(e) => patchTarget(index, { url: e.target.value })}
                   className="h-9"
+                />
+                <Input
+                  value={target.id}
+                  placeholder={t("sandbox.campaigns.targetIdPlaceholder")}
+                  onChange={(e) => patchTarget(index, { id: e.target.value })}
+                  className="h-9"
+                />
+                <Textarea
+                  value={target.description}
+                  rows={2}
+                  placeholder={t(
+                    "sandbox.campaigns.targetDescriptionPlaceholder",
+                  )}
+                  onChange={(e) =>
+                    patchTarget(index, { description: e.target.value })
+                  }
                 />
                 {!target.url.trim() && (
                   <p className="text-xs text-warning">
@@ -295,14 +441,138 @@ export function CampaignEditor({
         <AddButton
           label={t("sandbox.campaigns.addTarget")}
           onClick={() =>
-            patch({
-              intent: {
-                ...campaign.intent,
-                targets: [...targets, { kind: "product", url: "", label: "" }],
-              },
-            })
+            setTargets([
+              ...targets,
+              { kind: "category", id: "", name: "", url: "", description: "" },
+            ])
           }
         />
+      </section>
+
+      <section className="space-y-2">
+        <Label>{t("sandbox.campaigns.productsLabel")}</Label>
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.campaigns.productsHint")}
+        </p>
+        {products.length > 0 && (
+          <ul className="space-y-2">
+            {products.map((product, index) => (
+              <li
+                key={`${product.id}-${index}`}
+                className="space-y-2 rounded-lg border bg-card p-3"
+              >
+                <div className="flex items-start gap-3">
+                  {product.image ? (
+                    <img
+                      src={product.image}
+                      alt=""
+                      className="size-12 shrink-0 rounded-md border object-cover"
+                    />
+                  ) : (
+                    <div className="size-12 shrink-0 rounded-md border bg-muted" />
+                  )}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Input
+                      value={product.name}
+                      placeholder={t(
+                        "sandbox.campaigns.productNamePlaceholder",
+                      )}
+                      onChange={(e) =>
+                        patchProduct(index, { name: e.target.value })
+                      }
+                      className="h-9"
+                    />
+                    <Input
+                      value={product.url}
+                      placeholder={t("sandbox.campaigns.productUrlPlaceholder")}
+                      onChange={(e) =>
+                        patchProduct(index, { url: e.target.value })
+                      }
+                      className="h-9"
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={product.id}
+                        placeholder={t(
+                          "sandbox.campaigns.productIdPlaceholder",
+                        )}
+                        onChange={(e) =>
+                          patchProduct(index, { id: e.target.value })
+                        }
+                        className="h-9"
+                      />
+                      <Input
+                        value={product.category}
+                        placeholder={t(
+                          "sandbox.campaigns.productCategoryPlaceholder",
+                        )}
+                        onChange={(e) =>
+                          patchProduct(index, { category: e.target.value })
+                        }
+                        className="h-9"
+                      />
+                    </div>
+                    <Textarea
+                      value={product.description}
+                      rows={2}
+                      placeholder={t(
+                        "sandbox.campaigns.productDescriptionPlaceholder",
+                      )}
+                      onChange={(e) =>
+                        patchProduct(index, { description: e.target.value })
+                      }
+                    />
+                  </div>
+                  <RemoveButton
+                    label={t("sandbox.campaigns.removeProduct")}
+                    onClick={() =>
+                      setProducts(products.filter((_, i) => i !== index))
+                    }
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {sandboxRef && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPickerOpen(true)}
+            >
+              <SearchSm size={14} />
+              {t("sandbox.campaigns.pickProducts")}
+            </Button>
+          )}
+          <AddButton
+            label={t("sandbox.campaigns.addProduct")}
+            onClick={() =>
+              setProducts([
+                ...products,
+                {
+                  id: "",
+                  name: "",
+                  url: "",
+                  image: "",
+                  category: "",
+                  description: "",
+                },
+              ])
+            }
+          />
+        </div>
+        {sandboxRef && (
+          <ProductPickerDialog
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            sandboxRef={sandboxRef}
+            selectedIds={products.map((p) => p.id).filter(Boolean)}
+            onChange={() => {}}
+            onPicked={togglePicked}
+          />
+        )}
       </section>
 
       <section className="space-y-2">
@@ -374,6 +644,80 @@ export function CampaignEditor({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Fills a category target from the store's own tree. A shortcut, never a gate:
+ * every field stays typable, which is the only thing that works for a
+ * collection (no storefront here lists them) or a store that is not up.
+ */
+function CategoryTargetPicker({
+  sandboxRef,
+  onPick,
+}: {
+  sandboxRef: PreviewProxyRef;
+  onPick: (target: Partial<CampaignTarget>) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-8">
+          <SearchSm size={14} />
+          {t("sandbox.campaigns.pickCategory")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <CategoryTreeList
+          sandboxRef={sandboxRef}
+          enabled={open}
+          className="h-56"
+          onSelect={(category) => {
+            onPick({
+              id: category.path,
+              name: category.label,
+              url: `/${category.path}`,
+            });
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** The legend for a closed set: one line per option, on demand. */
+function OptionHelp({
+  label,
+  options,
+}: {
+  label: string;
+  options: { name: string; help: string }[];
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-5 text-muted-foreground"
+          aria-label={label}
+        >
+          <HelpCircle size={14} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 space-y-2 text-sm">
+        {options.map((option) => (
+          <div key={option.name}>
+            <p className="font-medium">{option.name}</p>
+            <p className="text-xs text-muted-foreground">{option.help}</p>
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }
 

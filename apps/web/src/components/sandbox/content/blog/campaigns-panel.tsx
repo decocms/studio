@@ -32,6 +32,7 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import {
   Dialog,
   DialogContent,
@@ -104,6 +105,15 @@ export function CampaignsPanel({
   const t = useT();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+
+  /** The store pickers address the site by these coordinates; campaigns are a
+   *  thread-less surface, which the contract allows. */
+  const sandboxRef: PreviewProxyRef = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    threadId: null,
+  };
 
   const [view, setView] = useState<CampaignView>("board");
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -350,6 +360,8 @@ export function CampaignsPanel({
                 block={decofile[detailKey] as Record<string, unknown>}
                 onSave={(data) => save.mutate({ blockKey: detailKey, data })}
                 onRemove={() => removeCampaign(detailKey)}
+                isSaving={save.isPending}
+                sandboxRef={sandboxRef}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
@@ -382,6 +394,8 @@ export function CampaignsPanel({
               onSave={(data) => save.mutate({ blockKey: boardKey, data })}
               onRemove={() => removeCampaign(boardKey)}
               onClose={() => setOpenKey(null)}
+              isSaving={save.isPending}
+              sandboxRef={sandboxRef}
             />
           )}
         </DialogContent>

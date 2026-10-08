@@ -133,6 +133,48 @@ export const sandbox = {
   "sandbox.blogCustomFields.title": "Other fields",
   "sandbox.blogCustomFields.description":
     "Fields this site's own content type declares, beyond the ones above.",
+  "sandbox.campaigns.addProduct": "Add by hand",
+  "sandbox.campaigns.objectiveAwarenessHelp":
+    "The reader does not yet know their problem has a solution.",
+  "sandbox.campaigns.objectiveConversionHelp":
+    "They already want to buy; the post settles the last doubt.",
+  "sandbox.campaigns.objectiveEducationHelp":
+    "They know they want it, but not how to choose or use it.",
+  "sandbox.campaigns.objectiveHelpLabel": "When to use each objective",
+  "sandbox.campaigns.objectiveRepositioningHelp":
+    "What people think of the brand is not what it wants to be.",
+  "sandbox.campaigns.objectiveRetentionHelp":
+    "Already a customer — the post makes the purchase go further and brings them back.",
+  "sandbox.campaigns.pickCategory": "Browse the store",
+  "sandbox.campaigns.pickProducts": "Browse the store",
+  "sandbox.campaigns.productCategoryPlaceholder": "Main category",
+  "sandbox.campaigns.productDescriptionPlaceholder": "Short description",
+  "sandbox.campaigns.productIdPlaceholder": "ID",
+  "sandbox.campaigns.productNamePlaceholder": "Product name",
+  "sandbox.campaigns.productUrlPlaceholder": "https://…",
+  "sandbox.campaigns.productsHint":
+    "The products the copy may name. They apply to any target — and they are stored here, not fetched at write time.",
+  "sandbox.campaigns.productsLabel": "Highlighted products",
+  "sandbox.campaigns.removeProduct": "Remove product",
+  "sandbox.campaigns.targetDescriptionPlaceholder":
+    "What this slice covers, and who for",
+  "sandbox.campaigns.targetIdPlaceholder": "Store ID (optional)",
+  "sandbox.campaigns.targetNamePlaceholder": "Category or collection name",
+  "sandbox.campaigns.triggerHelpLabel": "When to use each trigger",
+  "sandbox.campaigns.triggerInventoryHelp":
+    "There is stock sitting still that needs to move.",
+  "sandbox.campaigns.triggerLaunchHelp":
+    "Something new landed in the catalog — a product, a line, a collection.",
+  "sandbox.campaigns.triggerPartnershipHelp":
+    "A collab, a co-marketing push or an ambassador to introduce.",
+  "sandbox.campaigns.triggerReputationHelp":
+    "There is a perception of the brand that needs an answer.",
+  "sandbox.campaigns.triggerSeasonalHelp":
+    "A date that comes back every year and that customers already expect.",
+  "sandbox.campaigns.triggerSeoGapHelp":
+    "People are searching for this and the brand does not show up.",
+  "sandbox.campaigns.triggerTrendHelp":
+    "Something is happening in the market or the culture right now, and it will pass.",
   "sandbox.campaigns.add": "New campaign",
   "sandbox.campaigns.addAvoid": "Add guardrail",
   "sandbox.campaigns.addTarget": "Add target",
@@ -179,8 +221,6 @@ export const sandbox = {
   "sandbox.campaigns.statusPaused": "Paused",
   "sandbox.campaigns.targetCategory": "Category",
   "sandbox.campaigns.targetCollection": "Collection",
-  "sandbox.campaigns.targetLabelPlaceholder": "How you call it",
-  "sandbox.campaigns.targetProduct": "Product",
   "sandbox.campaigns.targetUrlPlaceholder": "https://…",
   "sandbox.campaigns.targetUrlRequired":
     "A target needs its URL — it is what a post links to.",

@@ -712,7 +712,23 @@ describe("scanCampaigns", () => {
         intent: {
           objective: "conversion",
           targets: [
-            { kind: "category", url: "https://loja.com/ar", label: "Ar" },
+            {
+              kind: "category",
+              id: "climatizacao/ar-condicionado",
+              name: "Ar condicionado",
+              url: "https://loja.com/ar",
+              description: "Split e janela",
+            },
+          ],
+          products: [
+            {
+              id: "1234",
+              name: "Split 12000 BTUs",
+              url: "https://loja.com/ar/split-12000",
+              image: "https://loja.com/img/split.jpg",
+              category: "Ar condicionado",
+              description: "Inverter, quente e frio.",
+            },
           ],
           keywords: ["ar condicionado"],
         },
@@ -733,7 +749,23 @@ describe("scanCampaigns", () => {
       intent: {
         objective: "conversion",
         targets: [
-          { kind: "category", url: "https://loja.com/ar", label: "Ar" },
+          {
+            kind: "category",
+            id: "climatizacao/ar-condicionado",
+            name: "Ar condicionado",
+            url: "https://loja.com/ar",
+            description: "Split e janela",
+          },
+        ],
+        products: [
+          {
+            id: "1234",
+            name: "Split 12000 BTUs",
+            url: "https://loja.com/ar/split-12000",
+            image: "https://loja.com/img/split.jpg",
+            category: "Ar condicionado",
+            description: "Inverter, quente e frio.",
+          },
         ],
         keywords: ["ar condicionado"],
       },
@@ -766,7 +798,31 @@ describe("scanCampaigns", () => {
     expect(campaign?.status).toBe("draft");
     expect(campaign?.trigger.type).toBe("seasonal");
     expect(campaign?.intent.objective).toBe("awareness");
-    expect(campaign?.intent.targets[0]?.kind).toBe("product");
+    // A target left over from when "product" was a kind reads as a category.
+    expect(campaign?.intent.targets[0]?.kind).toBe("category");
+  });
+
+  test("a campaign with no products reads as an empty list", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { campaignName: "Sem produtos", intent: { targets: [] } },
+    });
+    expect(campaign?.intent.products).toEqual([]);
+  });
+
+  test("a hand-typed product keeps its blank id", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { intent: { products: [{ name: "Digitado", url: "/p" }] } },
+    });
+    expect(campaign?.intent.products).toEqual([
+      {
+        id: "",
+        name: "Digitado",
+        url: "/p",
+        image: "",
+        category: "",
+        description: "",
+      },
+    ]);
   });
 
   test("a blank date is null, not an empty string", () => {

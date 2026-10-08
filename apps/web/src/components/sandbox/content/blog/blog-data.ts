@@ -1825,22 +1825,40 @@ export const CAMPAIGN_OBJECTIVES = [
 ] as const;
 export type CampaignObjective = (typeof CAMPAIGN_OBJECTIVES)[number];
 
-export const CAMPAIGN_TARGET_KINDS = [
-  "product",
-  "category",
-  "collection",
-] as const;
+export const CAMPAIGN_TARGET_KINDS = ["category", "collection"] as const;
 export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];
 
 /**
- * What the campaign sells. Platform-agnostic by design: the URL is the
- * identifier, because it is the one thing every storefront has and the only one
- * a reader can open. A product id would tie this to whoever issued it.
+ * The slice of the store a campaign covers — never a single product. Picking a
+ * product here would collapse two different things into one: the target is the
+ * scope the campaign argues for, while `products` is what the copy may name.
+ * A campaign needs the highlighted products whatever its target is.
+ *
+ * `id` is whatever the storefront calls it and may be empty when typed by hand;
+ * the URL is what makes a target real, because it is the one thing every
+ * storefront has and the only one a reader can open.
  */
 export interface CampaignTarget {
   kind: CampaignTargetKind;
+  id: string;
+  name: string;
   url: string;
-  label: string;
+  description: string;
+}
+
+/**
+ * A product the campaign wants named in the copy. Copied into the block rather
+ * than referenced by id: generation reads this months later, and a stored id
+ * only answers while that storefront is up and still issuing it.
+ */
+export interface CampaignProduct {
+  id: string;
+  name: string;
+  url: string;
+  image: string;
+  /** The product's main category, as the storefront reports it. */
+  category: string;
+  description: string;
 }
 
 export interface CampaignEntry {
@@ -1853,6 +1871,8 @@ export interface CampaignEntry {
   intent: {
     objective: CampaignObjective;
     targets: CampaignTarget[];
+    /** Highlighted products — asked for whatever the target kind is. */
+    products: CampaignProduct[];
     keywords: string[];
   };
   guardrails: {
@@ -1889,12 +1909,31 @@ export function readCampaignTargets(value: unknown): CampaignTarget[] {
     const record = asRecord(entry);
     if (!record) continue;
     targets.push({
-      kind: oneOf(CAMPAIGN_TARGET_KINDS, record.kind, "product"),
+      kind: oneOf(CAMPAIGN_TARGET_KINDS, record.kind, "category"),
+      id: str(record.id),
+      name: str(record.name),
       url: str(record.url),
-      label: str(record.label),
+      description: str(record.description),
     });
   }
   return targets;
+}
+
+export function readCampaignProducts(value: unknown): CampaignProduct[] {
+  const products: CampaignProduct[] = [];
+  for (const entry of toArray(value)) {
+    const record = asRecord(entry);
+    if (!record) continue;
+    products.push({
+      id: str(record.id),
+      name: str(record.name),
+      url: str(record.url),
+      image: str(record.image),
+      category: str(record.category),
+      description: str(record.description),
+    });
+  }
+  return products;
 }
 
 /**
@@ -1920,6 +1959,7 @@ export function buildCampaignBlock(
     intent: {
       objective: campaign.intent.objective,
       targets: campaign.intent.targets,
+      products: campaign.intent.products,
       keywords: campaign.intent.keywords,
     },
     guardrails: {
@@ -1962,6 +2002,7 @@ export function scanCampaigns(
       intent: {
         objective: oneOf(CAMPAIGN_OBJECTIVES, intent.objective, "awareness"),
         targets: readCampaignTargets(intent.targets),
+        products: readCampaignProducts(intent.products),
         keywords: filledTerms(normalizeTerms(intent.keywords)),
       },
       guardrails: {
@@ -1986,7 +2027,7 @@ export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
     status: "draft",
     period: { start: null, end: null },
     trigger: { type: "seasonal", note: "" },
-    intent: { objective: "awareness", targets: [], keywords: [] },
+    intent: { objective: "awareness", targets: [], products: [], keywords: [] },
     guardrails: { avoidComplements: [], toneOverrides: "" },
     createdAt: stamp,
     updatedAt: stamp,

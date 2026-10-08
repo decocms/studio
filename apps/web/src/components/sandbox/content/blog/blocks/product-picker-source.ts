@@ -29,6 +29,10 @@ export interface ProductPickerOption {
   image?: string;
   /** PDP path/URL, when the loader reports one — used to link to the product. */
   url?: string;
+  /** Main category, as the storefront reports it. */
+  category?: string;
+  /** Short description, when the payload carries one. */
+  description?: string;
 }
 
 /** A category surfaced by the tree loader, selectable to filter products. */
@@ -86,8 +90,11 @@ export function buildProductRequests(
     return [{ resolveType, props: { facets, count } }];
   }
 
-  // mode === "search": empty term browses the default catalog listing.
-  if (!trimmed) return [{ resolveType, props: { count } }];
+  // mode === "search": empty term browses the default catalog listing. The
+  // props still need the `query` discriminator — the loader's props are a union
+  // (query | facets | collection | ids) and `{ count }` alone matches no
+  // variant, which the runtime rejects with `Unknown props`.
+  if (!trimmed) return [{ resolveType, props: { query: "", count } }];
 
   const requests: PickerLoaderRequest[] = [];
   if (/^\d+$/.test(trimmed)) {
@@ -157,9 +164,52 @@ export function productOptionsFromPayload(
       (typeof product.url === "string" && product.url) ||
       (typeof variant?.url === "string" && variant.url) ||
       undefined;
-    options.push({ id, label, image, url });
+    options.push({
+      id,
+      label,
+      image,
+      url,
+      category: mainCategory(product.category),
+      description: shortDescription(product, variant),
+    });
   }
   return options;
+}
+
+/**
+ * The deepest segment of schema.org `category`, which VTEX reports as a full
+ * path (`Apparel > Shirts`). The leaf is the useful one: it is what a writer
+ * would call the product.
+ */
+function mainCategory(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const leaf = value
+    .split(/[>/]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .pop();
+  return leaf || undefined;
+}
+
+/**
+ * A one-paragraph description. Prefers the product's own over the variant's,
+ * and takes only the first paragraph: these feed a prompt, and a full PDP
+ * description is mostly markup and shipping boilerplate.
+ */
+function shortDescription(
+  product: Record<string, unknown>,
+  variant: Record<string, unknown> | null,
+): string | undefined {
+  const raw =
+    (typeof product.description === "string" && product.description) ||
+    (typeof variant?.description === "string" && variant.description) ||
+    "";
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return undefined;
+  return text.length > 400 ? `${text.slice(0, 400).trimEnd()}…` : text;
 }
 
 /** Category path from a tree node URL: pathname without surrounding slashes. */
