@@ -1,6 +1,8 @@
 import type { RawSection } from "./section-types";
 import type { PageVariant } from "./page-variants";
 import { translate } from "@/i18n/use-t";
+import { isSavedBlockResolveType } from "./block-type-utils";
+import type { LiveMeta } from "./resolve-schema";
 
 export type { PageVariant };
 
@@ -61,6 +63,8 @@ export function suggestBlockId(label: string): string {
 export function validateBlockId(
   blockId: string,
   decofile: Record<string, unknown>,
+  /** A saved block can't share a name with a block type (the lookup rule). */
+  meta?: LiveMeta | null,
 ): string | null {
   const trimmed = blockId.trim();
   if (!trimmed) {
@@ -74,6 +78,9 @@ export function validateBlockId(
   }
   if (!/^[A-Za-z][A-Za-z0-9_ -]*$/.test(trimmed)) {
     return translate("sectionsEditor.pageSections.blockNameInvalidChars");
+  }
+  if (meta && !isSavedBlockResolveType(trimmed, meta)) {
+    return translate("sectionsEditor.pageSections.blockNameIsBlockType");
   }
   return null;
 }

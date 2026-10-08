@@ -56,6 +56,28 @@ describe("block-type-utils", () => {
     expect(isSavedBlockResolveType("")).toBe(false);
   });
 
+  it("isSavedBlockResolveType reads a manifest key as a block type", () => {
+    const v8: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: { hero: { $ref: "#/definitions/aGVybw==" } },
+          matchers: { always: { $ref: "#/definitions/YWx3YXlz" } },
+        },
+      },
+      schema: {},
+    };
+    expect(isSavedBlockResolveType("hero", v8)).toBe(false);
+    expect(isSavedBlockResolveType("always", v8)).toBe(false);
+    // Not in the manifest: a saved block.
+    expect(isSavedBlockResolveType("home-hero", v8)).toBe(true);
+    // Without the manifest, the legacy heuristic is unchanged.
+    expect(isSavedBlockResolveType("hero")).toBe(true);
+    expect(isSavedBlockResolveType("Header", meta)).toBe(true);
+    expect(
+      isSavedBlockResolveType("site/sections/Header/Header.tsx", meta),
+    ).toBe(false);
+  });
+
   it("isAutoPreviewBlockKey detects generated preview stubs", () => {
     expect(isAutoPreviewBlockKey("Preview%20%2Fsections%2FFooter.tsx")).toBe(
       true,

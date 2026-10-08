@@ -85,9 +85,19 @@ export function isManifestMatcherResolveType(
   return blockType !== null && blockType.includes("matchers");
 }
 
-/** Block id reference (no module path) — e.g. `Header`, not `site/sections/Header.tsx`. */
-export function isSavedBlockResolveType(resolveType: string): boolean {
+/**
+ * Block id reference (no module path) — e.g. `Header`, not
+ * `site/sections/Header.tsx`. A key in the manifest is a block type, whatever
+ * its shape: next-major Blocks names types with short keys like `hero`. Pass
+ * `meta` wherever it's at hand; without it (or for keys outside the
+ * manifest) the module-path heuristic decides, as it always has.
+ */
+export function isSavedBlockResolveType(
+  resolveType: string,
+  meta?: LiveMeta | null,
+): boolean {
   if (!resolveType) return false;
+  if (meta && getManifestBlockType(meta, resolveType) !== null) return false;
   // Module paths end with a file extension (e.g. site/sections/Header.tsx)
   if (/\.\w+$/.test(resolveType)) return false;
   if (resolveType === "__proto__" || resolveType === "constructor") {
