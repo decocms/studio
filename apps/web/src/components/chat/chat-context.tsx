@@ -109,7 +109,10 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useSandboxOnlyChats,
+} from "@/hooks/use-organization-settings";
 import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -695,7 +698,7 @@ export function ChatContextProvider({
   // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
   // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
-  const sandboxOnlyChats = useOrgFlag("chat_harness_sandbox_only");
+  const sandboxOnlyChats = useSandboxOnlyChats();
   const carryOverBranch = sandboxOnlyChats ? null : currentBranch;
 
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
@@ -870,7 +873,7 @@ export function ActiveTaskProvider({
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const voiceEnabled = useOrgFlag("voice_mode");
-  const sandboxOnlyChats = useOrgFlag("chat_harness_sandbox_only");
+  const sandboxOnlyChats = useSandboxOnlyChats();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,

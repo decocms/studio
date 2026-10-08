@@ -3,6 +3,7 @@ import { OrganizationForm } from "@/components/settings/organization-form";
 import {
   BlocksEditorSettings,
   BlogBlocksSettings,
+  ChatRuntimeSettings,
   CodeAgentsSettings,
   VoiceModeSettings,
 } from "@/components/settings/review-settings";
@@ -33,6 +34,7 @@ export function OrgGeneralPage() {
             {granted && (
               <>
                 <OrganizationForm />
+                <ChatRuntimeSettings />
                 <CodeAgentsSettings />
                 <VoiceModeSettings />
                 <BlogBlocksSettings />

@@ -860,6 +860,7 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Discard",
   "settings.agentTools.orgMcpsPickSaved":
     "Saved which connections runs can reach",
+  "settings.agentTools.chatRuntimeSection": "Chats",
   "settings.agentTools.chatHarnessSandboxOnlyTitle":
     "Run every chat with Claude Code in its own sandbox",
   "settings.agentTools.chatHarnessSandboxOnlyDescription":

@@ -9,6 +9,7 @@
  * callers that have a branch must pass it or they get a second sandbox.
  */
 
+import { markTurn } from "@/harnesses/turn-latency";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
@@ -71,6 +72,8 @@ import {
   getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
+  getThreadSandboxMap,
+  removeThreadSandboxMapEntry,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
   threadIdFromBranch,
@@ -286,11 +289,24 @@ export async function ensureSandbox(
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
   const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  const existing: SandboxRecord | null = resolveVm(
+  // Thread-scoped sandboxes are recorded on the thread (the agent write is a
+  // no-op for them), so the resume fast path has to look there too.
+  const recordThreadId =
+    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
+  const agentEntry = resolveVm(
     readSandboxMap(metadata),
     sandboxUserId,
     input.branch,
   );
+  const existing: SandboxRecord | null =
+    agentEntry ??
+    (recordThreadId
+      ? resolveVm(
+          await getThreadSandboxMap(ctx, recordThreadId),
+          sandboxUserId,
+          input.branch,
+        )
+      : null);
 
   const runner = await getAgentSandboxProvider(ctx);
 
@@ -303,15 +319,24 @@ export async function ensureSandbox(
     // call would tear down a healthy sandbox and re-clone it from scratch.
     const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
     if (alive) return existing;
-    await removeSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      input.virtualMcpId,
-      userId,
-      sandboxUserId,
-      input.branch,
-    ).catch((err) => {
-      console.warn("[ensureSandbox] failed to reap stale entry", err);
-    });
+    if (agentEntry) {
+      await removeSandboxMapEntry(
+        ctx.storage.virtualMcps,
+        input.virtualMcpId,
+        userId,
+        sandboxUserId,
+        input.branch,
+      ).catch((err) => {
+        console.warn("[ensureSandbox] failed to reap stale entry", err);
+      });
+    } else if (recordThreadId) {
+      await removeThreadSandboxMapEntry(
+        ctx,
+        recordThreadId,
+        sandboxUserId,
+        input.branch,
+      );
+    }
   }
 
   // Thread-scoped repo wins over the agent's own repo: `load_repo` binds a repo
@@ -495,6 +520,9 @@ async function provisionSandbox(params: StartParams): Promise<{
     purpose,
     provider,
   } = params;
+  const turnId = threadIdFromBranch(branch) ?? ctx.metadata?.threadId;
+  const mark = (stage: string) =>
+    turnId && markTurn(turnId, `provision:${stage}`);
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
   // Set from the primary repository below, once it is resolved.
@@ -765,7 +793,9 @@ async function provisionSandbox(params: StartParams): Promise<{
       purpose: purpose ?? "interactive",
     },
     async () => {
+      mark("prep");
       await waitForSchedulableCapacity(runner);
+      mark("capacity");
       return ensureOrRephrase(
         runner,
         { userId: sandboxUserId, projectRef },
@@ -807,6 +837,7 @@ async function provisionSandbox(params: StartParams): Promise<{
   // Resolve declared env (literals + secret refs) and push to the daemon
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
   // already-claimed sandbox stays idempotent.
+  mark("provider-ensure");
   const envEntries = readValidatedRuntimeEnv(metadata);
   await resolveAndPushEnv({
     ctx,
@@ -816,6 +847,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     userId,
     entries: envEntries,
   });
+  mark("env");
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
   // timer doesn't reset on re-run.
@@ -857,6 +889,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     await setThreadSandboxMapEntry(ctx, threadId, sandboxUserId, branch, entry);
   }
 
+  mark("map-writes");
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
   return { entry, isNewVm, warmPoolAdopted: sandbox.warmPoolAdopted };

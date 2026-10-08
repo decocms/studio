@@ -5,7 +5,7 @@ import {
   buildOptions,
   createDeltaCoalescer,
   errorFinishChunks,
-  interactiveToolGate,
+  interactiveToolHook,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
@@ -497,8 +497,17 @@ describe("createDeltaCoalescer", () => {
     delta: text,
   });
 
+  test("a block's first delta goes out at once: it is the first token", () => {
+    const c = createDeltaCoalescer(100);
+    expect(c.push([delta("a", "H")])).toEqual([delta("a", "H")]);
+    expect(c.push([{ type: "reasoning-delta", id: "a", delta: "t" }])).toEqual([
+      { type: "reasoning-delta", id: "a", delta: "t" },
+    ]);
+  });
+
   test("holds a short delta until something forces it out", () => {
     const c = createDeltaCoalescer(10);
+    c.push([delta("a", "H")]);
     expect(c.push([delta("a", "hi")])).toEqual([]);
     expect(c.drain()).toEqual([delta("a", "hi")]);
     // Drained once; nothing left to emit twice.
@@ -507,6 +516,7 @@ describe("createDeltaCoalescer", () => {
 
   test("concatenates same-block deltas and flushes at the threshold", () => {
     const c = createDeltaCoalescer(5);
+    c.push([delta("a", "H")]);
     expect(c.push([delta("a", "ab")])).toEqual([]);
     expect(c.push([delta("a", "cd")])).toEqual([]);
     expect(c.push([delta("a", "ef")])).toEqual([delta("a", "abcdef")]);
@@ -524,6 +534,7 @@ describe("createDeltaCoalescer", () => {
 
   test("a different block flushes the previous one rather than merging", () => {
     const c = createDeltaCoalescer(100);
+    c.push([delta("a", "A"), delta("b", "B")]);
     c.push([delta("a", "one")]);
     expect(c.push([delta("b", "two")])).toEqual([delta("a", "one")]);
     expect(c.drain()).toEqual([delta("b", "two")]);
@@ -531,6 +542,7 @@ describe("createDeltaCoalescer", () => {
 
   test("reasoning and text deltas are not merged into each other", () => {
     const c = createDeltaCoalescer(100);
+    c.push([{ type: "reasoning-delta", id: "a", delta: "T" }, delta("a", "S")]);
     c.push([{ type: "reasoning-delta", id: "a", delta: "think" }]);
     // Same id, different kind — merging would put reasoning into a text part.
     expect(c.push([delta("a", "say")])).toEqual([
@@ -557,6 +569,7 @@ describe("createDeltaCoalescer", () => {
 
   test("discard drops what is held instead of emitting it", () => {
     const c = createDeltaCoalescer(100);
+    c.push([delta("a", "H")]);
     c.push([delta("a", "abandoned")]);
     c.discard();
     expect(c.drain()).toEqual([]);
@@ -606,64 +619,81 @@ describe("errorFinishChunks", () => {
   });
 });
 
-describe("interactiveToolGate", () => {
-  const ask = (
-    gate: ReturnType<typeof interactiveToolGate>,
-    toolName: string,
-    agentID?: string,
-  ) =>
-    gate(
-      toolName,
-      { q: 1 },
+describe("interactiveToolHook", () => {
+  const ask = (toolName: string, agentId?: string) => {
+    const parked: string[] = [];
+    const matcher = interactiveToolHook((id) => parked.push(id));
+    const hook = matcher.hooks[0]!;
+    const result = hook(
       {
-        signal: new AbortController().signal,
-        toolUseID: "call-1",
-        requestId: "r",
-        ...(agentID ? { agentID } : {}),
+        hook_event_name: "PreToolUse",
+        tool_name: toolName,
+        tool_input: { q: 1 },
+        tool_use_id: "call-1",
+        session_id: "s",
+        transcript_path: "/t",
+        cwd: "/",
+        ...(agentId ? { agent_id: agentId } : {}),
       },
+      "call-1",
+      { signal: new AbortController().signal },
     );
+    return { matcher: matcher.matcher, result, parked };
+  };
+
+  test("matches only the interactive tools", () => {
+    const pattern = new RegExp(`^(${ask("x").matcher})$`);
+    expect(pattern.test("AskUserQuestion")).toBe(true);
+    expect(pattern.test("ExitPlanMode")).toBe(true);
+    expect(pattern.test("Bash")).toBe(false);
+  });
 
   for (const toolName of ["AskUserQuestion", "ExitPlanMode"]) {
     test(`${toolName} is parked for the user and ends the turn`, async () => {
-      const parked: string[] = [];
-      const gate = interactiveToolGate({
-        planMode: false,
-        onAwaitUser: (id) => parked.push(id),
-      });
-      expect(await ask(gate, toolName)).toEqual({
-        behavior: "deny",
-        message: "Waiting for the user.",
-        interrupt: true,
+      const { result, parked } = ask(toolName);
+      expect(await result).toMatchObject({
+        continue: false,
+        hookSpecificOutput: { permissionDecision: "deny" },
       });
       expect(parked).toEqual(["call-1"]);
     });
   }
 
   test("a subagent cannot ask the user, and the turn goes on", async () => {
-    const parked: string[] = [];
-    const gate = interactiveToolGate({
-      planMode: false,
-      onAwaitUser: (id) => parked.push(id),
+    const { result, parked } = ask("AskUserQuestion", "agent-1");
+    const output = await result;
+    expect(output).toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
     });
-    const result = await ask(gate, "AskUserQuestion", "agent-1");
-    expect(result).toMatchObject({ behavior: "deny" });
-    expect(result).not.toHaveProperty("interrupt");
+    expect(output).not.toHaveProperty("continue");
     expect(parked).toEqual([]);
   });
+});
 
-  test("other tools are allowed outside plan mode and denied in it", async () => {
-    const onAwaitUser = () => {};
-    expect(
-      await ask(interactiveToolGate({ planMode: false, onAwaitUser }), "Bash"),
-    ).toEqual({ behavior: "allow", updatedInput: { q: 1 } });
-    expect(
-      await ask(interactiveToolGate({ planMode: true, onAwaitUser }), "Bash"),
-    ).toMatchObject({ behavior: "deny" });
-    expect(
-      await ask(
-        interactiveToolGate({ planMode: true, onAwaitUser }),
-        "mcp__studio__web_search",
-      ),
-    ).toMatchObject({ behavior: "allow" });
+describe("permission callback", () => {
+  const decide = (mode: "default" | "plan", toolName: string) =>
+    options({ mode }).canUseTool!(
+      toolName,
+      { q: 1 },
+      {
+        signal: new AbortController().signal,
+        toolUseID: "call-1",
+        requestId: "r",
+      },
+    );
+
+  test("is always set, since it is what offers AskUserQuestion", () => {
+    expect(options().canUseTool).toBeDefined();
+  });
+
+  test("allows outside plan mode and denies changes in it", async () => {
+    expect(await decide("default", "Bash")).toEqual({
+      behavior: "allow",
+      updatedInput: { q: 1 },
+    });
+    expect(await decide("plan", "Bash")).toMatchObject({ behavior: "deny" });
+    expect(await decide("plan", "mcp__studio__web_search")).toMatchObject({
+      behavior: "allow",
+    });
   });
 });

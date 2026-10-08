@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supportsClaudeCode } from "@decocms/shared/sdk/types/ai-providers";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { useSandboxOnlyChats } from "@/hooks/use-organization-settings";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
@@ -23,7 +23,7 @@ import {
 export function useNeedsRuntimeSetup(): RuntimeSetupNeed {
   const allKeys = useHostedAiProviderKeys();
   const task = useOptionalChatTask();
-  const sandboxOnlyChats = useOrgFlag("chat_harness_sandbox_only");
+  const sandboxOnlyChats = useSandboxOnlyChats();
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const hasClaudeCodeKey = allKeys.some((key) =>

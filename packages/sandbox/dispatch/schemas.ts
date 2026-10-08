@@ -28,6 +28,8 @@ export const harnessRunResultSchema = z.object({
     .object({ code: z.string(), message: z.string() })
     .nullish()
     .transform((e) => e ?? null),
+  /** Runner-side ms since its process started, on its first frame only; `emit` is when that frame left. */
+  timings: z.record(z.string(), z.number()).optional(),
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 
@@ -171,4 +173,9 @@ export interface HarnessDispatchEnvelope {
   runId: string;
   /** Checked by the daemon against `harnessStreamInputSchema`. */
   input: unknown;
+  /**
+   * Run on the thread's kept runner process when one was spawned with the same
+   * key (daemon `internal/dispatch/session.go`). Absent = a process per run.
+   */
+  sessionKey?: string;
 }

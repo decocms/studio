@@ -53,7 +53,11 @@ import {
   generateBranchName,
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
-import { sandboxOnlyChatsEnabled } from "../../harnesses/sandbox-only-chats";
+import {
+  prewarmThreadSandbox,
+  sandboxOnlyChatsEnabled,
+} from "../../harnesses/sandbox-only-chats";
+import { getSettings } from "../../settings";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -132,9 +136,13 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       | undefined;
     const repository = metadata?.repository;
     let branch: string | null = null;
+    const sandboxOnlyChats = await sandboxOnlyChatsEnabled(
+      ctx,
+      organization.id,
+    );
     if (repository) {
       // Sandbox-only chats get one sandbox each, so none inherits a warm one.
-      const warmBranch = (await sandboxOnlyChatsEnabled(ctx, organization.id))
+      const warmBranch = sandboxOnlyChats
         ? undefined
         : pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId);
       branch =
@@ -157,6 +165,15 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     // Skip on a replayed/idempotent call (same id already existed) — the
     // conflict path returns the pre-existing row, and firing again would
     // double-count "chat_started" for a thread that was never actually created.
+    if (
+      result.isNew &&
+      sandboxOnlyChats &&
+      getSettings().sandboxPrewarmOnThreadCreateEnabled
+    ) {
+      void prewarmThreadSandbox(ctx, organization.id, userId, result).catch(
+        (err) => console.warn("[thread-create] sandbox prewarm failed", err),
+      );
+    }
     if (result.isNew) {
       posthog.capture({
         distinctId: userId,

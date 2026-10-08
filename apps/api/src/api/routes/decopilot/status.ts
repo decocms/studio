@@ -12,6 +12,14 @@ type ResponsePart = {
   state?: string;
 };
 
+/** A client-side tool the turn stopped on: a question or a plan for the user. */
+export function isAwaitingUser(part: ResponsePart): boolean {
+  return (
+    (part.type === "tool-user_ask" || part.type === "tool-propose_plan") &&
+    part.state === "input-available"
+  );
+}
+
 /**
  * Resolves the thread status from the AI SDK stream onFinish reason.
  *
@@ -30,14 +38,7 @@ export function resolveThreadStatus(
   }
 
   if (finishReason === "tool-calls") {
-    // Check if user_ask is waiting for input
-    // Codebase uses "tool-user_ask" part type with states:
-    //   "input-available" = waiting for user input (pending)
-    //   "output-available" = user has responded (done)
-    const hasUserAskPending = responseParts.some(
-      (part) =>
-        part.type === "tool-user_ask" && part.state === "input-available",
-    );
+    const hasUserAskPending = responseParts.some(isAwaitingUser);
 
     // Check if any tools are awaiting approval
     const hasApprovalPending = responseParts.some(

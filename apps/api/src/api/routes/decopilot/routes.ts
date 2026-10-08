@@ -78,6 +78,7 @@ import {
   hasClaudeCodeCredential,
   sandboxOnlyChatsEnabled,
 } from "@/harnesses/sandbox-only-chats";
+import { markTurn, startTurnClock } from "@/harnesses/turn-latency";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { buildHistoryPrefix } from "./history-prefix";
 
@@ -708,6 +709,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         // a structural invariant rather than a user-facing error.
         throw new HTTPException(400, { message: "threadId is required" });
       }
+      startTurnClock(taskId);
       // Checked before any write, so a refused send leaves nothing behind.
       if (
         sandboxOnlyChats &&
@@ -941,6 +943,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
         { workflowID },
       );
+      markTurn(taskId, "enqueued");
       return c.json({ taskId }, 202);
     } catch (err) {
       // Expected refusal, not an incident — logged as a warning below rather

@@ -399,6 +399,17 @@ export function CodeAgentsSettings() {
           titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
           descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
         />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/** Where every chat runs. Its own section: it covers all chats, not Code Agents. */
+export function ChatRuntimeSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
+      <SettingsCard>
         <FlagToggle
           flag="chat_harness_sandbox_only"
           icon={<Terminal size={16} />}

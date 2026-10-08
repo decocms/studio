@@ -1,4 +1,5 @@
 import type { PartKind, ThreadMessagePart } from "@/storage/fold-parts";
+import { isAwaitingUser } from "./status";
 
 export type AnyPart = { type?: string; state?: string } & Record<
   string,
@@ -43,12 +44,12 @@ export function isFinalPart(part: AnyPart): boolean {
 
   if (type.startsWith("tool-") || type === "dynamic-tool") {
     // Persist terminal output states and terminal "requires action" pauses.
-    // Generic input-available tools are still in-flight, but user_ask
-    // input-available and approval-requested are the durable state the UI needs
-    // after reload to let the user continue the run.
+    // Generic input-available tools are still in-flight, but a pending question
+    // or plan and approval-requested are the durable state the UI needs after
+    // reload to let the user continue the run.
     return (
       part.state === "approval-requested" ||
-      (type === "tool-user_ask" && part.state === "input-available") ||
+      isAwaitingUser({ type, state: part.state }) ||
       part.state === "output-available" ||
       part.state === "output-error" ||
       part.state === "output-denied"

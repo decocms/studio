@@ -462,7 +462,6 @@ describe("RemoteSandboxProvider against the host tools", () => {
         return sse(async (send) => {
           send(data({ kind: "claiming", since: 1 }));
           await Bun.sleep(20);
-          throw new Error("idle cut");
         });
       }
       return sse(async (send) => {

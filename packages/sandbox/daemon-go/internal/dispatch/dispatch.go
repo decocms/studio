@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -122,8 +123,8 @@ type Deps struct {
 	// is in place produces a confident wrong answer rather than an error, so
 	// waiting is the safer failure. It must bound its own wait (Studio's dispatch
 	// has no separate readiness deadline to fall back on) and it must never fail
-	// the run: at its ceiling it proceeds without. Optional.
-	BeforeRun func(RunInfo)
+	// the run: at its ceiling it proceeds without. Optional. Returns ms per step.
+	BeforeRun func(RunInfo) map[string]int64
 	// AfterRun settles the workspace once the harness has exited, however it
 	// exited (success, crash, cancel): whatever must outlive the pod — stray
 	// skills, the agent's session transcript — gets moved to where it does. Same
@@ -157,6 +158,8 @@ type activeRun struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	harness string
+	// sessionKey, when set, runs the turn on the thread's kept runner (session.go).
+	sessionKey string
 
 	mu       sync.Mutex
 	sink     *bodyWriter
@@ -293,6 +296,7 @@ type Registry struct {
 	// re-running the turn. Cleared by a timer, never by size.
 	finishedRuns map[string]*activeRun
 	tombstones   map[string]time.Time
+	sessions     sessionPool
 }
 
 func NewRegistry() *Registry {
@@ -644,6 +648,12 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		return
 	}
 
+	var sessionKey string
+	if raw, ok := frame["sessionKey"]; ok && json.Unmarshal(raw, &sessionKey) != nil {
+		jsonError(w, 400, map[string]string{"error": "bad_session_key"})
+		return
+	}
+
 	input := frame["input"]
 	if input == nil {
 		input = json.RawMessage("null")
@@ -667,7 +677,7 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		// decision now: a takeover, a DELETE, daemon shutdown, or nobody
 		// reattaching within `detachGrace`.
 		ctx, cancel := context.WithCancel(context.Background())
-		return &activeRun{ctx: ctx, done: make(chan struct{}), harness: harnessId}, cancel
+		return &activeRun{ctx: ctx, done: make(chan struct{}), harness: harnessId, sessionKey: sessionKey}, cancel
 	})
 	if entry == nil {
 		// Cancelled during the supersede grace — same answer as the pre-wait
@@ -720,6 +730,18 @@ func (reg *Registry) runHarness(
 	entry *activeRun,
 	input json.RawMessage,
 ) {
+	info := runInfoOf(input)
+	info.Harness = entry.harness
+	// A clean run settles AFTER release closes the body: Studio ends the turn and
+	// can dequeue the next one while the transcript copies (seconds over org-fs).
+	clean := false
+	if deps.AfterRun != nil {
+		defer func() {
+			if clean {
+				deps.AfterRun(info)
+			}
+		}()
+	}
 	defer reg.release(runId, entry)
 
 	// The keepalive starts FIRST — before `BeforeRun`, not after it.
@@ -739,10 +761,9 @@ func (reg *Registry) runHarness(
 	defer stopKeepalive()
 
 	// Per-run workspace state, before the harness can touch the workspace.
-	info := runInfoOf(input)
-	info.Harness = entry.harness
+	var prepMs map[string]int64
 	if deps.BeforeRun != nil {
-		deps.BeforeRun(info)
+		prepMs = deps.BeforeRun(info)
 	}
 	// Deferred, not placed after RunHarness: every terminal path below returns
 	// early (crash, cancel, unavailable runner), and the run that crashed
@@ -754,8 +775,15 @@ func (reg *Registry) runHarness(
 	// governs the run itself. Settling the workspace in a keepalive-less window
 	// is how a turn that already sent its terminal frame gets declared dead and
 	// continued on a replacement pod.
+	//
+	// Only for runs that did not end clean: those may be continued on another
+	// pod, which restores the transcript this save writes.
 	if deps.AfterRun != nil {
-		defer deps.AfterRun(info)
+		defer func() {
+			if !clean {
+				deps.AfterRun(info)
+			}
+		}()
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
@@ -764,28 +792,44 @@ func (reg *Registry) runHarness(
 		return
 	}
 
-	var runEnv map[string]string
+	runEnv := map[string]string{}
 	if deps.RunEnv != nil {
-		runEnv = deps.RunEnv()
+		maps.Copy(runEnv, deps.RunEnv())
+	}
+	// The runner reports these with its own timings, so Studio's log shows them.
+	// Not in a kept runner's env: they change every turn, and its env is its key.
+	var prepJSON string
+	if b, err := json.Marshal(prepMs); err == nil && prepMs != nil {
+		prepJSON = string(b)
 	}
 
 	// One line per frame: without it a streaming run and a buffering one look
 	// identical in the pod log (both are silence until "dispatch done"), which is
 	// exactly the question you ask this log to answer.
 	seq := 0
-	frames, err := RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv,
-		func(frame []byte) bool {
-			seq++
-			// A streaming run is working, so it counts as activity: the idle
-			// reaper polls `/idle`, and without this a run that streams for
-			// longer than the idle TTL reports as untouched since the dispatch
-			// request arrived and gets its pod evicted mid-turn.
-			activity.Bump()
-			slog.Info("dispatch frame", "harness", entry.harness, "run_id", runId,
-				"seq", seq, "bytes", len(frame),
-				"elapsed_s", int(time.Since(startedAt).Seconds()))
-			return entry.emit(append(frame, '\n'))
-		})
+	emitFrame := func(frame []byte) bool {
+		seq++
+		// A streaming run is working, so it counts as activity: the idle
+		// reaper polls `/idle`, and without this a run that streams for
+		// longer than the idle TTL reports as untouched since the dispatch
+		// request arrived and gets its pod evicted mid-turn.
+		activity.Bump()
+		slog.Info("dispatch frame", "harness", entry.harness, "run_id", runId,
+			"seq", seq, "bytes", len(frame),
+			"elapsed_s", int(time.Since(startedAt).Seconds()))
+		return entry.emit(append(frame, '\n'))
+	}
+	var frames int
+	var err error
+	if entry.sessionKey != "" {
+		frames, err = reg.sessions.runSession(ctx, deps.HarnessRunnerCmd, entry.harness, input,
+			runEnv, prepJSON, info, entry.sessionKey, emitFrame)
+	} else {
+		if prepJSON != "" {
+			runEnv["HARNESS_BEFORE_RUN_MS"] = prepJSON
+		}
+		frames, err = RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv, emitFrame)
+	}
 	elapsed := int(time.Since(startedAt).Seconds())
 
 	if ctx.Err() != nil {
@@ -843,6 +887,7 @@ func (reg *Registry) runHarness(
 	}
 	slog.Info("dispatch done", "harness", entry.harness, "run_id", runId,
 		"elapsed_s", elapsed, "frames", frames)
+	clean = true
 	entry.emit(terminalFrame("", ""))
 }
 
