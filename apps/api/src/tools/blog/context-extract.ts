@@ -153,6 +153,10 @@ export const BLOG_CONTEXT_EXTRACT = defineTool({
       ),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `Writing context inferred from ${r.sources.length} block(s): tone captured, ${r.dos.length} dos, ${r.avoid.length} don'ts, ${r.categories.length} categories. ${r.judged ? `${r.discarded} claim(s) fell below the confidence bar and were dropped` : "The confidence judge did not run, so nothing was filtered"}. Not yet saved.`,
 

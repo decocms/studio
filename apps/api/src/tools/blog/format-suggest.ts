@@ -137,6 +137,10 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
     formats: z.array(FormatSchema).describe("The proposed formats"),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `${r.formats.length} format(s) proposed: ${r.formats.map((f) => f.name).join("; ")}. Not yet saved.`,
 

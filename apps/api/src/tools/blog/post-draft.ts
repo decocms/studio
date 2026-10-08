@@ -245,6 +245,10 @@ export const BLOG_POST_DRAFT = defineTool({
       .describe("The post body, in reading order"),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `Drafted "${r.title}" — ${r.sections.length} section(s), ${r.categorySlugs.length} category(ies), ${r.authorEmails.length} author(s). Not yet saved.`,
 

@@ -93,6 +93,10 @@ export const BLOG_LINK_SUGGEST = defineTool({
       .describe("The proposed internal links, strongest first."),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `${r.suggestions.length} internal link(s) proposed. Not yet applied.`,
 

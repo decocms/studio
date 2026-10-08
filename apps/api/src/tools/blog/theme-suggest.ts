@@ -209,6 +209,10 @@ export const BLOG_THEME_SUGGEST = defineTool({
       ),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `${r.themes.length} theme(s) proposed${r.searched ? " with web research" : " from the brand profile alone"}: ${r.themes.map((t) => t.title).join("; ")}. Not yet saved.`,
 

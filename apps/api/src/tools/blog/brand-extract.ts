@@ -196,6 +196,10 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       ),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `Brand inferred for ${r.companyName || "an unnamed brand"} from ${r.sources.length} block(s): ${r.language || "unknown"} language, ${r.values.length} values, ${r.competitors.length} competitors, ${r.specialDates.length} dates${r.searched ? ` (web research, ${r.researchSources.length} source(s))` : ""}. ${r.judged ? `${r.discarded} claim(s) fell below the confidence bar and were dropped` : "The confidence judge did not run, so nothing was filtered"}. Not yet saved; writing rules come from BLOG_CONTEXT_EXTRACT.`,
 

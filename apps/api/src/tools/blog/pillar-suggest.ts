@@ -135,6 +135,10 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
       .describe("The proposed content pillars, best first"),
   }),
 
+  // Every one of these is token spend, and a spent envelope has to stop it —
+  // the margin stop the usage bar was otherwise only reporting.
+  requiresAiBudget: true,
+
   modelSummary: (r) =>
     `${r.pillars.length} pillar(s) proposed: ${r.pillars.map((p) => p.title).join("; ")}. Not yet saved.`,
 
