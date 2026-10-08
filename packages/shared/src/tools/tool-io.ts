@@ -134,6 +134,7 @@ export interface StudioToolIO {
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             site_editor_content_protocol?: boolean | undefined;
+            hide_default_blog_blocks?: boolean | undefined;
           }
         | null
         | undefined;
@@ -213,6 +214,7 @@ export interface StudioToolIO {
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             site_editor_content_protocol?: boolean | undefined;
+            hide_default_blog_blocks?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -288,6 +290,7 @@ export interface StudioToolIO {
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             site_editor_content_protocol?: boolean | undefined;
+            hide_default_blog_blocks?: boolean | undefined;
           }
         | null
         | undefined;

@@ -79,6 +79,12 @@ export interface SchemaProperty {
    * the form of `T`, and the stored value is `{ __resolveType: "lazy", value }`.
    */
   lazy?: boolean;
+  /**
+   * For "array" fields collapsed from a union that also accepts loaders or
+   * saved blocks: the block-ref picker for those branches. Rendered instead of
+   * the array editor when the stored value is a `{ __resolveType }` reference.
+   */
+  loaderRef?: SchemaProperty;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -691,48 +697,7 @@ export function resolveSchema(
             rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
           );
         });
-        if (arrayBranch) {
-          const isConfigArray = !isSectionLoaderArrayBranch(
-            arrayBranch,
-            resolveRef,
-          );
-          if (
-            isConfigArray &&
-            nonNull.length > 1 &&
-            arraySiblingsAreModuleRefs
-          ) {
-            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
-            return {
-              ...built,
-              type: "array",
-              title:
-                typeof resolved.title === "string"
-                  ? resolved.title
-                  : built.title,
-              description:
-                typeof resolved.description === "string"
-                  ? resolved.description
-                  : built.description,
-            };
-          }
-          if (hasPageMultivariateLoader) {
-            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
-            return {
-              ...built,
-              type: "array",
-              title:
-                typeof resolved.title === "string"
-                  ? resolved.title
-                  : built.title,
-              description:
-                typeof resolved.description === "string"
-                  ? resolved.description
-                  : built.description,
-            };
-          }
-        }
-
-        if (loaderBranches.length > 0) {
+        const buildLoaderBlockRef = (): SchemaProperty => {
           const pickerBranches = new Map<string, RawSchema>();
           for (const branch of [
             ...loaderBranches,
@@ -835,7 +800,61 @@ export function resolveSchema(
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };
+        };
+
+        if (arrayBranch) {
+          const isConfigArray = !isSectionLoaderArrayBranch(
+            arrayBranch,
+            resolveRef,
+          );
+          if (
+            isConfigArray &&
+            nonNull.length > 1 &&
+            arraySiblingsAreModuleRefs
+          ) {
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
+            // The prop's own @title/@description sit beside its `$ref`.
+            const title =
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title;
+            const description =
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description;
+            return {
+              ...built,
+              type: "array",
+              title,
+              description,
+              loaderRef:
+                loaderBranches.length > 0
+                  ? { ...buildLoaderBlockRef(), title, description }
+                  : undefined,
+            };
+          }
+          if (hasPageMultivariateLoader) {
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
         }
+
+        if (loaderBranches.length > 0) return buildLoaderBlockRef();
 
         // A branch is a real module/block when its def carries `__resolveType` or a saved-block title.
         const branchHasModuleIdentity = (branch: RawSchema): boolean => {

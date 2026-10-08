@@ -11,12 +11,13 @@ import { listHtmlToRows, rowsToListHtml } from "./list-html";
 import { InlineMarksToolbar } from "./marks-toolbar";
 import { FloatingToolbar, InlineText, ToolbarButton } from "./primitives";
 
-const HEADING_LEVELS = ["1", "2", "3"] as const;
+const HEADING_LEVELS = ["1", "2", "3", "4"] as const;
 
 const HEADING_LABEL_KEY = {
   "1": "sandbox.plainBlocks.headingLevel1",
   "2": "sandbox.plainBlocks.headingLevel2",
   "3": "sandbox.plainBlocks.headingLevel3",
+  "4": "sandbox.plainBlocks.headingLevel4",
 } as const;
 
 const HEADING_CLASS: Record<string, string> = {

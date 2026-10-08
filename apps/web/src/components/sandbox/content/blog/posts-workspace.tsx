@@ -41,12 +41,10 @@ import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useLocalStorage } from "@/hooks/use-local-storage.ts";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,7 +64,6 @@ import {
   filledBrandRules,
   FORMATS_BLOCK_KEY,
   getBlogPayload,
-  type IdeaEntry,
   listAllPostsWithMeta,
   listBlogPayloads,
   newIdeaKey,
@@ -109,8 +106,8 @@ const STATUS_VARIANT: Record<
   archived: "outline",
 };
 
-/** The ideas tray collapses like a lane, but has no status of its own. */
-const IDEAS_LANE = "ideas";
+/** Lanes whose feature isn't ready: shown as a closed rail, never opened. */
+const LOCKED_LANE: PostStatus = "generating";
 
 /** Go-live instant of a post (ISO, so lexical order is chronological). */
 const postDateKey = (post: PostMeta) =>
@@ -169,8 +166,8 @@ export function PostsWorkspace({
   const t = useT();
   const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const hideDefaults = useHideDefaultBlogBlocks();
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -184,17 +181,18 @@ export function PostsWorkspace({
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  // Lanes by status, not by index: a reordered board can't reopen the wrong one.
-  const [collapsedLanes, setCollapsedLanes] = useLocalStorage<string[]>(
-    LOCALSTORAGE_KEYS.blogBoardCollapsedLanes(),
-    [],
+  /**
+   * How a lane opens is the board's call, not a saved preference: a lane with
+   * posts comes open, an empty one comes closed. Toggling only holds for the
+   * visit, keyed by status so a reordered board can't reopen the wrong lane.
+   */
+  const [laneOverrides, setLaneOverrides] = useState<Record<string, boolean>>(
+    {},
   );
-  const toggleLane = (lane: string) =>
-    setCollapsedLanes((prev) =>
-      prev.includes(lane)
-        ? prev.filter((entry) => entry !== lane)
-        : [...prev, lane],
-    );
+  const isLaneCollapsed = (lane: string, empty: boolean) =>
+    laneOverrides[lane] ?? empty;
+  const setLaneCollapsed = (lane: string, collapsed: boolean) =>
+    setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
 
   const generatePost = useGeneratePost({
     orgSlug,
@@ -208,8 +206,6 @@ export function PostsWorkspace({
   const posts = listAllPostsWithMeta(decofile);
   const ideas = scanIdeas(decofile);
   const pillars = scanPillars(decofile);
-  const pillarTitleOf = (key?: string) =>
-    pillars.find((pillar) => pillar.key === key)?.title;
   const payloadOf = (key: string) =>
     getBlogPayload(
       decofile[key] as Record<string, unknown> | undefined,
@@ -321,19 +317,6 @@ export function PostsWorkspace({
     if (archived > 0) toast.success(t("sandbox.postBoard.archived"));
   };
 
-  /**
-   * Write a post from an idea already on the board. The idea stays where it is:
-   * one idea is worth several posts, and consuming it would hide that.
-   */
-  const generateFromIdea = (idea: IdeaEntry) => {
-    setGenerateSeed({ key: idea.key, title: idea.title, body: idea.body });
-    setGenerateOpen(true);
-  };
-
-  const deleteIdea = (idea: IdeaEntry) => {
-    deleteBlock.mutate({ blockKey: idea.key });
-  };
-
   const onDrop = (next: PostStatus, key: string) => {
     setDragOverLane(null);
     void move.apply(key, next);
@@ -352,7 +335,10 @@ export function PostsWorkspace({
    */
   const importContent = () => {
     const parsed = parseImportedContent(importText);
-    const blocks = sectionsToBlocks(parsed.sections, sectionResolveTypes(meta));
+    const blocks = sectionsToBlocks(
+      parsed.sections,
+      sectionResolveTypes(meta, { hideDefaults }),
+    );
     if (blocks.length === 0 && !parsed.title.trim()) {
       toast.error(t("sandbox.postBoard.importEmpty"));
       return;
@@ -371,7 +357,7 @@ export function PostsWorkspace({
     onOpen(key);
   };
 
-  /** Propose ideas from the brand context and drop them into the ideas tray. */
+  /** Propose ideas from the brand context and store them as idea blocks. */
   const generateIdeas = async () => {
     setIsGenerating(true);
     const pillar = pillars.find((entry) => entry.key === ideaPillarKey);
@@ -458,16 +444,16 @@ export function PostsWorkspace({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
             <ToggleButton
-              active={view === "board"}
-              onClick={() => onViewChange("board")}
-              icon={<Columns03 size={14} />}
-              label={t("sandbox.postBoard.viewBoard")}
-            />
-            <ToggleButton
               active={view === "list"}
               onClick={() => onViewChange("list")}
               icon={<List size={14} />}
               label={t("sandbox.postBoard.viewList")}
+            />
+            <ToggleButton
+              active={view === "board"}
+              onClick={() => onViewChange("board")}
+              icon={<Columns03 size={14} />}
+              label={t("sandbox.postBoard.viewBoard")}
             />
           </div>
         </div>
@@ -682,7 +668,7 @@ export function PostsWorkspace({
         </div>
       </div>
 
-      {posts.length === 0 && ideas.length === 0 ? (
+      {posts.length === 0 ? (
         <EmptyState
           className="flex-1"
           icon={<Stars02 size={22} />}
@@ -695,108 +681,107 @@ export function PostsWorkspace({
         />
       ) : view === "board" ? (
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
-          <IdeaTray
-            ideas={ideas}
-            collapsed={collapsedLanes.includes(IDEAS_LANE)}
-            pillarTitleOf={pillarTitleOf}
-            onToggleCollapsed={() => toggleLane(IDEAS_LANE)}
-            onGenerate={generateFromIdea}
-            onDelete={deleteIdea}
-          />
+          <LockedLane label={t("sandbox.postBoard.ideasTray")} />
+          <LockedLane label={t(POST_STATUS_LABEL[LOCKED_LANE])} />
           <div
             aria-hidden
             className="my-1 w-px shrink-0 self-stretch bg-border"
           />
-          {POST_STATUSES.map((status) => {
-            const lanePosts = posts.filter((p) => p.status === status);
-            if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
-            const laneLabel = t(POST_STATUS_LABEL[status]);
-            const isCollapsed = collapsedLanes.includes(status);
-            return (
-              <div
-                key={status}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverLane(status);
-                }}
-                onDragLeave={() =>
-                  setDragOverLane((l) => (l === status ? null : l))
-                }
-                onDrop={(e) => {
-                  e.preventDefault();
-                  onDrop(status, e.dataTransfer.getData(DRAG_KEY));
-                }}
-                className={cn(
-                  "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
-                  isCollapsed ? "w-11" : "w-72",
-                  dragOverLane === status && "border-primary bg-primary/5",
-                )}
-              >
-                {isCollapsed ? (
-                  // Still a drop target, so a post can be dropped onto a closed lane.
-                  <button
-                    type="button"
-                    onClick={() => toggleLane(status)}
-                    aria-label={t("sandbox.postBoard.expandLane", {
-                      lane: laneLabel,
-                    })}
-                    aria-expanded={false}
-                    className="flex min-h-0 flex-1 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <ChevronRight size={14} className="shrink-0" />
-                    <span className="text-xs tabular-nums">
-                      {lanePosts.length}
-                    </span>
-                    <span className="[writing-mode:vertical-rl] text-sm font-medium">
-                      {laneLabel}
-                    </span>
-                  </button>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
-                      <button
-                        type="button"
-                        onClick={() => toggleLane(status)}
-                        aria-label={t("sandbox.postBoard.collapseLane", {
-                          lane: laneLabel,
-                        })}
-                        aria-expanded
-                        className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
-                      >
-                        <ChevronDown size={14} className="shrink-0" />
-                        <span className="truncate">{laneLabel}</span>
-                      </button>
-                      <span className="text-xs tabular-nums text-muted-foreground">
+          {POST_STATUSES.filter((status) => status !== LOCKED_LANE).map(
+            (status) => {
+              const laneLabel = t(POST_STATUS_LABEL[status]);
+              const lanePosts = posts.filter((p) => p.status === status);
+              if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
+              const isCollapsed = isLaneCollapsed(
+                status,
+                lanePosts.length === 0,
+              );
+              return (
+                <div
+                  key={status}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverLane(status);
+                  }}
+                  onDragLeave={() =>
+                    setDragOverLane((l) => (l === status ? null : l))
+                  }
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    onDrop(status, e.dataTransfer.getData(DRAG_KEY));
+                  }}
+                  className={cn(
+                    "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
+                    isCollapsed ? "w-11" : "w-72",
+                    dragOverLane === status && "border-primary bg-primary/5",
+                  )}
+                >
+                  {isCollapsed ? (
+                    // Still a drop target, so a post can be dropped onto a closed lane.
+                    <button
+                      type="button"
+                      onClick={() => setLaneCollapsed(status, false)}
+                      aria-label={t("sandbox.postBoard.expandLane", {
+                        lane: laneLabel,
+                      })}
+                      aria-expanded={false}
+                      className="flex min-h-0 flex-1 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronRight size={14} className="shrink-0" />
+                      <span className="text-xs tabular-nums">
                         {lanePosts.length}
                       </span>
-                    </div>
-                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-                      {lanePosts.length === 0 ? (
-                        <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-                          {t("sandbox.postBoard.laneEmpty")}
-                        </p>
-                      ) : (
-                        lanePosts.map((post) => (
-                          <PostCard
-                            key={post.key}
-                            post={post}
-                            payload={payloadOf(post.key)}
-                            moving={move.isMoving(post.key)}
-                            onOpen={() => onOpen(post.key)}
-                            onArchive={
-                              post.status === "archived"
-                                ? undefined
-                                : () => void archivePost(post)
-                            }
-                          />
-                        ))
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
+                      <span className="[writing-mode:vertical-rl] text-sm font-medium">
+                        {laneLabel}
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setLaneCollapsed(status, true)}
+                          aria-label={t("sandbox.postBoard.collapseLane", {
+                            lane: laneLabel,
+                          })}
+                          aria-expanded
+                          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
+                        >
+                          <ChevronDown size={14} className="shrink-0" />
+                          <span className="truncate">{laneLabel}</span>
+                        </button>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {lanePosts.length}
+                        </span>
+                      </div>
+                      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
+                        {lanePosts.length === 0 ? (
+                          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                            {t("sandbox.postBoard.laneEmpty")}
+                          </p>
+                        ) : (
+                          lanePosts.map((post) => (
+                            <PostCard
+                              key={post.key}
+                              post={post}
+                              payload={payloadOf(post.key)}
+                              moving={move.isMoving(post.key)}
+                              onOpen={() => onOpen(post.key)}
+                              onArchive={
+                                post.status === "archived"
+                                  ? undefined
+                                  : () => void archivePost(post)
+                              }
+                            />
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            },
+          )}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -1190,122 +1175,18 @@ function PostCard({
   );
 }
 
-/**
- * The ideas tray: what the blog could write, parked beside what it is writing.
- *
- * Deliberately not a lane. An idea has no status and never moves through the
- * lifecycle — writing from it produces a post, and the idea stays put, because
- * one idea is worth several posts in several formats.
- */
-function IdeaTray({
-  ideas,
-  collapsed,
-  pillarTitleOf,
-  onToggleCollapsed,
-  onGenerate,
-  onDelete,
-}: {
-  ideas: IdeaEntry[];
-  collapsed: boolean;
-  pillarTitleOf: (key?: string) => string | undefined;
-  onToggleCollapsed: () => void;
-  onGenerate: (idea: IdeaEntry) => void;
-  onDelete: (idea: IdeaEntry) => void;
-}) {
+/** A lane whose feature isn't shipped yet: never opens, never takes a drop. */
+function LockedLane({ label }: { label: string }) {
   const t = useT();
-  const label = t("sandbox.postBoard.ideasTray");
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={onToggleCollapsed}
-        aria-label={t("sandbox.postBoard.expandLane", { lane: label })}
-        aria-expanded={false}
-        className="flex w-11 shrink-0 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
-      >
-        <ChevronRight size={14} className="shrink-0" />
-        <span className="text-xs tabular-nums">{ideas.length}</span>
-        <span className="[writing-mode:vertical-rl] text-sm font-medium">
-          {label}
-        </span>
-      </button>
-    );
-  }
   return (
-    <div className="flex w-72 shrink-0 flex-col">
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          aria-label={t("sandbox.postBoard.collapseLane", { lane: label })}
-          aria-expanded
-          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
-        >
-          <ChevronDown size={14} className="shrink-0" />
-          <span className="truncate">{label}</span>
-        </button>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {ideas.length}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-2 pr-1">
-        {ideas.length === 0 ? (
-          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-            {t("sandbox.postBoard.ideasEmpty")}
-          </p>
-        ) : (
-          ideas.map((idea) => {
-            const pillar = pillarTitleOf(idea.pillarKey);
-            return (
-              <div
-                key={idea.key}
-                className="group/card relative rounded-lg border border-dashed bg-card shadow-sm transition-colors hover:border-primary/40"
-              >
-                <ArchiveButton
-                  label={t("sandbox.postBoard.deleteIdea")}
-                  onArchive={() => onDelete(idea)}
-                  className="top-2"
-                />
-                <div className="p-3">
-                  <p className="line-clamp-2 pr-6 text-sm font-medium">
-                    {idea.title || t("sandbox.postBoard.untitledIdea")}
-                  </p>
-                  {idea.body && (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {idea.body}
-                    </p>
-                  )}
-                  {pillar && (
-                    <Badge
-                      variant="secondary"
-                      className="mt-2 max-w-full truncate"
-                    >
-                      {pillar}
-                    </Badge>
-                  )}
-                </div>
-                <div className="border-t px-3 py-2">
-                  {/* The other door into the same generation dialog. */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled
-                    className="h-7 w-full justify-start px-1.5 text-xs"
-                    onClick={() => onGenerate(idea)}
-                  >
-                    <Stars02 size={13} />
-                    {t("sandbox.postBoard.writeFromIdea")}
-                    <Badge variant="secondary" className="ml-auto">
-                      {t("common.soon")}
-                    </Badge>
-                  </Button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+    <div
+      aria-disabled
+      className="flex w-11 shrink-0 cursor-not-allowed flex-col items-center gap-2 rounded-xl border border-dashed border-primary/30 bg-primary/5 py-2.5 text-primary"
+    >
+      <span className="[writing-mode:vertical-rl] text-sm">{label}</span>
+      <span className="[writing-mode:vertical-rl] text-xs font-semibold">
+        {t("common.soon")}
+      </span>
     </div>
   );
 }

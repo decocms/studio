@@ -31,6 +31,13 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { CustomFieldsPanel } from "./custom-fields-panel";
+import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import {
+  blogCustomFieldsSchema,
+  KNOWN_CATEGORY_FIELDS,
+  type KnownCategoryKey,
+} from "./blog-schema";
 import {
   buildBlogBlock,
   buildPostBlock,
@@ -41,6 +48,7 @@ import {
   listAllPostPayloads,
   listAllPostsWithMeta,
   maskSlugInput,
+  missingFieldsLabel,
   missingCategoryFields,
   renameCategoryOnPost,
   reparentCategory,
@@ -131,8 +139,20 @@ export function CategoryEditor({
     { isSaving: save.isPending || move.isPending },
   );
 
-  const setField = (key: string, value: unknown) =>
+  // Key typed from `KNOWN_CATEGORY_KEYS`, so a bespoke field absent from it fails to compile.
+  const setField = (key: KnownCategoryKey, value: unknown) =>
     setCategory({ ...category, [key]: value });
+
+  const customFields = blogCustomFieldsSchema(
+    "categories",
+    meta,
+    KNOWN_CATEGORY_FIELDS,
+  );
+  // Edits to a field pointing at a saved block belong to that block's own
+  // decofile entry, not to this record.
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
+    save.mutate({ blockKey: refKey, data }),
+  );
 
   // Only offer a preview when the blog app has a `categorySlug` route
   // template configured — otherwise there is no category page to open.
@@ -206,10 +226,10 @@ export function CategoryEditor({
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         })
       : t("sandbox.postEditor.missingFieldPlural", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         });
 
   /** Persist the new slug on the category block itself (no cascade). */
@@ -519,6 +539,17 @@ export function CategoryEditor({
               />
             </div>
 
+            <CustomFieldsPanel
+              schema={customFields}
+              value={category}
+              onChange={setCategory}
+              basePath="category"
+              meta={meta}
+              decofile={decofile}
+              sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+              onSaveReferencedBlock={saveReferencedBlock}
+            />
+
             {/* Category page content — same collapsible panel as the post body */}
             <CollapsibleSection
               icon={Pilcrow01}
@@ -529,7 +560,10 @@ export function CategoryEditor({
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
+                decofile={decofile}
                 sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                previewBaseUrl={previewBaseUrl}
+                onSaveReferencedBlock={saveReferencedBlock}
                 emptyMessage={t("sandbox.categoryEditor.noContentEmpty")}
               />
             </CollapsibleSection>
