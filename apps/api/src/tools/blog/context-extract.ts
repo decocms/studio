@@ -78,18 +78,48 @@ function renderBrand(brand: Partial<z.infer<typeof BlogBrandSchema>>): string {
 }
 
 /**
- * What the gate judges. `categories` is left out on purpose: it is a taxonomy
- * of plain names, where "is this true" has no meaning and the UI discards it
- * anyway.
+ * What the gate judges, and what relevance is asking of each field.
+ *
+ * `categories` is left out: it is a taxonomy of plain names, where "is this
+ * true" has no meaning and the UI discards the answer anyway.
  */
 const CONTEXT_FIELD_SPECS: readonly FieldSpec[] = [
-  { field: "tone", kind: "text", origin: "blocks" },
-  { field: "dos", kind: "rules", origin: "blocks" },
-  { field: "avoid", kind: "rules", origin: "blocks" },
-  { field: "vocabulary", kind: "rules", origin: "blocks" },
-  { field: "voiceExamples", kind: "examples", origin: "blocks" },
+  {
+    field: "tone",
+    kind: "text",
+    origin: "blocks",
+    purpose:
+      "Could another writer reproduce this brand's voice from this description alone — how the reader is addressed, sentence length, formality, jargon level?",
+  },
+  {
+    field: "dos",
+    kind: "rules",
+    origin: "blocks",
+    purpose:
+      "Is it an imperative a writer could follow, drawn from something the copy consistently does? An adjective rather than an instruction is 29 at most.",
+  },
+  {
+    field: "avoid",
+    kind: "rules",
+    origin: "blocks",
+    purpose:
+      "Is it a real prohibition this copy observes? Another rule stated inverted, with nothing new to act on, is 29 at most.",
+  },
+  {
+    field: "vocabulary",
+    kind: "rules",
+    origin: "blocks",
+    purpose:
+      "Is this genuinely the brand's own word for something, displacing an ordinary one a writer would otherwise reach for? A product or feature name the brand capitalises is exactly what this field is for — the whole point is that a post using the generic word reads as an impostor.",
+  },
+  {
+    field: "voiceExamples",
+    kind: "examples",
+    origin: "blocks",
+    purpose:
+      "Does the sentence SHOW how this brand sounds, so that matching its register would make a post sound like it? It does not need to change what a post says — that is not what an example is for. Score it as a specimen of the voice. Only a sentence so bland it would sit in any brand's copy, or one that is a shipping term or an editor's note rather than something a customer reads, falls below 60.",
+  },
 ];
-
 export const BLOG_CONTEXT_EXTRACT = defineTool({
   name: "BLOG_CONTEXT_EXTRACT",
   description:
@@ -168,7 +198,7 @@ export const BLOG_CONTEXT_EXTRACT = defineTool({
       await judgeClaims(
         ctx,
         organizationId,
-        { evidence, claims },
+        { evidence, claims, specs: CONTEXT_FIELD_SPECS },
         "BLOG_CONTEXT_EXTRACT",
       ),
       CONTEXT_FIELD_SPECS,

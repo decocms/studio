@@ -54,23 +54,69 @@ Three rules that override everything else:
 const BlockPassSchema = BlogBrandSchema.omit({ specialDates: true });
 
 /**
- * The shape of the profile for the gate, and which evidence each field is
- * judged against. `competitors` is marked block-derived because `preferFilled`
- * prefers the site's own answer; when research supplied it instead the judge
- * still finds it, since both sections are in the evidence it reads.
+ * What the gate judges, and what relevance is asking of each field.
+ *
+ * `companyName` and `language` are deliberately absent: they are identity, not
+ * insight, so "how useful is this?" has no sensible answer for them — asked
+ * anyway, the judge scored a correct brand name in the sixties and cut it. A
+ * wrong name is obvious to the person reviewing; a missing one blocks every
+ * generation downstream.
+ *
+ * `competitors` is marked block-derived because `preferFilled` prefers the
+ * site's own answer; when research supplied it instead the judge still finds
+ * it, since both sections are in the evidence it reads.
  */
 const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
-  { field: "companyName", kind: "text", origin: "blocks" },
-  { field: "description", kind: "text", origin: "blocks" },
-  { field: "language", kind: "text", origin: "blocks" },
-  { field: "targetAudience", kind: "text", origin: "blocks" },
-  { field: "values", kind: "rules", origin: "blocks" },
-  { field: "competitors", kind: "rules", origin: "blocks" },
-  { field: "keywords", kind: "terms", origin: "blocks" },
-  { field: "commercialPolicies", kind: "rules", origin: "blocks" },
-  { field: "specialDates", kind: "rules", origin: "research" },
+  {
+    field: "description",
+    kind: "text",
+    origin: "blocks",
+    purpose:
+      "Does it say what this company sells and who it sells to, concretely enough that you could tell it from a competitor in the same category?",
+  },
+  {
+    field: "targetAudience",
+    kind: "text",
+    origin: "blocks",
+    purpose:
+      "Does it name who actually reads this brand and what they came for, rather than a demographic bracket that would fit any shopper?",
+  },
+  {
+    field: "values",
+    kind: "rules",
+    origin: "blocks",
+    purpose:
+      "Is this something the brand argues for and backs up, rather than a virtue any company would claim? 'Quality' and 'innovation' with nothing attached are what this field is not for.",
+  },
+  {
+    field: "competitors",
+    kind: "rules",
+    origin: "blocks",
+    purpose:
+      "Is this a real rival of this brand, with something said about how it positions itself or where it differs — enough for a writer to avoid sounding like it?",
+  },
+  {
+    field: "keywords",
+    kind: "terms",
+    origin: "blocks",
+    purpose:
+      "Is this a term a customer would really type looking for what this brand sells? A product or category word belongs here even when it is ordinary — being unremarkable is what makes a search term work. The brand's own name alone does not.",
+  },
+  {
+    field: "commercialPolicies",
+    kind: "rules",
+    origin: "blocks",
+    purpose:
+      "Does it state terms a post could repeat correctly — with the actual numbers, deadlines or conditions? A policy with none of those is 29 at most: 'the site references Frete Grátis in its metadata' is a fact about the metadata, not a policy. 'Frete grátis acima de R$ 199, exceto produtos pesados' is what this field is for.",
+  },
+  {
+    field: "specialDates",
+    kind: "rules",
+    origin: "research",
+    purpose:
+      "Is this a commercial moment this brand's year actually turns around, with what the brand does on it? A general retail date with nothing tying it to this brand is 29 at most.",
+  },
 ];
-
 /** The site's own answer wins; research is what fills a blank. */
 function preferFilled<T>(own: T[], researched: T[]): T[] {
   return own.length > 0 ? own : researched;
@@ -173,7 +219,11 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       await judgeClaims(
         ctx,
         organizationId,
-        { evidence: judgeEvidence(input, research), claims },
+        {
+          evidence: judgeEvidence(input, research),
+          claims,
+          specs: BRAND_FIELD_SPECS,
+        },
         "BLOG_BRAND_EXTRACT",
       ),
       BRAND_FIELD_SPECS,

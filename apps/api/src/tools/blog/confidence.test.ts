@@ -4,18 +4,26 @@ import {
   type Claim,
   type FieldSpec,
   flattenClaims,
-  MIN_SCORE,
+  MIN_CONFIDENCE,
+  MIN_RELEVANCE,
   renderClaims,
+  renderPurposes,
   type Verdict,
   verbatimExamples,
 } from "./confidence";
 
+const spec = (
+  field: string,
+  kind: FieldSpec["kind"],
+  origin: FieldSpec["origin"] = "blocks",
+): FieldSpec => ({ field, kind, origin, purpose: `what ${field} is for` });
+
 const SPECS: readonly FieldSpec[] = [
-  { field: "companyName", kind: "text", origin: "blocks" },
-  { field: "values", kind: "rules", origin: "blocks" },
-  { field: "keywords", kind: "terms", origin: "blocks" },
-  { field: "voiceExamples", kind: "examples", origin: "blocks" },
-  { field: "specialDates", kind: "rules", origin: "research" },
+  spec("companyName", "text"),
+  spec("values", "rules"),
+  spec("keywords", "terms"),
+  spec("voiceExamples", "examples"),
+  spec("specialDates", "rules", "research"),
 ];
 
 const pass = (id: number): Verdict => ({
@@ -63,7 +71,7 @@ describe("flattenClaims", () => {
   test("carries the counter-example flag, which is half the claim", () => {
     const claims = flattenClaims(
       { voiceExamples: [{ text: "Compre já!", sounds: false }] },
-      [{ field: "voiceExamples", kind: "examples", origin: "blocks" }],
+      [spec("voiceExamples", "examples")],
     );
     expect(claims[0]?.text).toBe(
       '"Compre já!" — presented as NOT how the brand sounds',
@@ -104,6 +112,30 @@ describe("flattenClaims", () => {
       "[1] companyName (from the site's own blocks): Ateliê\n" +
         "[2] specialDates (from web research): Natal: Sim",
     );
+  });
+});
+
+describe("renderPurposes", () => {
+  test("gives the judge one relevance question per field, in spec order", () => {
+    const claims = flattenClaims(
+      { keywords: ["linho"], companyName: "Ateliê" },
+      SPECS,
+    );
+    expect(renderPurposes(claims, SPECS)).toBe(
+      "- `companyName`: what companyName is for\n" +
+        "- `keywords`: what keywords is for",
+    );
+  });
+
+  test("says nothing about a field with no claims to score", () => {
+    const claims = flattenClaims({ keywords: ["linho"] }, SPECS);
+    expect(renderPurposes(claims, SPECS)).toBe(
+      "- `keywords`: what keywords is for",
+    );
+  });
+
+  test("no claims, no legend", () => {
+    expect(renderPurposes([], SPECS)).toBe("");
   });
 });
 
@@ -158,7 +190,7 @@ describe("applyVerdicts", () => {
       claims,
       claims.map((c) =>
         c.field === "companyName"
-          ? { id: c.id, confidence: 100, relevance: 30, reason: "generic" }
+          ? { id: c.id, confidence: 100, relevance: 10, reason: "generic" }
           : pass(c.id),
       ),
       SPECS,
@@ -167,14 +199,14 @@ describe("applyVerdicts", () => {
     expect(gate.discarded).toHaveLength(1);
   });
 
-  test("exactly at the bar is kept — the threshold is inclusive", () => {
+  test("exactly at each bar is kept — both thresholds are inclusive", () => {
     const gate = applyVerdicts(
       result,
       claims,
       claims.map((c) => ({
         id: c.id,
-        confidence: MIN_SCORE,
-        relevance: MIN_SCORE,
+        confidence: MIN_CONFIDENCE,
+        relevance: MIN_RELEVANCE,
         reason: "",
       })),
       SPECS,
@@ -183,7 +215,7 @@ describe("applyVerdicts", () => {
     expect(gate.kept).toEqual(result);
   });
 
-  test("one point under the bar is dropped", () => {
+  test("one point under the confidence bar is dropped, however relevant", () => {
     const gate = applyVerdicts(
       result,
       claims,
@@ -191,7 +223,7 @@ describe("applyVerdicts", () => {
         c.field === "companyName"
           ? {
               id: c.id,
-              confidence: MIN_SCORE - 1,
+              confidence: MIN_CONFIDENCE - 1,
               relevance: 100,
               reason: "stretched",
             }
@@ -200,6 +232,40 @@ describe("applyVerdicts", () => {
       SPECS,
     );
     expect(gate.kept.companyName).toBe("");
+  });
+
+  test("one point under the relevance bar is dropped, however certain", () => {
+    const gate = applyVerdicts(
+      result,
+      claims,
+      claims.map((c) =>
+        c.field === "companyName"
+          ? {
+              id: c.id,
+              confidence: 100,
+              relevance: MIN_RELEVANCE - 1,
+              reason: "answers a neighbouring question",
+            }
+          : pass(c.id),
+      ),
+      SPECS,
+    );
+    expect(gate.kept.companyName).toBe("");
+  });
+
+  test("the bars are separate heights: a verbatim quote survives being ordinary", () => {
+    const gate = applyVerdicts(
+      result,
+      claims,
+      claims.map((c) => ({
+        id: c.id,
+        confidence: 98,
+        relevance: 65,
+        reason: "",
+      })),
+      SPECS,
+    );
+    expect(gate.discarded).toEqual([]);
   });
 
   test("the order the model emitted its verdicts does not matter", () => {
