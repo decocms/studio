@@ -34,6 +34,14 @@ import {
   OrgSiteStorage,
 } from "@/storage/org-sites";
 import { VirtualMCPStorage } from "@/storage/virtual";
+import {
+  backfillSiteClaims,
+  decoSiteExists,
+  type SiteClaimCandidate,
+} from "@/hosted/claim-site";
+import { mainIsV8, projectSite } from "@/hosted/scope";
+import { contentClientForProjectRepo } from "@/git-providers";
+import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
@@ -945,6 +953,117 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  /**
+   * Links every existing Blocks v8 project (main's `.deco/schema.gen.json`
+   * says `blocksMajor: 8`) to the site it names (`metadata.siteSlug`) in
+   * `org_sites`, as project creation now does, claiming a free slug for its
+   * org first. Safe to re-run; never takes a slug another org, project or
+   * deco.cx has, nor a deleted org's (reported as `refused`), and links
+   * nobody to a slug several orgs' or projects name (`ambiguous`). A dry run
+   * unless the body says `{"dryRun": false}`. A route rather than a
+   * migration: telling a v8 project needs a GitHub read.
+   */
+  app.post("/hosted/site-claims/backfill", async (c) => {
+    const raw = (await c.req.json().catch(() => ({}))) as {
+      dryRun?: unknown;
+    } | null;
+    const dryRun = raw?.dryRun !== false;
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const db = getDb().db;
+    const ctx = c.var.studioContext;
+    const rows = await db
+      .selectFrom("connections")
+      .innerJoin(
+        "organization",
+        "organization.id",
+        "connections.organization_id",
+      )
+      .select([
+        "connections.id as id",
+        "connections.organization_id as organizationId",
+        "connections.metadata as metadata",
+        "organization.slug as orgSlug",
+        "organization.name as orgName",
+      ])
+      .where("connections.connection_type", "=", "VIRTUAL")
+      .orderBy("connections.created_at", "asc")
+      .execute();
+    const candidates: SiteClaimCandidate[] = [];
+    const orgs = new Map<string, { id: string; slug: string; name: string }>();
+    for (const row of rows) {
+      let metadata: Record<string, unknown> | null = null;
+      try {
+        metadata =
+          typeof row.metadata === "string"
+            ? (JSON.parse(row.metadata) as Record<string, unknown>)
+            : (row.metadata as Record<string, unknown> | null);
+      } catch {
+        continue;
+      }
+      const slug = projectSite(metadata);
+      if (!slug) continue;
+      candidates.push({
+        organizationId: row.organizationId,
+        projectId: row.id,
+        slug,
+      });
+      orgs.set(row.organizationId, {
+        id: row.organizationId,
+        slug: row.orgSlug,
+        name: row.orgName,
+      });
+    }
+    const projects = new VirtualMCPStorage(db);
+    const report = await backfillSiteClaims({
+      orgSites: new OrgSiteStorage(db),
+      isDecoSite: decoSiteExists,
+      candidates,
+      by: actorId,
+      dryRun,
+      isV8: async ({ organizationId, projectId }) => {
+        const [project] = await projects.listByIds(organizationId, [projectId]);
+        const metadata = (project?.metadata ?? null) as Record<
+          string,
+          unknown
+        > | null;
+        const repository = parseRepositoryBinding(
+          metadata,
+          project?.connections?.map((conn) => conn.connection_id) ?? [],
+        );
+        if (!repository) return false;
+        // Credentials resolve against the project's org, as in admin-prompts.
+        const client = await contentClientForProjectRepo(
+          { ...ctx, organization: orgs.get(organizationId)! },
+          organizationId,
+          repository,
+        );
+        const runtime = metadata?.runtime as
+          | { path?: string | null }
+          | undefined;
+        return mainIsV8(
+          client,
+          runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
+          await client.getDefaultBranch(),
+        );
+      },
+    });
+    auditAdminAction("hosted_site_claims_backfill", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      dry_run: dryRun,
+      linked: report.linked.length,
+      refused: report.refused.length,
+      ambiguous: report.ambiguous.length,
+      errors: report.errors.length,
+    });
+    return c.json(report);
   });
 
   // The agent-prompt editor (reads/writes decocms/studio over GitHub) — its own
