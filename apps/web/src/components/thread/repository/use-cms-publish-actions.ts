@@ -6,9 +6,11 @@
  */
 
 import type { MutableRefObject } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { KEYS } from "@/lib/query-keys.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {
   notifySubmittedForReview,
@@ -78,6 +80,7 @@ export function useCmsPublishActions(
     hosted = false,
   } = args;
   const t = useT();
+  const queryClient = useQueryClient();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
@@ -97,6 +100,10 @@ export function useCmsPublishActions(
     } else {
       toast.success(t("thread.publishPopover.mergedLive"));
     }
+    // A mounted Releases screen shows the new commit and its CDN status.
+    void queryClient.invalidateQueries({
+      queryKey: KEYS.hostedReleases(target.orgSlug, target.virtualMcpId),
+    });
     onOpenChange(false);
     await onPublished?.();
   };

@@ -13,6 +13,7 @@ export const releases = {
   "releases.state.live": "No ar",
   "releases.state.rolledBack": "Revertido",
   "releases.state.failed": "Falha ao atualizar a CDN",
+  "releases.state.notLive": "Fora do ar",
   "releases.failedHint":
     "A versão mais recente da main ainda não está no ar na CDN. Ressincronize para colocá-la no ar.",
   "releases.merged": "Mesclada",

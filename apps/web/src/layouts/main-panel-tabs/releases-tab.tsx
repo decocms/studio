@@ -154,7 +154,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
           <span className="text-xs text-muted-foreground">
             {t("releases.serving")}
           </span>
-          <StateBadge state={first.state} />
+          <StateBadge state={first.state} nothingServed={!serving} />
         </div>
         {serving ? (
           <p className="mt-1 text-sm">
@@ -176,7 +176,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
             {t("releases.rolledBackHint", { head: short(first.head) })}
           </p>
         ) : null}
-        {first.state === "failed" ? (
+        {first.state === "failed" && serving ? (
           <p className="mt-1 text-xs text-destructive">
             {t("releases.failedHint")}
           </p>
@@ -321,14 +321,23 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   );
 }
 
-function StateBadge({ state }: { state: ReleaseState }) {
+function StateBadge({
+  state,
+  nothingServed,
+}: {
+  state: ReleaseState;
+  /** No latest.json yet: nothing failed, the site just isn't live. */
+  nothingServed: boolean;
+}) {
   const t = useT();
   const label =
     state === "live"
       ? t("releases.state.live")
       : state === "rolled-back"
         ? t("releases.state.rolledBack")
-        : t("releases.state.failed");
+        : nothingServed
+          ? t("releases.state.notLive")
+          : t("releases.state.failed");
   return (
     <span
       className={cn(

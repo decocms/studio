@@ -11,6 +11,7 @@ export const releases = {
   "releases.state.live": "Live",
   "releases.state.rolledBack": "Rolled back",
   "releases.state.failed": "CDN update failed",
+  "releases.state.notLive": "Not live",
   "releases.failedHint":
     "Main's newest release isn't live on the CDN yet. Resync to make it live.",
   "releases.merged": "Merged",
