@@ -26,6 +26,40 @@ function fail(code: string, message: string): never {
   process.exit(1);
 }
 
+// Persistent (the daemon's session pool): one envelope per line, the process
+// kept between turns. A turn that ends in an error ends the process, so the next
+// one starts clean; a clean one ends with `turnEnd`.
+if (process.env.HARNESS_RUNNER_PERSISTENT === "1") {
+  for await (const line of console) {
+    if (!line.trim()) continue;
+    const turnStartedAt = performance.now();
+    let turn: { harnessId?: unknown; input?: unknown };
+    try {
+      turn = JSON.parse(line);
+    } catch {
+      fail("bad_input", "a turn line is not JSON");
+    }
+    if (turn.harnessId !== "claude-code") {
+      fail(
+        "unknown_harness",
+        `harness-runner does not implement ${JSON.stringify(turn.harnessId)}`,
+      );
+    }
+    let failed = false;
+    await runClaudeCode(
+      turn.input as Parameters<typeof runClaudeCode>[0],
+      (frame) => {
+        if (frame.error) failed = true;
+        emit(frame);
+      },
+      turnStartedAt,
+    );
+    if (failed) process.exit(1);
+    emit({ chunks: [], turnEnd: true });
+  }
+  process.exit(0);
+}
+
 const raw = await Bun.stdin.text();
 let body: { harnessId?: unknown; input?: unknown };
 try {

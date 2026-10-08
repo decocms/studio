@@ -173,4 +173,9 @@ export interface HarnessDispatchEnvelope {
   runId: string;
   /** Checked by the daemon against `harnessStreamInputSchema`. */
   input: unknown;
+  /**
+   * Run on the thread's kept runner process when one was spawned with the same
+   * key (daemon `internal/dispatch/session.go`). Absent = a process per run.
+   */
+  sessionKey?: string;
 }

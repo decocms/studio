@@ -72,6 +72,8 @@ import {
   getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
+  getThreadSandboxMap,
+  removeThreadSandboxMapEntry,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
   threadIdFromBranch,
@@ -287,11 +289,24 @@ export async function ensureSandbox(
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
   const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  const existing: SandboxRecord | null = resolveVm(
+  // Thread-scoped sandboxes are recorded on the thread (the agent write is a
+  // no-op for them), so the resume fast path has to look there too.
+  const recordThreadId =
+    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
+  const agentEntry = resolveVm(
     readSandboxMap(metadata),
     sandboxUserId,
     input.branch,
   );
+  const existing: SandboxRecord | null =
+    agentEntry ??
+    (recordThreadId
+      ? resolveVm(
+          await getThreadSandboxMap(ctx, recordThreadId),
+          sandboxUserId,
+          input.branch,
+        )
+      : null);
 
   const runner = await getAgentSandboxProvider(ctx);
 
@@ -304,15 +319,24 @@ export async function ensureSandbox(
     // call would tear down a healthy sandbox and re-clone it from scratch.
     const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
     if (alive) return existing;
-    await removeSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      input.virtualMcpId,
-      userId,
-      sandboxUserId,
-      input.branch,
-    ).catch((err) => {
-      console.warn("[ensureSandbox] failed to reap stale entry", err);
-    });
+    if (agentEntry) {
+      await removeSandboxMapEntry(
+        ctx.storage.virtualMcps,
+        input.virtualMcpId,
+        userId,
+        sandboxUserId,
+        input.branch,
+      ).catch((err) => {
+        console.warn("[ensureSandbox] failed to reap stale entry", err);
+      });
+    } else if (recordThreadId) {
+      await removeThreadSandboxMapEntry(
+        ctx,
+        recordThreadId,
+        sandboxUserId,
+        input.branch,
+      );
+    }
   }
 
   // Thread-scoped repo wins over the agent's own repo: `load_repo` binds a repo

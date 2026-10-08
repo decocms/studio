@@ -158,6 +158,8 @@ type activeRun struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	harness string
+	// sessionKey, when set, runs the turn on the thread's kept runner (session.go).
+	sessionKey string
 
 	mu       sync.Mutex
 	sink     *bodyWriter
@@ -294,6 +296,7 @@ type Registry struct {
 	// re-running the turn. Cleared by a timer, never by size.
 	finishedRuns map[string]*activeRun
 	tombstones   map[string]time.Time
+	sessions     sessionPool
 }
 
 func NewRegistry() *Registry {
@@ -645,6 +648,12 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		return
 	}
 
+	var sessionKey string
+	if raw, ok := frame["sessionKey"]; ok && json.Unmarshal(raw, &sessionKey) != nil {
+		jsonError(w, 400, map[string]string{"error": "bad_session_key"})
+		return
+	}
+
 	input := frame["input"]
 	if input == nil {
 		input = json.RawMessage("null")
@@ -668,7 +677,7 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		// decision now: a takeover, a DELETE, daemon shutdown, or nobody
 		// reattaching within `detachGrace`.
 		ctx, cancel := context.WithCancel(context.Background())
-		return &activeRun{ctx: ctx, done: make(chan struct{}), harness: harnessId}, cancel
+		return &activeRun{ctx: ctx, done: make(chan struct{}), harness: harnessId, sessionKey: sessionKey}, cancel
 	})
 	if entry == nil {
 		// Cancelled during the supersede grace — same answer as the pre-wait
@@ -779,19 +788,26 @@ func (reg *Registry) runHarness(
 	// identical in the pod log (both are silence until "dispatch done"), which is
 	// exactly the question you ask this log to answer.
 	seq := 0
-	frames, err := RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv,
-		func(frame []byte) bool {
-			seq++
-			// A streaming run is working, so it counts as activity: the idle
-			// reaper polls `/idle`, and without this a run that streams for
-			// longer than the idle TTL reports as untouched since the dispatch
-			// request arrived and gets its pod evicted mid-turn.
-			activity.Bump()
-			slog.Info("dispatch frame", "harness", entry.harness, "run_id", runId,
-				"seq", seq, "bytes", len(frame),
-				"elapsed_s", int(time.Since(startedAt).Seconds()))
-			return entry.emit(append(frame, '\n'))
-		})
+	emitFrame := func(frame []byte) bool {
+		seq++
+		// A streaming run is working, so it counts as activity: the idle
+		// reaper polls `/idle`, and without this a run that streams for
+		// longer than the idle TTL reports as untouched since the dispatch
+		// request arrived and gets its pod evicted mid-turn.
+		activity.Bump()
+		slog.Info("dispatch frame", "harness", entry.harness, "run_id", runId,
+			"seq", seq, "bytes", len(frame),
+			"elapsed_s", int(time.Since(startedAt).Seconds()))
+		return entry.emit(append(frame, '\n'))
+	}
+	var frames int
+	var err error
+	if entry.sessionKey != "" {
+		frames, err = reg.sessions.runSession(ctx, deps.HarnessRunnerCmd, entry.harness, input,
+			runEnv, info, entry.sessionKey, emitFrame)
+	} else {
+		frames, err = RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv, emitFrame)
+	}
 	elapsed := int(time.Since(startedAt).Seconds())
 
 	if ctx.Err() != nil {

@@ -9,6 +9,7 @@ import {
   dispatchWithContinuation,
   errorForTerminal,
   harnessRunsInSandbox,
+  harnessSessionKey,
   isRunSuperseded,
   isStudioOwnedConnection,
   orgOutputFallbackInstruction,
@@ -147,6 +148,51 @@ describe("selectRunConnections", () => {
         }).map((c) => c.id),
       ).toEqual(["conn_github", "conn_vtex"]);
     }
+  });
+});
+
+describe("harnessSessionKey", () => {
+  const turn = (overrides: Record<string, unknown> = {}) =>
+    ({
+      threadId: "thrd_1",
+      userMessage: { parts: [{ type: "text", text: "first" }] },
+      workspace: { cwd: null },
+      mode: "default",
+      mcp: {
+        url: "https://studio.test/mcp",
+        headers: { a: "1" },
+        expiresAt: 1,
+      },
+      ...overrides,
+    }) as unknown as Parameters<typeof harnessSessionKey>[0];
+
+  test("a follow-up with a new message, title and MCP bearer keeps the session", () => {
+    expect(
+      harnessSessionKey(
+        turn({
+          userMessage: { parts: [{ type: "text", text: "second" }] },
+          currentThreadTitle: "Named",
+          mcp: {
+            url: "https://studio.test/mcp",
+            headers: { a: "2" },
+            expiresAt: 2,
+          },
+        }),
+      ),
+    ).toBe(harnessSessionKey(turn()));
+  });
+
+  test("anything that shapes the session gets a new one", () => {
+    expect(harnessSessionKey(turn({ mode: "plan" }))).not.toBe(
+      harnessSessionKey(turn()),
+    );
+    expect(
+      harnessSessionKey(
+        turn({
+          mcp: { url: "https://other.test/mcp", headers: {}, expiresAt: 1 },
+        }),
+      ),
+    ).not.toBe(harnessSessionKey(turn()));
   });
 });
 

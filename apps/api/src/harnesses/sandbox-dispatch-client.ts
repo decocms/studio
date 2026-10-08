@@ -29,6 +29,7 @@
  * pushes the worktree on SIGTERM, so a replacement pod clones it back.
  */
 
+import { createHash } from "node:crypto";
 import type { UIMessageChunk } from "ai";
 import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { sleep } from "@decocms/shared/std";
@@ -624,7 +625,7 @@ export class SandboxDispatchClient {
         lastHandle = sandbox.sandboxHandle;
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
-        await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
+        await pushEnvIfChanged(provider, sandbox, runEnv);
         markTurn(runId, "env-pushed");
         // Assembled HERE, not at enqueue: the prompt is written before a pod
         // exists, and which kind this run gets is decided by the claim above.
@@ -924,6 +925,37 @@ const PUSH_ENV_TIMEOUT_MS = 30_000;
  * ⚠️ SECURITY: `env` holds a model credential. Never log it, and never include
  * the request body in an error message.
  */
+/**
+ * The env last pushed to each sandbox instance (a replacement VM has a new
+ * `createdAt`), so a follow-up turn with the same credential skips the round
+ * trip. Re-pushed after a TTL in case the daemon lost it to a reboot.
+ */
+const pushedEnv = new Map<string, { hash: string; at: number }>();
+const PUSHED_ENV_MAX = 1_000;
+const PUSHED_ENV_TTL_MS = 10 * 60_000;
+
+async function pushEnvIfChanged(
+  provider: Pick<SandboxProvider, "proxyDaemonRequest">,
+  sandbox: { sandboxHandle: string; createdAt?: number },
+  env: Record<string, string | null>,
+): Promise<void> {
+  // No instance identity, no way to tell a replacement apart: always push.
+  if (sandbox.createdAt === undefined) {
+    return pushSandboxEnv(provider, sandbox.sandboxHandle, env);
+  }
+  const key = `${sandbox.sandboxHandle}:${sandbox.createdAt}`;
+  const hash = createHash("sha256").update(JSON.stringify(env)).digest("hex");
+  const last = pushedEnv.get(key);
+  if (last?.hash === hash && Date.now() - last.at < PUSHED_ENV_TTL_MS) return;
+  await pushSandboxEnv(provider, sandbox.sandboxHandle, env);
+  pushedEnv.delete(key);
+  const oldest = pushedEnv.keys().next().value;
+  if (pushedEnv.size >= PUSHED_ENV_MAX && oldest !== undefined) {
+    pushedEnv.delete(oldest);
+  }
+  pushedEnv.set(key, { hash, at: Date.now() });
+}
+
 export async function pushSandboxEnv(
   provider: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
@@ -1058,6 +1090,10 @@ async function* dispatchToDaemon(args: {
     harnessId: args.harnessId,
     runId: args.runId,
     input: toWireInput(args.input),
+    // A continuation starts clean: whatever ran the interrupted turn is suspect.
+    ...(getSettings().sandboxPersistentHarnessEnabled && !args.input.resume
+      ? { sessionKey: harnessSessionKey(args.input) }
+      : {}),
   };
   let res: Response;
   try {
@@ -1215,6 +1251,37 @@ export function errorForTerminal(code: string, message: string): Error {
  * `withLivenessHeartbeat` keeps publishing on Studio's clock, so the run looks
  * healthy to the reaper and holds its thread's queue slot indefinitely.
  */
+/**
+ * What a kept Claude Code session was started with: everything in the input but
+ * this turn's message and what changes every turn without changing the session
+ * (the per-run MCP bearer, the title). A different key gets a new process.
+ */
+export function harnessSessionKey(
+  input: HarnessStreamInput & Partial<Pick<HarnessStreamInputWire, "orgMcps">>,
+): string {
+  const {
+    signal: _signal,
+    userMessage: _message,
+    currentThreadTitle: _title,
+    resume: _resume,
+    mcp,
+    orgMcps,
+    workspace,
+    ...session
+  } = input;
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        ...session,
+        workspace:
+          workspace.cwd === null ? null : [workspace.cwd, workspace.branch],
+        mcp: mcp.url,
+        orgMcps: orgMcps?.map((server) => [server.name, server.url]) ?? [],
+      }),
+    )
+    .digest("hex");
+}
+
 /** What the user sees as the answer starting: text, reasoning, or a tool call. */
 function isFirstTokenChunk(chunk: unknown): chunk is { type: string } {
   const type = (chunk as { type?: unknown } | null)?.type;

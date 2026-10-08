@@ -17,7 +17,12 @@
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { CanUseTool, Options } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  CanUseTool,
+  Options,
+  SDKMessage,
+  SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   turnFinishChunks,
@@ -85,6 +90,58 @@ export interface HarnessRunResult {
   chunks: unknown[];
   error?: { code: string; message: string } | null;
   timings?: Record<string, number>;
+  /** Persistent mode: this turn ended cleanly and the runner awaits the next. */
+  turnEnd?: boolean;
+}
+
+/**
+ * An SDK session kept open between turns (HARNESS_RUNNER_PERSISTENT, set by the
+ * daemon's session pool): the CLI and its MCP connections stay up, so the next
+ * turn of the thread pays only the model. The daemon sends one process only
+ * turns whose session-shaping input matches, so reusing it needs no check here.
+ */
+interface LiveSession {
+  stream: ReturnType<typeof query>;
+  messages: AsyncIterator<SDKMessage>;
+  send: (message: SDKUserMessage) => void;
+  /** Re-pointed at each turn's translator. */
+  gate: { awaitUser: (toolCallId: string) => void };
+}
+
+const persistent = () => process.env.HARNESS_RUNNER_PERSISTENT === "1";
+let live: LiveSession | null = null;
+
+/** The streaming prompt a kept session reads its turns from. */
+function inputChannel(): {
+  iterable: AsyncIterable<SDKUserMessage>;
+  send: (message: SDKUserMessage) => void;
+} {
+  const queue: SDKUserMessage[] = [];
+  let wake: (() => void) | null = null;
+  return {
+    iterable: {
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          const next = queue.shift();
+          if (next) yield next;
+          else await new Promise<void>((resolve) => (wake = resolve));
+        }
+      },
+    },
+    send(message) {
+      queue.push(message);
+      wake?.();
+      wake = null;
+    },
+  };
+}
+
+function userTurn(prompt: string): SDKUserMessage {
+  return {
+    type: "user",
+    message: { role: "user", content: prompt },
+    parent_tool_use_id: null,
+  } as SDKUserMessage;
 }
 
 /**
@@ -704,11 +761,12 @@ export function createDeltaCoalescer(flushChars = 200): {
 export async function runClaudeCode(
   input: HarnessStreamInputWire,
   emitFrame: EmitFrame,
+  turnStartedAt = 0,
 ): Promise<void> {
-  // ms since process start, sent on the first frame to split Studio's TTFT.
-  const timings: Record<string, number> = {
-    input: Math.round(performance.now()),
-  };
+  // ms since the turn reached this process (its start, unless persistent),
+  // sent on the first frame to split Studio's TTFT.
+  const sinceTurn = () => Math.round(performance.now() - turnStartedAt);
+  const timings: Record<string, number> = { input: sinceTurn() };
   // The daemon's workspace prep before it exec'd this process.
   try {
     const prep = JSON.parse(process.env.HARNESS_BEFORE_RUN_MS ?? "{}");
@@ -717,7 +775,7 @@ export async function runClaudeCode(
     }
   } catch {}
   const mark = (name: string) => {
-    timings[name] ??= Math.round(performance.now());
+    timings[name] ??= sinceTurn();
   };
   let timed = false;
   const emit: EmitFrame = (frame) => {
@@ -785,6 +843,7 @@ export async function runClaudeCode(
   const drain = () => send(coalescer.drain());
 
   try {
+    if (live && (await reuseLiveSession(live))) return;
     let forkedForSession = false;
     let restartedWithoutResume = false;
     let providerRetries = 0;
@@ -902,27 +961,61 @@ export async function runClaudeCode(
   }
 
   /**
+   * Run this turn on the session kept from the last one. False means it failed
+   * before doing anything, and a fresh session (resuming the saved transcript)
+   * should run it instead.
+   */
+  async function reuseLiveSession(session: LiveSession): Promise<boolean> {
+    live = null;
+    mark("reused");
+    session.gate.awaitUser = (toolCallId) => translator.awaitUser(toolCallId);
+    session.send(userTurn(promptForRun(input)));
+    try {
+      await consumeStream(session.stream, session.messages);
+      live = session;
+      return true;
+    } catch (err) {
+      await endSession(session.stream);
+      if (!canRestartCleanly()) throw err;
+      console.error(
+        `[claude-code] kept session failed (${err instanceof Error ? err.message : String(err)}) — starting a fresh one`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * One SDK session. Returns the broken-MCP description when the preflight
    * found Studio unreachable — the one outcome worth starting over for — and
    * `null` once the turn has been reported, however it ended.
    */
   async function attemptTurn(): Promise<string | null> {
     mark("query");
+    const channel = persistent() ? inputChannel() : null;
+    const gate = {
+      awaitUser: (toolCallId: string) => translator.awaitUser(toolCallId),
+    };
     const stream = query({
-      prompt: promptForRun(input),
+      prompt: channel ? channel.iterable : promptForRun(input),
       options: buildOptions({
         input,
         sessionId,
         resume: resumeSession,
         canUseTool: interactiveToolGate({
           planMode: input.mode === "plan",
-          onAwaitUser: (toolCallId) => translator.awaitUser(toolCallId),
+          onAwaitUser: (toolCallId) => gate.awaitUser(toolCallId),
         }),
       }),
     });
+    channel?.send(userTurn(promptForRun(input)));
+    const messages = stream[Symbol.asyncIterator]();
 
     try {
-      return await consumeStream(stream);
+      const broken = await consumeStream(stream, messages);
+      if (channel && broken === null) {
+        live = { stream, messages, send: channel.send, gate };
+      }
+      return broken;
     } catch (err) {
       // Any throw here otherwise leaves the session locked for the next attempt.
       await endSession(stream);
@@ -932,9 +1025,15 @@ export async function runClaudeCode(
 
   async function consumeStream(
     stream: ReturnType<typeof query>,
+    messages: AsyncIterator<SDKMessage>,
   ): Promise<string | null> {
     const startedAt = Date.now();
-    for await (const message of stream) {
+    // Not `for await`: leaving that loop at the turn's result would close a
+    // session that is kept for the next turn.
+    for (;;) {
+      const next = await messages.next();
+      if (next.done) break;
+      const message = next.value;
       mark(`sdk-${message.type}`);
       if (
         message.type === "stream_event" &&

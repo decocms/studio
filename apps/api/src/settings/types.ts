@@ -263,6 +263,11 @@ export interface Settings {
    *  first message (SANDBOX_PREWARM_ON_THREAD_CREATE). Off by default: it
    *  provisions for chats that may never send. */
   sandboxPrewarmOnThreadCreateEnabled: boolean;
+  /** Keep a chat's Claude Code process alive between its turns in the sandbox,
+   *  so a follow-up skips the CLI start and MCP connect
+   *  (SANDBOX_PERSISTENT_HARNESS). Off by default: it changes the dispatch hot
+   *  path, and the process holds its model credential while it idles. */
+  sandboxPersistentHarnessEnabled: boolean;
   /** Grace before that release takes effect, in ms
    *  (SANDBOX_RELEASE_GRACE_MS, default 120000). Long enough that an immediate
    *  follow-up turn adopts the warm pod rather than paying a cold clone. */

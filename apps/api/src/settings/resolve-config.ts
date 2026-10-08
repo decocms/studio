@@ -426,6 +426,7 @@ export function resolveConfig(
     sandboxPrewarmOnThreadCreateEnabled: toBool(
       envVars.SANDBOX_PREWARM_ON_THREAD_CREATE,
     ),
+    sandboxPersistentHarnessEnabled: toBool(envVars.SANDBOX_PERSISTENT_HARNESS),
     sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
       "SANDBOX_RELEASE_GRACE_MS",
       envVars.SANDBOX_RELEASE_GRACE_MS,
