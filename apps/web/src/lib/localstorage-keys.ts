@@ -58,4 +58,8 @@ export const LOCALSTORAGE_KEYS = {
    *  project metadata. */
   localPreviewUrl: (virtualMcpId: string) =>
     `studio:local-preview-url:${virtualMcpId}`,
+  /** Per-project `deco serve` connection (its endpoint), per-browser for
+   *  the same reason as the tunnel URL. */
+  decoServeConnection: (virtualMcpId: string) =>
+    `studio:deco-serve-connection:${virtualMcpId}`,
 } as const;

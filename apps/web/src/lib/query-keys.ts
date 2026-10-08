@@ -754,6 +754,21 @@ export const KEYS = {
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
+  // Which content backend (legacy / content protocol) a project's editor uses.
+  contentBackend: (...parts: string[]) =>
+    ["content-backend", ...parts] as const,
+  // Last content-protocol blocks revision and schema version a project saw.
+  contentRevision: (cacheKey: string) =>
+    ["content-revision", cacheKey] as const,
+  // A hosted v8 project's draft pointer ({ draft, version }), from the
+  // session decofile read (GitHub backend).
+  protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
+  // Hosted Deco CMS (v8): a project's releases and site tokens.
+  hostedReleases: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-releases", orgSlug, virtualMcpId] as const,
+  hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions
