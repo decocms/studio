@@ -775,7 +775,7 @@ export interface OrgSiteStoragePort {
   /**
    * Make `slug` the site of `projectId`, once. Idempotent for the same pair;
    * throws OrgSiteLinkError when the slug isn't this org's (not_found,
-   * reserved, not_owned), is another project's (linked_elsewhere), the
+   * reserved, not_owned), is another project's (linked_elsewhere), or the
    * project already has a different site (project_has_other_slug). A slug
    * whose project was deleted stays the org's: the same org may link it to
    * another of its projects; another org never can.
