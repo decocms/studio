@@ -94,9 +94,6 @@ function memorySites(initial: Record<string, string | Row> = {}) {
       if (row.projectId !== null) {
         throw new OrgSiteLinkError("linked_elsewhere", params.slug);
       }
-      if (row.used) {
-        throw new OrgSiteLinkError("relink_requires_admin", params.slug);
-      }
       row.projectId = params.projectId;
       links.push({ slug: params.slug, projectId: params.projectId });
       return site(params.slug, row);
@@ -189,15 +186,29 @@ describe("linkProjectSite", () => {
     expect(sites.rows.get("shop")?.organizationId).toBe("org-b");
   });
 
-  it("never hands a used slug to another project without an admin", async () => {
+  it("relinks the org's used slug once its project is gone", async () => {
     const sites = memorySites({
       shop: { organizationId: "org-a", projectId: null, used: true },
     });
     const deps = { orgSites: sites.orgSites, isDecoSite: noDecoSites };
     expect(await linkProjectSite(deps, input)).toEqual({
+      status: "linked",
+      slug: "shop",
+    });
+    expect(sites.claims).toEqual([]);
+    expect(sites.links).toEqual([{ slug: "shop", projectId: "p1" }]);
+  });
+
+  it("never relinks another org's used slug", async () => {
+    const sites = memorySites({
+      shop: { organizationId: "org-b", projectId: null, used: true },
+    });
+    const deps = { orgSites: sites.orgSites, isDecoSite: noDecoSites };
+    expect(await linkProjectSite(deps, input)).toEqual({
       status: "refused",
       slug: "shop",
-      reason: "relink-requires-admin",
+      reason: "other-org",
+      owner: "org-b",
     });
     expect(sites.links).toEqual([]);
   });

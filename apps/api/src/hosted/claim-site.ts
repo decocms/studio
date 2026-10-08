@@ -3,7 +3,8 @@
  * ownership check (`ownedProjectSite`, which reads the link) works for it.
  *
  * The site id is public and immutable: a project is linked once, and a slug
- * is never reused (a deleted org's slug stays reserved). `org_sites` ownership
+ * never leaves its org (a deleted org's slug stays reserved). After its
+ * project is deleted, the same org may link it to another of its projects. `org_sites` ownership
  * also lets an org mint asset-storage credentials for `<slug>/*` (`managed`
  * file configs), and the slug a project is created with is caller-chosen. So a
  * slug no org owns is claimed only when it isn't a deco.cx site (the deco
@@ -39,12 +40,7 @@ export type SiteClaimRefusal =
   /** The project isn't one of this org's projects. */
   | "project-not-found"
   /** The org's row for the slug vanished between the claim and the link. */
-  | "not-found"
-  /**
-   * The slug was used and its project is gone (or it predates the link):
-   * only a deployment admin may link it to another project.
-   */
-  | "relink-requires-admin";
+  | "not-found";
 
 export type SiteClaimOutcome =
   /** Linked now (the slug was claimed for the org first when nobody had it). */
@@ -79,7 +75,6 @@ const LINK_REFUSALS: Record<OrgSiteLinkErrorCode, SiteClaimRefusal> = {
   project_has_other_slug: "project-has-other-slug",
   project_not_found: "project-not-found",
   in_use: "linked-elsewhere",
-  relink_requires_admin: "relink-requires-admin",
 };
 
 /**
@@ -122,7 +117,7 @@ export async function linkProjectSite(
       return refused("other-org", row.organizationId);
     }
     if (row.projectId !== null) return refused("linked-elsewhere");
-    if (row.linkedAt !== null) return refused("relink-requires-admin");
+    // Unlinked: never used, or its project was deleted — the org's to link.
   } else {
     const other = await deps.otherOrgNamingSlug?.(slug, organizationId);
     if (other) return refused("other-org-project", other);
