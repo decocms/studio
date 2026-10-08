@@ -47,12 +47,14 @@ export function useFileConfigs() {
  * (1 config → drop-upload directly; 2+ → open the picker) without
  * blocking the form render. Shares the cache key with useFileConfigs.
  */
-export function useFileConfigsQuery() {
+export function useFileConfigsQuery({ enabled = true } = {}) {
   const { org } = useProjectContext();
   const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.fileConfigs(org.id),
+    // No org (the account-less `/site-editor`) has no file storage to list.
+    enabled: enabled && !!org.id,
     staleTime: 60_000,
     queryFn: () => studio.call("FILE_CONFIG_LIST", {}),
   });
