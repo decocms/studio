@@ -809,6 +809,24 @@ describe("scanCampaigns", () => {
     expect(campaign?.intent.products).toEqual([]);
   });
 
+  test("a blank image slot survives, so the editor can add an empty row", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { intent: { products: [{ name: "P", images: ["a", ""] }] } },
+    });
+    expect(campaign?.intent.products[0]?.images).toEqual(["a", ""]);
+  });
+
+  test("images are capped, and the older single `image` still reads", () => {
+    const [capped] = scanCampaigns({
+      [key]: { intent: { products: [{ images: ["1", "2", "3", "4"] }] } },
+    });
+    expect(capped?.intent.products[0]?.images).toEqual(["1", "2", "3"]);
+    const [legacy] = scanCampaigns({
+      [key]: { intent: { products: [{ image: "only" }] } },
+    });
+    expect(legacy?.intent.products[0]?.images).toEqual(["only"]);
+  });
+
   test("a hand-typed product keeps its blank id", () => {
     const [campaign] = scanCampaigns({
       [key]: { intent: { products: [{ name: "Digitado", url: "/p" }] } },

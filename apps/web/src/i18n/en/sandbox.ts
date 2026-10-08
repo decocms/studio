@@ -134,17 +134,7 @@ export const sandbox = {
   "sandbox.blogCustomFields.description":
     "Fields this site's own content type declares, beyond the ones above.",
   "sandbox.campaigns.addProduct": "Add by hand",
-  "sandbox.campaigns.objectiveAwarenessHelp":
-    "The reader does not yet know their problem has a solution.",
-  "sandbox.campaigns.objectiveConversionHelp":
-    "They already want to buy; the post settles the last doubt.",
-  "sandbox.campaigns.objectiveEducationHelp":
-    "They know they want it, but not how to choose or use it.",
   "sandbox.campaigns.objectiveHelpLabel": "When to use each objective",
-  "sandbox.campaigns.objectiveRepositioningHelp":
-    "What people think of the brand is not what it wants to be.",
-  "sandbox.campaigns.objectiveRetentionHelp":
-    "Already a customer — the post makes the purchase go further and brings them back.",
   "sandbox.campaigns.pickCategory": "Browse the store",
   "sandbox.campaigns.pickProducts": "Browse the store",
   "sandbox.campaigns.productCategoryPlaceholder": "Main category",
@@ -180,6 +170,62 @@ export const sandbox = {
   "sandbox.campaigns.removeImage": "Remove image",
   "sandbox.campaigns.untitledProduct": "Unnamed product",
   "sandbox.campaigns.untitledTarget": "Unnamed target",
+  "sandbox.campaigns.facetContent": "Content",
+  "sandbox.campaigns.facetCta": "CTA",
+  "sandbox.campaigns.facetMetric": "Metric",
+  "sandbox.campaigns.facetProduct": "Product",
+  "sandbox.campaigns.objectiveAwarenessContent":
+    "Broad subjects, from the brand's world rather than its catalog. E.g. “Taking up running after 40”.",
+  "sandbox.campaigns.objectiveAwarenessCta":
+    "Light — read another post, subscribe, follow the brand.",
+  "sandbox.campaigns.objectiveAwarenessHelp":
+    "Get more people to know the brand. The reader is not thinking about buying yet — they may not know they need this.",
+  "sandbox.campaigns.objectiveAwarenessMetric": "Traffic, new visitors, reach.",
+  "sandbox.campaigns.objectiveAwarenessProduct":
+    "Barely there, as a natural mention.",
+  "sandbox.campaigns.objectiveConversionContent":
+    "Comparisons, “best X for Y”, answers to objections. E.g. “Glide 4 or Speed 3: which one for a half marathon”.",
+  "sandbox.campaigns.objectiveConversionCta":
+    "Strong and repeated, straight to the product or collection.",
+  "sandbox.campaigns.objectiveConversionHelp":
+    "Sell. The reader is already deciding and needs a push, or help choosing.",
+  "sandbox.campaigns.objectiveConversionMetric":
+    "Clicks to the product, conversions, attributed revenue.",
+  "sandbox.campaigns.objectiveConversionNote":
+    "The typical objective for seasonal and inventory campaigns.",
+  "sandbox.campaigns.objectiveConversionProduct":
+    "The centre of the piece, with concrete data — price, attributes, link.",
+  "sandbox.campaigns.objectiveEducationContent":
+    "Guides and explanations — how it works, how to choose. E.g. “Shoe drop: what it is and why it matters”.",
+  "sandbox.campaigns.objectiveEducationCta":
+    "Moderate — see the category, open the size guide.",
+  "sandbox.campaigns.objectiveEducationHelp":
+    "Teach something that leaves the reader readier to decide. They already have the interest and want to understand it.",
+  "sandbox.campaigns.objectiveEducationMetric":
+    "Time on page, posts per session, organic ranking.",
+  "sandbox.campaigns.objectiveEducationNote":
+    "The most common objective for SEO gap campaigns.",
+  "sandbox.campaigns.objectiveEducationProduct":
+    "Shows up as an example of what was explained.",
+  "sandbox.campaigns.objectiveRepositioningContent":
+    "Posts that demonstrate the new identity — opinion, behind the scenes, expertise.",
+  "sandbox.campaigns.objectiveRepositioningCta": "Light to moderate.",
+  "sandbox.campaigns.objectiveRepositioningHelp":
+    "Change how people see the brand: a new segment, a new price range, a new image. E.g. a store seen as cheap that wants to be seen as expert.",
+  "sandbox.campaigns.objectiveRepositioningMetric":
+    "Harder. Engagement, a shift in who arrives, mentions.",
+  "sandbox.campaigns.objectiveRepositioningProduct":
+    "Selective: only what reinforces the new image.",
+  "sandbox.campaigns.objectiveRetentionContent":
+    "Use, care and what comes after the purchase. E.g. “Washing your shoes without wrecking the midsole”.",
+  "sandbox.campaigns.objectiveRetentionCta":
+    "Light — repurchase, an accessory, support.",
+  "sandbox.campaigns.objectiveRetentionHelp":
+    "Get someone who already bought to make more of it and come back. The reader is a customer.",
+  "sandbox.campaigns.objectiveRetentionMetric":
+    "Repurchase, frequency, returning customers.",
+  "sandbox.campaigns.objectiveRetentionProduct":
+    "What they already own — and what pairs with it.",
   "sandbox.campaigns.add": "New campaign",
   "sandbox.campaigns.addAvoid": "Add guardrail",
   "sandbox.campaigns.addTarget": "Add target",

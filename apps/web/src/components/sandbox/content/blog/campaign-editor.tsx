@@ -108,6 +108,49 @@ const OBJECTIVE_HELP: Record<CampaignObjective, TranslationKey> = {
   repositioning: "sandbox.campaigns.objectiveRepositioningHelp",
 };
 
+/** The four questions that actually tell the objectives apart. */
+const OBJECTIVE_FACETS: Record<
+  CampaignObjective,
+  Record<"content" | "product" | "cta" | "metric", TranslationKey>
+> = {
+  awareness: {
+    content: "sandbox.campaigns.objectiveAwarenessContent",
+    product: "sandbox.campaigns.objectiveAwarenessProduct",
+    cta: "sandbox.campaigns.objectiveAwarenessCta",
+    metric: "sandbox.campaigns.objectiveAwarenessMetric",
+  },
+  education: {
+    content: "sandbox.campaigns.objectiveEducationContent",
+    product: "sandbox.campaigns.objectiveEducationProduct",
+    cta: "sandbox.campaigns.objectiveEducationCta",
+    metric: "sandbox.campaigns.objectiveEducationMetric",
+  },
+  conversion: {
+    content: "sandbox.campaigns.objectiveConversionContent",
+    product: "sandbox.campaigns.objectiveConversionProduct",
+    cta: "sandbox.campaigns.objectiveConversionCta",
+    metric: "sandbox.campaigns.objectiveConversionMetric",
+  },
+  retention: {
+    content: "sandbox.campaigns.objectiveRetentionContent",
+    product: "sandbox.campaigns.objectiveRetentionProduct",
+    cta: "sandbox.campaigns.objectiveRetentionCta",
+    metric: "sandbox.campaigns.objectiveRetentionMetric",
+  },
+  repositioning: {
+    content: "sandbox.campaigns.objectiveRepositioningContent",
+    product: "sandbox.campaigns.objectiveRepositioningProduct",
+    cta: "sandbox.campaigns.objectiveRepositioningCta",
+    metric: "sandbox.campaigns.objectiveRepositioningMetric",
+  },
+};
+
+/** Only the two objectives that reliably pair with a trigger say so. */
+const OBJECTIVE_NOTE: Partial<Record<CampaignObjective, TranslationKey>> = {
+  education: "sandbox.campaigns.objectiveEducationNote",
+  conversion: "sandbox.campaigns.objectiveConversionNote",
+};
+
 /** Stable empty seed — `useAutosave` re-seeds on reference change, so a fresh
  *  `{}` each render would re-seed on every render instead of only on a refetch. */
 const EMPTY_BLOCK: Record<string, unknown> = {};
@@ -376,10 +419,33 @@ export function CampaignEditor({
           <Label>{t("sandbox.campaigns.objectiveLabel")}</Label>
           <OptionHelp
             label={t("sandbox.campaigns.objectiveHelpLabel")}
-            options={CAMPAIGN_OBJECTIVES.map((v) => ({
-              name: t(OBJECTIVE_LABEL[v]),
-              help: t(OBJECTIVE_HELP[v]),
-            }))}
+            options={CAMPAIGN_OBJECTIVES.map((v) => {
+              const facets = OBJECTIVE_FACETS[v];
+              const note = OBJECTIVE_NOTE[v];
+              return {
+                name: t(OBJECTIVE_LABEL[v]),
+                help: t(OBJECTIVE_HELP[v]),
+                facets: [
+                  {
+                    label: t("sandbox.campaigns.facetContent"),
+                    value: t(facets.content),
+                  },
+                  {
+                    label: t("sandbox.campaigns.facetProduct"),
+                    value: t(facets.product),
+                  },
+                  {
+                    label: t("sandbox.campaigns.facetCta"),
+                    value: t(facets.cta),
+                  },
+                  {
+                    label: t("sandbox.campaigns.facetMetric"),
+                    value: t(facets.metric),
+                  },
+                ],
+                note: note ? t(note) : undefined,
+              };
+            })}
           />
         </div>
         <p className="text-xs text-muted-foreground">
@@ -766,13 +832,27 @@ function CategoryTargetPicker({
   );
 }
 
-/** The legend for a closed set: one line per option, on demand. */
+/**
+ * The legend for a closed set, on demand.
+ *
+ * An option may carry just a line (a trigger is self-evident once named) or the
+ * breakdown an objective needs — what the post is about, how the product shows
+ * up in it, how hard the CTA pushes, what you would measure. Those four are
+ * what actually separate the objectives; without them "awareness" and
+ * "education" are two words for the same shrug.
+ */
 function OptionHelp({
   label,
   options,
 }: {
   label: string;
-  options: { name: string; help: string }[];
+  options: {
+    name: string;
+    help: string;
+    facets?: { label: string; value: string }[];
+    /** Where this objective usually shows up, when it pairs with a trigger. */
+    note?: string;
+  }[];
 }) {
   return (
     <Dialog>
@@ -787,15 +867,28 @@ function OptionHelp({
           <HelpCircle size={14} />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{label}</DialogTitle>
         </DialogHeader>
-        <dl className="space-y-3">
+        <dl className="max-h-[70svh] space-y-5 overflow-y-auto pr-1">
           {options.map((option) => (
-            <div key={option.name}>
+            <div key={option.name} className="space-y-1.5">
               <dt className="text-sm font-medium">{option.name}</dt>
-              <dd className="text-sm text-muted-foreground">{option.help}</dd>
+              <dd className="space-y-1.5 text-sm text-muted-foreground">
+                <p>{option.help}</p>
+                {option.facets && (
+                  <ul className="space-y-0.5">
+                    {option.facets.map((facet) => (
+                      <li key={facet.label}>
+                        <span className="text-foreground">{facet.label}:</span>{" "}
+                        {facet.value}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {option.note && <p className="italic">{option.note}</p>}
+              </dd>
             </div>
           ))}
         </dl>

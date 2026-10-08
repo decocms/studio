@@ -1922,11 +1922,15 @@ export function readCampaignTargets(value: unknown): CampaignTarget[] {
   return targets;
 }
 
-/** Image URLs, capped. Tolerates the single `image` an earlier shape wrote. */
+/**
+ * Image URLs, capped. Tolerates the single `image` an earlier shape wrote.
+ *
+ * Blanks are kept: the editor re-reads the draft through here on every render,
+ * so dropping an empty slot would delete the row "add image" had just created,
+ * before anyone could type into it.
+ */
 function readProductImages(record: Record<string, unknown>): string[] {
-  const listed = toArray(record.images)
-    .map((entry) => str(entry))
-    .filter(Boolean);
+  const listed = toArray(record.images).map((entry) => str(entry));
   const all = listed.length > 0 ? listed : [str(record.image)].filter(Boolean);
   return all.slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES);
 }
