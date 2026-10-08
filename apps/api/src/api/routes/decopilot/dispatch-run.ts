@@ -971,8 +971,10 @@ async function prepareRun(
       input.organizationId,
       ctx.metadata?.runMetadata,
     );
+    // The subscription is the user's, not an org key: `claudeSubscriptionToken`
+    // below carries it to the sandbox.
     const resolveSlot = (slot?: ModelSelection) =>
-      slot
+      slot && slot.credentialId !== CLAUDE_SUBSCRIPTION_PROVIDER_ID
         ? resolveSecretModelSource(
             ctx,
             input.organizationId,

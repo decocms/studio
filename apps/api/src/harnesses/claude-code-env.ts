@@ -33,6 +33,21 @@ import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
  */
 export const CLAUDE_SUBSCRIPTION_PROVIDER_ID = "claude-subscription";
 
+/**
+ * The chat model of a run billed to the user's own subscription when the org
+ * has no model of its own: the harness's default Claude model.
+ */
+export function claudeSubscriptionChatModel(): {
+  credentialId: string;
+  thinking: { id: string; title: string; provider: string };
+} {
+  const id = CLAUDE_CODE_MODEL.anthropic.default;
+  return {
+    credentialId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+    thinking: { id, title: id, provider: "anthropic" },
+  };
+}
+
 /** OpenRouter's Anthropic-compatible base. The SDK appends `/v1/messages`. */
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 

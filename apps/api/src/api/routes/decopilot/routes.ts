@@ -73,9 +73,11 @@ import {
   listThreadGateQueue,
 } from "@/dispatch-queue/thread-gate-queue";
 import { type QueuePartRow, foldQueueHydration } from "./queue-text";
+import { claudeSubscriptionChatModel } from "@/harnesses/claude-code-env";
 import {
   ClaudeCodeProviderRequiredError,
   hasClaudeCodeCredential,
+  hasLiveClaudeSubscription,
   sandboxOnlyChatsEnabled,
 } from "@/harnesses/sandbox-only-chats";
 import { markTurn, startTurnClock } from "@/harnesses/turn-latency";
@@ -553,7 +555,19 @@ async function validate(
 
   assertHostedHarness(effectiveHarnessId);
 
-  const resolvedModels = await resolvePerRequestModels(ctx, tier);
+  const resolvedModels = await resolvePerRequestModels(ctx, tier).catch(
+    async (err): Promise<ModelsConfig> => {
+      // A sandbox chat on the user's own Claude plan needs no org model.
+      if (
+        err instanceof TierUnavailableError &&
+        sandboxOnlyChats &&
+        (await hasLiveClaudeSubscription(ctx, userId))
+      ) {
+        return claudeSubscriptionChatModel();
+      }
+      throw err;
+    },
+  );
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
