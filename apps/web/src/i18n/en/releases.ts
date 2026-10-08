@@ -9,6 +9,7 @@ export const releases = {
   "releases.current": "Current",
   "releases.actions": "Release actions",
   "releases.makeCurrent": "Make current",
+  "releases.makeCurrentFailed": "Making it current failed. Try again.",
   "releases.makeCurrentTitle": "Make {sha} current?",
   "releases.makeCurrentBody":
     "The CDN serves this release from now on. Git doesn't change, and the next Publish makes its own release current.",

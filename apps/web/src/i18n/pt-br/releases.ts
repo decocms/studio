@@ -11,6 +11,8 @@ export const releases = {
   "releases.current": "Atual",
   "releases.actions": "Ações da versão",
   "releases.makeCurrent": "Tornar atual",
+  "releases.makeCurrentFailed":
+    "Não foi possível torná-la atual. Tente de novo.",
   "releases.makeCurrentTitle": "Tornar {sha} a versão atual?",
   "releases.makeCurrentBody":
     "A CDN passa a servir esta versão. O git não muda, e a próxima publicação torna a sua própria versão atual.",

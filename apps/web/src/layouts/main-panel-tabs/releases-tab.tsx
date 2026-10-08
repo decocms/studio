@@ -89,6 +89,13 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         return;
       }
       // Failed: the badge stays where latest.json says (the list refetches).
+      if (
+        error instanceof HostedRequestError &&
+        error.code === "latest-update-failed"
+      ) {
+        toast.error(t("releases.makeCurrentFailed"));
+        return;
+      }
       toast.error(error instanceof Error ? error.message : String(error));
     }
   };
@@ -155,7 +162,8 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                   <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
                     {t("releases.current")}
                   </span>
-                ) : commit.hasRelease ? (
+                ) : null}
+                {commit.hasRelease ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button

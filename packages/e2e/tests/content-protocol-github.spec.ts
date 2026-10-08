@@ -627,9 +627,14 @@ test.describe("content protocol on GitHub", () => {
       });
       const hosted = `/api/${project.org}/hosted/${project.vmcpId}`;
       expect((await ctx.post(`${hosted}/site-tokens`)).status()).toBe(404);
-      expect((await ctx.post(`${hosted}/resync`, { data: {} })).status()).toBe(
-        404,
-      );
+      expect((await ctx.get(`${hosted}/releases`)).status()).toBe(404);
+      expect(
+        (
+          await ctx.post(`${hosted}/releases/current`, {
+            data: { sha: "0".repeat(40) },
+          })
+        ).status(),
+      ).toBe(404);
     } finally {
       await ctx.dispose();
     }

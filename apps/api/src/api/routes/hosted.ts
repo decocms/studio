@@ -151,10 +151,11 @@ function siteTokens(c: Context<HostedEnv>) {
 function hostedError(c: Context<HostedEnv>, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   if (err instanceof NotV8Site) return c.json({ error: message }, 409);
-  // Writing or purging latest.json failed: shown as-is, the user retries.
+  // Writing or purging latest.json failed: a code the UI localizes; the
+  // user retries.
   if (err instanceof LatestUpdateError) {
     console.error("hosted: latest.json update failed", { error: message });
-    return c.json({ error: message }, 502);
+    return c.json({ error: "latest-update-failed" }, 502);
   }
   const status = repoErrorStatus(err);
   if (status !== null) {

@@ -33,7 +33,8 @@ export interface ReleasesPage {
   nextCursor: string | null;
 }
 
-/** A refused write, with the API's error code (`schema-mismatch`). */
+/** A refused write, with the API's error code (`schema-mismatch`,
+ * `latest-update-failed`). */
 export class HostedRequestError extends Error {
   constructor(
     message: string,
