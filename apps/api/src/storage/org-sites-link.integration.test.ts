@@ -32,6 +32,8 @@ import {
   SiteSlugImmutableError,
 } from "./org-sites";
 import { VirtualMCPStorage } from "./virtual";
+import { ConnectionStorage } from "./connection";
+import { CredentialVault } from "../encryption/credential-vault";
 
 const ORG = "org_1";
 const OTHER_ORG = "org_456";
@@ -149,7 +151,7 @@ describe("site slug lifecycle", () => {
       expect(await linkError(link("theirs", b))).toBe("reserved");
     });
 
-    it("the same org may relink after the project is deleted; linked_at is kept", async () => {
+    it("after its project is deleted, only a deployment admin relinks it; linked_at is kept", async () => {
       const first = await newProject("First");
       await claim("relink");
       const linked = await link("relink", first);
@@ -159,7 +161,30 @@ describe("site slug lifecycle", () => {
       expect(row?.linkedAt).toBe(linked.linkedAt);
 
       const second = await newProject("Second");
-      expect((await link("relink", second)).linkedAt).toBe(linked.linkedAt);
+      expect(await linkError(link("relink", second))).toBe(
+        "relink_requires_admin",
+      );
+      const relinked = await sites.link({
+        slug: "relink",
+        organizationId: ORG,
+        projectId: second,
+        by: USER,
+        adminOverride: true,
+      });
+      expect(relinked.projectId).toBe(second);
+      expect(relinked.linkedAt).toBe(linked.linkedAt);
+
+      // The override keeps every other rule.
+      const third = await newProject("Third");
+      await expect(
+        sites.link({
+          slug: "relink",
+          organizationId: ORG,
+          projectId: third,
+          by: USER,
+          adminOverride: true,
+        }),
+      ).rejects.toThrow(OrgSiteLinkError);
     });
   });
 
@@ -235,6 +260,26 @@ describe("site slug lifecycle", () => {
       await expect(
         projects.update(id, USER, { metadata: { siteSlug: "other" } }),
       ).rejects.toBeInstanceOf(SiteSlugImmutableError);
+    });
+
+    it("patchMetadata never writes the site slug", async () => {
+      const id = await newProject("Acme", { siteSlug: "acme" });
+      const patch = (set: Record<string, unknown>, unset: string[] = []) =>
+        projects.patchMetadata({
+          id,
+          organizationId: ORG,
+          set,
+          unset,
+          by: USER,
+        });
+      await expect(patch({ siteSlug: "other" })).rejects.toBeInstanceOf(
+        SiteSlugImmutableError,
+      );
+      await expect(patch({}, ["siteSlug"])).rejects.toBeInstanceOf(
+        SiteSlugImmutableError,
+      );
+      expect(await patch({ analyticsSiteSlug: "acme" })).toBe(true);
+      expect((await projects.findById(id))?.metadata?.siteSlug).toBe("acme");
     });
   });
 
@@ -357,6 +402,27 @@ describe("site slug lifecycle", () => {
         ),
       ).rejects.toBeInstanceOf(SiteSlugImmutableError);
     });
+
+    it("a rename of a title-slug project pins the slug instead of moving it", async () => {
+      const id = await newProject("legacy");
+      const vault = new CredentialVault(CredentialVault.generateKey());
+      const base = ctxFor(ORG);
+      const ctx = {
+        ...base,
+        vault,
+        storage: {
+          ...base.storage,
+          connections: new ConnectionStorage(database.db, vault),
+        },
+      } as unknown as StudioContext;
+      await COLLECTION_CONNECTIONS_UPDATE.handler(
+        { id, data: { title: "Brand new name" } },
+        ctx,
+      );
+      const after = await projects.findById(id);
+      expect(after?.title).toBe("Brand new name");
+      expect(after?.metadata?.siteSlug).toBe("legacy");
+    });
   });
 
   describe("experiments ownership", () => {
@@ -375,6 +441,16 @@ describe("site slug lifecycle", () => {
       await expect(
         assertOwnsSite(ctxFor(OTHER_ORG), OTHER_ORG, "real"),
       ).rejects.toThrow(/Site not found/);
+
+      // A tombstone (its org was deleted) is nobody's, look-alikes included.
+      await claim("orphan", OTHER_ORG);
+      await sql`DELETE FROM organization WHERE id = ${OTHER_ORG}`.execute(
+        database.db,
+      );
+      await newProject("orphan");
+      await expect(assertOwnsSite(ctxFor(ORG), ORG, "orphan")).rejects.toThrow(
+        /Site not found/,
+      );
 
       // Unlinked projects keep the legacy match.
       await newProject("v7-site");
