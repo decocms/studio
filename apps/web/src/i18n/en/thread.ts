@@ -223,7 +223,7 @@ export const thread = {
   "thread.publishDialog.visitPreview": "Visit preview",
   "thread.publishPopover.blocksGroup": "Blocks",
   "thread.publishPopover.hostedPending":
-    "Published to git; not live on running sites yet.",
+    "Published to git, but not live on running sites yet. Resync to try again.",
   "thread.publishPopover.mainMoved":
     "Main changed while publishing, so nothing was published. Publish again.",
   "thread.publishPopover.resync": "Resync",

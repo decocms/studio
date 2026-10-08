@@ -7,7 +7,12 @@ import {
   SCHEMA_HASH,
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
-import { type HostedRepo, RolledBackError, readLatest } from "./publish";
+import {
+  type HostedRepo,
+  LatestUpdateError,
+  RolledBackError,
+  readLatest,
+} from "./publish";
 import {
   HISTORY_WINDOW,
   listReleases,
@@ -272,12 +277,15 @@ describe("purge", () => {
     ]);
   });
 
-  it("Resync reruns the pointer write and the purge after a failed purge", async () => {
+  it("Resync fails fast on a failed purge: one purge, no restore; a retry succeeds", async () => {
     const { git, delivery, repo, insights } = setup();
     delivery.failPurge(true);
     await expect(
       resync(repo, insights.client, { confirm: false }),
-    ).rejects.toThrow("purge failed");
+    ).rejects.toThrow(LatestUpdateError);
+    expect(delivery.log.filter((l) => l.startsWith("purge "))).toHaveLength(1);
+    expect(delivery.log.at(-1)).toBe(`purge ${deliveryKeys.latest("acme")}`);
+    // The user retries from Studio.
     delivery.failPurge(false);
     delivery.log.length = 0;
     expect(await resync(repo, insights.client, { confirm: false })).toEqual({
@@ -288,6 +296,40 @@ describe("purge", () => {
       `put ${deliveryKeys.latest("acme")}`,
       `purge ${deliveryKeys.latest("acme")}`,
     ]);
+  });
+
+  it("Make current fails fast on a failed purge with a retry message, no restore", async () => {
+    const { git, delivery, repo, insights } = setup();
+    await resync(repo, insights.client, { confirm: false });
+    const first = git.head();
+    git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' });
+    await resync(repo, insights.client, { confirm: false });
+    delivery.failPurge(true);
+    delivery.log.length = 0;
+    const error = await makeCurrent(repo, first, { confirm: false }).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(LatestUpdateError);
+    expect((error as Error).message).toContain("Try again");
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.latest("acme")}`,
+      `purge ${deliveryKeys.latest("acme")}`,
+    ]);
+    // No restore: the written pointer stays.
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(first);
+  });
+
+  it("does not purge when the latest.json write fails", async () => {
+    const { delivery, repo, insights } = setup();
+    const put = delivery.store.putJson;
+    delivery.store.putJson = async (key, value, cache) => {
+      if (key === deliveryKeys.latest("acme")) throw new Error("R2 down");
+      return put(key, value, cache);
+    };
+    await expect(
+      resync(repo, insights.client, { confirm: false }),
+    ).rejects.toThrow(LatestUpdateError);
+    expect(delivery.log.some((l) => l.startsWith("purge "))).toBe(false);
   });
 });
 

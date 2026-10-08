@@ -60,32 +60,58 @@ describe("createDeliveryPurge", () => {
     });
   });
 
-  it("retries a failed purge, then succeeds", async () => {
+  it("fails at once on a failed purge: exactly one call, no retry", async () => {
     const f = fakeFetch([
-      { status: 500, success: false },
-      { status: 200, success: false },
+      { status: 503, success: false },
       { status: 200, success: true },
     ]);
-    await createDeliveryPurge({
-      zoneId: "z",
-      apiToken: "t",
-      fetch: f.fn,
-      retryDelaysMs: [0, 0],
-    }).purge(KEY);
-    expect(f.calls).toHaveLength(3);
+    await expect(
+      createDeliveryPurge({ zoneId: "z", apiToken: "t", fetch: f.fn }).purge(
+        KEY,
+      ),
+    ).rejects.toThrow("HTTP 503");
+    expect(f.calls).toHaveLength(1);
   });
 
-  it("throws once every attempt failed", async () => {
-    const f = fakeFetch([{ status: 503, success: false }]);
+  it("fails when Cloudflare answers 200 without success", async () => {
+    const f = fakeFetch([{ status: 200, success: false }]);
+    await expect(
+      createDeliveryPurge({ zoneId: "z", apiToken: "t", fetch: f.fn }).purge(
+        KEY,
+      ),
+    ).rejects.toThrow("HTTP 200");
+    expect(f.calls).toHaveLength(1);
+  });
+
+  it("fails when the purge times out (one call, no retry)", async () => {
+    let calls = 0;
+    const hanging = ((_url: string, init: RequestInit) => {
+      calls++;
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () =>
+          reject(init.signal?.reason),
+        );
+      });
+    }) as unknown as typeof fetch;
     await expect(
       createDeliveryPurge({
         zoneId: "z",
         apiToken: "t",
-        fetch: f.fn,
-        retryDelaysMs: [0, 0],
+        fetch: hanging,
+        timeoutMs: 20,
       }).purge(KEY),
-    ).rejects.toThrow("HTTP 503");
-    expect(f.calls).toHaveLength(3);
+    ).rejects.toThrow("timed out after 20 ms");
+    expect(calls).toBe(1);
+  });
+
+  it("bounds the call with a timeout signal by default", async () => {
+    const f = fakeFetch([{ status: 200, success: true }]);
+    await createDeliveryPurge({
+      zoneId: "z",
+      apiToken: "t",
+      fetch: f.fn,
+    }).purge(KEY);
+    expect(f.calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("skips with a warning when unconfigured", async () => {

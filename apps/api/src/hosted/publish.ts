@@ -4,14 +4,15 @@
  *   1. commit the draft directly to main (fast-forward only, no PR);
  *   2. PUT sites/<site>/revisions/<commit>.json;
  *   3. re-read main's head; only if it is still that commit, PUT latest.json
- *      and purge its URL from Cloudflare's edge;
- *   4. delete the draft (once step 1 landed: its changes are in git now).
+ *      and purge its URL from Cloudflare's edge (one attempt, 5 s timeout);
+ *   4. delete the draft, only once steps 2–3 succeeded.
  *
- * Git is the source of truth: a failure after step 1 (a purge still failing
- * after its retries included) leaves the publish "pending" (running sites
- * keep what they serve) and Resync (releases.ts) reruns steps 2–3 from main's
- * head, the pointer write and the purge both. Rollback (Releases → Make current)
- * rewrites latest.json only, and the next Publish or Resync overrides it.
+ * Git is the source of truth. A failure after step 1 (a failed pointer write
+ * or purge included) fails fast: nothing is retried, restored or rolled back,
+ * the publish is "pending" (git has it, running sites may not serve it yet),
+ * the draft stays, and the user retries from Studio (Resync reruns steps 2–3
+ * from main's head). Rollback (Releases → Make current) rewrites latest.json
+ * only, and the next Publish or Resync overrides it.
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
  */
@@ -65,6 +66,21 @@ export class MainMovedError extends Error {
   constructor() {
     super("main moved; publish again");
     this.name = "MainMovedError";
+  }
+}
+
+/**
+ * Writing latest.json or purging it from the edge failed. Nothing is retried
+ * or restored: the user retries from Studio.
+ */
+export class LatestUpdateError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `Couldn't update the live version on the CDN (${
+        cause instanceof Error ? cause.message : String(cause)
+      }). Running sites may not serve it yet. Try again.`,
+    );
+    this.name = "LatestUpdateError";
   }
 }
 
@@ -234,16 +250,21 @@ async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
 }
 
 /**
- * Writes latest.json, then purges its URL from the edge (the purge retries on
- * its own). Throws when either fails: the caller's state is then pending.
+ * Writes latest.json, then purges its URL from the edge once. Either failing
+ * throws {@link LatestUpdateError} at once: no retry, no restore of the
+ * previous pointer (a failed write skips the purge).
  */
 export async function writeLatest(
   repo: Pick<HostedRepo, "store" | "purge" | "site">,
   pointer: LatestPointer,
 ): Promise<void> {
   const key = deliveryKeys.latest(repo.site);
-  await repo.store.putJson(key, pointer, CACHE_LATEST);
-  await repo.purge.purge(key);
+  try {
+    await repo.store.putJson(key, pointer, CACHE_LATEST);
+    await repo.purge.purge(key);
+  } catch (error) {
+    throw new LatestUpdateError(error);
+  }
 }
 
 /**
@@ -290,25 +311,28 @@ export async function publishDraft(
         note.coAuthor,
       );
   const sha = await commitDraftToMain(repo, draft.body, message);
+  let live: boolean;
   try {
-    const live = await releaseCommit(repo, sha, hooks);
-    return { result: live ? "published" : "pending", sha };
+    live = await releaseCommit(repo, sha, hooks);
   } catch (error) {
-    console.error("hosted publish: delivery write failed; pending", {
+    // Fail fast: git has the commit, the CDN step failed; the draft stays and
+    // the user retries from Studio.
+    console.error("hosted publish: delivery update failed; pending", {
       site: repo.site,
       sha,
       error: error instanceof Error ? error.message : String(error),
     });
     return { result: "pending", sha };
-  } finally {
-    // OPEN: O-11 — the draft goes once git has it, even when delivery failed.
-    // Only the save that was published goes: a save made during the publish
-    // keeps the draft (its ETag changed).
-    await drafts.remove(ref, draft.etag).catch((error) =>
-      console.error("hosted publish: draft delete failed", {
-        site: repo.site,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
   }
+  if (!live) return { result: "pending", sha };
+  // The draft goes only once the pointer write and its purge succeeded. Only
+  // the save that was published goes: a save made during the publish keeps
+  // the draft (its ETag changed).
+  await drafts.remove(ref, draft.etag).catch((error) =>
+    console.error("hosted publish: draft delete failed", {
+      site: repo.site,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  return { result: "published", sha };
 }

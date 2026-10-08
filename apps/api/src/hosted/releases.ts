@@ -245,7 +245,9 @@ export async function listReleases(
 
 /**
  * Resync: point latest.json at main's head, writing its revision object first
- * when it's missing, and purge it from the edge. While the screen says Rolled back, it needs `confirm`.
+ * when it's missing, and purge it from the edge once. A failed write or purge
+ * throws `LatestUpdateError`; the user retries. While the screen says
+ * Rolled back, it needs `confirm`.
  */
 export async function resync(
   repo: HostedRepo,
@@ -261,7 +263,10 @@ export async function resync(
   return { result: live ? "published" : "pending", sha: head };
 }
 
-/** "Make current": point latest.json at a published revision. */
+/**
+ * "Make current": point latest.json at a published revision. A failed write or
+ * purge throws `LatestUpdateError`; the user retries.
+ */
 export async function makeCurrent(
   repo: HostedRepo,
   sha: string,

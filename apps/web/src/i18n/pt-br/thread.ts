@@ -233,7 +233,7 @@ export const thread = {
   "thread.publishDialog.visitPreview": "Abrir o Preview",
   "thread.publishPopover.blocksGroup": "Blocos",
   "thread.publishPopover.hostedPending":
-    "Publicado no git; ainda não está no ar nos sites em execução.",
+    "Publicado no git, mas ainda não está no ar nos sites em execução. Ressincronize para tentar de novo.",
   "thread.publishPopover.mainMoved":
     "A main mudou durante a publicação, então nada foi publicado. Publique novamente.",
   "thread.publishPopover.resync": "Ressincronizar",
