@@ -8,13 +8,14 @@
 import {
   navigateToTabLocation,
   tabRouteLocation,
+  tabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
 import {
   fetchVirtualMCPs,
   useProjectContext,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import { useNavigate } from "@tanstack/react-router";
+import { type LinkProps, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
@@ -178,5 +179,38 @@ export function useNavigateToAgent() {
           target ? defaultThreadRuntime(target.metadata) : undefined,
         ),
       );
+  };
+}
+
+/**
+ * The same destination `useNavigateToAgent` lands on, as `LinkProps` for a real
+ * anchor — so middle-click and "open in new tab" work. Only for callers that
+ * request no `runtime`: then no thread id is minted at click time and the
+ * target project's shell resolves its own entry thread, so the URL is fully
+ * knowable at render time.
+ */
+export function useAgentLink() {
+  const { org } = useProjectContext();
+  const projectFirstNav = useProjectFirstNav();
+
+  return (virtualMcpId: string, panel?: string): LinkProps => {
+    if (projectFirstNav && !panel) {
+      return {
+        to: "/$org/projects",
+        params: { org: org.slug },
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          project: virtualMcpId,
+          virtualmcpid: undefined,
+          view: undefined,
+        }),
+      };
+    }
+    const target = tabRouteTarget({
+      tabId: panel ?? "overview",
+      org: org.slug,
+      agentId: virtualMcpId,
+    });
+    return { to: target.to, params: target.params, search: target.search };
   };
 }
