@@ -972,7 +972,15 @@ function VirtualMcpDetailViewWithData({
               {section === "general" && <ProjectViewsSection views={views} />}
               {section === "general" && (
                 <div className="flex flex-col gap-4">
-                  <ProjectIdentity form={form} onCommit={flushAndSave} />
+                  <ProjectIdentity
+                    form={form}
+                    onCommit={flushAndSave}
+                    siteSlug={
+                      typeof virtualMcp.metadata?.siteSlug === "string"
+                        ? virtualMcp.metadata.siteSlug
+                        : null
+                    }
+                  />
                   <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
                     <User
                       id={virtualMcp.created_by}

@@ -843,7 +843,9 @@ const VirtualMcpMetadataFields = {
     .string()
     .nullable()
     .optional()
-    .describe("Linked asset site slug (managed storage tenancy)"),
+    .describe(
+      "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
+    ),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z
