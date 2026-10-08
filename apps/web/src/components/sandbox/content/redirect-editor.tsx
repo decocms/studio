@@ -16,10 +16,15 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   buildRedirectBlock,
   getRedirectPayload,
-  REDIRECT_STATUS,
+  REDIRECT_STATUS_CODES,
   type RedirectPayload,
+  type RedirectStatusCode,
   type RedirectType,
+  redirectStatus,
 } from "./redirect-data";
+
+/** The status select's value for "no explicit status". */
+const STATUS_FROM_TYPE = "type";
 
 const TYPE_OPTIONS: Array<{ value: RedirectType; labelKey: TranslationKey }> = [
   { value: "temporary", labelKey: "sandbox.redirectEditor.typeTemporary" },
@@ -51,7 +56,7 @@ export function RedirectEditor({
   const [payload, setPayload] = useAutosave(
     initial,
     (next) => {
-      save.mutate({ blockKey, data: buildRedirectBlock(next) });
+      save.mutate({ blockKey, data: buildRedirectBlock(next, block) });
     },
     { isSaving: save.isPending },
   );
@@ -118,7 +123,11 @@ export function RedirectEditor({
                 {TYPE_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {t(option.labelKey, {
-                      status: REDIRECT_STATUS[option.value],
+                      status: redirectStatus({
+                        ...payload,
+                        type: option.value,
+                        status: undefined,
+                      }),
                     })}
                   </SelectItem>
                 ))}
@@ -130,6 +139,46 @@ export function RedirectEditor({
               <strong>Permanent</strong> lets browsers cache it.
             </p>
           </div>
+
+          {payload.flat && (
+            <div className="space-y-2">
+              <Label htmlFor="redirect-status">
+                {t("sandbox.redirectEditor.statusLabel")}
+              </Label>
+              <Select
+                value={
+                  payload.status ? String(payload.status) : STATUS_FROM_TYPE
+                }
+                onValueChange={(v) =>
+                  setField({
+                    status:
+                      v === STATUS_FROM_TYPE
+                        ? undefined
+                        : (Number(v) as RedirectStatusCode),
+                  })
+                }
+              >
+                <SelectTrigger id="redirect-status" className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={STATUS_FROM_TYPE}>
+                    {t("sandbox.redirectEditor.statusFromType", {
+                      status: redirectStatus({ ...payload, status: undefined }),
+                    })}
+                  </SelectItem>
+                  {REDIRECT_STATUS_CODES.map((code) => (
+                    <SelectItem key={code} value={String(code)}>
+                      {code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.redirectEditor.statusDescription")}
+              </p>
+            </div>
+          )}
 
           <label className="flex cursor-pointer items-center gap-2.5">
             <Checkbox
