@@ -68,8 +68,15 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
 import type { Permission } from "@/storage/types";
-import { connectionGrantsFor, rolesOf } from "@/harnesses/org-mcp-grants";
-import { resolveTaskRunToolNames } from "@/tools/task-board/task-run-context";
+import {
+  connectionGrantsFor,
+  rolesOf,
+  selfToolGrantsFor,
+} from "@/harnesses/org-mcp-grants";
+import {
+  resolveThreadToolNames,
+  RUN_SCOPED_TOOL_NAMES,
+} from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
@@ -354,12 +361,15 @@ export class SandboxDispatchClient {
     dispatcherUserId: string,
     agent: Promise<VirtualMCPEntity | null>,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
-    const candidates = await this.orgMcpConnections(organization, agent);
-    const grants = await this.dispatcherConnectionGrants(
-      organization.id,
-      dispatcherUserId,
-      candidates.map((connection) => connection.id),
-    );
+    const [candidates, authority, thread] = await Promise.all([
+      this.orgMcpConnections(organization, agent),
+      this.dispatcherAuthority(organization.id, dispatcherUserId),
+      this.ctx.storage.threads.get(threadId),
+    ]);
+    const grants = connectionGrantsFor({
+      ...authority,
+      connectionIds: candidates.map((connection) => connection.id),
+    });
     const connections = candidates.filter(
       (connection) => connection.id in grants,
     );
@@ -368,28 +378,21 @@ export class SandboxDispatchClient {
       this.virtualMcpId,
       organization,
       `${SANDBOX_HOSTED_HARNESS}-run`,
-      "task-run",
+      "thread",
       threadId,
-      // Exactly what this run mounts, never a wildcard: the tools its own
-      // Studio surface exposes, plus the connections it was given.
-      //
-      // `self` is the resource key management tools are checked under (see
-      // AccessControl's default `connectionId`). Read from the run THREAD via
-      // the same resolver the endpoint itself uses, so the key and the server
-      // can never name different surfaces. Each connection is its own resource
-      // key, `"*"` because a run that was given a connection was given the
-      // whole connection.
-      //
-      // This was the reviewer list, hardcoded, on the reasoning that it was a
-      // superset of "both run kinds". A third kind (Jira) whose tools are not
-      // in it made that false: its endpoint served `JIRA_COMMENT_ADD` while its
-      // key did not authorize it, so the first production run did the work,
-      // opened its pull request, and got "Access denied to: JIRA_COMMENT_ADD"
-      // on the one call that reports back. Deriving it removes the class.
+      /**
+       * Exactly what this run mounts, never a wildcard. `self` (the resource
+       * key management tools are checked under) comes from the same resolver
+       * the endpoint uses, so key and server never name different surfaces —
+       * a Jira run once served `JIRA_COMMENT_ADD` its key did not authorize —
+       * then narrowed to what the dispatcher may call themselves.
+       */
       runKeyPermissions({
-        toolNames: resolveTaskRunToolNames(
-          await this.ctx.storage.threads.get(threadId),
-        ),
+        toolNames: selfToolGrantsFor({
+          ...authority,
+          toolNames: resolveThreadToolNames(thread),
+          runScoped: RUN_SCOPED_TOOL_NAMES,
+        }),
         grants,
       }),
     );
@@ -414,21 +417,18 @@ export class SandboxDispatchClient {
   }
 
   /**
-   * The dispatching user's own per-connection authority, as
-   * `{ <connectionId>: [tools] }` — the scope the run's key gets, and the
-   * filter on which connections it mounts at all.
+   * The dispatching user's role and custom-role statements — the authority the
+   * run's key is cut down to, for its connections and its Studio tools.
    *
    * The role is read from the member row rather than taken off the context: a
    * dispatch can arrive from the board or a worker, where the context was not
    * built from that user's session, and a missing role would silently strip
-   * every connection.
+   * every grant.
    */
-  private async dispatcherConnectionGrants(
+  private async dispatcherAuthority(
     organizationId: string,
     dispatcherUserId: string,
-    connectionIds: string[],
-  ): Promise<Record<string, string[]>> {
-    if (connectionIds.length === 0) return {};
+  ): Promise<{ role: string | undefined; roleStatements: Permission[] }> {
     const member = await this.ctx.db
       .selectFrom("member")
       .select(["role"])
@@ -436,7 +436,7 @@ export class SandboxDispatchClient {
       .where("userId", "=", dispatcherUserId)
       .executeTakeFirst();
     const role = member?.role;
-    const statements = hasAdminRole(role ?? undefined)
+    const roleStatements = hasAdminRole(role ?? undefined)
       ? []
       : (
           await Promise.all(
@@ -445,11 +445,7 @@ export class SandboxDispatchClient {
             ),
           )
         ).filter((statement): statement is Permission => Boolean(statement));
-    return connectionGrantsFor({
-      role,
-      roleStatements: statements,
-      connectionIds,
-    });
+    return { role, roleStatements };
   }
 
   /**
@@ -461,7 +457,7 @@ export class SandboxDispatchClient {
    * The agent's own half is not flag-gated because it is not a fan-out: those
    * connections are exactly what someone attached to this agent, and they are
    * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
-   * virtual MCP). This harness points at the narrow `task-run` surface instead,
+   * virtual MCP). This harness points at the narrow `thread` surface instead,
    * so without them a Code Agent chat lost every tool the agent was configured
    * with — its GitHub MCP included.
    */
@@ -535,7 +531,7 @@ export class SandboxDispatchClient {
       // daemon rejects the envelope outright, and the org's tools (moving
       // the task on the board, for one) would be unreachable anyway.
       //
-      // The task-run surface, NOT the agent's own: super-agent task runs
+      // The thread surface, NOT the agent's own: super-agent task runs
       // dispatch as Decopilot, which by design aggregates no connections
       // (`storage/virtual.ts` findById returns `connections: []`) — hosted
       // Decopilot gets TASK_BOARD_* as built-ins instead. This harness is an
@@ -1222,7 +1218,7 @@ export async function* ndjsonLines(
  * Studio's own well-known connections — the management surface, the two store
  * registries, and (for orgs that ran commerce onboarding) the Commerce
  * Discovery report connection. Excluded from a run's `orgMcps` — `_self`
- * alone is ~200 management tools, which is exactly what the narrow task-run
+ * alone is ~200 management tools, which is exactly what the narrow thread
  * surface exists to avoid, browsing the MCP store is not a coding agent's
  * job, and the report connection is a diagnostics tool for the commerce UI,
  * not something a coding agent should be handed. What the user actually

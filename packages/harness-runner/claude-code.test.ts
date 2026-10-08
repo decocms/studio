@@ -337,7 +337,7 @@ describe("buildOptions", () => {
 
 describe("mcpServersFor", () => {
   const studio = {
-    url: "https://studio.example/mcp/task-run/thrd_1",
+    url: "https://studio.example/mcp/thread/thrd_1",
     headers: { Authorization: "Bearer k" },
     expiresAt: 1,
   };

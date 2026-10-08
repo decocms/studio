@@ -77,6 +77,19 @@ export interface ToolBinder<
    */
   modelSummary?: (result: z.infer<TOutput>) => string;
 }
+
+/**
+ * What an MCP request knows about one tool call that the input does not carry.
+ * Absent when a tool is called in-process.
+ */
+export interface ToolCallContext {
+  /** Aborts when the client cancels the call or drops the connection. */
+  signal?: AbortSignal;
+  /** Sends an MCP progress notification; absent when the client asked for none. */
+  progress?: (message: string) => Promise<void>;
+  /** The client's own id for this call, when it sends one. */
+  callId?: string;
+}
 /**
  * Tool definition structure
  */
@@ -88,6 +101,7 @@ export interface ToolDefinition<
   handler: (
     input: z.infer<TInput>,
     ctx: StudioContext,
+    call?: ToolCallContext,
   ) => Promise<z.infer<TOutput>>;
   /**
    * The plan feature this tool belongs to, if any. Declaring it is the whole
@@ -125,6 +139,7 @@ export interface Tool<
   execute: (
     input: z.infer<TInput>,
     ctx: StudioContext,
+    call?: ToolCallContext,
   ) => Promise<z.infer<TOutput>>;
 }
 
@@ -174,6 +189,7 @@ export function defineTool<
     execute: async (
       input: z.infer<TInput>,
       ctx: StudioContext,
+      call?: ToolCallContext,
     ): Promise<z.infer<TOutput>> => {
       const startedAt = performance.now();
       let isError = false;
@@ -251,7 +267,7 @@ export function defineTool<
 
                 // MCP protocol already validated input against JSON Schema
                 // We trust the validation and execute the handler directly
-                const output = await definition.handler(input, ctx);
+                const output = await definition.handler(input, ctx, call);
 
                 // Mark span as successful
                 span.setStatus({ code: SpanStatusCode.OK });
