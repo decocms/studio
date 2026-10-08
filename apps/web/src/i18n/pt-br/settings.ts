@@ -889,6 +889,7 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Descartar",
   "settings.agentTools.orgMcpsPickSaved":
     "Conex\u00f5es que os runs alcan\u00e7am salvas",
+  "settings.agentTools.chatRuntimeSection": "Chats",
   "settings.agentTools.chatHarnessSandboxOnlyTitle":
     "Rodar todo chat com o Claude Code no seu pr\u00f3prio sandbox",
   "settings.agentTools.chatHarnessSandboxOnlyDescription":

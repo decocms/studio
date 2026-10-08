@@ -227,7 +227,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. Off by default: it changes the runtime of every chat, and each chat's first message waits for a sandbox.",
+      "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
@@ -305,6 +305,7 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "reviewer_enabled",
   "cheap_reviewer_model",
+  "chat_harness_sandbox_only",
 ]);
 
 /**

@@ -36,6 +36,16 @@ describe("orgFlagEnabled", () => {
     ).toBe(false);
   });
 
+  it("sandbox-only chats are on unless an org turned them off", () => {
+    expect(orgFlagEnabled({}, "chat_harness_sandbox_only")).toBe(true);
+    expect(
+      orgFlagEnabled(
+        { chat_harness_sandbox_only: false },
+        "chat_harness_sandbox_only",
+      ),
+    ).toBe(false);
+  });
+
   it("default-off flags read as disabled unless stored exactly true", () => {
     expect(DEFAULT_ON_FLAGS.has("auto_merge")).toBe(false);
     expect(orgFlagEnabled(null, "auto_merge")).toBe(false);
