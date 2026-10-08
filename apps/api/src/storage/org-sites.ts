@@ -11,9 +11,10 @@ import type { OrgSiteStoragePort } from "./ports";
 
 /**
  * The site id (slug) is public — CDN paths, site tokens, telemetry and asset
- * URLs carry it — and tokens can't be revoked. So once a project uses a slug
- * (`linked_at` set) it is tied to that org for good: it can't be released,
- * moved to another org, or relinked to a project elsewhere. A row whose org was
+ * URLs carry it — and tokens can't be revoked. So once a slug is used
+ * (`linked_at` set: a project linked it, or it predates migration 235) it is
+ * tied to that org for good: it can't be released, moved to another org, or
+ * linked to another project without a deployment admin. A row whose org was
  * deleted (`organization_id` NULL) is a tombstone nobody can claim.
  */
 const SITE_ID_IMMUTABLE_MESSAGE =
@@ -42,7 +43,12 @@ export type OrgSiteLinkErrorCode =
   /** The project isn't one of this org's projects. */
   | "project_not_found"
   /** The slug has been used by a project, so it can't be released or moved. */
-  | "in_use";
+  | "in_use"
+  /**
+   * The slug was used and its project is gone (or it predates the link):
+   * only a deployment admin may link it to a project.
+   */
+  | "relink_requires_admin";
 
 const LINK_ERROR_MESSAGES: Record<OrgSiteLinkErrorCode, string> = {
   not_found: "This site id isn't registered for the organization.",
@@ -53,6 +59,8 @@ const LINK_ERROR_MESSAGES: Record<OrgSiteLinkErrorCode, string> = {
   project_has_other_slug: `This project already has a site id. ${SITE_ID_IMMUTABLE_MESSAGE}`,
   project_not_found: "Project not found in this organization.",
   in_use: `This site id has been used by a project, so it can't be released or moved. ${SITE_ID_IMMUTABLE_MESSAGE}`,
+  relink_requires_admin:
+    "This site id was already used by a project. Only a deployment admin can link it to another project.",
 };
 
 /** A link, claim, release or move the slug's lifecycle rules refuse. */
@@ -233,6 +241,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
     organizationId: string;
     projectId: string;
     by: string;
+    adminOverride?: boolean;
   }): Promise<OrgSite> {
     const { slug, organizationId, projectId, by } = params;
     const existing = await this.getBySlug(slug);
@@ -246,6 +255,11 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
     if (existing.projectId === projectId) return existing;
     if (existing.projectId !== null) {
       throw new OrgSiteLinkError("linked_elsewhere", slug);
+    }
+    // Used before and unlinked now: its project was deleted, or it predates
+    // the link. Handing it to a project is a deployment-admin decision.
+    if (existing.linkedAt !== null && !params.adminOverride) {
+      throw new OrgSiteLinkError("relink_requires_admin", slug);
     }
 
     const project = await this.db
@@ -276,6 +290,7 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
         .where("slug", "=", slug)
         .where("organization_id", "=", organizationId)
         .where("project_id", "is", null)
+        .$if(!params.adminOverride, (qb) => qb.where("linked_at", "is", null))
         .returningAll()
         .executeTakeFirst();
     } catch (error) {
@@ -296,6 +311,9 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
     }
     if (after.organizationId !== organizationId) {
       throw new OrgSiteLinkError("not_owned", slug);
+    }
+    if (after.projectId === null) {
+      throw new OrgSiteLinkError("relink_requires_admin", slug);
     }
     throw new OrgSiteLinkError("linked_elsewhere", slug);
   }

@@ -71,6 +71,7 @@ import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
 import { ProjectViewsSection } from "./settings/views-section";
 import { useProjectViews } from "./settings/use-project-views";
 import { ProjectIdentity } from "./settings/project-identity";
+import { projectSiteId } from "./settings/project-site-id";
 import { ProjectSettingsTabs } from "./settings/settings-tabs";
 import {
   SettingsCard,
@@ -975,11 +976,7 @@ function VirtualMcpDetailViewWithData({
                   <ProjectIdentity
                     form={form}
                     onCommit={flushAndSave}
-                    siteSlug={
-                      typeof virtualMcp.metadata?.siteSlug === "string"
-                        ? virtualMcp.metadata.siteSlug
-                        : null
-                    }
+                    siteSlug={projectSiteId(virtualMcp)}
                   />
                   <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
                     <User

@@ -102,6 +102,8 @@ export function pickProjectMetadata(
 /**
  * The org's site projects: those whose resolved slug it owns, the same test
  * experiments use. A migrated project often carries its slug only as its title.
+ * A slug linked to a project (`ownedSites` maps slug → linked project id) lists
+ * only that project, not look-alikes naming the same slug.
  */
 export function listSiteProjects(
   projects: {
@@ -109,11 +111,13 @@ export function listSiteProjects(
     title: string;
     metadata?: (Record<string, unknown> & { siteSlug?: string | null }) | null;
   }[],
-  ownedSlugs: ReadonlySet<string>,
+  ownedSites: ReadonlyMap<string, string | null>,
 ) {
   return projects.flatMap((project) => {
     const siteSlug = resolveAgentSiteSlug(project);
-    if (!siteSlug || !ownedSlugs.has(siteSlug)) return [];
+    if (!siteSlug || !ownedSites.has(siteSlug)) return [];
+    const linkedProjectId = ownedSites.get(siteSlug);
+    if (linkedProjectId && linkedProjectId !== project.id) return [];
     return [
       {
         id: project.id,
