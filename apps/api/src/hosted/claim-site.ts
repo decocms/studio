@@ -37,7 +37,14 @@ export type SiteClaimRefusal =
   /** The project already has a different site. */
   | "project-has-other-slug"
   /** The project isn't one of this org's projects. */
-  | "project-not-found";
+  | "project-not-found"
+  /** The org's row for the slug vanished between the claim and the link. */
+  | "not-found"
+  /**
+   * The slug was used and its project is gone (or it predates the link):
+   * only a deployment admin may link it to another project.
+   */
+  | "relink-requires-admin";
 
 export type SiteClaimOutcome =
   /** Linked now (the slug was claimed for the org first when nobody had it). */
@@ -65,13 +72,14 @@ export interface SiteClaimDeps {
 }
 
 const LINK_REFUSALS: Record<OrgSiteLinkErrorCode, SiteClaimRefusal> = {
-  not_found: "other-org",
+  not_found: "not-found",
   reserved: "reserved",
   not_owned: "other-org",
   linked_elsewhere: "linked-elsewhere",
   project_has_other_slug: "project-has-other-slug",
   project_not_found: "project-not-found",
   in_use: "linked-elsewhere",
+  relink_requires_admin: "relink-requires-admin",
 };
 
 /**
@@ -114,6 +122,7 @@ export async function linkProjectSite(
       return refused("other-org", row.organizationId);
     }
     if (row.projectId !== null) return refused("linked-elsewhere");
+    if (row.linkedAt !== null) return refused("relink-requires-admin");
   } else {
     const other = await deps.otherOrgNamingSlug?.(slug, organizationId);
     if (other) return refused("other-org-project", other);

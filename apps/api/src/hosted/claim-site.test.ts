@@ -13,6 +13,8 @@ interface Row {
   /** null: a tombstone (its org was deleted). */
   organizationId: string | null;
   projectId: string | null;
+  /** Used before: its project was deleted, or it predates the link. */
+  used?: boolean;
 }
 
 /**
@@ -35,7 +37,7 @@ function memorySites(initial: Record<string, string | Row> = {}) {
     slug,
     organizationId: row.organizationId,
     projectId: row.projectId,
-    linkedAt: row.projectId ? "2026-01-01T00:00:00.000Z" : null,
+    linkedAt: row.projectId || row.used ? "2026-01-01T00:00:00.000Z" : null,
     source: "test",
     createdBy: "t",
     createdAt: "",
@@ -91,6 +93,9 @@ function memorySites(initial: Record<string, string | Row> = {}) {
       if (row.projectId === params.projectId) return site(params.slug, row);
       if (row.projectId !== null) {
         throw new OrgSiteLinkError("linked_elsewhere", params.slug);
+      }
+      if (row.used) {
+        throw new OrgSiteLinkError("relink_requires_admin", params.slug);
       }
       row.projectId = params.projectId;
       links.push({ slug: params.slug, projectId: params.projectId });
@@ -182,6 +187,19 @@ describe("linkProjectSite", () => {
       owner: "org-b",
     });
     expect(sites.rows.get("shop")?.organizationId).toBe("org-b");
+  });
+
+  it("never hands a used slug to another project without an admin", async () => {
+    const sites = memorySites({
+      shop: { organizationId: "org-a", projectId: null, used: true },
+    });
+    const deps = { orgSites: sites.orgSites, isDecoSite: noDecoSites };
+    expect(await linkProjectSite(deps, input)).toEqual({
+      status: "refused",
+      slug: "shop",
+      reason: "relink-requires-admin",
+    });
+    expect(sites.links).toEqual([]);
   });
 
   it("never reuses a deleted org's slug", async () => {
