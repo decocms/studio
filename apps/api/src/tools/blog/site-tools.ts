@@ -55,6 +55,18 @@ const GROUNDING_TIMEOUT_MS = 75_000;
 const TOOL_CALL_BUDGET = 0.2;
 
 /**
+ * When the tool loop has to stop gathering and start answering.
+ *
+ * The abort below is a safety net, not a schedule: it kills the call and takes
+ * every finding with it, which is the worst way for a pass to end — the store
+ * answered and we threw the answers away. Stopping the loop at a fraction of
+ * the budget leaves room to write up what came back.
+ */
+const GATHER_BUDGET = 0.6;
+
+const SUMMARISE = `The search above ran out of time partway through. Write up what the tool results actually show, in the same short markdown the original instructions asked for. Report only what a tool returned; if the results are too thin to be worth anything, say that in one line.`;
+
+/**
  * A tool the model may be offered: read-only by its own declaration, and not
  * marked for the chat UI alone.
  *
@@ -108,12 +120,19 @@ async function siteTools(
   ctx: StudioContext,
   virtualMcpId: string,
   passTimeoutMs: number,
+  onCall: (call: GroundingCall) => void,
 ): Promise<ToolSet> {
   const client = await ctx.createMCPProxy(virtualMcpId);
   const { tools } = await toolsFromMCP(client, new Map(), undefined, "auto", {
     isToolVisible: isGroundingTool,
     disableOutputTruncation: false,
     timeoutMs: Math.round(passTimeoutMs * TOOL_CALL_BUDGET),
+    onToolCalled: (event) =>
+      onCall({
+        tool: event.toolName,
+        ms: Math.round(event.latencyMs),
+        ok: !event.isError,
+      }),
   });
   return Object.fromEntries(
     Object.entries(tools).map(([name, tool]) => [name, survivingFailure(tool)]),
@@ -153,13 +172,34 @@ export interface GroundingRequest {
   timeoutMs?: number;
 }
 
+/** One tool the pass actually reached for, and how that went. */
+export interface GroundingCall {
+  tool: string;
+  ms: number;
+  ok: boolean;
+}
+
+/**
+ * How a pass ended. Five outcomes rather than a boolean, because they call for
+ * different things: a site with no connection wants one, a connection exposing
+ * nothing read-only is a permissions question, and a pass that timed out was
+ * being answered — it just ran long.
+ */
+export type GroundingOutcome =
+  | "no-site"
+  | "no-tools"
+  | "ok"
+  | "timeout"
+  | "failed";
+
 /** What a grounding pass found, and whether it had anywhere to look. */
 export interface GroundingReport {
   grounding: string;
   /** The read-only tools the site exposed; empty means nothing to ask. */
   toolNames: string[];
-  /** False when there was no MCP, no tools, or the pass threw. */
-  ran: boolean;
+  /** The ones it actually called. Offered is not the same as consulted. */
+  calls: GroundingCall[];
+  outcome: GroundingOutcome;
 }
 
 const SYSTEM = `You are gathering facts for a brand's blog, immediately before another model writes from them. You are not writing anything: you are answering what is true about this brand's business right now.
@@ -204,24 +244,46 @@ export async function groundSiteReport(
   organizationId: string,
   request: GroundingRequest,
 ): Promise<GroundingReport> {
-  const EMPTY: GroundingReport = { grounding: "", toolNames: [], ran: false };
-  if (!request.virtualMcpId) return EMPTY;
+  const empty = (outcome: GroundingOutcome): GroundingReport => ({
+    grounding: "",
+    toolNames: [],
+    calls: [],
+    outcome,
+  });
+  if (!request.virtualMcpId) return empty("no-site");
   const passTimeoutMs = request.timeoutMs ?? GROUNDING_TIMEOUT_MS;
+  const calls: GroundingCall[] = [];
   try {
-    const tools = await siteTools(ctx, request.virtualMcpId, passTimeoutMs);
+    const tools = await siteTools(
+      ctx,
+      request.virtualMcpId,
+      passTimeoutMs,
+      (call) => calls.push(call),
+    );
     const toolNames = Object.keys(tools);
-    if (toolNames.length === 0) return EMPTY;
+    if (toolNames.length === 0) {
+      console.info(
+        `[${request.label}] site exposed no read-only tools; generating without store data`,
+      );
+      return empty("no-tools");
+    }
 
     const tier = await resolveTier(ctx, "smart");
     const provider = await ctx.aiProviders.activate(
       tier.credentialId,
       organizationId,
     );
-    const { text } = await generateText({
-      model: provider.aiSdk.languageModel(tier.modelId),
+    const model = provider.aiSdk.languageModel(tier.modelId);
+    const startedAt = Date.now();
+    const elapsed = () => Date.now() - startedAt;
+    const gathered = await generateText({
+      model,
       system: SYSTEM,
       tools,
-      stopWhen: stepCountIs(request.maxSteps ?? MAX_STEPS),
+      stopWhen: [
+        stepCountIs(request.maxSteps ?? MAX_STEPS),
+        () => elapsed() > passTimeoutMs * GATHER_BUDGET,
+      ],
       abortSignal: AbortSignal.timeout(passTimeoutMs),
       prompt: [
         `## The task this is for\n${request.task}`,
@@ -233,18 +295,39 @@ export async function groundSiteReport(
         .join("\n\n"),
     });
 
-    const found = text.trim();
+    let found = gathered.text.trim();
+    let salvaged = false;
+    // Stopping mid-loop leaves the last step a tool call, so there is no prose
+    // yet — one tool-free turn over the same transcript writes it.
+    if (!found && calls.length > 0) {
+      const summary = await generateText({
+        model,
+        system: `${SYSTEM}\n\n${SUMMARISE}`,
+        messages: gathered.responseMessages,
+        abortSignal: AbortSignal.timeout(
+          Math.max(5_000, passTimeoutMs - elapsed()),
+        ),
+      });
+      found = summary.text.trim();
+      salvaged = true;
+    }
+    console.info(
+      `[${request.label}] site grounding: ${calls.length} call(s) over ${toolNames.length} tool(s), ${found.length} chars in ${elapsed()}ms${salvaged ? " (stopped early, wrote up what came back)" : ""}`,
+      calls.map((c) => `${c.tool} ${c.ms}ms${c.ok ? "" : " ERROR"}`),
+    );
     return {
       grounding: found ? found.slice(0, MAX_GROUNDING_CHARS) : "",
       toolNames,
-      ran: true,
+      calls,
+      outcome: "ok",
     };
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "TimeoutError";
     console.warn(
-      `[${request.label}] site grounding ${timedOut ? `gave up after ${passTimeoutMs}ms` : "failed"}: ${err instanceof Error ? err.message : String(err)}`,
+      `[${request.label}] site grounding ${timedOut ? `gave up after ${passTimeoutMs}ms` : "failed"} after ${calls.length} call(s): ${err instanceof Error ? err.message : String(err)}`,
+      calls.map((c) => `${c.tool} ${c.ms}ms${c.ok ? "" : " ERROR"}`),
     );
-    return EMPTY;
+    return { ...empty(timedOut ? "timeout" : "failed"), calls };
   }
 }
 

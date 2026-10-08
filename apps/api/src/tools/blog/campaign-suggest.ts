@@ -9,6 +9,7 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import {
+  type GroundingOutcome,
   groundSiteReport,
   renderGrounding,
   VirtualMcpIdSchema,
@@ -34,9 +35,15 @@ const MAX_KEYWORDS = 50;
 const MAX_EXISTING_NAMES = 100;
 const MAX_TEXT_CHARS = 2_000;
 
-/** Reading analytics *and* a catalogue is deeper than reading one site. */
+/**
+ * Reading analytics *and* a catalogue is deeper than reading one site.
+ *
+ * Generous because the pass no longer loses its work when it runs long: it
+ * stops gathering with time to spare and writes up what came back. The cost of
+ * a bigger number is someone waiting, not someone getting nothing.
+ */
 const GROUNDING_MAX_STEPS = 14;
-const GROUNDING_TIMEOUT_MS = 90_000;
+const GROUNDING_TIMEOUT_MS = 120_000;
 
 const TargetSchema = z.object({
   kind: z.enum(CAMPAIGN_TARGET_KINDS),
@@ -202,16 +209,37 @@ export function groundedOnly<T extends { name: string; url: string }>(
   });
 }
 
-/** What the person is told was missing, given what actually happened. */
+/**
+ * What the person is told was missing, given what actually happened.
+ *
+ * The outcomes are kept apart because they ask for different things, and
+ * because telling someone nothing answered when their store was mid-reply is
+ * how they go off and debug a connection that works.
+ */
 export function describeGaps(
-  report: { toolNames: string[]; ran: boolean },
+  report: { toolNames: string[]; calls: unknown[]; outcome: GroundingOutcome },
   grounding: string,
   dropped: { targets: number; products: number },
 ): string[] {
   const gaps: string[] = [];
-  if (!report.ran) {
+  const answered = report.calls.length;
+  if (report.outcome === "no-site") {
     gaps.push(
-      "No connected system answered, so nothing here was checked against the store: targets, products and any figure are the brand context only.",
+      "This site has no connections to read, so nothing here was checked against the store: targets, products and any figure are the brand context only.",
+    );
+  } else if (report.outcome === "no-tools") {
+    gaps.push(
+      "The connected systems offer no read-only tools, so none could be consulted. Nothing here was checked against the store.",
+    );
+  } else if (report.outcome === "timeout") {
+    gaps.push(
+      answered > 0
+        ? `The store was still answering when the search ran out of time — ${answered} call(s) came back, but the findings were discarded. Try again, or narrow the starting point.`
+        : "The search for store data ran out of time before anything came back.",
+    );
+  } else if (report.outcome === "failed") {
+    gaps.push(
+      "The search for store data could not be completed, so nothing here was checked against it.",
     );
   } else if (!grounding.trim()) {
     gaps.push(
@@ -352,7 +380,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
     ),
     /** True when a connected system actually answered. */
     grounded: z.boolean(),
-    /** The read-only tools the site exposed, for the operator to recognise. */
+    /** The tools actually called — offered is not the same as consulted. */
     toolsUsed: z.array(z.string()),
     /** Plain sentences about what could not be checked. */
     gaps: z.array(z.string()),
@@ -453,8 +481,8 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
 
     return {
       campaigns: pairReviews(candidates, reviews),
-      grounded: report.ran && grounding.trim().length > 0,
-      toolsUsed: report.toolNames,
+      grounded: report.outcome === "ok" && grounding.trim().length > 0,
+      toolsUsed: [...new Set(report.calls.map((call) => call.tool))],
       gaps: describeGaps(report, grounding, {
         targets: droppedTargets,
         products: droppedProducts,

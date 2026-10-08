@@ -56,33 +56,64 @@ The catalogue lists "Split Inverter 12000" at R$ 2.199.
 });
 
 describe("describeGaps", () => {
-  const ran = { toolNames: ["catalog_search"], ran: true };
+  const ok = {
+    toolNames: ["catalog_search"],
+    calls: [{}],
+    outcome: "ok" as const,
+  };
+  const none = { targets: 0, products: 0 };
 
-  test("says nothing was checked when no system answered", () => {
-    const gaps = describeGaps({ toolNames: [], ran: false }, "", {
-      targets: 0,
-      products: 0,
-    });
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0]).toContain("No connected system answered");
+  test("a site with no connection is told to connect one", () => {
+    const gaps = describeGaps(
+      { toolNames: [], calls: [], outcome: "no-site" },
+      "",
+      none,
+    );
+    expect(gaps[0]).toContain("no connections to read");
+  });
+
+  test("a connection exposing nothing read-only says so, not 'no answer'", () => {
+    const gaps = describeGaps(
+      { toolNames: [], calls: [], outcome: "no-tools" },
+      "",
+      none,
+    );
+    expect(gaps[0]).toContain("no read-only tools");
+  });
+
+  test("a timeout that got answers never claims nothing answered", () => {
+    const gaps = describeGaps(
+      { toolNames: ["x"], calls: [{}, {}], outcome: "timeout" },
+      "",
+      none,
+    );
+    expect(gaps[0]).toContain("2 call(s) came back");
+    expect(gaps[0]).not.toContain("no connections");
+  });
+
+  test("a timeout before any answer says that instead", () => {
+    const gaps = describeGaps(
+      { toolNames: ["x"], calls: [], outcome: "timeout" },
+      "",
+      none,
+    );
+    expect(gaps[0]).toContain("ran out of time before anything came back");
   });
 
   test("distinguishes reachable-but-silent from absent", () => {
-    const gaps = describeGaps(ran, "", { targets: 0, products: 0 });
+    const gaps = describeGaps(ok, "", none);
     expect(gaps[0]).toContain("reported nothing useful");
   });
 
   test("reports what was dropped for lack of backing", () => {
-    const gaps = describeGaps(ran, "something", { targets: 2, products: 1 });
+    const gaps = describeGaps(ok, "something", { targets: 2, products: 1 });
     expect(gaps).toHaveLength(2);
     expect(gaps[0]).toContain("2 proposed target(s)");
     expect(gaps[1]).toContain("1 proposed product(s)");
   });
 
   test("is silent when the pass worked and nothing was dropped", () => {
-    expect(describeGaps(ran, "something", { targets: 0, products: 0 })).toEqual(
-      [],
-    );
+    expect(describeGaps(ok, "something", none)).toEqual([]);
   });
 });
 
