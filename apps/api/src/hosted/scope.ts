@@ -8,11 +8,15 @@
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import type { RepoContentClient } from "@/git-providers";
 import type { KVStorage } from "@/storage/kv";
+import type { OrgSiteStoragePort } from "@/storage/ports";
 import { deliveryStore } from "./delivery-store";
 import { createDraftStore, type DraftStore } from "./draft-store";
 import { schemaHashOfText } from "./release-objects";
 
-/** The public site id: the project's `metadata.siteSlug`. */
+/**
+ * The site id a project names in `metadata.siteSlug` (what it was created
+ * with). Ownership is the `org_sites` link: see {@link ownedProjectSite}.
+ */
 export function projectSite(
   metadata: Record<string, unknown> | null | undefined,
 ): string | null {
@@ -21,24 +25,20 @@ export function projectSite(
 }
 
 /**
- * The project's site id, only when the organization owns that site in
- * `org_sites`. `metadata.siteSlug` is member-editable, so every hosted write
- * (delivery objects, drafts, site tokens) checks ownership before using it.
+ * The project's site id: the `org_sites` row linked to it, only when its own
+ * organization owns that row. The link is set once, when the project is
+ * created or imported (hosted/claim-site.ts, the deco import, the admin
+ * backfill), and never changes, so every hosted write (delivery objects,
+ * drafts, site tokens) keys on it rather than on `metadata.siteSlug`. A
+ * project that isn't linked gets no hosted features.
  */
-// A project's siteSlug is claimed for its org when the project is created
-// (hosted/claim-site.ts), by the deco import, the admin claim, or the admin
-// backfill. OPEN: one changed later (`COLLECTION_VIRTUAL_MCP_UPDATE`), or a
-// slug another org or deco.cx has, gets no hosted features until an admin
-// claims it.
 export async function ownedProjectSite(
-  orgSites: {
-    isOwnedBy(slug: string, organizationId: string): Promise<boolean>;
-  },
-  metadata: Record<string, unknown> | null | undefined,
+  orgSites: Pick<OrgSiteStoragePort, "getByProject">,
+  projectId: string,
   organizationId: string,
 ): Promise<string | null> {
-  const site = projectSite(metadata);
-  return site && (await orgSites.isOwnedBy(site, organizationId)) ? site : null;
+  const site = await orgSites.getByProject(projectId);
+  return site && site.organizationId === organizationId ? site.slug : null;
 }
 
 /** The draft store over the delivery bucket, or null when none is configured. */

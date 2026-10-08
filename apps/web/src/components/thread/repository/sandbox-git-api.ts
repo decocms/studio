@@ -56,12 +56,6 @@ export interface GitDiffResult {
   mergeBaseSha?: string;
 }
 
-export interface CommitSuggestion {
-  title: string;
-  body: string;
-  message: string;
-}
-
 function buildSandboxGitUrl(ref: SandboxProxyRef, endpoint: string) {
   return buildSandboxUrl(ref, `git/${endpoint}`);
 }
@@ -183,11 +177,9 @@ export async function fetchGitDiff(
 
 /**
  * Drop auto-generated files (Tailwind CSS output, `blocks.gen.json`) from a
- * diff before sending it to `suggest-commit`. Their full-content `from`/`to`
+ * diff before sending it to `judge-review`. Their full-content `from`/`to`
  * bodies can be megabytes on their own and blew past the endpoint's 512KB body
- * limit (413). They carry no signal for an LLM commit message either — the
- * server backfills the diff from the daemon when the client omits it, so a
- * fully-stripped diff still yields a suggestion.
+ * limit (413), and they carry no signal for the judge.
  */
 export function stripGeneratedFilesFromDiff(
   diff: GitDiffResult,
@@ -198,24 +190,6 @@ export function stripGeneratedFilesFromDiff(
     diffs[path] = entry;
   }
   return { ...diff, diffs };
-}
-
-export async function fetchSuggestCommitMessage(
-  ref: SandboxProxyRef,
-  payload?: { status: GitStatus; diff: GitDiffResult },
-): Promise<CommitSuggestion> {
-  const body = payload
-    ? {
-        status: payload.status,
-        diff: stripGeneratedFilesFromDiff(payload.diff),
-      }
-    : {};
-  const res = await sandboxFetch(buildSandboxGitUrl(ref, "suggest-commit"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return parseJson<CommitSuggestion>(res);
 }
 
 export async function publishGitChanges(
@@ -493,7 +467,7 @@ export function sandboxGitStatusQueryOptions(
   };
 }
 
-export function countGitChanges(status: GitStatus | null): number {
+function countGitChanges(status: GitStatus | null): number {
   if (!status) return 0;
   return (
     status.modified.length +
@@ -546,24 +520,6 @@ export function hasUnpublishedWork(
   );
 }
 
-/**
- * Which diff the publish dialog should show/gate. Uncommitted working-tree
- * edits aren't in a commit yet, so a base…head diff would come back empty —
- * show the working-tree diff whenever there's local uncommitted work, and fall
- * back to base…head only for a clean tree whose commits are already ahead of
- * base (open-pr-from-commits or direct publish of committed work).
- */
-export function shouldUseBaseDiff(
-  status: GitStatus | null | undefined,
-  opts: { openPrFromCommits: boolean; commitToOpenPr: boolean },
-): boolean {
-  if (hasGitLocalWork(status)) return false;
-  return (
-    opts.openPrFromCommits ||
-    (!opts.commitToOpenPr && (status?.aheadOfBase ?? 0) > 0)
-  );
-}
-
 export interface PublishGate {
   allowed: boolean;
   reason: string | null;
@@ -592,6 +548,40 @@ export function combinePublishDiffs(
     diffs: { ...(baseDiff?.diffs ?? {}), ...(workingDiff?.diffs ?? {}) },
     ...(baseDiff?.mergeBaseSha ? { mergeBaseSha: baseDiff.mergeBaseSha } : {}),
   };
+}
+
+/** Commits a publish would carry. A daemon that omits `aheadOfBase` is asked, not assumed clean. */
+export function mayHaveCommitsToPublish(status: GitStatus): boolean {
+  return (
+    status.aheadOfBase === undefined ||
+    status.aheadOfBase > 0 ||
+    status.ahead > 0 ||
+    (status.unpushed ?? 0) > 0
+  );
+}
+
+/**
+ * Everything a publish carries. Fast Preview has no working tree, so base…head
+ * is the whole of it; a sandbox publish also commits its working tree, and the
+ * daemon returns one diff per call, so both are fetched and combined.
+ */
+export async function fetchPublishDiff(
+  ref: SandboxProxyRef,
+  status: GitStatus,
+  base: string,
+  call?: SandboxGitCallOptions,
+): Promise<GitDiffResult> {
+  if (call?.fastPreview) return fetchGitDiff(ref, { base }, call);
+  const baseOptions = status.headSha
+    ? { base, headSha: status.headSha }
+    : { base };
+  const [baseDiff, workingDiff] = await Promise.all([
+    mayHaveCommitsToPublish(status)
+      ? fetchGitDiff(ref, baseOptions, call)
+      : null,
+    hasGitLocalWork(status) ? fetchGitDiff(ref, undefined, call) : null,
+  ]);
+  return combinePublishDiffs(baseDiff, workingDiff);
 }
 
 /**

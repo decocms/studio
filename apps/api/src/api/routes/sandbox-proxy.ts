@@ -50,8 +50,7 @@ import {
   type GitDiffLike,
   type GitStatusLike,
   isGitStatusLike,
-  suggestCommitMessageWithLlm,
-} from "../../lib/suggest-commit-message";
+} from "../../lib/git-change-context";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
 import {
   RepoWriteConflict,
@@ -136,7 +135,7 @@ function assertSandboxBranchParam(branch: string): void {
   }
 }
 
-const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
+const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -1149,10 +1148,15 @@ export const createSandboxRoutes = () => {
       });
     });
   });
+  // Smart-review judge: the client sends the full publish payload (status +
+  // combined diff) and the cheap "fast" model tier decides whether the changes
+  // need PR review. Backfills status/diff from the daemon when omitted. On any
+  // failure the lib returns a permissive verdict (requiresReview: false) so the
+  // AI's absence never blocks publish.
   app.post(
-    "/:virtualMcpId/:branch/git/suggest-commit",
+    "/:virtualMcpId/:branch/git/judge-review",
     bodyLimit({
-      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
+      maxSize: JUDGE_REVIEW_MAX_BODY_BYTES,
       onError: (c) =>
         c.json(
           { error: "Payload too large" },
@@ -1164,102 +1168,6 @@ export const createSandboxRoutes = () => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
       // only admits a null runner for that mode).
-      let runner: SandboxProvider | null = null;
-      if (claim.runtime !== "cms") {
-        const required = requireRunner(c);
-        if (required instanceof Response) return required;
-        runner = required;
-      }
-
-      const { claimName, userId, projectRef } = claim;
-      const ctx = c.var.studioContext;
-
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          status?: GitStatusLike;
-          diff?: GitDiffLike;
-        };
-
-        const clientStatus = body.status;
-        const clientDiff = body.diff;
-        const hasClientDiff =
-          clientDiff != null &&
-          typeof clientDiff.diffs === "object" &&
-          clientDiff.diffs !== null;
-
-        const [status, diff] =
-          isGitStatusLike(clientStatus) && hasClientDiff
-            ? [clientStatus, clientDiff]
-            : runner
-              ? await Promise.all([
-                  fetchDaemonJson<GitStatusLike>(
-                    runner,
-                    claimName,
-                    "/_sandbox/git/status",
-                    "GET",
-                    { userId, projectRef },
-                  ),
-                  fetchDaemonJson<GitDiffLike>(
-                    runner,
-                    claimName,
-                    "/_sandbox/git/diff",
-                    "GET",
-                    { userId, projectRef },
-                  ),
-                ])
-              : // Sandbox-less backfill: same GitHub-backed shapes the /git
-                // routes serve (no daemon exists to ask).
-                await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
-        // These two routes are the only ones under /sandbox that spend real
-        // money: each is one `generateText` on the org's gateway credential,
-        // with a prompt the caller sizes (up to the body limit above). They
-        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
-        // them and an org whose bar reads `exhausted` could loop either one.
-        // Fails OPEN when the gateway has no answer, like every other gate.
-        await assertAiBudget(
-          ctx,
-          requireOrganization(ctx).id,
-          "suggesting a commit message",
-        );
-
-        const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
-        return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message === "SANDBOX_GONE") {
-          return c.json(
-            {
-              error:
-                "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
-            },
-            410,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-    },
-  );
-
-  // Smart-review judge: the client sends the full publish payload (status +
-  // combined diff) and the cheap "fast" model tier decides whether the changes
-  // need PR review. Backfills status/diff from the daemon when omitted, mirrors
-  // the suggest-commit handler. On any failure the lib returns a permissive
-  // verdict (requiresReview: false) so the AI's absence never blocks publish.
-  app.post(
-    "/:virtualMcpId/:branch/git/judge-review",
-    bodyLimit({
-      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
-      onError: (c) =>
-        c.json(
-          { error: "Payload too large" },
-          413,
-          SANDBOX_PROXY_CACHE_HEADERS,
-        ),
-    }),
-    async (c) => {
-      const claim = c.get("vmClaim");
-      // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
       let runner: SandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
@@ -1304,12 +1212,14 @@ export const createSandboxRoutes = () => {
                     { userId, projectRef },
                   ),
                 ])
-              : await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
-        // These two routes are the only ones under /sandbox that spend real
-        // money: each is one `generateText` on the org's gateway credential,
-        // with a prompt the caller sizes (up to the body limit above). They
-        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
-        // them and an org whose bar reads `exhausted` could loop either one.
+              : // Sandbox-less backfill: same GitHub-backed shapes the /git
+                // routes serve (no daemon exists to ask).
+                await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
+        // The only route under /sandbox that spends real money: one model call
+        // on the org's gateway credential, with a prompt the caller sizes (up
+        // to the body limit above). It is a plain BFF route, so `defineTool`'s
+        // `requiresAiBudget` never sees it and an org whose bar reads
+        // `exhausted` could loop it.
         // Fails OPEN when the gateway has no answer, like every other gate.
         await assertAiBudget(
           ctx,

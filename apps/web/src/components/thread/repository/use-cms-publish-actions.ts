@@ -1,8 +1,8 @@
 /**
- * The publish popover's write side: one `submit` entry point that publishes or
+ * The publish dialog's write side: one `submit` entry point that publishes or
  * submits for review depending on the mode, plus the two discard paths — and
  * the in-flight/error state they own. The sequence itself is shared with the
- * coding session's dialog and lives in {@link ./publish-flow.ts}.
+ * sandbox runtime and lives in {@link ./publish-flow.ts}.
  */
 
 import type { MutableRefObject } from "react";
@@ -33,7 +33,7 @@ export type CmsPublishMode = "publish" | "review";
 interface CmsPublishActionsArgs {
   mode: CmsPublishMode;
   target: PublishTarget;
-  /** The version note, authored in the popover — title on line 1, body below. */
+  /** The version note, authored in the dialog — title on line 1, body below. */
   note: string;
   /** Every changed path, from the manifest — what "discard all" reverts. */
   allPaths: string[];
@@ -193,7 +193,7 @@ export function useCmsPublishActions(
           threadId: target.threadId,
         },
         filepaths,
-        { fastPreview: true },
+        target.fastPreview ? { fastPreview: true } : undefined,
       );
       toast.success(success);
       await refresh();

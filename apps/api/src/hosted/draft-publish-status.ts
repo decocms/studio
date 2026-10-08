@@ -59,7 +59,7 @@ export interface HostedDraftRequest {
 export async function loadHostedDraft(req: HostedDraftRequest) {
   const site = await ownedProjectSite(
     req.storage.orgSites,
-    req.metadata,
+    req.virtualMcpId,
     req.organizationId,
   );
   const drafts = site ? hostedDrafts(req.storage.kv) : null;

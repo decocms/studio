@@ -50,7 +50,7 @@ export interface ResolveTierOptions {
    *
    * Off by default because most `resolveTier` callers are not "this user's
    * chat": automations run as their creator, and the task-board super agent,
-   * background tools, commit-message suggestion and review judge all resolve a
+   * background tools and review judge all resolve a
    * tier on someone's behalf. An admin who sets an automation to "smart" must
    * not have it silently change model when its creator later edits a personal
    * chat preference. Interactive chat (decopilot/routes.ts) opts in.

@@ -28,7 +28,11 @@ import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
-import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import {
+  OrgSiteConflictError,
+  OrgSiteLinkError,
+  OrgSiteStorage,
+} from "@/storage/org-sites";
 import { VirtualMCPStorage } from "@/storage/virtual";
 import {
   backfillSiteClaims,
@@ -653,30 +657,47 @@ export function createAdminRoutes(): Hono<Env> {
       audit("org_site_claim", {});
       return c.json({ site });
     } catch (error) {
+      if (error instanceof OrgSiteLinkError) {
+        return c.json({ error: error.code, message: error.message }, 409);
+      }
       if (!(error instanceof OrgSiteConflictError)) throw error;
       // Owned by another org: refuse unless the caller explicitly confirms the move.
       if (!reassign) {
-        const owner = await db
-          .selectFrom("organization")
-          .select(["name", "slug"])
-          .where("id", "=", error.ownerOrganizationId)
-          .executeTakeFirst();
+        const [owner, row] = await Promise.all([
+          db
+            .selectFrom("organization")
+            .select(["name", "slug"])
+            .where("id", "=", error.ownerOrganizationId)
+            .executeTakeFirst(),
+          storage.getBySlug(slug),
+        ]);
         return c.json(
           {
             error: "owned_by_other_org",
             ownerOrganizationId: error.ownerOrganizationId,
             ownerOrganizationName: owner?.name ?? null,
             ownerOrganizationSlug: owner?.slug ?? null,
+            // A slug a project has used is never moved (its tokens live on).
+            reassignable: !row?.linkedAt,
           },
           409,
         );
       }
-      const site = await storage.reassignSite({
-        slug,
-        organizationId: orgId,
-        source: "manual",
-        by: actorId,
-      });
+      let site: Awaited<ReturnType<typeof storage.reassignSite>>;
+      try {
+        site = await storage.reassignSite({
+          slug,
+          organizationId: orgId,
+          source: "manual",
+          by: actorId,
+        });
+      } catch (reassignError) {
+        if (!(reassignError instanceof OrgSiteLinkError)) throw reassignError;
+        return c.json(
+          { error: reassignError.code, message: reassignError.message },
+          409,
+        );
+      }
       audit("org_site_reassign", {
         from_organization_id: error.ownerOrganizationId,
       });
@@ -704,7 +725,13 @@ export function createAdminRoutes(): Hono<Env> {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    let released: boolean;
+    try {
+      released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    } catch (error) {
+      if (!(error instanceof OrgSiteLinkError)) throw error;
+      return c.json({ error: error.code, message: error.message }, 409);
+    }
     if (!released) {
       return c.json({ error: "Site not found for this organization" }, 404);
     }
@@ -929,13 +956,14 @@ export function createAdminRoutes(): Hono<Env> {
   });
 
   /**
-   * Claims, for its org, the site (`metadata.siteSlug`) of every existing
-   * Blocks v8 project (main's `.deco/schema.gen.json` says `blocksMajor: 8`),
-   * as project creation now does. Safe to re-run; never takes a slug another
-   * org or deco.cx has (reported as `conflicts`), and claims a free slug that
-   * two orgs' projects name for neither (`ambiguous`). A dry run unless the
-   * body says `{"dryRun": false}`. A route rather than a migration: telling a
-   * v8 project needs a GitHub read.
+   * Links every existing Blocks v8 project (main's `.deco/schema.gen.json`
+   * says `blocksMajor: 8`) to the site it names (`metadata.siteSlug`) in
+   * `org_sites`, as project creation now does, claiming a free slug for its
+   * org first. Safe to re-run; never takes a slug another org, project or
+   * deco.cx has, nor a deleted org's (reported as `refused`), and links
+   * nobody to a slug several orgs' or projects name (`ambiguous`). A dry run
+   * unless the body says `{"dryRun": false}`. A route rather than a
+   * migration: telling a v8 project needs a GitHub read.
    */
   app.post("/hosted/site-claims/backfill", async (c) => {
     const raw = (await c.req.json().catch(() => ({}))) as {
@@ -1030,8 +1058,8 @@ export function createAdminRoutes(): Hono<Env> {
       actor_user_id: actorId,
       ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
       dry_run: dryRun,
-      claimed: report.claimed.length,
-      conflicts: report.conflicts.length,
+      linked: report.linked.length,
+      refused: report.refused.length,
       ambiguous: report.ambiguous.length,
       errors: report.errors.length,
     });

@@ -610,7 +610,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("a siteSlug the org doesn't own gets no hosted features", async ({
+  test("a project's site can't be changed, so hosted keys stay on it", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -619,35 +619,30 @@ test.describe("content protocol on GitHub", () => {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
       await enableContentProtocol(ctx, project.org);
-      // Another org's site: members can edit metadata.siteSlug, so it must
-      // never decide which site's delivery objects or tokens Studio writes.
-      await callSelfMcpTool(ctx, project.org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
-        id: project.vmcpId,
-        data: { metadata: { siteSlug: uniqueOwner() } },
-      });
+      // Hosted ownership is the `org_sites` link made at creation, never
+      // `metadata.siteSlug`, and the API refuses to rewrite the slug.
+      await expect(
+        callSelfMcpTool(ctx, project.org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
+          id: project.vmcpId,
+          data: { metadata: { siteSlug: uniqueOwner() } },
+        }),
+      ).rejects.toThrow(/site id can't change/);
       const hosted = `/api/${project.org}/hosted/${project.vmcpId}`;
-      expect((await ctx.post(`${hosted}/site-tokens`)).status()).toBe(404);
-      expect((await ctx.get(`${hosted}/releases`)).status()).toBe(404);
-      expect(
-        (
-          await ctx.post(`${hosted}/releases/current`, {
-            data: { sha: "0".repeat(40) },
-          })
-        ).status(),
-      ).toBe(404);
+      const listed = await (await ctx.get(`${hosted}/site-tokens`)).json();
+      expect((listed as { site: string }).site).toBe(project.owner);
     } finally {
       await ctx.dispose();
     }
   });
 
-  test("creating a project claims its siteSlug, never another org's", async ({
+  test("creating a project links its siteSlug, never another org's", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
     const other = await newApiContext(playwright);
     try {
       // `setUp` creates the project with `siteSlug: owner`; nothing else
-      // claims it, so site tokens working proves the claim.
+      // links it, so site tokens working proves the link.
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
@@ -655,7 +650,7 @@ test.describe("content protocol on GitHub", () => {
       const tokens = `/api/${project.org}/hosted/${project.vmcpId}/site-tokens`;
       expect((await ctx.post(tokens)).status()).toBe(200);
 
-      // Another org naming the same site gets no claim and no hosted features.
+      // Another org naming the same site gets no link and no hosted features.
       const user = await signUpViaApi(other);
       await enableContentProtocol(other, user.orgSlug);
       const copy = await createFastPreviewProject(other, user.orgSlug, {

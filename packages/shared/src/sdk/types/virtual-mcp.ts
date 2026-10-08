@@ -844,7 +844,9 @@ const VirtualMcpMetadataFields = {
     .string()
     .nullable()
     .optional()
-    .describe("Linked asset site slug (managed storage tenancy)"),
+    .describe(
+      "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
+    ),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z
@@ -860,13 +862,6 @@ const VirtualMcpMetadataFields = {
     .optional()
     .describe(
       "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
-    ),
-  publishVisualReview: z
-    .boolean()
-    .nullable()
-    .optional()
-    .describe(
-      "Fast Preview publish: opt in to a fullscreen review that renders each changed page as published and with the draft, side by side, instead of the JSON diff popover.",
     ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,

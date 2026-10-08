@@ -239,7 +239,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     previewServerUrl,
     site: await ownedProjectSite(
       ctx.storage.orgSites,
-      metadata,
+      virtualMcpId,
       organization.id,
     ),
   });

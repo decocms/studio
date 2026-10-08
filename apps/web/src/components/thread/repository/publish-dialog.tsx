@@ -1,71 +1,92 @@
-import type { RepoToolTarget } from "@/lib/repository-binding.ts";
-import type { PublishTarget } from "./publish-flow.ts";
-import type { PrSummary } from "./use-pr-data.ts";
-import type { PublishPolicy } from "./sandbox-git-api.ts";
-import type { SandboxProxyRef } from "@/sdk/sandbox-url";
-import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
+/**
+ * The shared content-first publish surface — presentation only: reads come
+ * from {@link useCmsPublishState}, writes from {@link useCmsPublishActions}.
+ * Loads in two beats — see {@link useCmsPublishState} for what each decides.
+ */
 
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@decocms/ui/components/tabs.tsx";
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
-import { ArrowRight, Eye, GitBranch01, Stars01 } from "@untitledui/icons";
-import { useRef, useState } from "react";
-import { toast } from "sonner";
-import { useT } from "@/i18n/use-t.ts";
+  AlertTriangle,
+  CheckCircle,
+  Eye,
+  GitPullRequest,
+  Globe01,
+  RefreshCw01,
+} from "@untitledui/icons";
+import { Suspense, useRef, useState, type ReactNode } from "react";
+import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import { ErrorBoundary } from "@/components/error-boundary.tsx";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { GitDiffList } from "./git-diff-list.tsx";
+import { formatTimeAgo } from "@/lib/format-time.ts";
 import {
-  notifySubmittedForReview,
-  publishMessageParts,
-  reportPublishFailure,
-  runPublishFlow,
-  runSubmitForReviewFlow,
-} from "./publish-flow.ts";
-
-import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
-import { publishToBaseLabel } from "./publish-label.ts";
-import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
+  lastPreviewPageKey,
+  readLastPreviewPage,
+} from "@/components/sandbox/preview/last-preview-page.ts";
+import { changeId, PublishChangeCard } from "./cms-publish-change-card.tsx";
+import { PublishCompare } from "./cms-publish-compare.tsx";
+import type { CompareDraft } from "./cms-publish-compare-path.ts";
 import {
-  combinePublishDiffs,
-  countGitChanges,
-  discardGitFiles,
-  fetchGitDiff,
-  fetchGitStatus,
-  fetchSuggestCommitMessage,
-  hasGitLocalWork,
-  hasLocalWorkToPush,
-  hasUnpublishedWork,
-  isSandboxUnreachable,
+  PublishFrame,
+  PublishGhost,
+  PublishGhostCard,
+  PublishListRegion,
+  type PublishSurfaceState,
+} from "./cms-publish-frame.tsx";
+import { lastPublishAttribution } from "./pr-attribution.ts";
+import {
+  buildAutoNote,
+  resolveVersionNote,
+  type PublishChange,
+} from "./publish-change-summary.ts";
+import type { PublishTarget } from "./publish-flow.ts";
+import {
   readGitHeadBranch,
-  shouldUseBaseDiff,
-  type GitDiffResult,
-  type GitStatus,
+  reviewDiffSignature,
+  type PublishPolicy,
 } from "./sandbox-git-api.ts";
-
+import type { PrSummary } from "./use-pr-data.ts";
+import {
+  useCmsPublishActions,
+  type CmsPublishMode,
+} from "./use-cms-publish-actions.ts";
+import { useCmsPublishState } from "./use-cms-publish-state.ts";
+import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
 
-export type PublishDialogIntent = "open-pr" | "publish-only";
+export type { CmsPublishMode };
 
 export interface PublishDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Defaults to `publish`; see the module doc for what each mode runs. */
+  mode?: CmsPublishMode;
+  /** Sandbox-less Fast Preview; otherwise a coding session's sandbox answers. */
+  fastPreview: boolean;
+  /** Re-provisions a coding session's sandbox when it stops answering. */
+  recoverSandbox?: () => Promise<unknown>;
   orgSlug: string;
-  orgId: string;
   virtualMcpId: string;
   branch: string;
   baseBranch: string;
@@ -73,682 +94,740 @@ export interface PublishDialogProps {
   repoTarget: RepoToolTarget;
   owner: string;
   repo: string;
-  previewUrl?: string | null;
-  /** The code agent's publish policy — gates the direct Publish button. */
   publishPolicy: PublishPolicy;
-  /**
-   * `open-pr` — push local work and open a PR for review (default).
-   * `publish-only` — direct publish to base; single green Publish button.
-   */
-  dialogIntent?: PublishDialogIntent;
-  /** Branch HEAD for base…head diff when `dialogIntent` is `open-pr`. */
-  headSha?: string | null;
-  /** When set, the dialog commits to the branch and updates this open PR. */
+  /** Where Preview opens: Fast Preview's draft URL, or the sandbox preview. */
+  draftPreviewUrl: string | null;
+  destinationHost: string | null;
+  /** Live site origin the review pane renders each changed page against. */
+  previewServerUrl: string | null;
+  /** Where the review pane renders the changes; see {@link CompareDraft}. */
+  compareDraft: CompareDraft | null;
+  /** The last publish, warmed by the header — never blocks this surface. */
+  lastPublishedPr?: PrSummary | null;
+  /** Blocked gate: hand this surface over to review mode. */
+  onRequestApproval: () => void;
+  /** When set, publish updates this open PR instead of opening a new one. */
   openPullRequest?: PrSummary | null;
-  /** Called after commit/push or PR open/merge so the header can refresh. */
   onPullRequestChanged?: () => void | Promise<void>;
-  /** Called after a successful publish (squash-merge to base). */
   onPublished?: () => void | Promise<void>;
 }
 
 export function PublishDialog(props: PublishDialogProps) {
-  const [session, setSession] = useState(0);
+  /** Set by the body while the publish flow runs — an outside click or Escape
+   *  must not dismiss the only surface showing that progress. */
+  const publishLockRef = useRef(false);
+  const t = useT();
 
   const handleOpenChange = (next: boolean) => {
-    if (next) setSession((s) => s + 1);
+    if (!next && publishLockRef.current) return;
     props.onOpenChange(next);
   };
 
   return (
     <Dialog open={props.open} onOpenChange={handleOpenChange}>
-      {props.open ? (
-        <PublishDialogBody
-          key={session}
-          {...props}
-          onOpenChange={handleOpenChange}
-        />
-      ) : null}
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col md:flex-row md:h-[calc(100dvh-6rem)] md:w-[calc(100vw-6rem)] gap-0 overflow-hidden p-0 sm:max-w-none"
+        closeButtonClassName="top-3.5 right-3.5"
+      >
+        <DialogTitle className="sr-only">
+          {props.mode === "review"
+            ? t("thread.publishPopover.submitForReview")
+            : t("thread.publishPopover.publish")}
+        </DialogTitle>
+        {props.open ? (
+          <CmsPublishBody {...props} publishLockRef={publishLockRef} />
+        ) : null}
+      </DialogContent>
     </Dialog>
   );
 }
 
-function PublishDialogBody({
+/** Only these bases are production; publishing elsewhere is not "in production". */
+function isProductionBranch(base: string): boolean {
+  return ["main", "master"].includes(base.trim().toLowerCase());
+}
+
+/** Review panes kept alive at once — each holds up to two full-page frames. */
+const MAX_LIVE_PANES = 4;
+
+/** Above the list on narrow screens, beside it from `md` up. */
+const REVIEW_PANE = "flex h-[45%] min-h-0 min-w-0 shrink-0 md:h-auto md:flex-1";
+
+/** The review pane beside the list column, whose header clears the close button. */
+function ReviewLayout({ list, pane }: { list: ReactNode; pane: ReactNode }) {
+  return (
+    <>
+      {pane}
+      <div className="flex min-h-0 w-full flex-1 flex-col max-md:border-t md:w-[380px] md:flex-none md:shrink-0 md:border-l md:[&>[data-publish-state]>:first-child]:pr-12">
+        {list}
+      </div>
+    </>
+  );
+}
+
+function ReviewPaneGhost() {
+  return (
+    <div className={cn(REVIEW_PANE, "bg-muted/40 p-3")}>
+      <PublishGhost className="h-full w-full rounded-lg" />
+    </div>
+  );
+}
+
+function HeaderLine({
+  mode,
+  title,
+  subLine,
+  trailing,
+}: {
+  mode: CmsPublishMode;
+  title: ReactNode;
+  subLine?: ReactNode;
+  trailing?: ReactNode;
+}) {
+  const Icon = mode === "review" ? GitPullRequest : Globe01;
+  return (
+    <>
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Icon className="size-4 shrink-0 text-muted-foreground" />
+        {title}
+        {trailing}
+      </div>
+      {subLine ? (
+        <div className="pl-6 text-xs text-muted-foreground">{subLine}</div>
+      ) : null}
+    </>
+  );
+}
+
+/** Preview always works: its URL is a prop, settled before this surface opened. */
+function PreviewButton({
+  draftPreviewUrl,
+  t,
+}: {
+  draftPreviewUrl: string | null;
+  t: TFunction;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => {
+        if (draftPreviewUrl) {
+          window.open(draftPreviewUrl, "_blank", "noopener,noreferrer");
+        }
+      }}
+      disabled={!draftPreviewUrl}
+    >
+      <Eye className="size-4" />
+      {t("thread.publishPopover.preview")}
+    </Button>
+  );
+}
+
+function CmsPublishSkeleton({
+  mode,
+  draftPreviewUrl,
+}: {
+  mode: CmsPublishMode;
+  draftPreviewUrl: string | null;
+}) {
+  const t = useT();
+  return (
+    <ReviewLayout
+      pane={<ReviewPaneGhost />}
+      list={
+        <PublishFrame
+          state="loading"
+          header={
+            <HeaderLine
+              mode={mode}
+              title={<PublishGhost className="h-3.5 w-48" />}
+            />
+          }
+          body={
+            <PublishListRegion>
+              <div className="space-y-1.5">
+                <PublishGhostCard />
+                <PublishGhostCard />
+                <PublishGhostCard />
+              </div>
+            </PublishListRegion>
+          }
+          note={
+            <>
+              <PublishGhost className="h-3 w-20" />
+              <PublishGhost className="h-14 w-full rounded-lg" />
+            </>
+          }
+          footer={
+            <div className="flex gap-2">
+              <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+              <Button
+                type="button"
+                variant={mode === "review" ? "default" : "brand"}
+                className="flex-1"
+                disabled
+              >
+                {mode === "review"
+                  ? t("thread.publishPopover.submitForReview")
+                  : t("thread.publishPopover.publish")}
+              </Button>
+            </div>
+          }
+        />
+      }
+    />
+  );
+}
+
+function CmsPublishLoadError({
+  mode,
+  draftPreviewUrl,
+  message,
+  onRetry,
+}: {
+  mode: CmsPublishMode;
+  draftPreviewUrl: string | null;
+  message: string;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  return (
+    <ReviewLayout
+      pane={<div className={cn(REVIEW_PANE, "bg-muted/40")} />}
+      list={
+        <PublishFrame
+          state="ready"
+          header={
+            <HeaderLine
+              mode={mode}
+              title={
+                <span className="truncate">
+                  {t("thread.publishPopover.loadFailed")}
+                </span>
+              }
+            />
+          }
+          body={<p className="px-4 py-6 text-xs text-destructive">{message}</p>}
+          footer={
+            <div className="flex gap-2">
+              <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={onRetry}
+              >
+                <RefreshCw01 className="size-4" />
+                {t("thread.publishPopover.retry")}
+              </Button>
+            </div>
+          }
+        />
+      }
+    />
+  );
+}
+
+function CmsPublishBody(
+  props: PublishDialogProps & {
+    publishLockRef: React.MutableRefObject<boolean>;
+  },
+) {
+  const mode = props.mode ?? "publish";
+  return (
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          fallback={({ error, resetError }) => (
+            <CmsPublishLoadError
+              mode={mode}
+              draftPreviewUrl={props.draftPreviewUrl}
+              message={error?.message ?? ""}
+              onRetry={() => {
+                reset();
+                resetError();
+              }}
+            />
+          )}
+        >
+          <Suspense
+            fallback={
+              <CmsPublishSkeleton
+                mode={mode}
+                draftPreviewUrl={props.draftPreviewUrl}
+              />
+            }
+          >
+            <CmsPublishContent {...props} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
+  );
+}
+
+function CmsPublishContent({
+  publishLockRef,
   onOpenChange,
+  mode = "publish",
+  fastPreview,
+  recoverSandbox,
   orgSlug,
-  orgId,
   virtualMcpId,
   branch,
   baseBranch,
   repoTarget,
   owner,
   repo,
-  previewUrl,
   publishPolicy,
-  dialogIntent = "open-pr",
-  headSha = null,
+  draftPreviewUrl,
+  destinationHost,
+  previewServerUrl,
+  compareDraft,
+  lastPublishedPr = null,
+  onRequestApproval,
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
-}: PublishDialogProps) {
+}: PublishDialogProps & {
+  publishLockRef: React.MutableRefObject<boolean>;
+}) {
   const t = useT();
-  const selfClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId,
-    orgSlug,
-  });
+  /** The session publishing — the git routes resolve their runtime from it. */
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const { data: session } = authClient.useSession();
-  const startSandbox = useSandboxStart(selfClient);
-  /** This dialog always renders inside a thread; the ref is what the git routes resolve their runtime from. */
-  const sandboxRef: SandboxProxyRef = {
+
+  /** Fills a dynamic page's `:param`s when it is the page last previewed. */
+  const lastPreviewPage = readLastPreviewPage(
+    lastPreviewPageKey(orgSlug, virtualMcpId, branch),
+  );
+
+  const {
+    status: gitStatus,
+    summary,
+    allPaths,
+    discardablePaths,
+    changedFilesTotal,
+    changedFilesTruncated,
+    headSha,
+    diff: gitDiff,
+    bodiesPending,
+    bodiesFailed,
+    cardsPending,
+    refresh,
+  } = useCmsPublishState({
     orgSlug,
     virtualMcpId,
     branch,
-    threadId: useOptionalChatTask()?.taskId ?? null,
-  };
+    threadId,
+    baseBranch,
+    fastPreview,
+    recoverSandbox,
+  });
 
-  const coAuthor = coAuthorFromSessionUser(session?.user);
-
-  const commitToOpenPr = openPullRequest?.state === "open";
-  const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
-  /** Side "Publish" button — direct publish to base, single green button. */
-  const isPublishOnly = dialogIntent === "publish-only";
-
-  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
-  const [gitDiff, setGitDiff] = useState<GitDiffResult | null>(null);
-  const [isLoadingGitDiff, setIsLoadingGitDiff] = useState(true);
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [publishTitle, setPublishTitle] = useState("");
-  const [publishBody, setPublishBody] = useState("");
-  const [publishError, setPublishError] = useState<string>();
-  const [isSubmittingForReview, setIsSubmittingForReview] = useState(false);
-  const [submitForReviewError, setSubmitForReviewError] = useState<string>();
+  /** The author's text once they type — until then the note is derived, so a
+   *  change list that lands after mount still describes itself. */
+  const [editedNote, setEditedNote] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
-  const [isDiscardingAll, setIsDiscardingAll] = useState(false);
-  const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
-
-  const loadStartedRef = useRef(false);
-  const reprovisionAttemptedRef = useRef(false);
-
-  const baseDiffOpts = {
-    base: baseBranch,
-    ...(headSha ? { headSha } : {}),
+  /** The card shown in the review pane. */
+  const [activeId, setActiveId] = useState<string | null>(null);
+  /** Cards visited, most recent first — their panes stay mounted. */
+  const [visitedIds, setVisitedIds] = useState<string[]>([]);
+  const select = (id: string) => {
+    setActiveId(id);
+    setVisitedIds((current) => [id, ...current.filter((v) => v !== id)]);
   };
+  /** Only one card may arm its discard at a time — it is a one-click destroy. */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // Direct publish squash-merges base…HEAD PLUS the working tree, so show and
-  // gate the union of both — a single daemon diff only returns one. For every
-  // other flow a single diff is the whole story (working tree when dirty, else
-  // base…head), picked by shouldUseBaseDiff.
-  const loadPublishDiff = async (status: GitStatus): Promise<GitDiffResult> => {
-    const baseDiff =
-      (status.aheadOfBase ?? 0) > 0
-        ? await fetchGitDiff(sandboxRef, baseDiffOpts)
-        : null;
-    const workingDiff = hasGitLocalWork(status)
-      ? await fetchGitDiff(sandboxRef)
-      : null;
-    return combinePublishDiffs(baseDiff, workingDiff);
-  };
+  const note = resolveVersionNote(editedNote, buildAutoNote(summary));
+  const changes = [...summary.pages, ...summary.blocks, ...summary.other];
+  /** Falls back to the first change, so a discard never leaves the pane blank. */
+  const selected =
+    changes.find((change) => changeId(change) === activeId) ??
+    changes[0] ??
+    null;
+  const selectedId = selected ? changeId(selected) : null;
+  /** The selected pane, the recently visited ones, then the next in the list —
+   *  mounted (hidden) so switching cards never waits on a page load again. */
+  const liveIds = [
+    ...new Set([
+      ...(selectedId ? [selectedId] : []),
+      ...visitedIds,
+      ...changes.map(changeId),
+    ]),
+  ]
+    .filter((id) => changes.some((change) => changeId(change) === id))
+    .slice(0, MAX_LIVE_PANES);
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  // A hosted v8 draft has no pull request: review mode doesn't apply to it.
+  const isReview = mode === "review" && !hosted;
+  const surfaceState: PublishSurfaceState = cardsPending
+    ? "loading"
+    : bodiesPending
+      ? "manifest"
+      : "ready";
 
-  const loadGitState = async () => {
-    const status = await fetchGitStatus(sandboxRef);
-    const diff = isPublishOnly
-      ? await loadPublishDiff(status)
-      : await fetchGitDiff(
-          sandboxRef,
-          shouldUseBaseDiff(status, { openPrFromCommits, commitToOpenPr })
-            ? baseDiffOpts
-            : undefined,
-        );
-    setGitStatus(status);
-    setGitDiff(diff);
-    setPublishTitle(
-      t("thread.publishDialog.changesFrom", {
-        branch: status.current ?? branch,
-      }),
-    );
-
-    setIsGeneratingSuggestion(true);
-    fetchSuggestCommitMessage(sandboxRef, {
-      status,
-      diff,
-    })
-      .then((commitSuggestion) => {
-        setPublishTitle(commitSuggestion.title);
-        setPublishBody(commitSuggestion.body);
-      })
-      .catch(() => {
-        /* best-effort */
-      })
-      .finally(() => setIsGeneratingSuggestion(false));
-  };
-
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on dialog open
-  if (!loadStartedRef.current) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on dialog open
-    loadStartedRef.current = true;
-    void (async () => {
-      setIsLoadingGitDiff(true);
-      setPublishError(undefined);
-      setGitDiff(null);
-      setPublishTitle("");
-      setPublishBody("");
-      setSubmitForReviewError(undefined);
-      try {
-        await loadGitState();
-      } catch (error) {
-        // Preview can stay live via the gateway while studio's daemon proxy
-        // still holds a stale handle. Re-provision once, then retry — same
-        // self-heal path as preview.tsx's notFound → SANDBOX_START flow.
-        if (isSandboxUnreachable(error) && !reprovisionAttemptedRef.current) {
-          reprovisionAttemptedRef.current = true;
-          try {
-            await startSandbox.mutateAsync({ virtualMcpId, branch });
-            await loadGitState();
-            return;
-          } catch (retryErr) {
-            setPublishError(
-              retryErr instanceof Error
-                ? retryErr.message
-                : t("thread.publishDialog.failedLoadAfterReprovision"),
-            );
-            return;
-          }
-        }
-        setPublishError(
-          error instanceof Error
-            ? error.message
-            : t("thread.publishDialog.failedLoad"),
-        );
-      } finally {
-        setIsLoadingGitDiff(false);
-      }
-    })();
-  }
-
-  const headBranch = readGitHeadBranch(gitStatus) ?? branch;
-  const publishLabel = publishToBaseLabel(baseBranch, t);
-
-  const regenerateSuggestion = () => {
-    if (!gitStatus || !gitDiff) return;
-    setIsGeneratingSuggestion(true);
-    void fetchSuggestCommitMessage(sandboxRef, {
-      status: gitStatus,
-      diff: gitDiff,
-    })
-      .then((data) => {
-        setPublishTitle(data.title);
-        setPublishBody(data.body);
-      })
-      .catch(() => {
-        /* best-effort */
-      })
-      .finally(() => setIsGeneratingSuggestion(false));
-  };
-
-  const changesCount = countGitChanges(gitStatus);
-  const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
-
-  // The direct Publish button is only shown in publish-only intent, so only
-  // spend an AI judge call there (`judgeEnabled`). Shared with the header gate.
-  const { gate: publishGate } = useResolvedPublishGate({
+  // Submitting for review IS the escalation the gate asks for — never judge it.
+  const { gate } = useResolvedPublishGate({
     orgSlug,
     virtualMcpId,
     branch,
-    threadId: sandboxRef.threadId,
+    threadId,
+    fastPreview,
     status: gitStatus,
     diff: gitDiff,
+    paths: allPaths,
     policy: publishPolicy,
-    judgeEnabled: isPublishOnly,
+    judgeEnabled: !isReview,
   });
 
-  const hasLocalUnpublished = openPrFromCommits
-    ? hasLocalWorkToPush(gitStatus)
-    : hasUnpublishedWork(gitStatus, gitDiff);
-  const canSubmit =
-    !isLoadingGitDiff && (hasLocalUnpublished || openPrFromCommits);
-  const canPublish = canSubmit && publishGate.allowed;
-  // The gate's `reason` is the AI judge's explanation, written in the UI
-  // language (see useSmartReviewVerdict); show it when present, else a
-  // localized generic message.
-  const publishDisabledReason =
-    !canSubmit || publishGate.allowed
-      ? null
-      : publishGate.pending
-        ? t("thread.publishDialog.reviewingChanges")
-        : (publishGate.reason ?? t("thread.publishDialog.publishNeedsReview"));
-
-  /** There is committed or uncommitted local work that can be pushed + PR'd. */
-  const showSubmitForReviewButton =
-    openPrFromCommits || (!commitToOpenPr && (gitStatus?.aheadOfBase ?? 0) > 0);
-  const canSubmitForReview =
-    !isLoadingGitDiff &&
-    (showSubmitForReviewButton || hasLocalUnpublished) &&
-    (diffCount > 0 || hasLocalUnpublished);
-
-  const publishTarget: PublishTarget = {
+  const commitToOpenPr = openPullRequest?.state === "open";
+  const target: PublishTarget = {
     orgSlug,
     virtualMcpId,
     branch,
-    threadId: sandboxRef.threadId,
+    threadId,
+    fastPreview,
     baseBranch,
     target: repoTarget,
     owner,
     repo,
-    headBranch: headBranch,
-    coAuthor,
+    headBranch: readGitHeadBranch(gitStatus) ?? branch,
+    coAuthor: coAuthorFromSessionUser(session?.user),
     expectedHeadSha: headSha ?? undefined,
+    ...(!fastPreview && gitDiff
+      ? { expectedDiffSignature: reviewDiffSignature(gitDiff) }
+      : {}),
   };
 
-  const messageParts = () =>
-    publishMessageParts({
-      title: publishTitle,
-      body: publishBody,
-      fallbackTitle: t("thread.publishDialog.changesFrom", {
-        branch: headBranch,
-      }),
-    });
+  const {
+    isPublishing,
+    isDiscarding,
+    publishError,
+    submit,
+    discardChange,
+    discardAll,
+  } = useCmsPublishActions({
+    mode: isReview ? "review" : "publish",
+    target,
+    note,
+    allPaths,
+    destinationHost,
+    publishLockRef,
+    onOpenChange,
+    refresh,
+    onPullRequestChanged,
+    onPublished,
+    hosted,
+  });
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (isPublishing || isSubmittingForReview) return;
-    onOpenChange(nextOpen);
-  };
+  const canDiscard = (paths: readonly string[]) =>
+    discardablePaths === null || paths.every((p) => discardablePaths.has(p));
 
-  const handlePublish = async () => {
-    setIsPublishing(true);
-    setPublishError(undefined);
-    try {
-      await runPublishFlow(publishTarget, messageParts(), t);
+  const canSubmit =
+    !isPublishing && summary.count > 0 && (isReview || gate.allowed);
 
-      toast.success(t("thread.publishDialog.publishedTo", { baseBranch }));
-      handleOpenChange(false);
-      setGitDiff(null);
-      setPublishTitle("");
-      setPublishBody("");
-      await onPullRequestChanged?.();
-      await onPublished?.();
-    } catch (error) {
-      const failure = reportPublishFailure(error, t);
-      setPublishError(failure.message);
-      if (failure.pullRequestOpened) await onPullRequestChanged?.();
-    } finally {
-      setIsPublishing(false);
-    }
-  };
+  const headerTitle = isReview
+    ? summary.count === 0
+      ? t("thread.publishPopover.submitForReview")
+      : summary.count === 1
+        ? t("thread.publishPopover.submitOneForReview")
+        : t("thread.publishPopover.submitCountForReview", {
+            count: summary.count,
+          })
+    : summary.count === 0
+      ? t("thread.publishPopover.publish")
+      : !isProductionBranch(baseBranch)
+        ? summary.count === 1
+          ? t("thread.publishPopover.publishOne")
+          : t("thread.publishPopover.publishCount", { count: summary.count })
+        : summary.count === 1
+          ? t("thread.publishPopover.publishOneInProduction")
+          : t("thread.publishPopover.publishCountInProduction", {
+              count: summary.count,
+            });
 
-  const handleDiscardFile = async (filepath: string) => {
-    try {
-      await discardGitFiles(sandboxRef, [filepath]);
-      toast.success(t("thread.publishDialog.discardedChanges", { filepath }));
-      setGitDiff((prev) => {
-        if (!prev) return prev;
-        const next = { ...prev, diffs: { ...prev.diffs } };
-        delete next.diffs[filepath];
-        return next;
+  /** Review mode names the PR it will update; publish mode, the last release. */
+  const subLine = (() => {
+    if (isReview && commitToOpenPr) {
+      return t("thread.publishPopover.updatesPullRequest", {
+        number: openPullRequest.number,
       });
-      const status = await fetchGitStatus(sandboxRef);
-      setGitStatus(status);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishDialog.failedDiscardChanges"),
-      );
     }
+    const pr = lastPublishedPr;
+    if (!pr?.mergedAt) return null;
+    const when = formatTimeAgo(new Date(pr.mergedAt));
+    const name = lastPublishAttribution(pr);
+    return name
+      ? t("thread.publishPopover.lastPublishedBy", { when, name })
+      : t("thread.publishPopover.lastPublished", { when });
+  })();
+
+  const primaryLabel = isReview
+    ? t("thread.publishPopover.submitForReview")
+    : summary.count === 1
+      ? t("thread.publishPopover.publishOne")
+      : summary.count > 1
+        ? t("thread.publishPopover.publishCount", { count: summary.count })
+        : t("thread.publishPopover.publish");
+
+  const renderGroup = (label: string, changes: PublishChange[]) => {
+    if (changes.length === 0) return null;
+    return (
+      <div className="space-y-1.5">
+        <div className="px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+          {label}
+        </div>
+        {changes.map((change) => {
+          const id = changeId(change);
+          return (
+            <PublishChangeCard
+              key={id}
+              change={change}
+              bodyPending={bodiesPending}
+              selected={selected !== null && changeId(selected) === id}
+              onSelect={() => select(id)}
+              confirming={confirmingId === id}
+              onConfirmingChange={(confirming) =>
+                setConfirmingId(confirming ? id : null)
+              }
+              onDiscard={
+                canDiscard(change.filepaths)
+                  ? () => void discardChange(change)
+                  : undefined
+              }
+              isPublishing={isPublishing}
+              isDiscarding={isDiscarding}
+            />
+          );
+        })}
+      </div>
+    );
   };
 
-  const handleDiscardAll = async () => {
-    if (!gitDiff) return;
-    setDiscardAllConfirm(false);
-    setIsDiscardingAll(true);
-    try {
-      const allFiles = Object.keys(gitDiff.diffs);
-      if (allFiles.length === 0) return;
-      await discardGitFiles(sandboxRef, allFiles);
-      toast.success(t("thread.publishDialog.allChangesDiscarded"));
-      setGitDiff(null);
-      const status = await fetchGitStatus(sandboxRef);
-      setGitStatus(status);
-      handleOpenChange(false);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishDialog.failedDiscardChanges"),
+  const gateRow = (() => {
+    if (isReview || summary.count === 0) return null;
+    if (gate.pending) {
+      return (
+        <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
+          <Spinner className="size-3.5 motion-reduce:animate-none" />
+          {t("thread.publishPopover.reviewing")}
+        </div>
       );
-    } finally {
-      setIsDiscardingAll(false);
     }
-  };
+    // Allowed → no row: content-only diffs never ran the judge, so stay silent.
+    if (gate.allowed) return null;
+    return (
+      <div className="flex items-start gap-2 border-t px-4 py-2.5 text-xs text-warning">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+        <span>
+          {gate.reason ?? t("thread.publishPopover.needsReviewGeneric")}
+        </span>
+      </div>
+    );
+  })();
 
-  const handleSubmitForReview = async () => {
-    setIsSubmittingForReview(true);
-    setSubmitForReviewError(undefined);
-    try {
-      const pr = await runSubmitForReviewFlow(publishTarget, messageParts());
+  // Never offer an all-files action over a set the server truncated.
+  const discardAllControl =
+    summary.count <= 1 ||
+    changedFilesTruncated ||
+    !canDiscard(allPaths) ? null : (
+      <>
+        <button
+          type="button"
+          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          onClick={() => setDiscardAllConfirm(true)}
+          disabled={isPublishing || isDiscarding}
+        >
+          {t("thread.publishPopover.discardAll")}
+        </button>
+        <AlertDialog
+          open={discardAllConfirm}
+          onOpenChange={setDiscardAllConfirm}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("thread.publishPopover.discardAllTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("thread.publishPopover.discardAllConfirm")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("thread.publishDialog.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => void discardAll()}
+                disabled={isDiscarding}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {t("thread.publishPopover.discardAll")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
+    );
 
-      notifySubmittedForReview(pr, t);
-      handleOpenChange(false);
-      await onPullRequestChanged?.();
-    } catch (error) {
-      setSubmitForReviewError(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishDialog.failedSubmitForReview"),
-      );
-    } finally {
-      setIsSubmittingForReview(false);
-    }
-  };
+  const body = cardsPending ? (
+    <PublishListRegion>
+      <div className="space-y-1.5">
+        <PublishGhostCard />
+        <PublishGhostCard />
+      </div>
+    </PublishListRegion>
+  ) : summary.count === 0 ? (
+    <div className="flex flex-col items-center gap-1 py-10 text-center">
+      <CheckCircle className="mb-1 size-5 text-success" />
+      <p className="text-sm font-medium">
+        {isReview
+          ? t("thread.publishPopover.nothingToSubmit")
+          : t("thread.publishPopover.everythingLive")}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {isReview
+          ? t("thread.publishPopover.submitEmptyHint")
+          : t("thread.publishPopover.emptyHint")}
+      </p>
+    </div>
+  ) : (
+    <PublishListRegion>
+      {changedFilesTruncated ? (
+        <p className="text-[11px] text-muted-foreground">
+          {t("thread.publishPopover.showingFirst", {
+            shown: summary.count,
+            total: changedFilesTotal,
+          })}
+        </p>
+      ) : null}
+      {renderGroup(t("thread.publishPopover.pagesGroup"), summary.pages)}
+      {renderGroup(t("thread.publishPopover.blocksGroup"), summary.blocks)}
+      {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
+      {bodiesFailed ? (
+        <p className="text-[11px] text-muted-foreground">
+          {t("thread.publishPopover.detailsUnavailable")}
+        </p>
+      ) : null}
+    </PublishListRegion>
+  );
+
+  const reviewPane = cardsPending ? (
+    <ReviewPaneGhost />
+  ) : selected ? (
+    <div className={cn(REVIEW_PANE, "relative")}>
+      {changes
+        .filter((change) => liveIds.includes(changeId(change)))
+        .map((change) => (
+          <div
+            key={changeId(change)}
+            className={cn(
+              "absolute inset-0 flex",
+              changeId(change) !== selectedId && "hidden",
+            )}
+          >
+            <PublishCompare
+              change={change}
+              diff={gitDiff}
+              bodyPending={bodiesPending}
+              previewServerUrl={previewServerUrl}
+              draft={compareDraft}
+              lastPage={lastPreviewPage}
+            />
+          </div>
+        ))}
+    </div>
+  ) : (
+    <div className={cn(REVIEW_PANE, "bg-muted/40")} />
+  );
 
   return (
-    <DialogContent className="top-14 left-auto right-4 flex h-[90%] max-h-[85vh] w-[90vw] max-w-[600px] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0">
-      <Tabs defaultValue="description" className="flex h-full flex-col gap-0">
-        <div className="shrink-0 space-y-3 px-6 pt-5 pb-4">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">
-              {openPrFromCommits
-                ? t("thread.publishDialog.submitForReview")
-                : publishLabel}
-            </p>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-success" />
-              {diffCount}{" "}
-              {diffCount === 1
-                ? t("thread.publishDialog.change")
-                : t("thread.publishDialog.changes")}{" "}
-              {openPrFromCommits
-                ? t("thread.publishDialog.inThisPr")
-                : t("thread.publishDialog.toPublish")}
-            </div>
-          </div>
-          {discardAllConfirm ? (
-            <div className="flex items-center justify-between gap-3 rounded-md bg-destructive/5 px-3 py-2">
-              <span className="text-xs text-destructive">
-                {t("thread.publishDialog.discardConfirmMessage")}
-              </span>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setDiscardAllConfirm(false)}
-                >
-                  {t("thread.publishDialog.cancel")}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 bg-destructive px-2 text-xs text-destructive-foreground hover:bg-destructive/90"
-                  onClick={handleDiscardAll}
-                  disabled={isDiscardingAll}
-                >
-                  {isDiscardingAll ? <Spinner className="h-3 w-3" /> : null}
-                  {t("thread.publishDialog.discardAll")}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <TabsList className="h-8 w-auto" variant="pill">
-                <TabsTrigger value="description" className="px-3 text-xs">
-                  {t("thread.publishDialog.description")}
-                </TabsTrigger>
-                <TabsTrigger value="changes" className="px-3 text-xs">
-                  {t("thread.publishDialog.changesTab")}
-                </TabsTrigger>
-              </TabsList>
-              {diffCount > 0 && !openPrFromCommits && (
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                  onClick={() => setDiscardAllConfirm(true)}
-                  disabled={isPublishing || isDiscardingAll}
-                >
-                  {t("thread.publishDialog.discardAll")}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t" />
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {isLoadingGitDiff ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-              <Spinner className="h-4 w-4" />
-              <span className="text-sm">
-                {t("thread.publishDialog.loadingChanges")}
-              </span>
-            </div>
-          ) : (
+    <ReviewLayout
+      pane={reviewPane}
+      list={
+        <PublishFrame
+          state={surfaceState}
+          header={
+            <HeaderLine
+              mode={mode}
+              title={<span className="truncate">{headerTitle}</span>}
+              subLine={subLine}
+              trailing={discardAllControl}
+            />
+          }
+          body={body}
+          note={
+            summary.count === 0 ? null : (
+              <>
+                <span className="text-[13px] font-medium">
+                  {isReview
+                    ? t("thread.publishPopover.reviewNote")
+                    : t("thread.publishPopover.versionNote")}
+                </span>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setEditedNote(e.target.value)}
+                  placeholder={
+                    isReview
+                      ? t("thread.publishPopover.reviewNotePlaceholder")
+                      : t("thread.publishPopover.versionNotePlaceholder")
+                  }
+                  rows={2}
+                  className="resize-none text-[13px]"
+                  disabled={isPublishing}
+                />
+              </>
+            )
+          }
+          gate={gateRow}
+          footer={
             <>
-              <TabsContent value="description" className="mt-0 px-6 py-5">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      {openPrFromCommits
-                        ? t("thread.publishDialog.pullRequest")
-                        : t("thread.publishDialog.commitMessage")}
-                    </p>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                      disabled={
-                        isGeneratingSuggestion ||
-                        isPublishing ||
-                        isSubmittingForReview
-                      }
-                      onClick={regenerateSuggestion}
-                    >
-                      {isGeneratingSuggestion ? (
-                        <Spinner className="h-3 w-3" />
-                      ) : (
-                        <Stars01 className="h-3 w-3" />
-                      )}
-                      {isGeneratingSuggestion
-                        ? t("thread.publishDialog.generating")
-                        : t("thread.publishDialog.regenerate")}
-                    </button>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="publish-title"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      {t("thread.publishDialog.title")}
-                    </label>
-                    <Input
-                      id="publish-title"
-                      value={publishTitle}
-                      onChange={(e) => setPublishTitle(e.target.value)}
-                      placeholder={
-                        isGeneratingSuggestion
-                          ? t("thread.publishDialog.generating")
-                          : t("thread.publishDialog.commitTitlePlaceholder")
-                      }
-                      disabled={
-                        isPublishing ||
-                        isSubmittingForReview ||
-                        isGeneratingSuggestion
-                      }
-                      className="text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="publish-body"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      {t("thread.publishDialog.descriptionLabel")}
-                    </label>
-                    <Textarea
-                      id="publish-body"
-                      value={publishBody}
-                      onChange={(e) => setPublishBody(e.target.value)}
-                      placeholder={
-                        isGeneratingSuggestion
-                          ? t("thread.publishDialog.generating")
-                          : t("thread.publishDialog.descriptionPlaceholder")
-                      }
-                      disabled={
-                        isPublishing ||
-                        isSubmittingForReview ||
-                        isGeneratingSuggestion
-                      }
-                      rows={5}
-                      className="resize-none text-sm"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("thread.publishDialog.branchLabel")}{" "}
-                    <span className="font-mono">{branch}</span>
-                    {" → "}
-                    <span className="font-mono">{baseBranch}</span>
-                    {" · "}
-                    <span className="text-foreground/80">
-                      {isPublishOnly
-                        ? t("thread.publishDialog.squashMergesInto", {
-                            publishLabel,
-                            baseBranch,
-                          })
-                        : t("thread.publishDialog.opensPullRequestInto", {
-                            baseBranch,
-                          })}
-                    </span>
-                  </p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="changes" className="mt-0">
-                <GitDiffList diff={gitDiff} onDiscardFile={handleDiscardFile} />
-              </TabsContent>
-            </>
-          )}
-        </div>
-
-        <div className="shrink-0 border-t">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between px-6 py-3.5 text-sm transition-colors hover:bg-muted/50 disabled:opacity-50"
-            onClick={() => {
-              if (previewUrl) {
-                window.open(previewUrl, "_blank", "noopener,noreferrer");
-              }
-            }}
-            disabled={!previewUrl}
-          >
-            <span className="flex items-center gap-3">
-              <Eye className="h-4 w-4 text-muted-foreground" />
-              {t("thread.publishDialog.visitPreview")}
-            </span>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        <div className="shrink-0 border-t px-6 py-3">
-          {isPublishOnly ? (
-            <>
-              <PublishButton
-                label={publishLabel}
-                canPublish={canPublish}
-                disabledReason={publishDisabledReason}
-                isPublishing={isPublishing}
-                onPublish={handlePublish}
-              />
-              {publishError && (
-                <p className="mt-2 text-xs text-destructive">{publishError}</p>
-              )}
-              {/* Escape hatch when the policy gate blocks direct publish: the change can still go out for review instead of dead-ending. */}
-              {!canPublish && !publishGate.pending && canSubmitForReview && (
-                <>
+              <div className="flex gap-2">
+                <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+                {!isReview &&
+                !hosted &&
+                summary.count > 0 &&
+                !gate.allowed &&
+                !gate.pending ? (
                   <Button
                     type="button"
-                    variant="outline"
-                    className="mt-2 w-full"
-                    onClick={handleSubmitForReview}
-                    disabled={isSubmittingForReview}
+                    className="flex-1"
+                    onClick={onRequestApproval}
+                    disabled={isPublishing}
                   >
-                    {isSubmittingForReview ? (
-                      <Spinner className="h-4 w-4" />
-                    ) : (
-                      <GitBranch01 className="h-4 w-4" />
-                    )}
-                    {t("thread.publishDialog.submitForReviewButton")}
+                    {t("thread.publishPopover.requestApproval")}
                   </Button>
-                  {submitForReviewError && (
-                    <p className="mt-2 text-xs text-destructive">
-                      {submitForReviewError}
-                    </p>
-                  )}
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <Button
-                type="button"
-                className="w-full"
-                onClick={handleSubmitForReview}
-                disabled={!canSubmitForReview || isSubmittingForReview}
-              >
-                {isSubmittingForReview ? (
-                  <Spinner className="h-4 w-4" />
                 ) : (
-                  <GitBranch01 className="h-4 w-4" />
+                  <Button
+                    type="button"
+                    variant={isReview ? "default" : "brand"}
+                    className="flex-1"
+                    onClick={() => void submit()}
+                    disabled={!canSubmit}
+                  >
+                    {isPublishing ? (
+                      <Spinner className="size-4 motion-reduce:animate-none" />
+                    ) : null}
+                    {isPublishing
+                      ? isReview
+                        ? t("thread.publishPopover.submitting")
+                        : t("thread.publishPopover.publishing")
+                      : primaryLabel}
+                  </Button>
                 )}
-                {t("thread.publishDialog.submitForReviewButton")}
-              </Button>
-              {submitForReviewError && (
-                <p className="mt-2 text-xs text-destructive">
-                  {submitForReviewError}
-                </p>
-              )}
+              </div>
+              {publishError ? (
+                <p className="text-xs text-destructive">{publishError}</p>
+              ) : null}
             </>
-          )}
-        </div>
-      </Tabs>
-    </DialogContent>
-  );
-}
-
-function PublishButton({
-  label,
-  canPublish,
-  disabledReason,
-  isPublishing,
-  onPublish,
-}: {
-  label: string;
-  canPublish: boolean;
-  disabledReason: string | null;
-  isPublishing: boolean;
-  onPublish: () => void;
-}) {
-  const button = (
-    <Button
-      variant="default"
-      type="button"
-      className="w-full"
-      onClick={onPublish}
-      disabled={!canPublish || isPublishing}
-    >
-      {isPublishing ? <Spinner className="h-4 w-4" /> : null}
-      {label}
-    </Button>
-  );
-
-  if (!disabledReason) return button;
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="flex w-full">{button}</span>
-        </TooltipTrigger>
-        <TooltipContent>{disabledReason}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          }
+        />
+      }
+    />
   );
 }

@@ -88,7 +88,7 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
   const site = await ownedProjectSite(
     ctx.storage.orgSites,
-    metadata,
+    virtualMcpId,
     organization.id,
   );
   const repository = parseRepositoryBinding(

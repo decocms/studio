@@ -425,6 +425,10 @@ function FlagsDialog({ org }: { org: DeploymentAdminOrg }) {
 interface AdminOrgSite {
   slug: string;
   source: string;
+  /** The project this slug is the site of, when linked. */
+  projectId: string | null;
+  /** Set once a project has used the slug: it can never be removed or moved. */
+  linkedAt: string | null;
 }
 
 /** Thrown from the add mutation on 409, carrying the current owner for the warning. */
@@ -433,6 +437,7 @@ class SiteConflictError extends Error {
     readonly slug: string,
     readonly ownerName: string | null,
     readonly ownerSlug: string | null,
+    readonly reassignable: boolean,
   ) {
     super("owned_by_other_org");
     this.name = "SiteConflictError";
@@ -592,6 +597,7 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
     slug: string;
     ownerName: string | null;
     ownerSlug: string | null;
+    reassignable: boolean;
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -619,18 +625,23 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
       });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
+        message?: string;
         ownerOrganizationName?: string | null;
         ownerOrganizationSlug?: string | null;
+        reassignable?: boolean;
       };
       if (res.status === 409 && body.error === "owned_by_other_org") {
         throw new SiteConflictError(
           vars.slug,
           body.ownerOrganizationName ?? null,
           body.ownerOrganizationSlug ?? null,
+          body.reassignable !== false,
         );
       }
       if (!res.ok) {
-        throw new Error(body.error || `Request failed (HTTP ${res.status})`);
+        throw new Error(
+          body.message || body.error || `Request failed (HTTP ${res.status})`,
+        );
       }
       return body;
     },
@@ -651,6 +662,7 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
           slug: error.slug,
           ownerName: error.ownerName,
           ownerSlug: error.ownerSlug,
+          reassignable: error.reassignable,
         });
         return;
       }
@@ -750,15 +762,27 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
                       <Badge variant="outline" size="default">
                         {site.source}
                       </Badge>
+                      {site.linkedAt ? (
+                        <Badge variant="secondary" size="default">
+                          {t("admin.orgs.siteInUse")}
+                        </Badge>
+                      ) : null}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => removeMutation.mutate(site.slug)}
-                    >
-                      {t("admin.orgs.remove")}
-                    </Button>
+                    {site.linkedAt ? (
+                      // A used site id is permanent: tokens and URLs carry it.
+                      <span className="max-w-56 text-right text-xs text-muted-foreground">
+                        {t("admin.orgs.siteInUseHint")}
+                      </span>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => removeMutation.mutate(site.slug)}
+                      >
+                        {t("admin.orgs.remove")}
+                      </Button>
+                    )}
                   </div>
                 ))
               )}
@@ -794,13 +818,18 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
               {conflict ? (
                 <div className="space-y-2 rounded-md border border-warning/50 bg-warning/10 p-3">
                   <p className="text-sm text-foreground">
-                    {t("admin.orgs.siteReassignWarning", {
-                      slug: conflict.slug,
-                      owner:
-                        conflict.ownerName ||
-                        conflict.ownerSlug ||
-                        t("admin.orgs.anotherOrg"),
-                    })}
+                    {t(
+                      conflict.reassignable
+                        ? "admin.orgs.siteReassignWarning"
+                        : "admin.orgs.siteNotReassignable",
+                      {
+                        slug: conflict.slug,
+                        owner:
+                          conflict.ownerName ||
+                          conflict.ownerSlug ||
+                          t("admin.orgs.anotherOrg"),
+                      },
+                    )}
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -811,19 +840,21 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
                     >
                       {t("admin.orgs.cancel")}
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={addMutation.isPending}
-                      onClick={() =>
-                        addMutation.mutate({
-                          slug: conflict.slug,
-                          reassign: true,
-                        })
-                      }
-                    >
-                      {t("admin.orgs.reassignConfirm")}
-                    </Button>
+                    {conflict.reassignable ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={addMutation.isPending}
+                        onClick={() =>
+                          addMutation.mutate({
+                            slug: conflict.slug,
+                            reassign: true,
+                          })
+                        }
+                      >
+                        {t("admin.orgs.reassignConfirm")}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

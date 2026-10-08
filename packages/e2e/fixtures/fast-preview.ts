@@ -181,8 +181,8 @@ export async function createFastPreviewProject(
   );
   const vmcpId = vmcp.item.id;
   expect(vmcpId).toBeTruthy();
-  // Hosted features need the org to own the site in `org_sites`: creating the
-  // project claimed its `siteSlug` (hosted/claim-site.ts).
+  // Hosted features need the project linked to its site in `org_sites`:
+  // creating the project linked its `siteSlug` (hosted/claim-site.ts).
 
   return { org, owner, repo, vmcpId, childConnectionId };
 }

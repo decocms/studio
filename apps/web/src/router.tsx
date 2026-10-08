@@ -830,21 +830,6 @@ const agentReleasesRoute = createRoute({
   ),
 });
 
-const agentGitRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
-  getParentRoute: () => agentWorkspaceRoute,
-  path: "/git",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.reviewChanges",
-    defaultMain: "git",
-    mainView: "git",
-  },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-git.tsx"),
-  ),
-});
-
 const agentHostingRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1629,7 +1614,6 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentLibraryRoute,
   agentAssetsRoute,
   agentReleasesRoute,
-  agentGitRoute,
   agentHostingRoute,
   agentE2eRoute,
   agentAnalyticsRoute,

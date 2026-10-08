@@ -9,13 +9,17 @@ import {
 } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t";
 import type { VirtualMcpFormReturn } from "../types";
+import { ProjectSiteId } from "./project-site-id";
 
 export function ProjectIdentity({
   form,
   onCommit,
+  siteSlug,
 }: {
   form: VirtualMcpFormReturn;
   onCommit: () => Promise<unknown>;
+  /** The project's site id, shown read-only when it has one. */
+  siteSlug?: string | null;
 }) {
   const t = useT();
   const id = useId();
@@ -82,6 +86,9 @@ export function ProjectIdentity({
           )}
         />
       </SettingsCardRow>
+      {siteSlug ? (
+        <ProjectSiteId siteSlug={siteSlug} className={rowClass} />
+      ) : null}
       <SettingsCardRow className={rowClass}>
         <label htmlFor={`${id}-description`} className="text-sm font-medium">
           {t("virtualMcp.settings.identity.description")}

@@ -50,10 +50,7 @@ import {
   readLastPreviewPage,
 } from "../../sandbox/preview/last-preview-page.ts";
 import { useChatTask } from "../../chat/index";
-import {
-  CmsPublishPopover,
-  type CmsPublishMode,
-} from "./cms-publish-popover.tsx";
+import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
 import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
   isCmsStateSettling,
@@ -468,15 +465,16 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   return (
     <>
+      {splitButton}
       {branch ? (
-        <CmsPublishPopover
+        <PublishDialog
           open={surface.open}
           mode={surface.mode}
+          fastPreview
           onOpenChange={(open) => {
             if (!open) setSurface((current) => ({ ...current, open: false }));
           }}
           orgSlug={org.slug}
-          orgId={org.id}
           virtualMcpId={virtualMcpId}
           branch={branch}
           baseBranch={baseBranch}
@@ -487,20 +485,16 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}
           previewServerUrl={previewServerUrl}
-          draftPointer={draftPointer}
-          lastPreviewPage={lastPage}
-          visualReview={vm?.metadata?.publishVisualReview === true}
+          compareDraft={
+            draftPointer ? { kind: "pointer", pointer: draftPointer } : null
+          }
           lastPublishedPr={lastPublishedQuery.data ?? null}
           onRequestApproval={() => openSurface("review")}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={() => publishCompletion.mutateAsync()}
-        >
-          {splitButton}
-        </CmsPublishPopover>
-      ) : (
-        splitButton
-      )}
+        />
+      ) : null}
     </>
   );
 }

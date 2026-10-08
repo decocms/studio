@@ -149,23 +149,27 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       dataWithIcon,
     );
 
-    // The project's site (`metadata.siteSlug`) becomes its org's, so hosted
-    // features work for it — unless another org owns it, another org's
-    // project already names it, or deco.cx has it (see
-    // hosted/claim-site.ts). Best-effort: never fails the creation.
-    await claimProjectSite(
-      {
-        orgSites: ctx.storage.orgSites,
-        isDecoSite: (slug) => decoSiteExists(slug),
-        otherOrgNamingSlug: otherOrgNamingSlugFromDb(ctx.db),
-      },
-      {
-        organizationId: organization.id,
-        projectId: virtualMcp.id,
-        metadata,
-        by: userId,
-      },
-    );
+    // The site slug is set once, here (the import flow passes it): link it to
+    // the project in `org_sites`. A slug no org owns is claimed for this org
+    // first, unless another org's project already names it or deco.cx has it;
+    // a reserved (deleted org's) slug, another org's, or another project's
+    // stays unlinked (see hosted/claim-site.ts). Best-effort: never fails the
+    // creation.
+    if (virtualMcp.id) {
+      await claimProjectSite(
+        {
+          orgSites: ctx.storage.orgSites,
+          isDecoSite: (slug) => decoSiteExists(slug),
+          otherOrgNamingSlug: otherOrgNamingSlugFromDb(ctx.db),
+        },
+        {
+          organizationId: organization.id,
+          projectId: virtualMcp.id,
+          metadata,
+          by: userId,
+        },
+      );
+    }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
     // native MCP prompts (icebreakers). Best-effort: never fail agent creation

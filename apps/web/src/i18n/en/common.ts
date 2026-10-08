@@ -270,7 +270,6 @@ export const common = {
   "common.mainPanelTabs.content": "Content",
   "common.mainPanelTabs.assets": "Assets",
   "common.mainPanelTabs.releases": "Releases",
-  "common.mainPanelTabs.reviewChanges": "Review changes",
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",
