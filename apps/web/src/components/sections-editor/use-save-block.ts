@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { decofileCacheKey } from "./use-decofile";
+import { useDecofileCacheKey } from "./use-decofile";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
@@ -20,6 +22,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
+import { isSaveConflict, saveErrorMessage } from "./serve-save-error";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -28,6 +31,20 @@ interface UseSaveBlockParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+}
+
+/**
+ * A `blocks.apply` version guard for one save, decided when the save runs
+ * (saves of a branch run one at a time), not when it's scheduled. `ifMatch`
+ * returns the guard, or undefined for none; `onApplied` runs as soon as the
+ * guarded write lands, before the next save of the branch starts. Only the
+ * content-protocol backend sends it; the others have no versions.
+ */
+export interface SaveGuard {
+  ifMatch: (blockKey: string) => Record<string, string | null> | undefined;
+  onApplied?: () => void;
+  /** A save the guard refused (or any failed guarded save): re-read the content. */
+  onRejected?: (error: unknown) => void;
 }
 
 export function useSaveBlock({
@@ -49,12 +66,10 @@ export function useSaveBlock({
    * in-place render picks the merged decofile up and repaints the tunnel frame.
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const cacheKey = decofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    localPreviewUrl,
-  });
+  // Next-major Blocks sites: one `blocks.apply` per save.
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
@@ -63,12 +78,32 @@ export function useSaveBlock({
     mutationFn: async ({
       blockKey,
       data,
+      guard,
     }: {
       blockKey: string;
       data: unknown;
+      guard?: SaveGuard;
     }) => {
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
+      if (protocol) {
+        const ifMatch = guard?.ifMatch(blockKey);
+        try {
+          const result = await applyProtocolPatch(
+            queryClient,
+            protocol,
+            { orgSlug, virtualMcpId, branch, threadId },
+            cacheKey,
+            { set: { [blockKey]: data } },
+            ifMatch,
+          );
+          if (ifMatch) guard?.onApplied?.();
+          return result;
+        } catch (error) {
+          if (ifMatch) guard?.onRejected?.(error);
+          throw error;
+        }
+      }
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };
       if (fastPreviewActive) {
@@ -127,8 +162,12 @@ export function useSaveBlock({
       return { queryKey, blockKey, hadKey, previousValue };
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
       if (!context) return;
+      // Refused because the content changed on disk: load what is there now.
+      if (isSaveConflict(error)) {
+        void queryClient.invalidateQueries({ queryKey: context.queryKey });
+      }
       queryClient.setQueryData(
         context.queryKey,
         (current: Record<string, unknown> | undefined) => {
@@ -175,7 +214,7 @@ type SaveData =
  */
 export function useDebouncedSaveBlock(
   params: UseSaveBlockParams,
-  opts?: { onSaved?: () => void },
+  opts?: { onSaved?: () => void; guard?: SaveGuard },
 ) {
   const saveBlock = useSaveBlock(params);
   const t = useT();
@@ -191,15 +230,10 @@ export function useDebouncedSaveBlock(
     pendingRef.current.delete(blockKey);
     if (!resolved) return;
     saveBlock.mutate(
-      { blockKey, data: resolved },
+      { blockKey, data: resolved, guard: opts?.guard },
       {
         onSuccess: () => opts?.onSaved?.(),
-        onError: (err) =>
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
+        onError: (err) => toast.error(saveErrorMessage(t, err)),
       },
     );
   };

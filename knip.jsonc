@@ -82,9 +82,9 @@
     "apps/web/src/components/sections-editor/deco-serve-connection.ts": [
       "exports"
     ],
-    "apps/web/src/components/sections-editor/use-content-backend.ts": [
+    "apps/web/src/hooks/use-deco-serve-connection.ts": ["exports"],
+    "apps/web/src/components/sections-editor/content-protocol-api.ts": [
       "exports"
-    ],
-    "apps/web/src/hooks/use-deco-serve-connection.ts": ["exports"]
+    ]
   }
 }
