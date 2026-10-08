@@ -11,19 +11,27 @@
 
 import { Fragment, useRef, useState, type DragEvent } from "react";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { ArrowUp, DotsHorizontal, Trash03, Upload01 } from "@untitledui/icons";
+import {
+  ArrowUp,
+  DotsHorizontal,
+  Edit03,
+  Trash03,
+  Upload01,
+} from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
 import { TaskMessage } from "./task-message";
 import { useT } from "@/i18n/use-t.ts";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import { useEditorUploads } from "@/components/markdown-editor/editor-uploads";
 import {
   MentionInput,
@@ -64,10 +72,13 @@ export type TaskComment = {
 export function CommentThreadCard({
   thread,
   me,
+  onEdit,
   onDelete,
 }: {
   thread: TaskComment;
   me: CommentAuthor;
+  /** False keeps the editor open, so a failed save doesn't lose the edit. */
+  onEdit: (commentId: string, body: string) => Promise<boolean>;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
 }) {
@@ -75,6 +86,9 @@ export function CommentThreadCard({
     <div className={cn("flex flex-col", "border-b border-border/50 pb-4")}>
       <CommentEntry
         comment={thread}
+        onEdit={
+          canEdit(thread, me) ? (body) => onEdit(thread.id, body) : undefined
+        }
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
       />
       {thread.replies.map((reply, i) => (
@@ -84,6 +98,9 @@ export function CommentThreadCard({
           <Divider inset={i > 0} />
           <CommentEntry
             comment={reply}
+            onEdit={
+              canEdit(reply, me) ? (body) => onEdit(reply.id, body) : undefined
+            }
             onDelete={
               canDelete(reply, me) ? () => onDelete(reply.id) : undefined
             }
@@ -99,6 +116,12 @@ export function CommentThreadCard({
  *  for you, not another person whose comment you shouldn't be able to erase. */
 function canDelete(comment: TaskComment, me: CommentAuthor): boolean {
   return comment.author.id === me.id || comment.author.isAgent === true;
+}
+
+/** Only your own: the server refuses to edit anyone else's words, the Super
+ *  Agent's included. */
+function canEdit(comment: TaskComment, me: CommentAuthor): boolean {
+  return comment.author.id === me.id;
 }
 
 /**
@@ -118,14 +141,18 @@ function Divider({ inset }: { inset?: boolean }) {
 function CommentEntry({
   comment,
   isReply,
+  onEdit,
   onDelete,
 }: {
   comment: TaskComment;
   isReply?: boolean;
+  onEdit?: (body: string) => Promise<boolean>;
   /** Omitted for a comment that isn't the current user's — the server
    *  rejects deleting someone else's comment, so don't offer it. */
   onDelete?: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+
   return (
     <TaskMessage
       id={comment.id}
@@ -137,8 +164,78 @@ function CommentEntry({
       isReply={isReply}
       muted={comment.internal}
       onOpenThread={comment.onOpenThread}
-      actions={onDelete && <CommentActionsMenu onDelete={onDelete} />}
+      editor={
+        editing && onEdit ? (
+          <CommentEditor
+            body={comment.body}
+            onSave={onEdit}
+            onClose={() => setEditing(false)}
+          />
+        ) : undefined
+      }
+      // The editor carries its own Save and Cancel while it's open.
+      actions={
+        !editing &&
+        (onEdit || onDelete) && (
+          <CommentActionsMenu
+            onEdit={onEdit && (() => setEditing(true))}
+            onDelete={onDelete}
+          />
+        )
+      }
     />
+  );
+}
+
+/**
+ * A comment opened for editing where it's read. The full markdown editor, not
+ * the composer's one-line field: a comment can carry headings and lists — a
+ * summary pasted in, or written through the API — that the composer has no
+ * schema for and would flatten on save.
+ */
+function CommentEditor({
+  body,
+  onSave,
+  onClose,
+}: {
+  body: string;
+  onSave: (body: string) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useState(body);
+  const [saving, setSaving] = useState(false);
+  const next = draft.trim();
+
+  const save = async () => {
+    setSaving(true);
+    if (await onSave(next)) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="surface p-3">
+        <MarkdownEditor
+          inline
+          defaultValue={body}
+          onChange={setDraft}
+          placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+          {t("taskBoard.taskDialog.commentEditCancel")}
+        </Button>
+        <Button
+          size="sm"
+          onClick={save}
+          disabled={saving || !next || next === body.trim()}
+        >
+          {t("taskBoard.taskDialog.commentEditSave")}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -147,7 +244,13 @@ function CommentEntry({
  * is focused, so a quiet thread stays quiet — but pinned open while the menu
  * is, or it would vanish from under the pointer.
  */
-function CommentActionsMenu({ onDelete }: { onDelete?: () => void }) {
+function CommentActionsMenu({
+  onEdit,
+  onDelete,
+}: {
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const t = useT();
 
   return (
@@ -162,6 +265,12 @@ function CommentActionsMenu({ onDelete }: { onDelete?: () => void }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
+        {onEdit && (
+          <DropdownMenuItem onSelect={onEdit}>
+            <Edit03 size={16} />
+            {t("taskBoard.taskDialog.commentEdit")}
+          </DropdownMenuItem>
+        )}
         {onDelete && (
           <DropdownMenuItem variant="destructive" onSelect={onDelete}>
             <Trash03 size={16} />

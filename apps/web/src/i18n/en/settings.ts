@@ -351,6 +351,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
+  "settings.blogBlocks.sectionTitle": "Blog blocks",
+  "settings.blogBlocks.title": "Hide the default blog blocks",
+  "settings.blogBlocks.description":
+    "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",
   "settings.blocksEditor.title": "New blocks editor",
   "settings.blocksEditor.description":
     "Applies to everyone in this organization. The rest of Studio always uses the new layout.",

@@ -283,6 +283,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Edit next-major Blocks sites through the content protocol: a project with a committed schema (`.deco/schema.gen.json` or `meta.gen.json`) is edited without running its code, on GitHub or through a connected `deco serve`. Off by default — with it off, every project stays on the legacy editing path.",
     ),
+  hide_default_blog_blocks: z
+    .boolean()
+    .optional()
+    .describe(
+      "Hide the `deco-cms/blog` built-in post blocks everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

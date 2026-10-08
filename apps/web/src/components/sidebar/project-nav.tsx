@@ -12,7 +12,6 @@ import {
   Beaker02,
   CheckDone01,
   Globe02,
-  Grid01,
   Image01,
   Lightning01,
   Lock01,
@@ -49,6 +48,7 @@ import {
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import { getDeterministicIcon } from "@/components/agent-icon";
 import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
 import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
 
@@ -170,12 +170,14 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       iconUrl: pinned.icon,
       connections: [],
     });
+    const label = pinned.label || pinned.toolName;
+    const { IconComp: NameIcon } = getDeterministicIcon(label);
     views.push({
       key: `pinned:${pinned.connectionId}:${pinned.toolName}`,
-      label: pinned.label || pinned.toolName,
+      label,
       icon:
         icon.kind === "fallback" ? (
-          <Grid01 size={16} />
+          <NameIcon size={16} />
         ) : (
           <TabIconGlyph icon={icon} />
         ),

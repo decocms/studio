@@ -12,6 +12,7 @@ import {
   GitMerge,
   Microphone01,
   LayoutAlt01,
+  Pilcrow01,
   Rocket01,
   SearchLg,
   Terminal,
@@ -412,6 +413,27 @@ export function VoiceModeSettings() {
           icon={<Microphone01 size={16} />}
           titleKey="settings.voice.title"
           descriptionKey="settings.voice.description"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Whether the blog's post inserter still offers the `deco-cms/blog` built-in
+ * blocks, or only the site's own. Org-level: an org that designed its own post
+ * blocks wants writers reaching for those, not the generic ones.
+ */
+export function BlogBlocksSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.blogBlocks.sectionTitle")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="hide_default_blog_blocks"
+          icon={<Pilcrow01 size={16} />}
+          titleKey="settings.blogBlocks.title"
+          descriptionKey="settings.blogBlocks.description"
         />
       </SettingsCard>
     </SettingsSection>

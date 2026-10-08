@@ -19,7 +19,6 @@ import { ConnectPill } from "./connect-pill";
 import {
   costSeriesForProjectMonthToDate,
   costSeriesMonthToDate,
-  dailyPulse,
   monthlyCost,
   projectSummaries,
   RHYTHM_DAYS,
@@ -27,10 +26,17 @@ import {
   runsSeries,
   runsToday,
   shippedSeries,
+  shippedSince,
   tasksNeedingMe,
 } from "./daily-pulse";
 import { BriefStats } from "./brief-stats";
-import { firstName, greetingSlot } from "./greeting";
+import {
+  firstName,
+  greetingSlot,
+  pulseWindow,
+  pulseWindowStart,
+  type GreetingSlot,
+} from "./greeting";
 import { AgentsRunning } from "./agents-running";
 import { BriefHeadline, briefDate } from "./brief-headline";
 import { NeedsYou } from "./needs-you";
@@ -85,10 +91,12 @@ function OrgHomeBody({
   canManageProjects,
   eyebrow,
   greeting,
+  slot,
 }: {
   canManageProjects: boolean;
   eyebrow: string;
   greeting: string;
+  slot: GreetingSlot;
 }) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
@@ -109,7 +117,7 @@ function OrgHomeBody({
 
   const index = buildProjectIndex(projects);
   const waiting = tasksNeedingMe(tasks, session?.user?.id);
-  const pulse = dailyPulse(tasks);
+  const shipped = shippedSince(tasks, pulseWindowStart(slot, new Date()));
   const series = new Map(
     projects.map((project) => [
       project.id,
@@ -133,8 +141,10 @@ function OrgHomeBody({
       <BriefHeadline
         eyebrow={eyebrow}
         greeting={greeting}
-        pulse={pulse}
+        shipped={shipped}
+        window={pulseWindow(slot)}
         waiting={waiting.length}
+        running={runningAgents(tasks).length}
       />
       <BriefStats
         cost={cost}
@@ -202,7 +212,8 @@ export function TodayPage() {
   /** Read at render rather than on a timer; it does not tick over midnight. */
   const now = new Date();
   const name = firstName(session?.user?.name);
-  const greetingKeys = GREETING_KEYS[greetingSlot(now.getHours())];
+  const slot = greetingSlot(now.getHours());
+  const greetingKeys = GREETING_KEYS[slot];
   /** The date is the eyebrow; the greeting opens the sentence under it.
    *  Computed at render rather than on a timer. */
   const eyebrow = briefDate(preferences.language, now);
@@ -240,6 +251,7 @@ export function TodayPage() {
               canManageProjects={canManageProjects}
               eyebrow={eyebrow}
               greeting={greetingLine}
+              slot={slot}
             />
           </Suspense>
         </Page.Container>

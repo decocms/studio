@@ -5,6 +5,7 @@ import {
   buildBlogBlock,
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
+  blogBlockTypeFor,
   discoverBlogBlockTypes,
   emptyBlogPayload,
   listPostsWithMeta,
@@ -160,6 +161,28 @@ describe("discoverBlogBlockTypes", () => {
     expect(out.map((b) => b.title)).toEqual(["Alpha", "Zeta"]);
   });
 
+  test("hideDefaults drops the app built-ins and keeps the site's own", () => {
+    const out = discoverBlogBlockTypes(
+      metaWith([
+        "blog/sections/blocks/Paragraph.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+        "blog/sections/blocks/Quote.tsx",
+      ]),
+      { hideDefaults: true },
+    );
+    expect(out.map((b) => b.resolveType)).toEqual([
+      "site/sections/Blog/Post/Paragraph.tsx",
+    ]);
+  });
+
+  test("hideDefaults can leave no block eligible at all", () => {
+    expect(
+      discoverBlogBlockTypes(metaWith(["blog/sections/blocks/Paragraph.tsx"]), {
+        hideDefaults: true,
+      }),
+    ).toEqual([]);
+  });
+
   test("tags source as 'app' for blog/sections/blocks and 'site' otherwise", () => {
     const out = discoverBlogBlockTypes(
       metaWith([
@@ -261,6 +284,51 @@ describe("discoverBlogBlockTypes", () => {
   });
 });
 
+describe("blogBlockTypeFor", () => {
+  test("names a block from its resolveType alone (the generic editor's header)", () => {
+    const block = blogBlockTypeFor(
+      "site/sections/Blog/Post/Promo.tsx",
+      metaWithSchemas([
+        {
+          resolveType: "site/sections/Blog/Post/Promo.tsx",
+          title: "Promo banner",
+          description: "A banner with a call to action",
+          icon: "Star01",
+        },
+      ]),
+    );
+    expect(block).toEqual({
+      resolveType: "site/sections/Blog/Post/Promo.tsx",
+      title: "Promo banner",
+      description: "A banner with a call to action",
+      iconName: "Star01",
+      iconUrl: undefined,
+      source: "site",
+    });
+  });
+
+  test("falls back to the humanized component name when the schema says nothing", () => {
+    const block = blogBlockTypeFor(
+      "site/sections/Blog/Post/MyWeirdBlock.tsx",
+      metaWith(["site/sections/Blog/Post/MyWeirdBlock.tsx"]),
+    );
+    expect(block.title).toBe("My weird block");
+    expect(block.iconName).toBe("Box");
+  });
+
+  test("agrees with the inserter for the same block", () => {
+    const meta = metaWithSchemas([
+      {
+        resolveType: "site/sections/Blog/Post/Promo.tsx",
+        title: "Promo banner",
+      },
+    ]);
+    expect(blogBlockTypeFor("site/sections/Blog/Post/Promo.tsx", meta)).toEqual(
+      discoverBlogBlockTypes(meta)[0]!,
+    );
+  });
+});
+
 describe("listAuthorRefs", () => {
   const decofile = {
     "collections/blog/authors/ana": {
@@ -333,7 +401,7 @@ describe("listPostsWithMeta", () => {
         categorySlugs: ["news"],
         authorEmails: ["ada@x.com"],
         // no excerpt or cover image on this fixture
-        missing: ["Excerpt", "Cover image"],
+        missing: ["excerpt", "image"],
         // no `status` on this fixture — posts predating the field are published
         status: "published",
         form: "live",
@@ -399,11 +467,11 @@ describe("missingPostFields", () => {
 
   test("lists every missing required field in order", () => {
     expect(missingPostFields({})).toEqual([
-      "Title",
-      "Slug",
-      "Category",
-      "Excerpt",
-      "Cover image",
+      "title",
+      "slug",
+      "category",
+      "excerpt",
+      "image",
     ]);
   });
 
@@ -416,7 +484,7 @@ describe("missingPostFields", () => {
         excerpt: "\n\t ",
         image: "https://cdn/cover.jpg",
       }),
-    ).toEqual(["Title", "Excerpt"]);
+    ).toEqual(["title", "excerpt"]);
   });
 
   test("needs at least one category with a slug", () => {
@@ -428,7 +496,7 @@ describe("missingPostFields", () => {
         excerpt: "e",
         image: "https://cdn/cover.jpg",
       }),
-    ).toEqual(["Category"]);
+    ).toEqual(["category"]);
   });
 
   test("requires a cover image", () => {
@@ -439,7 +507,7 @@ describe("missingPostFields", () => {
         categories: ["news"],
         excerpt: "e",
       }),
-    ).toEqual(["Cover image"]);
+    ).toEqual(["image"]);
   });
 
   test("accepts plain-string categories", () => {
@@ -1217,19 +1285,19 @@ describe("missingCategoryFields", () => {
   });
 
   test("names both fields when the payload is bare", () => {
-    expect(missingCategoryFields({})).toEqual(["Name", "Slug"]);
+    expect(missingCategoryFields({})).toEqual(["name", "slug"]);
   });
 
   test("treats whitespace as absent", () => {
     expect(missingCategoryFields({ name: "  ", slug: "news" })).toEqual([
-      "Name",
+      "name",
     ]);
   });
 
   test("ignores non-string values", () => {
     expect(missingCategoryFields({ name: 7, slug: null })).toEqual([
-      "Name",
-      "Slug",
+      "name",
+      "slug",
     ]);
   });
 });
@@ -1807,6 +1875,18 @@ describe("sectionResolveTypes", () => {
       {},
     );
   });
+
+  test("hideDefaults keeps generation off the app built-ins", () => {
+    expect(
+      sectionResolveTypes(
+        metaWith([
+          "blog/sections/blocks/Heading.tsx",
+          "site/sections/Blog/Post/Paragraph.tsx",
+        ]),
+        { hideDefaults: true },
+      ),
+    ).toEqual({ Paragraph: "site/sections/Blog/Post/Paragraph.tsx" });
+  });
 });
 
 describe("buildPostSections", () => {
@@ -2061,7 +2141,7 @@ describe("buildGeneratedPostPayload", () => {
   test("leaves the cover image empty, so the reviewer is told", () => {
     const payload = buildGeneratedPostPayload(args);
     expect(payload.image).toBe("");
-    expect(missingPostFields(payload)).toEqual(["Cover image"]);
+    expect(missingPostFields(payload)).toEqual(["image"]);
   });
 
   test("avoids a slug another post already holds", () => {

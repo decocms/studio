@@ -5,8 +5,8 @@ name: Preview build
 #
 # Deliberately a separate workflow rather than a workflow_call refactor of
 # release-studio.yaml: that file is release-consistency logic (npm version
-# probing, GHCR existence checks, provenance, the deco-apps-cd dispatch gate,
-# the docs webhook), and parameterising it would thread ~8 booleans through
+# probing, GHCR existence checks, provenance, the deco-apps-cd dispatch gate),
+# and parameterising it would thread ~8 booleans through
 # every `if:` in the PRODUCTION release path. The genuinely shared surface is
 # one command (`bun run build:studio`) and two Dockerfiles, already reusable
 # as-is — so previews cannot destabilise shipping.
