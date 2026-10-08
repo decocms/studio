@@ -678,6 +678,14 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     unset: string[];
     by: string;
   }): Promise<boolean> {
+    // The site slug is set once, by the create/import flow; a single-key
+    // patch never touches it (defence in depth behind the admin allow-list).
+    if (
+      Object.hasOwn(params.set, "siteSlug") ||
+      params.unset.includes("siteSlug")
+    ) {
+      throw new SiteSlugImmutableError();
+    }
     // Compatibility: remove both stored spellings before replacing or clearing
     // a binding, including rows written with canonical keys during migration.
     const removedKeys = [
