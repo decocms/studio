@@ -15,10 +15,11 @@ import { type Kysely, sql } from "kysely";
  *   NULL`, so deleting the project keeps the slug reserved for its org.
  * - `linked_at`: set when the slug is first used and never cleared. A used
  *   slug is never released or moved to another org; after its project is
- *   deleted, only the same org may link it to another of its projects. Every row that exists when this runs is
- *   treated as used (`linked_at = created_at` when no project is found): each
- *   came from a deco.cx import or backfill, so it is a real public site that
- *   may already have site tokens out.
+ *   deleted, only the same org may link it to another of its projects. Every
+ *   row that exists when this runs is treated as used (`linked_at =
+ *   created_at` when no project is found): each came from a deco.cx import or
+ *   backfill, so it is a real public site that may already have site tokens
+ *   out.
  * - `organization_id` becomes nullable with `ON DELETE SET NULL` (was
  *   `CASCADE`). Deleting an org leaves its slugs behind as tombstones — rows
  *   with no org that no one can claim — instead of freeing them for reuse.

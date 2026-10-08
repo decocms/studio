@@ -240,7 +240,7 @@ describe("site slug lifecycle", () => {
 
   describe("VirtualMCPStorage", () => {
     it("reads a project's site from its link", async () => {
-      // A pre-siteSlug import, linked by migration 235 from its title.
+      // A project linked through the normal claim/link path.
       const id = await newProject("legacy-site");
       await claim("legacy-site");
       await link("legacy-site", id);
