@@ -96,7 +96,6 @@ import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields"
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
-import { PublishVisualReviewField } from "@/components/sandbox/runtime-card/publish-visual-review-field";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
 import { PublishPolicyField } from "./publish-policy-field";
@@ -973,7 +972,15 @@ function VirtualMcpDetailViewWithData({
               {section === "general" && <ProjectViewsSection views={views} />}
               {section === "general" && (
                 <div className="flex flex-col gap-4">
-                  <ProjectIdentity form={form} onCommit={flushAndSave} />
+                  <ProjectIdentity
+                    form={form}
+                    onCommit={flushAndSave}
+                    siteSlug={
+                      typeof virtualMcp.metadata?.siteSlug === "string"
+                        ? virtualMcp.metadata.siteSlug
+                        : null
+                    }
+                  />
                   <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
                     <User
                       id={virtualMcp.created_by}
@@ -1152,11 +1159,6 @@ function VirtualMcpDetailViewWithData({
                           control={form.control}
                           onCommit={flushAndSave}
                         />
-                      </SettingsCardRow>
-                    )}
-                    {!cmsOff && hasRepository && (
-                      <SettingsCardRow>
-                        <PublishVisualReviewField control={form.control} />
                       </SettingsCardRow>
                     )}
                   </SettingsCard>

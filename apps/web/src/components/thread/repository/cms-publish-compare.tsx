@@ -1,6 +1,6 @@
 /**
  * The publish dialog's review pane: the selected change rendered by the live
- * site twice — as published, and with this session's `?__draft=` pointer —
+ * site and its {@link CompareDraft} — as published, and with the changes —
  * so content editors compare pages instead of reading block JSON. The raw
  * file diff stays one tab away for changes that have no page to render.
  */
@@ -29,11 +29,14 @@ import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
+  canRenderCompare,
+  compareDraftUrl,
   comparePageUrl,
   compareSectionUrl,
   initialComparePath,
   isComparePathEditable,
   isolatedSectionKey,
+  type CompareDraft,
 } from "./cms-publish-compare-path.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
@@ -59,8 +62,8 @@ interface PublishCompareProps {
   bodyPending: boolean;
   /** Origin of the live site the draft renders against. */
   previewServerUrl: string | null;
-  /** This session's `?__draft=` pointer; null until a grant is stashed. */
-  draftPointer: string | null;
+  /** Where the changes render; null until Fast Preview stashes a grant. */
+  draft: CompareDraft | null;
   lastPage: LastPreviewPage | null;
 }
 
@@ -69,14 +72,18 @@ export function PublishCompare({
   diff,
   bodyPending,
   previewServerUrl,
-  draftPointer,
+  draft,
   lastPage,
 }: PublishCompareProps) {
   const t = useT();
-  const canRender = change.kind !== "other" && previewServerUrl !== null;
-  const [view, setView] = useState<CompareView>(canRender ? "split" : "code");
+  const canRender = canRenderCompare(change.kind, previewServerUrl, draft);
+  /** What the reviewer picked; until then both follow the change, whose path
+   *  and kind can still arrive after the pane mounts. */
+  const [pickedView, setView] = useState<CompareView | null>(null);
+  const view: CompareView = !canRender ? "code" : (pickedView ?? "split");
   const [device, setDevice] = useState<CompareDevice>("desktop");
-  const [path, setPath] = useState(() => initialComparePath(change, lastPage));
+  const [typedPath, setPath] = useState<string | null>(null);
+  const path = typedPath ?? initialComparePath(change, lastPage);
 
   const sectionKey = isolatedSectionKey(change);
   const pathEditable = isComparePathEditable(change);
@@ -87,8 +94,7 @@ export function PublishCompare({
       ? compareSectionUrl(previewServerUrl, sectionKey)
       : comparePageUrl(previewServerUrl, path);
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
-  const afterUrl =
-    url && draftPointer ? withDraftPointer(url.toString(), draftPointer) : null;
+  const afterUrl = url ? compareDraftUrl(url, draft) : null;
 
   const rawDiff: GitDiffResult = {
     diffs: Object.fromEntries(
@@ -103,7 +109,7 @@ export function PublishCompare({
   const pathHint =
     sectionKey !== null
       ? null
-      : change.kind === "block"
+      : change.kind !== "page"
         ? t("thread.publishCompare.globalHint")
         : change.pagePath && extractPathParams(change.pagePath).length > 0
           ? t("thread.publishCompare.dynamicHint", {
@@ -111,8 +117,9 @@ export function PublishCompare({
             })
           : null;
 
+  // A new or removed code file says nothing about whether the page existed.
   const beforePane =
-    change.status === "new" ? (
+    change.status === "new" && change.kind !== "other" ? (
       <ComparePlaceholder
         icon={<Plus className="size-5 text-brand" />}
         title={t("thread.publishCompare.newTitle")}
@@ -128,7 +135,7 @@ export function PublishCompare({
     );
 
   const afterPane =
-    change.status === "removed" ? (
+    change.status === "removed" && change.kind !== "other" ? (
       <ComparePlaceholder
         icon={<Trash01 className="size-5 text-destructive" />}
         title={t("thread.publishCompare.removedTitle")}
@@ -149,7 +156,7 @@ export function PublishCompare({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
-      <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5 max-md:pr-12">
         <Tabs
           value={view}
           onValueChange={(next) => {
@@ -238,20 +245,30 @@ export function PublishCompare({
             </p>
           )}
         </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 gap-3 p-3">
-          {view !== "after" ? (
-            <ComparePane label={t("thread.publishCompare.before")}>
-              {beforePane}
-            </ComparePane>
-          ) : null}
-          {view !== "before" ? (
-            <ComparePane label={t("thread.publishCompare.after")} highlight>
-              {afterPane}
-            </ComparePane>
-          ) : null}
+      ) : null}
+      {canRender ? (
+        // Hidden, never unmounted: switching tabs must not reload the frames.
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 gap-3 p-3",
+            view === "code" && "hidden",
+          )}
+        >
+          <ComparePane
+            label={t("thread.publishCompare.before")}
+            hidden={view === "after"}
+          >
+            {beforePane}
+          </ComparePane>
+          <ComparePane
+            label={t("thread.publishCompare.after")}
+            highlight
+            hidden={view === "before"}
+          >
+            {afterPane}
+          </ComparePane>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -287,14 +304,21 @@ function DeviceButton({
 function ComparePane({
   label,
   highlight = false,
+  hidden = false,
   children,
 }: {
   label: string;
   highlight?: boolean;
+  hidden?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5">
+    <div
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1 flex-col gap-1.5",
+        hidden && "hidden",
+      )}
+    >
       <div className="flex items-center gap-1.5 px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
         <span
           className={cn(
@@ -368,27 +392,26 @@ function CompareFrame({
   const offsetX =
     size.width > 0 ? Math.max((size.width - logicalWidth * scale) / 2, 0) : 0;
 
+  // Mounted even while its pane is hidden (size 0): unmounting would reload the page on return.
   return (
     <div ref={ref} className="absolute inset-0">
-      {size.width > 0 ? (
-        // Cross-origin site, so `allow-same-origin` keeps ITS origin, not ours.
-        <iframe
-          key={src}
-          src={src}
-          title={title}
-          // oxlint-disable-next-line react/iframe-missing-sandbox
-          sandbox="allow-scripts allow-same-origin"
-          onLoad={() => setLoadedSrc(src)}
-          className="absolute top-0 border-0 bg-white"
-          style={{
-            left: offsetX,
-            width: logicalWidth,
-            height: size.height / scale,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-        />
-      ) : null}
+      {/* Cross-origin site, so `allow-same-origin` keeps ITS origin, not ours. */}
+      <iframe
+        key={src}
+        src={src}
+        title={title}
+        // oxlint-disable-next-line react/iframe-missing-sandbox
+        sandbox="allow-scripts allow-same-origin"
+        onLoad={() => setLoadedSrc(src)}
+        className="absolute top-0 border-0 bg-white"
+        style={{
+          left: offsetX,
+          width: logicalWidth,
+          height: size.height > 0 ? size.height / scale : "100%",
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      />
       {loadedSrc !== src ? (
         <div className="absolute inset-0 flex items-center justify-center bg-background/60">
           <Spinner className="size-5 motion-reduce:animate-none" />

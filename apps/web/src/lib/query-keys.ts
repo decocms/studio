@@ -245,23 +245,6 @@ export const KEYS = {
     repo: string,
   ) => ["github-open-prs", orgSlug, connectionId, owner, repo] as const,
 
-  /** One CI run's report, loaded when a Checks row is expanded. */
-  githubCheckRun: (
-    orgSlug: string,
-    connectionId: string | null | undefined,
-    owner: string,
-    repo: string,
-    checkRunId: string | null,
-  ) =>
-    [
-      "github-check-run",
-      orgSlug,
-      connectionId,
-      owner,
-      repo,
-      checkRunId,
-    ] as const,
-
   githubBranchSearch: (
     orgId: string,
     orgSlug: string,

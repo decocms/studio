@@ -28,7 +28,11 @@ import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
-import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import {
+  OrgSiteConflictError,
+  OrgSiteLinkError,
+  OrgSiteStorage,
+} from "@/storage/org-sites";
 import { VirtualMCPStorage } from "@/storage/virtual";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
@@ -645,30 +649,47 @@ export function createAdminRoutes(): Hono<Env> {
       audit("org_site_claim", {});
       return c.json({ site });
     } catch (error) {
+      if (error instanceof OrgSiteLinkError) {
+        return c.json({ error: error.code, message: error.message }, 409);
+      }
       if (!(error instanceof OrgSiteConflictError)) throw error;
       // Owned by another org: refuse unless the caller explicitly confirms the move.
       if (!reassign) {
-        const owner = await db
-          .selectFrom("organization")
-          .select(["name", "slug"])
-          .where("id", "=", error.ownerOrganizationId)
-          .executeTakeFirst();
+        const [owner, row] = await Promise.all([
+          db
+            .selectFrom("organization")
+            .select(["name", "slug"])
+            .where("id", "=", error.ownerOrganizationId)
+            .executeTakeFirst(),
+          storage.getBySlug(slug),
+        ]);
         return c.json(
           {
             error: "owned_by_other_org",
             ownerOrganizationId: error.ownerOrganizationId,
             ownerOrganizationName: owner?.name ?? null,
             ownerOrganizationSlug: owner?.slug ?? null,
+            // A slug a project has used is never moved (its tokens live on).
+            reassignable: !row?.linkedAt,
           },
           409,
         );
       }
-      const site = await storage.reassignSite({
-        slug,
-        organizationId: orgId,
-        source: "manual",
-        by: actorId,
-      });
+      let site: Awaited<ReturnType<typeof storage.reassignSite>>;
+      try {
+        site = await storage.reassignSite({
+          slug,
+          organizationId: orgId,
+          source: "manual",
+          by: actorId,
+        });
+      } catch (reassignError) {
+        if (!(reassignError instanceof OrgSiteLinkError)) throw reassignError;
+        return c.json(
+          { error: reassignError.code, message: reassignError.message },
+          409,
+        );
+      }
       audit("org_site_reassign", {
         from_organization_id: error.ownerOrganizationId,
       });
@@ -696,7 +717,13 @@ export function createAdminRoutes(): Hono<Env> {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    let released: boolean;
+    try {
+      released = await new OrgSiteStorage(db).releaseSite(slug, orgId);
+    } catch (error) {
+      if (!(error instanceof OrgSiteLinkError)) throw error;
+      return c.json({ error: error.code, message: error.message }, 409);
+    }
     if (!released) {
       return c.json({ error: "Site not found for this organization" }, 404);
     }
