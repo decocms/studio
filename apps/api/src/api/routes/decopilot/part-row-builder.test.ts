@@ -155,6 +155,12 @@ describe("PartRowBuilder", () => {
           toolCallId: "tc_3",
           input: { query: "still running" },
         },
+        {
+          type: "tool-propose_plan",
+          state: "input-available",
+          toolCallId: "tc_4",
+          input: { plan: "1. do it" },
+        },
       ],
     });
 
@@ -175,6 +181,15 @@ describe("PartRowBuilder", () => {
           state: "input-available",
           toolCallId: "tc_2",
           input: { question: "continue?" },
+        },
+      ],
+      [
+        "tool_call",
+        {
+          type: "tool-propose_plan",
+          state: "input-available",
+          toolCallId: "tc_4",
+          input: { plan: "1. do it" },
         },
       ],
       ["finish", {}],

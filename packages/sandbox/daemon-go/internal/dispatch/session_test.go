@@ -70,3 +70,14 @@ func TestChangedEnvNamesOnlyWhatDiffers(t *testing.T) {
 		t.Fatalf("changedEnv = %s", got)
 	}
 }
+
+func TestSessionRespawnsWhenTheMcpCredentialRunsLow(t *testing.T) {
+	p := &sessionPool{}
+	first := turnPid(t, p, "a")
+	p.mu.Lock()
+	p.idle["thrd_1"].mcpExpires = time.Now().Add(sessionMinCredentialLife - time.Minute)
+	p.mu.Unlock()
+	if again := turnPid(t, p, "a"); again == first {
+		t.Fatalf("runner %d kept with under %s of credential left", first, sessionMinCredentialLife)
+	}
+}
