@@ -114,6 +114,20 @@ const PAGE_RESOLVE_TYPES = new Set([
   "$live/pages/LivePage.tsx",
 ]);
 
+/**
+ * A page block type: one in the manifest's `pages` group (the built-in `page`
+ * and route blocks like `post`), or a legacy page type when there's no schema.
+ */
+function isPageResolveType(
+  resolveType: string,
+  meta: LiveMeta | null | undefined,
+): boolean {
+  return (
+    PAGE_RESOLVE_TYPES.has(resolveType) ||
+    Object.hasOwn(meta?.manifest?.blocks?.pages ?? {}, resolveType)
+  );
+}
+
 /** Canonical decofile block id for the site app (matches admin `SITE_APP_ID`). */
 const SITE_APP_BLOCK_KEY = "site";
 
@@ -137,7 +151,7 @@ export function hasEditableDecoContent(
   meta: LiveMeta | undefined | null,
 ): boolean {
   if (!decofile) return false;
-  if (extractPages(decofile).length > 0) return true;
+  if (extractPages(decofile, meta).length > 0) return true;
   if (extractRedirects(decofile).length > 0) return true;
   if (!meta) return false;
   if (extractGlobalSections(decofile, meta).length > 0) return true;
@@ -149,12 +163,13 @@ export function hasEditableDecoContent(
 export function pageEntryFromBlock(
   key: string,
   val: unknown,
+  meta?: LiveMeta | null,
 ): PageEntry | null {
   if (!val || typeof val !== "object" || Array.isArray(val)) return null;
   const obj = val as Record<string, unknown>;
   if (
     typeof obj.__resolveType !== "string" ||
-    !PAGE_RESOLVE_TYPES.has(obj.__resolveType) ||
+    !isPageResolveType(obj.__resolveType, meta) ||
     typeof obj.path !== "string"
   ) {
     return null;
@@ -166,10 +181,13 @@ export function pageEntryFromBlock(
   };
 }
 
-export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
+export function extractPages(
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): PageEntry[] {
   const pages: PageEntry[] = [];
   for (const [key, val] of Object.entries(decofile)) {
-    const page = pageEntryFromBlock(key, val);
+    const page = pageEntryFromBlock(key, val, meta);
     if (page) pages.push(page);
   }
   return pages;
@@ -263,7 +281,7 @@ export function extractApps(
     const obj = val as Record<string, unknown>;
     const resolveType = obj.__resolveType;
     if (typeof resolveType !== "string") continue;
-    if (PAGE_RESOLVE_TYPES.has(resolveType)) continue;
+    if (isPageResolveType(resolveType, meta)) continue;
     if (typeof obj.path === "string") continue;
     if (isSiteAppBlock(key, obj)) continue;
     if (
