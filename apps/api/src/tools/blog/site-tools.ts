@@ -103,6 +103,21 @@ export interface GroundingRequest {
   language?: string;
   /** For the log line, when a pass fails. */
   label: string;
+  /**
+   * Tool-call budget. The default suits reading one site; a caller sweeping
+   * several systems at once — analytics *and* catalogue — needs more room.
+   */
+  maxSteps?: number;
+  timeoutMs?: number;
+}
+
+/** What a grounding pass found, and whether it had anywhere to look. */
+export interface GroundingReport {
+  grounding: string;
+  /** The read-only tools the site exposed; empty means nothing to ask. */
+  toolNames: string[];
+  /** False when there was no MCP, no tools, or the pass threw. */
+  ran: boolean;
 }
 
 const SYSTEM = `You are gathering facts for a brand's blog, immediately before another model writes from them. You are not writing anything: you are answering what is true about this brand's business right now.
@@ -130,10 +145,29 @@ export async function groundFromSite(
   organizationId: string,
   request: GroundingRequest,
 ): Promise<string> {
-  if (!request.virtualMcpId) return "";
+  const { grounding } = await groundSiteReport(ctx, organizationId, request);
+  return grounding;
+}
+
+/**
+ * The same pass, with the detail a caller needs to tell the silences apart.
+ *
+ * `groundFromSite` answers `""` for "no connection", "no readable tools" and
+ * "looked, found nothing" alike. That is enough for a prompt section, which
+ * simply goes missing — but a caller that has to TELL the person what it could
+ * not check needs to know which silence it got.
+ */
+export async function groundSiteReport(
+  ctx: StudioContext,
+  organizationId: string,
+  request: GroundingRequest,
+): Promise<GroundingReport> {
+  const EMPTY: GroundingReport = { grounding: "", toolNames: [], ran: false };
+  if (!request.virtualMcpId) return EMPTY;
   try {
     const tools = await siteTools(ctx, request.virtualMcpId);
-    if (Object.keys(tools).length === 0) return "";
+    const toolNames = Object.keys(tools);
+    if (toolNames.length === 0) return EMPTY;
 
     const tier = await resolveTier(ctx, "smart");
     const provider = await ctx.aiProviders.activate(
@@ -144,8 +178,10 @@ export async function groundFromSite(
       model: provider.aiSdk.languageModel(tier.modelId),
       system: SYSTEM,
       tools,
-      stopWhen: stepCountIs(MAX_STEPS),
-      abortSignal: AbortSignal.timeout(GROUNDING_TIMEOUT_MS),
+      stopWhen: stepCountIs(request.maxSteps ?? MAX_STEPS),
+      abortSignal: AbortSignal.timeout(
+        request.timeoutMs ?? GROUNDING_TIMEOUT_MS,
+      ),
       prompt: [
         `## The task this is for\n${request.task}`,
         `## What is worth finding out\n${request.wanted}`,
@@ -157,10 +193,14 @@ export async function groundFromSite(
     });
 
     const found = text.trim();
-    return found ? found.slice(0, MAX_GROUNDING_CHARS) : "";
+    return {
+      grounding: found ? found.slice(0, MAX_GROUNDING_CHARS) : "",
+      toolNames,
+      ran: true,
+    };
   } catch (err) {
     console.warn(`[${request.label}] site grounding failed`, err);
-    return "";
+    return EMPTY;
   }
 }
 

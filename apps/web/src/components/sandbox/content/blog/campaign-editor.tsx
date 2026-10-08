@@ -180,6 +180,7 @@ function readCampaign(
   const { key: _key, ...rest } = found ?? {
     key: blockKey,
     name: "",
+    seedKey: "",
     status: "draft" as CampaignStatus,
     period: { start: null, end: null },
     trigger: { type: "seasonal" as CampaignTrigger, note: "" },

@@ -11,6 +11,17 @@
  * shared `useSaveBlock`/`useDeleteBlock`, whose `decoBlockFilePath` already
  * reproduces that encoding.
  */
+import {
+  CAMPAIGN_OBJECTIVES,
+  CAMPAIGN_STATUSES,
+  CAMPAIGN_TARGET_KINDS,
+  CAMPAIGN_TRIGGERS,
+  MAX_CAMPAIGN_PRODUCT_IMAGES,
+  type CampaignObjective,
+  type CampaignStatus,
+  type CampaignTargetKind,
+  type CampaignTrigger,
+} from "@decocms/shared/blog-campaign";
 import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
@@ -1792,41 +1803,22 @@ export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
  */
 export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
 
-export const CAMPAIGN_STATUSES = [
-  "draft",
-  "active",
-  "paused",
-  "finished",
-] as const;
-export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
-
 /**
- * Why the campaign exists. A closed set on purpose: it is the axis a board
- * groups by and, later, what the generator reads to pick an angle. Free text
- * here would be a field nobody could group or reason about.
+ * The closed sets live in `@decocms/shared` because `BLOG_CAMPAIGN_SUGGEST`
+ * narrows the model's output against the very same lists. Re-exported here so
+ * every call site in this folder keeps importing campaign things from one place.
  */
-export const CAMPAIGN_TRIGGERS = [
-  "launch",
-  "seasonal",
-  "trend",
-  "seo_gap",
-  "inventory",
-  "partnership",
-  "reputation",
-] as const;
-export type CampaignTrigger = (typeof CAMPAIGN_TRIGGERS)[number];
-
-export const CAMPAIGN_OBJECTIVES = [
-  "awareness",
-  "education",
-  "conversion",
-  "retention",
-  "repositioning",
-] as const;
-export type CampaignObjective = (typeof CAMPAIGN_OBJECTIVES)[number];
-
-export const CAMPAIGN_TARGET_KINDS = ["category", "collection"] as const;
-export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];
+export {
+  CAMPAIGN_OBJECTIVES,
+  CAMPAIGN_STATUSES,
+  CAMPAIGN_TARGET_KINDS,
+  CAMPAIGN_TRIGGERS,
+  MAX_CAMPAIGN_PRODUCT_IMAGES,
+  type CampaignObjective,
+  type CampaignStatus,
+  type CampaignTargetKind,
+  type CampaignTrigger,
+};
 
 /**
  * The slice of the store a campaign covers — never a single product. Picking a
@@ -1862,11 +1854,11 @@ export interface CampaignProduct {
   description: string;
 }
 
-export const MAX_CAMPAIGN_PRODUCT_IMAGES = 3;
-
 export interface CampaignEntry {
   key: string;
   name: string;
+  /** The seed this campaign was generated from; "" when written by hand. */
+  seedKey: string;
   status: CampaignStatus;
   /** `YYYY-MM-DD`, both optional — not every campaign has dates pinned. */
   period: { start: string | null; end: string | null };
@@ -1966,6 +1958,7 @@ export function buildCampaignBlock(
   return {
     name: key,
     campaignName: campaign.name,
+    seedKey: campaign.seedKey,
     status: campaign.status,
     period: {
       start: campaign.period.start ?? "",
@@ -2009,6 +2002,7 @@ export function scanCampaigns(
     campaigns.push({
       key,
       name: str(record.campaignName),
+      seedKey: str(record.seedKey),
       status: oneOf(CAMPAIGN_STATUSES, record.status, "draft"),
       period: { start: dateOrNull(period.start), end: dateOrNull(period.end) },
       trigger: {
@@ -2040,11 +2034,87 @@ export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
   const stamp = now.toISOString();
   return {
     name: "",
+    seedKey: "",
     status: "draft",
     period: { start: null, end: null },
     trigger: { type: "seasonal", note: "" },
     intent: { objective: "awareness", targets: [], products: [], keywords: [] },
     guardrails: { avoidComplements: [], toneOverrides: "" },
+    createdAt: stamp,
+    updatedAt: stamp,
+  };
+}
+
+// ------------------ Campaign seeds (what a generation starts from) -----------
+
+export const CAMPAIGN_SEED_KEY_PREFIX = "blog-manager/campaign-seeds/";
+
+/**
+ * What a campaign generation starts from: the terms to aim at and the sentence
+ * saying what the moment is.
+ *
+ * Stored rather than kept in the dialog because the generation reaches the
+ * brand's own systems, and the answer changes as the store does — a seed worth
+ * writing once is worth running again next quarter. Campaigns point back at it
+ * through `seedKey`.
+ */
+export interface CampaignSeedEntry {
+  key: string;
+  name: string;
+  keywords: string[];
+  prompt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function newCampaignSeedKey(): string {
+  return `${CAMPAIGN_SEED_KEY_PREFIX}${crypto.randomUUID()}`;
+}
+
+export function buildCampaignSeedBlock(
+  key: string,
+  seed: Omit<CampaignSeedEntry, "key">,
+): Record<string, unknown> {
+  return {
+    name: key,
+    seedName: seed.name,
+    keywords: seed.keywords,
+    prompt: seed.prompt,
+    createdAt: seed.createdAt,
+    updatedAt: seed.updatedAt,
+  };
+}
+
+/** Every seed, newest first. Tolerant of a partial block, like its siblings. */
+export function scanCampaignSeeds(
+  decofile: Record<string, unknown>,
+): CampaignSeedEntry[] {
+  const seeds: CampaignSeedEntry[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!key.startsWith(CAMPAIGN_SEED_KEY_PREFIX)) continue;
+    const record = asRecord(value);
+    if (!record) continue;
+    seeds.push({
+      key,
+      name: str(record.seedName),
+      keywords: filledTerms(normalizeTerms(record.keywords)),
+      prompt: str(record.prompt),
+      createdAt: str(record.createdAt),
+      updatedAt: str(record.updatedAt),
+    });
+  }
+  return seeds.sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name),
+  );
+}
+
+export function emptyCampaignSeed(now: Date): Omit<CampaignSeedEntry, "key"> {
+  const stamp = now.toISOString();
+  return {
+    name: "",
+    keywords: [],
+    prompt: "",
     createdAt: stamp,
     updatedAt: stamp,
   };

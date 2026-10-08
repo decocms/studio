@@ -1484,6 +1484,84 @@ export interface StudioToolIO {
     };
     output: { suggestions: { quote: string; slug: string }[] };
   };
+  BLOG_CAMPAIGN_SUGGEST: {
+    input: {
+      seed: { prompt: string; keywords?: string[] | undefined };
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+      };
+      existingNames?: string[] | undefined;
+      count?: number | undefined;
+      virtualMcpId?: string | undefined;
+    };
+    output: {
+      campaigns: {
+        name: string;
+        period: { start: string | null; end: string | null };
+        trigger: {
+          type:
+            | "launch"
+            | "seasonal"
+            | "trend"
+            | "seo_gap"
+            | "inventory"
+            | "partnership"
+            | "reputation";
+          note: string;
+        };
+        intent: {
+          objective:
+            | "awareness"
+            | "education"
+            | "conversion"
+            | "retention"
+            | "repositioning";
+          targets: {
+            kind: "category" | "collection";
+            id: string;
+            name: string;
+            url: string;
+            description: string;
+          }[];
+          products: {
+            id: string;
+            name: string;
+            url: string;
+            images: string[];
+            category: string;
+            description: string;
+          }[];
+          keywords: string[];
+        };
+        guardrails: {
+          avoidComplements: { name: string; value: string }[];
+          toneOverrides: string;
+        };
+        review: {
+          verdict: "strong" | "workable" | "weak";
+          rationale: string;
+          risks: string[];
+        };
+      }[];
+      grounded: boolean;
+      toolsUsed: string[];
+      gaps: string[];
+    };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {

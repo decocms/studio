@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
+  Stars02,
   SearchLg,
   Columns03,
   List,
@@ -33,6 +34,11 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import {
+  GenerateCampaignsDialog,
+  type SuggestedCampaign,
+} from "./generate-campaigns-dialog";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +48,8 @@ import { SaveStatus } from "./save-status";
 import { CampaignEditor } from "./campaign-editor";
 import {
   buildCampaignBlock,
+  buildCampaignSeedBlock,
+  type CampaignSeedEntry,
   CAMPAIGN_STATUSES,
   type CampaignEntry,
   type CampaignStatus,
@@ -115,6 +123,8 @@ export function CampaignsPanel({
     threadId: null,
   };
 
+  const hasAi = useHostedAiProviderKeys().length > 0;
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [view, setView] = useState<CampaignView>("board");
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -166,6 +176,38 @@ export function CampaignsPanel({
     }
   };
 
+  /**
+   * Persist the seed and the chosen candidates together.
+   *
+   * Sequential rather than parallel: each write goes through the same decofile
+   * cache entry, and concurrent saves would race on it.
+   */
+  const createFromSeed = async (
+    seed: { key: string; entry: Omit<CampaignSeedEntry, "key"> },
+    chosen: SuggestedCampaign[],
+  ) => {
+    const now = new Date().toISOString();
+    await save.mutateAsync({
+      blockKey: seed.key,
+      data: buildCampaignSeedBlock(seed.key, { ...seed.entry, updatedAt: now }),
+    });
+    for (const candidate of chosen) {
+      const blockKey = newCampaignKey();
+      await save.mutateAsync({
+        blockKey,
+        data: buildCampaignBlock(blockKey, {
+          ...emptyCampaign(new Date()),
+          name: candidate.name,
+          seedKey: seed.key,
+          period: candidate.period,
+          trigger: candidate.trigger,
+          intent: candidate.intent,
+          guardrails: candidate.guardrails,
+        }),
+      });
+    }
+  };
+
   const removeCampaign = (key: string) => {
     deleteBlock.mutate({ blockKey: key });
     setOpenKey((open) => (open === key ? null : open));
@@ -203,6 +245,16 @@ export function CampaignsPanel({
           />
         </div>
         <div className="flex shrink-0 items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!hasAi}
+            onClick={() => setGenerateOpen(true)}
+          >
+            <Stars02 size={14} />
+            {t("sandbox.campaignGen.open")}
+          </Button>
           <Button type="button" size="sm" onClick={addCampaign}>
             <Plus size={14} />
             {t("sandbox.campaigns.add")}
@@ -371,6 +423,15 @@ export function CampaignsPanel({
           </div>
         </div>
       )}
+
+      <GenerateCampaignsDialog
+        open={generateOpen}
+        onOpenChange={setGenerateOpen}
+        decofile={decofile}
+        virtualMcpId={virtualMcpId}
+        hasAi={hasAi}
+        onCreate={createFromSeed}
+      />
 
       {/* The board edits in a docked sheet, the way the Posts board does. */}
       <Dialog
