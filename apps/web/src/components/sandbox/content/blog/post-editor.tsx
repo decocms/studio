@@ -347,6 +347,7 @@ export function PostEditor({
                 )}
                 <SuggestLinksButton
                   decofile={decofile}
+                  virtualMcpId={virtualMcpId}
                   sections={asBlocks(post.sections)}
                   currentKey={blockKey}
                   hasAi={hasAi}

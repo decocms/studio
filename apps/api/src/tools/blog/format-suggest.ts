@@ -2,6 +2,11 @@ import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import {
+  groundFromSite,
+  renderGrounding,
+  VirtualMcpIdSchema,
+} from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogContextSchema } from "./schema";
 
@@ -125,6 +130,7 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       .max(5)
       .default(3)
       .describe("How many formats to propose."),
+    virtualMcpId: VirtualMcpIdSchema,
   }),
 
   outputSchema: z.object({
@@ -151,6 +157,15 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       organizationId,
     );
 
+    const grounding = await groundFromSite(ctx, organizationId, {
+      virtualMcpId: input.virtualMcpId,
+      language: input.brand.language,
+      label: "BLOG_FORMAT_SUGGEST",
+      task: `Proposing the post formats ${input.brand.companyName ?? "this brand"} should write in.`,
+      wanted:
+        "Which of this brand's existing content actually gets read and converts, how readers reach it, and what the business sells — a format earns its place by suiting real demand, not by being a tidy taxonomy.",
+    });
+
     const prompt = [
       renderBrand(input.brand),
       input.sections.length > 0
@@ -169,8 +184,11 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
             )
             .join("\n")}`
         : "## How the existing posts are built\nThis blog has no posts yet.",
+      renderGrounding(grounding),
       `## Your task\nPropose at most ${input.count} formats.`,
-    ].join("\n\n");
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),

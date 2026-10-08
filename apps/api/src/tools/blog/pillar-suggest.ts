@@ -2,6 +2,11 @@ import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import {
+  groundFromSite,
+  renderGrounding,
+  VirtualMcpIdSchema,
+} from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogContextSchema, type BrandRuleSchema } from "./schema";
 
@@ -121,6 +126,7 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
       .max(8)
       .default(5)
       .describe("How many pillars to propose."),
+    virtualMcpId: VirtualMcpIdSchema,
   }),
 
   outputSchema: z.object({
@@ -149,6 +155,15 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
       organizationId,
     );
 
+    const grounding = await groundFromSite(ctx, organizationId, {
+      virtualMcpId: input.virtualMcpId,
+      language: input.brand.language,
+      label: "BLOG_PILLAR_SUGGEST",
+      task: `Proposing the content pillars ${input.brand.companyName ?? "this brand"} should own.`,
+      wanted:
+        "The shape of the business — which categories carry revenue, what the catalog is deepest in — and which subjects already bring this brand traffic. A pillar is a long-term bet, so it should rest on where the business actually is.",
+    });
+
     const prompt = [
       renderBrand(input.brand),
       input.categories.length > 0 &&
@@ -157,6 +172,7 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
         ? `## Pillars already defined — do not propose these or near-duplicates\n${input.existingPillars.map((title) => `- ${title}`).join("\n")}`
         : "## Pillars already defined\nNone yet — this blog has no pillars.",
       input.guidance && `## What the operator asked for\n${input.guidance}`,
+      renderGrounding(grounding),
       `## Your task\nPropose ${input.count} content pillars.`,
     ]
       .filter(Boolean)

@@ -3,6 +3,11 @@ import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import {
+  groundFromSite,
+  renderGrounding,
+  VirtualMcpIdSchema,
+} from "./site-tools";
 import { resolveTier, tryResolveTier } from "../../core/resolve-tier";
 import { BlogContextSchema, type BrandRuleSchema } from "./schema";
 
@@ -192,6 +197,7 @@ export const BLOG_THEME_SUGGEST = defineTool({
       .max(10)
       .default(5)
       .describe("How many themes to propose."),
+    virtualMcpId: VirtualMcpIdSchema,
   }),
 
   outputSchema: z.object({
@@ -230,6 +236,15 @@ export const BLOG_THEME_SUGGEST = defineTool({
       organizationId,
     );
 
+    const grounding = await groundFromSite(ctx, organizationId, {
+      virtualMcpId: input.virtualMcpId,
+      language: input.brand.language,
+      label: "BLOG_THEME_SUGGEST",
+      task: `Proposing blog post themes for ${input.brand.companyName ?? "this brand"} to write next.`,
+      wanted:
+        "What the brand is actually selling and promoting right now, which products or categories carry the business, what campaigns or dates are live, and which subjects its audience arrives searching for. A theme anchored in something real outperforms one invented from the category.",
+    });
+
     const prompt = [
       renderBrand(input.brand),
       input.pillar &&
@@ -243,6 +258,7 @@ export const BLOG_THEME_SUGGEST = defineTool({
         : "## Already covered\nNothing yet — this blog has no posts or themes.",
       input.guidance && `## What the operator asked for\n${input.guidance}`,
       research && `## Web research\n${research}`,
+      renderGrounding(grounding),
       `## Your task\nPropose ${input.count} themes.`,
     ]
       .filter(Boolean)

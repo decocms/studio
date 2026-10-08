@@ -413,6 +413,7 @@ export function BlogContext({
     );
     try {
       const result = await studio.call("BLOG_FORMAT_SUGGEST", {
+        virtualMcpId,
         brand: contextForTools({ ...brand, ...context }),
         sections,
         postStructures: postStructures(decofile).map((post) => ({
@@ -1291,6 +1292,7 @@ function PillarsPanel({
     );
     try {
       const result = await studio.call("BLOG_PILLAR_SUGGEST", {
+        virtualMcpId,
         brand: contextForTools(merged),
         existingPillars: pillars.map((p) => p.title).filter(Boolean),
         guidance: guidance.trim() || undefined,

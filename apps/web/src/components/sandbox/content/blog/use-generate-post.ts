@@ -136,6 +136,7 @@ export function useGeneratePost({
 
     try {
       const draft = await studio.call("BLOG_POST_DRAFT", {
+        virtualMcpId,
         brand: contextForTools(merged),
         pillar: briefing.pillar
           ? { title: briefing.pillar.title, body: briefing.pillar.body }

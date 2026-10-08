@@ -2,6 +2,11 @@ import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import {
+  groundFromSite,
+  renderGrounding,
+  VirtualMcpIdSchema,
+} from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogContextSchema } from "./schema";
 
@@ -216,6 +221,7 @@ export const BLOG_POST_DRAFT = defineTool({
       .describe(
         "What the operator asked for on top of everything else, in their own words.",
       ),
+    virtualMcpId: VirtualMcpIdSchema,
   }),
 
   outputSchema: z.object({
@@ -275,6 +281,15 @@ export const BLOG_POST_DRAFT = defineTool({
       organizationId,
     );
 
+    const grounding = await groundFromSite(ctx, organizationId, {
+      virtualMcpId: input.virtualMcpId,
+      language: brand.language,
+      label: "BLOG_POST_DRAFT",
+      task: `Writing a blog post titled "${input.theme.title}" for ${brand.companyName}. Its brief: ${input.theme.body}`,
+      wanted:
+        "Anything this post would otherwise have to assume: the products it will mention, their real names and current prices, what is in stock, any promotion or campaign running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
+    });
+
     const prompt = [
       `## Brand\n${brand.companyName}`,
       `## What it does\n${brand.description}`,
@@ -316,6 +331,7 @@ export const BLOG_POST_DRAFT = defineTool({
       input.extraInstructions
         ? `## What the operator asked for\n${input.extraInstructions}`
         : null,
+      renderGrounding(grounding),
       "## Your task\nWrite the post.",
     ]
       .filter(Boolean)

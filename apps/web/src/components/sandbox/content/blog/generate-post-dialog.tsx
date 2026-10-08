@@ -77,6 +77,7 @@ interface Suggestion {
  * choice: the model then files and attributes the post.
  */
 export function GeneratePostDialog({
+  virtualMcpId,
   open,
   onOpenChange,
   decofile,
@@ -87,6 +88,8 @@ export function GeneratePostDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   decofile: Record<string, unknown>;
+  /** The site, so theme suggestions can rest on what it actually sells. */
+  virtualMcpId: string;
   hasAi: boolean;
   /** Writing from an idea already on the board, rather than from scratch. */
   seed?: IdeaSeed;
@@ -151,6 +154,7 @@ export function GeneratePostDialog({
     setSuggesting(true);
     try {
       const result = await studio.call("BLOG_THEME_SUGGEST", {
+        virtualMcpId,
         brand: brandForTools,
         existingTitles: [],
         formats: formats.map((f) => f.name).filter(Boolean),

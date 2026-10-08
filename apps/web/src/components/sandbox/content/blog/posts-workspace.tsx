@@ -398,6 +398,7 @@ export function PostsWorkspace({
         .map((f) => f.name)
         .filter(Boolean);
       const result = await studio.call("BLOG_THEME_SUGGEST", {
+        virtualMcpId,
         brand: contextForTools(merged),
         existingTitles: ideas.map((idea) => idea.title).filter(Boolean),
         formats: formatNames,
@@ -614,6 +615,7 @@ export function PostsWorkspace({
           </DropdownMenu>
           <GeneratePostDialog
             key={generateSeed?.title ?? "scratch"}
+            virtualMcpId={virtualMcpId}
             open={generateOpen}
             onOpenChange={setGenerateOpen}
             decofile={decofile}

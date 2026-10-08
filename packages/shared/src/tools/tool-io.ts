@@ -1374,6 +1374,7 @@ export interface StudioToolIO {
       categories?: string[] | undefined;
       guidance?: string | undefined;
       count?: number | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: { pillars: { title: string; body: string }[] };
   };
@@ -1402,6 +1403,7 @@ export interface StudioToolIO {
       pillar?: { title: string; body: string } | undefined;
       formats?: string[] | undefined;
       count?: number | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: { themes: { title: string; body: string }[]; searched: boolean };
   };
@@ -1429,6 +1431,7 @@ export interface StudioToolIO {
         | undefined;
       postStructures?: { title: string; sections: string[] }[] | undefined;
       count?: number | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: { formats: { name: string; value: string }[] };
   };
@@ -1470,6 +1473,7 @@ export interface StudioToolIO {
         | { name: string; email: string; bio?: string | undefined }[]
         | undefined;
       extraInstructions?: string | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: {
       title: string;
@@ -1504,6 +1508,7 @@ export interface StudioToolIO {
       body: string;
       posts: { title: string; slug: string }[];
       count?: number | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: { suggestions: { quote: string; slug: string }[] };
   };

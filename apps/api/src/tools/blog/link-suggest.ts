@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import {
+  groundFromSite,
+  renderGrounding,
+  VirtualMcpIdSchema,
+} from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { retryGenerateObject } from "./generate-object";
 
@@ -79,6 +84,7 @@ export const BLOG_LINK_SUGGEST = defineTool({
       .max(20)
       .default(8)
       .describe("Maximum number of links to propose."),
+    virtualMcpId: VirtualMcpIdSchema,
   }),
 
   outputSchema: z.object({
@@ -111,13 +117,24 @@ export const BLOG_LINK_SUGGEST = defineTool({
       organizationId,
     );
 
+    const grounding = await groundFromSite(ctx, organizationId, {
+      virtualMcpId: input.virtualMcpId,
+      label: "BLOG_LINK_SUGGEST",
+      task: "Choosing internal links to add to a blog post, from the site's other posts.",
+      wanted:
+        "Which of the candidate posts actually get traffic, and which products or pages the business most needs read. A link to a post nobody reaches spends the only attention this paragraph has.",
+    });
+
     const prompt = [
       `## The site's other posts (link targets — title → slug)\n${input.posts
         .map((p) => `- ${p.title} → ${p.slug}`)
         .join("\n")}`,
       `## Post body\n${input.body}`,
+      renderGrounding(grounding),
       `## Your task\nPropose up to ${input.count} internal links.`,
-    ].join("\n\n");
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
