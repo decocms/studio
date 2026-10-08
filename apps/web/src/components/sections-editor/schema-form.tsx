@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
@@ -528,6 +529,8 @@ function SchemaFormBody({
   onVariantMatcherOp,
 }: SchemaFormProps) {
   const t = useT();
+  // Which blocks editor renders this form, for browser tests to tell apart.
+  const editor = useNewBlocksEditor() ? "new" : "classic";
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -680,7 +683,7 @@ function SchemaFormBody({
       ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-6" data-blocks-editor={editor}>
       {visibleKeys.map((key) => {
         const propSchema = properties[key];
         if (!propSchema) return null;

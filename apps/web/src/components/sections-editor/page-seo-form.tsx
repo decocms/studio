@@ -28,6 +28,8 @@ interface PageSeoFormProps {
   /** Remounts schema widgets (type change). */
   onBumpFormKey: () => void;
   beforeFields?: ReactNode;
+  /** False on v8, which has no async rendering: no switch at all. */
+  asyncRenderAvailable?: boolean;
 }
 
 /** Page SEO: Enable + type + fields + Async render (admin EditSEO layout). */
@@ -46,6 +48,7 @@ export function PageSeoForm({
   onClearForm,
   onBumpFormKey,
   beforeFields,
+  asyncRenderAvailable = true,
 }: PageSeoFormProps) {
   const handleEnableChange = (enabled: boolean) => {
     if (enabled) {
@@ -75,7 +78,9 @@ export function PageSeoForm({
     <SeoFormChrome
       rawSeo={rawSeo}
       onEnableChange={handleEnableChange}
-      onAsyncRenderChange={handleAsyncRenderChange}
+      onAsyncRenderChange={
+        asyncRenderAvailable ? handleAsyncRenderChange : undefined
+      }
     >
       {beforeFields}
       {isSeoEnabled(rawSeo) &&
