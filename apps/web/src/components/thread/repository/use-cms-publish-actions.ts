@@ -6,9 +6,11 @@
  */
 
 import type { MutableRefObject } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { KEYS } from "@/lib/query-keys.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {
   notifySubmittedForReview,
@@ -19,6 +21,11 @@ import {
   type PublishTarget,
 } from "./publish-flow.ts";
 import { discardGitFiles } from "./sandbox-git-api.ts";
+import {
+  HostedPublishError,
+  type HostedPublishResult,
+  publishHostedDraft,
+} from "./hosted-publish-api.ts";
 
 /** `publish` merges to production; `review` stops at the pull request. */
 export type CmsPublishMode = "publish" | "review";
@@ -38,6 +45,12 @@ interface CmsPublishActionsArgs {
   refresh: () => Promise<unknown>;
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
+  /**
+   * A hosted v8 site: publish commits the CDN draft to main, creates its
+   * release and makes it current (no pull request). It's done once merged; a
+   * release that isn't current is made current from the Releases screen.
+   */
+  hosted?: boolean;
 }
 
 interface CmsPublishActions {
@@ -64,8 +77,10 @@ export function useCmsPublishActions(
     refresh,
     onPullRequestChanged,
     onPublished,
+    hosted = false,
   } = args;
   const t = useT();
+  const queryClient = useQueryClient();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
@@ -75,6 +90,46 @@ export function useCmsPublishActions(
       note,
       t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
     );
+
+  /** Merged is done: the popover closes, saying what the CDN serves. */
+  const settleHosted = async (result: HostedPublishResult) => {
+    if (result.result === "up-to-date") {
+      toast.success(t("thread.publishPopover.upToDate"));
+    } else if (result.release === "current") {
+      toast.success(t("thread.publishPopover.mergedCurrent"));
+    } else if (result.release === "created") {
+      toast.warning(t("thread.publishPopover.mergedNotCurrent"));
+    } else {
+      toast.warning(t("thread.publishPopover.mergedNoRelease"));
+    }
+    // A mounted Releases screen shows the new commit and what is Current.
+    void queryClient.invalidateQueries({
+      queryKey: KEYS.hostedReleases(target.orgSlug, target.virtualMcpId),
+    });
+    onOpenChange(false);
+    await onPublished?.();
+  };
+
+  const publishHosted = async () => {
+    publishLockRef.current = true;
+    setIsPublishing(true);
+    setPublishError(undefined);
+    try {
+      await settleHosted(await publishHostedDraft(target, noteParts().message));
+    } catch (error) {
+      setPublishError(
+        error instanceof HostedPublishError && error.code === "main-moved"
+          ? t("thread.publishPopover.mainMoved")
+          : error instanceof Error
+            ? error.message
+            : t("thread.publishDialog.failedPublish"),
+      );
+      await refresh();
+    } finally {
+      publishLockRef.current = false;
+      setIsPublishing(false);
+    }
+  };
 
   const publish = async () => {
     publishLockRef.current = true;
@@ -157,7 +212,9 @@ export function useCmsPublishActions(
     isPublishing,
     isDiscarding,
     publishError,
-    submit: mode === "review" ? submitForReview : publish,
+    // Hosted callers never pass review mode (no pull request to open).
+    submit:
+      mode === "review" ? submitForReview : hosted ? publishHosted : publish,
     discardChange: (change) =>
       discardFiles(
         change.filepaths,

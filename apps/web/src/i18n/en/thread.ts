@@ -152,6 +152,14 @@ export const thread = {
   "thread.publishDialog.viewOnProvider": "View on provider",
   "thread.publishDialog.viewPr": "View PR",
   "thread.publishPopover.blocksGroup": "Blocks",
+  "thread.publishPopover.mergedCurrent": "Merged · Current on the CDN",
+  "thread.publishPopover.mergedNotCurrent":
+    "Merged · release created, making it current failed — use Make current on Releases",
+  "thread.publishPopover.mergedNoRelease":
+    "Merged · no release created (the next Publish includes these changes)",
+  "thread.publishPopover.upToDate": "Up to date, nothing to publish",
+  "thread.publishPopover.mainMoved":
+    "Main changed while publishing, so nothing was published. Publish again.",
   "thread.publishPopover.branchMoved":
     "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":

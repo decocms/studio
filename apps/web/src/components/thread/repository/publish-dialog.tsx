@@ -73,6 +73,7 @@ import {
 import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
 
 export type { CmsPublishMode };
 
@@ -460,7 +461,10 @@ function CmsPublishContent({
   ]
     .filter((id) => changes.some((change) => changeId(change) === id))
     .slice(0, MAX_LIVE_PANES);
-  const isReview = mode === "review";
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  // A hosted v8 draft has no pull request: review mode doesn't apply to it.
+  const isReview = mode === "review" && !hosted;
   const surfaceState: PublishSurfaceState = cardsPending
     ? "loading"
     : bodiesPending
@@ -508,7 +512,7 @@ function CmsPublishContent({
     discardChange,
     discardAll,
   } = useCmsPublishActions({
-    mode,
+    mode: isReview ? "review" : "publish",
     target,
     note,
     allPaths,
@@ -518,6 +522,7 @@ function CmsPublishContent({
     refresh,
     onPullRequestChanged,
     onPublished,
+    hosted,
   });
 
   const canDiscard = (paths: readonly string[]) =>
@@ -785,6 +790,7 @@ function CmsPublishContent({
               <div className="flex gap-2">
                 <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
                 {!isReview &&
+                !hosted &&
                 summary.count > 0 &&
                 !gate.allowed &&
                 !gate.pending ? (

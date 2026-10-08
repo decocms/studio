@@ -159,6 +159,14 @@ export const thread = {
   "thread.publishDialog.viewOnProvider": "Ver no provedor",
   "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishPopover.blocksGroup": "Blocos",
+  "thread.publishPopover.mergedCurrent": "Mesclado · Atual na CDN",
+  "thread.publishPopover.mergedNotCurrent":
+    "Mesclado · versão criada, mas não foi possível torná-la atual — use Tornar atual em Versões",
+  "thread.publishPopover.mergedNoRelease":
+    "Mesclado · nenhuma versão criada (a próxima publicação inclui estas alterações)",
+  "thread.publishPopover.upToDate": "Tudo atualizado, nada para publicar",
+  "thread.publishPopover.mainMoved":
+    "A main mudou durante a publicação, então nada foi publicado. Publique novamente.",
   "thread.publishPopover.branchMoved":
     "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
   "thread.publishPopover.detailsUnavailable":
