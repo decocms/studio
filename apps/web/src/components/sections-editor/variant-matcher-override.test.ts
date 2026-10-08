@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildPageVariantOverrideParams,
   buildSectionVariantOverrideParams,
+  inlinePageOverrideParams,
   MATCHER_OVERRIDE_QS,
   type PageVariantInfo,
   withVariantMatcherOverride,
@@ -157,5 +158,40 @@ describe("withVariantMatcherOverride", () => {
     expect(
       withVariantMatcherOverride(href, ["a@sections.0.variants.0.rule=0"]),
     ).toBe(href);
+  });
+});
+
+describe("inlinePageOverrideParams", () => {
+  it("re-roots the page's ids at the inline `props` of /live/previews", () => {
+    expect(
+      inlinePageOverrideParams(
+        [
+          "pages-Home-1@sections.variants.0.rule=0",
+          "pages-Home-1@sections.variants.1.rule=1",
+          "pages-Home-1@sections.variants.1.value.4.section.variants.0.rule=1",
+        ],
+        "pages-Home-1",
+      ),
+    ).toEqual([
+      "props.sections.variants.0.rule=0",
+      "props.sections.variants.1.rule=1",
+      "props.sections.variants.1.value.4.section.variants.0.rule=1",
+    ]);
+  });
+
+  it("leaves saved matcher block ids and other pages' ids untouched", () => {
+    expect(
+      inlinePageOverrideParams(
+        ["Matcher Black Friday=1", "pages-other@sections.variants.0.rule=1"],
+        "pages-home",
+      ),
+    ).toEqual([
+      "Matcher Black Friday=1",
+      "pages-other@sections.variants.0.rule=1",
+    ]);
+  });
+
+  it("returns an empty list when there is no override", () => {
+    expect(inlinePageOverrideParams([], "pages-home")).toEqual([]);
   });
 });

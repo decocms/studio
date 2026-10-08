@@ -156,6 +156,22 @@ export function buildSectionVariantOverrideParams({
 }
 
 /**
+ * Re-root page override ids for `/live/previews`, which receives the page
+ * inline as `props`: with no named resolvable above it, the runtime's matcher
+ * ids are `props.<path>` instead of `<pageKey>@<path>`. Saved matcher block
+ * ids are their own resolvable and pass through unchanged.
+ */
+export function inlinePageOverrideParams(
+  params: string[],
+  pageKey: string,
+): string[] {
+  const prefix = `${pageKey}@`;
+  return params.map((param) =>
+    param.startsWith(prefix) ? `props.${param.slice(prefix.length)}` : param,
+  );
+}
+
+/**
  * Append override params to a preview URL, returning the new href. Falls
  * back to the unmodified `href` on a malformed input instead of throwing
  * mid-render — `href` comes from the same untrusted sandbox/production
