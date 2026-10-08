@@ -77,9 +77,13 @@ export function PublishCompare({
 }: PublishCompareProps) {
   const t = useT();
   const canRender = canRenderCompare(change.kind, previewServerUrl, draft);
-  const [view, setView] = useState<CompareView>(canRender ? "split" : "code");
+  /** What the reviewer picked; until then both follow the change, whose path
+   *  and kind can still arrive after the pane mounts. */
+  const [pickedView, setView] = useState<CompareView | null>(null);
+  const view: CompareView = !canRender ? "code" : (pickedView ?? "split");
   const [device, setDevice] = useState<CompareDevice>("desktop");
-  const [path, setPath] = useState(() => initialComparePath(change, lastPage));
+  const [typedPath, setPath] = useState<string | null>(null);
+  const path = typedPath ?? initialComparePath(change, lastPage);
 
   const sectionKey = isolatedSectionKey(change);
   const pathEditable = isComparePathEditable(change);
