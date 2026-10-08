@@ -7,6 +7,7 @@ import { BlogBrandSchema } from "./schema";
 import { researchBrand } from "./brand-research";
 import {
   applyVerdicts,
+  type ClaimOrigin,
   type FieldSpec,
   flattenClaims,
   judgeClaims,
@@ -62,9 +63,10 @@ const BlockPassSchema = BlogBrandSchema.omit({ specialDates: true });
  * wrong name is obvious to the person reviewing; a missing one blocks every
  * generation downstream.
  *
- * `competitors` is marked block-derived because `preferFilled` prefers the
- * site's own answer; when research supplied it instead the judge still finds
- * it, since both sections are in the evidence it reads.
+ * `competitors` carries a placeholder origin that {@link brandFieldSpecs}
+ * replaces, because the source is only known once `preferFilled` has chosen;
+ * in practice it is almost always the research, since a brand seldom names a
+ * rival in its own copy.
  */
 const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
   {
@@ -91,7 +93,8 @@ const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
   {
     field: "competitors",
     kind: "rules",
-    origin: "blocks",
+    // Overwritten per run; `research` is the default because it is the usual answer.
+    origin: "research",
     purpose:
       "Is this a real rival of this brand, with something said about how it positions itself or where it differs — enough for a writer to avoid sounding like it?",
   },
@@ -117,9 +120,28 @@ const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
       "Is this a commercial moment this brand's year actually turns around, with what the brand does on it? A general retail date with nothing tying it to this brand is 29 at most.",
   },
 ];
-/** The site's own answer wins; research is what fills a blank. */
-function preferFilled<T>(own: T[], researched: T[]): T[] {
-  return own.length > 0 ? own : researched;
+/**
+ * The site's own answer wins; research is what fills a blank.
+ *
+ * Returns the choice alongside the items so the judge can be told where to
+ * look. Splitting the two let them drift once already: labelled block-derived
+ * while research had supplied them, every competitor was scored against site
+ * copy that never mentioned a rival and rejected at confidence 25.
+ */
+function preferFilled<T>(
+  own: T[],
+  researched: T[],
+): { items: T[]; origin: ClaimOrigin } {
+  return own.length > 0
+    ? { items: own, origin: "blocks" }
+    : { items: researched, origin: "research" };
+}
+
+/** The specs with `competitors` pointed at the evidence it actually came from. */
+export function brandFieldSpecs(competitors: ClaimOrigin): FieldSpec[] {
+  return BRAND_FIELD_SPECS.map((spec) =>
+    spec.field === "competitors" ? { ...spec, origin: competitors } : spec,
+  );
 }
 
 /** The evidence plus the research prose, so web-derived claims are checkable. */
@@ -205,28 +227,26 @@ export const BLOG_BRAND_EXTRACT = defineTool({
     // `companyName`, so gating first could cost the whole web pass in silence.
     const research = await researchBrand(ctx, organizationId, object);
 
+    // Research only fills what the site's own copy could not answer.
+    const competitors = preferFilled(object.competitors, research.competitors);
     const profile: Record<string, unknown> = {
       ...object,
-      // Research only fills what the site's own copy could not answer.
-      competitors: preferFilled(object.competitors, research.competitors),
+      competitors: competitors.items,
       specialDates: research.specialDates,
     };
 
-    const claims = flattenClaims(profile, BRAND_FIELD_SPECS);
+    const specs = brandFieldSpecs(competitors.origin);
+    const claims = flattenClaims(profile, specs);
     const gate = applyVerdicts(
       profile,
       claims,
       await judgeClaims(
         ctx,
         organizationId,
-        {
-          evidence: judgeEvidence(input, research),
-          claims,
-          specs: BRAND_FIELD_SPECS,
-        },
+        { evidence: judgeEvidence(input, research), claims, specs },
         "BLOG_BRAND_EXTRACT",
       ),
-      BRAND_FIELD_SPECS,
+      specs,
     );
     logDiscarded("BLOG_BRAND_EXTRACT", gate);
 

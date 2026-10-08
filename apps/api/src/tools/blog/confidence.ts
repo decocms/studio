@@ -134,7 +134,9 @@ CONFIDENCE — is the claim true?
   40-74   plausible, but the evidence is thin or mixed; your quote does not actually say it, or as many passages cut against it as for it.
   0-39    nothing in the evidence supports it, the evidence contradicts it, or the "evidence" is an editor's internal label, an asset filename, a dimension, or a campaign codename.
 
-  Claims are marked with where they came from. A claim marked (from the site's own blocks) is judged against the site content and its SEO; one marked (from web research) is judged against the research section. Never mark a claim unsupported because you looked in the wrong place.
+  Claims are marked with where they came from. A claim marked (from the site's own blocks) is judged against the site content and its SEO; one marked (from web research) is judged against the "Web research about this brand" section and nothing else. Never mark a claim unsupported because you looked in the wrong place.
+
+  A research claim being absent from the site's own pages is expected, not a defect, and is never a reason to lower confidence. Competitors are the clearest case: a brand almost never names a rival in its own copy, which is exactly why they were researched.
 
   For a claim about HOW the brand writes — tone, dos, avoid, vocabulary, voiceExamples — "true" means the pattern is really there in the evidence, not that it is good advice. Sound writing guidance this site does not demonstrate is 40 at most. But a rule that holds across most of the copy is still true: do not drive it to 40 because you found one exception, unless the claim itself says "always" or "never".
 
