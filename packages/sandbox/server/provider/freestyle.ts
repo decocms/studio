@@ -92,6 +92,8 @@ const LOOKUP_MAX = 5_000;
 const WATCH_TIMEOUT_MS = 5 * 60_000;
 /** Lookups sit on every uncached handle-only call, Kubernetes ones included. */
 const LOOKUP_TIMEOUT_MS = 3_000;
+const IDLE_SWEEP_MS = 60_000;
+const IDLE_SWEEP_PAGE = 100;
 
 export interface FreestyleSandboxProviderOptions {
   apiKey: string;
@@ -101,6 +103,13 @@ export interface FreestyleSandboxProviderOptions {
   orgFsSidecarImage?: string;
   /** Pause a VM after this long without network activity. Default 5 min. */
   idleTimeoutSeconds?: number;
+  /**
+   * Also pause a running VM once its daemon has gone this long unused. The
+   * idle timeout counts any traffic, so a dev server holding an outbound
+   * connection open keeps the VM awake without it. Checked every minute;
+   * 0 turns it off. Default 10 min.
+   */
+  idlePauseMs?: number;
   /**
    * Delete a VM after this long without running. Default 1 day. A plan
    * that caps it lower gets its cap.
@@ -126,6 +135,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly image: string;
   private readonly sidecarImage: string;
   private readonly idleTimeoutSeconds: number;
+  private readonly idlePauseMs: number;
   private readonly autoDeleteSeconds: number;
 
   private readonly domainSuffix: string;
@@ -142,6 +152,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     string,
     ReturnType<typeof setTimeout>
   >();
+  private readonly idleSweep: ReturnType<typeof setInterval> | null = null;
+  private sweeping = false;
 
   constructor(opts: FreestyleSandboxProviderOptions) {
     this.apiKey = opts.apiKey;
@@ -168,9 +180,14 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
+    this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
+    if (this.idlePauseMs > 0) {
+      this.idleSweep = setInterval(() => void this.pauseIdle(), IDLE_SWEEP_MS);
+      this.idleSweep.unref?.();
+    }
   }
 
   /** Whether this handle is a Freestyle sandbox. Cached; see `MISS_TTL_MS`. */
@@ -695,6 +712,59 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.cancelRelease(handle);
   }
 
+  /**
+   * Pause every running VM of ours whose daemon reports `idlePauseMs` without
+   * use. The daemon's clock counts requests and streaming runs, not the dev
+   * server's own traffic. Returns the handles paused; never throws.
+   */
+  async pauseIdle(): Promise<string[]> {
+    if (this.sweeping) return [];
+    this.sweeping = true;
+    try {
+      const running = [];
+      for (let offset = 0; ; offset += IDLE_SWEEP_PAGE) {
+        const { vms } = await this.freestyle.vms.list({
+          state: "running",
+          limit: IDLE_SWEEP_PAGE,
+          offset,
+        });
+        running.push(...vms);
+        if (vms.length < IDLE_SWEEP_PAGE) break;
+      }
+      const paused = await Promise.all(
+        running.map(async (data) => {
+          const handle = data.slug;
+          if (!handle || !data.metadata[TOKEN_KEY]) return null;
+          // A fork's daemon keeps the snapshot's clock until its first config.
+          if (Date.now() - Date.parse(data.createdAt) < this.idlePauseMs) {
+            return null;
+          }
+          const idleMs = await daemonIdleMs(this.daemonUrl(handle));
+          if (idleMs === null || idleMs < this.idlePauseMs) return null;
+          try {
+            await this.freestyle.vms.ref(data.id).pause();
+          } catch (err) {
+            console.warn(
+              `[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`,
+            );
+            return null;
+          }
+          this.cancelRelease(handle);
+          console.log(
+            `[${LOG_LABEL}] paused ${handle}, daemon idle ${Math.round(idleMs / 60_000)}m`,
+          );
+          return handle;
+        }),
+      );
+      return paused.filter((h) => h !== null);
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] idle sweep failed: ${errMsg(err)}`);
+      return [];
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
   private cancelRelease(handle: string): void {
     const timer = this.releaseTimers.get(handle);
     if (timer) clearTimeout(timer);
@@ -702,6 +772,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   close(): void {
+    if (this.idleSweep) clearInterval(this.idleSweep);
     for (const timer of this.releaseTimers.values()) clearTimeout(timer);
     this.releaseTimers.clear();
     this.lookups.clear();
@@ -717,6 +788,28 @@ async function daemonAnswers(url: string): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/** The daemon's `/idle` doesn't count as use; null when it won't say. */
+async function daemonIdleMs(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${url}/_sandbox/idle`, {
+      signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    const body: unknown = await res.json();
+    return typeof body === "object" &&
+      body !== null &&
+      "idleMs" in body &&
+      typeof body.idleMs === "number"
+      ? body.idleMs
+      : null;
+  } catch {
+    return null;
   }
 }
 

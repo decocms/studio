@@ -181,8 +181,10 @@ With `FREESTYLE_API_KEY` set, Studio also runs `FreestyleSandboxProvider`:
 each sandbox is a [Freestyle](https://freestyle.sh) VM running the same image
 under Docker, with the daemon published at `https://<handle>.style.dev`. The
 VM's slug is the handle and its metadata holds the daemon bearer, so it needs
-no state store. An idle VM is paused, and traffic resumes it; a VM paused for
-three days is deleted, or sooner if the Freestyle plan caps it lower. The first
+no state store. A VM is paused after five minutes without network traffic, or
+once its daemon reports ten minutes without use, which catches a dev server
+that keeps the network busy on its own; traffic resumes it. A VM paused for a
+day is deleted, or sooner if the Freestyle plan caps it lower. The first
 ensure for an image builds a base snapshot with the image pulled, unless the
 host already called `warm()` (the control plane does when it starts);
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
