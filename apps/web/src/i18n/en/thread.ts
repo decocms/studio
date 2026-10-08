@@ -20,6 +20,8 @@ export const thread = {
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
     "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.",
+  "thread.branchPicker.localServeConnected":
+    "Connected to deco serve on {host} (Blocks v8).",
   "thread.branchPicker.localUrlLabel": "Local tunnel URL",
   "thread.branchPicker.localUrlPlaceholder": "https://your-tunnel.example.com",
   "thread.branchPicker.localTurnOff": "Turn off",

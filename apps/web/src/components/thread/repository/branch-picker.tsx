@@ -51,14 +51,23 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import {
+  type DecoServeConnection,
+  classifyServeProbeError,
+  endpointHost,
+} from "@/components/sections-editor/deco-serve-connection";
+import { serveProblemShort } from "@/components/sections-editor/deco-serve-notices";
+import { DISCOVERY_PROBE_TIMEOUT_MS } from "@/components/sections-editor/deco-serve-discovery";
+import { probeServeEndpoint } from "@/hooks/use-deco-serve-discovery";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
+import { resolveLocalSubmit } from "./local-url-submit.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
 import {
@@ -143,16 +152,23 @@ export function BranchPicker({
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
   /**
-   * "Local" mode: a tunnel URL that overrides preview + CMS meta for this
-   * project (per-browser). Orthogonal to the branch `value` — picking any
-   * branch/draft clears it (see `pick`/`create`/`adoptBranch`).
+   * "Local" mode, per-browser and orthogonal to the branch `value` — picking
+   * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). Either a
+   * `deco serve` link (v8: the content protocol to this machine) or, for v7
+   * sites, a tunnel URL that overrides preview + CMS meta.
    */
   const {
-    url: localUrl,
-    setUrl: setLocalUrl,
-    clear: clearLocal,
+    url: tunnelUrl,
+    setUrl: setTunnelUrl,
+    clear: clearTunnel,
   } = useLocalPreviewUrl(virtualMcpId);
+  const serve = useDecoServeConnection(virtualMcpId);
+  const localUrl = serve.connection?.endpoint ?? tunnelUrl;
   const localActive = !!localUrl;
+  const clearLocal = () => {
+    clearTunnel();
+    serve.clear();
+  };
   // Non-suspense + deferred to `open`: the trigger renders before members load.
   const { data: membersData } = useMembersQuery({ enabled: open });
   const creatorName = (id: string | undefined): string | undefined =>
@@ -204,7 +220,16 @@ export function BranchPicker({
 
   // Save + activate a Local tunnel URL, or turn it off when cleared.
   const activateLocal = (url: string | null) => {
-    setLocalUrl(url);
+    serve.clear();
+    setTunnelUrl(url);
+    setAdvanced(false);
+    setOpen(false);
+  };
+
+  // Connect a `deco serve` that answered `describe` (a v8 site).
+  const activateServe = (connection: DecoServeConnection) => {
+    clearTunnel();
+    serve.set(connection);
     setAdvanced(false);
     setOpen(false);
   };
@@ -402,8 +427,10 @@ export function BranchPicker({
             enabled={open}
             tab={advancedTab}
             onTabChange={setAdvancedTab}
-            localUrl={localUrl}
+            localUrl={tunnelUrl}
+            serveEndpoint={serve.connection?.endpoint ?? null}
             onSaveLocal={activateLocal}
+            onSaveServe={activateServe}
             onBack={() => setAdvanced(false)}
             onAdopt={adoptBranch}
           />
@@ -755,7 +782,9 @@ function AdvancedPicker({
   tab,
   onTabChange,
   localUrl,
+  serveEndpoint,
   onSaveLocal,
+  onSaveServe,
   onBack,
   onAdopt,
 }: {
@@ -769,10 +798,13 @@ function AdvancedPicker({
   enabled: boolean;
   tab: "branches" | "prs" | "local";
   onTabChange: (tab: "branches" | "prs" | "local") => void;
-  /** Currently-registered Local URL, prefilled into the form. */
+  /** Currently-registered Local tunnel URL, prefilled into the form. */
   localUrl: string | null;
+  /** The connected `deco serve`'s endpoint, if any. */
+  serveEndpoint: string | null;
   /** Save + activate a Local URL, or turn it off with `null`. */
   onSaveLocal: (url: string | null) => void;
+  onSaveServe: (connection: DecoServeConnection) => void;
   onBack: () => void;
   onAdopt: (branch: string, name: string) => void;
 }) {
@@ -852,7 +884,12 @@ function AdvancedPicker({
         </TabsList>
       </Tabs>
       {tab === "local" ? (
-        <LocalUrlForm url={localUrl} onSave={onSaveLocal} />
+        <LocalUrlForm
+          url={localUrl}
+          serveEndpoint={serveEndpoint}
+          onSave={onSaveLocal}
+          onSaveServe={onSaveServe}
+        />
       ) : (
         <Command
           filter={
@@ -969,24 +1006,62 @@ function AdvancedPicker({
   );
 }
 
-/** "Local" tab: paste a tunnel URL to point preview + CMS at your own dev
- *  server, or turn the override off. Save is disabled until the URL changes. */
+/** "Local" tab: paste the link `deco serve` prints (v8: the content protocol
+ *  to this machine, once it answers `describe`) or, for a v7 site, a tunnel
+ *  URL to point preview + CMS at your own dev server; or turn Local off. */
 function LocalUrlForm({
   url,
+  serveEndpoint,
   onSave,
+  onSaveServe,
 }: {
   url: string | null;
+  serveEndpoint: string | null;
   onSave: (url: string | null) => void;
+  onSaveServe: (connection: DecoServeConnection) => void;
 }) {
   const t = useT();
   const [value, setValue] = useState(url ?? "");
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const trimmed = value.trim();
-  const submit = () =>
-    onSave(trimmed ? productionUrlFromDomain(trimmed) : null);
+  const submit = async () => {
+    // The first request is what makes Chrome ask to reach this machine.
+    setChecking(true);
+    setError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      DISCOVERY_PROBE_TIMEOUT_MS,
+    );
+    try {
+      const outcome = await resolveLocalSubmit(trimmed, (endpoint) =>
+        probeServeEndpoint(endpoint, controller.signal),
+      );
+      if (outcome.kind === "serve") onSaveServe(outcome.connection);
+      else if (outcome.kind === "tunnel") onSave(outcome.url);
+      else {
+        setError(
+          serveProblemShort(
+            t,
+            classifyServeProbeError(outcome.failure),
+            endpointHost(outcome.connection.endpoint),
+          ),
+        );
+      }
+    } finally {
+      clearTimeout(timeout);
+      setChecking(false);
+    }
+  };
   return (
     <div className="flex flex-col gap-2 p-2">
       <p className="text-xs text-muted-foreground">
-        {t("thread.branchPicker.localHint")}
+        {serveEndpoint
+          ? t("thread.branchPicker.localServeConnected", {
+              host: endpointHost(serveEndpoint),
+            })
+          : t("thread.branchPicker.localHint")}
       </p>
       <input
         type="url"
@@ -994,14 +1069,22 @@ function LocalUrlForm({
         aria-label={t("thread.branchPicker.localUrlLabel")}
         placeholder={t("thread.branchPicker.localUrlPlaceholder")}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setError(null);
+        }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && trimmed) submit();
+          if (e.key === "Enter" && trimmed && !checking) void submit();
         }}
         className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
       />
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2">
-        {url ? (
+        {url || serveEndpoint ? (
           <Button
             variant="ghost"
             size="sm"
@@ -1013,7 +1096,11 @@ function LocalUrlForm({
         ) : (
           <span />
         )}
-        <Button size="sm" disabled={!trimmed} onClick={submit}>
+        <Button
+          size="sm"
+          disabled={!trimmed || checking}
+          onClick={() => void submit()}
+        >
           {t("thread.branchPicker.save")}
         </Button>
       </div>
