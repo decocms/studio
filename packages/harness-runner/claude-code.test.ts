@@ -5,7 +5,7 @@ import {
   buildOptions,
   createDeltaCoalescer,
   errorFinishChunks,
-  interactiveToolGate,
+  interactiveToolHook,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
@@ -619,64 +619,81 @@ describe("errorFinishChunks", () => {
   });
 });
 
-describe("interactiveToolGate", () => {
-  const ask = (
-    gate: ReturnType<typeof interactiveToolGate>,
-    toolName: string,
-    agentID?: string,
-  ) =>
-    gate(
-      toolName,
-      { q: 1 },
+describe("interactiveToolHook", () => {
+  const ask = (toolName: string, agentId?: string) => {
+    const parked: string[] = [];
+    const matcher = interactiveToolHook((id) => parked.push(id));
+    const hook = matcher.hooks[0]!;
+    const result = hook(
       {
-        signal: new AbortController().signal,
-        toolUseID: "call-1",
-        requestId: "r",
-        ...(agentID ? { agentID } : {}),
+        hook_event_name: "PreToolUse",
+        tool_name: toolName,
+        tool_input: { q: 1 },
+        tool_use_id: "call-1",
+        session_id: "s",
+        transcript_path: "/t",
+        cwd: "/",
+        ...(agentId ? { agent_id: agentId } : {}),
       },
+      "call-1",
+      { signal: new AbortController().signal },
     );
+    return { matcher: matcher.matcher, result, parked };
+  };
+
+  test("matches only the interactive tools", () => {
+    const pattern = new RegExp(`^(${ask("x").matcher})$`);
+    expect(pattern.test("AskUserQuestion")).toBe(true);
+    expect(pattern.test("ExitPlanMode")).toBe(true);
+    expect(pattern.test("Bash")).toBe(false);
+  });
 
   for (const toolName of ["AskUserQuestion", "ExitPlanMode"]) {
     test(`${toolName} is parked for the user and ends the turn`, async () => {
-      const parked: string[] = [];
-      const gate = interactiveToolGate({
-        planMode: false,
-        onAwaitUser: (id) => parked.push(id),
-      });
-      expect(await ask(gate, toolName)).toEqual({
-        behavior: "deny",
-        message: "Waiting for the user.",
-        interrupt: true,
+      const { result, parked } = ask(toolName);
+      expect(await result).toMatchObject({
+        continue: false,
+        hookSpecificOutput: { permissionDecision: "deny" },
       });
       expect(parked).toEqual(["call-1"]);
     });
   }
 
   test("a subagent cannot ask the user, and the turn goes on", async () => {
-    const parked: string[] = [];
-    const gate = interactiveToolGate({
-      planMode: false,
-      onAwaitUser: (id) => parked.push(id),
+    const { result, parked } = ask("AskUserQuestion", "agent-1");
+    const output = await result;
+    expect(output).toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
     });
-    const result = await ask(gate, "AskUserQuestion", "agent-1");
-    expect(result).toMatchObject({ behavior: "deny" });
-    expect(result).not.toHaveProperty("interrupt");
+    expect(output).not.toHaveProperty("continue");
     expect(parked).toEqual([]);
   });
+});
 
-  test("other tools are allowed outside plan mode and denied in it", async () => {
-    const onAwaitUser = () => {};
-    expect(
-      await ask(interactiveToolGate({ planMode: false, onAwaitUser }), "Bash"),
-    ).toEqual({ behavior: "allow", updatedInput: { q: 1 } });
-    expect(
-      await ask(interactiveToolGate({ planMode: true, onAwaitUser }), "Bash"),
-    ).toMatchObject({ behavior: "deny" });
-    expect(
-      await ask(
-        interactiveToolGate({ planMode: true, onAwaitUser }),
-        "mcp__studio__web_search",
-      ),
-    ).toMatchObject({ behavior: "allow" });
+describe("permission callback", () => {
+  const decide = (mode: "default" | "plan", toolName: string) =>
+    options({ mode }).canUseTool!(
+      toolName,
+      { q: 1 },
+      {
+        signal: new AbortController().signal,
+        toolUseID: "call-1",
+        requestId: "r",
+      },
+    );
+
+  test("is always set, since it is what offers AskUserQuestion", () => {
+    expect(options().canUseTool).toBeDefined();
+  });
+
+  test("allows outside plan mode and denies changes in it", async () => {
+    expect(await decide("default", "Bash")).toEqual({
+      behavior: "allow",
+      updatedInput: { q: 1 },
+    });
+    expect(await decide("plan", "Bash")).toMatchObject({ behavior: "deny" });
+    expect(await decide("plan", "mcp__studio__web_search")).toMatchObject({
+      behavior: "allow",
+    });
   });
 });

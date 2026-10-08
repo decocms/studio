@@ -74,6 +74,13 @@ export async function hasClaudeCodeCredential(
 const PREWARM_UNUSED_MS = 3 * 60_000;
 
 /**
+ * Each user's latest prewarm still waiting for its first message: opening a
+ * newer chat releases the older one's sandbox, so N chats opened without
+ * sending hold one VM, not N. ponytail: per process, like the timer.
+ */
+const pendingPrewarms = new Map<string, () => Promise<void>>();
+
+/**
  * Start a new chat's sandbox while its first message is being typed, so that
  * message dispatches onto a running sandbox. Resolves the agent and branch the
  * way dispatch does: any other handle would be a second, unused VM. Deleted
@@ -82,6 +89,7 @@ const PREWARM_UNUSED_MS = 3 * 60_000;
 export async function prewarmThreadSandbox(
   ctx: StudioContext,
   organizationId: string,
+  userId: string,
   thread: { id: string; virtual_mcp_id: string; branch: string | null },
 ): Promise<void> {
   const virtualMcp = await ctx.storage.virtualMcps.findById(
@@ -122,7 +130,11 @@ export async function prewarmThreadSandbox(
         console.warn("[sandbox-prewarm] prepare refused", res.status);
     })
     .catch((err) => console.warn("[sandbox-prewarm] prepare failed", err));
-  setTimeout(async () => {
+  let released = false;
+  const release = async () => {
+    if (released) return;
+    released = true;
+    if (pendingPrewarms.get(userId) === release) pendingPrewarms.delete(userId);
     try {
       const current = await ctx.storage.threads.get(thread.id);
       if (current?.harness_id) return;
@@ -134,5 +146,8 @@ export async function prewarmThreadSandbox(
     } catch (err) {
       console.warn("[sandbox-prewarm] unused sandbox cleanup failed", err);
     }
-  }, PREWARM_UNUSED_MS).unref?.();
+  };
+  void pendingPrewarms.get(userId)?.();
+  pendingPrewarms.set(userId, release);
+  setTimeout(release, PREWARM_UNUSED_MS).unref?.();
 }

@@ -13,12 +13,13 @@
  * endpoint minted for this run, and the org's MCP connections arrive as one
  * server each (`orgMcps`, when the org opted in). Permissions are bypassed —
  * the pod is the isolation boundary. The only prompts that still reach Studio
- * are the user's own questions and plans (see `interactiveToolGate`).
+ * are the user's own questions and plans (see `interactiveToolHook`).
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type {
   CanUseTool,
+  HookCallbackMatcher,
   Options,
   SDKMessage,
   SDKUserMessage,
@@ -305,51 +306,66 @@ const PLAN_MODE_RESEARCH_TOOLS = new Set(
 );
 
 /**
- * The permission callback. An interactive call is parked for the user and the
- * turn is interrupted, so it ends on the question instead of the model
- * guessing past it. Exported for the unit test.
+ * Parks an interactive call for the user and ends the turn, so it ends on the
+ * question instead of the model guessing past it. A hook, not `canUseTool`:
+ * `bypassPermissions` approves before the callback is ever asked. Exported for
+ * the unit test.
  */
-export function interactiveToolGate(args: {
-  planMode: boolean;
-  onAwaitUser: (toolCallId: string) => void;
-}): CanUseTool {
-  return async (toolName, input, { toolUseID, agentID }) => {
-    if (INTERACTIVE_TOOLS.has(toolName)) {
-      // A subagent's calls never reach the chat, so nobody would see the question.
-      if (agentID) {
+export function interactiveToolHook(
+  onAwaitUser: (toolCallId: string) => void,
+): HookCallbackMatcher {
+  const deny = (reason: string) => ({
+    hookEventName: "PreToolUse" as const,
+    permissionDecision: "deny" as const,
+    permissionDecisionReason: reason,
+  });
+  return {
+    matcher: [...INTERACTIVE_TOOLS].join("|"),
+    hooks: [
+      async (hookInput) => {
+        if (hookInput.hook_event_name !== "PreToolUse") return {};
+        // A subagent's calls never reach the chat, so nobody would see the question.
+        if (hookInput.agent_id) {
+          return {
+            hookSpecificOutput: deny(
+              "Only the main agent can ask the user. Put the open question in your final report.",
+            ),
+          };
+        }
+        onAwaitUser(hookInput.tool_use_id);
         return {
-          behavior: "deny",
-          message:
-            "Only the main agent can ask the user. Put the open question in your final report.",
+          continue: false,
+          stopReason: "Waiting for the user.",
+          hookSpecificOutput: deny("Waiting for the user."),
         };
-      }
-      args.onAwaitUser(toolUseID);
-      return {
-        behavior: "deny",
-        message: "Waiting for the user.",
-        interrupt: true,
-      };
-    }
-    // Plan mode auto-allows read-only tools; anything that asks would change something.
-    if (args.planMode && !PLAN_MODE_RESEARCH_TOOLS.has(toolName)) {
-      return {
+      },
+    ],
+  };
+}
+
+const allowAll: CanUseTool = async (_toolName, input) => ({
+  behavior: "allow",
+  updatedInput: input,
+});
+
+/** Plan mode auto-allows read-only tools; anything that asks would change something. */
+const planModeGate: CanUseTool = async (toolName, input) =>
+  PLAN_MODE_RESEARCH_TOOLS.has(toolName)
+    ? { behavior: "allow", updatedInput: input }
+    : {
         behavior: "deny",
         message:
           "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
       };
-    }
-    return { behavior: "allow", updatedInput: input };
-  };
-}
 
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
   sessionId: string;
   resume: boolean;
-  canUseTool?: CanUseTool;
+  onAwaitUser?: (toolCallId: string) => void;
 }): Options {
-  const { input, sessionId, resume, canUseTool } = args;
+  const { input, sessionId, resume, onAwaitUser } = args;
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
@@ -373,7 +389,12 @@ export function buildOptions(args: {
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     // The pod is the isolation boundary and no approval UI exists upstream.
     permissionMode: input.mode === "plan" ? "plan" : "bypassPermissions",
-    ...(canUseTool ? { canUseTool } : {}),
+    // Also what offers AskUserQuestion: without a callback the CLI has nobody to
+    // ask, so it drops the tool. Under bypassPermissions it is never called.
+    canUseTool: input.mode === "plan" ? planModeGate : allowAll,
+    ...(onAwaitUser
+      ? { hooks: { PreToolUse: [interactiveToolHook(onAwaitUser)] } }
+      : {}),
     // Keep Claude Code's own prompt (it is what makes the built-in tools work)
     // and append the Studio agent's instructions rather than replacing it.
     systemPrompt: {
@@ -1001,10 +1022,7 @@ export async function runClaudeCode(
         input,
         sessionId,
         resume: resumeSession,
-        canUseTool: interactiveToolGate({
-          planMode: input.mode === "plan",
-          onAwaitUser: (toolCallId) => gate.awaitUser(toolCallId),
-        }),
+        onAwaitUser: (toolCallId) => gate.awaitUser(toolCallId),
       }),
     });
     channel?.send(userTurn(promptForRun(input)));

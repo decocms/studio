@@ -730,6 +730,18 @@ func (reg *Registry) runHarness(
 	entry *activeRun,
 	input json.RawMessage,
 ) {
+	info := runInfoOf(input)
+	info.Harness = entry.harness
+	// A clean run settles AFTER release closes the body: Studio ends the turn and
+	// can dequeue the next one while the transcript copies (seconds over org-fs).
+	clean := false
+	if deps.AfterRun != nil {
+		defer func() {
+			if clean {
+				deps.AfterRun(info)
+			}
+		}()
+	}
 	defer reg.release(runId, entry)
 
 	// The keepalive starts FIRST — before `BeforeRun`, not after it.
@@ -749,8 +761,6 @@ func (reg *Registry) runHarness(
 	defer stopKeepalive()
 
 	// Per-run workspace state, before the harness can touch the workspace.
-	info := runInfoOf(input)
-	info.Harness = entry.harness
 	var prepMs map[string]int64
 	if deps.BeforeRun != nil {
 		prepMs = deps.BeforeRun(info)
@@ -765,8 +775,15 @@ func (reg *Registry) runHarness(
 	// governs the run itself. Settling the workspace in a keepalive-less window
 	// is how a turn that already sent its terminal frame gets declared dead and
 	// continued on a replacement pod.
+	//
+	// Only for runs that did not end clean: those may be continued on another
+	// pod, which restores the transcript this save writes.
 	if deps.AfterRun != nil {
-		defer deps.AfterRun(info)
+		defer func() {
+			if !clean {
+				deps.AfterRun(info)
+			}
+		}()
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
@@ -780,8 +797,10 @@ func (reg *Registry) runHarness(
 		maps.Copy(runEnv, deps.RunEnv())
 	}
 	// The runner reports these with its own timings, so Studio's log shows them.
+	// Not in a kept runner's env: they change every turn, and its env is its key.
+	var prepJSON string
 	if b, err := json.Marshal(prepMs); err == nil && prepMs != nil {
-		runEnv["HARNESS_BEFORE_RUN_MS"] = string(b)
+		prepJSON = string(b)
 	}
 
 	// One line per frame: without it a streaming run and a buffering one look
@@ -804,8 +823,11 @@ func (reg *Registry) runHarness(
 	var err error
 	if entry.sessionKey != "" {
 		frames, err = reg.sessions.runSession(ctx, deps.HarnessRunnerCmd, entry.harness, input,
-			runEnv, info, entry.sessionKey, emitFrame)
+			runEnv, prepJSON, info, entry.sessionKey, emitFrame)
 	} else {
+		if prepJSON != "" {
+			runEnv["HARNESS_BEFORE_RUN_MS"] = prepJSON
+		}
 		frames, err = RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv, emitFrame)
 	}
 	elapsed := int(time.Since(startedAt).Seconds())
@@ -865,6 +887,7 @@ func (reg *Registry) runHarness(
 	}
 	slog.Info("dispatch done", "harness", entry.harness, "run_id", runId,
 		"elapsed_s", elapsed, "frames", frames)
+	clean = true
 	entry.emit(terminalFrame("", ""))
 }
 

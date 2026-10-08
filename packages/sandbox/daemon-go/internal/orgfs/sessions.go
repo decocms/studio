@@ -18,8 +18,9 @@ package orgfs
 // into "every run produces nothing"; copying turns it into a slow dispatch, and
 // at worst a session that starts fresh. That is the whole design.
 //
-// Single writer by construction: Studio's thread gate runs one dispatch per
-// thread at a time, and each run's save happens after its harness has exited.
+// A save can overlap the thread's next turn (a clean run saves after its
+// response closes, and a kept runner outlives the turn), so saves are ordered by
+// `saveGen` and a restore never touches a session the pod already holds.
 
 import (
 	"errors"

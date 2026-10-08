@@ -6,9 +6,9 @@ package dispatch
 // the input that shapes the session; without it a run execs as in runner.go.
 //
 // Wire, on top of runner.go's: the process is spawned with
-// HARNESS_RUNNER_PERSISTENT=1, reads one {harnessId, input} JSON line per turn,
-// and ends each clean turn with a `{"chunks":[],"turnEnd":true}` line, which is
-// not forwarded. A turn that ends any other way ends the process.
+// HARNESS_RUNNER_PERSISTENT=1, reads one {harnessId, input, beforeRunMs} JSON
+// line per turn, and ends each clean turn with a `{"chunks":[],"turnEnd":true}`
+// line, which is not forwarded. A turn that ends any other way ends the process.
 //
 // ⚠️ SECURITY: a kept process holds the model credential it was spawned with.
 // Its life is bounded by sessionIdleTTL, by the run env changing (the key
@@ -40,7 +40,7 @@ const sessionMinCredentialLife = 30 * time.Minute
 
 type liveRunner struct {
 	studioKey  string
-	envKeys    []string // names only, for the log
+	envDigest  map[string]string // name → value hash, to name what changed
 	key        string
 	mcpExpires time.Time
 	cmd        *exec.Cmd
@@ -119,10 +119,27 @@ func sessionKey(studioKey, harnessId string, env map[string]string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func envNames(env map[string]string) []string {
-	names := make([]string, 0, len(env))
-	for k := range env {
-		names = append(names, k)
+func envDigest(env map[string]string) map[string]string {
+	out := make(map[string]string, len(env))
+	for k, v := range env {
+		sum := sha256.Sum256([]byte(v))
+		out[k] = hex.EncodeToString(sum[:8])
+	}
+	return out
+}
+
+// changedEnv names the variables that differ, never their values.
+func changedEnv(was, now map[string]string) []string {
+	var names []string
+	for k, v := range now {
+		if was[k] != v {
+			names = append(names, k)
+		}
+	}
+	for k := range was {
+		if _, ok := now[k]; !ok {
+			names = append(names, k)
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -136,7 +153,7 @@ func (lr *liveRunner) mismatch(studioKey, key string, env map[string]string) str
 	case lr.studioKey != studioKey:
 		return "studio-key"
 	case lr.key != key:
-		return fmt.Sprintf("env (was %v, now %v)", lr.envKeys, envNames(env))
+		return fmt.Sprintf("env %v", changedEnv(lr.envDigest, envDigest(env)))
 	case time.Until(lr.mcpExpires) <= sessionMinCredentialLife:
 		return "credential"
 	}
@@ -164,7 +181,7 @@ func spawnLive(argv []string, env map[string]string, key string, mcpExpires time
 		return nil, fmt.Errorf("harness runner failed to start: %w", err)
 	}
 	lr := &liveRunner{
-		key: key, envKeys: envNames(env), mcpExpires: mcpExpires, cmd: cmd, stdin: stdin,
+		key: key, envDigest: envDigest(env), mcpExpires: mcpExpires, cmd: cmd, stdin: stdin,
 		lines: make(chan []byte, 64), exited: make(chan struct{}),
 	}
 	go func() {
@@ -200,11 +217,14 @@ func (p *sessionPool) runSession(
 	harnessId string,
 	input json.RawMessage,
 	env map[string]string,
+	beforeRunMs string,
 	info RunInfo,
 	studioKey string,
 	emit func([]byte) bool,
 ) (int, error) {
-	payload, err := json.Marshal(map[string]any{"harnessId": harnessId, "input": input})
+	payload, err := json.Marshal(map[string]any{
+		"harnessId": harnessId, "input": input, "beforeRunMs": beforeRunMs,
+	})
 	if err != nil {
 		return 0, err
 	}

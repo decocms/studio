@@ -33,7 +33,7 @@ if (process.env.HARNESS_RUNNER_PERSISTENT === "1") {
   for await (const line of console) {
     if (!line.trim()) continue;
     const turnStartedAt = performance.now();
-    let turn: { harnessId?: unknown; input?: unknown };
+    let turn: { harnessId?: unknown; input?: unknown; beforeRunMs?: unknown };
     try {
       turn = JSON.parse(line);
     } catch {
@@ -45,6 +45,9 @@ if (process.env.HARNESS_RUNNER_PERSISTENT === "1") {
         `harness-runner does not implement ${JSON.stringify(turn.harnessId)}`,
       );
     }
+    // The daemon's prep for THIS turn; the spawn env only had the first's.
+    process.env.HARNESS_BEFORE_RUN_MS =
+      typeof turn.beforeRunMs === "string" ? turn.beforeRunMs : "";
     let failed = false;
     await runClaudeCode(
       turn.input as Parameters<typeof runClaudeCode>[0],

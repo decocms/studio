@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -16,7 +17,8 @@ func turnPid(t *testing.T, p *sessionPool, key string) int {
 	info := RunInfo{ThreadId: "thrd_1", McpExpiresAt: time.Now().Add(time.Hour).UnixMilli()}
 	var pid int
 	n, err := p.runSession(context.Background(), fakePersistentRunner, "claude-code",
-		json.RawMessage(`{}`), map[string]string{"K": "v"}, info, key,
+		// Prep timings differ every turn and must not cost the kept runner.
+		json.RawMessage(`{}`), map[string]string{"K": "v"}, time.Now().String(), info, key,
 		func(frame []byte) bool {
 			var f struct {
 				Chunks []struct{ Pid int } `json:"chunks"`
@@ -58,5 +60,13 @@ func TestSessionKillsAnIdleRunner(t *testing.T) {
 	case <-lr.exited:
 	case <-time.After(2 * time.Second):
 		t.Fatal("idle runner still alive")
+	}
+}
+
+func TestChangedEnvNamesOnlyWhatDiffers(t *testing.T) {
+	was := envDigest(map[string]string{"A": "1", "B": "2", "C": "3"})
+	now := envDigest(map[string]string{"A": "1", "B": "x", "D": "4"})
+	if got := fmt.Sprint(changedEnv(was, now)); got != "[B C D]" {
+		t.Fatalf("changedEnv = %s", got)
 	}
 }
