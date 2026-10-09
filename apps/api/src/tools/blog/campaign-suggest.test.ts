@@ -296,3 +296,36 @@ describe("hydrate", () => {
     expect(target).not.toHaveProperty("images");
   });
 });
+
+/**
+ * A pass that makes fifty tool calls routinely writes no summary — the
+ * transcript is too long to compress. Reading that as "nothing answered" throws
+ * away a catalogue that was read from the same systems.
+ */
+describe("describeGaps with a catalogue but no prose", () => {
+  const ok = {
+    toolNames: ["catalog_search"],
+    calls: [{}],
+    outcome: "ok" as const,
+  };
+  const none = { targets: 0, products: 0 };
+
+  test("silent prose with a catalogue is not a gap", () => {
+    expect(describeGaps(ok, "", none, 42)).toEqual([]);
+  });
+
+  test("silent prose with nothing transcribed still is", () => {
+    expect(describeGaps(ok, "", none, 0)).toEqual([{ code: "nothing-useful" }]);
+  });
+
+  test("a catalogue does not paper over a timeout", () => {
+    expect(
+      describeGaps(
+        { toolNames: ["x"], calls: [{}], outcome: "timeout" },
+        "",
+        none,
+        42,
+      ),
+    ).toEqual([{ code: "timeout-partial", count: 1 }]);
+  });
+});

@@ -432,6 +432,12 @@ export async function groundSiteReport(
 /**
  * A product the store actually reported, with the parts a summary loses.
  *
+ * No array here carries a `.max()`. On a model's output a length cap is not a
+ * cap, it is a rejection: zod throws the whole object away, the retries throw
+ * it away again, and a store with more images than a number someone guessed
+ * loses its entire catalogue. Caps on how much is KEPT belong after the parse.
+ * Caps that reject belong on `inputSchema`, where the sender can be told.
+ *
  * `images` and `slug` are the reason this exists: a model writing an 8k-char
  * markdown summary has no budget for three 150-char CDN URLs per product, so
  * they never survive the prose. Copied here instead, and never composed.
@@ -455,7 +461,6 @@ const CatalogueProductSchema = z.object({
     ),
   images: z
     .array(z.string().max(1024))
-    .max(8)
     .describe(
       "Image URLs character for character. These sit on a CDN whose host is not the store's; rebuilding one produces a link that silently fails.",
     ),

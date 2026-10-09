@@ -235,6 +235,20 @@ function trim<T extends object>(entry: T): Omit<T, "images"> {
 }
 
 /**
+ * What to say when the gathering pass wrote no prose.
+ *
+ * It routinely does: fifty tool calls leave a transcript too long to summarise,
+ * and the write-up comes back empty. That used to mean "no connected system
+ * answered" — a sentence that now sits directly above a catalogue of the
+ * store's own products, telling the model to ignore it.
+ */
+function noProse(catalogued: number): string {
+  return catalogued > 0
+    ? "## What the store reported\nThe gathering pass returned no written summary, but the catalogue below was read from the same systems. Use it. Any figure NOT in it is unverified — leave it out."
+    : "## What the store reported\nNo connected system answered. Leave `targets` and `products` empty — do not fill them from what you know about the category.";
+}
+
+/**
  * Attach what the store reported to what the model chose.
  *
  * The model picks by id and writes the argument; the address and the images
@@ -390,6 +404,8 @@ export function describeGaps(
   report: { toolNames: string[]; calls: unknown[]; outcome: GroundingOutcome },
   grounding: string,
   dropped: { targets: number; products: number },
+  /** Catalogue entries transcribed. Prose is not the only thing a pass returns. */
+  found = 0,
 ): Gap[] {
   const gaps: Gap[] = [];
   const answered = report.calls.length;
@@ -405,7 +421,7 @@ export function describeGaps(
     );
   } else if (report.outcome === "failed") {
     gaps.push({ code: "failed" });
-  } else if (!grounding.trim()) {
+  } else if (!grounding.trim() && found === 0) {
     gaps.push({ code: "nothing-useful" });
   }
   if (dropped.targets > 0) {
@@ -595,6 +611,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       "BLOG_CAMPAIGN_SUGGEST",
     );
     const evidence = evidenceFrom(catalogue, report.evidence);
+    const catalogued = catalogue.products.length + catalogue.targets.length;
     const today = new Date().toISOString().slice(0, 10);
 
     const tier = await resolveTier(ctx, "smart");
@@ -613,8 +630,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
         `## The seed\n${input.seed.prompt}`,
         input.seed.keywords.length > 0 &&
           `## Terms to aim at\n${input.seed.keywords.map((k) => `- ${k}`).join("\n")}`,
-        renderGrounding(grounding) ??
-          "## What the store reported\nNo connected system answered. Leave `targets` and `products` empty — do not fill them from what you know about the category.",
+        renderGrounding(grounding) ?? noProse(catalogued),
         renderCatalogue(catalogue),
         input.existingNames.length > 0 &&
           `## Campaigns this brand already has\n${input.existingNames.map((n) => `- ${n}`).join("\n")}`,
@@ -660,12 +676,16 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
 
     return {
       campaigns: pairReviews(candidates, reviews),
-      grounded: report.outcome === "ok" && grounding.trim().length > 0,
+      grounded:
+        report.outcome === "ok" &&
+        (grounding.trim().length > 0 || catalogued > 0),
       toolsUsed: [...new Set(report.calls.map((call) => call.tool))],
-      gaps: describeGaps(report, grounding, {
-        targets: droppedTargets,
-        products: droppedProducts,
-      }),
+      gaps: describeGaps(
+        report,
+        grounding,
+        { targets: droppedTargets, products: droppedProducts },
+        catalogued,
+      ),
     };
   },
 });
