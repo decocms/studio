@@ -204,7 +204,7 @@ USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not li
 
 THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, link them with the links given, and use their image addresses exactly as written — those sit on a CDN and rebuilding one produces an image that silently fails to load. Never name a product the campaign did not give you.
 
-A LOADER-DRIVEN FIELD IS NOT YOURS TO FILL. A prop whose schema says \`"format": "dynamic-options"\` takes a value a loader resolves against the live catalogue — an id or a slug the store owns, which you have no way to know. Leave it empty unless the campaign handed you that exact value. A product shelf with an empty list is one someone fills in two clicks; a shelf full of slugs you composed renders blank and looks filled, which is worse.
+A LOADER-DRIVEN FIELD TAKES A REFERENCE, AND ONLY ONE YOU WERE GIVEN. A prop whose schema says \`"format": "dynamic-options"\` holds a handle a loader resolves against the live catalogue, not a product. Each campaign product lists its \`reference\` — use that, exactly, and nothing else. NEVER copy the value out of a block's example: that example points at a real product, a different one, and a card showing the wrong product is worse than a card showing none. With no reference for a product, leave the field empty — an empty shelf is one someone fills in two clicks.
 
 IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` takes an image address. For an image that does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and it is generated and uploaded for you. Use this at most twice in a post, and only where the format's blocks ask for an image. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
 
@@ -253,6 +253,31 @@ function renderVoiceExamples(
     .join("\n\n");
 }
 
+/**
+ * The handle a block uses to point at one of the campaign's products.
+ *
+ * A product field on a section is resolved by a loader, so it holds a
+ * reference rather than a product — and the campaign carries no id a loader
+ * would accept: what the catalogue reported is a stock code, not the id the
+ * storefront indexes by. The product's own address is the one handle that is
+ * both ours and unambiguous, so its slug is what travels.
+ *
+ * Derived here rather than asked for: composing a slug is the kind of thing a
+ * model does plausibly and wrongly, and this one is a substring.
+ */
+export function productReference(url: string): string {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, "");
+    const segments = path.split("/").filter(Boolean);
+    const last = segments.at(-1);
+    // A VTEX product page is `/<slug>/p`; the slug is what identifies it.
+    const slug = last === "p" ? segments.at(-2) : last;
+    return slug ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /** The campaign as the writer reads it — the brief, not a record dump. */
 export function renderCampaign(
   campaign: z.infer<typeof CampaignSchema>,
@@ -272,11 +297,11 @@ export function renderCampaign(
         )
         .join("\n")}`,
     intent.products.length > 0 &&
-      `## Products this post may name\nUse these names, these links and these image addresses, exactly.\n${intent.products
-        .map(
-          (p) =>
-            `- ${p.name}${p.category ? ` — ${p.category}` : ""}${p.url ? `\n  link: ${p.url}` : ""}${p.images.length > 0 ? `\n  images: ${p.images.join(", ")}` : ""}${p.description ? `\n  ${p.description}` : ""}`,
-        )
+      `## Products this post may name\nUse these names, these links, these image addresses and these references, exactly.\n${intent.products
+        .map((p) => {
+          const reference = productReference(p.url);
+          return `- ${p.name}${p.category ? ` — ${p.category}` : ""}${p.url ? `\n  link: ${p.url}` : ""}${reference ? `\n  reference: ${reference}` : ""}${p.images.length > 0 ? `\n  images: ${p.images.join(", ")}` : ""}${p.description ? `\n  ${p.description}` : ""}`;
+        })
         .join("\n")}`,
     intent.keywords.length > 0 &&
       `## Terms this post should be found by\n${intent.keywords.map((k) => `- ${k}`).join("\n")}`,

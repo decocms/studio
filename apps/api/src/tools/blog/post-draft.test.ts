@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { describeGaps, renderCampaign } from "./post-draft";
+import { describeGaps, productReference, renderCampaign } from "./post-draft";
 
 const RUN = {
   grounded: true,
@@ -114,5 +114,72 @@ describe("renderCampaign", () => {
     });
     expect(rendered).toContain("on top of the brand's");
     expect(rendered).toContain("Nunca cite preço.");
+  });
+});
+
+/**
+ * A product field on a section holds a handle a loader resolves, and the
+ * campaign carries no id a loader would take — what the catalogue reported is
+ * a stock code, not what the storefront indexes by. The address is the handle.
+ */
+describe("productReference", () => {
+  test("takes the slug out of a product page address", () => {
+    expect(productReference("https://loja.com.br/mochila-frozen-shine/p")).toBe(
+      "mochila-frozen-shine",
+    );
+  });
+
+  test("handles an address that is not a /p page", () => {
+    expect(productReference("https://loja.com.br/escolar/mochila-azul")).toBe(
+      "mochila-azul",
+    );
+  });
+
+  test("ignores a query string and a trailing slash", () => {
+    expect(
+      productReference("https://loja.com.br/mochila-frozen/p/?skuId=148129"),
+    ).toBe("mochila-frozen");
+  });
+
+  test("answers nothing for a product the campaign could not link", () => {
+    expect(productReference("")).toBe("");
+    expect(productReference("not a url")).toBe("");
+  });
+
+  test("answers nothing for an address with no path to speak of", () => {
+    expect(productReference("https://loja.com.br/")).toBe("");
+  });
+});
+
+describe("renderCampaign — product references", () => {
+  const withProduct = (url: string) => ({
+    name: "C",
+    period: { start: null, end: null },
+    trigger: { type: "launch" as const, note: "n" },
+    intent: {
+      objective: "conversion" as const,
+      targets: [],
+      products: [
+        {
+          name: "Mochila Frozen",
+          url,
+          images: [],
+          category: "",
+          description: "",
+        },
+      ],
+      keywords: [],
+    },
+    guardrails: { avoidComplements: [], toneOverrides: "" },
+  });
+
+  test("gives each product the reference a block can point at", () => {
+    expect(
+      renderCampaign(withProduct("https://loja.com.br/mochila-frozen/p")),
+    ).toContain("reference: mochila-frozen");
+  });
+
+  test("says nothing where there is no address to take one from", () => {
+    expect(renderCampaign(withProduct(""))).not.toContain("reference:");
   });
 });
