@@ -31,7 +31,7 @@ export const thread = {
     "Version limit reached ({max}). Delete a version to create a new one.",
   "thread.branchPicker.rename": "Rename",
   "thread.branchPicker.save": "Save",
-  "thread.branchPicker.saveError": "Couldn't save the version. Try again.",
+  "thread.branchPicker.saveError": "Couldn't update your draft. Try again.",
   "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
@@ -149,10 +149,7 @@ export const thread = {
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
   "thread.publishDialog.viewOnProvider": "View on provider",
-  "thread.publishDialog.viewPr": "View PR",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.branchMoved":
-    "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":
     "Details for these changes could not be loaded.",
   "thread.publishPopover.loadFailed": "Couldn't load your changes",

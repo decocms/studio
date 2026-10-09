@@ -68,8 +68,11 @@ describe("hosted Publish: one toast per Publish", () => {
         expect(String(toasts[0]!.title)).not.toMatch(word);
       if (offersRetry) {
         expect(toasts[0]!.action?.label).toBe("Try again");
-        toasts[0]!.action!.onClick({ defaultPrevented: false });
+        toasts[0]!.action!.onClick({ preventDefault: () => {} });
         expect(retries).toBe(1);
+        // The same toast stays, as "Publishing…", until the outcome.
+        expect(shown()).toHaveLength(1);
+        expect(shown()[0]!.title).toBe("Publishing…");
       } else {
         expect(toasts[0]!.action).toBeUndefined();
       }

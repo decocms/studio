@@ -34,7 +34,7 @@ export const thread = {
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
   "thread.branchPicker.saveError":
-    "Não foi possível salvar a versão. Tente novamente.",
+    "Não foi possível atualizar seu rascunho. Tente de novo.",
   "thread.branchPicker.selectVersion": "Selecione uma versão",
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
@@ -156,15 +156,12 @@ export const thread = {
   "thread.publishDialog.submittedForReview":
     "Pull request #{prNumber} enviado para revisão",
   "thread.publishDialog.viewOnProvider": "Ver no provedor",
-  "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishPopover.blocksGroup": "Blocos",
-  "thread.publishPopover.branchMoved":
-    "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
   "thread.publishPopover.detailsUnavailable":
     "Não foi possível carregar os detalhes destas alterações.",
   "thread.publishPopover.loadFailed":
     "Não foi possível carregar suas alterações",
-  "thread.publishPopover.retry": "Tentar novamente",
+  "thread.publishPopover.retry": "Tentar de novo",
   "thread.publishPopover.showingFirst":
     "Mostrando as primeiras {shown} de {total} alterações",
   "thread.publishPopover.chipEdited": "Editado",

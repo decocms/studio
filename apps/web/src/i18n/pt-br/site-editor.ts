@@ -10,9 +10,11 @@ export const siteEditor = {
   "siteEditor.publish.everythingLive": "Tudo já está no ar.",
   "siteEditor.publish.savedNotPublished": "Salvo, mas ainda não publicado",
   "siteEditor.publish.savedNotPublishedBody":
-    "Suas alterações estão guardadas. Tente de novo para colocá-las no ar.",
+    "Suas alterações estão salvas. Tente de novo para colocá-las no ar.",
   "siteEditor.publish.publishedMeanwhile":
     "Outra pessoa publicou enquanto você publicava, então nada mudou. Revise suas alterações e publique de novo.",
+  "siteEditor.publish.changedMeanwhile":
+    "Suas alterações mudaram enquanto você revisava. Feche e abra de novo para ver o que será publicado.",
   "siteEditor.publish.failed":
     "Não foi possível publicar. Suas alterações estão salvas. Tente de novo em instantes.",
   "siteEditor.publish.defaultNote": "Alterações de {name}",
@@ -21,9 +23,11 @@ export const siteEditor = {
   "siteEditor.save.failed":
     "Não foi possível salvar sua alteração. Tente de novo.",
   "siteEditor.save.conflict":
-    "Não salvo: outra pessoa alterou isto ao mesmo tempo. Estamos carregando a versão dela, então refaça sua alteração.",
-  "siteEditor.save.readOnly": "Não salvo: esta versão não pode ser editada.",
-  "siteEditor.save.invalid": "Não salvo: {detail}. Corrija e tente de novo.",
+    "Não foi salvo: outra pessoa alterou isto ao mesmo tempo. Estamos carregando a versão dela, então refaça sua alteração.",
+  "siteEditor.save.readOnly":
+    "Não foi salvo: esta versão não pode ser editada.",
+  "siteEditor.save.invalid":
+    "Não foi salvo: alguns campos não estão preenchidos corretamente. Corrija e tente de novo.",
   "siteEditor.save.tooLarge":
-    "Não salvo: este conteúdo é grande demais. Diminua o tamanho e tente de novo.",
+    "Não foi salvo: este conteúdo é grande demais. Diminua o tamanho e tente de novo.",
 } satisfies Record<keyof typeof siteEditorEn, string>;

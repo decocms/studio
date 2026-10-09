@@ -4,7 +4,8 @@
  * published ("Make current" on the API); the one latest.json names is
  * Published (read, never inferred). A commit without a companion (a
  * developer push, or a Publish whose release write failed) is listed with no
- * badge and no action.
+ * badge and no action, as "Site update" (its own message, which may name
+ * git, is developer detail in the tooltip).
  *
  * Business-user copy: no sha, CDN or git words on screen; one toast per
  * action (shared with Publish), with the error's own text behind Details.
@@ -32,10 +33,12 @@ import {
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { formatTimeAgo } from "@/lib/format-time.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
+import { formatRelativeTime } from "@/lib/format-time.ts";
 import { useProjectContext } from "@/sdk";
 import {
   ErrorDetails,
+  dismissPublishToast,
   errorDetail,
   toastPublishFailed,
   toastPublished,
@@ -60,6 +63,7 @@ type PendingConfirm = {
 
 export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
+  const [{ language }] = usePreferences();
   const { org } = useProjectContext();
   const releases = useReleases(org.slug, virtualMcpId);
   const makeCurrent = useMakeCurrent(org.slug, virtualMcpId);
@@ -110,6 +114,9 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         error instanceof HostedRequestError &&
         error.code === "schema-mismatch"
       ) {
+        // The confirm dialog asks the next step; a retry's "Publishing…"
+        // toast must not stay behind it.
+        dismissPublishToast();
         setConfirm({ commit, schemaMismatch: true });
         return;
       }
@@ -139,7 +146,10 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
           <span className="text-muted-foreground">
             {current
               ? t("releases.publishedAgo", {
-                  when: formatTimeAgo(new Date(current.publishedAt)),
+                  when: formatRelativeTime(
+                    new Date(current.publishedAt),
+                    language,
+                  ),
                 })
               : t("releases.nothingPublished")}
           </span>
@@ -158,13 +168,26 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                   isCurrent && "bg-muted/40",
                 )}
               >
-                {/* The sha is developer detail: a tooltip, never on screen. */}
-                <div className="min-w-0 flex-1" title={short(commit.sha)}>
+                {/* The sha (and a developer push's own message) is developer
+                    detail: a tooltip, never on screen. */}
+                <div
+                  className="min-w-0 flex-1"
+                  title={
+                    commit.hasRelease
+                      ? short(commit.sha)
+                      : `${short(commit.sha)} ${titleLine(commit.message)}`
+                  }
+                >
                   <p className="truncate text-sm">
-                    {titleLine(commit.message)}
+                    {commit.hasRelease
+                      ? titleLine(commit.message)
+                      : t("releases.siteUpdate")}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {[commit.author, formatTimeAgo(new Date(commit.date))]
+                    {[
+                      commit.author,
+                      formatRelativeTime(new Date(commit.date), language),
+                    ]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
