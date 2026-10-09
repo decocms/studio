@@ -5,7 +5,12 @@
  * uploads/downloads move raw bytes, which the HTTP routes are built for.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 
@@ -602,17 +607,23 @@ export function useOrgFsSetShareMode(volume: string) {
   });
 }
 
+/** What any write to a volume makes stale: its listings and usage, and the
+ *  cross-volume feeds. */
+export function invalidateOrgFsWrite(
+  queryClient: QueryClient,
+  orgId: string,
+  volume: string,
+): void {
+  queryClient.invalidateQueries({ queryKey: KEYS.orgFsVolume(orgId, volume) });
+  queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(orgId) });
+  queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(orgId) });
+}
+
 /** Upload/mkdir/delete/move; each invalidates the whole volume's listings+usage. */
 export function useOrgFsMutations(volume: string) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const invalidate = () => {
-    queryClient.invalidateQueries({
-      queryKey: KEYS.orgFsVolume(org.id, volume),
-    });
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(org.id) });
-  };
+  const invalidate = () => invalidateOrgFsWrite(queryClient, org.id, volume);
 
   const upload = useMutation({
     mutationFn: async (input: { dir: string; files: File[] }) => {

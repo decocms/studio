@@ -912,7 +912,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "PROJECT_FOLDER_ENSURE",
-    description: "Create the missing parts of a project's folder",
+    description: "Give a project's folder its shape, once",
     category: "Virtual MCPs",
   },
   {

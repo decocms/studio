@@ -17,7 +17,10 @@ import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
-import { ensureProjectFolder } from "../../file-storage/project-folder";
+import {
+  claimProjectFolderFor,
+  persistProjectFolderName,
+} from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 /**
  * Random icon+color for new agents (server-side, no React deps).
@@ -152,19 +155,38 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       await writeAgentPrompts(ctx.orgFs, virtualMcp.id, userId, prompts);
     }
 
-    // Best-effort too: opening the project's files re-runs this.
-    if (ctx.orgFs && virtualMcp.id) {
-      await ensureProjectFolder(ctx.orgFs, virtualMcp, userId).catch((err) =>
+    // Best-effort too: opening the project's files claims it later.
+    let item = virtualMcp;
+    if (virtualMcp.id) {
+      try {
+        const folderName = await claimProjectFolderFor(
+          ctx,
+          organization.id,
+          virtualMcp,
+          userId,
+        );
+        if (folderName) {
+          await persistProjectFolderName(
+            ctx,
+            organization.id,
+            virtualMcp.id,
+            folderName,
+            userId,
+          );
+          item = {
+            ...virtualMcp,
+            metadata: { ...virtualMcp.metadata, projectFolderName: folderName },
+          };
+        }
+      } catch (err) {
         console.error("[project-folder] scaffold failed", {
           projectId: virtualMcp.id,
           err,
-        }),
-      );
+        });
+      }
     }
 
     // Return virtual MCP entity directly (already in correct format)
-    return {
-      item: virtualMcp,
-    };
+    return { item };
   },
 });

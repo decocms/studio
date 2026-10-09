@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   folderNameFor,
+  pinnedProjectFolderName,
   projectFolderDir,
   projectFolderName,
   projectFolderPath,
@@ -12,7 +13,7 @@ describe("folderNameFor", () => {
   });
 
   test("collapses punctuation into single separators", () => {
-    expect(folderNameFor("Farm · Loja  BR!")).toBe("farm-loja-br");
+    expect(folderNameFor("Acme · Loja  BR!")).toBe("acme-loja-br");
   });
 
   test("leaves no leading or trailing separator", () => {
@@ -27,8 +28,8 @@ describe("folderNameFor", () => {
 
 describe("projectFolderName", () => {
   test("derives from the title", () => {
-    expect(projectFolderName({ id: "vir_1", title: "Farm BR" })).toBe(
-      "farm-br",
+    expect(projectFolderName({ id: "vir_1", title: "Acme Store" })).toBe(
+      "acme-store",
     );
   });
 
@@ -38,10 +39,31 @@ describe("projectFolderName", () => {
     expect(
       projectFolderName({
         id: "vir_1",
-        title: "Farm BR",
+        title: "Acme Store",
         metadata: { project: { folder: "clientes" } },
       }),
-    ).toBe("farm-br");
+    ).toBe("acme-store");
+  });
+
+  test("a pinned name survives a rename", () => {
+    expect(
+      projectFolderName({
+        id: "vir_1",
+        title: "Renamed",
+        metadata: { projectFolderName: "acme-store" },
+      }),
+    ).toBe("acme-store");
+  });
+
+  test("ignores a pinned name that is not one safe segment", () => {
+    for (const projectFolderName of ["..", ".", "a/b", "%2e%2e", " "]) {
+      expect(
+        pinnedProjectFolderName({
+          id: "vir_1",
+          metadata: { projectFolderName },
+        }),
+      ).toBeNull();
+    }
   });
 
   test("falls back to the id so there is always somewhere to put a file", () => {
@@ -51,8 +73,8 @@ describe("projectFolderName", () => {
 
 describe("projectFolderPath", () => {
   test("roots under the drive's projects folder", () => {
-    expect(projectFolderPath({ id: "vir_1", title: "Farm BR" })).toBe(
-      "home/projects/farm-br",
+    expect(projectFolderPath({ id: "vir_1", title: "Acme Store" })).toBe(
+      "home/projects/acme-store",
     );
   });
 
@@ -60,17 +82,39 @@ describe("projectFolderPath", () => {
     expect(
       projectFolderPath({
         id: "vir_1",
-        title: "Farm BR",
+        title: "Acme Store",
         metadata: { project: { folder: "clientes" } },
       }),
-    ).toBe("home/projects/clientes/farm-br");
+    ).toBe("home/projects/clientes/acme-store");
   });
 });
 
 describe("projectFolderDir", () => {
   test("is the browse path without the volume", () => {
-    expect(projectFolderDir({ id: "vir_1", title: "Farm BR" })).toBe(
-      "projects/farm-br",
+    expect(projectFolderDir({ id: "vir_1", title: "Acme Store" })).toBe(
+      "projects/acme-store",
     );
+  });
+
+  test("normalizes empty segments in the parent folder", () => {
+    expect(
+      projectFolderDir({
+        id: "vir_1",
+        title: "Acme Store",
+        metadata: { project: { folder: "/Clients//2026/" } },
+      }),
+    ).toBe("projects/Clients/2026/acme-store");
+  });
+
+  test("ignores a parent folder that would leave projects/", () => {
+    for (const folder of ["..", "../skills", "a/./b", "%2e%2e", "a\\b"]) {
+      expect(
+        projectFolderDir({
+          id: "vir_1",
+          title: "Acme Store",
+          metadata: { project: { folder } },
+        }),
+      ).toBe("projects/acme-store");
+    }
   });
 });

@@ -8,6 +8,13 @@
  * `metadata.project.folder` names the PARENT a project sits in, not its own
  * folder. The web app's `lib/project-tree.ts` groups on the same value, so nav
  * and files cannot disagree. Nothing writes the key yet.
+ *
+ * `metadata.projectFolderName` pins the project's OWN folder. The server sets
+ * it the first time it gives the folder its shape, so a rename keeps the files
+ * where they are, and its presence means that shape was already given.
+ *
+ * Both keys are client-writable and become write paths on the server, so a
+ * value with an empty, `.`, `..` or encoded segment is ignored, never resolved.
  */
 
 import { HOME_MOUNT_PATH } from "./home-mount";
@@ -19,7 +26,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** `Farm · Loja BR` → `farm-loja-br`. Accents fold rather than drop, so `Ação`
+/** `Acme · Loja BR` → `acme-loja-br`. Accents fold rather than drop, so `Ação`
  *  is `acao` and stays findable. */
 export function folderNameFor(title: string): string {
   return title
@@ -36,19 +43,45 @@ interface ProjectLike {
   metadata?: unknown;
 }
 
+/** A folder name the server can write under as-is: no traversal, no
+ *  encoding, no separators. */
+function isSafeSegment(segment: string): boolean {
+  return segment !== "." && segment !== ".." && !/[/\\%]/.test(segment);
+}
+
+function metadataOf(project: ProjectLike): Record<string, unknown> {
+  return isRecord(project.metadata) ? project.metadata : {};
+}
+
 /** The folder a person put this project IN, or null at the root of
  *  `projects/`. Module-private: only the browse path below reads it. */
 function pinnedProjectFolder(project: ProjectLike): string | null {
-  const metadata = isRecord(project.metadata) ? project.metadata : {};
+  const metadata = metadataOf(project);
   const stored = isRecord(metadata.project) ? metadata.project : {};
-  const pinned = stored.folder;
-  return typeof pinned === "string" && pinned.trim() ? pinned.trim() : null;
+  if (typeof stored.folder !== "string") return null;
+  const segments = stored.folder
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0 || !segments.every(isSafeSegment)) return null;
+  return segments.join("/");
 }
 
-/** A project's OWN folder, always derived from its title. Falls back to the id
- *  so a project titled only in emoji still has somewhere to put a file. */
+/** The project's own folder name as the server pinned it, or null. */
+export function pinnedProjectFolderName(project: ProjectLike): string | null {
+  const pinned = metadataOf(project).projectFolderName;
+  if (typeof pinned !== "string") return null;
+  const name = pinned.trim();
+  return name && isSafeSegment(name) ? name : null;
+}
+
+/** A project's OWN folder: pinned, or derived from its title. Falls back to
+ *  the id so a project titled only in emoji still has somewhere to put a file. */
 export function projectFolderName(project: ProjectLike): string {
-  return folderNameFor(project.title ?? "") || project.id;
+  return (
+    pinnedProjectFolderName(project) ??
+    (folderNameFor(project.title ?? "") || project.id)
+  );
 }
 
 /** The top of a project's tree inside the `home` volume, under its parent
@@ -65,7 +98,7 @@ export function projectFolderPath(project: ProjectLike): string {
   return `${HOME_MOUNT_PATH}/${projectFolderDir(project)}`;
 }
 
-/** Every project's folders, by a file's role so they fit any project; recreated when missing. */
+/** Every project's folders, by a file's role so they fit any project. */
 export const PROJECT_SUBFOLDERS = [
   "Documents",
   "Notes",

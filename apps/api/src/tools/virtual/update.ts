@@ -18,6 +18,7 @@ import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { pinnedSiteSlugOnRename } from "./pin-site-slug";
+import { claimProjectFolderFor } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 
 /**
@@ -105,6 +106,30 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
         ...data.metadata,
         siteSlug: pinnedSiteSlug,
       };
+    }
+
+    // A rename must not move the project's files: claim the folder under the
+    // outgoing title first, if nothing has yet.
+    if (data.title !== undefined && data.title !== existing.title) {
+      const folderName = await claimProjectFolderFor(
+        ctx,
+        organization.id,
+        existing,
+        userId,
+      ).catch((err) => {
+        console.error("[project-folder] claim on rename failed", {
+          projectId: existing.id,
+          err,
+        });
+        return null;
+      });
+      if (folderName) {
+        data.metadata = {
+          ...existing.metadata,
+          ...data.metadata,
+          projectFolderName: folderName,
+        };
+      }
     }
 
     if (data.pinned !== undefined && data.pinned !== existing.pinned) {
