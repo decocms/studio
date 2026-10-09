@@ -144,3 +144,51 @@ describe("writeProductListIds", () => {
     });
   });
 });
+
+/**
+ * A site whose section resolves the reference in its own loader stores the id
+ * and nothing else. Read as empty, the editor showed a filled block as blank;
+ * written back as a loader ref, it handed the site a shape its own component
+ * cannot read — `typeof raw === "string"` fails and the card renders nothing.
+ */
+describe("plain references", () => {
+  test("reads a bare id as the one product it is", () => {
+    expect(readProductListIds("1948858")).toEqual(["1948858"]);
+  });
+
+  test("reads a list of bare ids", () => {
+    expect(readProductListIds(["1948858", "1951207"])).toEqual([
+      "1948858",
+      "1951207",
+    ]);
+  });
+
+  test("an empty reference holds no product", () => {
+    expect(readProductListIds("")).toEqual([]);
+  });
+
+  test("keeps a bare id bare on write", () => {
+    expect(writeProductListIds("1948858", ["999"])).toBe("999");
+  });
+
+  test("keeps a list of bare ids a list", () => {
+    expect(writeProductListIds(["1948858"], ["111", "222"])).toEqual([
+      "111",
+      "222",
+    ]);
+  });
+
+  test("clearing a bare reference leaves it empty, not a loader", () => {
+    expect(writeProductListIds("1948858", [])).toBe("");
+  });
+
+  test("an array of refs is still an array of refs, not a list of ids", () => {
+    const refs = [
+      { __resolveType: "site/loaders/productById.ts", productId: "1" },
+    ];
+    expect(readProductListIds(refs)).toEqual(["1"]);
+    expect(writeProductListIds(refs, ["2"])).toEqual([
+      { __resolveType: "site/loaders/productById.ts", productId: "2" },
+    ]);
+  });
+});

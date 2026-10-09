@@ -444,7 +444,12 @@ export async function groundSiteReport(
  * they never survive the prose. Copied here instead, and never composed.
  */
 const CatalogueProductSchema = z.object({
-  id: z.string().max(512).describe("The store's own id or SKU, verbatim."),
+  id: z
+    .string()
+    .max(512)
+    .describe(
+      "The id the storefront indexes this product by — a SKU id in VTEX, verbatim. This is the handle a product block on the site points at, so it must be the one a product search or listing returns as the product's own id. NOT a reference code, EAN, part number or stock code: those identify the item in the warehouse and resolve to nothing on the storefront.",
+    ),
   name: z.string().max(512),
   category: z
     .string()

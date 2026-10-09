@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { describeGaps, productReference, renderCampaign } from "./post-draft";
+import { describeGaps, renderCampaign } from "./post-draft";
 
 const RUN = {
   grounded: true,
@@ -70,6 +70,7 @@ describe("renderCampaign", () => {
       ],
       products: [
         {
+          id: "148129",
           name: "Mochila Frozen",
           url: "https://loja.com.br/frozen/p",
           images: ["https://cdn/a.jpg"],
@@ -118,41 +119,12 @@ describe("renderCampaign", () => {
 });
 
 /**
- * A product field on a section holds a handle a loader resolves, and the
- * campaign carries no id a loader would take — what the catalogue reported is
- * a stock code, not what the storefront indexes by. The address is the handle.
+ * A product block points at a product by the id the storefront indexes it by.
+ * The campaign is the only place that id comes from — composing one is how a
+ * card ends up showing nothing.
  */
-describe("productReference", () => {
-  test("takes the slug out of a product page address", () => {
-    expect(productReference("https://loja.com.br/mochila-frozen-shine/p")).toBe(
-      "mochila-frozen-shine",
-    );
-  });
-
-  test("handles an address that is not a /p page", () => {
-    expect(productReference("https://loja.com.br/escolar/mochila-azul")).toBe(
-      "mochila-azul",
-    );
-  });
-
-  test("ignores a query string and a trailing slash", () => {
-    expect(
-      productReference("https://loja.com.br/mochila-frozen/p/?skuId=148129"),
-    ).toBe("mochila-frozen");
-  });
-
-  test("answers nothing for a product the campaign could not link", () => {
-    expect(productReference("")).toBe("");
-    expect(productReference("not a url")).toBe("");
-  });
-
-  test("answers nothing for an address with no path to speak of", () => {
-    expect(productReference("https://loja.com.br/")).toBe("");
-  });
-});
-
-describe("renderCampaign — product references", () => {
-  const withProduct = (url: string) => ({
+describe("renderCampaign — the product's id", () => {
+  const withProduct = (id: string) => ({
     name: "C",
     period: { start: null, end: null },
     trigger: { type: "launch" as const, note: "n" },
@@ -161,8 +133,9 @@ describe("renderCampaign — product references", () => {
       targets: [],
       products: [
         {
+          id,
           name: "Mochila Frozen",
-          url,
+          url: "https://loja.com.br/mochila-frozen/p",
           images: [],
           category: "",
           description: "",
@@ -173,13 +146,17 @@ describe("renderCampaign — product references", () => {
     guardrails: { avoidComplements: [], toneOverrides: "" },
   });
 
-  test("gives each product the reference a block can point at", () => {
-    expect(
-      renderCampaign(withProduct("https://loja.com.br/mochila-frozen/p")),
-    ).toContain("reference: mochila-frozen");
+  test("gives each product the id a block points at", () => {
+    expect(renderCampaign(withProduct("1948858"))).toContain("id: 1948858");
   });
 
-  test("says nothing where there is no address to take one from", () => {
-    expect(renderCampaign(withProduct(""))).not.toContain("reference:");
+  test("says nothing where the catalogue reported no id", () => {
+    expect(renderCampaign(withProduct(""))).not.toContain("id:");
+  });
+
+  test("still carries the link and the name alongside it", () => {
+    const rendered = renderCampaign(withProduct("1948858"));
+    expect(rendered).toContain("https://loja.com.br/mochila-frozen/p");
+    expect(rendered).toContain("Mochila Frozen");
   });
 });

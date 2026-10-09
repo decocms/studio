@@ -1325,6 +1325,7 @@ export interface StudioToolIO {
             | undefined;
           products?:
             | {
+                id: string;
                 name: string;
                 url: string;
                 category: string;
@@ -1364,7 +1365,11 @@ export interface StudioToolIO {
         categorySlugs: string[];
         authorEmails: string[];
         cover: { url: string; alt: string };
-        sections: { type: string; props: Record<string, unknown> }[];
+        sections: {
+          type: string;
+          props: Record<string, unknown>;
+          productIds: string[];
+        }[];
       }[];
       gaps: {
         code:

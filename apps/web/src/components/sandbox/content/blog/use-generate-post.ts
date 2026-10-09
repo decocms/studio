@@ -132,6 +132,14 @@ export function useGeneratePost({
       }))
       .filter((category) => category.slug);
     const authors: AuthorRef[] = listAuthorRefs(decofile);
+    const blocks = blocksForFormat(briefing.format, meta, decofile, {
+      hideDefaults,
+    });
+    // How each block already stores its product slot, so the ids the writer
+    // chose land in the shape this site reads.
+    const productShapes = Object.fromEntries(
+      blocks.map((block) => [block.name, block.example]),
+    );
 
     /** A card left in Generating for a draft that never arrived would lie. */
     const abandon = async (from: number) => {
@@ -174,9 +182,7 @@ export function useGeneratePost({
           guardrails: briefing.campaign.guardrails,
         },
         format: briefing.format,
-        blocks: blocksForFormat(briefing.format, meta, decofile, {
-          hideDefaults,
-        }),
+        blocks,
         categories,
         // The draft tool only attributes the post — identity is enough.
         authors: authors.map(({ name, email }) => ({ name, email })),
@@ -193,6 +199,7 @@ export function useGeneratePost({
         const payload = buildGeneratedPostPayload({
           draft,
           resolveTypes,
+          productShapes,
           categories,
           authors,
           planning,

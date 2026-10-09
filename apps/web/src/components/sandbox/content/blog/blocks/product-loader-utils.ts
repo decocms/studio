@@ -13,6 +13,9 @@ const DEFAULT_VTEX_PRODUCT_LIST =
  *   (site-defined blog sections, e.g. agent-generated storefronts).
  * - **single-ref**: one loader ref for one product —
  *   `{ __resolveType: ".../productById.ts", productId: "123" }`.
+ * - **plain**: the id itself, or a list of them — `"1948858"`,
+ *   `["1948858", "1951207"]` (a site whose section resolves the reference in
+ *   its own loader, so the decofile carries no loader wiring at all).
  *
  * All helpers here accept any of the three and preserve the stored shape on
  * write, so the editor never rewrites a site's loader wiring.
@@ -41,7 +44,11 @@ function isProductRef(value: unknown): value is Record<string, unknown> {
  * the editor can render a just-added, not-yet-typed row.
  */
 export function readProductListIds(loader: unknown): string[] {
+  if (typeof loader === "string") return loader ? [loader] : [];
   if (Array.isArray(loader)) {
+    if (loader.every((item) => typeof item === "string")) {
+      return loader as string[];
+    }
     return loader.map((item) => idString(asRecord(item)?.productId));
   }
   const existing = asRecord(loader);
@@ -72,8 +79,14 @@ function readProductListResolveType(loader: unknown): string {
 export function writeProductListIds(
   loader: unknown,
   ids: string[],
-): Record<string, unknown> | Record<string, unknown>[] {
+): Record<string, unknown> | Record<string, unknown>[] | string | string[] {
+  // A plain reference stays plain: wrapping it in a loader ref hands the site
+  // a shape its own section cannot read.
+  if (typeof loader === "string") return ids[0] ?? "";
   if (Array.isArray(loader)) {
+    if (loader.length > 0 && loader.every((item) => typeof item === "string")) {
+      return ids;
+    }
     const template = loader.find(isProductRef);
     if (template) {
       return ids.map((id, index) => {

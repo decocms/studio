@@ -8,6 +8,7 @@ import {
   blogBlockTypeFor,
   discoverBlogBlockTypes,
   emptyBlogPayload,
+  KNOWN_BLOG_BLOCK_EXAMPLES,
   listPostsWithMeta,
   missingPostFields,
   canDeletePost,
@@ -39,6 +40,7 @@ import {
   emptyDraftPostPayload,
   blockExample,
   planningMeta,
+  productSlotOf,
   rawBlockSchema,
   reconciledSchema,
   buildPlanningPostBlock,
@@ -2133,7 +2135,13 @@ describe("buildPostSections", () => {
   test("writes the props through, under the site's own resolveType", () => {
     expect(
       buildPostSections(
-        [{ type: "List", props: { items: "um\ndois", style: "ordered" } }],
+        [
+          {
+            type: "List",
+            props: { items: "um\ndois", style: "ordered" },
+            productIds: [],
+          },
+        ],
         types,
       ),
     ).toEqual([
@@ -2144,7 +2152,13 @@ describe("buildPostSections", () => {
   test("carries a prop this file has never heard of", () => {
     expect(
       buildPostSections(
-        [{ type: "Heading", props: { text: "Oi", eyebrow: "Guia", size: 3 } }],
+        [
+          {
+            type: "Heading",
+            props: { text: "Oi", eyebrow: "Guia", size: 3 },
+            productIds: [],
+          },
+        ],
         types,
       ),
     ).toEqual([
@@ -2156,8 +2170,8 @@ describe("buildPostSections", () => {
     expect(
       buildPostSections(
         [
-          { type: "Heading", props: { text: "fica" } },
-          { type: "Callout", props: { title: "sai" } },
+          { type: "Heading", props: { text: "fica" }, productIds: [] },
+          { type: "Callout", props: { title: "sai" }, productIds: [] },
         ],
         { Heading: types.Heading },
       ),
@@ -2165,17 +2179,20 @@ describe("buildPostSections", () => {
   });
 
   test("a section with no props is still the block", () => {
-    expect(buildPostSections([{ type: "Heading", props: {} }], types)).toEqual([
-      { __resolveType: types.Heading },
-    ]);
+    expect(
+      buildPostSections(
+        [{ type: "Heading", props: {}, productIds: [] }],
+        types,
+      ),
+    ).toEqual([{ __resolveType: types.Heading }]);
   });
 
   test("keeps the reading order", () => {
     const built = buildPostSections(
       [
-        { type: "Heading", props: { text: "a" } },
-        { type: "Paragraph", props: { html: "b" } },
-        { type: "Heading", props: { text: "c" } },
+        { type: "Heading", props: { text: "a" }, productIds: [] },
+        { type: "Paragraph", props: { html: "b" }, productIds: [] },
+        { type: "Heading", props: { text: "c" }, productIds: [] },
       ],
       types,
     );
@@ -2275,7 +2292,9 @@ describe("buildGeneratedPostPayload", () => {
         url: "https://cdn.loja.com.br/capa.png",
         alt: "Camisa de linho",
       },
-      sections: [{ type: "Paragraph", props: { html: "corpo" } }],
+      sections: [
+        { type: "Paragraph", props: { html: "corpo" }, productIds: [] },
+      ],
     },
     resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
     categories: [
@@ -3038,5 +3057,158 @@ describe("rawBlockSchema", () => {
       schema: { definitions: { A: { $ref: "#/definitions/A" } } },
     } as unknown as LiveMeta;
     expect(rawBlockSchema(RT, cyclic)).toEqual({});
+  });
+});
+
+/**
+ * Every product shape but one carries a `__resolveType`, which the writer never
+ * sees and so cannot compose. It chooses ids; the shape comes from a block the
+ * site already renders.
+ */
+describe("buildPostSections — product slots", () => {
+  const types = { ProductShelf: "site/sections/Blog/Post/ProductShelf.tsx" };
+  const section = (productIds: string[]) => [
+    { type: "ProductShelf", props: { title: "Recomendados" }, productIds },
+  ];
+
+  test("writes ids into the loader ref a site stores, keeping its wiring", () => {
+    const shape = {
+      ProductShelf: {
+        products: {
+          __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+          props: { ids: ["000"], simulationBehavior: "default" },
+        },
+      },
+    };
+    expect(buildPostSections(section(["111", "222"]), types, shape)).toEqual([
+      {
+        __resolveType: types.ProductShelf,
+        title: "Recomendados",
+        products: {
+          __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+          props: { ids: ["111", "222"], simulationBehavior: "default" },
+        },
+      },
+    ]);
+  });
+
+  test("writes a plain id plainly, for a site that stores no wiring", () => {
+    const shape = { ProductShelf: { products: ["000"] } };
+    expect(buildPostSections(section(["111", "222"]), types, shape)).toEqual([
+      {
+        __resolveType: types.ProductShelf,
+        title: "Recomendados",
+        products: ["111", "222"],
+      },
+    ]);
+  });
+
+  /** Guessing a loader ref hands a site something its own section cannot read. */
+  test("leaves the slot alone when no block shows how this site stores it", () => {
+    expect(buildPostSections(section(["111"]), types, {})).toEqual([
+      { __resolveType: types.ProductShelf, title: "Recomendados" },
+    ]);
+  });
+
+  test("a block with no ids chosen is untouched", () => {
+    const shape = { ProductShelf: { products: ["000"] } };
+    expect(buildPostSections(section([]), types, shape)).toEqual([
+      { __resolveType: types.ProductShelf, title: "Recomendados" },
+    ]);
+  });
+});
+
+describe("productSlotOf", () => {
+  test("finds the single-product slot", () => {
+    expect(productSlotOf({ product: "1", badge: "Novo" })).toBe("product");
+  });
+
+  test("finds the shelf slot", () => {
+    expect(productSlotOf({ title: "t", products: [] })).toBe("products");
+  });
+
+  test("answers nothing for a block that shows no product", () => {
+    expect(productSlotOf({ text: "oi" })).toBeNull();
+    expect(productSlotOf(undefined)).toBeNull();
+  });
+});
+
+/**
+ * These stand in where a site has no published post to learn from, so a wrong
+ * one is worse than none: it would teach every new site the same mistake.
+ */
+describe("KNOWN_BLOG_BLOCK_EXAMPLES", () => {
+  /** The blocks Studio draws its own editor for — see `block-registry.tsx`. */
+  const BESPOKE = [
+    "Paragraph",
+    "Heading",
+    "Quote",
+    "Code",
+    "List",
+    "BlockImage",
+    "Video",
+    "Divider",
+    "Cta",
+    "Callout",
+    "Stat",
+    "StatGroup",
+    "CardGroup",
+    "Checklist",
+    "Steps",
+    "Comparison",
+    "Table",
+  ];
+
+  test("covers every block whose editor Studio owns", () => {
+    const missing = BESPOKE.filter(
+      (name) => !(name in KNOWN_BLOG_BLOCK_EXAMPLES),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  /** The shape is the site's, and `writeProductListIds` is what writes it. */
+  test("never carries a product slot, which is not an example's to give", () => {
+    for (const [name, example] of Object.entries(KNOWN_BLOG_BLOCK_EXAMPLES)) {
+      expect({ name, slot: productSlotOf(example) }).toEqual({
+        name,
+        slot: null,
+      });
+    }
+  });
+
+  test("never carries a resolveType, which the caller stamps", () => {
+    for (const example of Object.values(KNOWN_BLOG_BLOCK_EXAMPLES)) {
+      expect(example).not.toHaveProperty("__resolveType");
+    }
+  });
+
+  /** Several of these blocks keep structured data as JSON inside a string. */
+  test("every JSON-in-a-string prop actually parses", () => {
+    const encoded: Record<string, string[]> = {
+      StatGroup: ["stats"],
+      CardGroup: ["cards"],
+      Checklist: ["items"],
+      Steps: ["steps"],
+      Comparison: ["left", "right"],
+      Table: ["headers", "rows"],
+    };
+    for (const [name, props] of Object.entries(encoded)) {
+      for (const prop of props) {
+        const raw = KNOWN_BLOG_BLOCK_EXAMPLES[name]?.[prop];
+        expect({ name, prop, type: typeof raw }).toEqual({
+          name,
+          prop,
+          type: "string",
+        });
+        expect(() => JSON.parse(raw as string)).not.toThrow();
+      }
+    }
+  });
+
+  /** A `List` stores one newline-joined string, never an array. */
+  test("the list keeps its items as one string", () => {
+    const items = KNOWN_BLOG_BLOCK_EXAMPLES.List?.items;
+    expect(typeof items).toBe("string");
+    expect(items as string).toContain("\n");
   });
 });

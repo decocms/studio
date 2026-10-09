@@ -28,6 +28,7 @@ import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
+import { writeProductListIds } from "./blocks/product-loader-utils";
 import type { PageEntry } from "@/components/sections-editor/page-list";
 import {
   type PageRole,
@@ -2556,6 +2557,92 @@ export function reconciledSchema(
   return changed ? { ...schema, properties: reconciled } : schema;
 }
 
+/**
+ * One correctly-filled example per block the CMS draws its own editor for.
+ *
+ * Where Studio ships a bespoke editor (`block-registry.tsx`), Studio knows the
+ * shape — that editor is the contract, and several of these shapes are ones no
+ * schema states plainly: a `List` keeps its items as one newline-joined string,
+ * and `Table`, `Checklist`, `Steps`, `StatGroup`, `CardGroup` and `Comparison`
+ * all keep theirs as JSON encoded inside a string. A writer handed only a
+ * schema gets those wrong every time.
+ *
+ * Taken from blocks real sites already render, not invented. The floor only:
+ * {@link blockExample} overrides any of these with one from the site's own
+ * published post, because two sites legitimately store the same block
+ * differently and the one that renders there wins.
+ *
+ * A product slot is deliberately absent — {@link writeProductListIds} fills it
+ * in whatever shape the site already uses, so there is nothing here to copy.
+ */
+export const KNOWN_BLOG_BLOCK_EXAMPLES: Record<
+  string,
+  Record<string, unknown>
+> = {
+  Paragraph: {
+    html: "<p>A dúvida entre 9000 ou 12000 BTUs é a mais comum na hora de escolher.</p>",
+  },
+  Heading: { text: "Antes de escolher: o resumo", level: "h2" },
+  Quote: {
+    quote: "Levei só a mala de bordo e não senti falta de nada.",
+    attribution: "Ana, leitora",
+  },
+  List: {
+    items:
+      "<strong>Tecnologia Inverter:</strong> temperatura mais estável;\n<strong>Gaveta HortiNatura:</strong> frescor por duas vezes mais tempo;",
+    style: "unordered",
+  },
+  BlockImage: {
+    url: "https://cdn.exemplo.com/2026/10/mochila.webp",
+    alt: "Mochila escolar azul apoiada em uma cadeira de sala de aula",
+    size: "full",
+  },
+  Video: {
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    caption: "Como medir a capacidade da mala",
+  },
+  Divider: {},
+  Cta: { text: "Ver toda a linha Escolar", href: "/escolar" },
+  Callout: {
+    title: "VOCÊ SABIA?",
+    body: "Pediatras recomendam que a mochila carregada não passe de 10% do peso da criança.",
+    variant: "tip",
+  },
+  Code: { code: "const total = itens.length;", language: "ts" },
+  Stat: {
+    value: "30%",
+    label: "menos desperdício",
+    description: "Comparado ao modelo anterior da mesma linha.",
+  },
+  StatGroup: {
+    stats:
+      '[{"value":"30%","label":"menos desperdício"},{"value":"2x","label":"mais frescor"}]',
+  },
+  CardGroup: {
+    cards:
+      '[{"title":"Pré-escola","body":"Pouco material, mochila pequena."},{"title":"Fundamental","body":"Cadernos e livros pesam; considere rodinhas."}]',
+  },
+  Checklist: {
+    title: "Antes de comprar, confira",
+    items:
+      '["Capacidade em litros","Alças acolchoadas","Compartimento para notebook"]',
+  },
+  Steps: {
+    title: "Como medir",
+    steps:
+      '[{"title":"Meça a altura","description":"Da base ao topo, sem as alças."},{"title":"Some a profundidade"}]',
+  },
+  Comparison: {
+    left: '{"title":"Com rodinhas","items":["Poupa a coluna","Mais pesada vazia"]}',
+    right:
+      '{"title":"De costas","items":["Mais leve","Exige ajuste das alças"]}',
+  },
+  Table: {
+    headers: '["Modelo","Capacidade","Preço"]',
+    rows: '[["Bordo","38L","R$ 399"],["Média","68L","R$ 599"]]',
+  },
+};
+
 /** One block the writer may build a section from, with its own typing. */
 export interface GenerationBlock {
   name: string;
@@ -2630,7 +2717,9 @@ export function blocksForFormat(
     if (seen.has(section.name)) continue;
     if (byName[section.name] !== section.resolveType) continue;
     seen.add(section.name);
-    const example = blockExample(section.resolveType, decofile);
+    const example =
+      blockExample(section.resolveType, decofile) ??
+      KNOWN_BLOG_BLOCK_EXAMPLES[section.name];
     blocks.push({
       name: section.name,
       title: section.title,
@@ -2684,14 +2773,55 @@ type DraftSection =
 export function buildPostSections(
   sections: DraftSection[],
   resolveTypes: Record<string, string>,
+  /** How each block already stores its product slot, by component name. */
+  productShapes: Record<string, unknown> = {},
 ): Array<Record<string, unknown>> {
   const blocks: Array<Record<string, unknown>> = [];
   for (const section of sections) {
     const __resolveType = resolveTypes[section.type];
     if (!__resolveType) continue;
-    blocks.push({ __resolveType, ...section.props });
+    const props = withProducts(
+      section.props,
+      section.productIds ?? [],
+      productShapes[section.type],
+    );
+    blocks.push({ __resolveType, ...props });
   }
   return blocks;
+}
+
+/** The prop a product block points at, by the name its editor already assumes. */
+const PRODUCT_SLOTS = ["product", "products"] as const;
+
+/** Which of a block's props is its product slot, if any. */
+export function productSlotOf(shape: unknown): string | null {
+  const record = asRecord(shape);
+  if (!record) return null;
+  return PRODUCT_SLOTS.find((slot) => slot in record) ?? null;
+}
+
+/**
+ * The chosen products, written into the block the way this site stores them.
+ *
+ * Not left to the writer: every shape but one carries a `__resolveType`, and a
+ * writer that never sees one cannot compose one. `writeProductListIds` already
+ * preserves whichever of the four forms the site uses, so the shape comes from
+ * a block the site already renders and only the ids come from the campaign.
+ *
+ * With no such block to copy the shape from, the slot is left alone. Guessing
+ * a loader ref for a site that stores plain ids hands it something its own
+ * section cannot read.
+ */
+function withProducts(
+  props: Record<string, unknown>,
+  ids: string[],
+  shape: unknown,
+): Record<string, unknown> {
+  const filled = ids.filter(Boolean);
+  const slot = productSlotOf(shape);
+  if (filled.length === 0 || !slot) return props;
+  const stored = (shape as Record<string, unknown>)[slot];
+  return { ...props, [slot]: writeProductListIds(stored, filled) };
 }
 
 /** Longest slug a post may carry, suffix included. */
@@ -2759,6 +2889,7 @@ export function uniqueCategorySlug(source: string, taken: string[]): string {
 export function buildGeneratedPostPayload({
   draft,
   resolveTypes,
+  productShapes,
   categories,
   authors,
   planning,
@@ -2767,6 +2898,8 @@ export function buildGeneratedPostPayload({
 }: {
   draft: StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number];
   resolveTypes: Record<string, string>;
+  /** How each block already stores its product slot, by component name. */
+  productShapes?: Record<string, unknown>;
   /** The site's categories, to resolve the chosen slugs into stored refs. */
   categories: CategoryRef[];
   /** The site's authors, to resolve the chosen emails into stored refs. */
@@ -2792,7 +2925,7 @@ export function buildGeneratedPostPayload({
       description: draft.seo.description,
       image: draft.cover.url,
     },
-    sections: buildPostSections(draft.sections, resolveTypes),
+    sections: buildPostSections(draft.sections, resolveTypes, productShapes),
     planning: (planning ?? {}) as Record<string, unknown>,
   };
   return setPostStatus(payload, "awaiting_review", now);

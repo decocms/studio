@@ -103,6 +103,10 @@ const CampaignSchema = z.object({
     products: z
       .array(
         z.object({
+          id: z
+            .string()
+            .max(MAX_NAME_CHARS)
+            .describe("What a product block points at this product with."),
           name: z.string().max(MAX_NAME_CHARS),
           url: z.string().max(MAX_BODY_CHARS),
           images: z.array(z.string().max(MAX_BODY_CHARS)).default([]),
@@ -138,7 +142,14 @@ const SectionSchema = z.object({
   props: z
     .string()
     .describe(
-      "A JSON object matching that block's schema. Only props the schema declares; anything else is dropped, and a value the schema rejects loses the whole section.",
+      "A JSON object matching that block's schema. Only props the schema declares; anything else is dropped, and a value the schema rejects loses the whole section. Leave the product slot out — it is filled from `productIds`.",
+    ),
+  productIds: z
+    .array(z.string().max(MAX_NAME_CHARS))
+    .max(MAX_PRODUCTS)
+    .default([])
+    .describe(
+      "For a product block only: the `id` of each campaign product this block shows, in order. Empty for every other block.",
     ),
 });
 
@@ -204,7 +215,7 @@ USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not li
 
 THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, link them with the links given, and use their image addresses exactly as written — those sit on a CDN and rebuilding one produces an image that silently fails to load. Never name a product the campaign did not give you.
 
-A LOADER-DRIVEN FIELD TAKES A REFERENCE, AND ONLY ONE YOU WERE GIVEN. A prop whose schema says \`"format": "dynamic-options"\` holds a handle a loader resolves against the live catalogue, not a product. Each campaign product lists its \`reference\` — use that, exactly, and nothing else. NEVER copy the value out of a block's example: that example points at a real product, a different one, and a card showing the wrong product is worse than a card showing none. With no reference for a product, leave the field empty — an empty shelf is one someone fills in two clicks.
+A PRODUCT SLOT IS NOT YOURS TO WRITE. A block that shows products has a prop for them — \`product\` or \`products\` — and you leave it OUT of \`props\` entirely. Put the campaign products' \`id\` values in \`productIds\` instead, in the order they should appear, and the slot is filled for you in whatever shape this site stores. Only ids the campaign listed; never one taken from a block's example, because that example points at a real product and a different one.
 
 IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` takes an image address. For an image that does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and it is generated and uploaded for you. Use this at most twice in a post, and only where the format's blocks ask for an image. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
 
@@ -253,31 +264,6 @@ function renderVoiceExamples(
     .join("\n\n");
 }
 
-/**
- * The handle a block uses to point at one of the campaign's products.
- *
- * A product field on a section is resolved by a loader, so it holds a
- * reference rather than a product — and the campaign carries no id a loader
- * would accept: what the catalogue reported is a stock code, not the id the
- * storefront indexes by. The product's own address is the one handle that is
- * both ours and unambiguous, so its slug is what travels.
- *
- * Derived here rather than asked for: composing a slug is the kind of thing a
- * model does plausibly and wrongly, and this one is a substring.
- */
-export function productReference(url: string): string {
-  try {
-    const path = new URL(url).pathname.replace(/\/+$/, "");
-    const segments = path.split("/").filter(Boolean);
-    const last = segments.at(-1);
-    // A VTEX product page is `/<slug>/p`; the slug is what identifies it.
-    const slug = last === "p" ? segments.at(-2) : last;
-    return slug ?? "";
-  } catch {
-    return "";
-  }
-}
-
 /** The campaign as the writer reads it — the brief, not a record dump. */
 export function renderCampaign(
   campaign: z.infer<typeof CampaignSchema>,
@@ -297,11 +283,11 @@ export function renderCampaign(
         )
         .join("\n")}`,
     intent.products.length > 0 &&
-      `## Products this post may name\nUse these names, these links, these image addresses and these references, exactly.\n${intent.products
-        .map((p) => {
-          const reference = productReference(p.url);
-          return `- ${p.name}${p.category ? ` — ${p.category}` : ""}${p.url ? `\n  link: ${p.url}` : ""}${reference ? `\n  reference: ${reference}` : ""}${p.images.length > 0 ? `\n  images: ${p.images.join(", ")}` : ""}${p.description ? `\n  ${p.description}` : ""}`;
-        })
+      `## Products this post may name\nUse these names, these links and these image addresses, exactly. The \`id\` is what a product block points at.\n${intent.products
+        .map(
+          (p) =>
+            `- ${p.name}${p.category ? ` — ${p.category}` : ""}${p.id ? `\n  id: ${p.id}` : ""}${p.url ? `\n  link: ${p.url}` : ""}${p.images.length > 0 ? `\n  images: ${p.images.join(", ")}` : ""}${p.description ? `\n  ${p.description}` : ""}`,
+        )
         .join("\n")}`,
     intent.keywords.length > 0 &&
       `## Terms this post should be found by\n${intent.keywords.map((k) => `- ${k}`).join("\n")}`,
@@ -434,6 +420,8 @@ export const BLOG_POST_DRAFT = defineTool({
             /** The block's name; the caller maps it to a resolveType. */
             type: z.string(),
             props: z.record(z.string(), z.unknown()),
+            /** Campaign product ids; the caller writes them in the site's shape. */
+            productIds: z.array(z.string()),
           }),
         ),
       }),
@@ -565,7 +553,11 @@ export const BLOG_POST_DRAFT = defineTool({
 
     const posts = await Promise.all(
       drafts.map(async (draft) => {
-        const sections: { type: string; props: Record<string, unknown> }[] = [];
+        const sections: {
+          type: string;
+          props: Record<string, unknown>;
+          productIds: string[];
+        }[] = [];
         for (const section of draft.sections.slice(0, MAX_SECTIONS)) {
           const block = byName.get(section.type);
           if (!block) {
@@ -579,7 +571,13 @@ export const BLOG_POST_DRAFT = defineTool({
             note(dropped, `${section.type}: ${read.reason}`);
             continue;
           }
-          sections.push({ type: section.type, props: read.props });
+          sections.push({
+            type: section.type,
+            props: read.props,
+            productIds: section.productIds.filter((id) =>
+              campaign.intent.products.some((product) => product.id === id),
+            ),
+          });
         }
 
         const [cover, filled] = await Promise.all([
@@ -649,13 +647,15 @@ function coverPrompt(
  * costs what two cost. What is left over is blanked: shipping the sentinel
  * itself would render a broken image on a published page.
  */
-async function fillBodyImages(
-  sections: { type: string; props: Record<string, unknown> }[],
+async function fillBodyImages<
+  T extends { type: string; props: Record<string, unknown> },
+>(
+  sections: T[],
   byName: Map<string, { schema: Record<string, unknown> }>,
   painter: { paint: (prompt: string, alt: string) => Promise<string> },
-): Promise<{ type: string; props: Record<string, unknown> }[]> {
+): Promise<T[]> {
   let budget = MAX_BODY_IMAGES;
-  const filled: { type: string; props: Record<string, unknown> }[] = [];
+  const filled: T[] = [];
   for (const section of sections) {
     const schema = byName.get(section.type)?.schema;
     if (!schema) {
@@ -669,7 +669,7 @@ async function fillBodyImages(
       const url = await painter.paint(request.prompt, request.prompt);
       if (url) props = withImageAt(props, request.path, url);
     }
-    filled.push({ type: section.type, props: clearUnfilled(props, schema) });
+    filled.push({ ...section, props: clearUnfilled(props, schema) });
   }
   return filled;
 }
