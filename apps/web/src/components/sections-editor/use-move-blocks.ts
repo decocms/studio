@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
@@ -16,6 +15,9 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
@@ -63,15 +65,26 @@ export function useMoveBlocks({
    * nothing reads AND tried a real write against the branch.
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const queryKey = KEYS.decofile(
-    decofileCacheKey({ orgSlug, virtualMcpId, branch, localPreviewUrl }),
-  );
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
+  const queryKey = KEYS.decofile(cacheKey);
 
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
       const writes = sanitizeSecretsForPersistence(rawWrites);
+      if (protocol) {
+        // One `blocks.apply`: the write and the delete land together.
+        return applyProtocolPatch(
+          queryClient,
+          protocol,
+          { orgSlug, virtualMcpId, branch, threadId },
+          cacheKey,
+          { set: writes, delete: deletes.filter((key) => !(key in writes)) },
+        );
+      }
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { ok: true as const };
       if (fastPreviewActive) {

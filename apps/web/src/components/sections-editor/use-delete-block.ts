@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -15,6 +14,9 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
@@ -47,17 +49,24 @@ export function useDeleteBlock({
    * reading it without the tunnel patched a decofile nobody is rendering.
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const cacheKey = decofileCacheKey({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    localPreviewUrl,
-  });
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
+      if (protocol) {
+        await applyProtocolPatch(
+          queryClient,
+          protocol,
+          { orgSlug, virtualMcpId, branch, threadId },
+          cacheKey,
+          { delete: [blockKey] },
+        );
+        return { ok: true as const, existed: true };
+      }
       // Local: no persistence — the optimistic cache removal is the delete.
       if (localPreviewUrl) return { ok: true as const, existed: true };
       if (fastPreviewActive) {
