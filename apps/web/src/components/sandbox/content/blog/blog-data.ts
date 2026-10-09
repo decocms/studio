@@ -27,10 +27,7 @@ import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import {
-  resolveBlockSchemaMetadata,
-  resolveSchema,
-} from "@/components/sections-editor/resolve-schema";
+import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
 import type { PageEntry } from "@/components/sections-editor/page-list";
 import {
   type PageRole,
@@ -2391,55 +2388,119 @@ function requiredOf(
   return kept.length > 0 ? kept : undefined;
 }
 
-/** JSON Schema keywords the writer needs; the editor's extras only cost prompt. */
-const SCHEMA_KEYS = [
-  "type",
-  "title",
-  "description",
-  "format",
-  "enum",
-  "default",
-  "options",
-] as const;
+/** How deep a `$ref` chain is followed before a branch is left unresolved. */
+const MAX_SCHEMA_DEPTH = 6;
 
-/**
- * A resolved block schema, down to what describes its props.
- *
- * `resolveSchema` answers with the editor's view: it carries `titleBy`, the
- * array-item thumbnail template, and the whole `anyOfRefs` expansion of every
- * block that could fill a block-ref slot. None of that says what a prop holds,
- * and the last one is most of the bytes. `options` stays: it is the loader a
- * dynamic-options field draws from, which is how the writer knows the value is
- * not its to invent.
- *
- * Only the keyword positions are filtered. Under `properties` the keys are the
- * brand's own prop names — filtering those against a keyword list would empty
- * every block of exactly what the writer needs.
- */
-export function prunedSchema(schema: unknown): Record<string, unknown> {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return {};
-  const source = schema as Record<string, unknown>;
+/** How much of one block's schema travels. A `Product` ref expands forever. */
+const MAX_BLOCK_SCHEMA_CHARS = 6_000;
+
+function definitionsOf(meta: LiveMeta): Record<string, unknown> {
+  const schema = (meta.schema ?? {}) as Record<string, unknown>;
+  const defs = schema.$defs ?? schema.definitions;
+  return defs && typeof defs === "object"
+    ? (defs as Record<string, unknown>)
+    : {};
+}
+
+function manifestEntry(resolveType: string, meta: LiveMeta): unknown {
+  for (const group of Object.values(meta.manifest?.blocks ?? {})) {
+    const entry = (group as Record<string, unknown>)[resolveType];
+    if (entry) return entry;
+  }
+  return undefined;
+}
+
+/** Follow `$ref` through the live meta's own definitions, bounded. */
+function deref(
+  node: unknown,
+  defs: Record<string, unknown>,
+  depth: number,
+): unknown {
+  if (Array.isArray(node)) {
+    return node.map((entry) => deref(entry, defs, depth));
+  }
+  if (!node || typeof node !== "object") return node;
+  const record = node as Record<string, unknown>;
+
+  if (typeof record.$ref === "string") {
+    if (depth >= MAX_SCHEMA_DEPTH) return {};
+    const key = record.$ref.split("/").pop() ?? "";
+    const target = defs[key];
+    if (target === undefined) return {};
+    return deref(target, defs, depth + 1);
+  }
+
   const out: Record<string, unknown> = {};
-
-  for (const key of SCHEMA_KEYS) {
-    if (key in source) out[key] = source[key];
-  }
-  const properties = source.properties;
-  if (properties && typeof properties === "object") {
-    out.properties = Object.fromEntries(
-      Object.entries(properties as Record<string, unknown>).map(
-        ([name, child]) => [name, prunedSchema(child)],
-      ),
-    );
-  }
-  out.required = requiredOf(source, out.properties);
-  if (!out.required) delete out.required;
-  if (source.items) out.items = prunedSchema(source.items);
-  for (const branch of ["anyOf", "oneOf"] as const) {
-    const value = source[branch];
-    if (Array.isArray(value)) out[branch] = value.map(prunedSchema);
+  for (const [key, value] of Object.entries(record)) {
+    out[key] = deref(value, defs, depth);
   }
   return out;
+}
+
+/**
+ * A block's own JSON Schema, read from the live meta rather than rebuilt.
+ *
+ * `resolveSchema` is the editor's view: it exists to render a form, so it
+ * flattens what a form cannot show. A `string | string[]` prop comes out of it
+ * typed `object` — and a writer handed that writes an object, which is how a
+ * list the site stores as one newline-joined string came back as a map.
+ *
+ * The meta carries the real thing. deco wraps a block as
+ * `{ allOf: [{$ref: Props}], properties: {__resolveType}, required: [...] }`,
+ * so the props schema is one hop in: its `anyOf`, its `format`, its `options`
+ * loader and its descriptions all survive, which is everything the writer
+ * needs and none of what the form needed.
+ */
+export function rawBlockSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): Record<string, unknown> {
+  const defs = definitionsOf(meta);
+  const wrapper = deref(manifestEntry(resolveType, meta), defs, 0);
+  if (!wrapper || typeof wrapper !== "object") return {};
+
+  const record = wrapper as Record<string, unknown>;
+  const allOf = record.allOf;
+  const props = Array.isArray(allOf) && allOf.length === 1 ? allOf[0] : record;
+  if (!props || typeof props !== "object") return {};
+
+  const { $schema: _schema, ...rest } = props as Record<string, unknown>;
+  const trimmed = withoutPlumbing(rest);
+  return JSON.stringify(trimmed).length > MAX_BLOCK_SCHEMA_CHARS
+    ? withoutPlumbing(rest, true)
+    : trimmed;
+}
+
+/** `__resolveType` is the caller's to stamp, so it never reaches the writer. */
+function withoutPlumbing(
+  schema: Record<string, unknown>,
+  shallow = false,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...schema };
+  const properties = out.properties;
+  if (properties && typeof properties === "object") {
+    const kept = Object.fromEntries(
+      Object.entries(properties as Record<string, unknown>)
+        .filter(([name]) => !name.startsWith("__"))
+        .map(([name, value]) => [name, shallow ? shallowProp(value) : value]),
+    );
+    out.properties = kept;
+    out.required = requiredOf(out, kept);
+    if (!out.required) delete out.required;
+  }
+  return out;
+}
+
+/** A prop stripped to what it is, for a schema too big to send whole. */
+function shallowProp(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const prop = value as Record<string, unknown>;
+  const kept: Record<string, unknown> = {};
+  for (const key of ["type", "description", "format", "options", "enum"]) {
+    if (key in prop) kept[key] = prop[key];
+  }
+  if (Array.isArray(prop.anyOf)) kept.anyOf = prop.anyOf.map(shallowProp);
+  return kept;
 }
 
 /** The JSON type of a stored value, as a schema would name it. */
@@ -2575,7 +2636,7 @@ export function blocksForFormat(
       title: section.title,
       description: section.description ?? "",
       schema: reconciledSchema(
-        prunedSchema(resolveSchema(section.resolveType, meta)),
+        rawBlockSchema(section.resolveType, meta),
         example,
       ),
       example,

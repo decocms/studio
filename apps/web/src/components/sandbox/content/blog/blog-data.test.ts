@@ -39,7 +39,7 @@ import {
   emptyDraftPostPayload,
   blockExample,
   planningMeta,
-  prunedSchema,
+  rawBlockSchema,
   reconciledSchema,
   buildPlanningPostBlock,
   listAuthorRefs,
@@ -2840,143 +2840,6 @@ describe("canDeletePost", () => {
   });
 });
 
-/**
- * The schema travels into the prompt, so what it carries is a cost. These pin
- * what is kept — everything a prop's type depends on — and what is not.
- */
-describe("prunedSchema", () => {
-  test("keeps the keywords that say what a prop holds", () => {
-    expect(
-      prunedSchema({
-        type: "object",
-        title: "Callout",
-        required: ["body"],
-        properties: {
-          body: { type: "string" },
-          variant: { type: "string", enum: ["info", "tip"], default: "info" },
-          image: { type: "string", format: "image-uri" },
-        },
-      }),
-    ).toEqual({
-      type: "object",
-      title: "Callout",
-      required: ["body"],
-      properties: {
-        body: { type: "string" },
-        variant: { type: "string", enum: ["info", "tip"], default: "info" },
-        image: { type: "string", format: "image-uri" },
-      },
-    });
-  });
-
-  /**
-   * deco's block wrapper requires `__resolveType` and `resolveSchema` strips
-   * every `__` key from `properties`. Left whole, that `required` demands a
-   * field the writer is never shown — and every section it writes fails.
-   */
-  test("drops a required name the schema declares no property for", () => {
-    expect(
-      prunedSchema({
-        type: "object",
-        required: ["__resolveType", "text"],
-        properties: { text: { type: "string" } },
-      }),
-    ).toEqual({
-      type: "object",
-      required: ["text"],
-      properties: { text: { type: "string" } },
-    });
-  });
-
-  test("a required list left with nothing drops out entirely", () => {
-    expect(
-      prunedSchema({
-        type: "object",
-        required: ["__resolveType"],
-        properties: { text: { type: "string" } },
-      }),
-    ).toEqual({ type: "object", properties: { text: { type: "string" } } });
-  });
-
-  test("drops the editor's own fields, which say nothing about the type", () => {
-    expect(
-      prunedSchema({
-        type: "array",
-        titleBy: "name",
-        image: "{{{src}}}",
-        anyOfRefs: [{ resolveType: "site/sections/X.tsx", title: "X" }],
-        items: { type: "string" },
-      }),
-    ).toEqual({ type: "array", items: { type: "string" } });
-  });
-
-  test("prunes all the way down, not just at the top", () => {
-    expect(
-      prunedSchema({
-        type: "object",
-        properties: {
-          gallery: {
-            type: "array",
-            titleBy: "alt",
-            items: { type: "object", properties: { alt: { type: "string" } } },
-          },
-        },
-      }),
-    ).toEqual({
-      type: "object",
-      properties: {
-        gallery: {
-          type: "array",
-          items: { type: "object", properties: { alt: { type: "string" } } },
-        },
-      },
-    });
-  });
-
-  test("a block with no schema at all is an empty object, never null", () => {
-    expect(prunedSchema(null)).toEqual({});
-    expect(prunedSchema(undefined)).toEqual({});
-  });
-});
-
-describe("prunedSchema — loader-driven fields", () => {
-  /**
-   * A `dynamic-options` value is resolved by a loader against the live
-   * catalogue. Keeping the loader path is how the writer learns the value is
-   * not its to compose; without it the field looks like a free string and
-   * comes back full of plausible slugs that render nothing.
-   */
-  test("keeps the loader a dynamic-options field draws from", () => {
-    expect(
-      prunedSchema({
-        type: "object",
-        properties: {
-          products: {
-            type: "array",
-            format: "dynamic-options",
-            options: "site/loaders/productOptions.ts",
-            titleBy: "name",
-          },
-        },
-      }),
-    ).toEqual({
-      type: "object",
-      properties: {
-        products: {
-          type: "array",
-          format: "dynamic-options",
-          options: "site/loaders/productOptions.ts",
-        },
-      },
-    });
-  });
-});
-
-/**
- * The derived schema is not always the truth: a prop whose `$ref` did not
- * resolve arrives typed `object` with no properties, and a writer acts on that.
- * A block the site already renders settles the shape.
- */
 describe("blockExample", () => {
   const LIST = "site/sections/Blog/Post/List.tsx";
   const post = (sections: Record<string, unknown>[]) => ({
@@ -3089,5 +2952,91 @@ describe("reconciledSchema", () => {
 
   test("ignores a prop the schema never declared", () => {
     expect(reconciledSchema(listSchema, { mystery: 1 })).toBe(listSchema);
+  });
+});
+
+/**
+ * The editor's view of a schema exists to render a form, so it flattens what a
+ * form cannot show — a `string | string[]` prop comes out of it typed `object`.
+ * The meta carries the real thing one hop behind deco's block wrapper.
+ */
+describe("rawBlockSchema", () => {
+  const RT = "site/sections/Blog/Post/List.tsx";
+  const meta = {
+    manifest: {
+      blocks: {
+        sections: { [RT]: { $ref: "#/definitions/List", namespace: "site" } },
+      },
+    },
+    schema: {
+      definitions: {
+        List: {
+          type: "object",
+          allOf: [{ $ref: "#/definitions/ListProps" }],
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: { type: "string", enum: [RT] },
+          },
+        },
+        ListProps: {
+          type: "object",
+          required: ["items"],
+          properties: {
+            items: {
+              anyOf: [
+                { type: "string" },
+                { type: "array", items: { type: "string" } },
+              ],
+            },
+            style: { type: "string", enum: ["ordered", "unordered"] },
+          },
+        },
+      },
+    },
+  } as unknown as LiveMeta;
+
+  test("keeps the union a form had to flatten", () => {
+    expect(rawBlockSchema(RT, meta)).toEqual({
+      type: "object",
+      required: ["items"],
+      properties: {
+        items: {
+          anyOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+        },
+        style: { type: "string", enum: ["ordered", "unordered"] },
+      },
+    });
+  });
+
+  test("never hands over the resolveType, which the caller stamps", () => {
+    const schema = rawBlockSchema(RT, meta);
+    const properties = schema.properties as Record<string, unknown>;
+    expect(properties).not.toHaveProperty("__resolveType");
+    expect(schema.required).toEqual(["items"]);
+  });
+
+  test("answers nothing for a block this meta has never heard of", () => {
+    expect(rawBlockSchema("site/sections/Nope.tsx", meta)).toEqual({});
+  });
+
+  test("a ref that goes nowhere resolves to an open schema, never a throw", () => {
+    const broken = {
+      manifest: {
+        blocks: { sections: { [RT]: { $ref: "#/definitions/Gone" } } },
+      },
+      schema: { definitions: {} },
+    } as unknown as LiveMeta;
+    expect(rawBlockSchema(RT, broken)).toEqual({});
+  });
+
+  test("stops following a ref that points at itself", () => {
+    const cyclic = {
+      manifest: { blocks: { sections: { [RT]: { $ref: "#/definitions/A" } } } },
+      schema: { definitions: { A: { $ref: "#/definitions/A" } } },
+    } as unknown as LiveMeta;
+    expect(rawBlockSchema(RT, cyclic)).toEqual({});
   });
 });
