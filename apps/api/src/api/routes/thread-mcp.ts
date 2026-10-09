@@ -2,8 +2,8 @@
  * Thread MCP server — `POST /api/:org/mcp/thread/:threadId`.
  *
  * The Studio surface a sandbox-hosted run gets (mounted as `studio` in Claude
- * Code): the tools Decopilot chats had as built-ins, the task-board tools a run
- * reports through, and `TASK_ADD_REPO`. Which set is derived from the thread
+ * Code): for a chat, the Studio catalog; for a reviewer or a Jira-triggered
+ * run, the narrow set it reports through. Which set is derived from the thread
  * (`resolveThreadToolNames`).
  *
  * The run is identified by the PATH, not by a tool argument: a `threadId`

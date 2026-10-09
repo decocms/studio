@@ -76,8 +76,8 @@ import {
   selfToolGrantsFor,
 } from "@/harnesses/org-mcp-grants";
 import {
+  resolveRunScopedToolNames,
   resolveThreadToolNames,
-  RUN_SCOPED_TOOL_NAMES,
 } from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
@@ -399,7 +399,7 @@ export class SandboxDispatchClient {
         toolNames: selfToolGrantsFor({
           ...authority,
           toolNames: resolveThreadToolNames(thread),
-          runScoped: RUN_SCOPED_TOOL_NAMES,
+          runScoped: resolveRunScopedToolNames(thread),
         }),
         grants,
       }),
