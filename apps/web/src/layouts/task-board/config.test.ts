@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+  closestCorners,
+  type ClientRect,
+  type DroppableContainer,
+} from "@dnd-kit/core";
+import {
   CANONICAL_COLUMN_KEYS,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import {
   daysSince,
   agentRunState,
+  boardCollisions,
   cardNeedsAttention,
   dropLane,
   dueDateUrgency,
@@ -299,6 +305,70 @@ describe("dropLane", () => {
   test("refuses a card it has never heard of, and no target at all", () => {
     expect(over("card_that_left")).toBeNull();
     expect(over(undefined)).toBeNull();
+  });
+});
+
+describe("boardCollisions", () => {
+  function rect(left: number, top: number, width: number, height: number) {
+    return {
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+    } satisfies ClientRect;
+  }
+
+  // An In Review lane with a card at the top, and the empty lane beside it,
+  // as tall as a board whose longest lane holds dozens of cards.
+  const rects = new Map([
+    ["card_in_review", rect(0, 10, 280, 100)],
+    ["lane:in_review", rect(0, 0, 280, 4400)],
+    ["lane:approved", rect(292, 0, 280, 4400)],
+  ]);
+  const containers = [...rects.keys()].map(
+    (id): DroppableContainer => ({
+      id,
+      key: id,
+      data: { current: undefined },
+      disabled: false,
+      node: { current: null },
+      rect: { current: rects.get(id) ?? null },
+    }),
+  );
+  /** A card dragged over the top of the empty lane. */
+  const draggedOverApproved = rect(300, 20, 272, 100);
+
+  function collide(
+    detect: typeof boardCollisions,
+    pointerCoordinates: { x: number; y: number } | null,
+  ) {
+    return detect({
+      active: {
+        id: "dragged",
+        data: { current: undefined },
+        rect: { current: { initial: null, translated: null } },
+      },
+      collisionRect: draggedOverApproved,
+      droppableRects: rects,
+      droppableContainers: containers,
+      pointerCoordinates,
+    })[0]?.id;
+  }
+
+  test("lands in the empty lane the pointer is inside", () => {
+    expect(collide(boardCollisions, { x: 420, y: 70 })).toBe("lane:approved");
+    // What the board used before: the neighbour's card measures closer.
+    expect(collide(closestCorners, { x: 420, y: 70 })).toBe("card_in_review");
+  });
+
+  test("prefers a card over the lane that holds it, so reordering works", () => {
+    expect(collide(boardCollisions, { x: 100, y: 50 })).toBe("card_in_review");
+  });
+
+  test("falls back to the closest corners without a pointer", () => {
+    expect(collide(boardCollisions, null)).toBe("card_in_review");
   });
 });
 
