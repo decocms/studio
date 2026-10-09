@@ -49,4 +49,5 @@ export const monitoring = {
   "monitoring.timeRangePicker.last2Days": "\u00daltimos 2 dias",
   "monitoring.timeRangePicker.last7Days": "\u00daltimos 7 dias",
   "monitoring.timeRangePicker.last30Days": "\u00daltimos 30 dias",
+  "monitoring.timeRangePicker.last90Days": "\u00daltimos 90 dias",
 } satisfies Record<keyof typeof monitoringEn, string>;

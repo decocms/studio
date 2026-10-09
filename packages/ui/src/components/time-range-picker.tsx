@@ -106,7 +106,11 @@ export function TimeRangePicker({
     return value.from === range.from && value.to === range.to;
   };
 
-  const displayText = getTimeRangeDisplayText(value.from, value.to);
+  const displayText = getTimeRangeDisplayText(
+    value.from,
+    value.to,
+    quickRanges,
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

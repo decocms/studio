@@ -11,6 +11,7 @@ export type AnalyticsPayload = ToolOutput<"TASK_BOARD_DELIVERY">;
 export type AnalyticsSection = AnalyticsPayload["sections"][number];
 
 export const ANALYTICS_TOOLS = [
+  "TASK_BOARD_OPERATION",
   "TASK_BOARD_DELIVERY",
   "TASK_BOARD_STUCK",
   "TASK_BOARD_COST",
@@ -42,7 +43,7 @@ export function useTaskBoardAdminOrgs() {
 
 export function useTaskBoardAnalytics(
   tool: AnalyticsTool,
-  params: { org: string; from: string; to: string },
+  params: { org?: string; project?: string; from: string; to: string },
 ) {
   const { locator } = useProjectContext();
   const studio = useStudioTools();
@@ -50,7 +51,8 @@ export function useTaskBoardAnalytics(
     queryKey: KEYS.taskBoardAnalytics(
       locator,
       tool,
-      params.org,
+      params.org ?? "",
+      params.project ?? "",
       params.from,
       params.to,
     ),

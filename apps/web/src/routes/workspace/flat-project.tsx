@@ -9,7 +9,7 @@
 
 import { Suspense } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Folder, Grid01 } from "@untitledui/icons";
+import { BarChartSquare02, Folder, Grid01 } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
@@ -19,6 +19,7 @@ import { Panel } from "@/components/panel";
 import { ProjectApps } from "@/components/projects/project-apps";
 import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
 import { TaskBoardPage } from "@/layouts/task-board";
+import { BoardAnalytics } from "@/layouts/task-board/board-analytics";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
 import { projectFolderPath } from "@decocms/shared/organization/project-folder";
 import { useCapability } from "@/hooks/use-capability";
@@ -27,20 +28,23 @@ import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
 
-/** The project, or its files. In the topbar, not the toolbar: the toolbar row
- *  belongs to the board's own Board/List/Feed. */
-function ProjectViewToggle({ files }: { files: boolean }) {
+type ProjectView = "project" | "files" | "analytics";
+
+/** The project, its files, or its analytics. In the topbar, not the toolbar:
+ *  the toolbar row belongs to the board's own Board/List/Feed. */
+function ProjectViewToggle({ view }: { view: ProjectView }) {
   const t = useT();
   const navigate = useNavigate();
-  /** Opening the files closes an open card, which would otherwise re-open on
+  /** Leaving the project closes an open card, which would otherwise re-open on
    *  the way back. */
-  const go = (next: boolean | undefined) =>
+  const go = (next: ProjectView) =>
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        files: next,
-        ...(next ? { task: undefined } : {}),
+        files: next === "files" || undefined,
+        analytics: next === "analytics" || undefined,
+        ...(next !== "project" ? { task: undefined } : {}),
       }),
     });
 
@@ -49,8 +53,8 @@ function ProjectViewToggle({ files }: { files: boolean }) {
     <Panel.Topbar.Right.Portal>
       <div className="shrink-0">
         <ViewModeToggle
-          value={files ? "files" : "project"}
-          onValueChange={(next) => go(next === "files" ? true : undefined)}
+          value={view}
+          onValueChange={go}
           options={[
             {
               value: "project",
@@ -61,6 +65,11 @@ function ProjectViewToggle({ files }: { files: boolean }) {
               value: "files",
               icon: <Folder />,
               label: t("projects.flat.viewFiles"),
+            },
+            {
+              value: "analytics",
+              icon: <BarChartSquare02 />,
+              label: t("projects.flat.viewAnalytics"),
             },
           ]}
         />
@@ -86,14 +95,14 @@ function ProjectFiles({ project }: { project: VirtualMCPEntity }) {
 function FlatProjectBody({
   projectId,
   taskOpen,
-  files,
+  view,
 }: {
   projectId: string | undefined;
   /** A card is open (`?task=`), so the board region below is showing that card
    *  instead of the feed. */
   taskOpen: boolean;
-  /** `?files` — show the project's files instead of the project. */
-  files: boolean;
+  /** `?files` / `?analytics` — show those instead of the project. */
+  view: ProjectView;
 }) {
   const { org } = useProjectContext();
   const { granted: canManageProjects } = useCapability("agents:manage");
@@ -115,9 +124,20 @@ function FlatProjectBody({
 
   return (
     <div className="@container flex h-full min-h-0 min-w-0 flex-col">
-      <ProjectViewToggle files={files} />
-      {files ? (
+      <ProjectViewToggle view={view} />
+      {view === "files" ? (
         <ProjectFiles project={project} />
+      ) : view === "analytics" ? (
+        <>
+          <Page.Title>{project.title}</Page.Title>
+          <BoardAnalytics
+            key={project.id}
+            project={project.id}
+            taskHref={(taskId) =>
+              `/${org.slug}/projects?project=${encodeURIComponent(project.id)}&task=${encodeURIComponent(taskId)}`
+            }
+          />
+        </>
       ) : (
         <>
           {/* The actual `Page.Container` — not classes copied from it — so this
@@ -155,6 +175,7 @@ export default function FlatProjectRoute() {
     project?: string;
     task?: string;
     files?: boolean;
+    analytics?: boolean;
   };
   return (
     /* Not `Page`: `Page.Content` scrolls, and the board owns its scrolling. */
@@ -170,7 +191,13 @@ export default function FlatProjectRoute() {
           <FlatProjectBody
             projectId={search.project}
             taskOpen={!!search.task}
-            files={!!search.files}
+            view={
+              search.files
+                ? "files"
+                : search.analytics
+                  ? "analytics"
+                  : "project"
+            }
           />
         </Suspense>
       </div>
