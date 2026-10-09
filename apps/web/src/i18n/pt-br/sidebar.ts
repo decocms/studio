@@ -76,6 +76,8 @@ export const sidebar = {
   "sidebar.rail.hideOrganization": "Ocultar da barra lateral",
   "sidebar.rail.organizationSettings": "Configurações da organização",
   "sidebar.rail.currentOrganization": "atual",
+  "sidebar.rail.pinOrganization": "Fixar na barra lateral",
+  "sidebar.rail.unpinOrganization": "Desafixar da barra lateral",
   "sidebar.rail.searchEmpty": "Nenhuma organização corresponde.",
   "sidebar.rail.searchMoreOrganizations": "Buscar organizações (mais {count})",
   "sidebar.rail.searchOrganizations": "Buscar organizações",
