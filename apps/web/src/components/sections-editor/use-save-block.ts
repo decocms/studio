@@ -6,7 +6,6 @@ import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
 import { usePackagePath } from "./use-package-path";
-import { toast } from "sonner";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
@@ -22,7 +21,8 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
-import { isSaveConflict, saveErrorMessage } from "./serve-save-error";
+import { isSaveConflict } from "./serve-save-error";
+import { toastSaveError } from "./site-editor-toast";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -70,8 +70,9 @@ export function useSaveBlock({
   const backend = useContentBackend(virtualMcpId, branch);
   const protocol = backend.kind === "protocol" ? backend : null;
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
+  const t = useT();
 
-  return useMutation({
+  const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
@@ -190,6 +191,13 @@ export function useSaveBlock({
       );
     },
   });
+
+  return {
+    ...mutation,
+    /** One toast for a failed save, worded for this backend's editor. */
+    reportError: (error: Error) =>
+      toastSaveError(t, error, protocol?.source ?? null),
+  };
 }
 
 /**
@@ -217,7 +225,6 @@ export function useDebouncedSaveBlock(
   opts?: { onSaved?: () => void; guard?: SaveGuard },
 ) {
   const saveBlock = useSaveBlock(params);
-  const t = useT();
   const pendingRef = useRef<Map<string, SaveData>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -233,7 +240,7 @@ export function useDebouncedSaveBlock(
       { blockKey, data: resolved, guard: opts?.guard },
       {
         onSuccess: () => opts?.onSaved?.(),
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
