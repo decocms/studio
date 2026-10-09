@@ -51,7 +51,10 @@ type ItemData = { item: VirtualMCPEntity | null };
 /** Curated branch-backed release list at `metadata.releases`; discard drops only the entry, leaving the remote branch. */
 export function useReleases(virtualMcpId: string) {
   const vm = useVirtualMCP(virtualMcpId);
-  const actions = useVirtualMCPActions();
+  // Silent: these writes follow a user action (Publish, a rename) that has
+  // its own one toast, or happen in the background (auto-naming a draft).
+  // Callers report a failure themselves when the user can act on it.
+  const actions = useVirtualMCPActions({ silent: true });
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const releases: Release[] = vm?.metadata?.releases ?? [];

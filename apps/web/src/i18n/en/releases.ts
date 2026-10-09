@@ -1,21 +1,26 @@
+/**
+ * The Versions screen of a hosted site (the `releases` route). Business-user
+ * copy: "Published" is the version the site shows; no CDN, git, commit, sha
+ * or "current" (`site-editor-copy.test.ts` enforces it).
+ */
 export const releases = {
-  "releases.title": "Releases",
+  "releases.title": "Versions",
   "releases.subtitle":
-    "Every change merged to main, newest first. A Publish also creates a release on the CDN; Make current switches the CDN to any release.",
-  "releases.loadFailed": "Couldn't load releases",
-  "releases.currentOnCdn": "Current on the CDN:",
-  "releases.madeCurrentAgo": "made current {when}",
-  "releases.nothingOnCdn": "Nothing on the CDN yet",
-  "releases.current": "Current",
-  "releases.actions": "Release actions",
-  "releases.makeCurrent": "Make current",
-  "releases.makeCurrentFailed": "Making it current failed. Try again.",
-  "releases.makeCurrentTitle": "Make {sha} current?",
-  "releases.makeCurrentBody":
-    "The CDN serves this release from now on. Git doesn't change, and the next Publish makes its own release current.",
+    "Every version of your site, newest first. You can publish an earlier one to bring it back.",
+  "releases.loadFailed": "Couldn't load your versions.",
+  "releases.publishedAgo": "Published {when}",
+  "releases.nothingPublished": "Nothing published yet",
+  "releases.published": "Published",
+  "releases.actions": "Version actions",
+  "releases.publishVersion": "Publish this version",
+  "releases.publishVersionTitle": "Publish this version?",
+  "releases.publishVersionBody":
+    "Your site will show this version from now on. Your next Publish replaces it with your latest changes.",
   "releases.schemaMismatchBody":
-    "This release was made with a different schema than main's. Sites built from main keep their current content until the schemas match again.",
-  "releases.madeCurrent": "{sha} is now current",
+    "This version was made for an earlier design of your site. Your site keeps showing what it shows now until its design matches this version again. Publish anyway?",
+  "releases.publishAnyway": "Publish anyway",
+  "releases.versionLive": "This version is live.",
+  "releases.publishVersionFailed": "Couldn't publish this version.",
   "releases.loadMore": "Load more",
   "releases.cancel": "Cancel",
 };

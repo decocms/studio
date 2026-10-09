@@ -74,6 +74,7 @@ import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
+import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 
 export type { CmsPublishMode };
 
@@ -508,6 +509,7 @@ function CmsPublishContent({
     isPublishing,
     isDiscarding,
     publishError,
+    publishErrorDetail,
     submit,
     discardChange,
     discardAll,
@@ -523,13 +525,19 @@ function CmsPublishContent({
     onPullRequestChanged,
     onPublished,
     hosted,
+    authorName: session?.user?.name,
   });
 
   const canDiscard = (paths: readonly string[]) =>
     discardablePaths === null || paths.every((p) => discardablePaths.has(p));
 
+  // Until the backend is known, Publish would take the git path on a hosted
+  // site (and speak git): wait for it.
   const canSubmit =
-    !isPublishing && summary.count > 0 && (isReview || gate.allowed);
+    backend.kind !== "pending" &&
+    !isPublishing &&
+    summary.count > 0 &&
+    (isReview || gate.allowed);
 
   const headerTitle = isReview
     ? summary.count === 0
@@ -822,7 +830,15 @@ function CmsPublishContent({
                 )}
               </div>
               {publishError ? (
-                <p className="text-xs text-destructive">{publishError}</p>
+                <div>
+                  <p className="text-xs text-destructive">{publishError}</p>
+                  {publishErrorDetail ? (
+                    <ErrorDetails
+                      label={t("siteEditor.details")}
+                      detail={publishErrorDetail}
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </>
           }

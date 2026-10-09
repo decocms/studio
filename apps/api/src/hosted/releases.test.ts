@@ -12,6 +12,7 @@ import { buildRevision } from "./release-objects";
 import {
   listReleases,
   makeCurrent,
+  makeHeadCurrent,
   NotPublishedError,
   SchemaMismatchError,
 } from "./releases";
@@ -189,5 +190,42 @@ describe("makeCurrent", () => {
     );
     await makeCurrent(repo, old, { confirm: true });
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(old);
+  });
+});
+
+describe("makeHeadCurrent (Publish's Try again)", () => {
+  it("writes main head's missing companion release, then makes it current", async () => {
+    const { git, delivery, repo } = setup();
+    // A Publish committed but its release write failed: no companion.
+    git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' }, "published");
+    const head = git.head();
+    delivery.log.length = 0;
+    const pointer = await makeHeadCurrent(repo);
+    expect(pointer).toMatchObject({ revision: head, schemaHash: SCHEMA_HASH });
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.revision("acme", head)}`,
+      `put ${LATEST}`,
+      `purge ${LATEST}`,
+    ]);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(head);
+  });
+
+  it("reuses an existing companion (latest.json write had failed)", async () => {
+    const { delivery, repo, release } = setup();
+    const head = await release();
+    delivery.log.length = 0;
+    await makeHeadCurrent(repo);
+    expect(delivery.log).toEqual([`put ${LATEST}`, `purge ${LATEST}`]);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(head);
+  });
+
+  it("makes main's newest commit live, never an older one", async () => {
+    const { git, delivery, repo, release } = setup();
+    await release();
+    // Another Publish landed after the one being retried.
+    git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' }, "newer");
+    const newer = git.head();
+    await makeHeadCurrent(repo);
+    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(newer);
   });
 });
