@@ -513,6 +513,7 @@ const projectsIndexRoute = createRoute({
    *  other route owns it. */
   validateSearch: legacyWorkspaceCompatibilitySearchSchema.extend({
     files: z.coerce.boolean().optional().catch(undefined),
+    analytics: z.coerce.boolean().optional().catch(undefined),
   }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/flat-project.tsx"),
@@ -818,6 +819,22 @@ const agentAnalyticsRoute = createRoute({
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-analytics.tsx"),
+  ),
+});
+
+/** The task board analytics, narrowed to this project's cards. */
+const projectTaskBoardAnalyticsRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/taskboard-analytics",
+  staticData: {
+    pageTitle: "taskBoard.analytics.title",
+    defaultMain: "board",
+    mainView: "board",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/taskboard-analytics.tsx"),
   ),
 });
 
@@ -1562,6 +1579,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentHostingRoute,
   agentE2eRoute,
   agentAnalyticsRoute,
+  projectTaskBoardAnalyticsRoute,
   agentExperimentsRoute,
   agentMonitorRoute,
   agentAppRoute,

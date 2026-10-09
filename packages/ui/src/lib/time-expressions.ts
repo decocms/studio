@@ -208,9 +208,13 @@ export function findQuickRange(value: string): QuickRange | undefined {
 /**
  * Get display text for a time range
  */
-export function getTimeRangeDisplayText(from: string, to: string): string {
+export function getTimeRangeDisplayText(
+  from: string,
+  to: string,
+  quickRanges: QuickRange[] = QUICK_RANGES,
+): string {
   // Check if it matches a quick range
-  const quickRange = QUICK_RANGES.find((r) => r.from === from && r.to === to);
+  const quickRange = quickRanges.find((r) => r.from === from && r.to === to);
   if (quickRange) {
     return quickRange.label;
   }

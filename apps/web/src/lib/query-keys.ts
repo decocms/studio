@@ -69,9 +69,10 @@ export const KEYS = {
     locator: ProjectLocator,
     tool: string,
     org: string,
+    project: string,
     from: string,
     to: string,
-  ) => [locator, "task-board-analytics", tool, org, from, to] as const,
+  ) => [locator, "task-board-analytics", tool, org, project, from, to] as const,
 
   // Admin thread analytics; `tick` bumps on each pushed thread status change.
   threadAnalyticsOrgs: (pathOrgSlug: string) =>

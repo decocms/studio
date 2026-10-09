@@ -30,7 +30,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
+import {
+  TaskBoardAdminBanner,
+  TaskBoardAdminControls,
+  TaskBoardAnalyticsButton,
+} from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
@@ -1520,6 +1524,7 @@ function TaskBoardBody({
             }
           >
             <TaskBoardAdminControls />
+            <TaskBoardAnalyticsButton project={scopeId} />
             <AgenticSetupButton />
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
@@ -3574,7 +3579,9 @@ function FeedView({
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col",
-        project ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+        project
+          ? "mx-auto w-full max-w-[1680px] px-4 pt-4 md:px-8"
+          : "px-4 pt-6 sm:px-8",
       )}
     >
       <div
