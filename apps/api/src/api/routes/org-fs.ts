@@ -695,6 +695,27 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   });
 
+  // A volume's newest files at any depth — the Library's flat view of the
+  // volumes chat fills one thread folder at a time (uploads, outputs).
+  app.get("/:volume/files", async (c) => {
+    const volume = c.req.param("volume");
+    const r = await resolve(c, volume, "ORG_FS_READ");
+    if (!r.ok) return r.res;
+    const limit = Math.min(
+      Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
+      MAX_RECENT_LIMIT,
+    );
+    const caller = r.ctx.auth.user!.id;
+    try {
+      const entries = await r.fs.searchWithEffectivePublic("", limit, [volume]);
+      return c.json({
+        entries: entries.filter((e) => canReadPersonal(volume, e.path, caller)),
+      });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
   // Metadata for a single entry (404 if absent).
   app.get("/:volume/stat", async (c) => {
     const volume = c.req.param("volume");

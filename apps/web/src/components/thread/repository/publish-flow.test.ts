@@ -1,10 +1,17 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
   describePublishFailure,
   publishMessageParts,
   publishNoteParts,
   PublishStepError,
+  runSubmitForReviewFlow,
+  type PublishTarget,
 } from "./publish-flow.ts";
+import {
+  reviewDiffSignature,
+  type GitDiffResult,
+  type GitStatus,
+} from "./sandbox-git-api.ts";
 
 const FALLBACK = "Changes from feature-branch";
 
@@ -124,5 +131,86 @@ describe("describePublishFailure", () => {
       pullRequest: null,
       headMoved: false,
     });
+  });
+});
+
+describe("a sandbox publish re-checks the changes it showed", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const status: GitStatus = {
+    not_added: [],
+    conflicted: [],
+    created: [],
+    deleted: [],
+    modified: ["src/a.tsx"],
+    renamed: [],
+    files: [{ path: "src/a.tsx", index: " ", working_dir: "M" }],
+    staged: [],
+    ahead: 0,
+    behind: 0,
+    current: "feat",
+    tracking: "origin/feat",
+    detached: false,
+    aheadOfBase: 0,
+    headSha: "a".repeat(40),
+  };
+  const shown: GitDiffResult = {
+    diffs: { "src/a.tsx": { from: "old", to: "reviewed" } },
+  };
+  const target = (diff: GitDiffResult): PublishTarget => ({
+    orgSlug: "org",
+    virtualMcpId: "vm",
+    branch: "feat",
+    threadId: null,
+    baseBranch: "main",
+    target: {} as never,
+    owner: "o",
+    repo: "r",
+    headBranch: "feat",
+    expectedHeadSha: status.headSha,
+    expectedDiffSignature: reviewDiffSignature(diff),
+  });
+
+  /** Serves `status`, the working tree as `live`, and records publish calls. */
+  function serve(live: GitDiffResult) {
+    const published: string[] = [];
+    globalThis.fetch = ((url: string) => {
+      if (url.includes("/git/status")) {
+        return Promise.resolve(Response.json(status));
+      }
+      if (url.includes("/git/diff"))
+        return Promise.resolve(Response.json(live));
+      published.push(url);
+      return Promise.resolve(Response.json({ error: "stop" }, { status: 500 }));
+    }) as unknown as typeof fetch;
+    return published;
+  }
+
+  it("stops before pushing when the working tree changed under the same head", async () => {
+    const published = serve({
+      diffs: { "src/a.tsx": { from: "old", to: "edited after review" } },
+    });
+
+    const error = await runSubmitForReviewFlow(target(shown), {
+      title: "t",
+      message: "t",
+    }).catch((e: unknown) => e);
+
+    expect(describePublishFailure(error, t).headMoved).toBe(true);
+    expect(published).toEqual([]);
+  });
+
+  it("pushes when the working tree still matches what was shown", async () => {
+    const published = serve(shown);
+
+    await runSubmitForReviewFlow(target(shown), {
+      title: "t",
+      message: "t",
+    }).catch(() => null);
+
+    expect(published.some((url) => url.includes("/git/publish"))).toBe(true);
   });
 });

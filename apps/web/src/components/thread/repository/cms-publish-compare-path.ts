@@ -4,7 +4,10 @@ import {
 } from "@/components/sections-editor/page-path-utils.ts";
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
-import { globalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url.ts";
+import {
+  globalSectionPreviewUrl,
+  withDraftPointer,
+} from "@/components/sections-editor/section-preview-url.ts";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 
@@ -53,15 +56,15 @@ export function compareSectionUrl(
 
 /**
  * The concrete path to render for a change, or "" when it needs one typed in.
- * Global blocks and site settings have no page of their own; the home page is
- * where most of them show. A dynamic page reuses the values last typed into
+ * Global blocks, site settings and code have no page of their own; the home
+ * page is where most of them show. A dynamic page reuses the values last typed into
  * the preview's path bar for that same template.
  */
 export function initialComparePath(
   change: Pick<PublishChange, "kind" | "pagePath">,
   lastPage: LastPreviewPage | null,
 ): string {
-  if (change.kind === "block") return "/";
+  if (change.kind !== "page") return "/";
   const template = change.pagePath;
   if (!template) return "";
   if (extractPathParams(template).length === 0) return template;
@@ -91,4 +94,36 @@ export function comparePageUrl(
   } catch {
     return null;
   }
+}
+
+/** Where the unpublished side renders: Fast Preview's `?__draft=` pointer on
+ *  the live site, or a coding session's sandbox dev server. */
+export type CompareDraft =
+  | { kind: "pointer"; pointer: string }
+  | { kind: "sandbox"; previewUrl: string };
+
+/** The live-site `url` rendered with the unpublished changes, or null without a draft. */
+export function compareDraftUrl(
+  url: URL,
+  draft: CompareDraft | null,
+): string | null {
+  if (!draft) return null;
+  if (draft.kind === "pointer") {
+    return withDraftPointer(url.toString(), draft.pointer);
+  }
+  try {
+    return new URL(`${url.pathname}${url.search}`, draft.previewUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+/** Content renders on the live site either way; a code change only renders on a sandbox. */
+export function canRenderCompare(
+  kind: PublishChange["kind"],
+  previewServerUrl: string | null,
+  draft: CompareDraft | null,
+): boolean {
+  if (previewServerUrl === null) return false;
+  return kind !== "other" || draft?.kind === "sandbox";
 }

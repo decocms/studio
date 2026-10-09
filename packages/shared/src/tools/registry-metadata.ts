@@ -43,7 +43,8 @@ export type ToolCategory =
   | "Search"
   | "Task Board"
   | "Jira"
-  | "Blog";
+  | "Blog"
+  | "Chat";
 
 /**
  * All tool names - keep in sync with CORE_TOOLS in apps/api/src/tools/index.ts
@@ -101,6 +102,8 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "CONNECTION_TOOLS_SEARCH",
+  "CONNECTION_TOOL_CALL",
   "REPORTS_SETUP",
   "REPORTS_RUN",
   "REPORTS_BIND",
@@ -319,6 +322,11 @@ const ALL_TOOL_NAMES = [
   "THREAD_ANALYTICS_USAGE",
   "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
+  "generate_image",
+  "web_search",
+  "deep_research",
+  "suggest_task",
+  "update_interests",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
   "NOTIFICATION_SUBSCRIPTION_SET",
@@ -606,6 +614,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_TOOLS_SEARCH",
+    description: "Search the tools of your connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_TOOL_CALL",
+    description: "Call a tool on one of your connections",
     category: "Connections",
   },
   {
@@ -1578,6 +1596,31 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Clone an organization repository into the sandbox of the task run calling it",
     category: "Task Board",
   },
+  {
+    name: "generate_image",
+    description: "Generate an image with the organization's image model",
+    category: "Chat",
+  },
+  {
+    name: "web_search",
+    description: "Search the web and synthesize a short cited answer",
+    category: "Chat",
+  },
+  {
+    name: "deep_research",
+    description: "Run multi-source web research into a cited report",
+    category: "Chat",
+  },
+  {
+    name: "suggest_task",
+    description: "Offer the user a task card for the board",
+    category: "Chat",
+  },
+  {
+    name: "update_interests",
+    description: "Record the user's durable goals for the current agent",
+    category: "Chat",
+  },
 ];
 
 // ============================================================================
@@ -1616,6 +1659,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
       "CONNECTION_TEST",
+      // Each call is still authorized per connection by the proxy.
+      "CONNECTION_TOOLS_SEARCH",
+      "CONNECTION_TOOL_CALL",
       // View agents
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
@@ -1739,6 +1785,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // Chat tools Decopilot ran for every member as built-ins.
+      "generate_image",
+      "web_search",
+      "deep_research",
+      "suggest_task",
+      "update_interests",
     ],
   },
   // Organization
@@ -2197,6 +2249,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     "Task Board": [],
     Jira: [],
     Blog: [],
+    Chat: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

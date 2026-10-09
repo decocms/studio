@@ -3,10 +3,10 @@ import { z } from "zod";
 import type { StudioContext } from "../core/studio-context";
 import { resolveTier } from "../core/resolve-tier";
 import {
-  buildCommitContextSummary,
+  buildChangeContextSummary,
   type GitDiffLike,
   type GitStatusLike,
-} from "./suggest-commit-message";
+} from "./git-change-context";
 
 /** Whether a set of code changes needs human review before a direct publish. */
 export interface ReviewVerdict {
@@ -66,8 +66,6 @@ const ALLOW_FALLBACK: ReviewVerdict = { requiresReview: false, reason: "" };
 
 /**
  * Ask the org's cheap "fast" model tier whether a publish payload needs review.
- * Mirrors `suggestCommitMessageWithLlm` (same tier + context-summary plumbing)
- * but returns a typed verdict via `generateObject`.
  */
 export async function judgeRequiresReviewWithLlm(
   ctx: StudioContext,
@@ -82,7 +80,7 @@ export async function judgeRequiresReviewWithLlm(
     const tier = await resolveTier(ctx, "fast");
     const provider = await ctx.aiProviders.activate(tier.credentialId, orgId);
     const model = provider.aiSdk.languageModel(tier.modelId);
-    const summary = buildCommitContextSummary(status, diff);
+    const summary = buildChangeContextSummary(status, diff);
 
     const { object } = await generateObject({
       model,

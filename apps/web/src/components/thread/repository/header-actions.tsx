@@ -1,4 +1,9 @@
-import { useProjectContext, useVirtualMCP } from "@/sdk";
+import {
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
+  useProjectContext,
+  useVirtualMCP,
+} from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -33,7 +38,7 @@ import {
   squashMergeChangeRequest,
 } from "./change-request-api.ts";
 import { useReleases } from "./use-releases";
-import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
+import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
 import {
   isPrStateActivelyLoading,
   selectHeaderButton,
@@ -44,7 +49,9 @@ import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events.ts";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context.tsx";
-import { useChecks, usePrByBranch } from "./use-pr-data.ts";
+import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import {
   fetchGitStatus,
@@ -146,11 +153,19 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishDialogIntent, setPublishDialogIntent] =
-    useState<PublishDialogIntent>("open-pr");
-  const [publishPolicyOverride, setPublishPolicyOverride] =
-    useState<PublishPolicy | null>(null);
+  /** `mode` and the policy override outlive `open`, so the closing animation
+   *  doesn't flash the other mode's labels on its way out. */
+  const [surface, setSurface] = useState<{
+    open: boolean;
+    mode: CmsPublishMode;
+    policyOverride: PublishPolicy | null;
+  }>({ open: false, mode: "publish", policyOverride: null });
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const startSandbox = useSandboxStart(selfClient);
   const [changeRequestPending, setChangeRequestPending] = useState(false);
   const debugKeyRef = useRef("");
 
@@ -232,6 +247,17 @@ export function HeaderActions({ virtualMcpId }: Props) {
     branch: headBranch,
   });
 
+  /** Warmed here so the dialog's "last published" line is ready before the
+   *  click; it is optional copy and must never gate that surface. */
+  const lastPublishedQuery = useLastPublishedPr({
+    orgId: org.id,
+    orgSlug: org.slug,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    base: branchMeta.kind === "ready" ? branchMeta.base : null,
+  });
+
   /** Git state comes solely from the daemon's `branch` SSE event, which applies the boot-dirty baseline filter a raw /git/status poll would miss. */
   const effectiveBranchMeta = branchMeta;
 
@@ -252,6 +278,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
    * called only on some renders breaks React's hook-order invariant.
    */
   const { previewUrl } = useSandboxLifecycle();
+  const { previewServerUrl } = useSessionRuntime(virtualMcpId);
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
@@ -371,23 +398,19 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
-  const openDialog = (
-    intent: PublishDialogIntent,
+  const openSurface = (
+    mode: CmsPublishMode,
     policyOverride: PublishPolicy | null,
-  ) => {
-    setPublishDialogIntent(intent);
-    setPublishPolicyOverride(policyOverride);
-    setPublishOpen(true);
-  };
+  ) => setSurface({ open: true, mode, policyOverride });
 
   const dispatch = (action: HeaderAction) => {
     if (!headBranch) return;
     switch (action) {
       case "publish":
-        openDialog("publish-only", button.meta?.publishPolicyOverride ?? null);
+        openSurface("publish", button.meta?.publishPolicyOverride ?? null);
         return;
       case "create-pr":
-        openDialog("open-pr", null);
+        openSurface("review", null);
         return;
       case "merge":
         if (pr) void handleSquashMerge(pr.number);
@@ -436,41 +459,56 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const actionBusy = changeRequestPending || isStreaming;
 
+  const headerButton = (
+    <HeaderButtonRenderer
+      t={t}
+      button={button}
+      actionBusy={actionBusy}
+      changeRequestPending={changeRequestPending}
+      savePending={decofileSaving}
+      onAction={dispatch}
+    />
+  );
+
+  if (!sandboxRouteBranch) return headerButton;
+
   return (
     <>
-      <HeaderButtonRenderer
-        t={t}
-        button={button}
-        actionBusy={actionBusy}
-        changeRequestPending={changeRequestPending}
-        savePending={decofileSaving}
-        onAction={dispatch}
+      {headerButton}
+      <PublishDialog
+        open={surface.open}
+        mode={surface.mode}
+        fastPreview={false}
+        recoverSandbox={() =>
+          startSandbox.mutateAsync({
+            virtualMcpId,
+            branch: sandboxRouteBranch,
+            ...(taskId ? { threadId: taskId } : {}),
+          })
+        }
+        onOpenChange={(open) => {
+          if (!open) setSurface((current) => ({ ...current, open: false }));
+        }}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={sandboxRouteBranch}
+        baseBranch={baseBranch}
+        repoTarget={repoToolTarget(repository)}
+        owner={repository.owner}
+        repo={repository.name}
+        publishPolicy={surface.policyOverride ?? publishPolicy}
+        draftPreviewUrl={previewUrl}
+        destinationHost={null}
+        previewServerUrl={previewServerUrl}
+        compareDraft={previewUrl ? { kind: "sandbox", previewUrl } : null}
+        lastPublishedPr={lastPublishedQuery.data ?? null}
+        onRequestApproval={() =>
+          setSurface((current) => ({ ...current, open: true, mode: "review" }))
+        }
+        openPullRequest={pr?.state === "open" ? pr : null}
+        onPullRequestChanged={refreshPrState}
+        onPublished={switchToFreshBranch}
       />
-      {sandboxRouteBranch && (
-        <PublishDialog
-          open={publishOpen}
-          onOpenChange={setPublishOpen}
-          orgSlug={org.slug}
-          orgId={org.id}
-          virtualMcpId={virtualMcpId}
-          branch={sandboxRouteBranch}
-          baseBranch={baseBranch}
-          repoTarget={repoToolTarget(repository)}
-          owner={repository.owner}
-          repo={repository.name}
-          previewUrl={previewUrl}
-          publishPolicy={publishPolicyOverride ?? publishPolicy}
-          dialogIntent={publishDialogIntent}
-          headSha={
-            effectiveBranchMeta.kind === "ready"
-              ? effectiveBranchMeta.headSha
-              : null
-          }
-          openPullRequest={pr?.state === "open" ? pr : null}
-          onPullRequestChanged={refreshPrState}
-          onPublished={switchToFreshBranch}
-        />
-      )}
     </>
   );
 }

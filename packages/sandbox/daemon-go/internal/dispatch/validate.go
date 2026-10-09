@@ -31,7 +31,7 @@ func ValidateHarnessInput(input json.RawMessage) string {
 	if reason := validateMcp(obj["mcp"]); reason != "" {
 		return reason
 	}
-	if reason := requireEnum(obj, "mode", []string{"default", "plan", "web-search", "gen-image"}); reason != "" {
+	if reason := requireEnum(obj, "mode", []string{"default", "plan", "web-search", "deep-research", "gen-image"}); reason != "" {
 		return reason
 	}
 	if reason := requireNumber(obj, "temperature"); reason != "" {

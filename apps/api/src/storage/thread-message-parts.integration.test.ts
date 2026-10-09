@@ -122,6 +122,46 @@ describe("SqlThreadMessagePartStorage", () => {
     await parts.deleteMessageParts(threadId, "m_done");
   });
 
+  it("answerToolCall resolves the asked tool part and nothing else", async () => {
+    const ask = {
+      type: "tool-user_ask",
+      toolCallId: "call-ask",
+      state: "input-available",
+      input: { prompt: "Which color?", type: "choice", options: ["Red"] },
+    };
+    await parts.appendParts([
+      mk({
+        id: "r_ask:0",
+        seq: 0,
+        run_id: "r_ask",
+        message_id: "m_ask",
+        kind: "tool_call",
+        payload: ask,
+      }),
+      mk({ id: "r_ask:1", seq: 1, run_id: "r_ask", message_id: "m_ask" }),
+    ]);
+
+    const answered = await parts.answerToolCall(threadId, "call-ask", {
+      response: "Red",
+    });
+    expect(answered).toEqual({
+      ...ask,
+      state: "output-available",
+      output: { response: "Red" },
+    });
+    const rows = await database.db
+      .selectFrom("thread_message_parts")
+      .select(["id", "kind", "payload"])
+      .where("message_id", "=", "m_ask")
+      .orderBy("seq")
+      .execute();
+    expect(rows.map((r) => r.kind)).toEqual(["tool_result", "text"]);
+    expect(rows[1]?.payload).toEqual({ type: "text", text: "x" });
+
+    expect(await parts.answerToolCall(threadId, "call-none", {})).toBeNull();
+    await parts.deleteMessageParts(threadId, "m_ask");
+  });
+
   it("C2: every part is persisted (no %5 sampling) — 7 parts → 7 rows", async () => {
     const seven = Array.from({ length: 7 }, (_, i) =>
       mk({

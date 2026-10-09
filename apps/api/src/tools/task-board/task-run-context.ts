@@ -1,15 +1,18 @@
 /**
- * The run a task-board MCP request belongs to.
+ * The run a thread MCP request belongs to.
  *
  * The sandbox-hosted harness reaches Studio over HTTP at
- * `/api/<slug>/mcp/task-run/<threadId>`, so the run it is serving is in the URL
+ * `/api/<slug>/mcp/thread/<threadId>`, so the run it is serving is in the URL
  * — not in any tool's input. That is deliberate: the per-run API key is minted
  * with full access, so a `threadId` argument would let a run act on another
  * run's sandbox. The route puts the path value here; `TASK_ADD_REPO` reads it.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ToolName } from "@decocms/shared/tools/registry-metadata";
+import {
+  MANAGEMENT_TOOLS,
+  type ToolName,
+} from "@decocms/shared/tools/registry-metadata";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import {
   isReviewerThreadTitle,
@@ -27,22 +30,23 @@ export function requireTaskRunContext(): TaskRunContext {
   const ctx = taskRunContextStore.getStore();
   if (!ctx) {
     throw new Error(
-      "This tool is only available on a task run's MCP endpoint " +
-        "(/api/<org>/mcp/task-run/<threadId>).",
+      "This tool is only available on a thread's MCP endpoint " +
+        "(/api/<org>/mcp/thread/<threadId>).",
     );
   }
   return ctx;
 }
 
 /**
- * The tools a task run's MCP endpoint exposes.
+ * The tools a task run reports its work through — the base of every surface
+ * but Jira's.
  *
  * A narrow surface, not the whole management catalog: the harness used to get
  * every Studio tool (~200) and had to find the two it needed in that list.
  *
- * Deliberately absent: creating and deleting tasks, `TASK_BOARD_REVIEW_DECISION`
- * and `TASK_BOARD_PROMOTE_TO_PRODUCTION` — an agent must not approve or merge
- * its own work. A REVIEWER's run is a different run on a different thread, and
+ * Deliberately absent: `TASK_BOARD_REVIEW_DECISION` and
+ * `TASK_BOARD_PROMOTE_TO_PRODUCTION` — an agent must not approve or merge its
+ * own work. A REVIEWER's run is a different run on a different thread, and
  * gets `REVIEW_RUN_TOOL_NAMES` below.
  */
 export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
@@ -97,23 +101,70 @@ export const JIRA_RUN_TOOL_NAMES: readonly ToolName[] = [
 ];
 
 /**
- * Which tool surface a task-run MCP session gets, from the run thread.
+ * Never on a chat's surface. `TASK_BOARD_REVIEW_DECISION` and
+ * `TASK_BOARD_PROMOTE_TO_PRODUCTION`: an agent must not approve its own work.
+ * The board prompt/automation writes: Decopilot only ran them behind an
+ * approval this path does not have.
+ */
+const NOT_ON_A_CHAT: ReadonlySet<ToolName> = new Set<ToolName>([
+  "TASK_BOARD_REVIEW_DECISION",
+  "TASK_BOARD_PROMOTE_TO_PRODUCTION",
+  "TASK_BOARD_PROMPT_UPSERT",
+  "TASK_BOARD_PROMPT_DELETE",
+  "TASK_BOARD_AUTOMATION_UPSERT",
+  "TASK_BOARD_AUTOMATION_DELETE",
+]);
+
+/**
+ * What every chat's endpoint serves, the Super Agent's included: the whole
+ * Studio catalog `/mcp/self` serves — Jira's tools with it — but the few above.
+ *
+ * Mounted directly rather than behind `CONNECTION_TOOLS_SEARCH`: Claude Code
+ * defers each schema until the model looks it up, so the catalog costs a name
+ * per tool on the first turn, not a schema. The key is still cut down to what
+ * the dispatcher may call themselves (`selfToolGrantsFor`).
+ */
+export const THREAD_TOOL_NAMES: readonly ToolName[] = MANAGEMENT_TOOLS.map(
+  (tool) => tool.name,
+).filter((name) => !NOT_ON_A_CHAT.has(name));
+
+type SurfaceThread =
+  | { title?: string | null; metadata?: ThreadMetadata | null }
+  | null
+  | undefined;
+
+/**
+ * Tools a run gets because of what the run IS, not because of who dispatched
+ * it — the run's key carries them whatever the dispatcher's role. Everything
+ * else a thread serves is bounded by the dispatcher's own grants.
+ *
+ * Per surface: a chat's run-scoped part is only its task-run tools. The rest
+ * of a chat's surface is the whole catalog, and its Jira tools spend the org's
+ * Jira credential — run-scoped there, any member's chat could.
+ */
+export function resolveRunScopedToolNames(
+  thread: SurfaceThread,
+): ReadonlySet<string> {
+  const served = resolveThreadToolNames(thread);
+  return new Set(served === THREAD_TOOL_NAMES ? TASK_RUN_TOOL_NAMES : served);
+}
+
+/**
+ * Which tool surface a thread's MCP session gets, from the thread.
  *
  * A Jira-triggered run is stamped in its metadata at dispatch. A reviewer is
  * told apart by the title, which is how the rest of the board already tells a
- * reviewer thread from a Super Agent one (`isReviewerThreadTitle`,
- * `"Super Agent:"` in `enqueueReviewersOnThreadFinish`). A missing thread
- * falls back to the narrow list.
+ * reviewer thread from a Super Agent one (`isReviewerThreadTitle`). Every other
+ * thread — a chat, or a Super Agent task run — gets the chat surface, which
+ * includes the task-run tools. A missing thread gets it too: the route is
+ * org-scoped, so a foreign thread id finds nothing to act on.
  */
-export function resolveTaskRunToolNames(
-  thread:
-    | { title?: string | null; metadata?: ThreadMetadata | null }
-    | null
-    | undefined,
+export function resolveThreadToolNames(
+  thread: SurfaceThread,
 ): readonly ToolName[] {
   if (thread?.metadata?.source === "jira") return JIRA_RUN_TOOL_NAMES;
   const isReviewer = REVIEWER_KINDS.some((kind) =>
     isReviewerThreadTitle(thread?.title, kind),
   );
-  return isReviewer ? REVIEW_RUN_TOOL_NAMES : TASK_RUN_TOOL_NAMES;
+  return isReviewer ? REVIEW_RUN_TOOL_NAMES : THREAD_TOOL_NAMES;
 }

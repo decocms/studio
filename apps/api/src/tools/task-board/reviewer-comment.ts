@@ -173,7 +173,7 @@ function followUpPrompt(): string {
  * Guarantee this reviewer's run left a readable record on the card, and ask for
  * the one artifact only a model can produce.
  *
- * `threadId` is the reviewer run's thread (from the task-run MCP context). A
+ * `threadId` is the reviewer run's thread (from the thread MCP context). A
  * decision recorded outside a run — a human calling the tool — has none, and
  * nothing to mirror or follow up on.
  */

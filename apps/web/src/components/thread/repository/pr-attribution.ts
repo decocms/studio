@@ -1,5 +1,5 @@
 /**
- * Who a merged PR should be attributed to in the publish popover's
+ * Who a merged PR should be attributed to in the publish dialog's
  * "Last published … by …" line.
  *
  * The PR's `user.login` is whatever identity the GitHub connection acts as —

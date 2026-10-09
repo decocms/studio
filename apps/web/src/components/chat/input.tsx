@@ -3,6 +3,7 @@ import {
   navigateToTabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
 import { withTaskIntake } from "./task-intake";
+import { OpenFileChip } from "./open-file-chip";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { isModKey } from "@/lib/keyboard-shortcuts";
@@ -790,6 +791,7 @@ export function ChatInput({
                 disabled={voice.status === "recording"}
               />
 
+              <OpenFileChip />
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
                   ref={tiptapRef}

@@ -23,6 +23,12 @@ import { meter } from "@/observability";
 
 export type { RunReactorDeps };
 
+/** Abort reason `stopAll` gives every run: the run is not over, only this pod is. */
+export const POD_SHUTDOWN_ABORT_REASON = new DOMException(
+  "Studio pod is shutting down",
+  "AbortError",
+);
+
 const REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 /**
  * Idle timeout for the PROGRESS-based reaper. A run is reaped only after it has
@@ -193,14 +199,15 @@ export class RunRegistry {
 
   /**
    * Graceful shutdown: abort in-memory controllers (stops streamText loops and
-   * cancels the daemon via the run's abort path) and clear state. Recovery of an
+   * detaches from the sandbox daemon, which keeps the harness running for the
+   * recovered dispatch to reattach) and clear state. Recovery of an
    * interrupted run is DBOS's job — the thread-gate workflow is durable and its
    * dispatch step is retriable, so DBOS re-runs it on another executor.
    */
   async stopAll(): Promise<void> {
     for (const [, state] of this.states) {
       if (state.status.tag === "running") {
-        state.status.abortController.abort();
+        state.status.abortController.abort(POD_SHUTDOWN_ABORT_REASON);
       }
     }
     this.states.clear();

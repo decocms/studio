@@ -2613,6 +2613,19 @@ function ActivitySection({
                   key={`comment-${block.comment.id}`}
                   thread={block.comment}
                   me={me}
+                  onEdit={async (commentId, body) => {
+                    try {
+                      await comments.edit.mutateAsync({ id: commentId, body });
+                      return true;
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("taskBoard.taskDialog.commentEditFailed"),
+                      );
+                      return false;
+                    }
+                  }}
                   onDelete={(commentId) => comments.remove.mutate(commentId)}
                 />
               );

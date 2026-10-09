@@ -292,6 +292,102 @@ describe("SqlThreadStorage", () => {
       expect((await storage.get(thread.id, "org_1"))?.harness_id).toBeNull();
     });
   });
+  describe("repinDecopilotToClaudeCode", () => {
+    const decopilotThread = async (branch: string | null) => {
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        branch,
+      });
+      await storage.pinRuntimeIfUnset(thread.id, "org_1", {
+        harnessId: "decopilot",
+        branch,
+      });
+      return thread;
+    };
+
+    it("moves a Decopilot thread exactly once under concurrency", async () => {
+      const thread = await decopilotThread(null);
+      const branch = `thread:${thread.id}`;
+      const results = await Promise.all([
+        storage.repinDecopilotToClaudeCode(thread.id, "org_1", branch),
+        storage.repinDecopilotToClaudeCode(thread.id, "org_1", branch),
+      ]);
+      expect(results.filter((r) => r.claimed)).toHaveLength(1);
+      for (const result of results) {
+        expect(result.thread?.harness_id).toBe("claude-code");
+        expect(result.thread?.branch).toBe(branch);
+      }
+      const again = await storage.repinDecopilotToClaudeCode(
+        thread.id,
+        "org_1",
+        branch,
+      );
+      expect(again.claimed).toBe(false);
+    });
+
+    it("replaces only a repo-less branch", async () => {
+      const ephemeral = await decopilotThread("ephemeral");
+      expect(
+        (
+          await storage.repinDecopilotToClaudeCode(
+            ephemeral.id,
+            "org_1",
+            `thread:${ephemeral.id}`,
+          )
+        ).thread?.branch,
+      ).toBe(`thread:${ephemeral.id}`);
+
+      const repo = await decopilotThread("feature-x");
+      expect(
+        (
+          await storage.repinDecopilotToClaudeCode(
+            repo.id,
+            "org_1",
+            `thread:${repo.id}`,
+          )
+        ).thread?.branch,
+      ).toBe("feature-x");
+    });
+
+    it("leaves unpinned, other-harness and cross-tenant threads alone", async () => {
+      const unpinned = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      const unpinnedResult = await storage.repinDecopilotToClaudeCode(
+        unpinned.id,
+        "org_1",
+        "thread:x",
+      );
+      expect(unpinnedResult.claimed).toBe(false);
+      expect(unpinnedResult.thread?.harness_id).toBeNull();
+
+      const native = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      await storage.pinRuntimeIfUnset(native.id, "org_1", {
+        harnessId: "codex",
+        branch: "main",
+      });
+      const nativeResult = await storage.repinDecopilotToClaudeCode(
+        native.id,
+        "org_1",
+        "thread:x",
+      );
+      expect(nativeResult.claimed).toBe(false);
+      expect(nativeResult.thread?.harness_id).toBe("codex");
+
+      const other = await decopilotThread(null);
+      expect(
+        await storage.repinDecopilotToClaudeCode(other.id, "org_2", "thread:x"),
+      ).toEqual({ thread: null, claimed: false });
+      expect((await storage.get(other.id, "org_1"))?.harness_id).toBe(
+        "decopilot",
+      );
+    });
+  });
   describe("stampRuntimeIfAbsent", () => {
     const newThread = () =>
       storage.create({

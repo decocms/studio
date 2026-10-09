@@ -26,6 +26,7 @@ import {
   findReusableRepoConnection,
   getRepoScope,
 } from "@decocms/shared/github-repo-scope";
+import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
 import {
   deleteSandboxMapEntry,
   mergeSandboxMapEntry,
@@ -354,7 +355,9 @@ export async function getThreadRepository(
  *   to the THREAD (`load_repo`) wins over the agent's and pins its own branch,
  *   so switching repos yields a distinct sandbox.
  * - Ephemeral agents (no repo at all) share one sandbox per (user, agent)
- *   across threads, which cuts sandbox count linearly with thread count.
+ *   across threads, which cuts sandbox count linearly with thread count —
+ *   unless `sandboxOnlyChats` is on, where every chat gets its own
+ *   `thread:<id>` sandbox.
  *
  * Pure given its inputs, and shared: the decopilot fs tools and the
  * sandbox-hosted dispatch path both derive their branch here, because two
@@ -382,6 +385,8 @@ export function resolveSandboxBranch(args: {
    * sharing beats two pods force-pushing over each other.
    */
   pinnedRef?: string | null;
+  /** The org's `chat_harness_sandbox_only` flag. */
+  sandboxOnlyChats?: boolean;
 }): string {
   if (args.pinnedRef) return args.pinnedRef;
   // A run dispatched on the BARE `thread:<id>` key keeps it, repo or not: that
@@ -397,7 +402,9 @@ export function resolveSandboxBranch(args: {
   if (args.threadRepo) {
     return threadBranch(args.threadId, args.threadRepo.connectionId);
   }
-  if (!args.agentRepo) return "ephemeral";
+  if (!args.agentRepo) {
+    return args.sandboxOnlyChats ? threadBranch(args.threadId) : "ephemeral";
+  }
   return args.runBranch ?? `thread:${args.threadId}`;
 }
 
@@ -414,8 +421,8 @@ export async function getThreadPinnedRef(
   return typeof ref === "string" && ref.length > 0 ? ref : null;
 }
 
-/** `resolveSandboxBranch` with the thread's bound repo and pinned ref read for
- *  you. */
+/** `resolveSandboxBranch` with the thread's bound repo, pinned ref and the
+ *  org's sandbox-only flag read for you. */
 export async function resolveSandboxBranchForThread(
   ctx: StudioContext,
   args: {
@@ -424,11 +431,20 @@ export async function resolveSandboxBranchForThread(
     runBranch?: string | null;
   },
 ): Promise<string> {
-  const [threadRepo, pinnedRef] = await Promise.all([
+  const organizationId = ctx.storage.threads.getOrganizationId();
+  const [threadRepo, pinnedRef, sandboxOnlyChats] = await Promise.all([
     getThreadRepository(ctx, args.threadId),
     getThreadPinnedRef(ctx, args.threadId),
+    organizationId
+      ? sandboxOnlyChatsEnabled(ctx, organizationId)
+      : Promise.resolve(false),
   ]);
-  return resolveSandboxBranch({ ...args, threadRepo, pinnedRef });
+  return resolveSandboxBranch({
+    ...args,
+    threadRepo,
+    pinnedRef,
+    sandboxOnlyChats,
+  });
 }
 
 /**

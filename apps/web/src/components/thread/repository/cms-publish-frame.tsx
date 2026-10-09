@@ -8,7 +8,7 @@
  * `state` is published as `data-publish-state` for tests to anchor on, since
  * the visible copy alone cannot distinguish a ghosted card list from a real
  * one. It is deliberately not `data-state`, which Radix already stamps on the
- * popover content one level up.
+ * dialog content one level up.
  */
 
 import { cn } from "@decocms/ui/lib/utils.ts";

@@ -108,18 +108,15 @@ for (const scenario of [
     }>(api, orgSlug, "COLLECTION_THREADS_CREATE", {
       data: { virtual_mcp_id: agent.id, branch: "feature/preview" },
     });
-    const response = await api.post(
-      `/api/${orgSlug}/mcp/task-run/${thread.id}`,
-      {
-        headers: { Accept: "application/json, text/event-stream" },
-        data: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "TASK_ADD_REPO", arguments: { id: connection.id } },
-        },
+    const response = await api.post(`/api/${orgSlug}/mcp/thread/${thread.id}`, {
+      headers: { Accept: "application/json, text/event-stream" },
+      data: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "TASK_ADD_REPO", arguments: { id: connection.id } },
       },
-    );
+    });
     expect(response.status()).toBe(200);
     const envelope = await response.json();
     if (scenario === "other-user" || scenario === "other-branch") {

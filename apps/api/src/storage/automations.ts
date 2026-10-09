@@ -13,6 +13,7 @@
 import { type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { Database, Automation, AutomationTrigger } from "./types";
+import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 
 // ============================================================================
 // Input Types
@@ -105,6 +106,7 @@ export interface AutomationsStorage {
   createAutomationRunThread(
     automation: Automation,
     triggerId: string | null,
+    harnessId: HostedHarnessId,
   ): Promise<string>;
   markRunFailed(taskId: string, reason?: string, kind?: string): Promise<void>;
   markRunCompleted(taskId: string): Promise<void>;
@@ -609,6 +611,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
   async createAutomationRunThread(
     automation: Automation,
     triggerId: string | null,
+    harnessId: HostedHarnessId,
   ): Promise<string> {
     const taskId = generatePrefixedId("thrd");
     const now = new Date().toISOString();
@@ -622,7 +625,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         status: "in_progress",
         trigger_id: triggerId,
         virtual_mcp_id: automation.virtual_mcp_id,
-        harness_id: "decopilot",
+        harness_id: harnessId,
         // A headless agent run needs a pod, so it is a sandbox session whatever the project defaults to.
         metadata: JSON.stringify({ runtime: "sandbox" }),
         hidden: false,

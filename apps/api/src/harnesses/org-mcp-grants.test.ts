@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { connectionGrantsFor, rolesOf } from "./org-mcp-grants";
+import {
+  connectionGrantsFor,
+  rolesOf,
+  selfToolGrantsFor,
+} from "./org-mcp-grants";
 
 describe("connectionGrantsFor", () => {
   const ids = ["conn_a", "conn_b"];
@@ -76,5 +80,83 @@ describe("rolesOf", () => {
   it("is empty for a member with no role", () => {
     expect(rolesOf(undefined)).toEqual([]);
     expect(rolesOf("")).toEqual([]);
+  });
+});
+
+describe("selfToolGrantsFor", () => {
+  const toolNames = [
+    "TASK_ADD_REPO",
+    "generate_image",
+    "COLLECTION_VIRTUAL_MCP_LIST",
+    "COLLECTION_VIRTUAL_MCP_DELETE",
+  ];
+  const runScoped = new Set(["TASK_ADD_REPO"]);
+
+  it("gives an admin everything the run serves", () => {
+    expect(
+      selfToolGrantsFor({
+        role: "admin",
+        roleStatements: [],
+        toolNames,
+        runScoped,
+      }),
+    ).toEqual(toolNames);
+  });
+
+  // Without the cut a chat's key would let a read-only member delete agents.
+  it("cuts a custom role down to basic usage plus its own grants", () => {
+    expect(
+      selfToolGrantsFor({
+        role: "viewer",
+        roleStatements: [{ self: ["MONITORING_STATS"] }],
+        toolNames,
+        runScoped,
+      }),
+    ).toEqual([
+      "TASK_ADD_REPO",
+      "generate_image",
+      "COLLECTION_VIRTUAL_MCP_LIST",
+    ]);
+  });
+
+  it("honors what the custom role grants under self", () => {
+    expect(
+      selfToolGrantsFor({
+        role: "agent-admin",
+        roleStatements: [{ self: ["COLLECTION_VIRTUAL_MCP_DELETE"] }],
+        toolNames,
+        runScoped,
+      }),
+    ).toContain("COLLECTION_VIRTUAL_MCP_DELETE");
+    expect(
+      selfToolGrantsFor({
+        role: "everything",
+        roleStatements: [{ self: ["*"] }],
+        toolNames,
+        runScoped,
+      }),
+    ).toEqual(toolNames);
+  });
+
+  it("gives the built-in user role its extra grants (agents:manage)", () => {
+    expect(
+      selfToolGrantsFor({
+        role: "user",
+        roleStatements: [],
+        toolNames,
+        runScoped,
+      }),
+    ).toEqual(toolNames);
+  });
+
+  it("keeps run-scoped tools whatever the role", () => {
+    expect(
+      selfToolGrantsFor({
+        role: undefined,
+        roleStatements: [],
+        toolNames: ["TASK_ADD_REPO", "COLLECTION_VIRTUAL_MCP_DELETE"],
+        runScoped,
+      }),
+    ).toEqual(["TASK_ADD_REPO"]);
   });
 });

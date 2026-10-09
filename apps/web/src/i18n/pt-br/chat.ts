@@ -25,6 +25,9 @@ export const chat = {
     "A sessão de voz terminou. O chat e o trabalho do agente continuam disponíveis.",
   "chat.voice.sendFailed":
     "Não foi possível enviar ou concluir este pedido. Volte ao chat para conferir o estado dele.",
+  "chat.input.openFileContext":
+    "O agente vê {name}, o arquivo que você tem aberto",
+  "chat.input.openFileDismiss": "Deixar este arquivo de fora",
   "chat.input.taskMode": "Tarefa",
   "chat.input.startTask": "Iniciar tarefa",
   "chat.input.taskPlaceholder":
@@ -373,6 +376,10 @@ export const chat = {
     "{org} está pronto para projetos",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Conecte um provedor de IA para começar a conversar.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Conecte um provedor de IA compatível",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Os chats rodam no Claude. Conecte Anthropic, OpenRouter ou o deco AI Gateway, ou vincule sua assinatura do Claude nas Configurações.",
   "chat.outputFileRow.download": "Baixar",
   "chat.outputFileRow.downloadFile": "Baixar {filename}",
   "chat.outputFileRow.open": "Abrir",

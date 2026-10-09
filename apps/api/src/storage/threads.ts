@@ -119,6 +119,13 @@ export class OrgScopedThreadStorage {
     return this.inner.pinRuntimeIfUnset(id, this.requireOrg(), pin);
   }
 
+  repinDecopilotToClaudeCode(
+    id: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult> {
+    return this.inner.repinDecopilotToClaudeCode(id, this.requireOrg(), branch);
+  }
+
   stampRuntimeIfAbsent(id: string, runtime: ThreadRuntime): Promise<boolean> {
     return this.inner.stampRuntimeIfAbsent(id, this.requireOrg(), runtime);
   }
@@ -572,6 +579,36 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("harness_id", "is", null)
+      .returningAll()
+      .executeTakeFirst();
+
+    if (row) {
+      return { thread: this.threadFromDbRow(row), claimed: true };
+    }
+
+    return {
+      thread: await this.get(id, organizationId),
+      claimed: false,
+    };
+  }
+
+  async repinDecopilotToClaudeCode(
+    id: string,
+    organizationId: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult> {
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        harness_id: "claude-code",
+        branch: sql<string>`case when ${sql.ref("branch")} is null or ${sql.ref(
+          "branch",
+        )} = 'ephemeral' then ${branch} else ${sql.ref("branch")} end`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("harness_id", "=", "decopilot")
       .returningAll()
       .executeTakeFirst();
 

@@ -50,6 +50,11 @@ describe("resolveThreadStatus", () => {
     expect(resolveThreadStatus("tool-calls", parts)).toBe("requires_action");
   });
 
+  test("tool-calls with propose_plan input-available -> requires_action", () => {
+    const parts = [{ type: "tool-propose_plan", state: "input-available" }];
+    expect(resolveThreadStatus("tool-calls", parts)).toBe("requires_action");
+  });
+
   test("tool-calls with user_ask output-available -> completed", () => {
     const parts = [
       {

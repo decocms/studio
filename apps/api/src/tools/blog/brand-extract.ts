@@ -66,6 +66,11 @@ const BlockPassSchema = BlogBrandSchema.omit({ specialDates: true });
  * wrong name is obvious to the person reviewing; a missing one blocks every
  * generation downstream.
  *
+ * `mode: "quick"` of the chat harness's research hook reduces to a plain call
+ * against the search-capable model (`tools/chat/research-job.ts` → `runStreamingResearch`),
+ * so this does the same with `generateText` instead of importing the harness and
+ * inventing a `taskId`/`toolCallId` for a durable job it doesn't need.
+ *
  * `competitors` carries a placeholder origin that {@link brandFieldSpecs}
  * replaces, because the source is only known once `preferFilled` has chosen;
  * in practice it is almost always the research, since a brand seldom names a

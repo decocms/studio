@@ -40,7 +40,6 @@ export type TabRouteLocation =
       section:
         | "settings"
         | "assets"
-        | "git"
         | "hosting"
         | "e2e"
         | "analytics"
@@ -97,7 +96,6 @@ export type TabRouteTarget =
       to:
         | typeof PROJECT_ROUTE.settings
         | typeof PROJECT_ROUTE.assets
-        | typeof PROJECT_ROUTE.git
         | typeof PROJECT_ROUTE.hosting
         | typeof PROJECT_ROUTE.e2e
         | typeof PROJECT_ROUTE.analytics
@@ -234,7 +232,6 @@ const AGENT_SECTION_BY_TAB: Readonly<
 > = {
   settings: "settings",
   assets: "assets",
-  git: "git",
   hosting: "hosting",
   e2e: "e2e",
   analytics: "analytics",
@@ -635,7 +632,6 @@ export function navigateToTabRouteTarget(
       return;
     case PROJECT_ROUTE.settings:
     case PROJECT_ROUTE.assets:
-    case PROJECT_ROUTE.git:
     case PROJECT_ROUTE.hosting:
     case PROJECT_ROUTE.e2e:
     case PROJECT_ROUTE.analytics:

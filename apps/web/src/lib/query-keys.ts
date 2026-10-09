@@ -198,6 +198,10 @@ export const KEYS = {
   // e.g. after an MCP connection re-authenticates.
   mcpClientPrefix: () => ["mcp", "client"] as const,
 
+  // The user's recent threads on one agent, for resolving its entry thread.
+  agentEntryThreads: (orgId: string, userId: string, virtualMcpId: string) =>
+    ["agent-entry-threads", orgId, userId, virtualMcpId] as const,
+
   // Most recent thread per agent.
   virtualMcpLastUsed: (orgId: string, ids: string[]) =>
     ["virtual-mcp", "last-used", orgId, ids] as const,
@@ -244,23 +248,6 @@ export const KEYS = {
     owner: string,
     repo: string,
   ) => ["github-open-prs", orgSlug, connectionId, owner, repo] as const,
-
-  /** One CI run's report, loaded when a Checks row is expanded. */
-  githubCheckRun: (
-    orgSlug: string,
-    connectionId: string | null | undefined,
-    owner: string,
-    repo: string,
-    checkRunId: string | null,
-  ) =>
-    [
-      "github-check-run",
-      orgSlug,
-      connectionId,
-      owner,
-      repo,
-      checkRunId,
-    ] as const,
 
   githubBranchSearch: (
     orgId: string,
@@ -537,8 +524,9 @@ export const KEYS = {
     ["org-fs", orgId, volume] as const,
   orgFsList: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "list", path] as const,
-  orgFsUsage: (orgId: string, volume: string) =>
-    ["org-fs", orgId, volume, "usage"] as const,
+  /** Under the volume's prefix, so every write to it refreshes the list. */
+  orgFsVolumeFiles: (orgId: string, volume: string) =>
+    ["org-fs", orgId, volume, "files"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
   orgFsText: (orgId: string, volume: string, path: string, marker: string) =>

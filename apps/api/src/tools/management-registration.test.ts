@@ -29,6 +29,7 @@ import {
   buildToolRegistration,
   managementContextStore,
   type RegistrableTool,
+  toolCallContext,
 } from "./management-registration";
 
 const N = 32;
@@ -156,6 +157,53 @@ describe("management tool ctx isolation (AsyncLocalStorage)", () => {
     };
     const { handler } = buildToolRegistration(tool);
     // Not wrapped in managementContextStore.run(...) — getStore() is undefined.
-    expect(handler({})).rejects.toThrow(/outside a request context/);
+    expect(handler({}, fakeExtra())).rejects.toThrow(
+      /outside a request context/,
+    );
+  });
+});
+
+function fakeExtra(
+  _meta?: Record<string, unknown>,
+  sent: unknown[] = [],
+): Parameters<RegHandler>[1] {
+  return {
+    signal: new AbortController().signal,
+    _meta,
+    sendNotification: async (notification: unknown) => {
+      sent.push(notification);
+    },
+  } as unknown as Parameters<RegHandler>[1];
+}
+
+type RegHandler = ReturnType<typeof buildToolRegistration>["handler"];
+
+describe("toolCallContext", () => {
+  test("relays progress against the client's token, numbered", async () => {
+    const sent: unknown[] = [];
+    const call = toolCallContext(fakeExtra({ progressToken: "tok" }, sent));
+    await call.progress?.("one");
+    await call.progress?.("two");
+    expect(sent).toEqual([
+      {
+        method: "notifications/progress",
+        params: { progressToken: "tok", progress: 1, message: "one" },
+      },
+      {
+        method: "notifications/progress",
+        params: { progressToken: "tok", progress: 2, message: "two" },
+      },
+    ]);
+  });
+
+  test("offers no progress when the client asked for none", () => {
+    expect(toolCallContext(fakeExtra()).progress).toBeUndefined();
+  });
+
+  test("carries Claude Code's tool_use id as the call id", () => {
+    expect(
+      toolCallContext(fakeExtra({ "claudecode/toolUseId": "toolu_1" })).callId,
+    ).toBe("toolu_1");
+    expect(toolCallContext(fakeExtra({})).callId).toBeUndefined();
   });
 });

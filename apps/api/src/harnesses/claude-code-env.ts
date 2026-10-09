@@ -24,6 +24,8 @@
  * several minutes later, which is much worse than a clear refusal now.
  */
 
+import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
+
 /**
  * Pseudo-provider id for a user's own Claude subscription (linked over OAuth,
  * stored per user). Not an `ai-providers` registry id — it never resolves to a
@@ -31,13 +33,32 @@
  */
 export const CLAUDE_SUBSCRIPTION_PROVIDER_ID = "claude-subscription";
 
+/**
+ * The chat model of a run billed to the user's own subscription when the org
+ * has no model of its own: the harness's default Claude model.
+ */
+export function claudeSubscriptionChatModel(): {
+  credentialId: string;
+  thinking: { id: string; title: string; provider: string };
+} {
+  const id = CLAUDE_CODE_MODEL.anthropic.chat;
+  return {
+    credentialId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+    thinking: { id, title: id, provider: "anthropic" },
+  };
+}
+
 /** OpenRouter's Anthropic-compatible base. The SDK appends `/v1/messages`. */
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 
 /**
- * Which model a run gets. Not the agent's thinking slot — the SDK drives the
- * `claude` CLI, which only works against Claude models, so the slot's id is not
- * usable here.
+ * Which model a run gets when the chat did not pick a Claude model itself (see
+ * `chosenModel` below) — the SDK drives the `claude` CLI, which only works
+ * against Claude models, so any other slot id is not usable here.
+ *
+ * `default` is a task-board run's builder. `chat` is an interactive chat, which
+ * honors the model the chat picked and otherwise gets the cheaper tier: a chat
+ * is mostly conversation and lookups, and on Opus a short one cost ~$2.
  *
  * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
@@ -52,7 +73,7 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * priced for, and it is a class of its own rather than `reviewer` so the run
  * metadata says what the run actually was.
  */
-export type ClaudeCodeModelClass = "default" | "reviewer" | "conflict";
+export type ClaudeCodeModelClass = "default" | "chat" | "reviewer" | "conflict";
 
 const CLAUDE_CODE_MODEL: Record<
   "anthropic" | "openrouter",
@@ -60,11 +81,13 @@ const CLAUDE_CODE_MODEL: Record<
 > = {
   anthropic: {
     default: "claude-opus-5-5",
+    chat: "claude-sonnet-5-5",
     reviewer: "claude-sonnet-5",
     conflict: "claude-sonnet-5",
   },
   openrouter: {
     default: "anthropic/claude-opus-5.5",
+    chat: "anthropic/claude-sonnet-5.5",
     reviewer: "anthropic/claude-sonnet-5",
     conflict: "anthropic/claude-sonnet-5",
   },
@@ -121,6 +144,7 @@ export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 32_000;
  */
 const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   default: null,
+  chat: null,
   reviewer: 60,
   conflict: 60,
 };
@@ -155,6 +179,14 @@ const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
  */
 const TOOL_SEARCH = "1";
 
+/**
+ * Five-minute prompt cache instead of the CLI's default one hour. A 1h write is
+ * billed at 2x input against 1.25x for 5m, and a chat turn writes ~200k tokens
+ * of prompt that is rarely reused an hour later, so the longer TTL only raised
+ * the price of every write.
+ */
+const PROMPT_CACHE_5M = "1";
+
 /** The subset of a resolved model source this needs. */
 export interface ClaudeCodeCredential {
   providerId: string;
@@ -185,8 +217,16 @@ export class UnsupportedClaudeCodeProviderError extends Error {
 export function claudeCodeEnvFromCredential(
   credential: ClaudeCodeCredential,
   modelClass: ClaudeCodeModelClass = "default",
+  /** The model the chat picked; honored only for the chat class. */
+  chosenModel?: string,
 ): Record<string, string | null> {
   const { providerId, apiKey, baseUrl } = credential;
+  const modelFor = (shape: "anthropic" | "openrouter") =>
+    modelClass === "chat" &&
+    chosenModel &&
+    isClaudeCodeModel(shape === "anthropic" ? shape : providerId, chosenModel)
+      ? chosenModel
+      : CLAUDE_CODE_MODEL[shape][modelClass];
   /** Properties of the run, not of the credential — so every shape carries them.
    *  `null` deletes the turn cap, so a sandbox that last ran a reviewer does not
    *  carry that cap into a Super Agent run. */
@@ -195,11 +235,12 @@ export function claudeCodeEnvFromCredential(
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
+    FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
   };
   if (providerId === "anthropic") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("anthropic"),
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -212,7 +253,7 @@ export function claudeCodeEnvFromCredential(
     // leftover one outranks it and the run bills the org's API credit instead.
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.anthropic[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("anthropic"),
       CLAUDE_CODE_OAUTH_TOKEN: apiKey,
       ANTHROPIC_API_KEY: null,
       ANTHROPIC_AUTH_TOKEN: null,
@@ -222,7 +263,7 @@ export function claudeCodeEnvFromCredential(
   if (providerId === "openrouter" || providerId === "deco") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: CLAUDE_CODE_MODEL.openrouter[modelClass],
+      CLAUDE_CODE_MODEL: modelFor("openrouter"),
       // Empty, not absent: a non-empty API key takes precedence over the auth
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",

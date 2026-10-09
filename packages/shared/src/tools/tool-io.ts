@@ -124,6 +124,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -203,6 +204,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -278,6 +280,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -848,6 +851,62 @@ export interface StudioToolIO {
       files?: string | undefined;
     };
   };
+  generate_image: {
+    input: {
+      prompt: string;
+      referenceImages?: { uri: string }[] | undefined;
+      aspectRatio?:
+        | "1:1"
+        | "16:9"
+        | "9:16"
+        | "4:3"
+        | "3:4"
+        | "3:2"
+        | "2:3"
+        | undefined;
+      n?: number | undefined;
+    };
+    output: {
+      success: true;
+      images: { uri: string; mediaType: string }[];
+      prompt: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
+      usedReferenceImages: number;
+    };
+  };
+  web_search: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  deep_research: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  suggest_task: {
+    input: { title: string; summary: string };
+    output: { shown: true };
+  };
+  update_interests: {
+    input: { interests: { title: string; summary: string }[] };
+    output: { ok: true; count: number };
+  };
   TASK_BOARD_ADMIN_ORG_LIST: {
     input: { [x: string]: never };
     output: {
@@ -1142,6 +1201,7 @@ export interface StudioToolIO {
       overview: string;
       metadata?: Record<string, unknown> | null | undefined;
       logo?: string | null | undefined;
+      images?: Record<string, unknown>[] | null | undefined;
       favicon?: string | null | undefined;
       ogImage?: string | null | undefined;
       fonts?:
@@ -1162,7 +1222,6 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
       archivedAt?: string | null | undefined;
       isDefault?: boolean | undefined;
     };
@@ -2496,6 +2555,33 @@ export interface StudioToolIO {
     input: { id: string };
     output: { id: string; healthy: boolean; latencyMs: number };
   };
+  CONNECTION_TOOLS_SEARCH: {
+    input: {
+      query: string;
+      limit?: number | undefined;
+      withSchema?: boolean | undefined;
+    };
+    output: {
+      tools: {
+        name: string;
+        description: string;
+        connections: { id: string; title: string }[];
+        inputSchema?: unknown;
+      }[];
+    };
+  };
+  CONNECTION_TOOL_CALL: {
+    input: {
+      connectionId: string;
+      toolName: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: {
+      content: unknown[];
+      structuredContent?: unknown;
+      isError?: boolean | undefined;
+    };
+  };
   REPORTS_SETUP: {
     input: { siteUrl: string };
     output: {
@@ -2752,7 +2838,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3025,7 +3110,6 @@ export interface StudioToolIO {
               previewServerUrl?: string | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
-              publishVisualReview?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
               releases?:
                 | {
@@ -3212,7 +3296,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3441,7 +3524,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3661,7 +3743,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -3886,7 +3967,6 @@ export interface StudioToolIO {
               previewServerUrl?: string | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
-              publishVisualReview?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
               releases?:
                 | {
@@ -4081,7 +4161,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -4299,7 +4378,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -5015,7 +5093,7 @@ export interface StudioToolIO {
         | "failed"
         | "completed"
         | undefined;
-      kind?: "automation" | "chat" | "task" | undefined;
+      kind?: "automation" | "task" | "chat" | undefined;
       limit?: number | undefined;
     };
     output: {
@@ -5027,7 +5105,7 @@ export interface StudioToolIO {
         orgSlug: string;
         title: string;
         status: string;
-        kind: "automation" | "chat" | "task";
+        kind: "automation" | "task" | "chat";
         failureKind: string | null;
         failureReason: string | null;
         lastError: string | null;
@@ -5659,7 +5737,6 @@ export interface StudioToolIO {
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
-          publishVisualReview?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
           releases?:
             | {
@@ -7421,9 +7498,9 @@ export interface StudioToolIO {
           conclusion:
             | "success"
             | "skipped"
+            | "cancelled"
             | "failure"
             | "neutral"
-            | "cancelled"
             | "timed_out"
             | "action_required"
             | null;
@@ -7564,7 +7641,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("connection" | "task" | "thread")[] | undefined;
+      types?: ("task" | "connection" | "thread")[] | undefined;
     };
     output: {
       items: (

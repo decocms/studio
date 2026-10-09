@@ -48,7 +48,7 @@ import { insertMention } from "./tiptap/mention";
 import { KEYS } from "@/lib/query-keys";
 import { useSound } from "@/hooks/use-sound.ts";
 import { switch005Sound } from "@/lib/sounds/switch-005.ts";
-import { useChatPrefs } from "./context";
+import { useChatPrefs, useOptionalChatTask } from "./context";
 import {
   APPROVAL_LEVEL_OPTIONS,
   usePreferences,
@@ -163,6 +163,9 @@ export function ToolsPopover({
 
   const { chatMode, setChatMode } = useChatPrefs();
   const [preferences, setPreferences] = usePreferences();
+  // Claude Code runs without tool approvals outside plan mode.
+  const showApprovalLevel =
+    useOptionalChatTask()?.lockedHarness !== "claude-code";
   const currentApprovalOption =
     APPROVAL_LEVEL_OPTIONS.find(
       (opt) => opt.value === preferences.toolApprovalLevel,
@@ -489,27 +492,31 @@ export function ToolsPopover({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
-              <ShieldTick size={16} />
-              <span className="flex-1">{t("chat.toolsPopover.approval")}</span>
-              <span className="text-xs text-muted-foreground">
-                {currentApprovalShort}
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-48 p-1.5">
-              <DropdownMenuRadioGroup
-                value={preferences.toolApprovalLevel}
-                onValueChange={handleApprovalLevelChange}
-              >
-                {APPROVAL_LEVEL_OPTIONS.map((opt) => (
-                  <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                    {t(opt.labelKey)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          {showApprovalLevel && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <ShieldTick size={16} />
+                <span className="flex-1">
+                  {t("chat.toolsPopover.approval")}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {currentApprovalShort}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-48 p-1.5">
+                <DropdownMenuRadioGroup
+                  value={preferences.toolApprovalLevel}
+                  onValueChange={handleApprovalLevelChange}
+                >
+                  {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+                    <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+                      {t(opt.labelKey)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
 
           <DropdownMenuItem onClick={handleConnections}>
             <Link01 size={16} />

@@ -17,9 +17,6 @@ import { AttachFileButton, UploadStatus } from "./upload-controls";
  */
 const CONTENT_CLASS = [
   "outline-none",
-  // On the editable element, not the wrapper: the whole area has to be
-  // click-to-place-caret, the way the plain textarea it replaced was.
-  "min-h-[200px] sm:min-h-[320px]",
   "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
   "[&_p]:my-3 [&_p]:leading-[1.5]",
   // 20/18/16, all under the card's own 24px title, which outranks them.
@@ -172,6 +169,7 @@ export function MarkdownEditor({
   editable = true,
   attachments = true,
   mentions,
+  inline = false,
 }: {
   defaultValue: string;
   onChange: (markdown: string) => void;
@@ -183,6 +181,10 @@ export function MarkdownEditor({
   attachments?: boolean;
   /** When set, `@` opens a picker that inserts the item's name as plain text. */
   mentions?: MarkdownMentions;
+  /** Edits text in place where it is read, like a comment: sized to its
+   *  content, set at the body size around it, and opened by an action, so it
+   *  takes the caret. Read at creation time only. */
+  inline?: boolean;
 }) {
   const uploads = useEditorUploads(attachments);
   // One store per editor: created here so it dies with the editor it drives.
@@ -203,6 +205,7 @@ export function MarkdownEditor({
     content: unwrapListContinuations(defaultValue),
     contentType: "markdown",
     editable,
+    autofocus: inline ? "end" : false,
     editorProps: {
       attributes: {
         // A contenteditable has no role and no accessible name of its own, so
@@ -210,7 +213,12 @@ export function MarkdownEditor({
         role: "textbox",
         "aria-label": placeholder ?? "",
         "aria-multiline": "true",
-        class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
+        class: cn(
+          CONTENT_CLASS,
+          // On the editable element, so a click anywhere in it places the caret.
+          !inline && "min-h-[200px] sm:min-h-[320px]",
+          PLACEHOLDER_CLASS,
+        ),
       },
       handlePaste: uploads.handlePaste,
       handleDrop: uploads.handleDrop,
@@ -231,7 +239,11 @@ export function MarkdownEditor({
       {!mentions && <MentionMenu store={mentionStore} />}
       <EditorContent
         editor={editor}
-        className="text-[15px] text-muted-foreground"
+        className={cn(
+          inline
+            ? "text-sm text-foreground"
+            : "text-[15px] text-muted-foreground",
+        )}
       />
       {editable && mentions && (
         <SectionMentionMenu editor={editor} mentions={mentions} />

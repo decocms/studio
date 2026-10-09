@@ -185,6 +185,9 @@ export async function wireMockProvider(
           deep_research: null,
         },
       },
+      // The compose stack enables hosted sandboxes; these scenarios cover
+      // the Decopilot run path.
+      flags: { chat_harness_sandbox_only: false },
     },
   });
 

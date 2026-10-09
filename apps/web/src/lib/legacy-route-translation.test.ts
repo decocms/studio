@@ -291,7 +291,7 @@ describe("translateLegacyThreadRoute", () => {
       ["layout", "/$org/projects/$agentId/settings"],
       ["automations", "/$org/projects/$agentId/automations"],
       ["assets", "/$org/projects/$agentId/assets"],
-      ["git", "/$org/projects/$agentId/git"],
+      ["git", "/$org/projects/$agentId/site-editor"],
       ["hosting", "/$org/projects/$agentId/hosting"],
       ["e2e", "/$org/projects/$agentId/e2e"],
       ["analytics", "/$org/projects/$agentId/analytics"],

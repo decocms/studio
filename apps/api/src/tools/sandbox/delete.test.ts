@@ -34,6 +34,7 @@ const mockRunner: Pick<
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
+  getAgentSandboxProvider: async () => mockRunner,
   getAgentSandboxProviderForTeardown: async () => mockRunner,
 }));
 

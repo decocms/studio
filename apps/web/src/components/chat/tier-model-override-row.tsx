@@ -10,6 +10,15 @@ import type { ModelSlot } from "@/hooks/use-organization-settings";
 import { firstAvailableModelSlot } from "@/hooks/model-slot-resolution";
 import { ModelSelectorContentFallback } from "./select-model/decopilot";
 import { ModelSelectorStandaloneBody } from "./select-model/index";
+import { isChatModel } from "@decocms/shared/sdk";
+import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
+
+/** A claude-code chat can only run Claude models its credential can reach. */
+export function isClaudeCodeChatModel(model: AiProviderModel): boolean {
+  return (
+    isChatModel(model) && isClaudeCodeModel(model.providerId, model.modelId)
+  );
+}
 
 function slotToModel(
   slot: ModelSlot | null,
@@ -45,6 +54,7 @@ export function TierModelOverridePicker({
   orgSlot,
   userSlot,
   autoSlot,
+  filterModels,
   onPick,
   onReset,
   onClose,
@@ -56,6 +66,7 @@ export function TierModelOverridePicker({
    *  explicit slot — so the picker opens on the provider a run would
    *  actually use instead of an arbitrary connected key. */
   autoSlot: ModelSlot | null | undefined;
+  filterModels?: (model: AiProviderModel) => boolean;
   onPick: (slot: ModelSlot) => void;
   onReset: () => void;
   onClose: () => void;
@@ -101,6 +112,7 @@ export function TierModelOverridePicker({
         <Suspense fallback={<ModelSelectorContentFallback />}>
           <ModelSelectorStandaloneBody
             compact
+            filterModels={filterModels}
             onClose={onClose}
             credentialId={activeKeyId}
             onCredentialChange={setLocalCredentialId}

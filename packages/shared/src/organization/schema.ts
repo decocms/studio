@@ -215,13 +215,19 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow task-run surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
+      "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow Studio surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
     ),
   coding_agents_claude_code: z
     .boolean()
     .optional()
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
+    ),
+  chat_harness_sandbox_only: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
@@ -299,6 +305,7 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "reviewer_enabled",
   "cheap_reviewer_model",
+  "chat_harness_sandbox_only",
 ]);
 
 /**

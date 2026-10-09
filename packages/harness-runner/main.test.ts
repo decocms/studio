@@ -21,11 +21,22 @@ async function run(body: string): Promise<Record<string, unknown>> {
     new Response(proc.stdout).text(),
     proc.exited,
   ]);
-  expect(exitCode).toBe(0);
+  // Every case here is a rejection, and a rejection exits non-zero.
+  expect(exitCode).not.toBe(0);
   return JSON.parse(stdout.trim()) as Record<string, unknown>;
 }
 
 describe("harness-runner wire", () => {
+  test.each([
+    ["an unknown harness", { harnessId: "made-up", input: {} }],
+    ["a missing harness", { input: {} }],
+  ])("%s is an unknown_harness error frame", async (_, body) => {
+    expect(await run(JSON.stringify(body))).toEqual({
+      chunks: [],
+      error: { code: "unknown_harness", message: expect.any(String) },
+    });
+  });
+
   test("malformed stdin is bad_input", async () => {
     const result = await run("{not json");
     expect(result.chunks).toEqual([]);

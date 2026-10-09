@@ -171,6 +171,19 @@ describe("org-fs HTTP routes (integration)", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("lists a volume's files at any depth, newest first, extensionless included", async () => {
+    await put("t1/report.md", "a");
+    await put("t2/Makefile", "b");
+    await put("root.txt", "c");
+    const res = await app.request(`${BASE}/skills/files?limit=2`);
+    expect(res.status).toBe(200);
+    const { entries } = await res.json();
+    expect(entries.map((e: { path: string }) => e.path)).toEqual([
+      "root.txt",
+      "t2/Makefile",
+    ]);
+  });
+
   it("returns a presigned URL when ?presign=1", async () => {
     await put("p.txt", "data");
     const res = await app.request(`${BASE}/skills/read?path=p.txt&presign=1`);
@@ -291,6 +304,8 @@ describe("org-fs HTTP routes (integration)", () => {
         await app.request(`${BASE}/search?q=MEMORY`)
       ).json();
       expect(search.entries).toEqual([]);
+      const files = await (await app.request(`${BASE}/home/files`)).json();
+      expect(files.entries).toEqual([]);
 
       const admin = as("user_fs_admin");
       expect((await admin.request(homeUrl("read", theirs))).status).toBe(403);

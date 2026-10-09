@@ -37,6 +37,7 @@ import { tasksNeedingMe } from "@/components/org-home/daily-pulse";
 import { openNewProjectDialog } from "@/components/projects/new-project-store";
 import { ProjectIcon } from "@/components/project-icon";
 import { useCapability } from "@/hooks/use-capability";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import {
@@ -49,6 +50,7 @@ import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { taskBoardItemsQueryOptions } from "@/hooks/use-task-board-items";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { FLAT_PROJECT_ROUTE } from "@/lib/flat-projects";
 import { buildProjectIndex, projectForTask } from "@/lib/project-index";
 import {
@@ -176,6 +178,7 @@ function ProjectRow({
 function FolderSection({
   label,
   contextId,
+  folderId,
   projects,
   selectedId,
   onNavigate,
@@ -184,6 +187,8 @@ function FolderSection({
 }: {
   label: string;
   contextId?: string;
+  /** Keys the persisted fold state; absent for the loose projects section. */
+  folderId?: string;
   projects: VirtualMCPEntity[];
   selectedId: string | null;
   onNavigate?: () => void;
@@ -191,7 +196,11 @@ function FolderSection({
   /** The header's own "⋯" and "+", the same on every section. */
   actions?: ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const { locator } = useProjectContext();
+  const [open, setOpen] = useLocalStorage(
+    LOCALSTORAGE_KEYS.sidebarSectionOpen(locator, folderId ?? "loose"),
+    true,
+  );
   const Chevron = open ? ChevronDown : ChevronRight;
 
   return (
@@ -466,6 +475,7 @@ export function SidebarProjectsTree({
                   key={folder.id}
                   label={folder.name}
                   contextId={`folder:${folder.id}`}
+                  folderId={folder.id}
                   projects={inside}
                   selectedId={selectedId}
                   onNavigate={onNavigate}

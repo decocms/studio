@@ -11,10 +11,9 @@
  * are handled server-side in models.ts (DECOPILOT_SYSTEM_PROMPT).
  */
 
-import { useMatch, useSearch } from "@tanstack/react-router";
+import { useMatch } from "@tanstack/react-router";
+import { useOpenLibraryFile } from "@/hooks/use-open-library-file";
 import { basename, orgFsMountPath } from "@/layouts/library/location";
-import { parseLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 
 /**
  * Hook that generates context for the AI assistant based on current state
@@ -29,21 +28,7 @@ export function useContext(virtualMcpId?: string | null): string {
     shouldThrow: false,
   });
 
-  /** The open Library file. Desktop uses the `library-file` view; the panel and
-   *  mobile dialog use `?preview=`/`?skill=`/`?brand=`. Precedence mirrors the
-   *  panel's own (preview › skill › brand), and the view wins over both. */
-  const search = useSearch({ strict: false }) as {
-    preview?: string;
-    skill?: string;
-    brand?: string;
-  };
-  const activeTabId = useActivePanelTabId();
-  const openFilePath =
-    parseLibraryFileTabId(activeTabId)?.path ??
-    search.preview ??
-    search.skill ??
-    search.brand ??
-    null;
+  const openFilePath = useOpenLibraryFile()?.path ?? null;
 
   const contextParts: string[] = [];
 

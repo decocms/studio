@@ -175,11 +175,10 @@ async fn route(
                 .into_response()
         }
 
-        // The two AI-assisted endpoints. Mesh's handlers guard on a VM claim
-        // this machine's sandboxes never have (`requireRunner` → 503), so
-        // forwarding cannot work; each answers with mesh's OWN no-LLM
+        // The AI-assisted endpoint. Mesh's handler guards on a VM claim this
+        // machine's sandboxes never have (`requireRunner` → 503), so
+        // forwarding cannot work; it answers with mesh's OWN no-LLM
         // degradation instead — see `git_assist`'s module doc.
-        (&Method::POST, ["git", "suggest-commit"]) => super::git_assist::suggest_commit(&body),
         (&Method::POST, ["git", "judge-review"]) => super::git_assist::judge_review(),
 
         (&Method::POST, ["setup", "clone"]) => crate::routes::setup::clone(state, headers)

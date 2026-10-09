@@ -49,6 +49,9 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:task-last-viewed:${locator}`,
   sidebarGroupOrder: (orgId: string, userId: string) =>
     `sidebar.group-order.${orgId}.${userId}`,
+  /** Whether a sidebar project section (`folderId`, or "loose") is unfolded. */
+  sidebarSectionOpen: (locator: ProjectLocator, folderId: string) =>
+    `studio:sidebar:section-open:${locator}:${folderId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
   cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,

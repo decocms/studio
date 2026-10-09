@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +61,11 @@ func isSandboxPath(pathname string) bool {
 var processStartedAt = time.Now()
 
 type daemon struct {
+	// A thread's workspace prep started ahead of its run (POST /prepare), taken
+	// by the next run of that thread.
+	prepMu      sync.Mutex
+	prepPending map[string]chan struct{}
+
 	mu              sync.Mutex
 	readyOnce       sync.Once
 	token           string
@@ -127,6 +134,51 @@ type sandboxHandlers struct {
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
 	fs, git, setup                        map[string]http.HandlerFunc
+}
+
+// prepareThread starts a thread's workspace prep (org home, saved session,
+// skill links) in the background, once until a run takes it.
+func (d *daemon) prepareThread(harness, threadId string) {
+	d.prepMu.Lock()
+	defer d.prepMu.Unlock()
+	if _, ok := d.prepPending[threadId]; ok {
+		return
+	}
+	if d.prepPending == nil {
+		d.prepPending = map[string]chan struct{}{}
+	}
+	done := make(chan struct{})
+	d.prepPending[threadId] = done
+	go func() {
+		defer close(done)
+		d.orgFsLinks.WaitHomeReady(threadId)
+		d.orgFsLinks.RestoreSession(harness, threadId)
+		d.orgFsLinks.WaitSkillLinks(skillLinkWait)
+	}()
+}
+
+func (d *daemon) takePrepared(threadId string) chan struct{} {
+	d.prepMu.Lock()
+	defer d.prepMu.Unlock()
+	done := d.prepPending[threadId]
+	delete(d.prepPending, threadId)
+	return done
+}
+
+var prepareIdPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$`)
+
+func (d *daemon) handlePrepare(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Harness  string `json:"harness"`
+		ThreadId string `json:"threadId"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil ||
+		!prepareIdPattern.MatchString(body.ThreadId) || !prepareIdPattern.MatchString(body.Harness) {
+		http.Error(w, "harness and threadId are required", http.StatusBadRequest)
+		return
+	}
+	d.prepareThread(body.Harness, body.ThreadId)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (d *daemon) getToken() string {
@@ -615,6 +667,7 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("PUT "+pre+"/config", d.authed(h.configUpdate))
 	mux.HandleFunc("POST "+pre+"/config", d.authed(h.configUpdate))
 	mux.HandleFunc("POST "+pre+"/orgfs-config", d.authed(h.orgfsConfig))
+	mux.HandleFunc("POST "+pre+"/prepare", d.authed(d.handlePrepare))
 
 	mux.HandleFunc("GET "+pre+"/tasks", d.authed(h.tasksList))
 	mux.HandleFunc("POST "+pre+"/tasks/kill-all", d.authed(h.tasksKillAll))
@@ -1155,29 +1208,50 @@ func main() {
 		// that starts before its skills and its transcript are there does not
 		// fail — it answers wrongly and silently, which is the worse outcome. See
 		// `WaitHomeReady` for why this one place waits where the rest fail open.
-		BeforeRun: func(info dispatch.RunInfo) {
+		BeforeRun: func(info dispatch.RunInfo) map[string]int64 {
+			ms := map[string]int64{}
+			last := time.Now()
+			step := func(name string) {
+				ms[name] = time.Since(last).Milliseconds()
+				last = time.Now()
+			}
 			// The harness's `glab` authenticates from RunEnv, but the task
 			// manager's PTYs never see RunEnv, so the credential also goes in
 			// glab's config file — refreshed per run, because the clone URL's
 			// token rotates.
 			writeGlabConfig(d.store.Read())
+			step("glab")
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved
 			// Claude Code session is restored from, and what the user-scope skills
 			// link points into. It also does the repoint, so a mount that shows up
 			// mid-wait is picked up.
+			prepared := d.takePrepared(info.ThreadId)
+			if prepared != nil {
+				<-prepared
+				step("prepared")
+			}
 			d.orgFsLinks.WaitHomeReady(info.ThreadId)
-			d.orgFsLinks.RestoreSession(info.ThreadId)
+			step("home")
+			// Restored by the prep, and no run of this thread since could change it.
+			if prepared == nil {
+				d.orgFsLinks.RestoreSession(info.Harness, info.ThreadId)
+			}
+			step("session")
 			// And this one is for the public skill-link sync the repoint kicked off
 			// off-thread. Claude Code scans its skill dirs once at startup, so a
 			// symlink that lands after that is invisible for the entire run.
 			// Bounded — a miss costs this run's late skills, not the run.
 			d.orgFsLinks.WaitSkillLinks(skillLinkWait)
+			step("skills")
 			catalogSync.Sync(toolscatalog.Endpoint{
 				URL:       info.McpURL,
 				Headers:   info.McpHeaders,
 				ExpiresAt: info.McpExpiresAt,
 			})
+			step("tools-catalog")
+			slog.Info("dispatch before-run", "run_id", info.ThreadId, "ms", ms)
+			return ms
 		},
 		// What must outlive the pod, moved off it. A skill the model authored into
 		// the checkout would die with the branch; the SDK session would die with
@@ -1185,7 +1259,7 @@ func main() {
 		// path — a crashed turn's transcript is still what the follow-up needs.
 		AfterRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.AdoptStrayRepoSkills()
-			d.orgFsLinks.SaveSession(info.ThreadId)
+			d.orgFsLinks.SaveSession(info.Harness, info.ThreadId)
 		},
 	}
 

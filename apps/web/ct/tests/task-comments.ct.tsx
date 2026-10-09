@@ -135,12 +135,16 @@ for (const resolved of [false, true]) {
     await expect(
       component.getByRole("button", { name: "Collapse", exact: true }),
     ).toHaveCount(0);
-    for (const entry of [0, 1]) {
+    // Your own comment can also be edited; the agent's only deleted.
+    for (const [entry, items] of [
+      [0, 2],
+      [1, 1],
+    ] as const) {
       await component.getByLabel("Comment actions").nth(entry).click();
       await expect(
         page.getByRole("menuitem", { name: "Delete", exact: true }),
       ).toBeVisible();
-      await expect(page.getByRole("menuitem")).toHaveCount(1);
+      await expect(page.getByRole("menuitem")).toHaveCount(items);
       await expect(
         page.getByRole("menuitem", { name: /resolve/i }),
       ).toHaveCount(0);
