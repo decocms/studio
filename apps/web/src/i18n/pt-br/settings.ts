@@ -697,7 +697,6 @@ export const settings = {
     "Para grandes times com contrato próprio",
   "settings.plans.custom.cta": "Fale com a gente",
   "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
-  "settings.plans.limitReached": "Você atingiu o seu limite de uso de AI",
   "settings.plans.invoice.cta": "Adicionar à minha fatura",
   "settings.plans.invoice.confirm":
     "O plano {plan} será adicionado à sua próxima fatura. Mudar agora?",

@@ -677,7 +677,6 @@ export const settings = {
     "For large teams with their own contract",
   "settings.plans.custom.cta": "Talk to us",
   "settings.plans.managed": "Your plan: {plan}. Contact us to change it.",
-  "settings.plans.limitReached": "You've reached your AI usage limit",
   "settings.plans.invoice.cta": "Add to my invoice",
   "settings.plans.invoice.confirm":
     "{plan} will be added to your next invoice. Switch now?",
