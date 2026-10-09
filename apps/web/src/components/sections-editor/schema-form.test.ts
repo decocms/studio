@@ -4,6 +4,7 @@ import { renderField, SchemaForm } from "./schema-form";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import { ArrayField } from "./fields/array-field";
+import { ImageField } from "./fields/image-field";
 import { BooleanField } from "./fields/boolean-field";
 import { NumberField } from "./fields/number-field";
 import { StringField } from "./fields/string-field";
@@ -168,6 +169,42 @@ describe("renderField – collapsed array with a loader picker", () => {
       value: [{ label: "Home" }],
     });
     expect(typeOf(el)).toBe(ArrayField);
+  });
+});
+
+describe("renderField – multivariate widget keeps the prop description", () => {
+  const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
+
+  test("the inner image field inherits the outer description", () => {
+    const el = renderField({
+      onChange: () => {},
+      path: "background",
+      label: "Background image",
+      value: "https://example.com/a.jpg",
+      schema: {
+        type: "block-ref",
+        title: "Background image",
+        description: "Shown behind the CTA",
+        plainSchema: { type: "string", format: "image-uri" },
+        anyOfRefs: [
+          {
+            resolveType: "website/flags/multivariate/image.ts",
+            title: "Image Variants",
+          },
+        ],
+      },
+    }) as {
+      props: { renderInnerField: (p: unknown) => unknown };
+    } | null;
+    const inner = el?.props.renderInnerField({
+      onChange: () => {},
+      path: "background",
+      label: "Background image",
+      value: "https://example.com/a.jpg",
+      schema: {},
+    }) as { props: { schema: { description?: string } } } | null;
+    expect(typeOf(inner)).toBe(ImageField);
+    expect(inner?.props.schema.description).toBe("Shown behind the CTA");
   });
 });
 
