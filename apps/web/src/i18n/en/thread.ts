@@ -146,20 +146,11 @@ export const thread = {
   "thread.mergeRefused.notFound": "It no longer exists.",
   "thread.mergeRefused.error": "Failed to merge.",
   "thread.publishDialog.openingComparison": "Opening the comparison…",
-  "thread.publishDialog.publishedTo": "Published to {baseBranch}",
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
   "thread.publishDialog.viewOnProvider": "View on provider",
   "thread.publishDialog.viewPr": "View PR",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.mergedCurrent": "Merged · Current on the CDN",
-  "thread.publishPopover.mergedNotCurrent":
-    "Merged · release created, making it current failed — use Make current on Releases",
-  "thread.publishPopover.mergedNoRelease":
-    "Merged · no release created (the next Publish includes these changes)",
-  "thread.publishPopover.upToDate": "Up to date, nothing to publish",
-  "thread.publishPopover.mainMoved":
-    "Main changed while publishing, so nothing was published. Publish again.",
   "thread.publishPopover.branchMoved":
     "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":
@@ -173,7 +164,6 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
-  "thread.publishPopover.failedDiscard": "Failed to discard changes",
   "thread.publishPopover.globalSection": "Global section",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
@@ -197,7 +187,6 @@ export const thread = {
   "thread.publishPopover.publishOneInProduction":
     "Publish 1 change in production",
   "thread.publishPopover.publishOne": "Publish 1 change",
-  "thread.publishPopover.publishedTo": "Published to {host}",
   "thread.publishPopover.publishing": "Publishing…",
   "thread.publishPopover.requestApproval": "Request approval",
   "thread.publishPopover.discarded": "Discarded {name}",

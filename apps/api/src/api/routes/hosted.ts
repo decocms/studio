@@ -3,6 +3,8 @@
  *
  *   GET    /api/:org/hosted/:virtualMcpId/releases?cursor=   Releases screen
  *   POST   /api/:org/hosted/:virtualMcpId/releases/current   Make current { sha, confirm? }
+ *                                                            or { head: true }: main's head,
+ *                                                            its release written if missing
  *   GET    /api/:org/hosted/:virtualMcpId/site-tokens        list
  *   POST   /api/:org/hosted/:virtualMcpId/site-tokens        issue (shown once)
  *
@@ -32,6 +34,7 @@ import { NotV8Site } from "@/hosted/release-objects";
 import {
   listReleases,
   makeCurrent,
+  makeHeadCurrent,
   NotPublishedError,
   SchemaMismatchError,
 } from "@/hosted/releases";
@@ -184,16 +187,22 @@ export function createHostedRoutes() {
     const body = (await c.req.json().catch(() => ({}))) as {
       sha?: unknown;
       confirm?: unknown;
+      head?: unknown;
     };
-    if (typeof body.sha !== "string") {
+    const head = body.head === true;
+    if (!head && typeof body.sha !== "string") {
       return c.json({ error: "sha is required" }, 400);
     }
     try {
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
-      const current = await makeCurrent(repo, body.sha, {
-        confirm: body.confirm === true,
-      });
+      // `head`: Publish's "Try again" when its changes were committed but
+      // didn't go live (no companion release, or latest.json not written).
+      const current = head
+        ? await makeHeadCurrent(repo)
+        : await makeCurrent(repo, body.sha as string, {
+            confirm: body.confirm === true,
+          });
       return c.json({ current });
     } catch (err) {
       if (err instanceof NotPublishedError) {

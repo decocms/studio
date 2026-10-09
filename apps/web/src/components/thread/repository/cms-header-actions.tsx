@@ -251,9 +251,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         await deleteRelease(published);
       }
     },
-    /** The dialog is already closed by now, so a toast is the only surface. */
+    /** The publish already succeeded and showed its one toast; this clean-up
+     *  is nothing the user can act on, so it is logged, not toasted. */
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : String(err));
+      console.error("site editor: settling after publish failed", err);
     },
   });
 

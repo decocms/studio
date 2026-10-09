@@ -1,14 +1,17 @@
 /**
- * Releases tab — a hosted v8 site's timeline: main's commits, newest first.
- * A commit with a companion release on the CDN can be made current; the one
- * latest.json names is Current (read, never inferred). A commit without a
- * companion (a developer push, or a Publish whose release write failed) is
- * just a merge: listed, with no badge and no action.
+ * Versions tab (the `releases` route) — a hosted v8 site's timeline: main's
+ * commits, newest first. A commit with a companion release on the CDN can be
+ * published ("Make current" on the API); the one latest.json names is
+ * Published (read, never inferred). A commit without a companion (a
+ * developer push, or a Publish whose release write failed) is listed with no
+ * badge and no action.
+ *
+ * Business-user copy: no sha, CDN or git words on screen; one toast per
+ * action (shared with Publish), with the error's own text behind Details.
  */
 
 import { useState } from "react";
 import { ClockRewind, DotsVertical } from "@untitledui/icons";
-import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
@@ -32,6 +35,12 @@ import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
 import { useProjectContext } from "@/sdk";
 import {
+  ErrorDetails,
+  errorDetail,
+  toastPublishFailed,
+  toastPublished,
+} from "@/components/sections-editor/site-editor-toast.tsx";
+import {
   HostedRequestError,
   type ReleaseCommit,
   useMakeCurrent,
@@ -39,6 +48,8 @@ import {
 } from "./releases-api";
 
 const short = (sha: string) => sha.slice(0, 7);
+/** A commit message's title line: the version note a Publish wrote. */
+const titleLine = (message: string) => message.split("\n")[0]?.trim() ?? "";
 
 /** What the confirmation dialog is asking about. */
 type PendingConfirm = {
@@ -65,9 +76,23 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 p-10 text-center">
         <p className="text-sm font-medium">{t("releases.loadFailed")}</p>
-        <p className="max-w-sm text-xs text-muted-foreground">
-          {releases.error.message}
-        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={releases.isRefetching}
+          onClick={() => void releases.refetch()}
+        >
+          {t("siteEditor.tryAgain")}
+        </Button>
+        {releases.error.message ? (
+          <div className="max-w-sm text-left">
+            <ErrorDetails
+              label={t("siteEditor.details")}
+              detail={releases.error.message}
+            />
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -79,7 +104,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const runMakeCurrent = async (commit: ReleaseCommit, confirmed: boolean) => {
     try {
       await makeCurrent.mutateAsync({ sha: commit.sha, confirm: confirmed });
-      toast.success(t("releases.madeCurrent", { sha: short(commit.sha) }));
+      toastPublished(t, t("releases.versionLive"));
     } catch (error) {
       if (
         error instanceof HostedRequestError &&
@@ -89,14 +114,11 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         return;
       }
       // Failed: the badge stays where latest.json says (the list refetches).
-      if (
-        error instanceof HostedRequestError &&
-        error.code === "latest-update-failed"
-      ) {
-        toast.error(t("releases.makeCurrentFailed"));
-        return;
-      }
-      toast.error(error instanceof Error ? error.message : String(error));
+      toastPublishFailed(t, {
+        headline: t("releases.publishVersionFailed"),
+        detail: errorDetail(error),
+        retry: () => void runMakeCurrent(commit, confirmed),
+      });
     }
   };
 
@@ -114,24 +136,13 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
           {t("releases.subtitle")}
         </p>
         <p className="mt-2 text-sm">
-          {current ? (
-            <>
-              <span className="text-muted-foreground">
-                {t("releases.currentOnCdn")}{" "}
-              </span>
-              <span className="font-mono">{short(current.revision)}</span>
-              <span className="text-muted-foreground">
-                {" · "}
-                {t("releases.madeCurrentAgo", {
+          <span className="text-muted-foreground">
+            {current
+              ? t("releases.publishedAgo", {
                   when: formatTimeAgo(new Date(current.publishedAt)),
-                })}
-              </span>
-            </>
-          ) : (
-            <span className="text-muted-foreground">
-              {t("releases.nothingOnCdn")}
-            </span>
-          )}
+                })
+              : t("releases.nothingPublished")}
+          </span>
         </p>
       </div>
 
@@ -147,11 +158,11 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                   isCurrent && "bg-muted/40",
                 )}
               >
-                <span className="font-mono text-xs text-muted-foreground">
-                  {short(commit.sha)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">{commit.message}</p>
+                {/* The sha is developer detail: a tooltip, never on screen. */}
+                <div className="min-w-0 flex-1" title={short(commit.sha)}>
+                  <p className="truncate text-sm">
+                    {titleLine(commit.message)}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {[commit.author, formatTimeAgo(new Date(commit.date))]
                       .filter(Boolean)
@@ -160,10 +171,10 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                 </div>
                 {isCurrent ? (
                   <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
-                    {t("releases.current")}
+                    {t("releases.published")}
                   </span>
                 ) : null}
-                {commit.hasRelease ? (
+                {commit.hasRelease && !isCurrent ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -184,7 +195,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                         }
                       >
                         <ClockRewind size={14} />
-                        {t("releases.makeCurrent")}
+                        {t("releases.publishVersion")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -220,20 +231,20 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("releases.makeCurrentTitle", {
-                sha: confirm ? short(confirm.commit.sha) : "",
-              })}
+              {t("releases.publishVersionTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.schemaMismatch
                 ? t("releases.schemaMismatchBody")
-                : t("releases.makeCurrentBody")}
+                : t("releases.publishVersionBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("releases.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={onConfirm}>
-              {t("releases.makeCurrent")}
+              {confirm?.schemaMismatch
+                ? t("releases.publishAnyway")
+                : t("releases.publishVersion")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
