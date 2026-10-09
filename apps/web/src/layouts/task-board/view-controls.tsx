@@ -48,6 +48,7 @@ import {
   ChevronRight,
   FilterLines,
   Flag01,
+  Inbox01,
   Plus,
   Rows01,
   Settings02,
@@ -55,6 +56,7 @@ import {
   Tag01,
   User01,
   X,
+  Zap,
 } from "@untitledui/icons";
 import { ProjectEntryIcon } from "@/components/project-entry";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
@@ -86,7 +88,10 @@ import {
 } from "./filter-fields";
 import { GROUP_BY_OPTIONS, type GroupBy } from "./list-groups";
 import { SORT_BY_OPTIONS, type SortBy, type SortDirection } from "./list-sort";
+import type { Sprint } from "@decocms/shared/sprints";
+import { sprintLabel } from "./sprint-label";
 import {
+  BACKLOG_SPRINT_FILTER,
   DUE_FILTERS,
   dueFilterLabelKey,
   EMPTY_FILTERS,
@@ -147,10 +152,12 @@ function alphabetical<T>(items: readonly T[], name: (item: T) => string): T[] {
 function useFilterFields({
   members,
   tags,
+  sprints,
   index,
 }: {
   members: Member[];
   tags: OrgTag[];
+  sprints: readonly Sprint[];
   index: ProjectIndex;
 }): FilterField[] {
   const t = useT();
@@ -316,7 +323,62 @@ function useFilterFields({
     ),
   };
 
-  return [assignee, priority, due, tagField, project];
+  const sprintById = new Map(sprints.map((sprint) => [sprint.id, sprint]));
+  const sprintField: FilterField = {
+    id: "sprint",
+    label: t("taskBoard.sprints.label"),
+    icon: <Zap size={14} className="shrink-0" />,
+    // An org that never planned a sprint has no sprint filter.
+    options:
+      sprints.length === 0
+        ? []
+        : [
+            {
+              id: BACKLOG_SPRINT_FILTER,
+              label: t("taskBoard.sprints.backlog"),
+              glyph: (
+                <Inbox01 size={14} className="shrink-0 text-muted-foreground" />
+              ),
+              apply: (f: TaskFilters) => ({
+                ...f,
+                sprint: BACKLOG_SPRINT_FILTER,
+              }),
+              isSelected: (f: TaskFilters) =>
+                f.sprint === BACKLOG_SPRINT_FILTER,
+            },
+            ...sprints.map((sprint) => ({
+              id: sprint.id,
+              label: sprintLabel(sprint, t),
+              glyph: (
+                <Zap
+                  size={14}
+                  className={cn(
+                    "shrink-0",
+                    sprint.state === "active"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                />
+              ),
+              apply: (f: TaskFilters) => ({ ...f, sprint: sprint.id }),
+              isSelected: (f: TaskFilters) => f.sprint === sprint.id,
+            })),
+          ],
+    valueLabel: (f) =>
+      f.sprint === BACKLOG_SPRINT_FILTER
+        ? t("taskBoard.sprints.backlog")
+        : f.sprint
+          ? (sprintById.get(f.sprint)?.name ?? "")
+          : "",
+    valueGlyph: (f) =>
+      f.sprint === BACKLOG_SPRINT_FILTER ? (
+        <Inbox01 size={14} className="shrink-0" />
+      ) : (
+        <Zap size={14} className="shrink-0" />
+      ),
+  };
+
+  return [sprintField, assignee, priority, due, tagField, project];
 }
 
 /** How many cards a choice would leave, right-aligned like Linear's. */
@@ -547,6 +609,7 @@ export function TaskFilterButton({
   items,
   members,
   tags,
+  sprints,
   index,
   onChange,
 }: {
@@ -554,11 +617,12 @@ export function TaskFilterButton({
   items: TaskBoardItem[];
   members: Member[];
   tags: OrgTag[];
+  sprints: readonly Sprint[];
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, index });
+  const fields = useFilterFields({ members, tags, sprints, index });
   const active = activeFilterFieldIds(filters, index).length > 0;
 
   return (
@@ -1031,6 +1095,7 @@ export function AppliedFiltersBar({
   items,
   members,
   tags,
+  sprints,
   index,
   onChange,
   view,
@@ -1039,13 +1104,14 @@ export function AppliedFiltersBar({
   items: TaskBoardItem[];
   members: Member[];
   tags: OrgTag[];
+  sprints: readonly Sprint[];
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
   /** The list view's grouping and sorting; the board has neither. */
   view?: { grouping: GroupingProps; sorting: SortingProps };
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, index });
+  const fields = useFilterFields({ members, tags, sprints, index });
   const activeIds = activeFilterFieldIds(filters, index);
   const arranged =
     view !== undefined &&

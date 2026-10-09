@@ -11,6 +11,7 @@ const EMPTY_FILTERS: TaskFilters = {
   due: null,
   tags: [],
   project: null,
+  sprint: null,
   search: "",
 };
 

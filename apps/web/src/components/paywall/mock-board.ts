@@ -28,6 +28,7 @@ function card(
     title,
     description: null,
     repositoryId: null,
+    sprintId: null,
     status,
     priority,
     type,

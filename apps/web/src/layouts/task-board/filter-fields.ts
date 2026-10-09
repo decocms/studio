@@ -15,6 +15,7 @@ import type { TaskFilters } from "./task-filters-core";
 
 /** Every field the filter menu offers, in the order both surfaces list it. */
 const FILTER_FIELD_IDS = [
+  "sprint",
   "assignee",
   "priority",
   "due",
@@ -40,6 +41,8 @@ export function activeFilterFieldIds(
         return filters.tags.length > 0;
       case "project":
         return projectFilterNarrows(filters.project, index);
+      case "sprint":
+        return filters.sprint !== null;
       default: {
         const exhaustive: never = id;
         return exhaustive;
@@ -64,6 +67,8 @@ export function withFieldCleared(
       return { ...filters, tags: [] };
     case "project":
       return { ...filters, project: null };
+    case "sprint":
+      return { ...filters, sprint: null };
     default: {
       const exhaustive: never = id;
       return exhaustive;
