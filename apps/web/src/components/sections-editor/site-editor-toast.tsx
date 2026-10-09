@@ -38,7 +38,7 @@ export function ErrorDetails({
 }
 
 /** A toast `description` for `detail`, or nothing when there is none. */
-function errorDetailsDescription(t: TFunction, detail: string | null) {
+export function errorDetailsDescription(t: TFunction, detail: string | null) {
   return detail ? (
     <ErrorDetails label={t("siteEditor.details")} detail={detail} />
   ) : undefined;

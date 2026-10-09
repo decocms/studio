@@ -51,15 +51,16 @@ describe("save messages for business users (hosted, sandbox, legacy)", () => {
     });
   }
 
-  test("a refused block names what to fix", () => {
+  test("a refused block says to fix the fields; Details names them", () => {
     const error = new ContentProtocolError(ErrorCode.InvalidBlock, "invalid", {
       violations: [
         { name: "Header", rule: "required", message: "title is required" },
       ],
     });
     expect(saveErrorMessage(t, error, "github")).toBe(
-      "Not saved: title is required. Fix it and try again.",
+      "Not saved: some fields aren't filled in correctly. Fix them and try again.",
     );
+    expect(saveErrorDetail(error, "github")).toContain("title is required");
   });
 });
 
