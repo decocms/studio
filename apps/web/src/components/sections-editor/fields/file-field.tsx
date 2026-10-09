@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { File02, Film01, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -12,6 +12,10 @@ import {
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/hooks/use-file-picker";
+import {
+  useServeAssetSrc,
+  useServeAssetUpload,
+} from "./use-serve-asset-upload";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import { FieldLabel } from "./field-label";
@@ -45,8 +49,16 @@ export function FileField({
   const fileName = strValue ? basename(strValue) : "";
   const ext = fileName ? extension(fileName) : "";
 
-  const configsQuery = useFileConfigsQuery();
+  // A connected `deco serve` writes uploads into the repository instead, so
+  // Studio's file storage (and its bucket picker) is left out.
+  const serveUpload = useServeAssetUpload(sandbox);
+  const configsQuery = useFileConfigsQuery({ enabled: !serveUpload });
   const upload = useFilePickerUpload();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Choose a file: the system file dialog for `deco serve`, else the picker. */
+  const browse = () =>
+    serveUpload ? fileInputRef.current?.click() : setPickerOpen(true);
+  const previewSrc = useServeAssetSrc(sandbox, strValue);
   const lockedConfig = matchSiteSlugConfig(
     configsQuery.data?.configs ?? [],
     sandbox?.siteSlug,
@@ -62,6 +74,19 @@ export function FileField({
         toast.error(t("sectionsEditor.fileField.videoFileError"));
         return;
       }
+    }
+
+    if (serveUpload) {
+      try {
+        onChange(await serveUpload(list[0]!));
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : t("sectionsEditor.fileField.uploadFailed"),
+        );
+      }
+      return;
     }
 
     const targetConfigId = resolveTargetConfigId(
@@ -146,13 +171,13 @@ export function FileField({
             <>
               <button
                 type="button"
-                onClick={() => setPickerOpen(true)}
+                onClick={browse}
                 aria-label={t("sectionsEditor.fileField.replaceVideoLabel")}
                 className="relative block h-40 w-full cursor-pointer overflow-hidden bg-black"
               >
                 <video
                   key={strValue}
-                  src={strValue}
+                  src={previewSrc}
                   preload="metadata"
                   className="h-full w-full object-contain"
                 />
@@ -169,7 +194,7 @@ export function FileField({
           ) : (
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              onClick={browse}
               aria-label={t("sectionsEditor.fileField.replaceFileLabel")}
               className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/60"
             >
@@ -188,7 +213,7 @@ export function FileField({
         ) : (
           <button
             type="button"
-            onClick={() => setPickerOpen(true)}
+            onClick={browse}
             className="flex w-full flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
             {isVideo ? <Film01 size={20} /> : <File02 size={20} />}
@@ -228,7 +253,7 @@ export function FileField({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setPickerOpen(true)}
+            onClick={browse}
             className="h-9 shrink-0"
           >
             <Upload01 size={14} />
@@ -256,13 +281,26 @@ export function FileField({
         )}
       </div>
 
-      <FilePickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        mode="any"
-        onSelect={(url) => onChange(url)}
-        lockedConfigId={lockedConfig?.id ?? null}
-      />
+      {serveUpload ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={isVideo ? "video/*" : undefined}
+          className="hidden"
+          onChange={(e) => {
+            void handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+      ) : (
+        <FilePickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          mode="any"
+          onSelect={(url) => onChange(url)}
+          lockedConfigId={lockedConfig?.id ?? null}
+        />
+      )}
     </div>
   );
 }

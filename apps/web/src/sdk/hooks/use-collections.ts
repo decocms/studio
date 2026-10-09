@@ -273,7 +273,8 @@ export function useCollectionItem<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   itemId: string | undefined,
-  client: Client,
+  /** null reads as no item, without a request. */
+  client: Client | null,
 ) {
   const { data } = useSuspenseQuery(
     collectionItemQueryOptions<T>(scopeKey, collectionName, itemId, client),

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isValidElement } from "react";
 import { renderField } from "../schema-form";
 import type { SchemaProperty } from "../resolve-schema";
-import { SecretField } from "./secret-field";
+import { SecretFieldForBackend } from "./protocol-secret-field";
 
 const secretFormat: SchemaProperty = { type: "string", format: "secret" };
 
@@ -21,7 +21,7 @@ describe("renderField secret routing", () => {
       { type: "object" },
       { __resolveType: "website/loaders/secret.ts", encrypted: "a1b2" },
     ],
-  ] as const)("renders SecretField for %s", (_, schema, value) => {
+  ] as const)("routes %s to the secret field", (_, schema, value) => {
     const element = renderField({
       schema,
       value,
@@ -29,7 +29,7 @@ describe("renderField secret routing", () => {
       path: "encrypted",
       label: "Secret Value",
     });
-    expect(isValidElement(element) && element.type).toBe(SecretField);
+    expect(isValidElement(element) && element.type).toBe(SecretFieldForBackend);
   });
 
   test("a plain string still renders as a plain field", () => {
@@ -40,6 +40,8 @@ describe("renderField secret routing", () => {
       path: "title",
       label: "Title",
     });
-    expect(isValidElement(element) && element.type).not.toBe(SecretField);
+    expect(isValidElement(element) && element.type).not.toBe(
+      SecretFieldForBackend,
+    );
   });
 });
