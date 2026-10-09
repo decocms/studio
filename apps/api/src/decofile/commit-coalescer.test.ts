@@ -243,3 +243,48 @@ describe("enqueueDecofilePatch blob cost", () => {
     expect(Object.keys(doc)).toHaveLength(stems.length);
   });
 });
+
+describe("enqueueDecofilePatch file channel", () => {
+  const stems = ["Block0", "Block1"];
+
+  it("lands source files and the block in ONE commit", async () => {
+    const f = fakeClient({ stems, tracksGen: false });
+    await enqueueDecofilePatch(
+      `q-files-${Date.now()}`,
+      { client: f.client, branch: "feature", packagePath: null },
+      {
+        set: { "deco-blog": { __resolveType: "site/apps/deco/blog.ts" } },
+        files: [
+          { path: "src/apps/blog.ts", content: 'export * from "x";\n' },
+          { path: "package.json", content: "{}\n" },
+        ],
+      },
+    );
+
+    expect(f.commitAttempts).toBe(1);
+    expect(f.committed.map((c) => c.path).sort()).toEqual([
+      ".deco/blocks/deco-blog.json",
+      "package.json",
+      "src/apps/blog.ts",
+    ]);
+  });
+
+  it("still regenerates the tracked artifact alongside them", async () => {
+    const f = fakeClient({ stems, tracksGen: true });
+    await enqueueDecofilePatch(
+      `q-files-gen-${Date.now()}`,
+      { client: f.client, branch: "feature", packagePath: null },
+      {
+        set: { "deco-blog": { __resolveType: "site/apps/deco/blog.ts" } },
+        files: [{ path: "src/apps/blog.ts", content: 'export * from "x";\n' }],
+      },
+    );
+
+    const gen = f.committed.find((c) => c.path === ".deco/blocks.gen.json");
+    expect(gen).toBeDefined();
+    const doc = JSON.parse(
+      (gen as { path: string; content: string }).content,
+    ) as Record<string, unknown>;
+    expect(Object.keys(doc).sort()).toEqual([...stems, "deco-blog"].sort());
+  });
+});

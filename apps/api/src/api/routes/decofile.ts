@@ -41,6 +41,13 @@ import {
   type RepoContentClient,
 } from "@/git-providers";
 import {
+  detectSiteTechnology,
+  findSiteApp,
+  makeInstallAppPatches,
+  SiteAppInstallError,
+  type InstallAppPatches,
+} from "@decocms/shared/site-apps";
+import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
@@ -126,6 +133,11 @@ export const patchBodySchema = z
       message: `Each block key must be at most ${MAX_BLOCK_KEY_LENGTH} characters`,
     },
   );
+
+const installAppBodySchema = z.object({
+  /** Catalogue id of the app, which is also its decofile block key. */
+  blockKey: z.string().min(1).max(MAX_BLOCK_KEY_LENGTH),
+});
 
 /**
  * Resolves the virtual MCP, enforces the Fast Preview gate and (for
@@ -254,6 +266,73 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
     return c.json({ error: message }, status);
   }
   return c.json({ error: message }, 500);
+}
+
+function packagePathOf(scope: DecofileScope, relativePath: string): string {
+  return scope.packagePath
+    ? `${scope.packagePath}/${relativePath}`
+    : relativePath;
+}
+
+/**
+ * A source file at `ref`. When `ref` is the branch name it may not exist yet —
+ * a thread-minted branch only materializes on GitHub at its first CMS write —
+ * so fall back to the default branch, whose copy is the one the fork would
+ * carry anyway. At a concrete sha there is nothing to fall back to: a missing
+ * file there is genuinely missing.
+ */
+async function readSourceFile(
+  client: RepoContentClient,
+  scope: DecofileScope,
+  relativePath: string,
+  ref: string,
+): Promise<string | null> {
+  const path = packagePathOf(scope, relativePath);
+  const atRef = await client.readFileAtRef(ref, path);
+  if (atRef !== null || ref !== scope.branch) return atRef;
+  const defaultBranch = await client.getDefaultBranch();
+  if (defaultBranch === scope.branch) return null;
+  return client.readFileAtRef(defaultBranch, path);
+}
+
+/**
+ * The patch set installing `blockKey` on the site as it stands at `ref`.
+ * Re-run per commit attempt: the `package.json` and `src/setup.ts` edits are
+ * read-modify-writes, so bytes derived from a head the commit then lost to
+ * would silently undo whoever won.
+ */
+async function buildAppInstallPatches(
+  client: RepoContentClient,
+  scope: DecofileScope,
+  blockKey: string,
+  ref: string,
+): Promise<InstallAppPatches> {
+  const [denoJson, packageJson] = await Promise.all([
+    readSourceFile(client, scope, "deno.json", ref),
+    readSourceFile(client, scope, "package.json", ref),
+  ]);
+  const detected = detectSiteTechnology({ denoJson, packageJson });
+  if (!detected) {
+    throw new SiteAppInstallError(
+      "This repository has no deno.json or package.json, so it is not a deco site",
+    );
+  }
+  const entry = findSiteApp(detected.technology, blockKey);
+  if (!entry) {
+    throw new SiteAppInstallError(
+      `No app "${blockKey}" is available for a ${detected.technology} site`,
+    );
+  }
+  return makeInstallAppPatches({
+    technology: detected.technology,
+    entry,
+    decocmsVersion: detected.decocmsVersion,
+    packageJson,
+    setupTs:
+      detected.technology === "tanstack"
+        ? await readSourceFile(client, scope, "src/setup.ts", ref)
+        : null,
+  });
 }
 
 export function createDecofileRoutes() {
@@ -414,6 +493,79 @@ export function createDecofileRoutes() {
       });
       return c.json({ version: sha, token, apiHost: requestApiHost(c) });
     } catch (err) {
+      return errorResponse(c, err);
+    }
+  });
+
+  /**
+   * Install a site app: the decofile block plus the source it needs to
+   * resolve, landed as one commit. The catalogue is this repository's
+   * (`@decocms/shared/site-apps`), so the caller names an app, never a path.
+   */
+  app.post("/:virtualMcpId/:branch/apps", async (c) => {
+    const scope = c.get("decofileScope");
+    const ctx = c.var.studioContext;
+
+    const parsed = installAppBodySchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid body", details: parsed.error.issues },
+        400,
+      );
+    }
+    const { blockKey } = parsed.data;
+
+    try {
+      const client = await contentClientForScope(c);
+      // Up front for the error status; only the files depend on the head.
+      const preview = await buildAppInstallPatches(
+        client,
+        scope,
+        blockKey,
+        scope.branch,
+      );
+
+      const sha = await enqueueDecofilePatch(
+        `${scope.organizationId}/${scope.virtualMcpId}/${scope.branch}`,
+        {
+          client,
+          branch: scope.branch,
+          packagePath: scope.packagePath,
+          coAuthor: coAuthorFromStudioContext(ctx),
+        },
+        {
+          set: { [preview.block.key]: preview.block.value },
+          files: async (headSha) => {
+            const patches = await buildAppInstallPatches(
+              client,
+              scope,
+              blockKey,
+              headSha,
+            );
+            return patches.files.map((file) => ({
+              path: packagePathOf(scope, file.path),
+              content: file.content,
+            }));
+          },
+        },
+      );
+      const token = signDraftToken({
+        organizationId: scope.organizationId,
+        virtualMcpId: scope.virtualMcpId,
+        branch: scope.branch,
+      });
+      return c.json({
+        version: sha,
+        token,
+        apiHost: requestApiHost(c),
+        block: preview.block,
+      });
+    } catch (err) {
+      if (err instanceof SiteAppInstallError) {
+        return c.json({ error: err.message }, 422);
+      }
       return errorResponse(c, err);
     }
   });

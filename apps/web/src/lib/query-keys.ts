@@ -682,7 +682,6 @@ export const KEYS = {
 
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
-  decoApps: () => ["deco-apps"] as const,
 
   // Hosting tab — per-site control-plane reads (scoped by org + site slug),
   // proxied through the BFF at /api/:org/hosting/:site/*.

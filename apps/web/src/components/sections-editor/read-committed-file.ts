@@ -2,7 +2,7 @@ import { stripLineNumbers } from "@/components/sandbox/preview/file-explorer/uti
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { classifyCommittedReadStatus } from "./decofile-read-status";
 
-interface RepoFileParams {
+export interface RepoFileParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
@@ -21,7 +21,7 @@ export type CommittedRead<T> =
   | { kind: "unavailable" };
 
 /**
- * Read a JSON file committed to the repo working tree via the sandbox daemon's
+ * Read a file committed to the repo working tree via the sandbox daemon's
  * file-read proxy. Unlike `/.decofile` and `/live/_meta` (served by the dev
  * server), this works as soon as the daemon is up — before the dev script boots
  * or even when it has crashed — so the CMS can be read (and, since block writes
@@ -29,10 +29,10 @@ export type CommittedRead<T> =
  *
  * Throws on transient daemon-unreachable errors so the caller's query retries.
  */
-export async function readCommittedJson<T>(
+export async function readCommittedText(
   params: RepoFileParams,
   path: string,
-): Promise<CommittedRead<T>> {
+): Promise<CommittedRead<string>> {
   const url = buildSandboxUrl(params, "read");
   const res = await fetch(url, {
     method: "POST",
@@ -59,15 +59,25 @@ export async function readCommittedJson<T>(
     throw err;
   }
   // The daemon returns line-number-prefixed content ("1\t...\n2\t..."), even
-  // with `full: true`, so strip it before parsing. An unparseable body proves
-  // nothing about the framework — a corrupt artifact is not an absent one.
+  // with `full: true`, so strip it before handing the text back.
   const data = (await res.json()) as { content?: string };
   if (typeof data.content !== "string") return { kind: "unavailable" };
+  return { kind: "data", data: stripLineNumbers(data.content) };
+}
+
+/**
+ * {@link readCommittedText}, parsed. An unparseable body proves nothing about
+ * the framework — a corrupt artifact is not an absent one, so it reports
+ * `unavailable`.
+ */
+export async function readCommittedJson<T>(
+  params: RepoFileParams,
+  path: string,
+): Promise<CommittedRead<T>> {
+  const text = await readCommittedText(params, path);
+  if (text.kind !== "data") return text;
   try {
-    return {
-      kind: "data",
-      data: JSON.parse(stripLineNumbers(data.content)) as T,
-    };
+    return { kind: "data", data: JSON.parse(text.data) as T };
   } catch {
     return { kind: "unavailable" };
   }

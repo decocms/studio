@@ -84,6 +84,8 @@ export interface SchemaProperty {
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
 
 export interface LiveMeta {
+  /** The stack the site was built with; absent on Fresh/Deno, which predates it. */
+  framework?: string;
   manifest: {
     blocks: Record<
       string,

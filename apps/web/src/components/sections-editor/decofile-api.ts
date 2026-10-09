@@ -145,6 +145,34 @@ export async function fetchDecofile(
   return body.decofile;
 }
 
+/**
+ * Install a site app server-side: the block and the source it needs land as
+ * one commit. Only the app's catalogue id crosses the wire — the server owns
+ * the registry and builds every path itself.
+ */
+export async function installDecofileApp(
+  params: DecofileScopeParams,
+  blockKey: string,
+): Promise<{
+  draft: DecofileDraft;
+  block: { key: string; value: Record<string, unknown> };
+}> {
+  const res = await fetch(`${decofileApiUrl(params)}/apps`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ blockKey }),
+  });
+  if (!res.ok) return throwResponseError(res, "Install");
+  const body = (await res.json()) as Partial<DecofileDraft> &
+    Pick<DecofileDraft, "version" | "token"> & {
+      block: { key: string; value: Record<string, unknown> };
+    };
+  return {
+    draft: { ...body, apiHost: body.apiHost ?? window.location.host },
+    block: body.block,
+  };
+}
+
 /** PATCH blocks; resolves with the draft pointer of the carrying commit. */
 export async function patchDecofile(
   params: DecofileScopeParams,
