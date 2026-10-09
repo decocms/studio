@@ -5,6 +5,7 @@
  * Scheduling deliberately lives outside this tab — it is a first-party feature
  * of the blog, and generation only produces the drafts it schedules.
  */
+import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
 import { useState } from "react";
 import { Loading02, Stars02 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -286,7 +287,12 @@ export function BlogContext({
       const nextBrand: Record<string, unknown> = { ...brand };
       const filled = applyExtractResult(nextBrand, brandResult, {
         mode,
-        textFields: ["companyName", "language", ...BRAND_TEXT_FIELDS],
+        textFields: [
+          "companyName",
+          "language",
+          "storeUrl",
+          ...BRAND_TEXT_FIELDS,
+        ],
         ruleFields: BRAND_RULE_FIELDS,
         termFields: BRAND_TERM_FIELDS,
       });
@@ -463,6 +469,25 @@ export function BlogContext({
                 value={str(brand.language)}
                 onChange={(v) => setField("language", v)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Field
+                id="brand-store-url"
+                label={t("sandbox.blogBrand.storeUrlLabel")}
+                placeholder="https://loja.com.br"
+                value={str(brand.storeUrl)}
+                onChange={(v) => setField("storeUrl", v)}
+              />
+              {str(brand.storeUrl).trim() &&
+              !sanitizeSiteUrl(str(brand.storeUrl).trim()) ? (
+                <p className="text-xs text-warning">
+                  {t("sandbox.blogBrand.storeUrlInvalid")}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("sandbox.blogBrand.storeUrlHint")}
+                </p>
+              )}
             </div>
             <TextAreaField
               id="brand-description"

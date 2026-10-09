@@ -80,6 +80,13 @@ const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
       "Does it say what this company sells and who it sells to, concretely enough that you could tell it from a competitor in the same category?",
   },
   {
+    field: "storeUrl",
+    kind: "text",
+    origin: "blocks",
+    purpose:
+      "Is this the storefront a reader would actually open — the public domain, origin only? An admin, preview or platform host (`*.vtexcommercestable.com.br`, `*.deco.site`, `*.myshopify.com`) is the wrong answer however confidently the site reports it, because every link built from it points somewhere a customer cannot be sent.",
+  },
+  {
     field: "targetAudience",
     kind: "text",
     origin: "blocks",

@@ -42,6 +42,7 @@ import { AddButton, PickList, RemoveButton } from "./blocks/primitives";
 import { CollapsibleList, CollapsibleRow } from "./blocks/collapsible-row";
 import { RuleList, TermsInput } from "./blocks/rule-list";
 import { CategoryTreeList } from "./blocks/category-tree-list";
+import { reHome } from "./blocks/store-url";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
 import type { ProductPickerOption } from "./blocks/product-picker-source";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
@@ -205,6 +206,7 @@ export function CampaignEditor({
   onClose,
   isSaving,
   sandboxRef,
+  storeUrl,
 }: {
   blockKey: string;
   block: Record<string, unknown> | undefined;
@@ -218,6 +220,8 @@ export function CampaignEditor({
   isSaving?: boolean;
   /** Absent outside a sandbox session — the store pickers hide, typing stays. */
   sandboxRef?: PreviewProxyRef;
+  /** The brand's storefront domain, so picked links are the public ones. */
+  storeUrl: string;
 }) {
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -322,7 +326,7 @@ export function CampaignEditor({
       {
         id: option.id,
         name: option.label,
-        url: option.url ?? "",
+        url: reHome(option.url, storeUrl),
         images: (option.images ?? []).slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES),
         category: option.category ?? "",
         description: option.description ?? "",
@@ -551,6 +555,7 @@ export function CampaignEditor({
           {sandboxRef && (
             <CategoryTargetPicker
               sandboxRef={sandboxRef}
+              storeUrl={storeUrl}
               onPick={(picked) => addTarget(picked)}
             />
           )}
@@ -816,9 +821,12 @@ function ProductImages({
  */
 function CategoryTargetPicker({
   sandboxRef,
+  storeUrl,
   onPick,
 }: {
   sandboxRef: PreviewProxyRef;
+  /** The brand's storefront domain; the tree reports the platform's. */
+  storeUrl: string;
   onPick: (target: Partial<CampaignTarget>) => void;
 }) {
   const t = useT();
@@ -840,7 +848,7 @@ function CategoryTargetPicker({
             onPick({
               id: category.path,
               name: category.label,
-              url: category.url,
+              url: reHome(category.url, storeUrl),
             });
             setOpen(false);
           }}

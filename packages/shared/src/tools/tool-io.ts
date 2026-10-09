@@ -1310,6 +1310,7 @@ export interface StudioToolIO {
       companyName: string;
       description: string;
       language: string;
+      storeUrl: string;
       targetAudience: string;
       values: { name: string; value: string }[];
       competitors: { name: string; value: string }[];
@@ -1329,6 +1330,7 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
         competitors?: { name: string; value: string }[] | undefined;
@@ -1357,6 +1359,7 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
         competitors?: { name: string; value: string }[] | undefined;
@@ -1385,6 +1388,7 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
         competitors?: { name: string; value: string }[] | undefined;
@@ -1414,6 +1418,7 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
         competitors?: { name: string; value: string }[] | undefined;
@@ -1491,6 +1496,7 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
         competitors?: { name: string; value: string }[] | undefined;

@@ -46,6 +46,11 @@ export const BlogBrandSchema = z.object({
     .describe(
       "BCP-47 tag of the language the prose itself is written in, e.g. pt-BR. Read the post bodies, not any locale config.",
     ),
+  storeUrl: z
+    .string()
+    .describe(
+      "The storefront's public address, origin only — https://loja.com. What a reader would type. Never an admin, preview or platform host: a `*.vtexcommercestable.com.br` or `*.deco.site` address is internal and does not belong here. Read it from canonical links, absolute links in the content, or the og:url.",
+    ),
   targetAudience: z
     .string()
     .describe(

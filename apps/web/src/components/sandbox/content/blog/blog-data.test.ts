@@ -2562,6 +2562,28 @@ describe("splitBlogContext", () => {
 });
 
 describe("contextForTools", () => {
+  test("carries the fields the prompts actually render", () => {
+    const { merged } = splitBlogContext(
+      {
+        competitors: [{ name: "Rival", value: "Vende o mesmo mais barato" }],
+        specialDates: [
+          { name: "Volta às aulas", value: "Janeiro e fevereiro" },
+        ],
+      },
+      {},
+    );
+    const forTools = contextForTools(merged);
+    expect(forTools.competitors).toHaveLength(1);
+    expect(forTools.specialDates).toHaveLength(1);
+  });
+
+  test("normalises the store address, and blanks an unusable one", () => {
+    const usable = splitBlogContext({ storeUrl: " https://loja.com " }, {});
+    expect(contextForTools(usable.merged).storeUrl).toBe("https://loja.com/");
+    const junk = splitBlogContext({ storeUrl: "javascript:alert(1)" }, {});
+    expect(contextForTools(junk.merged).storeUrl).toBe("");
+  });
+
   test("spans both halves and drops the blank editor rows", () => {
     const { merged } = splitBlogContext(
       { companyName: "Marca", values: [{ name: "", value: "" }] },
@@ -2571,9 +2593,12 @@ describe("contextForTools", () => {
       companyName: "Marca",
       description: "",
       language: "",
+      storeUrl: "",
       tone: "Seco",
       targetAudience: "",
       values: [],
+      competitors: [],
+      specialDates: [],
       dos: [{ name: "Abertura", value: "Pelo leitor" }],
       avoid: [],
       keywords: [],

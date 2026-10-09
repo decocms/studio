@@ -115,6 +115,11 @@ export const sandbox = {
   "sandbox.blogBrand.toneLabel": "Tone of voice",
   "sandbox.blogBrand.toneHint":
     "How the brand writes: how it addresses the reader, sentence rhythm, humor, jargon level.",
+  "sandbox.blogBrand.storeUrlHint":
+    "The public domain, as a reader would type it. Product and category links are built from it — without it they carry the platform's internal address.",
+  "sandbox.blogBrand.storeUrlInvalid":
+    "Not a valid address. It has to start with http:// or https://.",
+  "sandbox.blogBrand.storeUrlLabel": "Store address",
   "sandbox.blogBrand.untitledRule": "Untitled",
   "sandbox.blogBrand.valuesBodyPlaceholder":
     "What the brand claims, and the evidence for it",

@@ -118,6 +118,11 @@ export const sandbox = {
   "sandbox.blogBrand.toneLabel": "Tom de voz",
   "sandbox.blogBrand.toneHint":
     "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
+  "sandbox.blogBrand.storeUrlHint":
+    "O domínio público, como o leitor digitaria. É dele que saem os links de produto e categoria — sem ele, eles vêm com o endereço interno da plataforma.",
+  "sandbox.blogBrand.storeUrlInvalid":
+    "Endereço inválido. Precisa começar com http:// ou https://.",
+  "sandbox.blogBrand.storeUrlLabel": "Endereço da loja",
   "sandbox.blogBrand.untitledRule": "Sem título",
   "sandbox.blogBrand.valuesBodyPlaceholder":
     "O que a marca afirma, e a evidência disso",

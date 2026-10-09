@@ -33,6 +33,7 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import { str } from "./blocks/primitives";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import {
@@ -56,6 +57,7 @@ import {
   type CampaignTrigger,
   emptyCampaign,
   newCampaignKey,
+  readBlogContext,
   scanCampaigns,
 } from "./blog-data";
 
@@ -136,6 +138,8 @@ export function CampaignsPanel({
   const [movingKeys, setMovingKeys] = useState<ReadonlySet<string>>(new Set());
 
   const campaigns = scanCampaigns(decofile);
+  /** Where the store actually lives, so picked links are not platform hosts. */
+  const storeUrl = str(readBlogContext(decofile).merged.storeUrl);
   const isLaneCollapsed = (lane: string, empty: boolean) =>
     laneOverrides[lane] ?? empty;
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
@@ -414,6 +418,7 @@ export function CampaignsPanel({
                 onRemove={() => removeCampaign(detailKey)}
                 isSaving={save.isPending}
                 sandboxRef={sandboxRef}
+                storeUrl={storeUrl}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
@@ -457,6 +462,7 @@ export function CampaignsPanel({
               onClose={() => setOpenKey(null)}
               isSaving={save.isPending}
               sandboxRef={sandboxRef}
+              storeUrl={storeUrl}
             />
           )}
         </DialogContent>

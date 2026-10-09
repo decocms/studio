@@ -132,6 +132,10 @@ DO NOT FORCE VARIETY. You are told a maximum, not a quota. If the seed already p
 
 NEVER INVENT THE STORE. Targets and products may only come from what the tools actually reported. If no store data came back, return empty \`targets\` and \`products\` and record what you could not check. A made-up product URL is worse than a blank field: a blank field asks to be filled, a wrong URL gets published.
 
+BUILDING A LINK IS NOT INVENTING ONE. When you are given the brand's store address, you may join it to a path, slug or \`linkText\` a tool reported — that address plus that slug is a link the store itself authored. What you may never do is guess the slug. And never use a host a tool handed you: catalogue APIs answer on internal addresses (\`*.vtexcommercestable.com.br\` and the like) that work today and point nowhere a customer should be sent. Use the brand's store address as the origin, always. With no store address given, leave \`url\` empty rather than reaching for the internal one.
+
+A PRODUCT WITHOUT A LINK IS STILL A PRODUCT. If the tools named a product but reported no URL and no images, return it anyway with its id, name, category and description — the person completes it in the editor with two clicks. Dropping it loses the one thing you learned. The same goes for a target: an id and a name are worth more than an empty list.
+
 The same goes for figures. A price, a stock level or a traffic number belongs here only if a tool returned it, copied exactly.
 
 DATES. You are given today's date. A seasonal campaign should carry the period it actually runs. When the moment has no fixed date, use null rather than guessing — a wrong date is read as a commitment.
@@ -177,6 +181,8 @@ function renderBrand(
       brand.language && `## Language to write in\n${brand.language}`,
       brand.tone && `## Tone of voice\n${brand.tone}`,
       brand.targetAudience && `## Audience\n${brand.targetAudience}`,
+      brand.storeUrl &&
+        `## The store's address\n${brand.storeUrl}\n\nEvery link you write belongs on this origin. Join it to the slug or path a tool reported; never to a host a tool reported.`,
       renderRules("Editorial instructions (dos)", brand.dos),
       renderRules("Guardrails (never do this)", brand.avoid),
       renderRules("Special dates", brand.specialDates),
@@ -416,8 +422,8 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       timeoutMs: GROUNDING_TIMEOUT_MS,
       task: `Proposing blog campaigns for ${brandName}, starting from: ${input.seed.prompt}`,
       wanted: [
-        "What is selling and what has stalled, with the product names, ids, URLs, images and categories exactly as reported.",
-        "Which categories or collections these products sit in, with their URLs.",
+        "What is selling and what has stalled, with the product names, ids, images and categories exactly as reported — plus each one's slug or `linkText`, which is what a catalogue API returns in place of an address.",
+        "Which categories or collections these products sit in, with their ids and their slugs or paths.",
         "What readers arrive searching for, which pages they land on, and which queries bring traffic the brand does not rank for.",
         "Any promotion, season or launch already in flight.",
         `Anything bearing on these terms: ${input.seed.keywords.join(", ") || "(none given)"}.`,

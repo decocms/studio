@@ -11,6 +11,7 @@
  * shared `useSaveBlock`/`useDeleteBlock`, whose `decoBlockFilePath` already
  * reproduces that encoding.
  */
+import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
 import {
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
@@ -1299,6 +1300,7 @@ export const BRAND_FIELDS = [
   "companyName",
   "description",
   "language",
+  "storeUrl",
   "targetAudience",
   "values",
   "competitors",
@@ -1404,9 +1406,14 @@ export function contextForTools(merged: Record<string, unknown>) {
     companyName: str(merged.companyName),
     description: str(merged.description),
     language: str(merged.language),
+    // Normalised here so no tool ever receives an unusable address: a prompt
+    // that composes links from a half-typed host produces links nobody can open.
+    storeUrl: sanitizeSiteUrl(str(merged.storeUrl)) ?? "",
     tone: str(merged.tone),
     targetAudience: str(merged.targetAudience),
     values: filledBrandRules(normalizeBrandRules(merged.values)),
+    competitors: filledBrandRules(normalizeBrandRules(merged.competitors)),
+    specialDates: filledBrandRules(normalizeBrandRules(merged.specialDates)),
     dos: filledBrandRules(normalizeBrandRules(merged.dos)),
     avoid: filledBrandRules(normalizeBrandRules(merged.avoid)),
     keywords: filledTerms(normalizeTerms(merged.keywords)),
