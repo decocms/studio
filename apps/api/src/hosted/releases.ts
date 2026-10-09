@@ -15,6 +15,7 @@ import {
   listRevisionShas,
 } from "./delivery-store";
 import {
+  ensureRevision,
   type HostedRepo,
   type LatestPointer,
   readLatest,
@@ -130,6 +131,27 @@ export async function makeCurrent(
     schemaHash,
     // Every latest.json write is stamped now: the SDK prefers the CDN only
     // when publishedAt is later than its bundle's build time.
+    publishedAt: new Date().toISOString(),
+  };
+  await writeLatest(repo, pointer);
+  return pointer;
+}
+
+/**
+ * "Try again" after a Publish that committed but didn't go live (`release`
+ * `created` or `none`): main's head gets its companion release when it is
+ * missing, and is made current. The head holds every published change, the
+ * failed Publish's included, so this never rolls back a newer Publish; and
+ * its schema is main's own, so there is nothing to confirm.
+ */
+export async function makeHeadCurrent(
+  repo: HostedRepo,
+): Promise<LatestPointer> {
+  const head = await requireBranchHead(repo.client, repo.mainBranch);
+  const schemaHash = await ensureRevision(repo, head);
+  const pointer: LatestPointer = {
+    revision: head,
+    schemaHash,
     publishedAt: new Date().toISOString(),
   };
   await writeLatest(repo, pointer);
