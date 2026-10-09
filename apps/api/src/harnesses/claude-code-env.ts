@@ -41,7 +41,7 @@ export function claudeSubscriptionChatModel(): {
   credentialId: string;
   thinking: { id: string; title: string; provider: string };
 } {
-  const id = CLAUDE_CODE_MODEL.anthropic.default;
+  const id = CLAUDE_CODE_MODEL.anthropic.chat;
   return {
     credentialId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
     thinking: { id, title: id, provider: "anthropic" },
@@ -56,6 +56,10 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * `chosenModel` below) — the SDK drives the `claude` CLI, which only works
  * against Claude models, so any other slot id is not usable here.
  *
+ * `default` is a task-board run's builder. `chat` is an interactive chat, which
+ * honors the model the chat picked and otherwise gets the cheaper tier: a chat
+ * is mostly conversation and lookups, and on Opus a short one cost ~$2.
+ *
  * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
  * those two ran MORE threads than the Super Agent on one month of production
@@ -69,7 +73,7 @@ const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
  * priced for, and it is a class of its own rather than `reviewer` so the run
  * metadata says what the run actually was.
  */
-export type ClaudeCodeModelClass = "default" | "reviewer" | "conflict";
+export type ClaudeCodeModelClass = "default" | "chat" | "reviewer" | "conflict";
 
 const CLAUDE_CODE_MODEL: Record<
   "anthropic" | "openrouter",
@@ -77,11 +81,13 @@ const CLAUDE_CODE_MODEL: Record<
 > = {
   anthropic: {
     default: "claude-opus-5-5",
+    chat: "claude-sonnet-5-5",
     reviewer: "claude-sonnet-5",
     conflict: "claude-sonnet-5",
   },
   openrouter: {
     default: "anthropic/claude-opus-5.5",
+    chat: "anthropic/claude-sonnet-5.5",
     reviewer: "anthropic/claude-sonnet-5",
     conflict: "anthropic/claude-sonnet-5",
   },
@@ -138,6 +144,7 @@ export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 32_000;
  */
 const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   default: null,
+  chat: null,
   reviewer: 60,
   conflict: 60,
 };
@@ -172,6 +179,14 @@ const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
  */
 const TOOL_SEARCH = "1";
 
+/**
+ * Five-minute prompt cache instead of the CLI's default one hour. A 1h write is
+ * billed at 2x input against 1.25x for 5m, and a chat turn writes ~200k tokens
+ * of prompt that is rarely reused an hour later, so the longer TTL only raised
+ * the price of every write.
+ */
+const PROMPT_CACHE_5M = "1";
+
 /** The subset of a resolved model source this needs. */
 export interface ClaudeCodeCredential {
   providerId: string;
@@ -202,12 +217,12 @@ export class UnsupportedClaudeCodeProviderError extends Error {
 export function claudeCodeEnvFromCredential(
   credential: ClaudeCodeCredential,
   modelClass: ClaudeCodeModelClass = "default",
-  /** The model the chat picked; honored only for the default class. */
+  /** The model the chat picked; honored only for the chat class. */
   chosenModel?: string,
 ): Record<string, string | null> {
   const { providerId, apiKey, baseUrl } = credential;
   const modelFor = (shape: "anthropic" | "openrouter") =>
-    modelClass === "default" &&
+    modelClass === "chat" &&
     chosenModel &&
     isClaudeCodeModel(shape === "anthropic" ? shape : providerId, chosenModel)
       ? chosenModel
@@ -220,6 +235,7 @@ export function claudeCodeEnvFromCredential(
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
+    FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
   };
   if (providerId === "anthropic") {
     return {

@@ -150,6 +150,8 @@ export const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
+  ConnectionTools.CONNECTION_TOOLS_SEARCH,
+  ConnectionTools.CONNECTION_TOOL_CALL,
   ReportsTools.REPORTS_SETUP,
   ReportsTools.REPORTS_RUN,
   ReportsTools.REPORTS_BIND,

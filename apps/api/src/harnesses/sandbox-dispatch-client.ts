@@ -345,13 +345,12 @@ export class SandboxDispatchClient {
 
   /**
    * The MCP surfaces one run gets: its own narrow Studio endpoint (`mcp`), plus
-   * the connections it mounts as servers of their own (`orgMcps`) — the agent's
-   * own aggregations always, the rest of the org's behind a flag. See
-   * {@link orgMcpConnections}.
-   *
-   * The org-wide half is flagged because it is unbounded: each connection is one
-   * more server the harness connects to, and nothing here knows whether an org
-   * has three connections or thirty.
+   * the agent's own aggregations mounted as servers of their own (`orgMcps`).
+   * The rest of the org's connections (behind a flag, see
+   * {@link orgMcpConnections}) are granted on the key but NOT mounted: the run
+   * reaches them through `CONNECTION_TOOLS_SEARCH` / `CONNECTION_TOOL_CALL` on
+   * its Studio endpoint. Mounted, Claude Code announces every tool by name on
+   * the first turn — ~90 connections came to ~200k prompt tokens a request.
    *
    * The connections are resolved BEFORE the key is minted, because they are
    * part of its scope: every proxied tool call is authorized as
@@ -369,10 +368,11 @@ export class SandboxDispatchClient {
     dispatcherUserId: string,
     agent: Promise<VirtualMCPEntity | null>,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
-    const [candidates, authority, thread] = await Promise.all([
+    const [candidates, authority, thread, ownAgent] = await Promise.all([
       this.orgMcpConnections(organization, agent),
       this.dispatcherAuthority(organization.id, dispatcherUserId),
       this.ctx.storage.threads.get(threadId),
+      agent,
     ]);
     const grants = connectionGrantsFor({
       ...authority,
@@ -404,12 +404,20 @@ export class SandboxDispatchClient {
         grants,
       }),
     );
-    if (connections.length === 0 || !organization.slug) return { mcp };
+    const ownIds = new Set(
+      (ownAgent?.connections ?? []).map(
+        (aggregation) => aggregation.connection_id,
+      ),
+    );
+    const mounted = connections.filter((connection) =>
+      ownIds.has(connection.id),
+    );
+    if (mounted.length === 0 || !organization.slug) return { mcp };
     const orgMcps = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
       headers: mcp.headers,
-      connections,
+      connections: mounted,
     });
     console.log(
       `[${SANDBOX_HOSTED_HARNESS}] org mcps: ${
@@ -509,14 +517,17 @@ export class SandboxDispatchClient {
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
     const runMetadata = this.ctx.metadata?.runMetadata;
-    const modelEnv = claudeCodeEnvFromCredential(
-      this.credential,
-      modelClassFromMetadata(runMetadata?.[MODEL_CLASS_METADATA_KEY]),
-      // Task-board runs carry a run class and keep their per-class model.
-      runMetadata?.[RUN_CLASS_METADATA_KEY]
-        ? undefined
-        : input.models.thinking.id,
-    );
+    // Task-board runs carry a run class and keep their per-class model.
+    const modelEnv = runMetadata?.[RUN_CLASS_METADATA_KEY]
+      ? claudeCodeEnvFromCredential(
+          this.credential,
+          modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
+        )
+      : claudeCodeEnvFromCredential(
+          this.credential,
+          "chat",
+          input.models.thinking.id,
+        );
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(

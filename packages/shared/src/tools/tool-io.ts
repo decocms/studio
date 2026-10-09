@@ -2429,6 +2429,33 @@ export interface StudioToolIO {
     input: { id: string };
     output: { id: string; healthy: boolean; latencyMs: number };
   };
+  CONNECTION_TOOLS_SEARCH: {
+    input: {
+      query: string;
+      limit?: number | undefined;
+      withSchema?: boolean | undefined;
+    };
+    output: {
+      tools: {
+        name: string;
+        description: string;
+        connections: { id: string; title: string }[];
+        inputSchema?: unknown;
+      }[];
+    };
+  };
+  CONNECTION_TOOL_CALL: {
+    input: {
+      connectionId: string;
+      toolName: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: {
+      content: unknown[];
+      structuredContent?: unknown;
+      isError?: boolean | undefined;
+    };
+  };
   REPORTS_SETUP: {
     input: { siteUrl: string };
     output: {
@@ -4940,7 +4967,7 @@ export interface StudioToolIO {
         | "failed"
         | "completed"
         | undefined;
-      kind?: "automation" | "chat" | "task" | undefined;
+      kind?: "automation" | "task" | "chat" | undefined;
       limit?: number | undefined;
     };
     output: {
@@ -4952,7 +4979,7 @@ export interface StudioToolIO {
         orgSlug: string;
         title: string;
         status: string;
-        kind: "automation" | "chat" | "task";
+        kind: "automation" | "task" | "chat";
         failureKind: string | null;
         failureReason: string | null;
         lastError: string | null;
@@ -7345,9 +7372,9 @@ export interface StudioToolIO {
           conclusion:
             | "success"
             | "skipped"
+            | "cancelled"
             | "failure"
             | "neutral"
-            | "cancelled"
             | "timed_out"
             | "action_required"
             | null;
@@ -7488,7 +7515,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("connection" | "task" | "thread")[] | undefined;
+      types?: ("task" | "connection" | "thread")[] | undefined;
     };
     output: {
       items: (
