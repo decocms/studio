@@ -168,6 +168,11 @@ class BridgeStore {
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private unsubTheme: (() => void) | null = null;
+  // The tool input (serialized) the view has received a result for. A view is
+  // one tool invocation, so a second result for the same input — a background
+  // refetch — reads to the app as a new invocation and resets whatever the
+  // user had navigated to inside it.
+  private resultSentFor: string | null = null;
 
   // --- observable snapshot (React subscribes to this) ---
   private snapshot: BridgeSnapshot;
@@ -219,8 +224,19 @@ class BridgeStore {
       this.bridge.sendToolInput({ arguments: config.toolInput });
     }
     if (config.toolResult !== prev.toolResult && config.toolResult != null) {
-      this.bridge.sendToolResult(config.toolResult);
+      this.sendToolResult(this.bridge, config.toolResult, config.toolInput);
     }
+  }
+
+  private sendToolResult(
+    bridge: AppBridge,
+    toolResult: CallToolResult,
+    toolInput: Record<string, unknown> | undefined,
+  ) {
+    const inputKey = JSON.stringify(toolInput ?? {});
+    if (this.resultSentFor === inputKey) return;
+    this.resultSentFor = inputKey;
+    bridge.sendToolResult(toolResult);
   }
 
   /** Rebuild and push full host context to the bridge (e.g. on theme change). */
@@ -318,6 +334,7 @@ class BridgeStore {
    *  contentWindow. Closes any prior bridge first (reload rebind). */
   private connectBridge(iframe: HTMLIFrameElement) {
     this.clearTimeout();
+    this.resultSentFor = null;
     this.unsubTheme?.();
     this.unsubTheme = null;
     if (this.bridge) {
@@ -446,7 +463,7 @@ class BridgeStore {
         bridge.sendToolInput({ arguments: toolInput });
       }
       if (toolResult != null) {
-        bridge.sendToolResult(toolResult);
+        this.sendToolResult(bridge, toolResult, toolInput);
       }
     };
   }

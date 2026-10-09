@@ -72,10 +72,15 @@ function AppRenderer({
     return "fullscreen";
   };
   const toolInput = args ?? EMPTY_TOOL_INPUT;
+  // The running app never receives a refetched result for the same input (see
+  // BridgeStore.sendToolResult), so refetching on focus would only re-run the
+  // tool for nothing.
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
     toolArguments: toolInput,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const clientId = getGatewayClientId(tool._meta);
