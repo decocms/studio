@@ -13,9 +13,9 @@ import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {
+  describePublishFailure,
   notifySubmittedForReview,
   publishNoteParts,
-  reportPublishFailure,
   runPublishFlow,
   runSubmitForReviewFlow,
   type PublishTarget,
@@ -115,6 +115,15 @@ export function useCmsPublishActions(
         : t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
     );
 
+  /** A follow-up after a finished Publish: its failure isn't the Publish's. */
+  const quietly = async (followUp?: () => void | Promise<void>) => {
+    try {
+      await followUp?.();
+    } catch {
+      // The Publish already succeeded (and said so); a stale list re-reads.
+    }
+  };
+
   const invalidateVersions = () =>
     queryClient.invalidateQueries({
       queryKey: KEYS.hostedReleases(target.orgSlug, target.virtualMcpId),
@@ -138,7 +147,7 @@ export function useCmsPublishActions(
     // A mounted Versions screen shows the new version and what is live.
     void invalidateVersions();
     onOpenChange(false);
-    await onPublished?.();
+    await quietly(onPublished);
   };
 
   const publishHosted = async () => {
@@ -175,11 +184,28 @@ export function useCmsPublishActions(
       );
       onOpenChange(false);
       // Together: awaiting the PR re-read first let the stale open PR render.
-      await Promise.all([onPullRequestChanged?.(), onPublished?.()]);
+      await Promise.all([quietly(onPullRequestChanged), quietly(onPublished)]);
     } catch (error) {
-      const failure = reportPublishFailure(error, t);
-      setPublishError(failure.message);
-      if (failure.pullRequestOpened) await onPullRequestChanged?.();
+      // One message in the dialog, in plain words (no toast on top of it);
+      // the step's own error, and the pull request a failed merge left
+      // open, go behind Details.
+      const failure = describePublishFailure(error, t);
+      setPublishError(
+        failure.headMoved ? failure.message : t("siteEditor.publish.failed"),
+      );
+      setPublishErrorDetail(
+        failure.headMoved
+          ? null
+          : [
+              failure.pullRequest
+                ? `#${failure.pullRequest.number} ${failure.pullRequest.htmlUrl}`
+                : null,
+              errorDetail(error),
+            ]
+              .filter(Boolean)
+              .join("\n") || null,
+      );
+      if (failure.pullRequest) await quietly(onPullRequestChanged);
       // Nothing was published — re-read so the list matches the new head.
       if (failure.headMoved) await refresh();
     } finally {
@@ -200,7 +226,7 @@ export function useCmsPublishActions(
       onOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {
-      const failure = reportPublishFailure(error, t);
+      const failure = describePublishFailure(error, t);
       setPublishError(
         failure.message || t("thread.publishDialog.failedSubmitForReview"),
       );

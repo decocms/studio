@@ -13,12 +13,14 @@ const SITE_EDITOR_PREFIXES = [
   "releases.",
   "common.mainPanelTabs.releases",
   "projects.apps.releases",
+  "thread.publishPopover.",
 ];
 
 const BANNED: RegExp[] = [
   /\bCDN\b/i,
   /\bmerge[ds]?\b/i,
-  /mesclad/i,
+  /mescl/i,
+  /\brebase/i,
   /\bcommit/i,
   /\bgit\b/i,
   /\bbranch/i,
