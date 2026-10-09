@@ -4,16 +4,20 @@
  * `?preview=`/`?skill=`/`?brand=`. Precedence mirrors the panel's own
  * (preview › skill › brand), and the view wins over both.
  *
- * Dismissing it (the composer chip's X) holds only for that file: opening
- * another one brings the chip, and the context, back.
+ * Dismissing it (the composer chip's X) holds only while that file stays open
+ * in that org and thread: closing it, opening another, or switching chats
+ * brings the chip, and the context, back — however the file was opened.
  */
 
 import { useSyncExternalStore } from "react";
 import { useSearch } from "@tanstack/react-router";
+import { useProjectContext } from "@/sdk";
+import { useRouteThreadId } from "@/layouts/thread-route";
 import { parseLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 
-let dismissedPath: string | null = null;
+/** `org:thread:path` of the dismissed file. */
+let dismissedKey: string | null = null;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -24,8 +28,8 @@ function subscribe(listener: () => void) {
 }
 
 function setDismissed(path: string | null) {
-  if (dismissedPath === path) return;
-  dismissedPath = path;
+  if (dismissedKey === path) return;
+  dismissedKey = path;
   for (const listener of listeners) listener();
 }
 
@@ -45,10 +49,12 @@ export function useOpenLibraryFile(): {
     brand?: string;
   };
   const activeTabId = useActivePanelTabId();
+  const { org } = useProjectContext();
+  const threadId = useRouteThreadId();
   const dismissed = useSyncExternalStore(
     subscribe,
-    () => dismissedPath,
-    () => dismissedPath,
+    () => dismissedKey,
+    () => dismissedKey,
   );
   const path =
     parseLibraryFileTabId(activeTabId)?.path ??
@@ -56,6 +62,13 @@ export function useOpenLibraryFile(): {
     search.skill ??
     search.brand ??
     null;
-  if (!path || path === dismissed) return null;
-  return { path, dismiss: () => setDismissed(path) };
+  if (!path) {
+    /** Closed: a reopen must show the chip again. Silent, because no reader
+     *  shows anything for a closed file, and idempotent, so safe in render. */
+    dismissedKey = null;
+    return null;
+  }
+  const key = `${org.id}:${threadId ?? ""}:${path}`;
+  if (key === dismissed) return null;
+  return { path, dismiss: () => setDismissed(key) };
 }

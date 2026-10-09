@@ -148,10 +148,6 @@ export const library = {
     'Nenhum arquivo corresponde a "{query}".',
   "library.libraryViews.noPublicSkillSetsConfigured":
     "Nenhum conjunto de skills público configurado.",
-  "library.libraryViews.volumeOutputsDescription":
-    "Saídas de execução de agentes",
-  "library.libraryViews.volumeUploadsDescription":
-    "Arquivos que seu time envia",
   "library.syncedRepos.syncedAgo": "Sincronizado {ago}",
   "library.syncedRepos.waitingFirstSync": "Aguardando primeira sincronização",
   "library.previewContent.close": "Fechar",

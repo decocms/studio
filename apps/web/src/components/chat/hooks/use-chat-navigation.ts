@@ -7,7 +7,11 @@ import {
   navigateToTabRouteTarget,
   tabRouteLocation,
 } from "@/layouts/main-panel-tabs/tab-route";
-import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
+import {
+  useRouteAgentId,
+  useRouteThreadId,
+  useRouteVirtualMcpId,
+} from "@/layouts/thread-route";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
 
 export interface ChatNavigation {
@@ -39,6 +43,7 @@ export function useChatNavigation(): ChatNavigation {
    * pages fall back to Decopilot.
    */
   const virtualMcpId = useRouteVirtualMcpId();
+  const routeAgentId = useRouteAgentId();
   const activeTabId = useActivePanelTabId();
   const search = useSearch({ strict: false }) as { sidepanel?: boolean };
 
@@ -54,10 +59,12 @@ export function useChatNavigation(): ChatNavigation {
      * to its agent overview; agent-owned views carry forward as themselves. */
     const targetAgentId = opts?.virtualMcpId ?? virtualMcpId;
     const superAgentId = getWellKnownDecopilotVirtualMCP(org.id).id;
-    /** The org's own chat needs no agent in the path, so on an org page it
-     *  opens in place: the folder and file the question is about stay open. */
+    /** The org's own chat needs no agent in the path, so on a route that
+     *  names no agent it opens in place: the folder and file the question is
+     *  about stay open. A project's Library names its agent and must not. */
     if (
       targetAgentId === superAgentId &&
+      routeAgentId === undefined &&
       carried &&
       tabRouteLocation(carried).kind === "org-destination"
     ) {
@@ -66,7 +73,9 @@ export function useChatNavigation(): ChatNavigation {
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           thread: taskId,
-          ...(opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {}),
+          /** Thread-scoped: the thread being left must not describe this one. */
+          mainpanel: undefined,
+          autosend: opts?.autosend ? AUTOSEND_QUERY_VALUE : undefined,
         }),
       });
       return;

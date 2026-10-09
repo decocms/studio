@@ -16,14 +16,7 @@ import {
   matchesLibraryFileView,
   matchesLibraryModified,
 } from "./file-view";
-import {
-  Grid01,
-  List,
-  Palette,
-  Stars01,
-  Upload01,
-  Zap,
-} from "@untitledui/icons";
+import { Grid01, List, Palette, Zap } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
@@ -67,6 +60,7 @@ import {
   basename,
   browsePathFor,
   browsePathForEntry,
+  isGeneratedId,
   type LibraryLocation,
   namedFolderOf,
   publicSetOf,
@@ -102,21 +96,9 @@ function publicStateOf(e: {
 export const LIBRARY_VOLUMES = [HOME_MOUNT_PATH, "uploads", "outputs"] as const;
 
 /** Volumes filled by chat and by agent work rather than by hand, presented as
- *  system folders inside the home listing: graphite tone + a body glyph, so it
- *  reads as "the product owns this". Their mounts are unchanged — only the
- *  presentation moved (and `public` presents as "skills", see `segmentLabel`). */
-const SYSTEM_FOLDERS = [
-  {
-    volume: "uploads",
-    descriptionKey: "library.libraryViews.volumeUploadsDescription" as const,
-    glyph: Upload01,
-  },
-  {
-    volume: "outputs",
-    descriptionKey: "library.libraryViews.volumeOutputsDescription" as const,
-    glyph: Stars01,
-  },
-] as const;
+ *  places of their own. Their mounts are unchanged — only the presentation
+ *  moved (and `public` presents as "skills", see `segmentLabel`). */
+const SYSTEM_FOLDERS = ["uploads", "outputs"] as const;
 
 /** The names the home listing already occupies with system-folder cards. A
  *  hand-made folder with one of these names would sit in the same grid under
@@ -127,7 +109,7 @@ const SYSTEM_FOLDERS = [
  *  volume — the one holding a folder per project — and it is pinned to the top
  *  of the drive rather than sorted in with the rest. */
 export const SYSTEM_FOLDER_NAMES: ReadonlySet<string> = new Set([
-  ...SYSTEM_FOLDERS.map((f) => f.volume),
+  ...SYSTEM_FOLDERS,
   PROJECTS_FOLDER,
   segmentLabel("public"),
 ]);
@@ -598,18 +580,18 @@ function Recent({
 }
 
 /** Volumes the product fills one chat folder at a time. */
-const CHAT_VOLUMES: ReadonlySet<string> = new Set(
-  SYSTEM_FOLDERS.map((f) => f.volume),
-);
+const CHAT_VOLUMES: ReadonlySet<string> = new Set(SYSTEM_FOLDERS);
 
 export function isChatVolume(volume: string | null): boolean {
   return volume !== null && CHAT_VOLUMES.has(volume);
 }
 
-/** A chat-filled volume as its files: its folders are chat ids, mostly empty. */
+/** A chat-filled volume as its files: the chat-id folders, mostly empty, give
+ *  way to the files inside them. Folders a person named still lead. */
 export function ChatFilesView({
   volume,
   view,
+  onOpenDir,
   onOpenFile,
   onShare,
   onDelete,
@@ -617,6 +599,7 @@ export function ChatFilesView({
 }: {
   volume: string;
   view: ListingView;
+  onOpenDir: (path: string) => void;
   onOpenFile: (previewPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
@@ -625,12 +608,28 @@ export function ChatFilesView({
   const t = useT();
   const fileUrl = useOrgFsFileUrl();
   const volumeFiles = useOrgFsVolumeFiles(volume);
+  const rootListing = useOrgFsList(volume, "");
 
-  if (volumeFiles.isPending) return <ListingSkeleton layout={view.layout} />;
+  if (volumeFiles.isPending || rootListing.isPending) {
+    return <ListingSkeleton layout={view.layout} />;
+  }
+  const failed = volumeFiles.error ?? rootListing.error;
+  if (failed) {
+    return (
+      <p className="text-sm text-destructive">
+        {failed instanceof Error
+          ? failed.message
+          : t("library.libraryViews.failedToLoad")}
+      </p>
+    );
+  }
   const all = volumeFiles.data ?? [];
   const files = all.filter((e) => matchesView(e, view));
+  const folders = (rootListing.data ?? []).filter(
+    (e) => e.kind === "dir" && !isGeneratedId(basename(e.path)),
+  );
 
-  if (files.length === 0) {
+  if (files.length === 0 && folders.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border">
         <EmptyState
@@ -643,47 +642,71 @@ export function ChatFilesView({
     );
   }
 
+  const folderTiles = folders.length > 0 && (
+    <Section label={t("library.libraryViews.folders")} count={folders.length}>
+      <FolderTiles>
+        {folders.map((e, index) => (
+          <FolderTile
+            key={e.path}
+            name={basename(e.path)}
+            counts={{
+              volume,
+              path: e.path,
+              enabled: index < FOLDER_COUNT_LIMIT,
+            }}
+            onOpen={() => onOpenDir(browsePathForEntry(volume, e.path))}
+            onDelete={() => onDelete({ volume, path: e.path, kind: "dir" })}
+          />
+        ))}
+      </FolderTiles>
+    </Section>
+  );
+  if (files.length === 0) return folderTiles;
+
   const sorted = sortEntries(files.map(toLibraryEntry), view.sort);
   return (
-    <FilesSection
-      view={view}
-      count={files.length}
-      note={
-        all.length >= VOLUME_FILES_LIMIT
-          ? t("library.libraryViews.newestOnly", { count: all.length })
-          : undefined
-      }
-    >
-      {sorted.map((item) => {
-        const previewPath = browsePathForEntry(volume, item.path);
-        const downloadUrl = fileUrl(volume, item.path);
-        return (
-          <FileEntry
-            key={item.path}
-            entry={item}
-            view={view}
-            selected={view.previewPath === previewPath}
-            publicState={publicStateOf(item.entry)}
-            downloadUrl={downloadUrl}
-            actions={{
-              onOpen: () => onOpenFile(previewPath),
-              download: { url: downloadUrl, filename: item.name },
-              onShare: () =>
-                onShare({
-                  volume,
-                  path: item.path,
-                  kind: "file",
-                  shareMode: item.entry.shareMode ?? "private",
-                  effectivePublic: item.entry.effectivePublic ?? false,
-                  url: publicFileUrl(downloadUrl),
-                }),
-              onDelete: () =>
-                onDelete({ volume, path: item.path, kind: "file" }),
-            }}
-          />
-        );
-      })}
-    </FilesSection>
+    <>
+      {folderTiles}
+      <FilesSection
+        view={view}
+        count={files.length}
+        note={
+          all.length >= VOLUME_FILES_LIMIT
+            ? t("library.libraryViews.newestOnly", { count: all.length })
+            : undefined
+        }
+      >
+        {sorted.map((item) => {
+          const previewPath = browsePathForEntry(volume, item.path);
+          const downloadUrl = fileUrl(volume, item.path);
+          return (
+            <FileEntry
+              key={item.path}
+              entry={item}
+              view={view}
+              selected={view.previewPath === previewPath}
+              publicState={publicStateOf(item.entry)}
+              downloadUrl={downloadUrl}
+              actions={{
+                onOpen: () => onOpenFile(previewPath),
+                download: { url: downloadUrl, filename: item.name },
+                onShare: () =>
+                  onShare({
+                    volume,
+                    path: item.path,
+                    kind: "file",
+                    shareMode: item.entry.shareMode ?? "private",
+                    effectivePublic: item.entry.effectivePublic ?? false,
+                    url: publicFileUrl(downloadUrl),
+                  }),
+                onDelete: () =>
+                  onDelete({ volume, path: item.path, kind: "file" }),
+              }}
+            />
+          );
+        })}
+      </FilesSection>
+    </>
   );
 }
 
@@ -853,19 +876,15 @@ export function VolumeView({
                 : undefined,
           });
 
-  // Folders have no file type, so any type filter hides them.
-  const keepsDir = (e: OrgFsEntry) =>
-    view.fileView === "all" &&
-    matchesLibraryModified(e.updatedAt, view.modified);
-  const skills = entries.filter(
-    (e) => e.kind === "dir" && e.hasSkill && keepsDir(e),
-  );
+  /** Filters narrow files only: a folder is how a person reaches the files
+   *  that match, and its own `updatedAt` does not move with its children. */
+  const skills = entries.filter((e) => e.kind === "dir" && e.hasSkill);
   // Skill wins over brand if a dir somehow carries both markers.
   const brands = entries.filter(
-    (e) => e.kind === "dir" && e.hasBrand && !e.hasSkill && keepsDir(e),
+    (e) => e.kind === "dir" && e.hasBrand && !e.hasSkill,
   );
   const dirs = entries.filter(
-    (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand && keepsDir(e),
+    (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand,
   );
   const files = entries.filter(
     (e) => e.kind === "file" && matchesView(e, view),

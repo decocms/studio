@@ -698,6 +698,7 @@ export function LibraryPage({
               key={location.volume}
               volume={location.volume}
               view={view}
+              onOpenDir={onOpenDir}
               onOpenFile={onOpenFile}
               onShare={setShareTarget}
               onDelete={setPendingDelete}

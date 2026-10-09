@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { createContext, use, useRef } from "react";
+import { createContext, isValidElement, use, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -313,7 +313,17 @@ function ChatLayoutContent({
         <div className="h-full min-h-0 min-w-0 flex-1 p-0.5">{panel}</div>
         {aside && (
           <div className="h-full min-h-0 w-[42%] min-w-80 shrink-0 p-0.5">
-            <Panel data-testid="aside-panel">{aside}</Panel>
+            <Panel data-testid="aside-panel">
+              {/* Keyed like the aside itself, so opening another file clears
+                  a previous one's failure. */}
+              <ErrorBoundary
+                key={
+                  isValidElement(aside) ? (aside.key ?? undefined) : undefined
+                }
+              >
+                <MainPanelBoundary>{aside}</MainPanelBoundary>
+              </ErrorBoundary>
+            </Panel>
           </div>
         )}
       </div>

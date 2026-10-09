@@ -188,33 +188,30 @@ export function DeckToolbar({
     </>
   );
 
+  const railLabel = editor.railOpen
+    ? t("deck.deckToolbar.hideSlideList")
+    : t("deck.deckToolbar.showSlideList");
+  const railToggle = editor.deckDetected && (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={editor.railOpen ? "secondary" : button.variant}
+          size={button.size}
+          aria-pressed={editor.railOpen}
+          aria-label={railLabel}
+          onClick={() => editor.setRailOpen(!editor.railOpen)}
+        >
+          <LayoutLeft size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{railLabel}</TooltipContent>
+    </Tooltip>
+  );
+
   if (placement === "topbar") {
     return (
       <Page.Actions>
-        {editor.deckDetected && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={editor.railOpen ? "secondary" : button.variant}
-                size={button.size}
-                aria-pressed={editor.railOpen}
-                aria-label={
-                  editor.railOpen
-                    ? t("deck.deckToolbar.hideSlideList")
-                    : t("deck.deckToolbar.showSlideList")
-                }
-                onClick={() => editor.setRailOpen(!editor.railOpen)}
-              >
-                <LayoutLeft size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {editor.railOpen
-                ? t("deck.deckToolbar.hideSlideList")
-                : t("deck.deckToolbar.showSlideList")}
-            </TooltipContent>
-          </Tooltip>
-        )}
+        {railToggle}
         {controls}
       </Page.Actions>
     );
@@ -227,30 +224,7 @@ export function DeckToolbar({
         className,
       )}
     >
-      {editor.deckDetected && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={editor.railOpen ? "secondary" : button.variant}
-              size={button.size}
-              aria-pressed={editor.railOpen}
-              aria-label={
-                editor.railOpen
-                  ? t("deck.deckToolbar.hideSlideList")
-                  : t("deck.deckToolbar.showSlideList")
-              }
-              onClick={() => editor.setRailOpen(!editor.railOpen)}
-            >
-              <LayoutLeft size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {editor.railOpen
-              ? t("deck.deckToolbar.hideSlideList")
-              : t("deck.deckToolbar.showSlideList")}
-          </TooltipContent>
-        </Tooltip>
-      )}
+      {railToggle}
       <button
         type="button"
         onClick={() => window.open(absoluteUrl, "_blank", "noopener")}

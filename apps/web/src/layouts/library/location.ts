@@ -151,6 +151,11 @@ export function libraryTrail(browsePath: string, root: string): LibraryCrumb[] {
 const GENERATED_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A folder named by an id the product generated, such as a chat's. */
+export function isGeneratedId(segment: string): boolean {
+  return GENERATED_ID.test(segment);
+}
+
 /** The folder a file is in, as a person would name it. A generated-id folder
  *  (each chat upload gets one) belongs to the folder above it. */
 export function namedFolderOf(path: string): string {

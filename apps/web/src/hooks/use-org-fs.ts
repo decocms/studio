@@ -168,6 +168,23 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
   });
 }
 
+/** The most the volume files route returns in one request. */
+export const VOLUME_FILES_LIMIT = 200;
+
+/** A volume's newest files at any depth, in one request. */
+export function useOrgFsVolumeFiles(volume: string) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
+    queryFn: async () => {
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/${encodeURIComponent(volume)}/files?limit=${VOLUME_FILES_LIMIT}`,
+      );
+      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
+    },
+  });
+}
+
 const SEARCH_LIMIT = 50;
 
 /** Narrow a search to one volume and (optionally) one directory subtree. */
@@ -184,34 +201,6 @@ export interface OrgFsSearchScope {
  * runs for non-empty queries; previous results stay on screen while a new
  * query loads.
  */
-/** The most the search route returns in one request. */
-export const VOLUME_FILES_LIMIT = 200;
-
-/**
- * A volume's newest files at any depth, in one request.
- *
- * TODO(api): this borrows the search route with `q="."`, which matches any
- * file with an extension and stops at `VOLUME_FILES_LIMIT`. A flat
- * `GET /fs/:volume/files` over `OrgFs.listVolumeFiles` should replace it.
- */
-export function useOrgFsVolumeFiles(volume: string) {
-  const { org } = useProjectContext();
-  return useQuery({
-    queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        q: ".",
-        volume,
-        limit: String(VOLUME_FILES_LIMIT),
-      });
-      const res = await fsFetch(
-        `/api/${encodeURIComponent(org.slug)}/fs/search?${params}`,
-      );
-      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
-    },
-  });
-}
-
 export function useOrgFsSearch(query: string, scope?: OrgFsSearchScope) {
   const { org } = useProjectContext();
   return useQuery({

@@ -252,10 +252,18 @@ export function FileCard({
 /**
  * Defers rendering children until the sentinel div enters the viewport.
  * Prevents N parallel network requests when many thumbnails mount at once.
+ * With `whileVisible`, the children also unmount once the card scrolls away,
+ * for thumbnails that keep costing while mounted (a live page).
  * The `setVisible` setter is stable across renders so capturing it in the
  * lazy initializer is safe without a ref.
  */
-function LazyThumb({ children }: { children: ReactNode }) {
+function LazyThumb({
+  children,
+  whileVisible = false,
+}: {
+  children: ReactNode;
+  whileVisible?: boolean;
+}) {
   const [visible, setVisible] = useState(false);
   const [attachSentinel] = useState(() => (node: HTMLDivElement | null) => {
     if (!node) return;
@@ -263,15 +271,21 @@ function LazyThumb({ children }: { children: ReactNode }) {
       ([entry]) => {
         if (entry?.isIntersecting) {
           setVisible(true);
-          obs.disconnect();
+          if (!whileVisible) obs.disconnect();
+        } else if (whileVisible) {
+          setVisible(false);
         }
       },
       { rootMargin: "200px" },
     );
     obs.observe(node);
+    return () => obs.disconnect();
   });
-  if (visible) return <>{children}</>;
-  return <div ref={attachSentinel} className="h-full w-full" />;
+  return (
+    <div ref={attachSentinel} className="h-full w-full">
+      {visible && children}
+    </div>
+  );
 }
 
 function TextThumb({ url, filename }: { url: string; filename: string }) {
@@ -349,7 +363,8 @@ function CsvThumb({ url, ext }: { url: string; ext: string }) {
 }
 
 /** A page renders as itself, shrunk: at a quarter scale a deck's cover is
- *  recognisable where its source text is not. No pointer, no focus. */
+ *  recognisable where its source text is not. No pointer, no focus. A live
+ *  page costs while mounted, so it mounts only while its card is on screen. */
 function HtmlThumb({ url, filename }: { url: string; filename: string }) {
   const [loaded, setLoaded] = useState(false);
   return (
@@ -419,7 +434,7 @@ function Thumb({
     );
   } else if (ext === "html" || ext === "htm") {
     inner = (
-      <LazyThumb>
+      <LazyThumb whileVisible>
         <HtmlThumb url={downloadUrl} filename={filename} />
       </LazyThumb>
     );

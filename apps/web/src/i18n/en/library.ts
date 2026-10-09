@@ -141,8 +141,6 @@ export const library = {
   "library.libraryViews.noFilesMatch": 'No files match "{query}".',
   "library.libraryViews.noPublicSkillSetsConfigured":
     "No public skill sets are configured.",
-  "library.libraryViews.volumeOutputsDescription": "Agent run outputs",
-  "library.libraryViews.volumeUploadsDescription": "Files your team uploads",
   "library.syncedRepos.syncedAgo": "Synced {ago}",
   "library.syncedRepos.waitingFirstSync": "Waiting for first sync",
   "library.previewContent.close": "Close",
