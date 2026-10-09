@@ -6,6 +6,8 @@
  */
 export const siteEditor = {
   "siteEditor.details": "Details",
+  "siteEditor.tryAgain": "Try again",
+  "siteEditor.publish.published": "Published",
   "siteEditor.save.failed": "Couldn't save your change. Try again.",
   "siteEditor.save.conflict":
     "Not saved: someone else changed this at the same time. We're loading their version, so make your change again.",

@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
-import { useControlPlaneViews } from "@/hooks/use-organization-settings";
+import {
+  useControlPlaneViews,
+  useOrgFlagState,
+} from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
@@ -16,10 +19,11 @@ export interface ProjectNativeViewPresenceResult {
   presence: ProjectNativeViewPresence;
   assetsPending: boolean;
   siteAccessPending: boolean;
+  releasesPending: boolean;
 }
 
 /**
- * Resolve the five native per-project views once for every surface that needs
+ * Resolve the native per-project views once for every surface that needs
  * them. Product rollout, deployment wiring, tenant ownership, and per-site
  * resources are presence; the Layout preference is deliberately layered on by
  * the sidebar only.
@@ -31,6 +35,8 @@ export function useProjectNativeViewPresence(
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
+  // The hosted Deco CMS (Blocks v8) is behind the content-protocol flag.
+  const hostedCms = useOrgFlagState("site_editor_content_protocol");
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
   const monitorEnabled =
@@ -56,6 +62,7 @@ export function useProjectNativeViewPresence(
   return {
     presence: {
       assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
+      releases: hostedCms === true && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
@@ -63,6 +70,7 @@ export function useProjectNativeViewPresence(
       experiments: controlPlaneViews.experiments,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
+    releasesPending: hostedCms === undefined,
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending:

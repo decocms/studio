@@ -9,7 +9,13 @@ import {
   saveErrorDetail,
   saveErrorMessage,
 } from "./serve-save-error";
-import { SITE_EDITOR_SAVE_TOAST, toastSaveError } from "./site-editor-toast";
+import {
+  SITE_EDITOR_PUBLISH_TOAST,
+  SITE_EDITOR_SAVE_TOAST,
+  toastPublishFailed,
+  toastPublished,
+  toastSaveError,
+} from "./site-editor-toast";
 
 const t: TFunction = (key, vars) => interpolate(en[key], vars);
 
@@ -83,5 +89,77 @@ describe("one toast per save failure", () => {
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_SAVE_TOAST);
     expect(shown).toHaveLength(1);
+  });
+});
+
+describe("one toast per publish", () => {
+  afterEach(() => {
+    toast.dismiss();
+  });
+
+  test("a failure, its retry and the success share one toast", () => {
+    let retried = 0;
+    toastPublishFailed(t, {
+      headline: "Couldn't publish this version.",
+      detail: "latest-update-failed",
+      retry: () => {
+        retried++;
+      },
+    });
+    const failed = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect(failed).toHaveLength(1);
+    const action = (failed[0] as { action?: { label: string } }).action;
+    expect(action?.label).toBe("Try again");
+    // The headline never carries the developer detail.
+    expect((failed[0] as { title?: unknown }).title).toBe(
+      "Couldn't publish this version.",
+    );
+    toastPublished(t, "This version is live.");
+    const shown = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect(shown).toHaveLength(1);
+    expect((shown[0] as { title?: unknown }).title).toBe("Published");
+    // The success doesn't keep the failure's "Try again".
+    expect((shown[0] as { action?: unknown }).action).toBeUndefined();
+    expect(retried).toBe(0);
+  });
+
+  test("Try again keeps the toast, as Publishing…, until the outcome", () => {
+    let retried = 0;
+    toastPublishFailed(t, {
+      headline: "Couldn't publish this version.",
+      retry: () => {
+        retried++;
+      },
+    });
+    const [failed] = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    const action = (
+      failed as { action?: { onClick: (event: unknown) => void } }
+    ).action;
+    let prevented = false;
+    action?.onClick({
+      preventDefault: () => {
+        prevented = true;
+      },
+    });
+    // Sonner skips deleting a toast whose action prevented the default.
+    expect(prevented).toBe(true);
+    expect(retried).toBe(1);
+    const shown = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect(shown).toHaveLength(1);
+    expect((shown[0] as { type?: string }).type).toBe("loading");
+    expect((shown[0] as { action?: unknown }).action).toBeUndefined();
+    toastPublished(t, "This version is live.");
+    const [done] = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect((done as { title?: unknown }).title).toBe("Published");
   });
 });

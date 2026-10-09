@@ -30,6 +30,7 @@ import { discover } from "./discover.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { experiments } from "./experiments.ts";
+import { releases } from "./releases.ts";
 import { common } from "./common.ts";
 import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
@@ -66,6 +67,7 @@ export const en = {
   ...monitoring,
   ...mainPanelTabs,
   ...experiments,
+  ...releases,
   ...markdownEditor,
   ...library,
   ...layouts,

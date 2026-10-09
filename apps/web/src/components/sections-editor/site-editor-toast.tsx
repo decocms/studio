@@ -13,9 +13,18 @@ import { saveErrorDetail, saveErrorMessage } from "./serve-save-error";
 
 /** Every save failure in the site editor shares this toast. */
 export const SITE_EDITOR_SAVE_TOAST = "site-editor-save";
+/** Publishing (from the editor or the Versions screen), its outcome and a
+ *  retry of it share this toast. */
+export const SITE_EDITOR_PUBLISH_TOAST = "site-editor-publish";
 
 /** A collapsed "Details" line holding the developer detail of a failure. */
-function ErrorDetails({ label, detail }: { label: string; detail: string }) {
+export function ErrorDetails({
+  label,
+  detail,
+}: {
+  label: string;
+  detail: string;
+}) {
   return (
     <details className="mt-1 text-xs">
       <summary className="cursor-pointer select-none text-muted-foreground">
@@ -45,6 +54,82 @@ export function toastSaveError(
     id: SITE_EDITOR_SAVE_TOAST,
     description: errorDetailsDescription(t, saveErrorDetail(error, source)),
   });
+}
+
+/**
+ * Sonner merges an update into the toast with the same id, so an outcome
+ * clears what an earlier one set (a failure's "Try again", its stay-open).
+ */
+const FRESH_TOAST = { action: undefined, duration: undefined } as const;
+
+/** Published: what the site shows now. `description` says what went live. */
+export function toastPublished(t: TFunction, description: string) {
+  toast.success(t("siteEditor.publish.published"), {
+    ...FRESH_TOAST,
+    id: SITE_EDITOR_PUBLISH_TOAST,
+    description,
+  });
+}
+
+/**
+ * Publishing didn't finish: `headline` says so in plain words, `detail` (the
+ * error's own text) sits behind Details, and `retry` offers "Try again".
+ * `tone: "warning"` when nothing is lost (the changes are saved).
+ */
+export function toastPublishFailed(
+  t: TFunction,
+  {
+    headline,
+    body,
+    detail,
+    retry,
+    tone = "error",
+  }: {
+    headline: string;
+    body?: string;
+    detail?: string | null;
+    retry?: () => void;
+    tone?: "error" | "warning";
+  },
+) {
+  const details = errorDetailsDescription(t, detail ?? null);
+  toast[tone](headline, {
+    id: SITE_EDITOR_PUBLISH_TOAST,
+    description:
+      body && details ? (
+        <>
+          <p>{body}</p>
+          {details}
+        </>
+      ) : (
+        (body ?? details)
+      ),
+    action: retry
+      ? {
+          label: t("siteEditor.tryAgain"),
+          onClick: (event) => {
+            // Sonner deletes a toast 200ms after its action is clicked, which
+            // would take a fast retry's outcome (same id) down with it. Keep
+            // the toast: it turns into "Publishing…" (also blocking a second
+            // click) until the retry's outcome replaces it.
+            event.preventDefault();
+            toast.loading(t("thread.publishPopover.publishing"), {
+              ...FRESH_TOAST,
+              id: SITE_EDITOR_PUBLISH_TOAST,
+              description: undefined,
+            });
+            retry();
+          },
+        }
+      : undefined,
+    // A failure waits for the user: it carries the next step.
+    duration: retry ? Number.POSITIVE_INFINITY : undefined,
+  });
+}
+
+/** The publish toast gives way to a dialog (a confirm asks the next step). */
+export function dismissPublishToast() {
+  toast.dismiss(SITE_EDITOR_PUBLISH_TOAST);
 }
 
 /** The developer detail of a failed request, for Details. */

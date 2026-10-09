@@ -8,6 +8,7 @@
 
 import type { ReactNode } from "react";
 import {
+  ClockRewind,
   BarChartSquare02,
   Beaker02,
   CheckDone01,
@@ -114,6 +115,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     assets: {
       label: t("common.mainPanelTabs.assets"),
       icon: <Image01 size={16} />,
+    },
+    releases: {
+      label: t("common.mainPanelTabs.releases"),
+      icon: <ClockRewind size={16} />,
     },
     hosting: {
       label: t("common.mainPanelTabs.hosting"),

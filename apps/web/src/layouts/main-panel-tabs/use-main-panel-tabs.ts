@@ -224,6 +224,7 @@ export function useMainPanelTabs(ctx: {
   const nativeViewPending = {
     assets: nativeViews.assetsPending,
     siteAccess: nativeViews.siteAccessPending,
+    releases: nativeViews.releasesPending,
   };
 
   const { activeTab: rawActiveTab, mainOpen } = resolveActiveTabAndOpen({

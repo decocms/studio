@@ -2,6 +2,8 @@ import type { siteEditor as siteEditorEn } from "../en/site-editor.ts";
 
 export const siteEditor = {
   "siteEditor.details": "Detalhes",
+  "siteEditor.tryAgain": "Tentar de novo",
+  "siteEditor.publish.published": "Publicado",
   "siteEditor.save.failed":
     "Não foi possível salvar sua alteração. Tente de novo.",
   "siteEditor.save.conflict":
