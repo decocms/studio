@@ -162,6 +162,7 @@ import {
   setSkillCatalogCache,
   type SkillCatalogCache,
 } from "../file-storage/skill-catalog-cache";
+import { setOrgFsNotifyConnection } from "../file-storage/org-fs-notify";
 import {
   JetStreamKVPrCache,
   PR_CARDS_CACHE,
@@ -1158,6 +1159,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
   setSkillCatalogCache(skillCatalogCache);
+  setOrgFsNotifyConnection(() => natsProvider?.getConnection() ?? null);
   setPrCaches(prCaches);
   setConnectionCircuitStore(connectionCircuitStore);
 
@@ -1258,6 +1260,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setSkillCatalogCache(null);
+    setOrgFsNotifyConnection(null);
     setPrCaches(null);
     setConnectionCircuitStore(null);
   };

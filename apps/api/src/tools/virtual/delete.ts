@@ -19,6 +19,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { deleteAgentPrompts } from "../../file-storage/agent-prompts";
+import { deleteProjectFolder } from "../../file-storage/project-folder";
 import { VirtualMCPEntitySchema } from "./schema";
 import { isUndeletableWellKnownVirtualMcp } from "./well-known-virtual-mcp";
 
@@ -88,9 +89,22 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     // connection), so its token is still readable below.
     await ctx.storage.virtualMcps.delete(input.id);
 
-    // Drop the agent's seeded kickstart prompts from org-fs (best-effort).
+    // Drop the agent's seeded kickstart prompts and its own project folder
+    // from org-fs (best-effort).
     if (ctx.orgFs) {
-      await deleteAgentPrompts(ctx.orgFs, input.id, getUserId(ctx) ?? "system");
+      const actor = getUserId(ctx) ?? "system";
+      await deleteAgentPrompts(ctx.orgFs, input.id, actor);
+      await deleteProjectFolder(
+        ctx.orgFs,
+        organization.id,
+        existing,
+        actor,
+      ).catch((err) =>
+        console.error("[project-folder] delete failed", {
+          projectId: input.id,
+          err,
+        }),
+      );
     }
 
     // Tear down this agent's repo-scoped mcp-github child connection, if the

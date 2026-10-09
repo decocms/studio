@@ -19,7 +19,7 @@ import {
   HOME_MOUNT_PATH,
   SANDBOX_ORG_ROOT,
 } from "@decocms/shared/organization/home-mount";
-import { PROJECTS_FOLDER } from "./project-folder";
+import { PROJECTS_FOLDER } from "@decocms/shared/organization/project-folder";
 
 export interface LibraryLocation {
   /** Raw path segments, as browsed (incl. the `public/<set>` prefix). */

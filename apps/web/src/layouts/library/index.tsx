@@ -2,7 +2,7 @@
  * Library — the org filesystem, as the drive of a computer.
  *
  * Rooted rather than absolute: `root` is the top of the tree, the org's home
- * folder or one project's (`project-folder.ts`). The breadcrumb starts there,
+ * folder or one project's (`@decocms/shared/organization/project-folder`). The breadcrumb starts there,
  * search narrows under it, and nothing above it is reachable by walking up.
  *
  * `?path=`, `?preview=`, `?layout=` and `?sort=` are all in the URL, so a
@@ -55,7 +55,7 @@ import { clearOpenFileDismissal } from "@/hooks/use-open-library-file";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations, useOrgFsPublicSets } from "@/hooks/use-org-fs";
 import { FilterMenu } from "./filter-menu";
-import { PROJECTS_FOLDER } from "./project-folder";
+import { PROJECTS_FOLDER } from "@decocms/shared/organization/project-folder";
 import {
   basename,
   libraryPlaceOf,

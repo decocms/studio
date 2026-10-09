@@ -169,6 +169,7 @@ const ALL_TOOL_NAMES = [
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
   "VIRTUAL_MCP_LAST_USED_LIST",
+  "PROJECT_FOLDER_ENSURE",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -907,6 +908,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "VIRTUAL_MCP_LAST_USED_LIST",
     description: "Get last-used info for one or more virtual MCPs",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "PROJECT_FOLDER_ENSURE",
+    description: "Give a project's folder its shape, once",
     category: "Virtual MCPs",
   },
   {
@@ -1661,6 +1667,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Project sidebar: org folders are readable, pins/hides are the caller's own.
       "SIDEBAR_GET",
       "SIDEBAR_PREFERENCES_SET",
+      // Every member already has ORG_FS_WRITE (below).
+      "PROJECT_FOLDER_ENSURE",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
