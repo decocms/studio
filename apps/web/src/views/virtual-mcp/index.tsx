@@ -71,6 +71,7 @@ import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
 import { ProjectViewsSection } from "./settings/views-section";
 import { useProjectViews } from "./settings/use-project-views";
 import { ProjectIdentity } from "./settings/project-identity";
+import { projectSiteId } from "./settings/project-site-id";
 import { ProjectSettingsTabs } from "./settings/settings-tabs";
 import {
   SettingsCard,
@@ -972,7 +973,11 @@ function VirtualMcpDetailViewWithData({
               {section === "general" && <ProjectViewsSection views={views} />}
               {section === "general" && (
                 <div className="flex flex-col gap-4">
-                  <ProjectIdentity form={form} onCommit={flushAndSave} />
+                  <ProjectIdentity
+                    form={form}
+                    onCommit={flushAndSave}
+                    siteSlug={projectSiteId(virtualMcp)}
+                  />
                   <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
                     <User
                       id={virtualMcp.created_by}

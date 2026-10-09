@@ -18,6 +18,11 @@ import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import { OrgSiteLinkError } from "../../storage/org-sites";
+
+const normalizeSiteSlug = (value: unknown) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -143,6 +148,28 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       userId,
       dataWithIcon,
     );
+
+    // The site slug is set once, here (the import flow passes it). Link it to
+    // the org's `org_sites` row so the database knows this project's site.
+    // When the org doesn't own a free row — the slug is another org's, another
+    // project's here, or unclaimed — the project keeps the stored value
+    // unlinked (the same storefront may be imported into several orgs).
+    const siteSlug = normalizeSiteSlug(metadata?.siteSlug);
+    if (siteSlug && isValidSiteSlug(siteSlug) && virtualMcp.id) {
+      try {
+        await ctx.storage.orgSites.link({
+          slug: siteSlug,
+          organizationId: organization.id,
+          projectId: virtualMcp.id,
+          by: userId,
+        });
+      } catch (error) {
+        if (!(error instanceof OrgSiteLinkError)) throw error;
+        console.warn(
+          `[virtual-mcp] project ${virtualMcp.id} keeps site "${siteSlug}" unlinked: ${error.code}`,
+        );
+      }
+    }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
     // native MCP prompts (icebreakers). Best-effort: never fail agent creation

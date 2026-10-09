@@ -127,6 +127,9 @@ export const virtualMcp = {
   "virtualMcp.settings.identity.iconDescription":
     "Como seu projeto aparece na barra lateral e no Studio.",
   "virtualMcp.settings.identity.name": "Nome do projeto",
+  "virtualMcp.settings.identity.siteId": "Id do site",
+  "virtualMcp.settings.identity.siteIdDescription":
+    "O id do site não pode mudar: caminhos de CDN, tokens e URLs de assets usam ele.",
   "virtualMcp.settings.identity.description": "Descrição",
   "virtualMcp.settings.general.title": "Geral",
   "virtualMcp.settings.site.title": "CMS",
