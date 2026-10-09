@@ -38,7 +38,7 @@ export function ErrorDetails({
 }
 
 /** A toast `description` for `detail`, or nothing when there is none. */
-function errorDetailsDescription(t: TFunction, detail: string | null) {
+export function errorDetailsDescription(t: TFunction, detail: string | null) {
   return detail ? (
     <ErrorDetails label={t("siteEditor.details")} detail={detail} />
   ) : undefined;
@@ -60,7 +60,7 @@ export function toastSaveError(
  * Sonner merges an update into the toast with the same id, so an outcome
  * clears what an earlier one set (a failure's "Try again", its stay-open).
  */
-const FRESH_TOAST = { action: undefined, duration: undefined } as const;
+export const FRESH_TOAST = { action: undefined, duration: undefined } as const;
 
 /** Published: what the site shows now. `description` says what went live. */
 export function toastPublished(t: TFunction, description: string) {
