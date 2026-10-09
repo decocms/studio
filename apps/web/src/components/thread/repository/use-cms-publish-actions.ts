@@ -6,19 +6,36 @@
  */
 
 import type { MutableRefObject } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { KEYS } from "@/lib/query-keys.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {
+  describePublishFailure,
   notifySubmittedForReview,
   publishNoteParts,
-  reportPublishFailure,
   runPublishFlow,
   runSubmitForReviewFlow,
   type PublishTarget,
 } from "./publish-flow.ts";
 import { discardGitFiles } from "./sandbox-git-api.ts";
+import {
+  type HostedPublishResult,
+  publishHostedDraft,
+  publishMainHead,
+} from "./hosted-publish-api.ts";
+import {
+  hostedPublishFailure,
+  notifyHostedPublish,
+  notifySavedNotPublished,
+} from "./hosted-publish-feedback.ts";
+import {
+  errorDetail,
+  errorDetailsDescription,
+  toastPublished,
+} from "@/components/sections-editor/site-editor-toast.tsx";
 
 /** `publish` merges to production; `review` stops at the pull request. */
 export type CmsPublishMode = "publish" | "review";
@@ -38,12 +55,22 @@ interface CmsPublishActionsArgs {
   refresh: () => Promise<unknown>;
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
+  /**
+   * A hosted v8 site: publish commits the CDN draft to main, creates its
+   * release and makes it current (no pull request). Saved once on main; when
+   * it isn't live yet, the toast's "Try again" makes main's head live.
+   */
+  hosted?: boolean;
+  /** Who publishes: a hosted Publish's default version note names them. */
+  authorName?: string | null;
 }
 
 interface CmsPublishActions {
   isPublishing: boolean;
   isDiscarding: boolean;
   publishError: string | undefined;
+  /** The developer detail behind `publishError`, for a Details disclosure. */
+  publishErrorDetail: string | null;
   /** Publish or submit for review, per mode — the button never branches. */
   submit: () => Promise<void>;
   discardChange: (change: PublishChange) => Promise<void>;
@@ -64,39 +91,121 @@ export function useCmsPublishActions(
     refresh,
     onPullRequestChanged,
     onPublished,
+    hosted = false,
+    authorName,
   } = args;
   const t = useT();
+  const queryClient = useQueryClient();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
+  const [publishErrorDetail, setPublishErrorDetail] = useState<string | null>(
+    null,
+  );
 
   const noteParts = () =>
     publishNoteParts(
       note,
-      t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
+      // A hosted site's notes are the Versions screen's titles: never a
+      // branch name there.
+      hosted
+        ? authorName
+          ? t("siteEditor.publish.defaultNote", { name: authorName })
+          : t("siteEditor.publish.defaultNoteAnonymous")
+        : t("thread.publishDialog.changesFrom", { branch: target.headBranch }),
     );
+
+  /** A follow-up after a finished Publish: its failure isn't the Publish's. */
+  const quietly = async (followUp?: () => void | Promise<void>) => {
+    try {
+      await followUp?.();
+    } catch {
+      // The Publish already succeeded (and said so); a stale list re-reads.
+    }
+  };
+
+  const invalidateVersions = () =>
+    queryClient.invalidateQueries({
+      queryKey: KEYS.hostedReleases(target.orgSlug, target.virtualMcpId),
+    });
+
+  /** "Try again": put the saved changes live (main's head), same toast. */
+  const goLive = async () => {
+    try {
+      await publishMainHead(target);
+      toastPublished(t, t("siteEditor.publish.changesLive"));
+    } catch (error) {
+      notifySavedNotPublished(t, error, () => void goLive());
+    } finally {
+      void invalidateVersions();
+    }
+  };
+
+  /** Saved on main is done: the popover closes with one toast. */
+  const settleHosted = async (result: HostedPublishResult) => {
+    notifyHostedPublish(t, result, () => void goLive());
+    // A mounted Versions screen shows the new version and what is live.
+    void invalidateVersions();
+    onOpenChange(false);
+    await quietly(onPublished);
+  };
+
+  const publishHosted = async () => {
+    publishLockRef.current = true;
+    setIsPublishing(true);
+    setPublishError(undefined);
+    setPublishErrorDetail(null);
+    try {
+      await settleHosted(await publishHostedDraft(target, noteParts().message));
+    } catch (error) {
+      const failure = hostedPublishFailure(t, error);
+      setPublishError(failure.message);
+      setPublishErrorDetail(failure.detail);
+      await refresh();
+    } finally {
+      publishLockRef.current = false;
+      setIsPublishing(false);
+    }
+  };
 
   const publish = async () => {
     publishLockRef.current = true;
     setIsPublishing(true);
     setPublishError(undefined);
+    setPublishErrorDetail(null);
     try {
       await runPublishFlow(target, noteParts(), t);
 
-      toast.success(
+      toastPublished(
+        t,
         destinationHost
-          ? t("thread.publishPopover.publishedTo", { host: destinationHost })
-          : t("thread.publishDialog.publishedTo", {
-              baseBranch: target.baseBranch,
-            }),
+          ? t("siteEditor.publish.liveOn", { host: destinationHost })
+          : t("siteEditor.publish.changesLive"),
       );
       onOpenChange(false);
       // Together: awaiting the PR re-read first let the stale open PR render.
-      await Promise.all([onPullRequestChanged?.(), onPublished?.()]);
+      await Promise.all([quietly(onPullRequestChanged), quietly(onPublished)]);
     } catch (error) {
-      const failure = reportPublishFailure(error, t);
-      setPublishError(failure.message);
-      if (failure.pullRequestOpened) await onPullRequestChanged?.();
+      // One message in the dialog, in plain words (no toast on top of it);
+      // the step's own error, and the pull request a failed merge left
+      // open, go behind Details.
+      const failure = describePublishFailure(error, t);
+      setPublishError(
+        failure.headMoved ? failure.message : t("siteEditor.publish.failed"),
+      );
+      setPublishErrorDetail(
+        failure.headMoved
+          ? null
+          : [
+              failure.pullRequest
+                ? `#${failure.pullRequest.number} ${failure.pullRequest.htmlUrl}`
+                : null,
+              errorDetail(error),
+            ]
+              .filter(Boolean)
+              .join("\n") || null,
+      );
+      if (failure.pullRequest) await quietly(onPullRequestChanged);
       // Nothing was published — re-read so the list matches the new head.
       if (failure.headMoved) await refresh();
     } finally {
@@ -109,6 +218,7 @@ export function useCmsPublishActions(
     publishLockRef.current = true;
     setIsPublishing(true);
     setPublishError(undefined);
+    setPublishErrorDetail(null);
     try {
       const pr = await runSubmitForReviewFlow(target, noteParts());
 
@@ -116,7 +226,7 @@ export function useCmsPublishActions(
       onOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {
-      const failure = reportPublishFailure(error, t);
+      const failure = describePublishFailure(error, t);
       setPublishError(
         failure.message || t("thread.publishDialog.failedSubmitForReview"),
       );
@@ -143,11 +253,9 @@ export function useCmsPublishActions(
       toast.success(success);
       await refresh();
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishPopover.failedDiscard"),
-      );
+      toast.error(t("siteEditor.discard.failed"), {
+        description: errorDetailsDescription(t, errorDetail(error)),
+      });
     } finally {
       setIsDiscarding(false);
     }
@@ -157,7 +265,10 @@ export function useCmsPublishActions(
     isPublishing,
     isDiscarding,
     publishError,
-    submit: mode === "review" ? submitForReview : publish,
+    publishErrorDetail,
+    // Hosted callers never pass review mode (no pull request to open).
+    submit:
+      mode === "review" ? submitForReview : hosted ? publishHosted : publish,
     discardChange: (change) =>
       discardFiles(
         change.filepaths,

@@ -31,6 +31,7 @@ import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { experiments } from "./experiments.ts";
 import { releases } from "./releases.ts";
+import { siteTokens } from "./site-tokens.ts";
 import { common } from "./common.ts";
 import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
@@ -68,6 +69,7 @@ export const en = {
   ...mainPanelTabs,
   ...experiments,
   ...releases,
+  ...siteTokens,
   ...markdownEditor,
   ...library,
   ...layouts,

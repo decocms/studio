@@ -38,6 +38,7 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
 import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
 import {
   useDraftPointer,
@@ -250,9 +251,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         await deleteRelease(published);
       }
     },
-    /** The dialog is already closed by now, so a toast is the only surface. */
+    /** The publish already succeeded and showed its one toast; this clean-up
+     *  is nothing the user can act on, so it is logged, not toasted. */
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : String(err));
+      console.error("site editor: settling after publish failed", err);
     },
   });
 
@@ -311,7 +313,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    */
   const publishing = publishCompletion.isPending;
 
-  const button = selectCmsHeaderButton({
+  // A hosted v8 draft is not a branch: there is no pull request to submit
+  // for review, so its header offers Publish only.
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  const selected = selectCmsHeaderButton({
     branch: branchMeta,
     pr,
     checks: checksQuery.data ?? [],
@@ -330,6 +336,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     publishableChangeCount,
     t,
   });
+  const button = hosted
+    ? {
+        ...selected,
+        menu: selected.menu.filter((item) => item.key !== "request-approval"),
+      }
+    : selected;
 
   /** Keyed by head so a failed sync isn't retried until the branch moves. */
   const autoGetLatestKey =

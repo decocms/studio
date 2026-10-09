@@ -38,7 +38,8 @@ import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { formatTimeAgo } from "@/lib/format-time.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
+import { formatRelativeTime } from "@/lib/format-time.ts";
 import {
   lastPreviewPageKey,
   readLastPreviewPage,
@@ -73,6 +74,8 @@ import {
 import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
+import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 
 export type { CmsPublishMode };
 
@@ -394,6 +397,7 @@ function CmsPublishContent({
   publishLockRef: React.MutableRefObject<boolean>;
 }) {
   const t = useT();
+  const [{ language }] = usePreferences();
   /** The session publishing — the git routes resolve their runtime from it. */
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const { data: session } = authClient.useSession();
@@ -460,7 +464,10 @@ function CmsPublishContent({
   ]
     .filter((id) => changes.some((change) => changeId(change) === id))
     .slice(0, MAX_LIVE_PANES);
-  const isReview = mode === "review";
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  // A hosted v8 draft has no pull request: review mode doesn't apply to it.
+  const isReview = mode === "review" && !hosted;
   const surfaceState: PublishSurfaceState = cardsPending
     ? "loading"
     : bodiesPending
@@ -504,11 +511,12 @@ function CmsPublishContent({
     isPublishing,
     isDiscarding,
     publishError,
+    publishErrorDetail,
     submit,
     discardChange,
     discardAll,
   } = useCmsPublishActions({
-    mode,
+    mode: isReview ? "review" : "publish",
     target,
     note,
     allPaths,
@@ -518,13 +526,20 @@ function CmsPublishContent({
     refresh,
     onPullRequestChanged,
     onPublished,
+    hosted,
+    authorName: session?.user?.name,
   });
 
   const canDiscard = (paths: readonly string[]) =>
     discardablePaths === null || paths.every((p) => discardablePaths.has(p));
 
+  // Until the backend is known, Publish would take the git path on a hosted
+  // site (and speak git): wait for it.
   const canSubmit =
-    !isPublishing && summary.count > 0 && (isReview || gate.allowed);
+    backend.kind !== "pending" &&
+    !isPublishing &&
+    summary.count > 0 &&
+    (isReview || gate.allowed);
 
   const headerTitle = isReview
     ? summary.count === 0
@@ -555,7 +570,7 @@ function CmsPublishContent({
     }
     const pr = lastPublishedPr;
     if (!pr?.mergedAt) return null;
-    const when = formatTimeAgo(new Date(pr.mergedAt));
+    const when = formatRelativeTime(new Date(pr.mergedAt), language);
     const name = lastPublishAttribution(pr);
     return name
       ? t("thread.publishPopover.lastPublishedBy", { when, name })
@@ -785,6 +800,7 @@ function CmsPublishContent({
               <div className="flex gap-2">
                 <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
                 {!isReview &&
+                !hosted &&
                 summary.count > 0 &&
                 !gate.allowed &&
                 !gate.pending ? (
@@ -816,7 +832,15 @@ function CmsPublishContent({
                 )}
               </div>
               {publishError ? (
-                <p className="text-xs text-destructive">{publishError}</p>
+                <div>
+                  <p className="text-xs text-destructive">{publishError}</p>
+                  {publishErrorDetail ? (
+                    <ErrorDetails
+                      label={t("siteEditor.details")}
+                      detail={publishErrorDetail}
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </>
           }

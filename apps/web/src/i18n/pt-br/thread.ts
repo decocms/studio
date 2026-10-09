@@ -153,19 +153,15 @@ export const thread = {
   "thread.mergeRefused.notFound": "Não existe mais.",
   "thread.mergeRefused.error": "Falha ao fazer merge.",
   "thread.publishDialog.openingComparison": "Abrindo a comparação…",
-  "thread.publishDialog.publishedTo": "Publicado em {baseBranch}",
   "thread.publishDialog.submittedForReview":
     "Pull request #{prNumber} enviado para revisão",
   "thread.publishDialog.viewOnProvider": "Ver no provedor",
-  "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishPopover.blocksGroup": "Blocos",
-  "thread.publishPopover.branchMoved":
-    "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
   "thread.publishPopover.detailsUnavailable":
     "Não foi possível carregar os detalhes destas alterações.",
   "thread.publishPopover.loadFailed":
     "Não foi possível carregar suas alterações",
-  "thread.publishPopover.retry": "Tentar novamente",
+  "thread.publishPopover.retry": "Tentar de novo",
   "thread.publishPopover.showingFirst":
     "Mostrando as primeiras {shown} de {total} alterações",
   "thread.publishPopover.chipEdited": "Editado",
@@ -174,7 +170,6 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
-  "thread.publishPopover.failedDiscard": "Falha ao descartar alterações",
   "thread.publishPopover.globalSection": "Seção global",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
@@ -200,7 +195,6 @@ export const thread = {
   "thread.publishPopover.publishOneInProduction":
     "Publicar 1 alteração em produção",
   "thread.publishPopover.publishOne": "Publicar 1 alteração",
-  "thread.publishPopover.publishedTo": "Publicado em {host}",
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
   "thread.publishPopover.discarded": "{name} descartado",

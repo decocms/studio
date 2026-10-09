@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import { toast } from "sonner";
 import { en } from "@/i18n/en/index.ts";
@@ -77,11 +77,8 @@ describe("save messages for a local deco serve (a developer)", () => {
 });
 
 describe("one toast per save failure", () => {
-  afterEach(() => {
-    toast.dismiss();
-  });
-
   test("a burst of failing autosaves shows a single toast", () => {
+    const before = toast.getToasts().length;
     for (let i = 0; i < 3; i++) {
       toastSaveError(t, new Error(`HTTP 50${i}`), "github");
     }
@@ -89,16 +86,14 @@ describe("one toast per save failure", () => {
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_SAVE_TOAST);
     expect(shown).toHaveLength(1);
+    expect(toast.getToasts().length - before).toBeLessThanOrEqual(1);
   });
 });
 
 describe("one toast per publish", () => {
-  afterEach(() => {
-    toast.dismiss();
-  });
-
   test("a failure, its retry and the success share one toast", () => {
     let retried = 0;
+    const before = toast.getToasts().length;
     toastPublishFailed(t, {
       headline: "Couldn't publish this version.",
       detail: "latest-update-failed",
@@ -124,6 +119,7 @@ describe("one toast per publish", () => {
     expect((shown[0] as { title?: unknown }).title).toBe("Published");
     // The success doesn't keep the failure's "Try again".
     expect((shown[0] as { action?: unknown }).action).toBeUndefined();
+    expect(toast.getToasts().length - before).toBeLessThanOrEqual(1);
     expect(retried).toBe(0);
   });
 

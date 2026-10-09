@@ -13,6 +13,7 @@ const SITE_EDITOR_PREFIXES = [
   "releases.",
   "common.mainPanelTabs.releases",
   "projects.apps.releases",
+  "thread.publishPopover.",
 ];
 
 const BANNED: RegExp[] = [
