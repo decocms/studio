@@ -3,22 +3,21 @@ import type { releases as enReleases } from "../en/releases.ts";
 export const releases = {
   "releases.title": "Versões",
   "releases.subtitle":
-    "Todas as alterações mescladas na main, da mais recente para a mais antiga. Publicar também cria uma versão na CDN; Tornar atual faz a CDN servir qualquer versão.",
-  "releases.loadFailed": "Não foi possível carregar as versões",
-  "releases.currentOnCdn": "Atual na CDN:",
-  "releases.madeCurrentAgo": "tornada atual {when}",
-  "releases.nothingOnCdn": "Nada na CDN ainda",
-  "releases.current": "Atual",
+    "Todas as versões do seu site, da mais recente para a mais antiga. Você pode publicar uma anterior para trazê-la de volta.",
+  "releases.loadFailed": "Não foi possível carregar suas versões.",
+  "releases.publishedAgo": "Publicada {when}",
+  "releases.nothingPublished": "Nada publicado ainda",
+  "releases.published": "Publicada",
   "releases.actions": "Ações da versão",
-  "releases.makeCurrent": "Tornar atual",
-  "releases.makeCurrentFailed":
-    "Não foi possível torná-la atual. Tente de novo.",
-  "releases.makeCurrentTitle": "Tornar {sha} a versão atual?",
-  "releases.makeCurrentBody":
-    "A CDN passa a servir esta versão. O git não muda, e a próxima publicação torna a sua própria versão atual.",
+  "releases.publishVersion": "Publicar esta versão",
+  "releases.publishVersionTitle": "Publicar esta versão?",
+  "releases.publishVersionBody":
+    "Seu site passa a mostrar esta versão. A próxima publicação a substitui pelas suas alterações mais recentes.",
   "releases.schemaMismatchBody":
-    "Esta versão foi criada com um schema diferente do da main. Sites gerados a partir da main mantêm o conteúdo atual até os schemas voltarem a coincidir.",
-  "releases.madeCurrent": "{sha} agora é a versão atual",
+    "Esta versão foi feita para um design anterior do seu site. O site continua mostrando o que mostra agora até o design voltar a corresponder a esta versão. Publicar mesmo assim?",
+  "releases.publishAnyway": "Publicar mesmo assim",
+  "releases.versionLive": "Esta versão está no ar.",
+  "releases.publishVersionFailed": "Não foi possível publicar esta versão.",
   "releases.loadMore": "Carregar mais",
   "releases.cancel": "Cancelar",
 } satisfies Record<keyof typeof enReleases, string>;
