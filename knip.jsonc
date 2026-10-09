@@ -76,10 +76,6 @@
   "ignoreDependencies": ["@types/*"],
   // TODO(@camudo): Remove this config once I fix all unused type exports
   "ignoreIssues": {
-    "**/*": ["types"],
-    // Temporary while the v8 stack lands: each export below gets its
-    // consumer in a later PR of the stack, which removes its entry.
-    "apps/web/src/hooks/use-deco-serve-connection.ts": ["exports"],
-    "apps/web/src/components/sections-editor/deco-serve-chip.tsx": ["exports"]
+    "**/*": ["types"]
   }
 }

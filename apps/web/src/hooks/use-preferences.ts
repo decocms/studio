@@ -1,3 +1,4 @@
+import { createContext, use } from "react";
 import type { Locale } from "@/i18n/locale.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useLocalStorage } from "./use-local-storage.ts";
@@ -113,7 +114,12 @@ export function usePreferences() {
   );
 }
 
+/** Set by `/site-editor`, which always renders in the New Layout, whatever
+ *  this person's preference says. Scoped to that route's tree. */
+export const ForceProjectFirstNav = createContext(false);
+
 export function useProjectFirstNav(): boolean {
+  const forced = use(ForceProjectFirstNav);
   const [preferences] = usePreferences();
-  return preferences.projectFirstNav;
+  return forced || preferences.projectFirstNav;
 }
