@@ -56,9 +56,7 @@ export function saveErrorMessage(
         return t("siteEditor.save.readOnly");
       case ErrorCode.InvalidBlock:
       case ErrorCode.InvalidParams:
-        return t("siteEditor.save.invalid", {
-          detail: violationsDetail(error),
-        });
+        return t("siteEditor.save.invalid");
       case ErrorCode.LimitExceeded:
         return t("siteEditor.save.tooLarge");
     }
@@ -76,8 +74,16 @@ export function saveErrorDetail(
   source: ContentSource | null,
 ): string | null {
   if (source === "local") return null;
-  const code = error instanceof ContentProtocolError ? `${error.code}: ` : "";
-  return error.message ? `${code}${error.message}` : null;
+  if (error instanceof ContentProtocolError) {
+    // A refused block: which fields to fix, in the server's own words.
+    const message =
+      error.code === ErrorCode.InvalidBlock ||
+      error.code === ErrorCode.InvalidParams
+        ? violationsDetail(error)
+        : error.message;
+    return message ? `${error.code}: ${message}` : null;
+  }
+  return error.message || null;
 }
 
 function localSaveErrorMessage(t: TFunction, error: Error): string {
