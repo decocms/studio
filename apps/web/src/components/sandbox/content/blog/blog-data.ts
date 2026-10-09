@@ -2442,6 +2442,59 @@ export function prunedSchema(schema: unknown): Record<string, unknown> {
   return out;
 }
 
+/** The JSON type of a stored value, as a schema would name it. */
+function jsonType(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return "array";
+  const t = typeof value;
+  return t === "number" || t === "boolean" || t === "string" || t === "object"
+    ? t
+    : null;
+}
+
+/**
+ * The schema, with the assertions a real block disproves taken out.
+ *
+ * Both halves are evidence and they do not always agree: a `List` whose `$ref`
+ * did not resolve is typed `object` by `resolveSchema`'s last-resort branch,
+ * while every one the site renders stores a newline-joined string. Telling the
+ * writer to follow the example and then validating against the schema is a
+ * contradiction that costs the section either way.
+ *
+ * So a stored block wins on its own properties: where the two disagree, the
+ * schema's `type` and `enum` for that property come out and the rest stays. It
+ * is narrow on purpose — the example disproves what it covers, nothing more.
+ */
+export function reconciledSchema(
+  schema: Record<string, unknown>,
+  example: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const properties = schema.properties;
+  if (!example || !properties || typeof properties !== "object") return schema;
+
+  const source = properties as Record<string, unknown>;
+  let changed = false;
+  const reconciled: Record<string, unknown> = {};
+  for (const [name, raw] of Object.entries(source)) {
+    const prop = raw && typeof raw === "object" ? { ...raw } : raw;
+    const declared = (prop as Record<string, unknown> | null)?.type;
+    const stored = jsonType(example[name]);
+    if (
+      prop &&
+      typeof prop === "object" &&
+      stored &&
+      typeof declared === "string" &&
+      declared !== stored
+    ) {
+      delete (prop as Record<string, unknown>).type;
+      delete (prop as Record<string, unknown>).enum;
+      changed = true;
+    }
+    reconciled[name] = prop;
+  }
+  return changed ? { ...schema, properties: reconciled } : schema;
+}
+
 /** One block the writer may build a section from, with its own typing. */
 export interface GenerationBlock {
   name: string;
@@ -2516,12 +2569,16 @@ export function blocksForFormat(
     if (seen.has(section.name)) continue;
     if (byName[section.name] !== section.resolveType) continue;
     seen.add(section.name);
+    const example = blockExample(section.resolveType, decofile);
     blocks.push({
       name: section.name,
       title: section.title,
       description: section.description ?? "",
-      schema: prunedSchema(resolveSchema(section.resolveType, meta)),
-      example: blockExample(section.resolveType, decofile),
+      schema: reconciledSchema(
+        prunedSchema(resolveSchema(section.resolveType, meta)),
+        example,
+      ),
+      example,
     });
   }
   return blocks;

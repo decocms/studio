@@ -40,6 +40,7 @@ import {
   blockExample,
   planningMeta,
   prunedSchema,
+  reconciledSchema,
   buildPlanningPostBlock,
   listAuthorRefs,
   listPlanningPosts,
@@ -3035,5 +3036,58 @@ describe("blockExample", () => {
 
   test("answers nothing for a block no post uses yet", () => {
     expect(blockExample(LIST, {})).toBeUndefined();
+  });
+});
+
+/**
+ * Telling the writer to follow the example and then validating against a schema
+ * that contradicts it costs the section either way. These pin which side gives.
+ */
+describe("reconciledSchema", () => {
+  const listSchema = {
+    type: "object",
+    properties: {
+      items: { type: "object" },
+      style: { type: "string", enum: ["ordered", "unordered"] },
+    },
+  };
+
+  test("drops a type a block the site renders disproves", () => {
+    expect(
+      reconciledSchema(listSchema, { items: "a\nb", style: "ordered" }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        items: {},
+        style: { type: "string", enum: ["ordered", "unordered"] },
+      },
+    });
+  });
+
+  test("leaves the schema alone where the two agree", () => {
+    expect(reconciledSchema(listSchema, { style: "ordered" })).toBe(listSchema);
+  });
+
+  test("a block with no example to show keeps every assertion", () => {
+    expect(reconciledSchema(listSchema, undefined)).toBe(listSchema);
+  });
+
+  test("takes the enum out with the type, since it described the wrong shape", () => {
+    const schema = {
+      type: "object",
+      properties: { size: { type: "string", enum: ["full", "normal"] } },
+    };
+    expect(reconciledSchema(schema, { size: 2 })).toEqual({
+      type: "object",
+      properties: { size: {} },
+    });
+  });
+
+  test("a stored null disproves nothing — it is an empty slot, not a type", () => {
+    expect(reconciledSchema(listSchema, { items: null })).toBe(listSchema);
+  });
+
+  test("ignores a prop the schema never declared", () => {
+    expect(reconciledSchema(listSchema, { mystery: 1 })).toBe(listSchema);
   });
 });

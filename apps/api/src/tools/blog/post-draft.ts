@@ -198,7 +198,7 @@ THE CAMPAIGN IS THE BRIEF, THE FORMAT IS THE SHAPE. The campaign says why this p
 
 THE BLOCKS ARE TYPED, AND THE TYPE IS BINDING. Each available block comes with its JSON Schema. \`props\` is a JSON object matching THAT schema — its property names, its types, its enums, everything it marks required. A prop the schema does not declare is dropped. A value the schema rejects loses the entire section, not just that prop. Read the schema before you write the section: a field called \`items\` that is typed as a string is one string, not a list, however much it sounds like a list.
 
-WHERE A BLOCK SHOWS AN EXAMPLE, THE EXAMPLE WINS. Some schemas are derived and lose the shape on the way — a prop that renders as one newline-separated string can come through typed as an object. An example is a block this site already renders, so when the two disagree, follow the example and keep the schema's property names.
+COPY THE EXAMPLE'S SHAPE. A block that shows one is showing you how this site actually stores it — and a prop the schema leaves untyped is one a stored block already disproved, so the example is the only account of it you have. Follow it: same property names, same shape, your own content.
 
 USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not listed does not exist on this site.
 
