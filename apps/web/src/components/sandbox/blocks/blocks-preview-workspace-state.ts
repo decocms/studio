@@ -7,9 +7,11 @@ export interface BlocksPreviewWorkspaceState {
   target: BlocksTarget | null;
   editSeoPageKey: string | null;
   /**
-   * `x-deco-matchers-override` params published by the Blocks panel so the
-   * (independent) Preview iframe renders the variant currently selected in the
-   * sections editor. `null` clears any prior override.
+   * Published by the Blocks panel so the (independent) Preview iframe renders
+   * the variant currently selected in the sections editor:
+   * `x-deco-matchers-override` params on a legacy site, forced variants
+   * (`<block>@<path>=<index>`) for the `?__draft=` pointer on a
+   * content-protocol site. `null` clears any prior override.
    */
   variantOverride: string[] | null;
   /**
