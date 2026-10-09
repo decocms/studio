@@ -40,13 +40,14 @@ export function pushRecentOrg(
 /**
  * The orgs the rail draws, and the count it hides. The current org is always
  * in the set — a deep link landing outside the rail reads as a broken rail —
- * then history, then the list's own order fills the rest.
+ * then the pinned ones, which the limit never trims, then history, then the list's own order fills the rest.
  */
 export function railOrgs<T extends { slug: string }>(
   all: readonly T[],
   recentSlugs: readonly string[],
   currentSlug: string | null,
   limit: number,
+  pinnedSlugs: readonly string[] = [],
 ): { shown: T[]; hidden: T[] } {
   if (all.length <= limit) return { shown: [...all], hidden: [] };
 
@@ -54,6 +55,7 @@ export function railOrgs<T extends { slug: string }>(
   const picked = new Set<string>();
 
   if (currentSlug && bySlug.has(currentSlug)) picked.add(currentSlug);
+  for (const slug of pinnedSlugs) if (bySlug.has(slug)) picked.add(slug);
   for (const slug of recentSlugs) {
     if (picked.size >= limit) break;
     if (bySlug.has(slug)) picked.add(slug);

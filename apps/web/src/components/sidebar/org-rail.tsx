@@ -2,13 +2,33 @@
  *  mark is drawn, labelled and marked as current is `RailItem`. */
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import { Plus, XClose } from "@untitledui/icons";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { EyeOff, Pin01, Plus, Settings01, XClose } from "@untitledui/icons";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@decocms/ui/components/context-menu.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { OrgIcon } from "@/components/header/org-switcher";
@@ -23,7 +43,19 @@ import {
   useRememberOpenApp,
 } from "@/hooks/use-recent-apps";
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { railOrgLimit, railOrgs } from "@/lib/recent-orgs";
+import {
+  EMPTY_RAIL_ORG_PREFS,
+  arrangeRailOrgs,
+  hideRailOrg,
+  moveRailOrg,
+  readRailOrgPrefs,
+  showRailOrg,
+  toggleRailOrgPin,
+  type RailOrgPrefs,
+} from "@/lib/rail-org-prefs";
 import { OrgSearch } from "./org-search";
 import { RailItem } from "./rail-item";
 import type { RecentApp } from "@/lib/recent-apps";
@@ -52,34 +84,92 @@ function RailOrgButton({
   org,
   active,
   onSelect,
+  pinned,
+  onOpenSettings,
+  onTogglePin,
+  onHide,
 }: {
   org: RailOrg;
   active: boolean;
+  pinned: boolean;
   onSelect: () => void;
+  onOpenSettings: () => void;
+  onTogglePin: () => void;
+  /** Absent for the current org, which the rail always draws. */
+  onHide?: () => void;
 }) {
+  const t = useT();
+  /** Dragging starts after 8px of travel (the sensor's), so a click still
+   *  selects. Only the pointer: the sortable's keyboard attributes would add
+   *  a second tab stop to every mark. */
+  const { setNodeRef, listeners, transform, transition, isDragging } =
+    useSortable({ id: org.slug });
   return (
-    <RailItem active={active}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={org.name}
-            aria-current={active || undefined}
-            onClick={active ? undefined : onSelect}
-            className={cn(
-              "flex shrink-0 items-center justify-center rounded-xl focus-ring",
-              "transition-[opacity,transform] duration-150 ease-out",
-              active
-                ? "opacity-100"
-                : "cursor-pointer opacity-60 hover:scale-105 hover:opacity-100",
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      style={{
+        transform: CSS.Transform.toString(
+          transform ? { ...transform, x: 0 } : null,
+        ),
+        transition,
+        zIndex: isDragging ? 1 : undefined,
+      }}
+      className="w-full shrink-0 touch-none"
+    >
+      <RailItem active={active}>
+        <ContextMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ContextMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={org.name}
+                  aria-current={active || undefined}
+                  onClick={active ? undefined : onSelect}
+                  className={cn(
+                    "relative flex shrink-0 items-center justify-center rounded-xl focus-ring",
+                    "transition-[opacity,transform] duration-150 ease-out",
+                    active
+                      ? "opacity-100"
+                      : "cursor-pointer opacity-60 hover:scale-105 hover:opacity-100",
+                  )}
+                >
+                  <OrgIcon org={org} size="lg" rounded="rounded-xl" />
+                  {pinned && (
+                    <span
+                      aria-hidden
+                      className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-sidebar-accent text-muted-foreground ring-2 ring-sidebar"
+                    >
+                      <Pin01 size={9} />
+                    </span>
+                  )}
+                </button>
+              </ContextMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="right">{org.name}</TooltipContent>
+          </Tooltip>
+          <ContextMenuContent>
+            <ContextMenuItem onSelect={onOpenSettings}>
+              <Settings01 />
+              {t("sidebar.rail.organizationSettings")}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={onTogglePin}>
+              <Pin01 />
+              {pinned
+                ? t("sidebar.rail.unpinOrganization")
+                : t("sidebar.rail.pinOrganization")}
+            </ContextMenuItem>
+            {onHide && (
+              <ContextMenuItem onSelect={onHide}>
+                <EyeOff />
+                {t("sidebar.rail.hideOrganization")}
+              </ContextMenuItem>
             )}
-          >
-            <OrgIcon org={org} size="lg" rounded="rounded-xl" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">{org.name}</TooltipContent>
-      </Tooltip>
-    </RailItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </RailItem>
+    </div>
   );
 }
 
@@ -221,23 +311,47 @@ export function OrgRail() {
 
   const orgs = (organizations ?? []) as RailOrg[];
   const { recent: recentOrgs, remember } = useRecentOrgs();
+  /** Hidden, pinned and dragged order. Hidden orgs stay in search, and
+   *  opening one from there puts it back. */
+  const [storedPrefs, setPrefs] = useLocalStorage<RailOrgPrefs>(
+    LOCALSTORAGE_KEYS.railOrgPrefs(),
+    EMPTY_RAIL_ORG_PREFS,
+  );
+  const prefs = readRailOrgPrefs(storedPrefs);
   const orgLimit = useSyncExternalStore(
     subscribeToResize,
     orgLimitSnapshot,
     orgLimitServerSnapshot,
   );
-  const { shown, hidden } = railOrgs(
-    orgs,
+  const { shown } = railOrgs(
+    arrangeRailOrgs(orgs, prefs, currentOrg.slug),
     recentOrgs,
     currentOrg.slug,
     orgLimit,
+    prefs.pinned,
   );
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over) return;
+    track("org_rail_reordered");
+    setPrefs((prev) =>
+      moveRailOrg(
+        readRailOrgPrefs(prev),
+        shown.map((it) => it.slug),
+        String(active.id),
+        String(over.id),
+      ),
+    );
+  };
 
   const travelTo = (slug: string) => {
     track("org_rail_travel");
     /** An org already on the rail keeps the rail as it is; one picked from
      *  search rolls the oldest off by recency, as before. */
     const onRail = shown.some((it) => it.slug === slug);
+    setPrefs((prev) => showRailOrg(readRailOrgPrefs(prev), slug));
     remember(slug, onRail ? shown.map((it) => it.slug) : undefined);
     navigate({ to: "/$org/home", params: { org: slug } });
   };
@@ -245,26 +359,57 @@ export function OrgRail() {
   return (
     <>
       <div
-        /* `w-20` fits a one-word label like "Automations" inside the labels' padding; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
+        /* `w-16` fits a one-word label like "Automations" inside the labels' padding; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
         className={cn(
-          "flex w-20 shrink-0 flex-col items-center gap-2 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "flex w-16 shrink-0 flex-col items-center gap-1.5 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           !takeover && "border-r border-sidebar-border",
         )}
         aria-label={t("sidebar.rail.ariaLabel")}
       >
-        {shown.map((candidate) => (
-          <RailOrgButton
-            key={candidate.id}
-            org={candidate}
-            active={candidate.slug === currentOrg.slug}
-            onSelect={() => travelTo(candidate.slug)}
-          />
-        ))}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={shown.map((it) => it.slug)}
+            strategy={verticalListSortingStrategy}
+          >
+            {shown.map((candidate) => (
+              <RailOrgButton
+                key={candidate.id}
+                org={candidate}
+                active={candidate.slug === currentOrg.slug}
+                pinned={prefs.pinned.includes(candidate.slug)}
+                onSelect={() => travelTo(candidate.slug)}
+                onOpenSettings={() =>
+                  navigate({
+                    to: "/$org/settings",
+                    params: { org: candidate.slug },
+                  })
+                }
+                onTogglePin={() =>
+                  setPrefs((prev) =>
+                    toggleRailOrgPin(readRailOrgPrefs(prev), candidate.slug),
+                  )
+                }
+                onHide={
+                  candidate.slug === currentOrg.slug
+                    ? undefined
+                    : () =>
+                        setPrefs((prev) =>
+                          hideRailOrg(readRailOrgPrefs(prev), candidate.slug),
+                        )
+                }
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
         {orgs.length > shown.length && (
           <OrgSearch
             orgs={orgs}
             currentSlug={currentOrg.slug}
-            hiddenCount={hidden.length}
+            hiddenCount={orgs.length - shown.length}
             onSelect={travelTo}
           />
         )}
