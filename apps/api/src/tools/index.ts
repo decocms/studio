@@ -107,6 +107,7 @@ export const CORE_TOOLS = [
   ChatTools.UPDATE_INTERESTS,
   TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
   TaskBoardTools.TASK_BOARD_DELIVERY,
+  TaskBoardTools.TASK_BOARD_OPERATION,
   TaskBoardTools.TASK_BOARD_STUCK,
   TaskBoardTools.TASK_BOARD_COST,
   TaskBoardTools.TASK_BOARD_QUALITY,

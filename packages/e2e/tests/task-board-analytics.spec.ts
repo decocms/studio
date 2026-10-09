@@ -23,6 +23,16 @@ type Section =
       title: string;
       columns: string[];
       rows: (string | number | null)[][];
+    }
+  | {
+      kind: "funnel";
+      title: string;
+      stages: { label: string; value: number }[];
+    }
+  | {
+      kind: "bars";
+      title: string;
+      bars: { label: string; value: number }[];
     };
 
 interface AnalyticsPayload {
@@ -37,6 +47,7 @@ interface AdminOrgList {
 }
 
 const TOOLS = [
+  "TASK_BOARD_OPERATION",
   "TASK_BOARD_DELIVERY",
   "TASK_BOARD_STUCK",
   "TASK_BOARD_COST",
@@ -67,6 +78,18 @@ function expectNonNegative(sections: Section[]) {
       for (const row of section.rows) {
         expect(row).toHaveLength(section.columns.length);
       }
+    }
+    if (section.kind === "funnel") {
+      // Nested stages: each is a subset of the one before it.
+      section.stages.forEach((stage, i) => {
+        expect(stage.value).toBeGreaterThanOrEqual(0);
+        const prev = section.stages[i - 1];
+        if (prev) expect(stage.value).toBeLessThanOrEqual(prev.value);
+      });
+    }
+    if (section.kind === "bars") {
+      for (const bar of section.bars)
+        expect(bar.value).toBeGreaterThanOrEqual(0);
     }
   }
 }
@@ -103,7 +126,9 @@ test.describe("task board analytics", () => {
         `${tool} returns sections`,
       ).toBeGreaterThan(0);
       for (const section of payload.sections) {
-        expect(["stat", "series", "table"]).toContain(section.kind);
+        expect(["stat", "series", "table", "funnel", "bars"]).toContain(
+          section.kind,
+        );
         expect(section.title).toBeTruthy();
       }
       expectNonNegative(payload.sections);
@@ -137,5 +162,10 @@ test.describe("task board analytics", () => {
     await expect(
       call("TASK_BOARD_DELIVERY", { org: "some-other-org" }),
     ).rejects.toThrow(/Not allowed/);
+
+    // A project id never confirms a project the caller can't see.
+    await expect(
+      call("TASK_BOARD_OPERATION", { project: "vir_not_a_project" }),
+    ).rejects.toThrow(/Project not found/);
   });
 });

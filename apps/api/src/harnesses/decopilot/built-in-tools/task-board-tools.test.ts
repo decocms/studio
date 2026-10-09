@@ -38,6 +38,7 @@ describe("createTaskBoardTools", () => {
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_UPDATE",
+      "TASK_BOARD_OPERATION",
       "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_PROMPT_LIST",
       "TASK_BOARD_PROMPT_UPSERT",

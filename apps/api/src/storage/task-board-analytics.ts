@@ -20,7 +20,15 @@ import type { Database } from "./types";
 export interface StatSection {
   kind: "stat";
   title: string;
-  values: { label: string; value: number | null; unit?: string }[];
+  values: {
+    label: string;
+    value: number | null;
+    unit?: string;
+    /** The same figure over the equal-length window before `from`. */
+    previous?: number | null;
+    /** Which way is good, so a delta can say whether it improved. */
+    better?: "up" | "down";
+  }[];
 }
 
 export interface SeriesSection {
@@ -35,20 +43,72 @@ export interface TableSection {
   title: string;
   columns: string[];
   rows: (string | number | null)[][];
+  /** Unit per column name (`s`, `USD`, `%`), so a reader formats it. */
+  units?: Record<string, string>;
 }
 
-export type Section = StatSection | SeriesSection | TableSection;
+/** Nested stages: each one is a subset of the stage before it. */
+export interface FunnelSection {
+  kind: "funnel";
+  title: string;
+  stages: { label: string; value: number }[];
+}
+
+/** A ranked breakdown — one bar per category, longest first. */
+export interface BarsSection {
+  kind: "bars";
+  title: string;
+  /** What `value` counts, e.g. "tasks". */
+  unit?: string;
+  /** The card's figure, when the bars don't sum to one (a task can be in several). */
+  total?: { value: number; label: string };
+  bars: { label: string; value: number; detail?: string }[];
+}
+
+export type Section =
+  | StatSection
+  | SeriesSection
+  | TableSection
+  | FunnelSection
+  | BarsSection;
 
 export interface AnalyticsQuery {
   /** Org ids to scope to, or `null` for the cross-tenant aggregate. */
   orgIds: string[] | null;
   from: string;
   to: string;
+  /** Narrow to one project's cards; absent for the whole board. */
+  project?: AnalyticsProject;
+}
+
+export interface AnalyticsProject {
+  id: string;
+  /** The project's `owner/name`, lowercased; null for a repo-less project. */
+  repo: string | null;
 }
 
 /** Grafana's `${org:sqlstring}`. `null` is the "All" selection. */
 export const orgIn = (orgIds: string[] | null, col: string) =>
   orgIds === null ? sql`true` : sql`${sql.raw(col)} = any(${orgIds}::text[])`;
+
+/**
+ * The project-scoped board's attribution (`tasksForProject` over a one-project
+ * index, in `apps/web/src/lib/project-index.ts`), as SQL: a run the project
+ * started, its id stamped in `repo`, or its repository named in `repo`.
+ */
+const projectIn = (p: AnalyticsProject) => sql`(
+  exists (select 1 from task_board_item_threads pl
+          join threads pt on pt.id = pl.thread_id
+          where pl.task_board_item_id = i.id and pt.virtual_mcp_id = ${p.id})
+  or trim(coalesce(i.repo, '')) = ${p.id}
+  or (${p.repo}::text is not null and lower(trim(coalesce(i.repo, ''))) = ${p.repo}::text)
+)`;
+
+/** Every query's card filter; each one aliases `task_board_items` as `i`. */
+const scoped = (q: AnalyticsQuery) =>
+  q.project
+    ? sql`${orgIn(q.orgIds, "i.organization_id")} and ${projectIn(q.project)}`
+    : orgIn(q.orgIds, "i.organization_id");
 
 /** Grafana's `$__timeFilter(col)`. */
 export const inRange = (col: string, q: AnalyticsQuery) =>
@@ -59,7 +119,7 @@ export const inRange = (col: string, q: AnalyticsQuery) =>
  * moved it. Copy-pasted into ~8 dashboard panels; extracted once here, logic
  * untouched.
  */
-const movesCte = (orgIds: string[] | null) => sql`
+const movesCte = (q: AnalyticsQuery) => sql`
   select i.organization_id            as org_id,
          o.slug                       as org_slug,
          i.id                         as item_id,
@@ -69,6 +129,7 @@ const movesCte = (orgIds: string[] | null) => sql`
            else 'studio'
          end                          as board,
          i.type                       as task_type,
+         i.title                      as title,
          a.data->>'from'              as from_lane,
          a.data->>'to'                as lane,
          a.data->>'reason'            as reason,
@@ -79,12 +140,12 @@ const movesCte = (orgIds: string[] | null) => sql`
   from task_board_activity a
   join task_board_items i on i.id = a.task_board_item_id
   join organization o     on o.id = i.organization_id
-  where a.action = 'status_changed' and ${orgIn(orgIds, "i.organization_id")}
+  where a.action = 'status_changed' and ${scoped(q)}
   window w as (partition by a.task_board_item_id order by a.occurred_at, a.id)
 `;
 
 /** USD per card, from the OpenRouter price recorded on `finish` parts. */
-const taskCostCte = (orgIds: string[] | null) => sql`
+const taskCostCte = (q: AnalyticsQuery) => sql`
   select l.task_board_item_id as item_id,
          i.organization_id    as org_id,
          o.slug               as org_slug,
@@ -94,19 +155,19 @@ const taskCostCte = (orgIds: string[] | null) => sql`
   join thread_message_parts p on p.thread_id = l.thread_id and p.kind = 'finish'
   join task_board_items i     on i.id = l.task_board_item_id
   join organization o         on o.id = i.organization_id
-  where ${orgIn(orgIds, "i.organization_id")}
+  where ${scoped(q)}
   group by 1, 2, 3
 `;
 
 /** Cards that reached done/merged AND actually went through review. */
-const reviewedCompletedCte = (orgIds: string[] | null) => sql`
+const reviewedCompletedCte = (q: AnalyticsQuery) => sql`
   select i.organization_id as org_id, o.slug as org_slug, a.task_board_item_id as item_id,
          min(a.occurred_at) as done_at
   from task_board_activity a
   join task_board_items i on i.id = a.task_board_item_id
   join organization o     on o.id = i.organization_id
   where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
-    and ${orgIn(orgIds, "i.organization_id")}
+    and ${scoped(q)}
     and exists (select 1 from task_board_activity a2
                 where a2.task_board_item_id = a.task_board_item_id
                   and a2.action = 'status_changed' and a2.data->>'to' = 'in_review')
@@ -118,6 +179,72 @@ const reworkCte = sql`
   from task_board_activity a
   where a.action = 'review_changes_requested'
   group by 1
+`;
+
+/** Failure kinds that are settled history, not errors (see `errors()`). */
+const NOT_AN_ERROR = sql.raw(
+  "('superseded','ended_after_delivery','cancelled','abandoned','credits')",
+);
+
+/**
+ * One row per card whose first run started in `q`'s range: what happened to it.
+ * `sent_back` is rework from either side — the reviewer asked for changes, or
+ * the card moved from review or later back to the queue.
+ */
+const operationFacts = (q: AnalyticsQuery) => sql`
+  select r.item_id, r.first_run_at, r.errored, i.title, i.status,
+         (exists (select 1 from task_board_activity a
+                  where a.task_board_item_id = r.item_id
+                    and a.action = 'review_changes_requested')
+          or exists (select 1 from task_board_activity a
+                     where a.task_board_item_id = r.item_id
+                       and a.action = 'status_changed'
+                       and a.data->>'from' in ('in_review','approved','merged','post_deploy_validation','done')
+                       and a.data->>'to' in ('triage','todo','in_progress'))) as sent_back,
+         exists (select 1 from task_board_activity a
+                 where a.task_board_item_id = r.item_id
+                   and a.action = 'status_changed' and a.data->>'to' in ('merged','done')) as shipped,
+         (exists (select 1 from task_board_activity a
+                  where a.task_board_item_id = r.item_id and a.actor_id is not null
+                    and a.action <> 'created' and a.occurred_at > r.first_run_at)
+          or exists (select 1 from task_board_comments m
+                     where m.task_board_item_id = r.item_id and m.thread_id is null
+                       and m.created_at > r.first_run_at)) as touched
+  from (
+    select l.task_board_item_id as item_id,
+           min(l.created_at) as first_run_at,
+           bool_or(t.status = 'failed' and coalesce(t.failure_kind, 'error') not in ${NOT_AN_ERROR}) as errored
+    from task_board_item_threads l
+    join threads t          on t.id = l.thread_id
+    join task_board_items i on i.id = l.task_board_item_id
+    where ${scoped(q)}
+    group by 1
+  ) r
+  join task_board_items i on i.id = r.item_id
+  where ${inRange("r.first_run_at", q)}
+`;
+
+/** Every person's action on a card in `f` after its first run, by kind. */
+const humanTouches = () => sql`
+  select f.item_id, a.occurred_at as at,
+         case
+           when a.action = 'status_changed' and a.data->>'reason' = 'rerun' then 'Re-ran'
+           when a.action = 'status_changed' then 'Moved the card'
+           when a.action = 'review_changes_requested' then 'Requested changes'
+           when a.action = 'review_approved' then 'Approved by hand'
+           when a.action in ('title_changed','description_changed') then 'Rewrote the brief'
+           when a.action = 'assignee_changed' then 'Reassigned'
+           when a.action in ('priority_changed','due_date_changed','tags_changed','type_changed') then 'Re-triaged'
+           else 'Other'
+         end as kind
+  from f
+  join task_board_activity a on a.task_board_item_id = f.item_id
+  where a.actor_id is not null and a.action <> 'created' and a.occurred_at > f.first_run_at
+  union all
+  select f.item_id, m.created_at as at, 'Commented' as kind
+  from f
+  join task_board_comments m on m.task_board_item_id = f.item_id
+  where m.thread_id is null and m.created_at > f.first_run_at
 `;
 
 /** pg hands back numeric and bigint as strings. */
@@ -144,11 +271,13 @@ export const table = (
   title: string,
   columns: string[],
   rows: Row[],
+  units?: Record<string, string>,
 ): TableSection => ({
   kind: "table",
   title,
   columns,
   rows: rows.map((r) => columns.map((c) => cell(r[c]))),
+  ...(units ? { units } : {}),
 });
 
 export class TaskBoardAnalyticsStorage {
@@ -161,7 +290,7 @@ export class TaskBoardAnalyticsStorage {
 
   /** Panels 1–7: did the work ship, and where did the time go? */
   async delivery(q: AnalyticsQuery): Promise<Section[]> {
-    const moves = movesCte(q.orgIds);
+    const moves = movesCte(q);
 
     const [headline] = await this.rows(sql`
       with moves as (${moves})
@@ -181,7 +310,7 @@ export class TaskBoardAnalyticsStorage {
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
         where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
-          and ${orgIn(q.orgIds, "i.organization_id")}
+          and ${scoped(q)}
         group by 1
       )
       select round((percentile_cont(0.5) within group (order by lead_h))::numeric, 0)  as lead_p50,
@@ -266,7 +395,11 @@ export class TaskBoardAnalyticsStorage {
           p90: num(r.p90),
         })),
       },
-      table("Dwell by lane", ["Lane", "Visits", "p50", "p90", "Max"], dwell),
+      table("Dwell by lane", ["Lane", "Visits", "p50", "p90", "Max"], dwell, {
+        p50: "s",
+        p90: "s",
+        Max: "s",
+      }),
     ];
   }
 
@@ -275,13 +408,13 @@ export class TaskBoardAnalyticsStorage {
    * card stuck since before the range is exactly what you want to see.
    */
   async stuck(q: AnalyticsQuery): Promise<Section[]> {
-    const moves = movesCte(q.orgIds);
+    const moves = movesCte(q);
 
     const stuckNow = await this.rows(sql`
       with moves as (${moves})
-      select org_slug as "Org", lane as "Lane", item_id as "Task",
+      select org_slug as "Org", lane as "Lane", left(title, 80) as "Task", item_id as "Task ID",
              round(extract(epoch from (now() - entered_at))::numeric, 0) as "Age",
-             case when actor_id is null then 'agent/system' else 'human' end as "Moved in by"
+             case when actor_id is null then 'Agent' else 'Person' end as "Moved in by"
       from moves
       where left_at is null and lane not in ('done','merged','archived')
       order by entered_at asc limit 50
@@ -303,8 +436,9 @@ export class TaskBoardAnalyticsStorage {
     return [
       table(
         "Stuck right now",
-        ["Org", "Lane", "Task", "Age", "Moved in by"],
+        ["Org", "Lane", "Task", "Age", "Moved in by", "Task ID"],
         stuckNow,
+        { Age: "s" },
       ),
       table(
         "Work in progress, by age",
@@ -320,7 +454,7 @@ export class TaskBoardAnalyticsStorage {
    * quietly wrong.
    */
   async cost(q: AnalyticsQuery): Promise<Section[]> {
-    const taskCost = taskCostCte(q.orgIds);
+    const taskCost = taskCostCte(q);
 
     const [total] = await this.rows(sql`
       with task_cost as (${taskCost})
@@ -334,7 +468,7 @@ export class TaskBoardAnalyticsStorage {
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
         where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
-          and ${inRange("a.occurred_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+          and ${inRange("a.occurred_at", q)} and ${scoped(q)}
       )
       select round(sum(c.usd) / nullif(count(*), 0), 2) as usd
       from completed d join task_cost c on c.item_id = d.item_id
@@ -347,7 +481,7 @@ export class TaskBoardAnalyticsStorage {
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
         where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
-          and ${inRange("a.occurred_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+          and ${inRange("a.occurred_at", q)} and ${scoped(q)}
           and exists (select 1 from task_board_item_prs pr where pr.task_board_item_id = a.task_board_item_id)
       )
       select round(sum(c.usd) / nullif(count(*), 0), 2) as usd
@@ -361,7 +495,7 @@ export class TaskBoardAnalyticsStorage {
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
         where a.action = 'status_changed' and a.data->>'to' = 'archived'
-          and ${inRange("a.occurred_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+          and ${inRange("a.occurred_at", q)} and ${scoped(q)}
           and not exists (select 1 from task_board_item_prs pr where pr.task_board_item_id = a.task_board_item_id)
       )
       select count(*) as dropped,
@@ -378,7 +512,7 @@ export class TaskBoardAnalyticsStorage {
       join task_board_item_threads l on l.thread_id = p.thread_id
       join task_board_items i on i.id = l.task_board_item_id
       where p.kind = 'finish' and ${inRange("l.created_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
     `);
 
     const perDay = await this.rows(sql`
@@ -387,7 +521,7 @@ export class TaskBoardAnalyticsStorage {
       from task_board_item_threads l
       join thread_message_parts p on p.thread_id = l.thread_id and p.kind = 'finish'
       join task_board_items i     on i.id = l.task_board_item_id
-      where ${inRange("l.created_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+      where ${inRange("l.created_at", q)} and ${scoped(q)}
       group by 1 order by 1
     `);
 
@@ -445,14 +579,19 @@ export class TaskBoardAnalyticsStorage {
           "Priciest task USD",
         ],
         byTenant,
+        {
+          "Total USD": "USD",
+          "Median USD / task": "USD",
+          "Priciest task USD": "USD",
+        },
       ),
     ];
   }
 
   /** Panels 27–32: is the agent shipping work that holds? */
   async quality(q: AnalyticsQuery): Promise<Section[]> {
-    const completed = reviewedCompletedCte(q.orgIds);
-    const moves = movesCte(q.orgIds);
+    const completed = reviewedCompletedCte(q);
+    const moves = movesCte(q);
 
     const [yieldRow] = await this.rows(sql`
       with completed as (${completed}), rework as (${reworkCte})
@@ -496,7 +635,7 @@ export class TaskBoardAnalyticsStorage {
              max(i.retry_attempts) as "Worst task"
       from task_board_items i
       join organization o on o.id = i.organization_id
-      where ${inRange("i.created_at::timestamptz", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+      where ${inRange("i.created_at::timestamptz", q)} and ${scoped(q)}
       group by 1, 2
       having sum(i.retry_attempts) > 0
       order by 4 desc
@@ -530,11 +669,19 @@ export class TaskBoardAnalyticsStorage {
       },
       {
         kind: "series",
-        title: "Rework over time",
+        title: "First-pass yield over time",
+        unit: "%",
+        points: reworkOverTime.map((r) => ({
+          t: iso(r.t),
+          "First-pass yield": num(r["First-pass yield %"]),
+        })),
+      },
+      {
+        kind: "series",
+        title: "Changes requested per task over time",
         points: reworkOverTime.map((r) => ({
           t: iso(r.t),
           "Changes requested / task": num(r["Changes requested / task"]),
-          "First-pass yield %": num(r["First-pass yield %"]),
         })),
       },
       table(
@@ -561,7 +708,7 @@ export class TaskBoardAnalyticsStorage {
       join threads t on t.id = l.thread_id
       join task_board_items i on i.id = l.task_board_item_id
       where t.status = 'failed' and ${inRange("l.created_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
     `);
 
     const perDay = await this.rows(sql`
@@ -573,7 +720,7 @@ export class TaskBoardAnalyticsStorage {
       join threads t on t.id = l.thread_id
       join task_board_items i on i.id = l.task_board_item_id
       where t.status = 'failed' and ${inRange("l.created_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
       group by 1 order by 1
     `);
 
@@ -586,7 +733,7 @@ export class TaskBoardAnalyticsStorage {
       join threads t on t.id = l.thread_id
       join task_board_items i on i.id = l.task_board_item_id
       where t.status = 'failed' and ${inRange("l.created_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
       group by 1 order by 2 desc
     `);
 
@@ -605,7 +752,7 @@ export class TaskBoardAnalyticsStorage {
       join organization o     on o.id = i.organization_id
       left join threads t     on t.id = p.thread_id
       where p.kind = 'error' and ${inRange("p.persisted_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
       order by p.persisted_at desc
       limit 300
     `);
@@ -623,7 +770,7 @@ export class TaskBoardAnalyticsStorage {
       join organization o     on o.id = i.organization_id
       left join threads t     on t.id = p.thread_id
       where p.kind = 'error' and ${inRange("p.persisted_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
       group by 1 order by 2 desc limit 40
     `);
 
@@ -650,7 +797,7 @@ export class TaskBoardAnalyticsStorage {
         where pe.thread_id = t.id and pe.kind = 'error'
       ) e on true
       where t.failure_kind = 'superseded' and ${inRange("l.created_at", q)}
-        and ${orgIn(q.orgIds, "i.organization_id")}
+        and ${scoped(q)}
       order by t.updated_at::timestamptz desc limit 150
     `);
 
@@ -708,13 +855,14 @@ export class TaskBoardAnalyticsStorage {
           "Thread",
         ],
         superseded,
+        { "Ran for": "s" },
       ),
     ];
   }
 
   /** Panels 9 + 33: per-tenant scorecard and queue wait. */
   async tenants(q: AnalyticsQuery): Promise<Section[]> {
-    const moves = movesCte(q.orgIds);
+    const moves = movesCte(q);
 
     const scorecard = await this.rows(sql`
       with moves as (${moves}),
@@ -738,7 +886,7 @@ export class TaskBoardAnalyticsStorage {
         join task_board_items i on i.id = l.task_board_item_id
         where t.status = 'failed'
           and coalesce(t.failure_kind, 'error') not in ('superseded','ended_after_delivery','cancelled','abandoned','credits')
-          and ${inRange("l.created_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+          and ${inRange("l.created_at", q)} and ${scoped(q)}
         group by 1
       ),
       cost as (
@@ -748,7 +896,7 @@ export class TaskBoardAnalyticsStorage {
         from task_board_item_threads l
         join thread_message_parts p on p.thread_id = l.thread_id and p.kind = 'finish'
         join task_board_items i on i.id = l.task_board_item_id
-        where ${inRange("l.created_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+        where ${inRange("l.created_at", q)} and ${scoped(q)}
         group by 1
       )
       select c.org_slug as "Org",
@@ -794,11 +942,156 @@ export class TaskBoardAnalyticsStorage {
           "Errors",
         ],
         scorecard,
+        {
+          "PR %": "%",
+          "Review p50": "s",
+          "Review p90": "s",
+          "$ / thread": "USD",
+        },
       ),
       table(
         "Queue wait by tenant",
         ["Org", "Org ID", "Queued", "p50", "p90"],
         queueWait,
+        { p50: "s", p90: "s" },
+      ),
+    ];
+  }
+
+  /**
+   * The operation, end to end: of the cards the agent picked up, how many ran
+   * clean, passed on the first try, shipped, and did all of it without a
+   * person stepping in — and, for the rest, what the person did.
+   *
+   * The cohort is cards whose FIRST run started in range, so a card counts once
+   * and its whole journey is judged. A human action only counts as stepping in
+   * after that first run: assigning or queueing the card is how work starts.
+   */
+  async operation(q: AnalyticsQuery): Promise<Section[]> {
+    const span = Date.parse(q.to) - Date.parse(q.from);
+    const previous = {
+      ...q,
+      from: new Date(Date.parse(q.from) - span).toISOString(),
+      to: q.from,
+    };
+    const bucket = span <= 14 * 86_400_000 ? "day" : "week";
+
+    const summary = async (w: AnalyticsQuery) => {
+      const [row] = await this.rows(sql`
+        with f as (${operationFacts(w)})
+        select count(*) as ran,
+               count(*) filter (where not errored) as clean,
+               count(*) filter (where not errored and not sent_back) as first_pass,
+               count(*) filter (where not errored and not sent_back and shipped) as shipped_first_pass,
+               count(*) filter (where not errored and not sent_back and shipped and not touched) as zero_touch,
+               count(*) filter (where shipped) as shipped,
+               count(*) filter (where touched) as touched,
+               round(100.0 * count(*) filter (where shipped and not touched)
+                     / nullif(count(*) filter (where shipped), 0), 1) as untouched_pct,
+               round(100.0 * count(*) filter (where sent_back) / nullif(count(*), 0), 1) as sent_back_pct
+        from f
+      `);
+      return row ?? {};
+    };
+    const [now, before] = await Promise.all([summary(q), summary(previous)]);
+
+    const trend = await this.rows(sql`
+      with f as (${operationFacts(q)})
+      select date_trunc(${bucket}, first_run_at) as t,
+             round(100.0 * count(*) filter (where shipped and not touched)
+                   / nullif(count(*) filter (where shipped), 0), 1) as "Shipped with no human %",
+             round(100.0 * count(*) filter (where sent_back) / nullif(count(*), 0), 1) as "Sent back %"
+      from f group by 1 order by 1
+    `);
+
+    const touches = await this.rows(sql`
+      with f as (${operationFacts(q)}),
+      t as (${humanTouches()})
+      select kind, count(distinct item_id) as tasks, count(*) as actions
+      from t group by 1 order by 2 desc, 3 desc
+    `);
+
+    const needed = await this.rows(sql`
+      with f as (${operationFacts(q)}),
+      t as (${humanTouches()})
+      select left(f.title, 80) as "Task",
+             f.status as "Lane",
+             count(*) as "Actions",
+             string_agg(distinct t.kind, ', ') as "What people did",
+             max(t.at) as "Last touch",
+             f.item_id as "Task ID"
+      from t join f on f.item_id = t.item_id
+      group by f.item_id, f.title, f.status
+      order by 3 desc, 5 desc
+      limit 50
+    `);
+
+    const stat = (
+      label: string,
+      key: string,
+      better: "up" | "down",
+      unit?: string,
+    ) => ({
+      label,
+      value: num(now[key]),
+      previous: num(before[key]),
+      better,
+      ...(unit ? { unit } : {}),
+    });
+
+    return [
+      {
+        kind: "stat",
+        title: "Operation",
+        values: [
+          stat("Shipped with no human", "untouched_pct", "up", "%"),
+          stat("Sent back", "sent_back_pct", "down", "%"),
+          stat("Needed a person", "touched", "down"),
+          stat("Shipped", "shipped", "up"),
+        ],
+      },
+      {
+        kind: "funnel",
+        title: "From first run to production",
+        stages: [
+          { label: "Picked up by the agent", value: num(now.ran) ?? 0 },
+          { label: "Ran without errors", value: num(now.clean) ?? 0 },
+          { label: "Passed on the first try", value: num(now.first_pass) ?? 0 },
+          { label: "Shipped", value: num(now.shipped_first_pass) ?? 0 },
+          { label: "No human touch", value: num(now.zero_touch) ?? 0 },
+        ],
+      },
+      {
+        kind: "bars",
+        title: "Where people stepped in",
+        unit: "tasks",
+        total: {
+          value: touches.reduce((sum, r) => sum + (num(r.actions) ?? 0), 0),
+          label: "actions by people after the agent started",
+        },
+        bars: touches.map((r) => ({
+          label: String(r.kind),
+          value: num(r.tasks) ?? 0,
+          detail:
+            num(r.actions) === 1
+              ? "1 action"
+              : `${num(r.actions) ?? 0} actions`,
+        })),
+      },
+      {
+        kind: "series",
+        title: "Autonomy over time",
+        unit: "%",
+        points: trend.map((r) => ({
+          t: iso(r.t),
+          "Shipped with no human %": num(r["Shipped with no human %"]),
+          "Sent back %": num(r["Sent back %"]),
+        })),
+      },
+      table(
+        "Tasks that needed a person",
+        ["Task", "Lane", "Actions", "What people did", "Last touch", "Task ID"],
+        needed,
       ),
     ];
   }

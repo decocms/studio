@@ -1000,6 +1000,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -1012,6 +1013,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -1025,6 +1028,77 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_OPERATION: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      project?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -1034,6 +1108,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -1046,6 +1121,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -1059,6 +1136,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -1068,6 +1162,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -1080,6 +1175,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -1093,6 +1190,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -1102,6 +1216,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -1114,6 +1229,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -1127,6 +1244,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -1136,6 +1270,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -1148,6 +1283,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -1161,6 +1298,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -1170,6 +1324,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -1182,6 +1337,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -1195,6 +1352,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -4767,6 +4941,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -4779,6 +4954,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -4792,6 +4969,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
@@ -4801,6 +4995,7 @@ export interface StudioToolIO {
       org?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;
+      project?: string | undefined;
     };
     output: {
       range: { from: string; to: string };
@@ -4813,6 +5008,8 @@ export interface StudioToolIO {
               label: string;
               value: number | null;
               unit?: string | undefined;
+              previous?: number | null | undefined;
+              better?: "up" | "down" | undefined;
             }[];
           }
         | {
@@ -4826,6 +5023,23 @@ export interface StudioToolIO {
             title: string;
             columns: string[];
             rows: (string | number | null)[][];
+            units?: Record<string, string> | undefined;
+          }
+        | {
+            kind: "funnel";
+            title: string;
+            stages: { label: string; value: number }[];
+          }
+        | {
+            kind: "bars";
+            title: string;
+            bars: {
+              label: string;
+              value: number;
+              detail?: string | undefined;
+            }[];
+            unit?: string | undefined;
+            total?: { value: number; label: string } | undefined;
           }
       )[];
     };
