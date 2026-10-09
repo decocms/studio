@@ -202,7 +202,7 @@ export function createLazyClient(
         async () => {
           if (listsSelfToolsInProcess && type === "tools") {
             const { listManagementTools } = await import("../tools");
-            return listManagementTools(ctx);
+            return listManagementTools();
           }
           const real = await getRealClient();
           const res = await listFn(real);
