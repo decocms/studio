@@ -62,9 +62,10 @@ const MAX_EXTRACT_CHARS = 120_000;
  * first slice — a store that lists its categories before it lists what is in
  * them puts every product past the window. So the evidence is read in parallel
  * chunks and merged, bounded here because each chunk is a model call someone is
- * waiting on.
+ * waiting on. Enough of them to cover `MAX_EVIDENCE_CHARS`: evidence kept but
+ * never read is a product nobody can choose.
  */
-const MAX_EXTRACT_CHUNKS = 4;
+const MAX_EXTRACT_CHUNKS = 5;
 
 /** What a merged catalogue is trimmed to, after the model has had its say. */
 const MAX_CATALOGUE_ENTRIES = 200;
@@ -546,17 +547,50 @@ export function chunkEvidence(evidence: string, size: number): string[] {
   return chunks;
 }
 
-/** Later sightings of an id lose: the first pass read it nearest its source. */
-function mergeById<T extends { id: string }>(groups: T[][], cap: number): T[] {
+/**
+ * One record per id, filled from every chunk that saw it.
+ *
+ * Field by field rather than whole, because the chunks see different halves of
+ * the same product: a catalogue listing names it and carries no image, and the
+ * SKU files that do carry the images arrive tens of thousands of characters
+ * later. Letting the first sighting win discarded the images of every product
+ * that happened to be listed before it was photographed.
+ *
+ * A filled field is never overwritten — the earliest chunk read it nearest its
+ * source — but an empty one is always open to a later answer.
+ */
+export function mergeById<T extends { id: string }>(
+  groups: T[][],
+  cap: number,
+): T[] {
   const byId = new Map<string, T>();
   for (const group of groups) {
     for (const entry of group) {
       const key = entry.id.trim().toLowerCase();
-      if (!key || byId.has(key)) continue;
-      byId.set(key, entry);
+      if (!key) continue;
+      const seen = byId.get(key);
+      if (!seen) {
+        byId.set(key, entry);
+        continue;
+      }
+      byId.set(key, fillBlanks(seen, entry));
     }
   }
   return [...byId.values()].slice(0, cap);
+}
+
+const blank = (value: unknown) =>
+  value === undefined ||
+  value === null ||
+  value === "" ||
+  (Array.isArray(value) && value.length === 0);
+
+function fillBlanks<T extends object>(seen: T, later: T): T {
+  const merged = { ...seen } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(later)) {
+    if (blank(merged[key]) && !blank(value)) merged[key] = value;
+  }
+  return merged as T;
 }
 
 async function transcribe(

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   chunkEvidence,
   isGroundingTool,
+  mergeById,
   renderGrounding,
   survivingFailure,
 } from "./site-tools";
@@ -174,5 +175,67 @@ describe("chunkEvidence", () => {
 
   test("empty evidence yields no chunks", () => {
     expect(chunkEvidence("", 100)).toEqual([]);
+  });
+});
+
+/**
+ * The chunks see different halves of the same product: a listing names it, and
+ * the files that carry its images arrive tens of thousands of characters later.
+ */
+describe("mergeById", () => {
+  test("fills a blank field from a later sighting", () => {
+    const [product] = mergeById(
+      [
+        [{ id: "1", name: "Mochila", images: [] as string[], price: "" }],
+        [{ id: "1", name: "", images: ["https://cdn/a.jpg"], price: "R$ 99" }],
+      ],
+      10,
+    );
+    expect(product).toEqual({
+      id: "1",
+      name: "Mochila",
+      images: ["https://cdn/a.jpg"],
+      price: "R$ 99",
+    });
+  });
+
+  test("never overwrites a field that was already answered", () => {
+    const [product] = mergeById(
+      [[{ id: "1", name: "Mochila Escolar" }], [{ id: "1", name: "mochila" }]],
+      10,
+    );
+    expect(product?.name).toBe("Mochila Escolar");
+  });
+
+  test("matches an id across chunks regardless of case and padding", () => {
+    const merged = mergeById(
+      [[{ id: "SKU-1", name: "A" }], [{ id: " sku-1 ", name: "" }]],
+      10,
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  test("keeps distinct ids apart", () => {
+    expect(
+      mergeById([[{ id: "1", name: "A" }], [{ id: "2", name: "B" }]], 10),
+    ).toHaveLength(2);
+  });
+
+  test("drops an entry with no id, which identifies nothing", () => {
+    expect(mergeById([[{ id: "  ", name: "A" }]], 10)).toEqual([]);
+  });
+
+  test("caps after merging, so the cap counts records and not sightings", () => {
+    const merged = mergeById(
+      [
+        [
+          { id: "1", name: "A" },
+          { id: "2", name: "B" },
+        ],
+        [{ id: "1", name: "" }],
+      ],
+      1,
+    );
+    expect(merged).toHaveLength(1);
   });
 });
