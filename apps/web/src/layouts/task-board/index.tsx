@@ -15,7 +15,6 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -110,6 +109,7 @@ import {
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
+  boardCollisions,
   dropLane,
   LANE_DROPPABLE_PREFIX,
   laneHeader,
@@ -2367,9 +2367,7 @@ function Lanes({
   return (
     <DndContext
       sensors={sensors}
-      // Corners beat centers across lanes: a tall card's center can sit outside
-      // the column the pointer is actually over.
-      collisionDetection={closestCorners}
+      collisionDetection={boardCollisions}
       onDragStart={(event: DragStartEvent) => {
         setActiveId(String(event.active.id));
         setLandedIds([]);
@@ -2624,7 +2622,9 @@ function Lane({
       // identifiable by their localized label or utility classes.
       data-lane={status}
       className={cn(
-        "group/lane flex h-full min-w-0 flex-col rounded-xl py-1 transition-colors",
+        // min-h-0: a grid item's minimum height is its content, so without it
+        // every lane grows to the longest one instead of scrolling on its own.
+        "group/lane flex h-full min-h-0 min-w-0 flex-col rounded-xl py-1 transition-colors",
         isTarget && "bg-muted/50",
       )}
     >

@@ -125,3 +125,36 @@ test("every card in a multi-selection moves together and none are hidden", async
       "Card 1": "triage",
     });
 });
+
+test("a card drops into an empty lane beside a lane taller than the screen", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const request = page.context().request;
+  await seedCards(request, orgSlug, 20);
+  await openBoard(page, orgSlug);
+  // On a tall screen the empty lane's droppable is tall too, so corner
+  // distance alone puts the long lane's cards closer than the lane itself.
+  await page.setViewportSize({ width: 1280, height: 1600 });
+
+  // The long lane scrolls inside itself instead of stretching every lane.
+  const backlog = page.locator('[data-lane-scroll="triage"]');
+  await expect
+    .poll(() => backlog.evaluate((el) => el.scrollHeight > el.clientHeight + 1))
+    .toBe(true);
+
+  const source = page.locator('[data-lane="triage"] [role="button"]').first();
+  const title = (await source.textContent())?.match(/Card \d+/)?.[0];
+  if (!title) throw new Error("no seeded card at the top of the lane");
+
+  // The regression: the drop resolved to a card in the long lane, so it went
+  // nowhere.
+  await pointerDrag(page, source, page.locator('[data-lane="todo"]'));
+
+  await expect(
+    page.locator(`[data-lane="todo"] button:has-text("${title}")`),
+  ).toBeVisible();
+  await expect
+    .poll(() => statusByTitle(request, orgSlug))
+    .toMatchObject({ [title]: "todo" });
+});

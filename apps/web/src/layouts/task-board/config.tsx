@@ -1,5 +1,10 @@
 import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
+  closestCorners,
+  pointerWithin,
+  type CollisionDetection,
+} from "@dnd-kit/core";
+import {
   AlertCircle,
   AlertOctagon,
   Archive,
@@ -400,6 +405,18 @@ export function laneVisibility({
 /** dnd-kit id prefix for a lane's own droppable — the empty space below the
  *  last card. Anything else `over` reports is a card id. */
 export const LANE_DROPPABLE_PREFIX = "lane:";
+
+/**
+ * The board's drop target: whatever the pointer is inside, else the closest
+ * corners. `closestCorners` alone can't pick an empty lane: its droppable runs
+ * the lane's full height, so its bottom corners are far from any dragged card
+ * and a card in the next lane always measures closer. The keyboard sensor has
+ * no pointer, so it keeps the corner distance.
+ */
+export const boardCollisions: CollisionDetection = (args) => {
+  const within = pointerWithin(args);
+  return within.length > 0 ? within : closestCorners(args);
+};
 
 /** True for one of the board's columns — the only place a drop may land. */
 function isColumnKey(status: string): status is CanonicalColumnKey {
