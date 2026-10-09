@@ -11,8 +11,10 @@
  * the admin-only case, and it fails closed.
  */
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import { resolveCallerProjectScope } from "@/core/project-scope";
 import {
   auditTaskBoardAdminAction,
   isAdminOrgId,
@@ -42,6 +44,13 @@ const AnalyticsInputSchema = z
       .datetime({ offset: true })
       .optional()
       .describe("ISO end of the range. Defaults to now."),
+    project: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Project (virtual MCP) id to narrow to: its runs and the cards naming its repository. Omit for the whole board.",
+      ),
   })
   .refine((v) => !v.from || !v.to || Date.parse(v.from) <= Date.parse(v.to), {
     message: "`from` must not be after `to`",
@@ -56,6 +65,8 @@ const StatSectionSchema = z.object({
       label: z.string(),
       value: z.number().nullable(),
       unit: z.string().optional(),
+      previous: z.number().nullable().optional(),
+      better: z.enum(["up", "down"]).optional(),
     }),
   ),
 });
@@ -74,12 +85,35 @@ const TableSectionSchema = z.object({
   title: z.string(),
   columns: z.array(z.string()),
   rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))),
+  units: z.record(z.string(), z.string()).optional(),
+});
+
+const FunnelSectionSchema = z.object({
+  kind: z.literal("funnel"),
+  title: z.string(),
+  stages: z.array(z.object({ label: z.string(), value: z.number() })),
+});
+
+const BarsSectionSchema = z.object({
+  kind: z.literal("bars"),
+  title: z.string(),
+  unit: z.string().optional(),
+  total: z.object({ value: z.number(), label: z.string() }).optional(),
+  bars: z.array(
+    z.object({
+      label: z.string(),
+      value: z.number(),
+      detail: z.string().optional(),
+    }),
+  ),
 });
 
 const SectionSchema = z.discriminatedUnion("kind", [
   StatSectionSchema,
   SeriesSectionSchema,
   TableSectionSchema,
+  FunnelSectionSchema,
+  BarsSectionSchema,
 ]);
 
 const AnalyticsOutputSchema = z.object({
@@ -154,12 +188,46 @@ export async function resolveScope(
   };
 }
 
+/**
+ * Narrow a resolved scope to one project. Only within a single org — a project
+ * lives in exactly one — and only one the caller's role may see; anything else
+ * reads as not found, so a project id never confirms another tenant's project.
+ */
+async function narrowToProject(
+  projectId: string | undefined,
+  query: AnalyticsQuery,
+  ctx: StudioContext,
+): Promise<AnalyticsQuery> {
+  if (!projectId) return query;
+  const orgId = query.orgIds?.length === 1 ? query.orgIds[0] : undefined;
+  const project = orgId
+    ? await ctx.storage.virtualMcps.findById(projectId, orgId)
+    : null;
+  const allowed =
+    project?.organization_id === orgId &&
+    (orgId !== ctx.organization?.id ||
+      isProjectAllowed(await resolveCallerProjectScope(ctx), projectId));
+  if (!project || !allowed) throw new Error(`Project not found: ${projectId}`);
+  const repo = project.metadata?.repository;
+  return {
+    ...query,
+    project: {
+      id: project.id,
+      repo: repo ? `${repo.owner}/${repo.name}`.toLowerCase() : null,
+    },
+  };
+}
+
 /** One line for the model; the page still gets the full structuredContent. */
 function summarize(result: AnalyticsOutput): string {
   const stats = result.sections
     .filter((s) => s.kind === "stat")
     .flatMap((s) => s.values)
     .map((v) => `${v.label}: ${v.value ?? "—"}${v.unit ? ` ${v.unit}` : ""}`)
+    .join(", ");
+  const funnels = result.sections
+    .filter((s) => s.kind === "funnel")
+    .map((s) => s.stages.map((st) => `${st.label} ${st.value}`).join(" > "))
     .join(", ");
   const tables = result.sections
     .filter((s) => s.kind === "table")
@@ -168,6 +236,7 @@ function summarize(result: AnalyticsOutput): string {
   return [
     `${result.org}, ${result.range.from}..${result.range.to}`,
     stats,
+    funnels,
     tables,
   ]
     .filter(Boolean)
@@ -199,7 +268,9 @@ export function defineAnalyticsTool<TName extends string>(
     handler: async (input, ctx) => {
       requireAuth(ctx);
       await ctx.access.check();
-      const { query, org } = await resolveScope(input, ctx, name);
+      const scope = await resolveScope(input, ctx, name);
+      const query = await narrowToProject(input.project, scope.query, ctx);
+      const org = scope.org;
       return {
         range: { from: query.from, to: query.to },
         org,
@@ -214,6 +285,13 @@ export const TASK_BOARD_DELIVERY = defineAnalyticsTool(
   "Task Board Delivery",
   "Task board throughput and flow: tasks completed, how many shipped a PR, lead vs cycle time, completions per day by board, time in review, and dwell by lane.",
   (ctx, query) => ctx.storage.taskBoardAnalytics.delivery(query),
+);
+
+export const TASK_BOARD_OPERATION = defineAnalyticsTool(
+  "TASK_BOARD_OPERATION",
+  "Task Board Operation",
+  "How autonomously the agent delivers: of the cards it picked up, how many ran without errors, passed on the first try, shipped, and needed no human at all; the sent-back rate; each against the previous period; and where people stepped in, by kind.",
+  (ctx, query) => ctx.storage.taskBoardAnalytics.operation(query),
 );
 
 export const TASK_BOARD_STUCK = defineAnalyticsTool(

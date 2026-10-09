@@ -45,6 +45,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   TASK_BOARD_ITEM_PRS_GET: { readOnly: true, destructive: false },
   TASK_BOARD_ADMIN_ORG_LIST: { readOnly: true, destructive: false },
   TASK_BOARD_DELIVERY: { readOnly: true, destructive: false },
+  TASK_BOARD_OPERATION: { readOnly: true, destructive: false },
   TASK_BOARD_STUCK: { readOnly: true, destructive: false },
   TASK_BOARD_COST: { readOnly: true, destructive: false },
   TASK_BOARD_QUALITY: { readOnly: true, destructive: false },
