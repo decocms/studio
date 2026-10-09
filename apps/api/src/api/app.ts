@@ -1653,7 +1653,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
-  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  // Every 5 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
