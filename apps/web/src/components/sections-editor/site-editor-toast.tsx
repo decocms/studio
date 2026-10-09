@@ -105,11 +105,31 @@ export function toastPublishFailed(
         (body ?? details)
       ),
     action: retry
-      ? { label: t("siteEditor.tryAgain"), onClick: retry }
+      ? {
+          label: t("siteEditor.tryAgain"),
+          onClick: (event) => {
+            // Sonner deletes a toast 200ms after its action is clicked, which
+            // would take a fast retry's outcome (same id) down with it. Keep
+            // the toast: it turns into "Publishing…" (also blocking a second
+            // click) until the retry's outcome replaces it.
+            event.preventDefault();
+            toast.loading(t("thread.publishPopover.publishing"), {
+              ...FRESH_TOAST,
+              id: SITE_EDITOR_PUBLISH_TOAST,
+              description: undefined,
+            });
+            retry();
+          },
+        }
       : undefined,
     // A failure waits for the user: it carries the next step.
     duration: retry ? Number.POSITIVE_INFINITY : undefined,
   });
+}
+
+/** The publish toast gives way to a dialog (a confirm asks the next step). */
+export function dismissPublishToast() {
+  toast.dismiss(SITE_EDITOR_PUBLISH_TOAST);
 }
 
 /** The developer detail of a failed request, for Details. */

@@ -21,6 +21,7 @@ export const releases = {
   "releases.publishAnyway": "Publish anyway",
   "releases.versionLive": "This version is live.",
   "releases.publishVersionFailed": "Couldn't publish this version.",
+  "releases.siteUpdate": "Site update",
   "releases.loadMore": "Load more",
   "releases.cancel": "Cancel",
 };
