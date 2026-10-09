@@ -12,6 +12,7 @@
  */
 
 import type { ColumnType } from "kysely";
+import type { SprintState } from "@decocms/shared/sprints";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
@@ -1726,6 +1727,13 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** The sprint the card is planned into (`task_board_sprints.id`); null =
+   *  backlog. */
+  sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1814,6 +1822,24 @@ export interface TaskBoardItemTable {
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A sprint the board owns (migration 236). Days are `date` columns, read
+ *  back as `YYYY-MM-DD` text by the storage adapter. */
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
+  start_date: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  end_date: ColumnType<string | null, string | null | undefined, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
@@ -2034,6 +2060,8 @@ export interface TaskBoardItem {
    * cannot. Null for a card that names only a name, or none at all.
    */
   repositoryId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -2528,6 +2556,7 @@ export interface Database {
   };
   repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
+  task_board_sprints: TaskBoardSprintTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;

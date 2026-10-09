@@ -287,6 +287,7 @@ import type { MonitoringStorage } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
+import type { SprintStorage } from "../storage/sprints";
 import type { ProjectSidebarStorage } from "../storage/project-sidebar";
 import type { ExperimentStorage } from "../storage/experiments";
 import type { UserStorage } from "../storage/user";
@@ -353,6 +354,7 @@ export interface StudioStorage {
   threads: OrgScopedThreadStorage;
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
+  sprints: SprintStorage;
   projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;

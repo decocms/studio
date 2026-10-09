@@ -169,6 +169,8 @@ export interface TaskBoardItem {
    *  preferred over `repo` for binding a run's checkout. Mirrors
    *  `taskBoardItemSchema` in `apps/api/src/tools/task-board/schema.ts`. */
   repositoryId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;

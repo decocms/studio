@@ -29,6 +29,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assignedBy: null,
     repo: null,
     repositoryId: null,
+    sprintId: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,

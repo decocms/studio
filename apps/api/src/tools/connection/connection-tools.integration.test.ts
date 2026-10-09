@@ -109,6 +109,7 @@ describe("Connection Tools", () => {
         virtualMcps: null as never,
         users: null as never,
         tags: null as never,
+        sprints: null as never,
         projectSidebar: null as never,
         aiProviderKeys: null as never,
         secrets: null as never,

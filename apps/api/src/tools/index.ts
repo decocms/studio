@@ -93,6 +93,12 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_COMMENT_DELETE,
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
+  TaskBoardTools.TASK_BOARD_SPRINT_LIST,
+  TaskBoardTools.TASK_BOARD_SPRINT_CREATE,
+  TaskBoardTools.TASK_BOARD_SPRINT_UPDATE,
+  TaskBoardTools.TASK_BOARD_SPRINT_START,
+  TaskBoardTools.TASK_BOARD_SPRINT_COMPLETE,
+  TaskBoardTools.TASK_BOARD_SPRINT_DELETE,
   TaskBoardTools.TASK_ADD_REPO,
   // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
   ChatTools.GENERATE_IMAGE,

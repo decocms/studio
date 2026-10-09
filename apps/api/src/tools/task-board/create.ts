@@ -30,6 +30,7 @@ import {
 import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
+import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -55,6 +56,14 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).max(1000).optional(),
+    sprintId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Plan the new card into this sprint (an id from " +
+          "TASK_BOARD_SPRINT_LIST). Omit or null for the backlog.",
+      ),
     prUrl: z
       .string()
       .nullable()
@@ -142,6 +151,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     if (input.tagIds?.length) {
       await assertValidTagIds(ctx, organizationId, input.tagIds);
     }
+    if (input.sprintId) {
+      await assertPlannableSprint(ctx, organizationId, input.sprintId);
+    }
 
     let duplicateCheck: DuplicateOutcome | null = null;
     if (input.onDuplicate === "return_existing") {
@@ -177,6 +189,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       repo: input.repo ?? null,
+      sprintId: input.sprintId ?? null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });
