@@ -1,4 +1,8 @@
 import { type Ref, useRef, useState } from "react";
+import {
+  errorDetail,
+  errorDetailsDescription,
+} from "@/components/sections-editor/site-editor-toast.tsx";
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -213,9 +217,9 @@ export function BranchPicker({
 
   // A failed release write reverts the row silently otherwise — surface it.
   const reportReleaseError = (err: unknown) => {
-    toast.error(
-      err instanceof Error ? err.message : t("thread.branchPicker.saveError"),
-    );
+    toast.error(t("thread.branchPicker.saveError"), {
+      description: errorDetailsDescription(t, errorDetail(err)),
+    });
   };
 
   // Save + activate a Local tunnel URL, or turn it off when cleared.
