@@ -492,18 +492,25 @@ export const BLOG_POST_DRAFT = defineTool({
     );
     const byName = new Map(input.blocks.map((block) => [block.name, block]));
     let droppedSections = 0;
+    const dropped = new Map<string, number>();
 
     const posts = await Promise.all(
       drafts.map(async (draft) => {
         const sections: { type: string; props: Record<string, unknown> }[] = [];
         for (const section of draft.sections.slice(0, MAX_SECTIONS)) {
           const block = byName.get(section.type);
-          const props = block ? readProps(section.props, block.schema) : null;
-          if (!block || !props) {
+          if (!block) {
             droppedSections += 1;
+            note(dropped, `${section.type}: not a block this site has`);
             continue;
           }
-          sections.push({ type: section.type, props });
+          const read = readProps(section.props, block.schema);
+          if (!read.props) {
+            droppedSections += 1;
+            note(dropped, `${section.type}: ${read.reason}`);
+            continue;
+          }
+          sections.push({ type: section.type, props: read.props });
         }
 
         const [cover, filled] = await Promise.all([
@@ -532,6 +539,7 @@ export const BLOG_POST_DRAFT = defineTool({
 
     console.info(
       `[BLOG_POST_DRAFT] ${posts.length}/${input.count} draft(s), ${posts.reduce((n, p) => n + p.sections.length, 0)} section(s) kept, ${droppedSections} dropped, images ${painter.outcome()}`,
+      [...dropped].map(([reason, n]) => `${n}x ${reason}`),
     );
 
     return {
@@ -546,6 +554,11 @@ export const BLOG_POST_DRAFT = defineTool({
     };
   },
 });
+
+/** Tally one reason a section was dropped, so the log groups rather than floods. */
+function note(seen: Map<string, number>, reason: string): void {
+  seen.set(reason, (seen.get(reason) ?? 0) + 1);
+}
 
 /** What separates one draft from the next, when several are asked for. */
 function task(index: number, count: number): string {

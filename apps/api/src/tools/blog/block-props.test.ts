@@ -46,30 +46,42 @@ describe("readProps", () => {
       readProps(
         '{"title":"Dica","body":"Leve menos.","variant":"tip"}',
         CALLOUT,
-      ),
+      ).props,
     ).toEqual({ title: "Dica", body: "Leve menos.", variant: "tip" });
   });
 
   test("prunes an invented prop instead of losing the section to it", () => {
-    expect(readProps('{"body":"Leve menos.","color":"red"}', CALLOUT)).toEqual({
-      body: "Leve menos.",
-    });
+    expect(
+      readProps('{"body":"Leve menos.","color":"red"}', CALLOUT).props,
+    ).toEqual({ body: "Leve menos." });
   });
 
-  test("drops a section whose value is outside the block's enum", () => {
-    expect(readProps('{"body":"x","variant":"neon"}', CALLOUT)).toBeNull();
+  /**
+   * The reason is the whole point of these three. A post came back with 23
+   * sections dropped and nothing said which of the causes it was.
+   */
+  test("says so when a value is outside the block's enum", () => {
+    const read = readProps('{"body":"x","variant":"neon"}', CALLOUT);
+    expect(read.props).toBeUndefined();
+    expect(read.reason).toContain("variant");
   });
 
-  test("drops a section missing a prop the block requires", () => {
-    expect(readProps('{"title":"Dica"}', CALLOUT)).toBeNull();
+  test("says so when a prop the block requires is missing", () => {
+    const read = readProps('{"title":"Dica"}', CALLOUT);
+    expect(read.props).toBeUndefined();
+    expect(read.reason).toContain("body");
   });
 
-  test("drops a section whose props are not valid JSON", () => {
-    expect(readProps("{body: 'x'}", CALLOUT)).toBeNull();
+  test("says so when the props are not valid JSON", () => {
+    const read = readProps("{body: 'x'}", CALLOUT);
+    expect(read.props).toBeUndefined();
+    expect(read.reason).toContain("not JSON");
   });
 
-  test("drops a section whose props are not an object at all", () => {
-    expect(readProps('"just a string"', CALLOUT)).toBeNull();
+  test("says so when the props are not an object at all", () => {
+    const read = readProps('"just a string"', CALLOUT);
+    expect(read.props).toBeUndefined();
+    expect(read.reason).toBe("props are not an object");
   });
 });
 

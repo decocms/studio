@@ -79,25 +79,36 @@ export function pruneProps(value: unknown, schema: Schema): unknown {
   return kept;
 }
 
+/** Either the props a block can render, or why it cannot. */
+export type PropsRead =
+  | { props: Schema; reason?: undefined }
+  | { props?: undefined; reason: string };
+
 /**
- * One section's props, or `null` when the block cannot render them.
+ * One section's props, or why the block cannot render them.
  *
  * Dropping beats repairing: a section missing a required prop renders empty,
- * and a shorter post is better than a gap in the middle of one. The caller
- * counts what it dropped and tells the person.
+ * and a shorter post is better than a gap in the middle of one. But a drop with
+ * no reason attached is how a whole post comes back empty and nobody can say
+ * which of three causes it was, so the reason travels to the log.
  */
-export function readProps(raw: string, schema: Schema): Schema | null {
+export function readProps(raw: string, schema: Schema): PropsRead {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch {
-    return null;
+  } catch (err) {
+    return { reason: `props are not JSON: ${message(err)}` };
   }
   const pruned = pruneProps(parsed, schema);
   const record = asSchema(pruned);
-  if (!record) return null;
-  const { valid } = sharedJsonSchemaValidator.getValidator(schema)(record);
-  return valid ? record : null;
+  if (!record) return { reason: "props are not an object" };
+  const { valid, errorMessage } =
+    sharedJsonSchemaValidator.getValidator(schema)(record);
+  return valid ? { props: record } : { reason: errorMessage };
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** One image the model asked to have generated, and where it goes. */

@@ -2364,6 +2364,33 @@ export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
   return missing;
 }
 
+/**
+ * The `required` names this schema still declares a property for.
+ *
+ * deco wraps a block's config as `{ properties: {__resolveType}, required:
+ * ["__resolveType"], allOf: [{$ref: Props}] }`, and `resolveSchema` drops every
+ * `__`-prefixed key from `properties` while keeping `required` whole. What
+ * comes out demands a property it does not declare — and `__resolveType` is the
+ * one thing the writer is never shown, so every section it wrote failed
+ * validation on a field it could not have known to write.
+ */
+function requiredOf(
+  source: Record<string, unknown>,
+  properties: unknown,
+): string[] | undefined {
+  const names = source.required;
+  if (!Array.isArray(names)) return undefined;
+  const declared = new Set(
+    properties && typeof properties === "object"
+      ? Object.keys(properties as Record<string, unknown>)
+      : [],
+  );
+  const kept = names.filter(
+    (name): name is string => typeof name === "string" && declared.has(name),
+  );
+  return kept.length > 0 ? kept : undefined;
+}
+
 /** JSON Schema keywords the writer needs; the editor's extras only cost prompt. */
 const SCHEMA_KEYS = [
   "type",
@@ -2372,7 +2399,6 @@ const SCHEMA_KEYS = [
   "format",
   "enum",
   "default",
-  "required",
 ] as const;
 
 /**
@@ -2403,6 +2429,8 @@ export function prunedSchema(schema: unknown): Record<string, unknown> {
       ),
     );
   }
+  out.required = requiredOf(source, out.properties);
+  if (!out.required) delete out.required;
   if (source.items) out.items = prunedSchema(source.items);
   for (const branch of ["anyOf", "oneOf"] as const) {
     const value = source[branch];

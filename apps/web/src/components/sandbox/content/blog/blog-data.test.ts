@@ -2850,6 +2850,7 @@ describe("prunedSchema", () => {
         title: "Callout",
         required: ["body"],
         properties: {
+          body: { type: "string" },
           variant: { type: "string", enum: ["info", "tip"], default: "info" },
           image: { type: "string", format: "image-uri" },
         },
@@ -2859,10 +2860,40 @@ describe("prunedSchema", () => {
       title: "Callout",
       required: ["body"],
       properties: {
+        body: { type: "string" },
         variant: { type: "string", enum: ["info", "tip"], default: "info" },
         image: { type: "string", format: "image-uri" },
       },
     });
+  });
+
+  /**
+   * deco's block wrapper requires `__resolveType` and `resolveSchema` strips
+   * every `__` key from `properties`. Left whole, that `required` demands a
+   * field the writer is never shown — and every section it writes fails.
+   */
+  test("drops a required name the schema declares no property for", () => {
+    expect(
+      prunedSchema({
+        type: "object",
+        required: ["__resolveType", "text"],
+        properties: { text: { type: "string" } },
+      }),
+    ).toEqual({
+      type: "object",
+      required: ["text"],
+      properties: { text: { type: "string" } },
+    });
+  });
+
+  test("a required list left with nothing drops out entirely", () => {
+    expect(
+      prunedSchema({
+        type: "object",
+        required: ["__resolveType"],
+        properties: { text: { type: "string" } },
+      }),
+    ).toEqual({ type: "object", properties: { text: { type: "string" } } });
   });
 
   test("drops the editor's own fields, which say nothing about the type", () => {
