@@ -48,6 +48,7 @@ import { PageSeoForm } from "./page-seo-form";
 import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
+import { errorDetail, errorDetailsDescription } from "./site-editor-toast";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
@@ -1470,11 +1471,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -1529,9 +1528,10 @@ export function SectionsEditor({
       await deleteBlock.mutateAsync({ blockKey });
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        {
+          description: errorDetailsDescription(t, errorDetail(err)),
+        },
       );
     }
   };
@@ -1682,11 +1682,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -1874,11 +1872,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -2459,11 +2455,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2621,11 +2615,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2754,11 +2746,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2809,11 +2799,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 

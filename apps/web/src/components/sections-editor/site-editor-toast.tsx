@@ -29,7 +29,7 @@ function ErrorDetails({ label, detail }: { label: string; detail: string }) {
 }
 
 /** A toast `description` for `detail`, or nothing when there is none. */
-function errorDetailsDescription(t: TFunction, detail: string | null) {
+export function errorDetailsDescription(t: TFunction, detail: string | null) {
   return detail ? (
     <ErrorDetails label={t("siteEditor.details")} detail={detail} />
   ) : undefined;
@@ -45,4 +45,10 @@ export function toastSaveError(
     id: SITE_EDITOR_SAVE_TOAST,
     description: errorDetailsDescription(t, saveErrorDetail(error, source)),
   });
+}
+
+/** The developer detail of a failed request, for Details. */
+export function errorDetail(error: unknown): string | null {
+  if (error instanceof Error) return error.message || null;
+  return error == null ? null : String(error);
 }

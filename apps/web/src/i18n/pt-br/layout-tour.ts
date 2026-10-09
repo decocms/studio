@@ -30,9 +30,9 @@ export const layoutTour = {
   "layoutTour.surfaceTabs.title": "Preview e Conteúdo, lado a lado",
   "layoutTour.surfaceTabs.description":
     "O Preview mostra a página como os visitantes veem; Conteúdo abre os blocos por trás dela. Alterne entre os dois sem sair da página em que você está.",
-  "layoutTour.branchPicker.title": "Trabalhe em uma branch",
+  "layoutTour.branchPicker.title": "Seus rascunhos",
   "layoutTour.branchPicker.description":
-    "As mudanças vão para a branch indicada aqui. Troque para trabalhar em outra e publique quando o trabalho estiver pronto.",
+    "As alterações vão para o rascunho indicado aqui. Troque de rascunho para trabalhar em outra coisa e publique quando estiver pronto.",
   "layoutTour.automations.title": "Coloque o trabalho no automático",
   "layoutTour.automations.description":
     "Automações rodam este projeto por gatilho ou agendamento, então o trabalho recorrente acontece sem ninguém precisar iniciar.",
