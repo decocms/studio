@@ -669,3 +669,61 @@ func TestAdoptStrayRepoSkills(t *testing.T) {
 		t.Error("clobbered the org's skill with a same-named local one")
 	}
 }
+
+// A repoint creates the thread's subtree before anything is written. With the
+// flag on, moving to another thread removes the previous one's empty subtree
+// and keeps one that holds files; with it off, nothing is removed.
+func TestRepointPrunesThePreviousThreadsEmptyDir(t *testing.T) {
+	for _, prune := range []bool{true, false} {
+		appRoot := t.TempDir()
+		statusPath := filepath.Join(t.TempDir(), "status.json")
+		var mounts []Mount
+		for _, d := range []string{".uploads", ".outputs"} {
+			p := filepath.Join(appRoot, "org", d)
+			if err := os.MkdirAll(p, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			mounts = append(mounts, Mount{Volume: d, MountPath: p})
+		}
+		raw, _ := json.Marshal(sidecarStatus{Mounts: mounts})
+		if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		l := &Links{
+			AppRoot:              appRoot,
+			StatusPath:           statusPath,
+			ConfigPath:           "unused",
+			PruneEmptyThreadDirs: prune,
+		}
+		exists := func(rel string) bool {
+			_, err := os.Stat(filepath.Join(appRoot, "org", rel))
+			return err == nil
+		}
+
+		if !l.RepointForRun("t1") {
+			t.Fatal("repoint t1 failed")
+		}
+		if err := os.WriteFile(filepath.Join(appRoot, "org", ".outputs", "t1", "a.md"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !l.RepointForRun("t2") {
+			t.Fatal("repoint t2 failed")
+		}
+		if !exists(".outputs/t1/a.md") {
+			t.Fatal("a thread's written output was removed")
+		}
+		if got := exists(".uploads/t1"); got == prune {
+			t.Errorf("prune=%v: empty .uploads/t1 exists=%v", prune, got)
+		}
+
+		if !l.RepointForRun("t3") {
+			t.Fatal("repoint t3 failed")
+		}
+		if got := exists(".outputs/t2"); got == prune {
+			t.Errorf("prune=%v: empty .outputs/t2 exists=%v", prune, got)
+		}
+		if !exists(".outputs/t3") {
+			t.Fatal("the current thread's dir is missing")
+		}
+	}
+}

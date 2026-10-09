@@ -136,6 +136,8 @@ export const library = {
   "library.libraryViews.emptyReadOnlySet":
     "This read-only set syncs from its GitHub source.",
   "library.libraryViews.failedToLoad": "Failed to load",
+  "library.libraryViews.sourceChat": "Chat",
+  "library.libraryViews.loadMore": "Load more",
   "library.libraryViews.files": "Files",
   "library.libraryViews.folders": "Folders",
   "library.libraryViews.noFilesMatch": 'No files match "{query}".',
@@ -173,5 +175,4 @@ export const library = {
   "library.library.typeFilter": "Type",
   "library.entries.createdBy": "Created by",
   "library.entries.location": "Location",
-  "library.libraryViews.newestOnly": "Showing the {count} newest",
 } as const;
