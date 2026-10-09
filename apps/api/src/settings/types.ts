@@ -276,7 +276,6 @@ export interface Settings {
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
-  firecrawlApiKey: string | undefined;
   /** Deco control-plane REST base URL (e.g.
    *  https://control-plane.infra.deco.cx/api/v1). Read by the per-site Hosting
    *  tab's BFF proxy. Unset ⇒ the Hosting tab is hidden and the proxy 503s. */

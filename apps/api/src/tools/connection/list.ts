@@ -9,7 +9,6 @@ import {
   type Binder,
   createBindingChecker,
   TRIGGER_BINDING,
-  BRAND_BINDING,
 } from "@decocms/bindings";
 import { ASSISTANTS_BINDING } from "@decocms/bindings/assistant";
 import {
@@ -79,7 +78,6 @@ const BUILTIN_BINDING_CHECKERS: Record<string, Binder> = {
   AI_GATEWAY_BILLING: AI_GATEWAY_BILLING_BINDING,
   TRIGGER: TRIGGER_BINDING,
   REGISTRY: REGISTRY_BINDING,
-  BRAND: BRAND_BINDING,
 };
 
 /**
@@ -208,7 +206,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
             connection.id === selfId
               ? async () => {
                   const { listManagementTools } = await import("../../tools");
-                  return listManagementTools(ctx) as Promise<unknown[]>;
+                  return listManagementTools() as Promise<unknown[]>;
                 }
               : () =>
                   listToolsWithTimeout(

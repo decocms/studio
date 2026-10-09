@@ -177,7 +177,7 @@ export async function createVirtualClientFrom(
   // Org-shared repo connections ("Add repo" in the sidebar) are available to
   // every agent by default. Appended (not the agent's own, so all their tools
   // are exposed), deduped, and guarded on a real org so the well-known agents
-  // (Decopilot/brand-context, which resolve with no org) don't fan them in.
+  // (Decopilot, which resolves with no org) don't fan them in.
   // ponytail: one slug-filtered connections.list per client build; memoize in
   // createRequestCachedVirtualMcps like virtualMcps.list if this path gets hot.
   if (virtualMcp.organization_id) {

@@ -680,10 +680,6 @@ export const KEYS = {
   deploymentAdminOrgProjects: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "projects"] as const,
 
-  // Brand context (scoped by organization)
-  defaultBrand: (organizationId: string) =>
-    ["brand-context", organizationId, "default"] as const,
-
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
   decoApps: () => ["deco-apps"] as const,

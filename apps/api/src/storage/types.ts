@@ -2130,62 +2130,6 @@ export interface TaskBoardActivity {
   occurredAt: string;
 }
 
-// ============================================================================
-// Brand Context Table Definition
-// ============================================================================
-
-export interface BrandContextTable {
-  id: string;
-  organization_id: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  og_image: string | null;
-  fonts: string | null;
-  colors: string | null;
-  images: string | null;
-  metadata: string | null;
-  archived_at: ColumnType<
-    Date | null,
-    Date | string | null,
-    Date | string | null
-  >;
-  is_default: boolean;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-}
-
 /** Per-org Jira Cloud integration config. */
 export interface OrgJiraIntegrationTable {
   id: ColumnType<string, string | undefined, never>;
@@ -2527,9 +2471,6 @@ export interface Database {
 
   // Generic org-scoped KV store
   kv: KVTable;
-
-  // Brand context (org-scoped company profile)
-  brand_context: BrandContextTable;
 
   // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;

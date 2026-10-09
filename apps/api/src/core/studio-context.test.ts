@@ -56,7 +56,6 @@ const createMockContext = (
     orgSsoConfig: null as never,
     orgSsoSessions: null as never,
     triggerCallbackTokens: null as never,
-    brandContext: null as never,
     organizationDomains: null as never,
     organizationJoinRequests: null as never,
     kv: null as never,

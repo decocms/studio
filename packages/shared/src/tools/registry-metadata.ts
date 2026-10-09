@@ -60,20 +60,12 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
-  "BRAND_CONTEXT_LIST",
-  "BRAND_CONTEXT_GET",
-  "BRAND_CONTEXT_CREATE",
-  "BRAND_CONTEXT_UPDATE",
-  "BRAND_CONTEXT_DELETE",
-  "BRAND_CONTEXT_EXTRACT",
   "BLOG_BRAND_EXTRACT",
   "BLOG_PILLAR_SUGGEST",
   "BLOG_THEME_SUGGEST",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
   "BLOG_LINK_SUGGEST",
-  "BRAND_GET",
-  "BRAND_LIST",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -406,37 +398,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
-    name: "BRAND_CONTEXT_LIST",
-    description: "List brand contexts",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_GET",
-    description: "View brand context",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_CREATE",
-    description: "Create brand context",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_UPDATE",
-    description: "Update brand context",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_DELETE",
-    description: "Delete brand context",
-    category: "Organizations",
-    dangerous: true,
-  },
-  {
-    name: "BRAND_CONTEXT_EXTRACT",
-    description: "Extract brand context from website",
-    category: "Organizations",
-  },
-  {
     name: "BLOG_BRAND_EXTRACT",
     description:
       "Infer editorial brand context (tone, dos and don'ts) from a site",
@@ -466,16 +427,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_LINK_SUGGEST",
     description: "Propose internal links from a post to the site's other posts",
     category: "Blog",
-  },
-  {
-    name: "BRAND_GET",
-    description: "Get brand (binding)",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_LIST",
-    description: "List brands (binding)",
-    category: "Organizations",
   },
   {
     name: "ORGANIZATION_DOMAIN_LIST",
@@ -1764,10 +1715,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
       //   USER_GET     → resolve member display ("created by" on agents, etc.);
       //                  handler scopes to shared-org members, no secrets
-      //   BRAND_CONTEXT_LIST → org branding for the chat empty state
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
-      "BRAND_CONTEXT_LIST",
       // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
       "ORGANIZATION_HAS_SITE",
       // Any member picks the org's blocks editor; writes only that one flag.
@@ -1840,8 +1789,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   {
     id: "org:manage",
     label: "Manage organization",
-    description:
-      "Edit organization settings, brand context, and domain configuration",
+    description: "Edit organization settings and domain configuration",
     section: "Organization",
     tools: [
       "ORGANIZATION_GET",
@@ -1849,14 +1797,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_UPDATE",
       "ORGANIZATION_SETTINGS_GET",
       "ORGANIZATION_SETTINGS_UPDATE",
-      "BRAND_CONTEXT_LIST",
-      "BRAND_CONTEXT_GET",
-      "BRAND_CONTEXT_CREATE",
-      "BRAND_CONTEXT_UPDATE",
-      "BRAND_CONTEXT_DELETE",
-      "BRAND_CONTEXT_EXTRACT",
-      "BRAND_GET",
-      "BRAND_LIST",
       "ORGANIZATION_DOMAIN_LIST",
       "ORGANIZATION_DOMAIN_ADD",
       "ORGANIZATION_DOMAIN_UPDATE",

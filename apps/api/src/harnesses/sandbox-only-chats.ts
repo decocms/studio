@@ -96,7 +96,6 @@ const pendingPrewarms = new Map<string, () => Promise<void>>();
  */
 export async function prewarmThreadSandbox(
   ctx: StudioContext,
-  organizationId: string,
   userId: string,
   thread: { id: string; virtual_mcp_id: string; branch: string | null },
 ): Promise<void> {
@@ -104,11 +103,7 @@ export async function prewarmThreadSandbox(
     thread.virtual_mcp_id,
   );
   if (!virtualMcp) return;
-  const agent = await resolveEffectiveStudioPackVirtualMcp({
-    virtualMcp,
-    organizationId,
-    ctx,
-  });
+  const agent = resolveEffectiveStudioPackVirtualMcp(virtualMcp);
   const repository = (
     agent.metadata as { repository?: RepositoryBinding | null } | null
   )?.repository;

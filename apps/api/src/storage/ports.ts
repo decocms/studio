@@ -18,7 +18,6 @@ import type {
 import type {
   AsyncResearchJob,
   AsyncResearchJobCitation,
-  BrandContext,
   DomainJoinMode,
   DomainVerificationMethod,
   DomainVerificationStatus,
@@ -681,10 +680,6 @@ export interface VirtualMCPStoragePort {
 }
 
 // ============================================================================
-// Brand Context Storage Port
-// ============================================================================
-
-// ============================================================================
 // Organization Domain Storage Port
 // ============================================================================
 
@@ -779,34 +774,4 @@ export interface OrgSiteStoragePort {
   listByOrg(organizationId: string): Promise<OrgSite[]>;
   /** Authorization primitive: does this org own this slug? */
   isOwnedBy(slug: string, organizationId: string): Promise<boolean>;
-}
-
-export interface BrandContextStoragePort {
-  get(id: string, organizationId: string): Promise<BrandContext | null>;
-  list(
-    organizationId: string,
-    options?: { includeArchived?: boolean },
-  ): Promise<BrandContext[]>;
-  getDefault(organizationId: string): Promise<BrandContext | null>;
-  setDefault(id: string, organizationId: string): Promise<BrandContext>;
-  create(
-    organizationId: string,
-    data: Omit<
-      BrandContext,
-      | "id"
-      | "organizationId"
-      | "archivedAt"
-      | "isDefault"
-      | "createdAt"
-      | "updatedAt"
-    >,
-  ): Promise<BrandContext>;
-  update(
-    id: string,
-    organizationId: string,
-    data: Partial<
-      Omit<BrandContext, "id" | "organizationId" | "createdAt" | "updatedAt">
-    >,
-  ): Promise<BrandContext>;
-  delete(id: string, organizationId: string): Promise<void>;
 }

@@ -222,7 +222,6 @@ export const routes = {
   "routes.onboarding.step.creatingOrg": "Criando organização",
   "routes.onboarding.step.enablingAutoJoin":
     "Habilitando auto-join para sua equipe",
-  "routes.onboarding.step.extractingBrand": "Extraindo contexto de marca",
   "routes.onboarding.uploadOrgLogo": "Fazer upload do logotipo da organização",
   "routes.onboarding.welcomeTitle": "Bem-vindo ao deco",
   "routes.reports.failedToLoadReportAriaLabel":
