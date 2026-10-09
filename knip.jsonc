@@ -89,6 +89,9 @@
     "apps/web/src/hooks/use-new-blocks-editor.ts": ["exports"],
     "apps/web/src/components/sections-editor/deco-serve-notices.tsx": [
       "exports"
+    ],
+    "apps/web/src/components/sections-editor/deco-serve-discovery.ts": [
+      "exports"
     ]
   }
 }
