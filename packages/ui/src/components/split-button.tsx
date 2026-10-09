@@ -50,7 +50,72 @@ export interface SplitButtonProps {
   items?: SplitButtonMenuItem[];
   /** Accessible name for the chevron trigger. Required: this package is i18n-free. */
   menuAriaLabel: string;
+  /**
+   * Every label the primary half can show across its states. When given, the
+   * control keeps ONE width whatever its state, so a label swap (e.g.
+   * "Review & Publish" → "Saving…") never shifts the header on the x axis:
+   * every label is stacked in the same grid cell, only the active one visible,
+   * so the primary is as wide as the widest; the icon slot is reserved; and the
+   * chevron half stays mounted (disabled) while there are no `items`.
+   * Measured by layout, not by a magic number, so it holds in every locale.
+   */
+  stableLabels?: string[];
   className?: string;
+}
+
+/** Icon-led padding per size: with {@link SplitButtonProps.stableLabels} the
+ *  icon slot is always reserved, so the primary is always "icon-led". */
+const STABLE_PADDING: Record<NonNullable<ButtonProps["size"]>, string> = {
+  default: "px-3",
+  sm: "px-2.5",
+  xs: "px-2",
+  lg: "px-4",
+  xl: "px-5",
+  icon: "",
+  "icon-sm": "",
+};
+
+/**
+ * The primary's content in stable-width mode: all labels share grid-area 1/1.
+ * Inactive ones are `invisible` + `aria-hidden`, so they size the cell but are
+ * neither painted nor exposed; the active one is the button's accessible name.
+ */
+function StableLabels({
+  labels,
+  label,
+  leading,
+}: {
+  labels: string[];
+  label: string;
+  leading: React.ReactNode;
+}) {
+  const all = labels.includes(label) ? labels : [...labels, label];
+  return (
+    <span className="grid items-center justify-items-center gap-[inherit]">
+      {all.map((candidate) =>
+        candidate === label ? (
+          <span
+            key={candidate}
+            data-slot="split-button-label"
+            className="col-start-1 row-start-1 inline-flex items-center gap-[inherit]"
+          >
+            {leading}
+            {candidate}
+          </span>
+        ) : (
+          <span
+            key={candidate}
+            aria-hidden="true"
+            data-slot="split-button-label-reserve"
+            className="invisible col-start-1 row-start-1 inline-flex items-center gap-[inherit]"
+          >
+            <span className="size-4 shrink-0" />
+            {candidate}
+          </span>
+        ),
+      )}
+    </span>
+  );
 }
 
 function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
@@ -97,9 +162,12 @@ export function SplitButton({
   icon,
   items,
   menuAriaLabel,
+  stableLabels,
   className,
 }: SplitButtonProps) {
   const hasMenu = (items?.length ?? 0) > 0;
+  const stable = stableLabels !== undefined;
+  const leading = loading ? <Spinner size="xs" /> : icon;
   /**
    * The shared inset ring is the `ring` token, which is picked to contrast with
    * the PAGE — so on a filled button, whose fill is that same light-on-dark
@@ -123,11 +191,18 @@ export function SplitButton({
       onClick={loading ? undefined : onClick}
       className={cn(
         focusRing,
-        hasMenu && "rounded-r-none border-r border-current/20",
+        (hasMenu || stable) && "rounded-r-none border-r border-current/20",
+        stable && STABLE_PADDING[size ?? "default"],
       )}
     >
-      {loading ? <Spinner size="xs" /> : icon}
-      {label}
+      {stable ? (
+        <StableLabels labels={stableLabels} label={label} leading={leading} />
+      ) : (
+        <>
+          {leading}
+          {label}
+        </>
+      )}
     </Button>
   );
 
@@ -182,6 +257,19 @@ export function SplitButton({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+      ) : stable ? (
+        // No actions right now, but the half keeps its place so the control
+        // doesn't narrow (and the header shift) as the state changes.
+        <Button
+          type="button"
+          variant={variant}
+          size={size}
+          disabled
+          aria-label={menuAriaLabel}
+          className={cn("has-[>svg]:px-2", focusRing)}
+        >
+          <ChevronDown className="size-3.5" />
+        </Button>
       ) : null}
     </ButtonGroup>
   );
