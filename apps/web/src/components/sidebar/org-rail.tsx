@@ -74,9 +74,9 @@ function RailOrgButton({
   return (
     <RailItem active={active}>
       <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <Tooltip>
-            <TooltipTrigger asChild>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ContextMenuTrigger asChild>
               <button
                 type="button"
                 aria-label={org.name}
@@ -92,10 +92,10 @@ function RailOrgButton({
               >
                 <OrgIcon org={org} size="lg" rounded="rounded-xl" />
               </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">{org.name}</TooltipContent>
-          </Tooltip>
-        </ContextMenuTrigger>
+            </ContextMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="right">{org.name}</TooltipContent>
+        </Tooltip>
         <ContextMenuContent>
           <ContextMenuItem onSelect={onOpenSettings}>
             <Settings01 />
