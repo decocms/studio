@@ -1,7 +1,6 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
-import { saveErrorMessage } from "./serve-save-error";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -385,7 +384,7 @@ export function SectionsEditor({
       { blockKey: refKey, data },
       {
         onSuccess: () => onSaved?.(),
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   });
@@ -780,7 +779,7 @@ export function SectionsEditor({
       { blockKey: activePageKey, data: fullPageData },
       {
         onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -839,7 +838,7 @@ export function SectionsEditor({
           { blockKey, data: nextValue },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(saveErrorMessage(t, err)),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -922,7 +921,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(saveErrorMessage(t, err)),
+          onError: saveBlock.reportError,
         },
       );
     };
@@ -1582,7 +1581,7 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(saveErrorMessage(t, err)),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -1600,7 +1599,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(saveErrorMessage(t, err)),
+          onError: saveBlock.reportError,
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1750,7 +1749,7 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(saveErrorMessage(t, err)),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -1780,7 +1779,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(saveErrorMessage(t, err)),
+          onError: saveBlock.reportError,
         },
       );
     }, AUTOSAVE_DELAY);
@@ -2121,7 +2120,7 @@ export function SectionsEditor({
           setRuleFormValue(null);
           setRuleResolveType(null);
         },
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -2186,7 +2185,7 @@ export function SectionsEditor({
             }
           })();
         },
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
