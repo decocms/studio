@@ -32,7 +32,7 @@
  *   POST  /repos/{o}/{r}/merges                       -> 201 {sha} / 204 / 409 / 405
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
- *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
+ *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits } (branch or sha)
  *   GET   /repos/{o}/{r}/commits                      -> [ { sha } ] (default-branch head)
  *   POST  /repos/{o}/{r}/generate                     -> 201 new repo from this template (422 name taken)
  *
@@ -49,6 +49,7 @@
  *
  * Test-only admin endpoints (no auth):
  *   GET  /health
+ *   POST  /graphql                                    RepoCommits (commit history) only
  *   POST /__admin/repos                    seed a repo (see SeedRepoBody)
  *   GET  /__admin/repos/{o}/{r}            inspect refs/commits/files per branch
  *   POST /__admin/repos/{o}/{r}/config     { mergeMode } — flip merge behavior
@@ -158,8 +159,13 @@ function repoKey(owner: string, name: string): string {
   return `${owner}/${name}`;
 }
 
+/** Git's own blob id, so callers that hash content locally agree with the stub. */
 function putBlob(repo: RepoState, content: string): string {
-  const sha = sha1(`blob:${content}`);
+  const bytes = Buffer.from(content, "utf-8");
+  const sha = createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
   repo.blobs.set(sha, content);
   return sha;
 }
@@ -321,6 +327,61 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
+  });
+}
+
+/**
+ * GraphQL, for the one query a spec needs: a ref's commit history (the
+ * insights client's `RepoCommits`), first-parent from the ref's head. Any
+ * other query answers a GraphQL error.
+ */
+async function handleGraphql(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = JSON.parse(await readBody(req)) as {
+    query?: string;
+    variables?: Record<string, unknown>;
+  };
+  const vars = body.variables ?? {};
+  const repo = repos.get(repoKey(String(vars.owner), String(vars.name)));
+  if (!body.query?.includes("query RepoCommits") || !repo) {
+    json(res, 200, { errors: [{ message: "unsupported by the stub" }] });
+    return;
+  }
+  const ref = typeof vars.ref === "string" ? vars.ref : repo.defaultBranch;
+  const shas: string[] = [];
+  for (
+    let sha = repo.refs.get(ref);
+    sha !== undefined;
+    sha = repo.commits.get(sha)?.parents[0]
+  ) {
+    shas.push(sha);
+  }
+  const start = typeof vars.after === "string" ? Number(vars.after) : 0;
+  const limit = Number(vars.limit ?? 50);
+  const page = shas.slice(start, start + limit);
+  const target = {
+    history: {
+      pageInfo: {
+        hasNextPage: start + page.length < shas.length,
+        endCursor: String(start + page.length),
+      },
+      nodes: page.map((oid) => ({
+        oid,
+        committedDate: new Date().toISOString(),
+        messageHeadline: (repo.commits.get(oid)?.message ?? "").split("\n")[0],
+        author: { name: "e2e", email: null, user: null },
+      })),
+    },
+  };
+  json(res, 200, {
+    data: {
+      repository:
+        typeof vars.ref === "string"
+          ? { ref: { target } }
+          : { defaultBranchRef: { target } },
+    },
   });
 }
 
@@ -906,8 +967,13 @@ async function handleRepos(
     const [rawBase, rawHead] = rawSpec.split("...");
     const decodePath = (raw: string | undefined): string =>
       (raw ?? "").split("/").map(decodeURIComponent).join("/");
-    const baseSha = repo.refs.get(decodePath(rawBase));
-    const headSha = repo.refs.get(decodePath(rawHead));
+    // A side is a branch or, as on real GitHub, a commit sha.
+    const resolve = (raw: string | undefined): string | undefined => {
+      const name = decodePath(raw);
+      return repo.refs.get(name) ?? (repo.commits.has(name) ? name : undefined);
+    };
+    const baseSha = resolve(rawBase);
+    const headSha = resolve(rawHead);
     if (!baseSha || !headSha) {
       notFound(res);
       return;
@@ -1182,6 +1248,10 @@ export function createGithubStubServer(): Server {
       }
       if (url.pathname.startsWith("/repos/")) {
         await handleRepos(req, res, url);
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/graphql") {
+        await handleGraphql(req, res);
         return;
       }
       notFound(res);
