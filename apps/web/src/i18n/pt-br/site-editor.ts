@@ -10,9 +10,11 @@ export const siteEditor = {
   "siteEditor.publish.everythingLive": "Tudo já está no ar.",
   "siteEditor.publish.savedNotPublished": "Salvo, mas ainda não publicado",
   "siteEditor.publish.savedNotPublishedBody":
-    "Suas alterações estão guardadas. Tente de novo para colocá-las no ar.",
+    "Suas alterações estão salvas. Tente de novo para colocá-las no ar.",
   "siteEditor.publish.publishedMeanwhile":
     "Outra pessoa publicou enquanto você publicava, então nada mudou. Revise suas alterações e publique de novo.",
+  "siteEditor.publish.changedMeanwhile":
+    "Suas alterações mudaram enquanto você revisava. Feche e abra de novo para ver o que será publicado.",
   "siteEditor.publish.failed":
     "Não foi possível publicar. Suas alterações estão salvas. Tente de novo em instantes.",
   "siteEditor.publish.defaultNote": "Alterações de {name}",

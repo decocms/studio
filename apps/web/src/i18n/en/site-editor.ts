@@ -17,6 +17,8 @@ export const siteEditor = {
     "Your changes are safe. Try again to put them live.",
   "siteEditor.publish.publishedMeanwhile":
     "Someone else published while you were publishing, so nothing changed. Review your changes and publish again.",
+  "siteEditor.publish.changedMeanwhile":
+    "Your changes were updated while you were reviewing them. Close and reopen to see what will be published.",
   "siteEditor.publish.failed":
     "Couldn't publish. Your changes are saved. Try again in a moment.",
   "siteEditor.publish.defaultNote": "Changes by {name}",

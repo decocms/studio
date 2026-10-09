@@ -149,10 +149,7 @@ export const thread = {
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
   "thread.publishDialog.viewOnProvider": "View on provider",
-  "thread.publishDialog.viewPr": "View PR",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.branchMoved":
-    "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":
     "Details for these changes could not be loaded.",
   "thread.publishPopover.loadFailed": "Couldn't load your changes",
