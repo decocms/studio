@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chunkEvidence,
   isGroundingTool,
   renderGrounding,
   survivingFailure,
@@ -98,5 +99,80 @@ describe("survivingFailure", () => {
     // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
     const tool = { description: "x" } as any;
     expect(survivingFailure(tool)).toBe(tool);
+  });
+});
+
+describe("survivingFailure recording", () => {
+  test("hands a successful result to the recorder, raw", async () => {
+    const seen: [string, string][] = [];
+    const tool = survivingFailure(
+      // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+      { execute: async () => ({ images: ["https://cdn/x.jpg"] }) } as any,
+      "catalog_search",
+      (name, raw) => seen.push([name, raw]),
+    );
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+    await (tool.execute as any)({}, {});
+    expect(seen).toEqual([
+      ["catalog_search", '{"images":["https://cdn/x.jpg"]}'],
+    ]);
+  });
+
+  test("records nothing for a call that threw", async () => {
+    const seen: string[] = [];
+    const tool = survivingFailure(
+      {
+        execute: async () => {
+          throw new Error("down");
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+      } as any,
+      "x",
+      (name) => seen.push(name),
+    );
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the AI SDK shape
+    await (tool.execute as any)({}, {});
+    expect(seen).toEqual([]);
+  });
+});
+
+/**
+ * A catalogue answers in megabytes and a prompt has a context, so the evidence
+ * is read in pieces. Cutting a JSON record in half is the failure that matters:
+ * the transcriber either skips it or completes it, and completing it is exactly
+ * what this whole pass exists to prevent.
+ */
+describe("chunkEvidence", () => {
+  const entry = (name: string, size: number) =>
+    `### ${name}\n${"x".repeat(size)}`;
+
+  test("keeps everything in one piece when it fits", () => {
+    const evidence = [entry("a", 10), entry("b", 10)].join("\n\n");
+    expect(chunkEvidence(evidence, 1_000)).toEqual([evidence]);
+  });
+
+  test("splits on the entry boundary, never mid-record", () => {
+    const evidence = [entry("a", 100), entry("b", 100)].join("\n\n");
+    const chunks = chunkEvidence(evidence, 150);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toBe(entry("a", 100));
+    expect(chunks[1]).toBe(entry("b", 100));
+  });
+
+  test("loses nothing: every chunk concatenated is the input back", () => {
+    const evidence = [entry("a", 80), entry("b", 80), entry("c", 80)].join(
+      "\n\n",
+    );
+    expect(chunkEvidence(evidence, 120).join("\n\n")).toBe(evidence);
+  });
+
+  test("a single entry larger than the window is cut rather than dropped", () => {
+    const chunks = chunkEvidence(entry("huge", 500), 100);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.length <= 100)).toBe(true);
+  });
+
+  test("empty evidence yields no chunks", () => {
+    expect(chunkEvidence("", 100)).toEqual([]);
   });
 });
