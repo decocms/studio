@@ -12,7 +12,8 @@
  * archived-thread fallback, and `localHit` always wins over it.
  *
  * `taskId: null` — a destination route with no thread open — resolves to `null`
- * without touching the wire.
+ * without touching the wire. Outside any thread store (the account-less
+ * `/site-editor`, which has no chat) there are no local rows to read.
  */
 
 import { useSyncExternalStore } from "react";
@@ -20,17 +21,21 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
-import { useThreadManager } from "@/components/chat/store/hooks";
+import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { Task } from "@/components/chat/task/types";
+
+const NO_THREADS: Task[] = [];
+const noSubscription = () => () => {};
+const noThreads = () => NO_THREADS;
 
 export function useTaskMetadata(taskId: string | null): ThreadMetadata | null {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  const manager = useThreadManager();
+  const manager = useOptionalThreadManager();
   const threads = useSyncExternalStore(
-    manager.threads.subscribe,
-    manager.threads.get,
+    manager?.threads.subscribe ?? noSubscription,
+    manager?.threads.get ?? noThreads,
   );
   const localHit =
     taskId === null ? null : (threads.find((t) => t.id === taskId) ?? null);
