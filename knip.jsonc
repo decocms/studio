@@ -86,8 +86,7 @@
     "apps/web/src/components/sections-editor/deco-serve-notices.tsx": [
       "exports"
     ],
-    "apps/web/src/components/sections-editor/deco-serve-discovery.ts": [
-      "exports"
-    ]
+    "apps/web/src/hooks/use-deco-serve-discovery.ts": ["exports"],
+    "apps/web/src/components/sections-editor/deco-serve-chip.tsx": ["exports"]
   }
 }

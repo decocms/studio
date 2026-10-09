@@ -15,6 +15,9 @@ import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-dra
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
 import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
+import { DecoServeChip } from "@/components/sections-editor/deco-serve-chip";
+import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { ContentVersionBadge } from "@/components/sections-editor/content-version-badge";
 
 function SiteEditorActions() {
   const session = useOptionalChatTask();
@@ -23,27 +26,43 @@ function SiteEditorActions() {
   const runtime = useSessionRuntime(entity?.id).runtime;
   // Local mode edits are ephemeral (nothing to promote) → withhold publish.
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
-  if (!entity) return null;
+  // A connected `deco serve` edits the working tree: the developer commits.
+  // Outside a project (`/site-editor`) it is the only thing behind the editor.
+  const { connection: serveConnection } = useDecoServeConnection(
+    entity?.id ?? session?.virtualMcpId,
+  );
+  const servingLocally = !!serveConnection;
+  const virtualMcpId = entity?.id ?? session?.virtualMcpId;
+  if (!virtualMcpId || (!entity && !servingLocally)) return null;
   return (
     <>
-      <div className="flex min-w-0 shrink items-center justify-end">
-        <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-      </div>
-      {!localPreviewUrl && agentShowsRepositoryHeaderActions(entity) && (
-        <>
-          <Separator
-            orientation="vertical"
-            className="mx-1 data-[orientation=vertical]:h-4"
-          />
-          <div className="flex shrink-0 items-center justify-end gap-1">
-            {runtime === "cms" ? (
-              <CmsHeaderActions virtualMcpId={entity.id} />
-            ) : (
-              <HeaderActions virtualMcpId={entity.id} />
-            )}
-          </div>
-        </>
+      <ContentVersionBadge virtualMcpId={virtualMcpId} branch={currentBranch} />
+      {servingLocally && (
+        <DecoServeChip virtualMcpId={virtualMcpId} branch={currentBranch} />
       )}
+      {entity && (
+        <div className="flex min-w-0 shrink items-center justify-end">
+          <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
+        </div>
+      )}
+      {entity &&
+        !localPreviewUrl &&
+        !servingLocally &&
+        agentShowsRepositoryHeaderActions(entity) && (
+          <>
+            <Separator
+              orientation="vertical"
+              className="mx-1 data-[orientation=vertical]:h-4"
+            />
+            <div className="flex shrink-0 items-center justify-end gap-1">
+              {runtime === "cms" ? (
+                <CmsHeaderActions virtualMcpId={entity.id} />
+              ) : (
+                <HeaderActions virtualMcpId={entity.id} />
+              )}
+            </div>
+          </>
+        )}
     </>
   );
 }
@@ -55,8 +74,13 @@ function SiteEditorDrawer() {
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
   const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
+  const { connection: serveConnection } = useDecoServeConnection(
+    entity?.id ?? session?.virtualMcpId,
+  );
+  const servingLocally = !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
+    !servingLocally &&
     shouldShowTerminalDrawer({
       hasClonableSource:
         agentHasClonableSource(entity?.metadata) ||
@@ -67,7 +91,8 @@ function SiteEditorDrawer() {
   return showDrawer ? <PreviewDrawerHost /> : null;
 }
 
-/** Preview, Content and Code share a route-owned topbar and runtime context. */
+/** Preview, Content and Code share a route-owned topbar and runtime context.
+ *  The account-less `/site-editor` mounts this same app over a `deco serve`. */
 export default function SiteEditorRoute() {
   return (
     <ChatLayout.Content

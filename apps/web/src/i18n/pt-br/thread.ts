@@ -22,6 +22,8 @@ export const thread = {
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
     "Aponte o preview e o CMS para o seu próprio dev server. Cole uma URL de túnel público (ex.: ngrok, cloudflared) acessível a partir deste navegador.",
+  "thread.branchPicker.localServeConnected":
+    "Conectado ao deco serve em {host} (Blocks v8).",
   "thread.branchPicker.localUrlLabel": "URL do túnel local",
   "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
   "thread.branchPicker.localTurnOff": "Desligar",
@@ -32,7 +34,7 @@ export const thread = {
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
   "thread.branchPicker.saveError":
-    "Não foi possível salvar a versão. Tente novamente.",
+    "Não foi possível atualizar seu rascunho. Tente de novo.",
   "thread.branchPicker.selectVersion": "Selecione uma versão",
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
