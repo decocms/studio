@@ -7,6 +7,7 @@
 
 import {
   type QueryClient,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -173,20 +174,40 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
   });
 }
 
-/** The most the volume files route returns in one request. */
-export const VOLUME_FILES_LIMIT = 200;
+const VOLUME_FILES_PAGE = 200;
 
-/** A volume's newest files at any depth, in one request. */
+/** The chat a listed file came from. */
+export interface OrgFsSourceThread {
+  title: string;
+  agentId: string;
+}
+
+/** A `/files` entry: the chat it came from, when there is one. */
+export interface OrgFsVolumeFile extends OrgFsRecentEntry {
+  sourceThreadId: string | null;
+}
+
+interface OrgFsVolumeFilesPage {
+  entries: OrgFsVolumeFile[];
+  threads: Record<string, OrgFsSourceThread>;
+  next: string | null;
+}
+
+/** A volume's newest files at any depth, a page at a time. */
 export function useOrgFsVolumeFiles(volume: string) {
   const { org } = useProjectContext();
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
-    queryFn: async () => {
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(VOLUME_FILES_PAGE) });
+      if (pageParam) params.set("before", pageParam);
       const res = await fsFetch(
-        `/api/${encodeURIComponent(org.slug)}/fs/${encodeURIComponent(volume)}/files?limit=${VOLUME_FILES_LIMIT}`,
+        `/api/${encodeURIComponent(org.slug)}/fs/${encodeURIComponent(volume)}/files?${params}`,
       );
-      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
+      return (await res.json()) as OrgFsVolumeFilesPage;
     },
+    getNextPageParam: (lastPage) => lastPage.next ?? undefined,
   });
 }
 

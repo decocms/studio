@@ -339,6 +339,20 @@ async function waitForChanges(
   }
 }
 
+const THREAD_ID_FOLDER =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The chat a file came from: the write's thread, else the thread-id folder
+ *  chat volumes keep each run's files in. */
+function sourceThreadOf(entry: {
+  path: string;
+  threadId: string | null;
+}): string | null {
+  if (entry.threadId) return entry.threadId;
+  const top = entry.path.split("/")[0] ?? "";
+  return entry.path.includes("/") && THREAD_ID_FOLDER.test(top) ? top : null;
+}
+
 export interface OrgFsRoutesDeps {
   /**
    * Shared NATS connection (null until connected / when unconfigured). Powers
@@ -696,7 +710,10 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   });
 
   // A volume's newest files at any depth — the Library's flat view of the
-  // volumes chat fills one thread folder at a time (uploads, outputs).
+  // volumes chat fills one thread folder at a time (uploads, outputs). Paged
+  // newest first: `next` is the `before` cursor for the following page. Each
+  // file's chat comes along in `threads`, from the write's thread or the
+  // thread-id folder it sits in.
   app.get("/:volume/files", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
@@ -705,11 +722,37 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
       MAX_RECENT_LIMIT,
     );
+    const before = c.req.query("before") || undefined;
+    if (before !== undefined && !/^\d{1,19}$/.test(before)) {
+      return c.json({ error: "Invalid cursor" }, 400);
+    }
     const caller = r.ctx.auth.user!.id;
     try {
-      const entries = await r.fs.searchWithEffectivePublic("", limit, [volume]);
+      const page = await r.fs.searchWithEffectivePublic(
+        "",
+        limit,
+        [volume],
+        undefined,
+        before,
+      );
+      const entries = page
+        .filter((e) => canReadPersonal(volume, e.path, caller))
+        .map((e) => ({ ...e, sourceThreadId: sourceThreadOf(e) }));
+      const threadIds = new Set(
+        entries
+          .map((e) => e.sourceThreadId)
+          .filter((id): id is string => id !== null),
+      );
+      const threads = Object.fromEntries(
+        (await r.ctx.storage.threads.summaries([...threadIds])).map((t) => [
+          t.id,
+          { title: t.title, agentId: t.virtual_mcp_id },
+        ]),
+      );
       return c.json({
-        entries: entries.filter((e) => canReadPersonal(volume, e.path, caller)),
+        entries,
+        threads,
+        next: page.length === limit ? (page.at(-1)?.seq ?? null) : null,
       });
     } catch (err) {
       return fsErrorResponse(c, err);
