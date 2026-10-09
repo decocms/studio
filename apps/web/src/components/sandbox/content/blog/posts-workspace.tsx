@@ -37,6 +37,7 @@ import {
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -158,6 +159,7 @@ export function PostsWorkspace({
   const t = useT();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const blogAi = useBlogAi();
   const hideDefaults = useHideDefaultBlogBlocks();
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
@@ -372,15 +374,17 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
-                <Stars02 size={14} />
-                <div className="flex flex-col">
-                  <span>{t("sandbox.postBoard.newPostGenerate")}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t("sandbox.postBoard.newPostGenerateHint")}
-                  </span>
-                </div>
-              </DropdownMenuItem>
+              {blogAi && (
+                <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
+                  <Stars02 size={14} />
+                  <div className="flex flex-col">
+                    <span>{t("sandbox.postBoard.newPostGenerate")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("sandbox.postBoard.newPostGenerateHint")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={writePost}>
                 <Pilcrow01 size={14} />
                 <div className="flex flex-col">
@@ -401,13 +405,15 @@ export function PostsWorkspace({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <GeneratePostDialog
-            open={generateOpen}
-            onOpenChange={setGenerateOpen}
-            decofile={decofile}
-            hasAi={hasAi}
-            onGenerate={(briefing) => void generatePost(briefing)}
-          />
+          {blogAi && (
+            <GeneratePostDialog
+              open={generateOpen}
+              onOpenChange={setGenerateOpen}
+              decofile={decofile}
+              hasAi={hasAi}
+              onGenerate={(briefing) => void generatePost(briefing)}
+            />
+          )}
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogContent className="max-h-[85vh] sm:max-w-2xl">
               <DialogHeader>

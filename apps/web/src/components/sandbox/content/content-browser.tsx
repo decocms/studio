@@ -1,3 +1,4 @@
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
@@ -195,6 +196,22 @@ export type CollectionId =
   | "context"
   | BlogKind;
 
+/**
+ * The collection actually shown.
+ *
+ * `activeCollection` is local state and the context tab is reachable only by
+ * clicking its row, so no link can land on it — but someone already there when
+ * an admin turns the AI-blog flag off would be looking at a tab the menu no
+ * longer lists. Normalising once at the source spares every reader downstream
+ * a guard of its own.
+ */
+export function visibleCollection(
+  active: CollectionId,
+  blogAi: boolean,
+): CollectionId {
+  return active === "context" && !blogAi ? "posts" : active;
+}
+
 export type CollectionCounts = Record<
   | "pages"
   | "sections"
@@ -360,13 +377,15 @@ function ContentBrowserReady({
   // navigation takes over afterwards, same one-shot shape as the storefront
   // "." deep-link below.
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
-  const [activeCollection, setActiveCollection] = useState<CollectionId>(
+  const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
       (contentDeepLink.contentCollection &&
         isBlogKind(contentDeepLink.contentCollection as CollectionId) &&
         (contentDeepLink.contentCollection as CollectionId)) ||
       "pages",
   );
+  const blogAi = useBlogAi();
+  const activeCollection = visibleCollection(storedCollection, blogAi);
   const [selection, setSelection] = useState<Selection>(() =>
     contentDeepLink.contentItem && isBlogKind(activeCollection)
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
@@ -959,6 +978,7 @@ function ContentBrowserReady({
         active={activeCollection}
         counts={counts}
         showBlog={showBlog}
+        showContext={blogAi}
         onSelect={(id) => {
           setActiveCollection(id);
           setSelection(null);

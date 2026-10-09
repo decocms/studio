@@ -72,6 +72,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -140,6 +141,7 @@ export function PostEditor({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const blogAi = useBlogAi();
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
@@ -345,17 +347,19 @@ export function PostEditor({
                     </TooltipContent>
                   </Tooltip>
                 )}
-                <SuggestLinksButton
-                  decofile={decofile}
-                  virtualMcpId={virtualMcpId}
-                  sections={asBlocks(post.sections)}
-                  currentKey={blockKey}
-                  hasAi={hasAi}
-                  onApply={(next) => {
-                    setField("sections", next);
-                    setContentRevision((r) => r + 1);
-                  }}
-                />
+                {blogAi && (
+                  <SuggestLinksButton
+                    decofile={decofile}
+                    virtualMcpId={virtualMcpId}
+                    sections={asBlocks(post.sections)}
+                    currentKey={blockKey}
+                    hasAi={hasAi}
+                    onApply={(next) => {
+                      setField("sections", next);
+                      setContentRevision((r) => r + 1);
+                    }}
+                  />
+                )}
                 <Button
                   type="button"
                   variant="outline"
