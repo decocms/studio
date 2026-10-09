@@ -31,7 +31,7 @@ export const thread = {
     "Version limit reached ({max}). Delete a version to create a new one.",
   "thread.branchPicker.rename": "Rename",
   "thread.branchPicker.save": "Save",
-  "thread.branchPicker.saveError": "Couldn't save the version. Try again.",
+  "thread.branchPicker.saveError": "Couldn't update your draft. Try again.",
   "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
