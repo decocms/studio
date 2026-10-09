@@ -38,7 +38,8 @@ import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { formatTimeAgo } from "@/lib/format-time.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
+import { formatRelativeTime } from "@/lib/format-time.ts";
 import {
   lastPreviewPageKey,
   readLastPreviewPage,
@@ -396,6 +397,7 @@ function CmsPublishContent({
   publishLockRef: React.MutableRefObject<boolean>;
 }) {
   const t = useT();
+  const [{ language }] = usePreferences();
   /** The session publishing — the git routes resolve their runtime from it. */
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const { data: session } = authClient.useSession();
@@ -568,7 +570,7 @@ function CmsPublishContent({
     }
     const pr = lastPublishedPr;
     if (!pr?.mergedAt) return null;
-    const when = formatTimeAgo(new Date(pr.mergedAt));
+    const when = formatRelativeTime(new Date(pr.mergedAt), language);
     const name = lastPublishAttribution(pr);
     return name
       ? t("thread.publishPopover.lastPublishedBy", { when, name })

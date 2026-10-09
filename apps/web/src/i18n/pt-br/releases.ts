@@ -18,6 +18,7 @@ export const releases = {
   "releases.publishAnyway": "Publicar mesmo assim",
   "releases.versionLive": "Esta versão está no ar.",
   "releases.publishVersionFailed": "Não foi possível publicar esta versão.",
+  "releases.siteUpdate": "Atualização do site",
   "releases.loadMore": "Carregar mais",
   "releases.cancel": "Cancelar",
 } satisfies Record<keyof typeof enReleases, string>;
