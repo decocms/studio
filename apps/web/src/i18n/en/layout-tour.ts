@@ -29,9 +29,9 @@ export const layoutTour = {
   "layoutTour.surfaceTabs.title": "Preview and Content, side by side",
   "layoutTour.surfaceTabs.description":
     "Preview renders the page as visitors see it; Content opens the blocks behind it. Switch between them without leaving the page you are on.",
-  "layoutTour.branchPicker.title": "Work on a branch",
+  "layoutTour.branchPicker.title": "Your drafts",
   "layoutTour.branchPicker.description":
-    "Changes land on the branch named here. Switch it to work somewhere else, and publish when the work is ready.",
+    "Changes go to the draft named here. Switch drafts to work on something else, and publish when it's ready.",
   "layoutTour.automations.title": "Put the work on a schedule",
   "layoutTour.automations.description":
     "Automations run this project on a trigger or a schedule, so recurring work happens without anyone starting it.",

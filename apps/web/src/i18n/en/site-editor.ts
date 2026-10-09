@@ -26,7 +26,8 @@ export const siteEditor = {
   "siteEditor.save.conflict":
     "Not saved: someone else changed this at the same time. We're loading their version, so make your change again.",
   "siteEditor.save.readOnly": "Not saved: this version can't be edited.",
-  "siteEditor.save.invalid": "Not saved: {detail}. Fix it and try again.",
+  "siteEditor.save.invalid":
+    "Not saved: some fields aren't filled in correctly. Fix them and try again.",
   "siteEditor.save.tooLarge":
     "Not saved: this content is too large. Make it smaller and try again.",
 };
