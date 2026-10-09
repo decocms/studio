@@ -9,7 +9,10 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ToolName } from "@decocms/shared/tools/registry-metadata";
+import {
+  MANAGEMENT_TOOLS,
+  type ToolName,
+} from "@decocms/shared/tools/registry-metadata";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import {
   isReviewerThreadTitle,
@@ -98,58 +101,53 @@ export const JIRA_RUN_TOOL_NAMES: readonly ToolName[] = [
 ];
 
 /**
- * What every chat's endpoint serves: the task-run surface (a chat clones a repo
- * with `TASK_ADD_REPO`, which replaced `load_repo`), plus what Decopilot chats
- * had as built-ins.
- *
- * Deliberately absent: `TASK_BOARD_REVIEW_DECISION` and
- * `TASK_BOARD_PROMOTE_TO_PRODUCTION` (an agent must not approve its own work),
- * and the board prompt/automation writes, which Decopilot only ran behind an
+ * Never on a chat's surface. `TASK_BOARD_REVIEW_DECISION` and
+ * `TASK_BOARD_PROMOTE_TO_PRODUCTION`: an agent must not approve its own work.
+ * The board prompt/automation writes: Decopilot only ran them behind an
  * approval this path does not have.
  */
-export const THREAD_TOOL_NAMES: readonly ToolName[] = [
-  ...TASK_RUN_TOOL_NAMES,
-  "generate_image",
-  "web_search",
-  "deep_research",
-  "suggest_task",
-  "update_interests",
-  "COLLECTION_THREADS_LIST",
-  "COLLECTION_THREADS_GET",
-  "COLLECTION_THREAD_MESSAGES_LIST",
-  "TASK_BOARD_ITEM_CREATE",
-  "TASK_BOARD_ITEM_DELETE",
-  "TASK_BOARD_ITEM_PRS_GET",
-  "TASK_BOARD_PROMPT_LIST",
-  "TASK_BOARD_AUTOMATION_LIST",
-  "TASK_BOARD_ADMIN_ORG_LIST",
-  "TASK_BOARD_DELIVERY",
-  "TASK_BOARD_STUCK",
-  "TASK_BOARD_COST",
-  "TASK_BOARD_QUALITY",
-  "TASK_BOARD_ERRORS",
-  "TASK_BOARD_TENANTS",
-  "COLLECTION_VIRTUAL_MCP_CREATE",
-  "COLLECTION_VIRTUAL_MCP_LIST",
-  "COLLECTION_VIRTUAL_MCP_GET",
-  "COLLECTION_VIRTUAL_MCP_UPDATE",
-  "COLLECTION_VIRTUAL_MCP_DELETE",
-  "COLLECTION_CONNECTIONS_LIST",
-  "COLLECTION_CONNECTIONS_GET",
-  "CONNECTION_TOOLS_SEARCH",
-  "CONNECTION_TOOL_CALL",
-];
+const NOT_ON_A_CHAT: ReadonlySet<ToolName> = new Set<ToolName>([
+  "TASK_BOARD_REVIEW_DECISION",
+  "TASK_BOARD_PROMOTE_TO_PRODUCTION",
+  "TASK_BOARD_PROMPT_UPSERT",
+  "TASK_BOARD_PROMPT_DELETE",
+  "TASK_BOARD_AUTOMATION_UPSERT",
+  "TASK_BOARD_AUTOMATION_DELETE",
+]);
+
+/**
+ * What every chat's endpoint serves, the Super Agent's included: the whole
+ * Studio catalog `/mcp/self` serves — Jira's tools with it — but the few above.
+ *
+ * Mounted directly rather than behind `CONNECTION_TOOLS_SEARCH`: Claude Code
+ * defers each schema until the model looks it up, so the catalog costs a name
+ * per tool on the first turn, not a schema. The key is still cut down to what
+ * the dispatcher may call themselves (`selfToolGrantsFor`).
+ */
+export const THREAD_TOOL_NAMES: readonly ToolName[] = MANAGEMENT_TOOLS.map(
+  (tool) => tool.name,
+).filter((name) => !NOT_ON_A_CHAT.has(name));
+
+type SurfaceThread =
+  | { title?: string | null; metadata?: ThreadMetadata | null }
+  | null
+  | undefined;
 
 /**
  * Tools a run gets because of what the run IS, not because of who dispatched
  * it — the run's key carries them whatever the dispatcher's role. Everything
  * else a thread serves is bounded by the dispatcher's own grants.
+ *
+ * Per surface: a chat's run-scoped part is only its task-run tools. The rest
+ * of a chat's surface is the whole catalog, and its Jira tools spend the org's
+ * Jira credential — run-scoped there, any member's chat could.
  */
-export const RUN_SCOPED_TOOL_NAMES: ReadonlySet<string> = new Set([
-  ...TASK_RUN_TOOL_NAMES,
-  ...REVIEW_RUN_TOOL_NAMES,
-  ...JIRA_RUN_TOOL_NAMES,
-]);
+export function resolveRunScopedToolNames(
+  thread: SurfaceThread,
+): ReadonlySet<string> {
+  const served = resolveThreadToolNames(thread);
+  return new Set(served === THREAD_TOOL_NAMES ? TASK_RUN_TOOL_NAMES : served);
+}
 
 /**
  * Which tool surface a thread's MCP session gets, from the thread.
@@ -162,10 +160,7 @@ export const RUN_SCOPED_TOOL_NAMES: ReadonlySet<string> = new Set([
  * org-scoped, so a foreign thread id finds nothing to act on.
  */
 export function resolveThreadToolNames(
-  thread:
-    | { title?: string | null; metadata?: ThreadMetadata | null }
-    | null
-    | undefined,
+  thread: SurfaceThread,
 ): readonly ToolName[] {
   if (thread?.metadata?.source === "jira") return JIRA_RUN_TOOL_NAMES;
   const isReviewer = REVIEWER_KINDS.some((kind) =>

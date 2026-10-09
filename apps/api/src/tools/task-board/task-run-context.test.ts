@@ -13,8 +13,8 @@ import { TOOL_BY_NAME } from "..";
 import {
   REVIEW_RUN_TOOL_NAMES,
   JIRA_RUN_TOOL_NAMES,
+  resolveRunScopedToolNames,
   resolveThreadToolNames,
-  RUN_SCOPED_TOOL_NAMES,
   TASK_RUN_TOOL_NAMES,
   THREAD_TOOL_NAMES,
 } from "./task-run-context";
@@ -94,17 +94,37 @@ describe("resolveThreadToolNames", () => {
 
   // `toolSubsetMCP` skips unknown names, so a typo would silently drop a tool.
   test("every name a thread can be served is a registered tool", () => {
-    for (const name of [...THREAD_TOOL_NAMES, ...RUN_SCOPED_TOOL_NAMES]) {
+    for (const name of [
+      ...THREAD_TOOL_NAMES,
+      ...REVIEW_RUN_TOOL_NAMES,
+      ...JIRA_RUN_TOOL_NAMES,
+    ]) {
       expect(TOOL_BY_NAME.has(name)).toBe(true);
     }
   });
 
-  test("the chat-only tools are not run-scoped", () => {
-    expect(RUN_SCOPED_TOOL_NAMES.has("COLLECTION_VIRTUAL_MCP_DELETE")).toBe(
-      false,
-    );
-    expect(RUN_SCOPED_TOOL_NAMES.has("generate_image")).toBe(false);
-    expect(RUN_SCOPED_TOOL_NAMES.has("TASK_ADD_REPO")).toBe(true);
+  // The Super Agent on Claude Code reaches Studio and Jira directly, not
+  // through the connection search/call gateway.
+  test("a chat gets the Studio catalog, Jira included", () => {
+    for (const name of [...JIRA_RUN_TOOL_NAMES, "JIRA_BOARDS_LIST"] as const) {
+      expect(THREAD_TOOL_NAMES).toContain(name);
+    }
+    expect(THREAD_TOOL_NAMES.length).toBe(TOOL_BY_NAME.size - 6);
+  });
+
+  test("a chat's run-scoped tools are only its task-run ones", () => {
+    const scoped = resolveRunScopedToolNames({ title: "Some chat" });
+    expect([...scoped]).toEqual([...TASK_RUN_TOOL_NAMES]);
+    expect(scoped.has("JIRA_COMMENT_ADD")).toBe(false);
+    expect(scoped.has("COLLECTION_VIRTUAL_MCP_DELETE")).toBe(false);
+  });
+
+  test("a Jira run's tools come with the run", () => {
+    const scoped = resolveRunScopedToolNames({
+      title: "Jira EX-12: x",
+      metadata: { source: "jira" },
+    });
+    expect(scoped.has("JIRA_COMMENT_ADD")).toBe(true);
   });
 
   // A reviewer needs to FIND the PR as well as rule on it: `enable_tool` came

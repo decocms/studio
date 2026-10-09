@@ -492,7 +492,7 @@ describe("JIRA_ISSUE_SEARCH", () => {
   });
 });
 
-describe("outside a Jira run (a chat on /mcp/self)", () => {
+describe("outside a Jira run (a chat)", () => {
   const originalFetch = globalThis.fetch;
   let jira: ReturnType<typeof fakeJira>;
   const useJira = (opts: Parameters<typeof fakeJira>[0]) => {
@@ -556,6 +556,23 @@ describe("outside a Jira run (a chat on /mcp/self)", () => {
     expect(body?.fields?.project?.key).toBe("EX");
     expect(out.created).toBe(true);
     expect(out.linked).toEqual(["EX-7"]);
+    expect(recordJiraIssueCreated).not.toHaveBeenCalled();
+  });
+
+  it("treats a chat's own thread endpoint the same: its thread is no Jira run", async () => {
+    useJira({ onBoard: ["EX-30"] });
+    const { ctx, recordJiraIssueCreated } = makeCtx({});
+
+    const moved = await run(() =>
+      JIRA_ISSUE_TRANSITION.handler(
+        { issueKey: "EX-30", toStatus: "doing" },
+        ctx,
+      ),
+    );
+    const created = await run(() => JIRA_ISSUE_CREATE.handler(input(), ctx));
+
+    expect(moved).toEqual({ status: "Doing" });
+    expect(created.created).toBe(true);
     expect(recordJiraIssueCreated).not.toHaveBeenCalled();
   });
 });
