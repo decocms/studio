@@ -101,6 +101,8 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "CONNECTION_TOOLS_SEARCH",
+  "CONNECTION_TOOL_CALL",
   "REPORTS_SETUP",
   "REPORTS_RUN",
   "REPORTS_BIND",
@@ -604,6 +606,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_TOOLS_SEARCH",
+    description: "Search the tools of your connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_TOOL_CALL",
+    description: "Call a tool on one of your connections",
     category: "Connections",
   },
   {
@@ -1639,6 +1651,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
       "CONNECTION_TEST",
+      // Each call is still authorized per connection by the proxy.
+      "CONNECTION_TOOLS_SEARCH",
+      "CONNECTION_TOOL_CALL",
       // View agents
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
