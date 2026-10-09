@@ -51,7 +51,6 @@ app.get("/", (c) => {
     // Only expose internalUrl in local mode — production uses the public URL directly
     ...(isLocalMode() && { internalUrl: getInternalUrl() }),
     ...(getSettings().enableDecoImport && { enableDecoImport: true }),
-    brandExtractEnabled: !!getSettings().firecrawlApiKey,
     hostingEnabled:
       !!getSettings().controlplaneRestUrl &&
       !!getSettings().controlplaneServiceToken,

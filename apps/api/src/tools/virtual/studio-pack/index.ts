@@ -3,19 +3,15 @@ import {
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
 import type { VirtualMCPStorage } from "@/storage/virtual";
-import type { StudioContext } from "@/core/studio-context";
 import type { VirtualMCPEntity } from "../schema";
 import { apiKeyManagerAgent } from "./api-key-manager";
 import { automationManagerAgent } from "./automation-manager";
-import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
 import { storeManagerAgent } from "./store-manager";
 import { usageManagerAgent } from "./usage-manager";
 import type {
   ChecklistContext,
   ResolvedChecklistItem,
-  ResolvedRuntime,
-  RuntimeResolveContext,
   StudioPackChecklistItem,
   StudioPackConnectionKey,
 } from "./types";
@@ -24,9 +20,6 @@ export type {
   ChecklistContext,
   ChecklistItemAction,
   ResolvedChecklistItem,
-  ResolvedRuntime,
-  ResolveRuntime,
-  RuntimeResolveContext,
   StudioPackChecklistItem,
 } from "./types";
 
@@ -39,7 +32,6 @@ export type {
 const RETIRED_AGENT_ID_PREFIXES = RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES;
 
 export const STUDIO_PACK_AGENTS = [
-  brandManagerAgent,
   automationManagerAgent,
   connectionManagerAgent,
   apiKeyManagerAgent,
@@ -57,51 +49,27 @@ export function findStudioPackAgentByMcpId(
   );
 }
 
-async function resolveStudioPackRuntime(
-  agent: StudioPackAgent,
-  rt: RuntimeResolveContext,
-): Promise<ResolvedRuntime> {
-  if ("resolveRuntime" in agent) {
-    return agent.resolveRuntime(rt);
-  }
-  return {
-    instructions: agent.instructions,
-    selectedTools: agent.selectedTools,
-  };
-}
-
 /**
  * Apply the code-owned runtime configuration for a Studio Pack agent.
  * Persisted rows can lag behind the current definition until the startup
  * override runs, so every execution path resolves through this helper.
  */
-export async function resolveEffectiveStudioPackVirtualMcp({
-  virtualMcp,
-  agentId = virtualMcp.id,
-  organizationId,
-  ctx,
-}: {
-  virtualMcp: VirtualMCPEntity;
-  agentId?: string;
-  organizationId: string;
-  ctx: StudioContext;
-}): Promise<VirtualMCPEntity> {
+export function resolveEffectiveStudioPackVirtualMcp(
+  virtualMcp: VirtualMCPEntity,
+  agentId: string = virtualMcp.id,
+): VirtualMCPEntity {
   const studioPackAgent = findStudioPackAgentByMcpId(agentId);
   if (!studioPackAgent) return virtualMcp;
 
-  const resolved = await resolveStudioPackRuntime(studioPackAgent, {
-    orgId: organizationId,
-    ctx,
-  });
-  const selectedTools = resolved.selectedTools
-    ? [...resolved.selectedTools]
+  const selectedTools = studioPackAgent.selectedTools
+    ? [...studioPackAgent.selectedTools]
     : null;
 
   return {
     ...virtualMcp,
     metadata: {
       ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
-      instructions: resolved.instructions,
+      instructions: studioPackAgent.instructions,
     },
     connections: virtualMcp.connections.map((connection) => ({
       ...connection,

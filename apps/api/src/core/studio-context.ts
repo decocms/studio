@@ -296,7 +296,6 @@ import type { AutomationsStorage } from "../storage/automations";
 import type { TriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
-import type { BrandContextStorage } from "../storage/brand-context";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -382,7 +381,6 @@ export interface StudioStorage {
   triggerCallbackTokens: TriggerCallbackTokenStorage;
   orgSsoConfig: OrgSsoConfigStorage;
   orgSsoSessions: OrgSsoSessionStorage;
-  brandContext: BrandContextStorage;
   organizationDomains: OrganizationDomainStorage;
   organizationJoinRequests: OrganizationJoinRequestStorage;
   kv: KVStorage;
@@ -472,9 +470,6 @@ export interface StudioContext {
   // Org filesystem (path/tree view over object storage) — null when there's no
   // object storage or no org scope. See `.context/org-filesystem-proposal.md`.
   orgFs: OrgFs | null;
-
-  // External API keys (optional, from settings)
-  firecrawlApiKey?: string;
 
   // Automation runner — fires an automation manually (wired in app.ts)
   automationRunner?: (

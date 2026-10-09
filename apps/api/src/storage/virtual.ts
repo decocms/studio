@@ -15,9 +15,7 @@ import {
 import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
-  getWellKnownBrandContextSetupVirtualMCP,
   getWellKnownDecopilotVirtualMCP,
-  isBrandContextSetup,
   isDecopilot,
   normalizeSandboxMap,
 } from "@decocms/shared/sdk";
@@ -187,17 +185,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       const resolvedOrgId = organizationId ?? decopilotOrgId;
       return {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
-        pinned: false,
-        connections: [],
-      };
-    }
-
-    // Well-known guided-onboarding agent for the brand-context preset.
-    const bcsOrgId = isBrandContextSetup(id);
-    if (bcsOrgId) {
-      const resolvedOrgId = organizationId ?? bcsOrgId;
-      return {
-        ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
         pinned: false,
         connections: [],
       };

@@ -18,7 +18,7 @@ coupling either side to a Studio application.
 The package includes the binding primitives, typed client adapters, connection
 types, and well-known contracts for collections, language models, object
 storage, MCP configuration, assistants, prompts, AI gateway billing, triggers,
-brands, and event subscribers.
+and event subscribers.
 
 ## Responsibilities
 
@@ -67,7 +67,7 @@ Supported package exports:
 
 | Import path | Surface |
 | --- | --- |
-| `@decocms/bindings` | Binding primitives plus event subscriber, trigger, object-storage, and brand exports |
+| `@decocms/bindings` | Binding primitives plus event subscriber, trigger, and object-storage exports |
 | `@decocms/bindings/collections` | Collection schemas, factories, and types |
 | `@decocms/bindings/llm` | Deprecated language-model binding |
 | `@decocms/bindings/object-storage` | Object-storage binding |
@@ -78,7 +78,6 @@ Supported package exports:
 | `@decocms/bindings/prompt` | Prompt schemas and types |
 | `@decocms/bindings/ai-gateway` | AI gateway billing binding |
 | `@decocms/bindings/trigger` | Trigger binding and typed client |
-| `@decocms/bindings/brand` | Brand binding and typed client |
 
 ## Architecture
 

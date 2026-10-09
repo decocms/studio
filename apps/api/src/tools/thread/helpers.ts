@@ -22,7 +22,7 @@ export type RepositoryMetadata = {
 /**
  * Look up a virtual MCP by id and confirm it belongs to `organizationId`.
  * `findById`'s organizationId param only resolves well-known synthetic ids
- * (decopilot, brand-context-setup) — for a normal row it does NOT filter by
+ * (decopilot) — for a normal row it does NOT filter by
  * org, so existence alone doesn't prove the vMCP is ours. Throws (rather than
  * returning null) so a thread create/update can't silently no-op against a
  * missing vMCP.
