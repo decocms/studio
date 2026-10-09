@@ -27,10 +27,6 @@ import {
   selectBrandEvidence,
   setPostStatus,
   stampPostModified,
-  dedupeSuggestedThemes,
-  newIdeaKey,
-  scanIdeas,
-  IDEA_KEY_PREFIX,
   scanCampaigns,
   buildCampaignBlock,
   emptyCampaign,
@@ -42,6 +38,7 @@ import {
   PLANNING_POST_KEY_PREFIX,
   emptyDraftPostPayload,
   planningMeta,
+  prunedSchema,
   buildPlanningPostBlock,
   listAuthorRefs,
   listPlanningPosts,
@@ -872,7 +869,7 @@ describe("scanCampaigns", () => {
   test("leaves every other planning block alone", () => {
     expect(
       scanCampaigns({
-        [`${IDEA_KEY_PREFIX}b`]: { title: "An idea" },
+        "blog-manager/campaign-seeds/b": { name: "A seed" },
         "blog-manager-brand": { campaignName: "nope" },
       }),
     ).toEqual([]);
@@ -977,14 +974,14 @@ describe("emptyDraftPostPayload / planningMeta", () => {
   test("starts a post as a briefing with no body", () => {
     const payload = emptyDraftPostPayload({
       title: "How to read a label",
-      planning: { ideaKey: "i1", brief: "Angle." },
+      planning: { campaignKey: "c1", brief: "Angle." },
       now,
     });
     expect(payload.status).toBe("draft");
     expect(payload.sections).toEqual([]);
     expect(postStatus(payload)).toBe("draft");
     expect(planningMeta(payload).brief).toBe("Angle.");
-    expect(planningMeta(payload).ideaKey).toBe("i1");
+    expect(planningMeta(payload).campaignKey).toBe("c1");
   });
 
   test("planningMeta tolerates a missing planning object", () => {
@@ -1821,110 +1818,6 @@ describe("selectBrandEvidence", () => {
   });
 });
 
-describe("scanIdeas", () => {
-  test("reads only theme blocks, newest first", () => {
-    const ideas = scanIdeas({
-      [`${IDEA_KEY_PREFIX}b`]: {
-        title: "Segundo",
-        body: "briefing b",
-        createdAt: "2026-02-01T00:00:00.000Z",
-      },
-      [`${IDEA_KEY_PREFIX}a`]: {
-        title: "Primeiro",
-        body: "briefing a",
-        createdAt: "2026-01-01T00:00:00.000Z",
-      },
-      "blog-manager-brand": { companyName: "Marca" },
-      "collections/blog/posts/x": {
-        __resolveType: "blog/loaders/Blogpost.ts",
-        post: { title: "Post" },
-      },
-    });
-
-    expect(ideas.map((idea) => idea.title)).toEqual(["Segundo", "Primeiro"]);
-    expect(ideas[0]?.key).toBe(`${IDEA_KEY_PREFIX}b`);
-    expect(ideas[1]?.body).toBe("briefing a");
-  });
-
-  test("an idea still being written has empty fields, not missing ones", () => {
-    const ideas = scanIdeas({ [`${IDEA_KEY_PREFIX}new`]: {} });
-    expect(ideas).toEqual([
-      {
-        key: `${IDEA_KEY_PREFIX}new`,
-        title: "",
-        body: "",
-        createdAt: "",
-      },
-    ]);
-  });
-
-  test("ideas without a date sort last, and ties break by title", () => {
-    const dated = "2026-01-01T00:00:00.000Z";
-    const ideas = scanIdeas({
-      [`${IDEA_KEY_PREFIX}1`]: { title: "Sem data" },
-      [`${IDEA_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
-      [`${IDEA_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
-    });
-    expect(ideas.map((idea) => idea.title)).toEqual([
-      "Alfa",
-      "Bravo",
-      "Sem data",
-    ]);
-  });
-
-  test("ignores a non-object at an idea key", () => {
-    expect(scanIdeas({ [`${IDEA_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
-  });
-
-  test("returns nothing for a site with no ideas", () => {
-    expect(scanIdeas({})).toEqual([]);
-  });
-});
-
-describe("newIdeaKey", () => {
-  test("is prefixed and unique", () => {
-    const a = newIdeaKey();
-    expect(a.startsWith(IDEA_KEY_PREFIX)).toBe(true);
-    expect(a).not.toBe(newIdeaKey());
-  });
-});
-
-describe("dedupeSuggestedThemes", () => {
-  test("drops what already exists, ignoring case, accents and spacing", () => {
-    const fresh = dedupeSuggestedThemes(
-      ["Como ler a etiqueta de composição"],
-      [
-        { title: "  como LER a etiqueta de COMPOSICAO  " },
-        { title: "Por que o linho amassa" },
-      ],
-    );
-    expect(fresh.map((t) => t.title)).toEqual(["Por que o linho amassa"]);
-  });
-
-  test("drops duplicates within the same batch", () => {
-    const fresh = dedupeSuggestedThemes(
-      [],
-      [{ title: "Tecidos naturais" }, { title: "tecidos naturais" }],
-    );
-    expect(fresh).toHaveLength(1);
-  });
-
-  test("drops a blank title — it can't be told apart from another blank", () => {
-    expect(dedupeSuggestedThemes([], [{ title: "   " }])).toEqual([]);
-  });
-
-  test("keeps everything when nothing exists yet", () => {
-    const suggested = [{ title: "Um" }, { title: "Dois" }];
-    expect(dedupeSuggestedThemes([], suggested)).toEqual(suggested);
-  });
-
-  test("carries the whole suggestion through, not just the title", () => {
-    expect(
-      dedupeSuggestedThemes([], [{ title: "Um", body: "briefing" }]),
-    ).toEqual([{ title: "Um", body: "briefing" }]);
-  });
-});
-
 describe("postStructures", () => {
   test("reads each post's section sequence as component names, in order", () => {
     const decofile = decofileWithPosts({
@@ -2228,16 +2121,17 @@ describe("buildPostSections", () => {
     Heading: "blog/sections/blocks/Heading.tsx",
     Paragraph: "blog/sections/blocks/Paragraph.tsx",
     List: "blog/sections/blocks/List.tsx",
-    Quote: "blog/sections/blocks/Quote.tsx",
-    Callout: "blog/sections/blocks/Callout.tsx",
-    Cta: "blog/sections/blocks/Cta.tsx",
-    Divider: "blog/sections/blocks/Divider.tsx",
   };
 
-  test("a List stores its items newline-joined, not as an array", () => {
+  /**
+   * The props come already checked against the block's own schema, so this is
+   * a spread. These pin the two things it still decides: the resolveType, and
+   * what happens to a kind the site does not have.
+   */
+  test("writes the props through, under the site's own resolveType", () => {
     expect(
       buildPostSections(
-        [{ type: "List", items: ["um", "dois"], style: "ordered" }],
+        [{ type: "List", props: { items: "um\ndois", style: "ordered" } }],
         types,
       ),
     ).toEqual([
@@ -2245,40 +2139,14 @@ describe("buildPostSections", () => {
     ]);
   });
 
-  test("fills each kind's own props", () => {
+  test("carries a prop this file has never heard of", () => {
     expect(
       buildPostSections(
-        [
-          { type: "Heading", text: "Título", level: "3" },
-          { type: "Paragraph", html: "<strong>oi</strong>" },
-          { type: "Quote", quote: "citação" },
-          { type: "Callout", title: "Dica", body: "corpo", variant: "tip" },
-          { type: "Cta", text: "Ver", href: "/colecao" },
-          { type: "Divider" },
-        ],
+        [{ type: "Heading", props: { text: "Oi", eyebrow: "Guia", size: 3 } }],
         types,
       ),
     ).toEqual([
-      { __resolveType: types.Heading, text: "Título", level: "3" },
-      { __resolveType: types.Paragraph, html: "<strong>oi</strong>" },
-      { __resolveType: types.Quote, quote: "citação" },
-      {
-        __resolveType: types.Callout,
-        title: "Dica",
-        body: "corpo",
-        variant: "tip",
-      },
-      { __resolveType: types.Cta, text: "Ver", href: "/colecao" },
-      { __resolveType: types.Divider },
-    ]);
-  });
-
-  test("defaults the enums rather than writing undefined", () => {
-    expect(buildPostSections([{ type: "Heading", text: "T" }], types)).toEqual([
-      { __resolveType: types.Heading, text: "T", level: "2" },
-    ]);
-    expect(buildPostSections([{ type: "List", items: ["a"] }], types)).toEqual([
-      { __resolveType: types.List, items: "a", style: "unordered" },
+      { __resolveType: types.Heading, text: "Oi", eyebrow: "Guia", size: 3 },
     ]);
   });
 
@@ -2286,20 +2154,26 @@ describe("buildPostSections", () => {
     expect(
       buildPostSections(
         [
-          { type: "Heading", text: "fica" },
-          { type: "Callout", title: "sai", body: "sai" },
+          { type: "Heading", props: { text: "fica" } },
+          { type: "Callout", props: { title: "sai" } },
         ],
         { Heading: types.Heading },
       ),
-    ).toEqual([{ __resolveType: types.Heading, text: "fica", level: "2" }]);
+    ).toEqual([{ __resolveType: types.Heading, text: "fica" }]);
+  });
+
+  test("a section with no props is still the block", () => {
+    expect(buildPostSections([{ type: "Heading", props: {} }], types)).toEqual([
+      { __resolveType: types.Heading },
+    ]);
   });
 
   test("keeps the reading order", () => {
     const built = buildPostSections(
       [
-        { type: "Heading", text: "a" },
-        { type: "Paragraph", html: "b" },
-        { type: "Heading", text: "c" },
+        { type: "Heading", props: { text: "a" } },
+        { type: "Paragraph", props: { html: "b" } },
+        { type: "Heading", props: { text: "c" } },
       ],
       types,
     );
@@ -2395,7 +2269,11 @@ describe("buildGeneratedPostPayload", () => {
       seo: { title: "Por que o linho amassa", description: "Entenda a fibra." },
       categorySlugs: ["tecidos"],
       authorEmails: ["ana@marca.com"],
-      sections: [{ type: "Paragraph" as const, html: "corpo" }],
+      cover: {
+        url: "https://cdn.loja.com.br/capa.png",
+        alt: "Camisa de linho",
+      },
+      sections: [{ type: "Paragraph", props: { html: "corpo" } }],
     },
     resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
     categories: [
@@ -2472,9 +2350,21 @@ describe("buildGeneratedPostPayload", () => {
     expect(planningMeta(payload).format?.name).toBe("Guia");
   });
 
-  test("leaves the cover image empty, so the reviewer is told", () => {
+  test("carries the generated cover, so the post is not born incomplete", () => {
     const payload = buildGeneratedPostPayload(args);
-    expect(payload.image).toBe("");
+    expect(payload.image).toBe("https://cdn.loja.com.br/capa.png");
+    expect(payload.alt).toBe("Camisa de linho");
+    expect((payload.seo as Record<string, unknown>).image).toBe(
+      "https://cdn.loja.com.br/capa.png",
+    );
+    expect(missingPostFields(payload)).toEqual([]);
+  });
+
+  test("an image that could not be made is still reported as missing", () => {
+    const payload = buildGeneratedPostPayload({
+      ...args,
+      draft: { ...args.draft, cover: { url: "", alt: "" } },
+    });
     expect(missingPostFields(payload)).toEqual(["image"]);
   });
 
@@ -2945,5 +2835,74 @@ describe("canDeletePost", () => {
 
   test("refuses an unrecognized status rather than guessing", () => {
     expect(canDeletePost({ status: "whatever" })).toBe(false);
+  });
+});
+
+/**
+ * The schema travels into the prompt, so what it carries is a cost. These pin
+ * what is kept — everything a prop's type depends on — and what is not.
+ */
+describe("prunedSchema", () => {
+  test("keeps the keywords that say what a prop holds", () => {
+    expect(
+      prunedSchema({
+        type: "object",
+        title: "Callout",
+        required: ["body"],
+        properties: {
+          variant: { type: "string", enum: ["info", "tip"], default: "info" },
+          image: { type: "string", format: "image-uri" },
+        },
+      }),
+    ).toEqual({
+      type: "object",
+      title: "Callout",
+      required: ["body"],
+      properties: {
+        variant: { type: "string", enum: ["info", "tip"], default: "info" },
+        image: { type: "string", format: "image-uri" },
+      },
+    });
+  });
+
+  test("drops the editor's own fields, which say nothing about the type", () => {
+    expect(
+      prunedSchema({
+        type: "array",
+        titleBy: "name",
+        image: "{{{src}}}",
+        options: "site/loaders/options.ts",
+        anyOfRefs: [{ resolveType: "site/sections/X.tsx", title: "X" }],
+        items: { type: "string" },
+      }),
+    ).toEqual({ type: "array", items: { type: "string" } });
+  });
+
+  test("prunes all the way down, not just at the top", () => {
+    expect(
+      prunedSchema({
+        type: "object",
+        properties: {
+          gallery: {
+            type: "array",
+            titleBy: "alt",
+            items: { type: "object", properties: { alt: { type: "string" } } },
+          },
+        },
+      }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        gallery: {
+          type: "array",
+          items: { type: "object", properties: { alt: { type: "string" } } },
+        },
+      },
+    });
+  });
+
+  test("a block with no schema at all is an empty object, never null", () => {
+    expect(prunedSchema(null)).toEqual({});
+    expect(prunedSchema(undefined)).toEqual({});
   });
 });

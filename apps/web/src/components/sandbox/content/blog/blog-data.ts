@@ -27,7 +27,10 @@ import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
+import {
+  resolveBlockSchemaMetadata,
+  resolveSchema,
+} from "@/components/sections-editor/resolve-schema";
 import type { PageEntry } from "@/components/sections-editor/page-list";
 import {
   type PageRole,
@@ -673,8 +676,8 @@ export function newPostId(): string {
  * consumed by generation and shown on the card.
  */
 export interface PlanningMeta {
-  /** The idea this post was written from, when it was written from one. */
-  ideaKey?: string;
+  /** The campaign this post was written for. */
+  campaignKey?: string;
   format?: BrandRule;
   brief?: string;
 }
@@ -684,7 +687,7 @@ export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
   const record = asRecord(payload.planning) ?? {};
   const format = asRecord(record.format);
   return {
-    ideaKey: str(record.ideaKey) || undefined,
+    campaignKey: str(record.campaignKey) || undefined,
     format: format
       ? { name: str(format.name), value: str(format.value) }
       : undefined,
@@ -1742,57 +1745,6 @@ export function selectBrandEvidence(
   return { blocks: selected, seo };
 }
 
-// ------------------ Ideas (the editorial planning queue) ---------------------
-
-/** One block per idea. The prefix says `themes` — this queue's old name. */
-export const IDEA_KEY_PREFIX = "blog-manager/themes/";
-
-/** One angle, worth several posts. Not a post, and has no status. */
-export interface IdeaEntry {
-  key: string;
-  title: string;
-  /** The brief: the angle, who it is for, what it must cover. */
-  body: string;
-  createdAt: string;
-}
-
-export function newIdeaKey(): string {
-  return `${IDEA_KEY_PREFIX}${crypto.randomUUID()}`;
-}
-
-/** Rebuild an idea block — a planning block, so no `__resolveType`. */
-export function buildIdeaBlock(
-  key: string,
-  idea: Omit<IdeaEntry, "key">,
-): Record<string, unknown> {
-  return {
-    name: key,
-    title: idea.title,
-    body: idea.body,
-    createdAt: idea.createdAt,
-  };
-}
-
-/** Newest first, so a fresh suggestion lands at the top of the tray. */
-export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
-  const ideas: IdeaEntry[] = [];
-  for (const [key, value] of Object.entries(decofile)) {
-    if (!key.startsWith(IDEA_KEY_PREFIX)) continue;
-    const record = asRecord(value);
-    if (!record) continue;
-    ideas.push({
-      key,
-      title: str(record.title),
-      body: str(record.body),
-      createdAt: str(record.createdAt),
-    });
-  }
-  return ideas.sort(
-    (a, b) =>
-      b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
-  );
-}
-
 // ------------------ Campaigns (temporary pillars) ----------------------------
 
 /**
@@ -1990,7 +1942,7 @@ export function buildCampaignBlock(
 /**
  * Every campaign, newest first.
  *
- * Tolerant of a partial block the way `scanIdeas` is: a half-written campaign is
+ * Tolerant of a partial block: a half-written campaign is
  * the normal case while someone is still filling the form, and an unknown enum
  * value reads as the default rather than breaking the board.
  */
@@ -2368,27 +2320,6 @@ export function duplicateTitleKeys(
   return duplicates;
 }
 
-/**
- * Drop suggestions whose title already exists, and duplicates within the batch.
- * The tool is told not to repeat, but it is a model — and running "suggest"
- * twice is the normal way to use the button, so the second run must not double
- * the list.
- */
-export function dedupeSuggestedThemes<T extends { title: string }>(
-  existingTitles: string[],
-  suggested: T[],
-): T[] {
-  const seen = new Set(existingTitles.map(normalizeTitleKey));
-  const fresh: T[] = [];
-  for (const theme of suggested) {
-    const key = normalizeTitleKey(theme.title);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    fresh.push(theme);
-  }
-  return fresh;
-}
-
 // ------------------ Generation ----------------------------------------------
 
 /** Brand fields a generated post cannot be written without. */
@@ -2433,6 +2364,101 @@ export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
   return missing;
 }
 
+/** JSON Schema keywords the writer needs; the editor's extras only cost prompt. */
+const SCHEMA_KEYS = [
+  "type",
+  "title",
+  "description",
+  "format",
+  "enum",
+  "default",
+  "required",
+] as const;
+
+/**
+ * A resolved block schema, down to what describes its props.
+ *
+ * `resolveSchema` answers with the editor's view: it carries `titleBy`, the
+ * array-item thumbnail template, the dynamic-options loader path, and the whole
+ * `anyOfRefs` expansion of every block that could fill a block-ref slot. None
+ * of that says what a prop holds, and the last one is most of the bytes.
+ *
+ * Only the keyword positions are filtered. Under `properties` the keys are the
+ * brand's own prop names — filtering those against a keyword list would empty
+ * every block of exactly what the writer needs.
+ */
+export function prunedSchema(schema: unknown): Record<string, unknown> {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return {};
+  const source = schema as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const key of SCHEMA_KEYS) {
+    if (key in source) out[key] = source[key];
+  }
+  const properties = source.properties;
+  if (properties && typeof properties === "object") {
+    out.properties = Object.fromEntries(
+      Object.entries(properties as Record<string, unknown>).map(
+        ([name, child]) => [name, prunedSchema(child)],
+      ),
+    );
+  }
+  if (source.items) out.items = prunedSchema(source.items);
+  for (const branch of ["anyOf", "oneOf"] as const) {
+    const value = source[branch];
+    if (Array.isArray(value)) out[branch] = value.map(prunedSchema);
+  }
+  return out;
+}
+
+/** One block the writer may build a section from, with its own typing. */
+export interface GenerationBlock {
+  name: string;
+  title: string;
+  description: string;
+  schema: Record<string, unknown>;
+}
+
+/**
+ * The blocks a format admits, each carrying the schema its props must match.
+ *
+ * The format's brief already cites what this brand reaches for — that citation
+ * is what picks the set, so a format is a contract rather than a suggestion.
+ * A brief that cites nothing falls back to every block the site exposes: a
+ * loosely written format must not leave a post with nothing to be made of.
+ *
+ * Several blocks can share a component name (a site's override of an app
+ * block). The writer only ever sees the name, so the first wins here the same
+ * way it does in {@link sectionResolveTypes} — the two must agree, or a section
+ * would be written against one schema and saved as another.
+ */
+export function blocksForFormat(
+  format: { value: string },
+  meta: LiveMeta,
+  options?: BlogBlockDiscoveryOptions,
+): GenerationBlock[] {
+  const available = mentionableSections(meta, options);
+  const byName = sectionResolveTypes(meta, options);
+  const cited = new Set(citedSections(format.value, byName));
+  const wanted = available.filter((section) => cited.has(section.resolveType));
+  const chosen = wanted.length > 0 ? wanted : available;
+
+  const seen = new Set<string>();
+  const blocks: GenerationBlock[] = [];
+  for (const section of chosen) {
+    if (seen.has(section.name)) continue;
+    if (byName[section.name] !== section.resolveType) continue;
+    seen.add(section.name);
+    blocks.push({
+      name: section.name,
+      title: section.title,
+      description: section.description ?? "",
+      schema: prunedSchema(resolveSchema(section.resolveType, meta)),
+    });
+  }
+  return blocks;
+}
+
 /**
  * Component name → the resolveType this site actually exposes for it.
  *
@@ -2454,15 +2480,17 @@ export function sectionResolveTypes(
 }
 
 type DraftSection =
-  StudioToolIO["BLOG_POST_DRAFT"]["output"]["sections"][number];
+  StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number]["sections"][number];
 
 /**
  * Turn generated sections into decofile blocks.
  *
- * This is where the storage conventions live, and they differ per kind — a
- * `List` stores its items as one newline-joined string, while `Checklist` and
- * friends store JSON. Getting it wrong yields a block that saves fine and
- * renders empty, so each kind is written out explicitly rather than spread.
+ * The props arrive already checked against the block's own JSON Schema, which
+ * is what lets this be a spread. It used to be a switch with one case per kind,
+ * encoding each block's storage convention by hand — a `List` keeps its items
+ * as one newline-joined string — and that was only ever right for the blocks
+ * the blog app ships. A site with its own section got the app's assumptions,
+ * and a block that saves fine and renders empty is the worst way to be wrong.
  *
  * A kind this site doesn't expose is dropped: better a shorter post than a
  * block the editor can't render.
@@ -2475,47 +2503,7 @@ export function buildPostSections(
   for (const section of sections) {
     const __resolveType = resolveTypes[section.type];
     if (!__resolveType) continue;
-    switch (section.type) {
-      case "Heading":
-        blocks.push({
-          __resolveType,
-          text: str(section.text),
-          level: section.level ?? "2",
-        });
-        break;
-      case "Paragraph":
-        blocks.push({ __resolveType, html: str(section.html) });
-        break;
-      case "List":
-        blocks.push({
-          __resolveType,
-          // One string, newline-separated — see ListBlock in plain-blocks.
-          items: (section.items ?? []).join("\n"),
-          style: section.style ?? "unordered",
-        });
-        break;
-      case "Quote":
-        blocks.push({ __resolveType, quote: str(section.quote) });
-        break;
-      case "Callout":
-        blocks.push({
-          __resolveType,
-          title: str(section.title),
-          body: str(section.body),
-          variant: section.variant ?? "info",
-        });
-        break;
-      case "Cta":
-        blocks.push({
-          __resolveType,
-          text: str(section.text),
-          href: str(section.href),
-        });
-        break;
-      case "Divider":
-        blocks.push({ __resolveType });
-        break;
-    }
+    blocks.push({ __resolveType, ...section.props });
   }
   return blocks;
 }
@@ -2581,7 +2569,7 @@ export function uniqueCategorySlug(source: string, taken: string[]): string {
   return uniqueSlug(source, taken, "category");
 }
 
-/** A freshly generated post: lands in Awaiting review, with no cover image. */
+/** A freshly generated post: lands in Awaiting review, cover and all. */
 export function buildGeneratedPostPayload({
   draft,
   resolveTypes,
@@ -2591,7 +2579,7 @@ export function buildGeneratedPostPayload({
   takenSlugs,
   now,
 }: {
-  draft: StudioToolIO["BLOG_POST_DRAFT"]["output"];
+  draft: StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number];
   resolveTypes: Record<string, string>;
   /** The site's categories, to resolve the chosen slugs into stored refs. */
   categories: CategoryRef[];
@@ -2609,14 +2597,14 @@ export function buildGeneratedPostPayload({
     slug: uniquePostSlug(draft.title, takenSlugs),
     date: now.toISOString().slice(0, 10),
     excerpt: draft.excerpt,
-    image: "",
-    alt: "",
+    image: draft.cover.url,
+    alt: draft.cover.alt,
     authors: authors.filter((author) => chosenAuthors.has(author.email)),
     categories: categories.filter((c) => chosenCategories.has(c.slug)),
     seo: {
       title: draft.seo.title,
       description: draft.seo.description,
-      image: "",
+      image: draft.cover.url,
     },
     sections: buildPostSections(draft.sections, resolveTypes),
     planning: (planning ?? {}) as Record<string, unknown>,

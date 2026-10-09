@@ -134,3 +134,29 @@ export const BlogGenerationSchema = z.object({
  * rule lists too.
  */
 export const BlogContextSchema = BlogBrandSchema.merge(BlogGenerationSchema);
+
+/**
+ * What writing one post actually needs.
+ *
+ * A prompt is not a filing cabinet. The whole context carries sixteen fields
+ * and four of them were already being dropped unread by the post prompt; the
+ * rest competes for the model's attention with the brief it is meant to follow.
+ * So a post takes the fields that change how a sentence comes out — who the
+ * brand is, who reads it, how it sounds, which words it uses, what it refuses —
+ * and the campaign brings the rest: its own keywords, its products, its dates.
+ *
+ * Picked from {@link BlogContextSchema} rather than restated, so a description
+ * improved in one place is improved here too.
+ */
+export const ReducedContextSchema = BlogContextSchema.pick({
+  companyName: true,
+  description: true,
+  language: true,
+  storeUrl: true,
+  targetAudience: true,
+  tone: true,
+  dos: true,
+  avoid: true,
+  vocabulary: true,
+  voiceExamples: true,
+});

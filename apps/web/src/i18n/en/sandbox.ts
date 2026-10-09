@@ -630,16 +630,40 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} format(s) added",
   "sandbox.formats.unknownCitations":
     "This format cites sections the site doesn't have: {names}",
-  "sandbox.generatePost.authorLabel": "Author",
+  "sandbox.generatePost.stepCampaign": "Campaign",
+  "sandbox.generatePost.campaignHint":
+    "A post is written for a campaign: it carries the moment, the products it may name and the links to them.",
+  "sandbox.generatePost.noCampaigns":
+    "No campaign to write for yet. Create one under Context → Campaigns.",
+  "sandbox.generatePost.campaignProducts": "{count} product(s)",
+  "sandbox.generatePost.campaignNoProducts": "No products",
+  "sandbox.generatePost.formatBlocksHint":
+    "The blocks this format cites are the only ones a post may be built from, and each is filled to its own schema.",
+  "sandbox.generatePost.countLabel": "How many drafts",
+  "sandbox.generatePost.countHint":
+    "Each takes a different angle on the same campaign. They land as separate cards.",
+  "sandbox.generatePost.coverHint":
+    "Every draft gets a cover image, generated and uploaded to your bucket.",
+  "sandbox.generatePost.gapNoStoreData":
+    "No connected system answered, so nothing in these posts was checked against the store.",
+  "sandbox.generatePost.gapSectionsDropped":
+    "{count} section(s) were dropped: their props did not match the block that renders them.",
+  "sandbox.generatePost.gapNoBucket":
+    "No bucket to upload images to, so the posts have no cover. Configure one under Settings → Buckets.",
+  "sandbox.generatePost.gapNoImageModel":
+    "This organization has no image model configured, so the posts have no cover.",
+  "sandbox.generatePost.gapImagesFailed":
+    "The cover images could not be generated. The posts are otherwise complete.",
+  "sandbox.generatePost.gapDraftsFailed":
+    "{count} draft(s) could not be written and their cards were left empty.",
   "sandbox.generatePost.back": "Back",
   "sandbox.generatePost.blockedBrand":
     "Fill in {fields} on the Brand tab first — a post written without them reads like any other brand's.",
-  "sandbox.generatePost.categoryLabel": "Category",
-  "sandbox.generatePost.done": 'Wrote "{title}" — ready for review',
+  "sandbox.generatePost.done": "Wrote {count} draft(s) — ready for review",
   "sandbox.generatePost.extraLabel": "Anything else?",
   "sandbox.generatePost.extraPlaceholder":
     "What you want on top of everything else, in your words.",
-  "sandbox.generatePost.failed": "Could not write this post",
+  "sandbox.generatePost.failed": "Could not write these posts",
   "sandbox.generatePost.formatHint":
     "Pick a format this brand already uses, or describe a new one.",
   "sandbox.generatePost.formatNameLabel": "Format name",
@@ -648,29 +672,13 @@ export const sandbox = {
   "sandbox.generatePost.formatValueLabel": "How a post like this is built",
   "sandbox.generatePost.formatValuePlaceholder":
     "How it opens, develops and closes.",
-  "sandbox.generatePost.generate": "Generate",
-  "sandbox.generatePost.ideaBodyLabel": "The angle",
-  "sandbox.generatePost.ideaBodyPlaceholder":
-    "Who it's for and what it should cover. Optional.",
-  "sandbox.generatePost.ideaHint":
-    "One angle, specific enough to be a single post.",
-  "sandbox.generatePost.ideaTitleLabel": "What is the post about?",
-  "sandbox.generatePost.ideaTitlePlaceholder": "e.g. Why linen creases",
-  "sandbox.generatePost.inferHint":
-    "Leave category or author unset and the model picks from what your blog already has.",
-  "sandbox.generatePost.inferIt": "Let AI choose",
+  "sandbox.generatePost.generate": "Generate {count} draft(s)",
   "sandbox.generatePost.next": "Next",
-  "sandbox.generatePost.stepExtra": "Details",
+  "sandbox.generatePost.stepExtra": "Instructions",
   "sandbox.generatePost.stepFormat": "Format",
-  "sandbox.generatePost.stepIdea": "Idea",
   "sandbox.generatePost.subtitle":
-    "An idea and the format it follows — then anything else you want to pin down.",
-  "sandbox.generatePost.suggestFailed": "Could not suggest",
-  "sandbox.generatePost.suggestIdeas": "Suggest ideas",
-  "sandbox.generatePost.suggestIdeasHint":
-    "Propose ideas from your brand context.",
-  "sandbox.generatePost.title": "Generate a post",
-  "sandbox.generatePost.writeAnIdea": "Write a new one",
+    "Pick the campaign and the format. The posts land on the board as drafts.",
+  "sandbox.generatePost.title": "Generate posts",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",
@@ -789,24 +797,12 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Collapse to panel",
   "sandbox.postBoard.collapseLane": "Collapse {lane}",
   "sandbox.postBoard.delete": "Delete",
-  "sandbox.postBoard.deleteIdea": "Delete idea",
   "sandbox.postBoard.emptyDescription":
     "Generate a few ideas and shape them into published posts.",
   "sandbox.postBoard.emptyTitle": "No posts yet",
   "sandbox.postBoard.duplicateTitle": "Duplicate title",
   "sandbox.postBoard.expand": "Expand to full page",
   "sandbox.postBoard.expandLane": "Expand {lane}",
-  "sandbox.postBoard.generateIdeas": "Generate ideas",
-  "sandbox.postBoard.generatingLabel": "Generating…",
-  "sandbox.postBoard.ideaCount": "How many",
-  "sandbox.postBoard.ideaGuidanceLabel": "Rough ideas or a focus",
-  "sandbox.postBoard.ideaGuidancePlaceholder":
-    "e.g. a piece on choosing fabric weight",
-  "sandbox.postBoard.ideasAdded": "Added {count} idea(s)",
-  "sandbox.postBoard.ideasEmpty":
-    "No ideas yet. Generate a few, or write one straight into a post.",
-  "sandbox.postBoard.ideasFailed": "Could not generate ideas",
-  "sandbox.postBoard.ideasTray": "Ideas",
   "sandbox.postBoard.laneEmpty": "Nothing here yet",
   "sandbox.postBoard.laneArchived": "Archived",
   "sandbox.postBoard.laneGenerating": "Generating",
@@ -840,11 +836,10 @@ export const sandbox = {
   "sandbox.postBoard.readyToSchedule": "Ready to schedule",
   "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
   "sandbox.postBoard.untitled": "Untitled post",
-  "sandbox.postBoard.untitledIdea": "Untitled idea",
+  "sandbox.postBoard.generatingLabel": "Generating…",
   "sandbox.postBoard.usesCredits": "Uses AI credits",
   "sandbox.postBoard.viewBoard": "Board",
   "sandbox.postBoard.viewList": "List",
-  "sandbox.postBoard.writeFromIdea": "Write a post",
   "sandbox.postCalendar.couldNotCreate": "Could not create",
   "sandbox.postCalendar.couldNotReschedule": "Could not reschedule",
   "sandbox.postCalendar.createdScheduledPost": "Created scheduled post",

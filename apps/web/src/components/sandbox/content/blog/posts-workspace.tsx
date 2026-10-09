@@ -33,19 +33,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@decocms/ui/components/dialog.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
-import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
-import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,27 +47,18 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { GeneratePostDialog, type IdeaSeed } from "./generate-post-dialog";
+import { GeneratePostDialog } from "./generate-post-dialog";
 import { useGeneratePost } from "./use-generate-post";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
-  contextForTools,
-  readBlogContext,
-  buildIdeaBlock,
   buildPlanningPostBlock,
-  dedupeSuggestedThemes,
   emptyDraftPostPayload,
-  FORMATS_BLOCK_KEY,
   getBlogPayload,
-  type IdeaEntry,
   listAllPostsWithMeta,
   listBlogPayloads,
-  newIdeaKey,
   newPostId,
-  normalizeBrandRules,
   planningMeta,
   planningPostKey,
-  scanIdeas,
   type PostMeta,
   type PostStatus,
   POST_STATUSES,
@@ -106,9 +91,6 @@ const STATUS_VARIANT: Record<
   published: "success",
   archived: "outline",
 };
-
-/** The ideas tray collapses like a lane, but has no status of its own. */
-const IDEAS_LANE = "ideas";
 
 /** The agentic lanes sit ahead of the manual ones, in pipeline order. */
 const LEAD_LANE: PostStatus = "generating";
@@ -174,20 +156,13 @@ export function PostsWorkspace({
   ) => ReactNode;
 }) {
   const t = useT();
-  const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const hideDefaults = useHideDefaultBlogBlocks();
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
-  const [guidance, setGuidance] = useState("");
-  const [count, setCount] = useState(3);
   const [expanded, setExpanded] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
-  const [generateSeed, setGenerateSeed] = useState<IdeaSeed | undefined>();
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -210,12 +185,13 @@ export function PostsWorkspace({
     branch,
     decofile,
     meta,
-    onStarted: onOpen,
+    onStarted: (keys) => {
+      const first = keys[0];
+      if (first) onOpen(first);
+    },
   });
 
   const posts = listAllPostsWithMeta(decofile);
-  const ideas = scanIdeas(decofile);
-  const ideasCollapsed = isLaneCollapsed(IDEAS_LANE, ideas.length === 0);
   const payloadOf = (key: string) =>
     getBlogPayload(
       decofile[key] as Record<string, unknown> | undefined,
@@ -327,19 +303,6 @@ export function PostsWorkspace({
     if (archived > 0) toast.success(t("sandbox.postBoard.archived"));
   };
 
-  /**
-   * Write a post from an idea already on the board. The idea stays where it is:
-   * one idea is worth several posts, and consuming it would hide that.
-   */
-  const generateFromIdea = (idea: IdeaEntry) => {
-    setGenerateSeed({ key: idea.key, title: idea.title, body: idea.body });
-    setGenerateOpen(true);
-  };
-
-  const deleteIdea = (idea: IdeaEntry) => {
-    deleteBlock.mutate({ blockKey: idea.key });
-  };
-
   const onDrop = (next: PostStatus, key: string) => {
     setDragOverLane(null);
     void move.apply(key, next);
@@ -380,69 +343,6 @@ export function PostsWorkspace({
     onOpen(key);
   };
 
-  /** Propose ideas from the brand context and store them as idea blocks. */
-  const generateIdeas = async () => {
-    setIsGenerating(true);
-    try {
-      const { merged } = readBlogContext(decofile);
-      const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
-        | Record<string, unknown>
-        | undefined;
-      const formatNames = normalizeBrandRules(formatsBlock?.formats)
-        .map((f) => f.name)
-        .filter(Boolean);
-      const result = await studio.call("BLOG_THEME_SUGGEST", {
-        virtualMcpId,
-        brand: contextForTools(merged),
-        existingTitles: ideas.map((idea) => idea.title).filter(Boolean),
-        formats: formatNames,
-        guidance: guidance.trim() || undefined,
-        count,
-      });
-
-      const fresh = dedupeSuggestedThemes(
-        ideas.map((idea) => idea.title),
-        result.themes,
-      );
-      if (fresh.length === 0) {
-        toast.info(t("sandbox.postBoard.ideasFailed"));
-        return;
-      }
-
-      let created = 0;
-      // One at a time — parallel writes race the fast-preview decofile cache.
-      for (const idea of fresh) {
-        const key = newIdeaKey();
-        try {
-          await save.mutateAsync({
-            blockKey: key,
-            data: buildIdeaBlock(key, {
-              title: idea.title,
-              body: idea.body,
-              createdAt: new Date().toISOString(),
-            }),
-          });
-          created++;
-        } catch (err) {
-          console.warn("[posts] could not save a generated idea", err);
-        }
-      }
-      if (created === 0) {
-        toast.error(t("sandbox.postBoard.ideasFailed"));
-        return;
-      }
-      toast.success(
-        t("sandbox.postBoard.ideasAdded", { count: String(created) }),
-      );
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t("sandbox.postBoard.ideasFailed"),
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   return (
     <div className="relative flex h-full min-w-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
@@ -463,78 +363,6 @@ export function PostsWorkspace({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {isGenerating && (
-            <span
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-              aria-live="polite"
-              role="status"
-            >
-              <Loading02 size={12} className="animate-spin" />
-              {t("sandbox.postBoard.generatingLabel")}
-            </span>
-          )}
-          <Dialog open={askOpen} onOpenChange={setAskOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm">
-                <Stars02 size={14} />
-                {t("sandbox.postBoard.generateIdeas")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>
-                  {t("sandbox.postBoard.generateIdeas")}
-                </DialogTitle>
-                <DialogDescription>
-                  {t("sandbox.postBoard.ideaGuidanceLabel")}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Textarea
-                  id="idea-guidance"
-                  value={guidance}
-                  rows={6}
-                  autoFocus
-                  onChange={(e) => setGuidance(e.target.value)}
-                  placeholder={t("sandbox.postBoard.ideaGuidancePlaceholder")}
-                  className="resize-none text-sm"
-                />
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="idea-count" className="text-xs">
-                    {t("sandbox.postBoard.ideaCount")}
-                  </Label>
-                  <Input
-                    id="idea-count"
-                    type="number"
-                    min={1}
-                    max={8}
-                    value={count}
-                    onChange={(e) =>
-                      setCount(
-                        Math.max(1, Math.min(8, Number(e.target.value) || 1)),
-                      )
-                    }
-                    className="h-9 w-16"
-                  />
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {t("sandbox.postBoard.usesCredits")}
-                  </span>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setAskOpen(false);
-                    void generateIdeas();
-                  }}
-                >
-                  <Stars02 size={14} />
-                  {t("sandbox.postBoard.generateIdeas")}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" size="sm">
@@ -544,12 +372,7 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem
-                onClick={() => {
-                  setGenerateSeed(undefined);
-                  setGenerateOpen(true);
-                }}
-              >
+              <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
                 <Stars02 size={14} />
                 <div className="flex flex-col">
                   <span>{t("sandbox.postBoard.newPostGenerate")}</span>
@@ -579,13 +402,10 @@ export function PostsWorkspace({
             </DropdownMenuContent>
           </DropdownMenu>
           <GeneratePostDialog
-            key={generateSeed?.title ?? "scratch"}
-            virtualMcpId={virtualMcpId}
             open={generateOpen}
             onOpenChange={setGenerateOpen}
             decofile={decofile}
             hasAi={hasAi}
-            seed={generateSeed}
             onGenerate={(briefing) => void generatePost(briefing)}
           />
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
@@ -646,7 +466,7 @@ export function PostsWorkspace({
         </div>
       </div>
 
-      {posts.length === 0 && ideas.length === 0 ? (
+      {posts.length === 0 ? (
         <EmptyState
           className="flex-1"
           icon={<Stars02 size={22} />}
@@ -659,15 +479,6 @@ export function PostsWorkspace({
         />
       ) : view === "board" ? (
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
-          <IdeaTray
-            ideas={ideas}
-            collapsed={ideasCollapsed}
-            onToggleCollapsed={() =>
-              setLaneCollapsed(IDEAS_LANE, !ideasCollapsed)
-            }
-            onGenerate={generateFromIdea}
-            onDelete={deleteIdea}
-          />
           {BOARD_LANES.map((status) => {
             const laneLabel = t(POST_STATUS_LABEL[status]);
             const lanePosts = posts.filter((p) => p.status === status);
@@ -1145,109 +956,6 @@ function PostCard({
           )}
         </div>
       </button>
-    </div>
-  );
-}
-
-/**
- * The ideas tray: what the blog could write, parked beside what it is writing.
- *
- * Deliberately not a lane. An idea has no status and never moves through the
- * lifecycle — writing from it produces a post, and the idea stays put, because
- * one idea is worth several posts in several formats.
- */
-function IdeaTray({
-  ideas,
-  collapsed,
-  onToggleCollapsed,
-  onGenerate,
-  onDelete,
-}: {
-  ideas: IdeaEntry[];
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
-  onGenerate: (idea: IdeaEntry) => void;
-  onDelete: (idea: IdeaEntry) => void;
-}) {
-  const t = useT();
-  const label = t("sandbox.postBoard.ideasTray");
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={onToggleCollapsed}
-        aria-label={t("sandbox.postBoard.expandLane", { lane: label })}
-        aria-expanded={false}
-        className="flex w-11 shrink-0 cursor-pointer flex-col items-center gap-2 py-2.5 text-muted-foreground hover:text-foreground"
-      >
-        <ChevronRight size={14} className="shrink-0" />
-        <span className="text-xs tabular-nums">{ideas.length}</span>
-        <span className="[writing-mode:vertical-rl] text-sm font-medium">
-          {label}
-        </span>
-      </button>
-    );
-  }
-  return (
-    <div className="flex w-72 shrink-0 flex-col">
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          aria-label={t("sandbox.postBoard.collapseLane", { lane: label })}
-          aria-expanded
-          className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left hover:text-muted-foreground"
-        >
-          <ChevronDown size={14} className="shrink-0" />
-          <span className="truncate">{label}</span>
-        </button>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {ideas.length}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-2 pr-1">
-        {ideas.length === 0 ? (
-          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-            {t("sandbox.postBoard.ideasEmpty")}
-          </p>
-        ) : (
-          ideas.map((idea) => (
-            <div
-              key={idea.key}
-              className="group/card relative rounded-lg border border-dashed bg-card shadow-sm transition-colors hover:border-primary/40"
-            >
-              <ArchiveButton
-                label={t("sandbox.postBoard.deleteIdea")}
-                onArchive={() => onDelete(idea)}
-                className="top-2"
-              />
-              <div className="p-3">
-                <p className="line-clamp-2 pr-6 text-sm font-medium">
-                  {idea.title || t("sandbox.postBoard.untitledIdea")}
-                </p>
-                {idea.body && (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {idea.body}
-                  </p>
-                )}
-              </div>
-              <div className="border-t px-3 py-2">
-                {/* The other door into the same generation dialog. */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-full justify-start px-1.5 text-xs"
-                  onClick={() => onGenerate(idea)}
-                >
-                  <Stars02 size={13} />
-                  {t("sandbox.postBoard.writeFromIdea")}
-                </Button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 }

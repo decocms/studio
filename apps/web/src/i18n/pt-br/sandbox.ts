@@ -641,16 +641,41 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
   "sandbox.formats.unknownCitations":
     "Este formato cita sections que o site não tem: {names}",
-  "sandbox.generatePost.authorLabel": "Autor",
+  "sandbox.generatePost.stepCampaign": "Campanha",
+  "sandbox.generatePost.campaignHint":
+    "Um post é escrito para uma campanha: é ela que carrega o momento, os produtos que podem ser citados e os links deles.",
+  "sandbox.generatePost.noCampaigns":
+    "Nenhuma campanha para escrever ainda. Crie uma em Contexto → Campanhas.",
+  "sandbox.generatePost.campaignProducts": "{count} produto(s)",
+  "sandbox.generatePost.campaignNoProducts": "Sem produtos",
+  "sandbox.generatePost.formatBlocksHint":
+    "Os blocos que este formato cita são os únicos que o post pode usar, e cada um é preenchido conforme o schema dele.",
+  "sandbox.generatePost.countLabel": "Quantos rascunhos",
+  "sandbox.generatePost.countHint":
+    "Cada um pega um ângulo diferente da mesma campanha. Caem como cartões separados.",
+  "sandbox.generatePost.coverHint":
+    "Todo rascunho ganha uma imagem de capa, gerada e enviada para o seu bucket.",
+  "sandbox.generatePost.gapNoStoreData":
+    "Nenhum sistema conectado respondeu, então nada nestes posts foi conferido com a loja.",
+  "sandbox.generatePost.gapSectionsDropped":
+    "{count} seção(ões) foram descartadas: os props não bateram com o bloco que as renderiza.",
+  "sandbox.generatePost.gapNoBucket":
+    "Nenhum bucket para enviar imagens, então os posts estão sem capa. Configure um em Configurações → Buckets.",
+  "sandbox.generatePost.gapNoImageModel":
+    "Esta organização não tem modelo de imagem configurado, então os posts estão sem capa.",
+  "sandbox.generatePost.gapImagesFailed":
+    "As imagens de capa não puderam ser geradas. Os posts estão completos no resto.",
+  "sandbox.generatePost.gapDraftsFailed":
+    "{count} rascunho(s) não puderam ser escritos e os cartões ficaram vazios.",
   "sandbox.generatePost.back": "Voltar",
   "sandbox.generatePost.blockedBrand":
     "Preencha {fields} na aba Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
-  "sandbox.generatePost.categoryLabel": "Categoria",
-  "sandbox.generatePost.done": '"{title}" escrito — pronto para revisão',
+  "sandbox.generatePost.done":
+    "Escrevi {count} rascunho(s) — prontos para revisão",
   "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
   "sandbox.generatePost.extraPlaceholder":
     "O que você quer além de tudo isso, nas suas palavras.",
-  "sandbox.generatePost.failed": "Não foi possível escrever este post",
+  "sandbox.generatePost.failed": "Não consegui escrever estes posts",
   "sandbox.generatePost.formatHint":
     "Escolha um formato que a marca já usa, ou descreva um novo.",
   "sandbox.generatePost.formatNameLabel": "Nome do formato",
@@ -659,29 +684,13 @@ export const sandbox = {
   "sandbox.generatePost.formatValueLabel": "Como um post assim é construído",
   "sandbox.generatePost.formatValuePlaceholder":
     "Como ele abre, desenvolve e fecha.",
-  "sandbox.generatePost.generate": "Gerar",
-  "sandbox.generatePost.ideaBodyLabel": "O ângulo",
-  "sandbox.generatePost.ideaBodyPlaceholder":
-    "Para quem é e o que deve cobrir. Opcional.",
-  "sandbox.generatePost.ideaHint":
-    "Um ângulo só, específico o bastante para virar um post.",
-  "sandbox.generatePost.ideaTitleLabel": "Sobre o que é o post?",
-  "sandbox.generatePost.ideaTitlePlaceholder": "ex.: Por que o linho amassa",
-  "sandbox.generatePost.inferHint":
-    "Deixe categoria ou autor em branco e o modelo escolhe entre os que o seu blog já tem.",
-  "sandbox.generatePost.inferIt": "Deixar a IA escolher",
+  "sandbox.generatePost.generate": "Gerar {count} rascunho(s)",
   "sandbox.generatePost.next": "Avançar",
-  "sandbox.generatePost.stepExtra": "Detalhes",
+  "sandbox.generatePost.stepExtra": "Instruções",
   "sandbox.generatePost.stepFormat": "Formato",
-  "sandbox.generatePost.stepIdea": "Ideia",
   "sandbox.generatePost.subtitle":
-    "Uma ideia e o formato que ela segue — e o que mais você quiser definir.",
-  "sandbox.generatePost.suggestFailed": "Não foi possível sugerir",
-  "sandbox.generatePost.suggestIdeas": "Sugerir ideias",
-  "sandbox.generatePost.suggestIdeasHint":
-    "Propor ideias a partir do seu contexto de marca.",
-  "sandbox.generatePost.title": "Gerar um post",
-  "sandbox.generatePost.writeAnIdea": "Escrever uma nova",
+    "Escolha a campanha e o formato. Os posts caem no quadro como rascunhos.",
+  "sandbox.generatePost.title": "Gerar posts",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -801,24 +810,12 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.collapseLane": "Recolher {lane}",
   "sandbox.postBoard.delete": "Excluir",
-  "sandbox.postBoard.deleteIdea": "Excluir ideia",
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
   "sandbox.postBoard.duplicateTitle": "Título duplicado",
   "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.expandLane": "Expandir {lane}",
-  "sandbox.postBoard.generateIdeas": "Gerar ideias",
-  "sandbox.postBoard.generatingLabel": "Gerando…",
-  "sandbox.postBoard.ideaCount": "Quantas",
-  "sandbox.postBoard.ideaGuidanceLabel": "Ideias soltas ou um foco",
-  "sandbox.postBoard.ideaGuidancePlaceholder":
-    "ex.: um texto sobre escolher a gramatura do tecido",
-  "sandbox.postBoard.ideasAdded": "{count} ideia(s) adicionada(s)",
-  "sandbox.postBoard.ideasEmpty":
-    "Nenhuma ideia ainda. Gere algumas, ou escreva uma direto num post.",
-  "sandbox.postBoard.ideasFailed": "Não foi possível gerar ideias",
-  "sandbox.postBoard.ideasTray": "Ideias",
   "sandbox.postBoard.laneEmpty": "Nada aqui ainda",
   "sandbox.postBoard.laneArchived": "Arquivado",
   "sandbox.postBoard.laneGenerating": "Gerando",
@@ -853,11 +850,10 @@ export const sandbox = {
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
   "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
   "sandbox.postBoard.untitled": "Post sem título",
-  "sandbox.postBoard.untitledIdea": "Ideia sem título",
+  "sandbox.postBoard.generatingLabel": "Gerando…",
   "sandbox.postBoard.usesCredits": "Usa créditos de IA",
   "sandbox.postBoard.viewBoard": "Quadro",
   "sandbox.postBoard.viewList": "Lista",
-  "sandbox.postBoard.writeFromIdea": "Escrever um post",
   "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",
   "sandbox.postCalendar.couldNotReschedule": "Não foi possível reagendar",
   "sandbox.postCalendar.createdScheduledPost": "Post agendado criado",
