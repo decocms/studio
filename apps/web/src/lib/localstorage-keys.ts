@@ -39,6 +39,7 @@ export const LOCALSTORAGE_KEYS = {
   appOpens: (orgSlug: string) => `studio:app-opens:${orgSlug}`,
   /** Not scoped to an org — this is the list of orgs themselves. */
   recentOrgs: () => `studio:recent-orgs`,
+  hiddenRailOrgs: () => `studio:hidden-rail-orgs`,
   sidePanelWidth: () => `studio:side-panel:width`,
   sidebarOpen: () => `studio:sidebar-open`,
   preferences: () => `studio:user:preferences`,

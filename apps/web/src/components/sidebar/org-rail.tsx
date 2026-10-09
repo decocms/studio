@@ -2,13 +2,19 @@
  *  mark is drawn, labelled and marked as current is `RailItem`. */
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import { Plus, XClose } from "@untitledui/icons";
+import { EyeOff, Plus, Settings01, XClose } from "@untitledui/icons";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@decocms/ui/components/context-menu.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { OrgIcon } from "@/components/header/org-switcher";
@@ -23,6 +29,8 @@ import {
   useRememberOpenApp,
 } from "@/hooks/use-recent-apps";
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { railOrgLimit, railOrgs } from "@/lib/recent-orgs";
 import { OrgSearch } from "./org-search";
 import { RailItem } from "./rail-item";
@@ -52,33 +60,55 @@ function RailOrgButton({
   org,
   active,
   onSelect,
+  onOpenSettings,
+  onHide,
 }: {
   org: RailOrg;
   active: boolean;
   onSelect: () => void;
+  onOpenSettings: () => void;
+  /** Absent for the current org, which the rail always draws. */
+  onHide?: () => void;
 }) {
+  const t = useT();
   return (
     <RailItem active={active}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={org.name}
-            aria-current={active || undefined}
-            onClick={active ? undefined : onSelect}
-            className={cn(
-              "flex shrink-0 items-center justify-center rounded-xl focus-ring",
-              "transition-[opacity,transform] duration-150 ease-out",
-              active
-                ? "opacity-100"
-                : "cursor-pointer opacity-60 hover:scale-105 hover:opacity-100",
-            )}
-          >
-            <OrgIcon org={org} size="lg" rounded="rounded-xl" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">{org.name}</TooltipContent>
-      </Tooltip>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={org.name}
+                aria-current={active || undefined}
+                onClick={active ? undefined : onSelect}
+                className={cn(
+                  "flex shrink-0 items-center justify-center rounded-xl focus-ring",
+                  "transition-[opacity,transform] duration-150 ease-out",
+                  active
+                    ? "opacity-100"
+                    : "cursor-pointer opacity-60 hover:scale-105 hover:opacity-100",
+                )}
+              >
+                <OrgIcon org={org} size="lg" rounded="rounded-xl" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{org.name}</TooltipContent>
+          </Tooltip>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={onOpenSettings}>
+            <Settings01 />
+            {t("sidebar.rail.organizationSettings")}
+          </ContextMenuItem>
+          {onHide && (
+            <ContextMenuItem onSelect={onHide}>
+              <EyeOff />
+              {t("sidebar.rail.hideOrganization")}
+            </ContextMenuItem>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
     </RailItem>
   );
 }
@@ -221,13 +251,22 @@ export function OrgRail() {
 
   const orgs = (organizations ?? []) as RailOrg[];
   const { recent: recentOrgs, remember } = useRecentOrgs();
+  /** Orgs the user took off the rail. They stay in search, and opening one
+   *  from there puts it back. */
+  const [storedHidden, setHidden] = useLocalStorage<string[]>(
+    LOCALSTORAGE_KEYS.hiddenRailOrgs(),
+    [],
+  );
+  const hiddenSlugs = Array.isArray(storedHidden) ? storedHidden : [];
   const orgLimit = useSyncExternalStore(
     subscribeToResize,
     orgLimitSnapshot,
     orgLimitServerSnapshot,
   );
-  const { shown, hidden } = railOrgs(
-    orgs,
+  const { shown } = railOrgs(
+    orgs.filter(
+      (it) => it.slug === currentOrg.slug || !hiddenSlugs.includes(it.slug),
+    ),
     recentOrgs,
     currentOrg.slug,
     orgLimit,
@@ -238,6 +277,9 @@ export function OrgRail() {
     /** An org already on the rail keeps the rail as it is; one picked from
      *  search rolls the oldest off by recency, as before. */
     const onRail = shown.some((it) => it.slug === slug);
+    setHidden((prev) =>
+      (Array.isArray(prev) ? prev : []).filter((it) => it !== slug),
+    );
     remember(slug, onRail ? shown.map((it) => it.slug) : undefined);
     navigate({ to: "/$org/home", params: { org: slug } });
   };
@@ -245,9 +287,9 @@ export function OrgRail() {
   return (
     <>
       <div
-        /* `w-20` fits a one-word label like "Automations" inside the labels' padding; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
+        /* `w-16` fits a one-word label like "Automations" inside the labels' padding; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
         className={cn(
-          "flex w-20 shrink-0 flex-col items-center gap-2 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "flex w-16 shrink-0 flex-col items-center gap-1.5 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           !takeover && "border-r border-sidebar-border",
         )}
         aria-label={t("sidebar.rail.ariaLabel")}
@@ -258,13 +300,28 @@ export function OrgRail() {
             org={candidate}
             active={candidate.slug === currentOrg.slug}
             onSelect={() => travelTo(candidate.slug)}
+            onOpenSettings={() =>
+              navigate({
+                to: "/$org/settings",
+                params: { org: candidate.slug },
+              })
+            }
+            onHide={
+              candidate.slug === currentOrg.slug
+                ? undefined
+                : () =>
+                    setHidden((prev) => [
+                      ...(Array.isArray(prev) ? prev : []),
+                      candidate.slug,
+                    ])
+            }
           />
         ))}
         {orgs.length > shown.length && (
           <OrgSearch
             orgs={orgs}
             currentSlug={currentOrg.slug}
-            hiddenCount={hidden.length}
+            hiddenCount={orgs.length - shown.length}
             onSelect={travelTo}
           />
         )}

@@ -73,6 +73,8 @@ export const sidebar = {
   "sidebar.picker.verbTravel": "Abrir {name}",
   "sidebar.rail.ariaLabel": "Organizações",
   "sidebar.rail.closeApp": "Fechar {name}",
+  "sidebar.rail.hideOrganization": "Ocultar da barra lateral",
+  "sidebar.rail.organizationSettings": "Configurações da organização",
   "sidebar.rail.currentOrganization": "atual",
   "sidebar.rail.searchEmpty": "Nenhuma organização corresponde.",
   "sidebar.rail.searchMoreOrganizations": "Buscar organizações (mais {count})",
