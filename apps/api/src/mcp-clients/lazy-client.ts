@@ -10,6 +10,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -111,6 +112,14 @@ export function createLazyClient(
     (connection.metadata as { isDevConnection?: boolean } | null)
       ?.isDevConnection === true;
 
+  /**
+   * The list cache stores the self connection's tools per release. Listing
+   * them over HTTP could reach a pod of the other release mid-deploy and store
+   * its tools under this release's key.
+   */
+  const listsSelfToolsInProcess =
+    connection.id === WellKnownOrgMCPId.SELF(connection.organization_id);
+
   // Shared promise for the real client (single-flight)
   let realClientPromise: Promise<Client> | null = null;
   // True once this wrapper's own close() ran — must not reconnect after that.
@@ -191,6 +200,10 @@ export function createLazyClient(
         type,
         connection.id,
         async () => {
+          if (listsSelfToolsInProcess && type === "tools") {
+            const { listManagementTools } = await import("../tools");
+            return listManagementTools(ctx);
+          }
           const real = await getRealClient();
           const res = await listFn(real);
           return extractData(res);

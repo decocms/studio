@@ -28,6 +28,14 @@ mock.module("./client", () => ({
   clientFromConnection: clientFromConnectionMock,
 }));
 
+const listManagementToolsMock = mock(async () => [
+  { name: "SELF_TOOL", inputSchema: { type: "object" } },
+]);
+
+mock.module("../tools", () => ({
+  listManagementTools: listManagementToolsMock,
+}));
+
 const fakeConnection = {
   id: "conn_test_123",
   connection_type: "HTTP",
@@ -401,5 +409,60 @@ describe("lazy-client argument repair", () => {
         arguments: { patch: '{"sections":[1]}' },
       }),
     ).rejects.toThrow(/Wrong type/);
+  });
+});
+
+describe("lazy-client on the self connection", () => {
+  const selfConnection = {
+    id: "org_example_self",
+    organization_id: "org_example",
+    connection_type: "HTTP",
+  } as unknown as ConnectionEntity;
+
+  function memoryListCache() {
+    const store = new Map<string, unknown[]>();
+    return {
+      store,
+      get: async (type: string, connectionId: string) =>
+        store.get(`${type}.${connectionId}`) ?? null,
+      set: async (type: string, connectionId: string, data: unknown[]) => {
+        store.set(`${type}.${connectionId}`, data);
+      },
+      invalidate: async () => {},
+      teardown: () => {},
+    };
+  }
+
+  beforeEach(() => {
+    resetAll();
+    clientFromConnectionMock.mockReset();
+    listManagementToolsMock.mockClear();
+  });
+
+  it("lists its tools in-process instead of over HTTP", async () => {
+    const cache = memoryListCache();
+    const lazy = createLazyClient(selfConnection, fakeCtx, false, cache);
+
+    const { tools } = await lazy.listTools();
+
+    expect(tools.map((t) => t.name)).toEqual(["SELF_TOOL"]);
+    expect(listManagementToolsMock).toHaveBeenCalledTimes(1);
+    expect(clientFromConnectionMock).not.toHaveBeenCalled();
+    expect(cache.store.get("tools.org_example_self")).toEqual(tools);
+  });
+
+  it("still lists any other connection's tools from the server", async () => {
+    clientFromConnectionMock.mockResolvedValue(await createWorkingClient());
+    const lazy = createLazyClient(
+      fakeConnection,
+      fakeCtx,
+      false,
+      memoryListCache(),
+    );
+
+    const { tools } = await lazy.listTools();
+
+    expect(tools.map((t) => t.name)).toEqual(["echo"]);
+    expect(listManagementToolsMock).not.toHaveBeenCalled();
   });
 });
