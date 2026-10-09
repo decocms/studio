@@ -5,11 +5,6 @@ export { UserAskPart } from "./user-ask.tsx";
 export { SuggestTaskPart } from "./suggest-task.tsx";
 export { SubtaskPart, SubtaskPartFallback } from "./subtask.tsx";
 export { ProposePlanPart } from "./propose-plan.tsx";
-export {
-  BrandContextPart,
-  BrandContextGetPart,
-  BrandContextListPart,
-} from "./brand-context.tsx";
 export { AgentCreatePart } from "./agent-create.tsx";
 export { AgentListPart } from "./agent-list.tsx";
 export { ConnectionListPart } from "./connection-list.tsx";

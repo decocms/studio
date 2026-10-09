@@ -140,12 +140,12 @@ describe("groupThreadsByVirtualMcp - dangling welcome threads", () => {
     const result = groupThreadsByVirtualMcp(
       [
         t({
-          id: "thrd_welcome_studio-brand-manager_org-1",
-          virtual_mcp_id: "studio-brand-manager_org-1",
+          id: "thrd_welcome_studio-store-manager_org-1",
+          virtual_mcp_id: "studio-store-manager_org-1",
         }),
         t({
           id: "real-thread",
-          virtual_mcp_id: "studio-brand-manager_org-1",
+          virtual_mcp_id: "studio-store-manager_org-1",
         }),
       ],
       null,

@@ -22,6 +22,14 @@ export { TASK_BOARD_REVIEW_DECISION } from "./review-decision";
 export { TASK_BOARD_PROMOTE_TO_PRODUCTION } from "./promote-to-production";
 export { TASK_BOARD_ACTIVITY_LIST } from "./activity";
 export {
+  TASK_BOARD_SPRINT_COMPLETE,
+  TASK_BOARD_SPRINT_CREATE,
+  TASK_BOARD_SPRINT_DELETE,
+  TASK_BOARD_SPRINT_LIST,
+  TASK_BOARD_SPRINT_START,
+  TASK_BOARD_SPRINT_UPDATE,
+} from "./sprints";
+export {
   TASK_BOARD_DISMISSED_LIST,
   TASK_BOARD_DISMISSED_RESTORE,
 } from "./dismissed";

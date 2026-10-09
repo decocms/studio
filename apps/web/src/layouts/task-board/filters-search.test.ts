@@ -32,6 +32,7 @@ const filters: TaskFilters = {
   due: "today",
   tags: ["tag-1", "tag-2"],
   project: "acme/site",
+  sprint: "sprint_abc",
 };
 
 const FEED_DEFAULTS: BoardDefaults = { ...NO_DEFAULTS, layout: "feed" };
@@ -42,6 +43,7 @@ const SAVED_DEFAULTS: BoardDefaults = {
   layout: "board",
   assignee: "me-1",
   groupBy: "status",
+  sprint: null,
 };
 
 describe("the board opens on the saved assignee, grouped by status", () => {
@@ -190,6 +192,7 @@ describe("board search params", () => {
       due: undefined,
       tags: undefined,
       repo: undefined,
+      sprint: undefined,
     });
   });
 
@@ -296,5 +299,38 @@ describe("enabledLayout", () => {
       expect(enabledLayout("board", enabled)).toBe("board");
       expect(enabledLayout("list", enabled)).toBe("list");
     }
+  });
+});
+
+describe("the board opens on the running sprint", () => {
+  const SPRINT_DEFAULTS: BoardDefaults = {
+    ...NO_DEFAULTS,
+    sprint: "sprint_now",
+  };
+
+  test("an empty URL takes the running sprint and writes nothing back", () => {
+    const view = parseBoardSearch({}, SPRINT_DEFAULTS);
+    expect(view.filters.sprint).toBe("sprint_now");
+    expect(boardSearchParams(view, SPRINT_DEFAULTS).sprint).toBeUndefined();
+  });
+
+  test("clearing the sprint survives a reload instead of snapping back", () => {
+    const cleared: BoardView = {
+      ...EMPTY_VIEW,
+      filters: { ...EMPTY_FILTERS, sprint: null },
+    };
+    const params = boardSearchParams(cleared, SPRINT_DEFAULTS);
+    expect(params.sprint).toBe("any");
+    expect(
+      parseBoardSearch({ sprint: params.sprint }, SPRINT_DEFAULTS).filters
+        .sprint,
+    ).toBeNull();
+  });
+
+  test("another sprint in the URL wins over the default", () => {
+    expect(
+      parseBoardSearch({ sprint: "sprint_next" }, SPRINT_DEFAULTS).filters
+        .sprint,
+    ).toBe("sprint_next");
   });
 });

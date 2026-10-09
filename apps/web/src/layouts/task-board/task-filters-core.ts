@@ -1,6 +1,7 @@
 /** Pure task-filter matching shared by board views and URL filters. */
 
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
+import type { Sprint } from "@decocms/shared/sprints";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   taskMatchesProjectFilter,
@@ -15,6 +16,9 @@ import {
 /** Sentinel assignee filter matching tasks with no assignee. */
 export const UNASSIGNED_FILTER = "__unassigned__";
 
+/** Sentinel sprint filter matching cards in no sprint (the backlog). */
+export const BACKLOG_SPRINT_FILTER = "__backlog__";
+
 export type DueFilter = "overdue" | "today" | "week" | "none";
 
 export type TaskFilters = {
@@ -27,6 +31,8 @@ export type TaskFilters = {
   /** A project index bucket id — `owner/name`, a `vir_…` project with no
    *  repository, {@link NO_PROJECT_FILTER}, or null for every project. */
   project: string | null;
+  /** A sprint id | BACKLOG_SPRINT_FILTER | null (every sprint). */
+  sprint: string | null;
   /** Free-text match against title/description, empty string = no filter. */
   search: string;
 };
@@ -37,6 +43,7 @@ export const EMPTY_FILTERS: TaskFilters = {
   due: null,
   tags: [],
   project: null,
+  sprint: null,
   search: "",
 };
 
@@ -122,7 +129,24 @@ export function taskMatchesFilters(
     if (!f.tags.some((id) => itemTagIds.includes(id))) return false;
   }
   if (!taskMatchesProjectFilter(item, f.project, index)) return false;
+  if (f.sprint !== null) {
+    const sprintId = f.sprint === BACKLOG_SPRINT_FILTER ? null : f.sprint;
+    if ((item.sprintId ?? null) !== sprintId) return false;
+  }
   return true;
+}
+
+/**
+ * The sprint filter a URL value can actually apply. A link outlives the
+ * sprint it names, and filtering by a deleted one would show an empty board,
+ * so an id the board does not know is dropped.
+ */
+export function resolveSprintFilter(
+  value: string | null,
+  sprints: readonly Sprint[],
+): string | null {
+  if (value === null || value === BACKLOG_SPRINT_FILTER) return value;
+  return sprints.some((sprint) => sprint.id === value) ? value : null;
 }
 
 const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {

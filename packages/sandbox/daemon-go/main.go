@@ -1099,6 +1099,8 @@ func main() {
 		RepoDir:    repoDir,
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
+		// Default off: a repoint runs on every dispatch.
+		PruneEmptyThreadDirs: os.Getenv("ORGFS_PRUNE_EMPTY_THREAD_DIRS") == "1",
 	}
 	// Beside the status file: that is where the sidecar looks for it.
 	if p := d.orgFsLinks.StatusPath; p != "" {

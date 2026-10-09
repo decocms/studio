@@ -28,9 +28,6 @@ import {
   SubtaskPartFallback,
   UserAskPart,
   SuggestTaskPart,
-  BrandContextPart,
-  BrandContextGetPart,
-  BrandContextListPart,
   AgentCreatePart,
   AgentListPart,
   ConnectionListPart,
@@ -378,33 +375,6 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
-      if (
-        fallback.type === "tool-brand_context_setup" ||
-        fallback.type === "tool-BRAND_CONTEXT_EXTRACT"
-      ) {
-        return (
-          <BrandContextPart
-            part={fallback}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
-      if (fallback.type === "tool-BRAND_CONTEXT_GET") {
-        return (
-          <BrandContextGetPart
-            part={fallback}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
-      if (fallback.type === "tool-BRAND_CONTEXT_LIST") {
-        return (
-          <BrandContextListPart
-            part={fallback}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
       if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_CREATE") {
         return (
           <AgentCreatePart

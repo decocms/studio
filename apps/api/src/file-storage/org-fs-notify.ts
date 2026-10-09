@@ -60,3 +60,21 @@ export async function notifyOrgFsChange(
   }
   await invalidateSkillCatalog(orgId);
 }
+
+// Module-level NATS accessor — set once at app startup, for writers outside
+// the HTTP routes (tools), which hold no connection of their own.
+let activeGetConnection: (() => NatsConnection | null) | null = null;
+
+export function setOrgFsNotifyConnection(
+  getConnection: (() => NatsConnection | null) | null,
+): void {
+  activeGetConnection = getConnection;
+}
+
+/** {@link notifyOrgFsChange} for a server-side writer that has no connection. */
+export async function notifyOrgFsChangeFromServer(
+  orgId: string,
+  volume: string,
+): Promise<void> {
+  await notifyOrgFsChange(activeGetConnection?.() ?? null, orgId, volume);
+}

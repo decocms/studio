@@ -192,7 +192,7 @@ export const createProxyRoutes = () => {
       if (!ctx.organization || ctx.organization.id !== selfOrgId) {
         return c.json({ error: "Connection not found" }, 404);
       }
-      const server = await managementMCP(ctx);
+      const server = managementMCP();
       const transport = new WebStandardStreamableHTTPServerTransport({
         enableJsonResponse:
           c.req.raw.headers.get("Accept")?.includes("application/json") ??

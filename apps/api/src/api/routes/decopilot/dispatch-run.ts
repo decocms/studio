@@ -59,7 +59,6 @@ import { withRunTitle } from "@/harnesses/sandbox-run-title";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
@@ -91,6 +90,7 @@ import { type ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 export type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
+import { sandboxWireUserMessage } from "./wire-user-message";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
@@ -838,25 +838,6 @@ export function resolveAgentInstructions(
   return [resolved, agent.appendInstructions].filter(Boolean).join("\n\n");
 }
 
-async function resolveEffectiveVirtualMcpForHarness({
-  virtualMcp,
-  agentId,
-  organizationId,
-  ctx,
-}: {
-  virtualMcp: VirtualMCPEntity;
-  agentId: string;
-  organizationId: string;
-  ctx: StudioContext;
-}): Promise<VirtualMCPEntity> {
-  return resolveEffectiveStudioPackVirtualMcp({
-    virtualMcp,
-    agentId,
-    organizationId,
-    ctx,
-  });
-}
-
 /**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, assembles the wire harness input, and constructs a
@@ -1103,12 +1084,10 @@ async function prepareRun(
     if (!virtualMcp) {
       throw new PermanentRunError("agent_not_found", "Agent not found");
     }
-    const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
+    const effectiveVirtualMcp = resolveEffectiveStudioPackVirtualMcp(
       virtualMcp,
-      agentId: input.agent.id,
-      organizationId: input.organizationId,
-      ctx,
-    });
+      input.agent.id,
+    );
 
     // 3. Dispatch START or RESUME
     if (input.isResume) {
@@ -1335,14 +1314,11 @@ async function prepareRun(
         ? input.historyPrefix
         : undefined;
     const wireUserMessage =
-      resolvedUserMessage && historyPrefix
-        ? {
-            ...resolvedUserMessage,
-            parts: [
-              { type: "text" as const, text: historyPrefix },
-              ...resolvedUserMessage.parts,
-            ],
-          }
+      resolvedUserMessage && sandboxHosted
+        ? sandboxWireUserMessage(resolvedUserMessage, {
+            historyPrefix,
+            turnContext: systemMessages,
+          })
         : resolvedUserMessage;
 
     if (!wireUserMessage || !materializedRequestMessage) {

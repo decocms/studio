@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  BACKLOG_SPRINT_FILTER,
   matchesTaskKey,
+  resolveSprintFilter,
   taskMatchesFilters,
   EMPTY_FILTERS,
 } from "./task-filters-core";
@@ -392,5 +394,54 @@ describe("matchesTaskKey", () => {
 
   test("a card from before the backfill never matches", () => {
     expect(matchesTaskKey("7", null)).toBe(false);
+  });
+});
+
+describe("taskMatchesFilters — sprint", () => {
+  const inSprint = item({ sprintId: "sprint_1" });
+  const inBacklog = item({ sprintId: null });
+
+  test("a sprint keeps only its own cards", () => {
+    const f = { ...EMPTY_FILTERS, sprint: "sprint_1" };
+    expect(taskMatchesFilters(inSprint, f, INDEX)).toBe(true);
+    expect(taskMatchesFilters(inBacklog, f, INDEX)).toBe(false);
+    expect(taskMatchesFilters(item({ sprintId: "sprint_2" }), f, INDEX)).toBe(
+      false,
+    );
+  });
+
+  test("the backlog keeps only cards in no sprint", () => {
+    const f = { ...EMPTY_FILTERS, sprint: BACKLOG_SPRINT_FILTER };
+    expect(taskMatchesFilters(inBacklog, f, INDEX)).toBe(true);
+    expect(taskMatchesFilters(inSprint, f, INDEX)).toBe(false);
+  });
+
+  test("no sprint filter keeps every card", () => {
+    expect(taskMatchesFilters(inSprint, EMPTY_FILTERS, INDEX)).toBe(true);
+    expect(taskMatchesFilters(inBacklog, EMPTY_FILTERS, INDEX)).toBe(true);
+  });
+});
+
+describe("resolveSprintFilter", () => {
+  const SPRINTS = [
+    {
+      id: "sprint_1",
+      name: "Sprint 1",
+      state: "active" as const,
+      startDate: null,
+      endDate: null,
+    },
+  ];
+
+  test("keeps a known sprint and the backlog", () => {
+    expect(resolveSprintFilter("sprint_1", SPRINTS)).toBe("sprint_1");
+    expect(resolveSprintFilter(BACKLOG_SPRINT_FILTER, SPRINTS)).toBe(
+      BACKLOG_SPRINT_FILTER,
+    );
+    expect(resolveSprintFilter(null, SPRINTS)).toBeNull();
+  });
+
+  test("drops a sprint the board no longer has", () => {
+    expect(resolveSprintFilter("sprint_deleted", SPRINTS)).toBeNull();
   });
 });

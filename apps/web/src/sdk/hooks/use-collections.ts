@@ -22,6 +22,7 @@ import {
 } from "@decocms/bindings/collections";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
+  type QueryClient,
   useMutation,
   useQueryClient,
   useSuspenseQuery,
@@ -479,6 +480,24 @@ export function buildCollectionQueryKey<T extends CollectionEntity>(
   return KEYS.collectionList(client, scopeKey, "", upperName, argsKey);
 }
 
+/** Invalidate all collection queries for this scope and collection. */
+export function invalidateCollectionQueries(
+  queryClient: QueryClient,
+  scopeKey: string,
+  collectionName: string,
+): void {
+  const upperName = collectionName.toUpperCase();
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      // Match collectionList/collectionItem keys: [client, scopeKey, "", "collection", collectionName, ...]
+      return (
+        key[1] === scopeKey && key[3] === "collection" && key[4] === upperName
+      );
+    },
+  });
+}
+
 /**
  * Get mutation actions for create, update, and delete operations
  *
@@ -498,18 +517,8 @@ export function useCollectionActions<T extends CollectionEntity>(
   const updateToolName = `COLLECTION_${upperName}_UPDATE`;
   const deleteToolName = `COLLECTION_${upperName}_DELETE`;
 
-  // Invalidate all collection queries for this scope and collection
-  const invalidateCollection = () => {
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        const key = query.queryKey;
-        // Match collectionList/collectionItem keys: [client, scopeKey, "", "collection", collectionName, ...]
-        return (
-          key[1] === scopeKey && key[3] === "collection" && key[4] === upperName
-        );
-      },
-    });
-  };
+  const invalidateCollection = () =>
+    invalidateCollectionQueries(queryClient, scopeKey, collectionName);
 
   const create = useMutation({
     mutationFn: async (data: Partial<T>) => {

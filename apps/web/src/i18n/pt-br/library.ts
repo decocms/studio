@@ -142,6 +142,8 @@ export const library = {
   "library.libraryViews.emptyReadOnlySet":
     "Este conjunto somente leitura sincroniza da sua fonte no GitHub.",
   "library.libraryViews.failedToLoad": "Falha ao carregar",
+  "library.libraryViews.sourceChat": "Chat",
+  "library.libraryViews.loadMore": "Carregar mais",
   "library.libraryViews.files": "Arquivos",
   "library.libraryViews.folders": "Pastas",
   "library.libraryViews.noFilesMatch":
@@ -180,5 +182,4 @@ export const library = {
   "library.library.typeFilter": "Tipo",
   "library.entries.createdBy": "Criado por",
   "library.entries.location": "Local",
-  "library.libraryViews.newestOnly": "Mostrando os {count} mais recentes",
 } satisfies Record<keyof typeof libraryEn, string>;

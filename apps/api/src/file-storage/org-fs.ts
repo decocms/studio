@@ -348,6 +348,7 @@ export class OrgFs {
     limit: number,
     volumes?: string[],
     pathPrefix?: string,
+    beforeSeq?: string,
   ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
     return this.withEffectivePublic(
       await this.manifest.searchFiles({
@@ -356,6 +357,7 @@ export class OrgFs {
         limit,
         volumes,
         pathPrefix: pathPrefix ? normalizeFsPath(pathPrefix) : undefined,
+        beforeSeq,
       }),
     );
   }

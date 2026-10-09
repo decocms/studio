@@ -5,7 +5,6 @@
  * Types are inferred from CORE_TOOLS — this is the source of truth.
  */
 
-import { StudioContext } from "@/core/studio-context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -93,6 +92,12 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_COMMENT_DELETE,
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
+  TaskBoardTools.TASK_BOARD_SPRINT_LIST,
+  TaskBoardTools.TASK_BOARD_SPRINT_CREATE,
+  TaskBoardTools.TASK_BOARD_SPRINT_UPDATE,
+  TaskBoardTools.TASK_BOARD_SPRINT_START,
+  TaskBoardTools.TASK_BOARD_SPRINT_COMPLETE,
+  TaskBoardTools.TASK_BOARD_SPRINT_DELETE,
   TaskBoardTools.TASK_ADD_REPO,
   // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
   ChatTools.GENERATE_IMAGE,
@@ -107,20 +112,12 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_QUALITY,
   TaskBoardTools.TASK_BOARD_ERRORS,
   TaskBoardTools.TASK_BOARD_TENANTS,
-  OrganizationTools.BRAND_CONTEXT_LIST,
-  OrganizationTools.BRAND_CONTEXT_GET,
-  OrganizationTools.BRAND_CONTEXT_CREATE,
-  OrganizationTools.BRAND_CONTEXT_UPDATE,
-  OrganizationTools.BRAND_CONTEXT_DELETE,
-  OrganizationTools.BRAND_CONTEXT_EXTRACT,
   BlogTools.BLOG_BRAND_EXTRACT,
   BlogTools.BLOG_CONTEXT_EXTRACT,
   BlogTools.BLOG_FORMAT_SUGGEST,
   BlogTools.BLOG_POST_DRAFT,
   BlogTools.BLOG_LINK_SUGGEST,
   BlogTools.BLOG_CAMPAIGN_SUGGEST,
-  OrganizationTools.BRAND_GET,
-  OrganizationTools.BRAND_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_ADD,
   OrganizationTools.ORGANIZATION_DOMAIN_UPDATE,
@@ -230,6 +227,7 @@ export const CORE_TOOLS = [
 
   VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_LAST_USED_LIST,
+  VirtualMCPTools.PROJECT_FOLDER_ENSURE,
 
   // Ai providers tools
   AiProvidersTools.AI_PROVIDERS_LIST,
@@ -392,8 +390,8 @@ export function resolveToolByName(name: string): RegistrableTool | undefined {
 }
 
 /**
- * An MCP server exposing just the named management tools — no prompts, no brand
- * prompts, no resources.
+ * An MCP server exposing just the named management tools — no prompts, no
+ * resources.
  *
  * For a machine consumer that needs a handful of tools and pays for the rest in
  * context: the whole management surface is ~200 tools, and a harness handed all
@@ -424,7 +422,7 @@ export const toolSubsetMCP = (
   return server;
 };
 
-export const managementMCP = async (ctx: StudioContext) => {
+export const managementMCP = () => {
   // Create MCP server directly
   const server = new McpServer(
     { name: "mcp-cms-management", version: "1.0.0" },
@@ -481,85 +479,6 @@ export const managementMCP = async (ctx: StudioContext) => {
     );
   }
 
-  // Register one prompt per brand context (e.g. /brand-acme-corp)
-  if (ctx.organization?.id) {
-    const brands = await ctx.storage.brandContext.list(ctx.organization.id);
-
-    const registeredPromptNames = new Set<string>();
-    for (const brand of brands) {
-      const slug = brand.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      let promptName = slug ? `brand-${slug}` : `brand-${brand.id}`;
-      // Deduplicate — append ID suffix on collision
-      if (registeredPromptNames.has(promptName)) {
-        promptName = `${promptName}-${brand.id.slice(0, 8)}`;
-      }
-      registeredPromptNames.add(promptName);
-
-      const lines: string[] = [
-        `# Brand: ${brand.name}`,
-        "",
-        `**Domain:** ${brand.domain}`,
-        "",
-        "## Overview",
-        brand.overview,
-      ];
-
-      if (brand.colors) {
-        const colorEntries = Object.entries(brand.colors).filter(([, v]) => v);
-        if (colorEntries.length > 0) {
-          lines.push("", "## Colors");
-          for (const [role, value] of colorEntries) {
-            lines.push(`- **${role}:** ${value}`);
-          }
-        }
-      }
-
-      if (brand.fonts) {
-        const fontEntries = Object.entries(brand.fonts).filter(([, v]) => v);
-        if (fontEntries.length > 0) {
-          lines.push("", "## Fonts");
-          for (const [role, family] of fontEntries) {
-            lines.push(`- ${family} (${role})`);
-          }
-        }
-      }
-
-      if (brand.logo) {
-        lines.push("", `**Logo:** ${brand.logo}`);
-      }
-      if (brand.favicon) {
-        lines.push(`**Favicon:** ${brand.favicon}`);
-      }
-      if (brand.ogImage) {
-        lines.push(`**OG Image:** ${brand.ogImage}`);
-      }
-
-      if (brand.images && brand.images.length > 0) {
-        lines.push("", "## Images");
-        for (const img of brand.images) {
-          const parts = Object.entries(img)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(", ");
-          lines.push(`- ${parts}`);
-        }
-      }
-
-      const text = lines.join("\n");
-
-      server.prompt(promptName, `Brand context for ${brand.name}`, () => ({
-        messages: [
-          {
-            role: "user" as const,
-            content: { type: "text" as const, text },
-          },
-        ],
-      }));
-    }
-  }
-
   // Register reference resources
   const resources = getResources();
   for (const resource of resources) {
@@ -594,10 +513,8 @@ export const managementMCP = async (ctx: StudioContext) => {
  * via HTTP fails on a cold NATS cache. This bypasses HTTP entirely by
  * connecting a client to the management server over InMemoryTransport.
  */
-export async function listManagementTools(
-  ctx: StudioContext,
-): Promise<McpTool[]> {
-  const server = await managementMCP(ctx);
+export async function listManagementTools(): Promise<McpTool[]> {
+  const server = managementMCP();
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

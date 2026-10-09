@@ -77,7 +77,11 @@ import {
   User01,
   UserPlus01,
   X,
+  Zap,
+  Inbox01,
 } from "@untitledui/icons";
+import { useTaskBoardSprints } from "@/hooks/use-task-board-sprints";
+import { formatSprintDays, sprintLabel } from "./sprint-label";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
@@ -198,6 +202,8 @@ type TaskForm = {
   repo: string | null;
   dueDate: Date | null;
   tagIds: string[];
+  /** Create mode only; an existing card's sprint is read live off the item. */
+  sprintId: string | null;
 };
 
 /**
@@ -251,6 +257,36 @@ const EMPTY_PROPERTY = "opacity-50";
  * Hidden entirely when no run recorded usage, so a card that never ran shows
  * nothing rather than a $0.00 we did not measure.
  */
+/** One row of the Sprint property's picker. */
+function SprintOption({
+  icon,
+  label,
+  hint,
+  selected,
+  onSelect,
+}: {
+  icon: ReactNode;
+  label: string;
+  hint?: string | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent"
+      onClick={onSelect}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {hint && (
+        <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
+      )}
+      {selected && <Check size={14} className="shrink-0" />}
+    </button>
+  );
+}
+
 function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
   const summary = summarizeTaskCost(threads);
@@ -395,6 +431,13 @@ interface TaskEditorProps {
    * Project filter's repo, so a card made while the board is narrowed to a
    * project belongs to it). An `owner/name`, matching the {@link repo} field. */
   defaultRepo?: string | null;
+  /** In create mode, the sprint to plan the new task into (the one the board
+   * is showing); null for the backlog. */
+  defaultSprintId?: string | null;
+  /** Edit mode only: move the task to a sprint, or null for the backlog. Its
+   * own write, not part of the autosave: a sprint completed while the card is
+   * open moves it, and a later edit must not move it back. */
+  onSetSprint?: (sprintId: string | null) => void;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -405,6 +448,8 @@ interface TaskEditorProps {
     repo: string | null;
     dueDate: string | null;
     tagIds: string[];
+    /** Create mode only. */
+    sprintId?: string | null;
   }) => void;
   onDelete?: () => void;
   /** Edit mode only: create a copy of this task. */
@@ -440,6 +485,8 @@ function TaskBoardItemEditor({
   item,
   defaultStatus,
   defaultRepo,
+  defaultSprintId,
+  onSetSprint,
   onSubmit,
   onDelete,
   onClone,
@@ -482,6 +529,7 @@ function TaskBoardItemEditor({
     repo: item?.repo ?? defaultRepo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
+    sprintId: defaultSprintId ?? null,
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
@@ -515,6 +563,18 @@ function TaskBoardItemEditor({
     return () => observer.disconnect();
   };
   const [dueOpen, setDueOpen] = useState(false);
+  const [sprintOpen, setSprintOpen] = useState(false);
+  const sprints = useTaskBoardSprints();
+  const sprintId = item ? item.sprintId : form.sprintId;
+  const selectedSprint = sprints.find((sprint) => sprint.id === sprintId);
+  const plannableSprints = sprints.filter(
+    (sprint) => sprint.state !== "closed",
+  );
+  const pickSprint = (next: string | null) => {
+    setSprintOpen(false);
+    if (item) onSetSprint?.(next);
+    else patch({ sprintId: next });
+  };
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   /** The linked run being read in the sheet, by id rather than by object: a
@@ -548,6 +608,7 @@ function TaskBoardItemEditor({
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
+      ...(item ? {} : { sprintId: v.sprintId }),
     });
   };
 
@@ -1430,6 +1491,51 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
 
+              {(sprints.length > 0 || sprintId) && (
+                <Popover open={sprintOpen} onOpenChange={setSprintOpen} modal>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        !sprintId && EMPTY_PROPERTY,
+                      )}
+                    >
+                      <Zap size={16} className="text-muted-foreground" />
+                      <span className="truncate">
+                        {selectedSprint
+                          ? sprintLabel(selectedSprint, t)
+                          : sprintId
+                            ? t("taskBoard.sprints.goneLabel")
+                            : t("taskBoard.sprints.backlog")}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-1">
+                    <SprintOption
+                      icon={
+                        <Inbox01 size={14} className="text-muted-foreground" />
+                      }
+                      label={t("taskBoard.sprints.backlog")}
+                      selected={!sprintId}
+                      onSelect={() => pickSprint(null)}
+                    />
+                    {plannableSprints.map((sprint) => (
+                      <SprintOption
+                        key={sprint.id}
+                        icon={
+                          <Zap size={14} className="text-muted-foreground" />
+                        }
+                        label={sprintLabel(sprint, t)}
+                        hint={formatSprintDays(sprint)}
+                        selected={sprint.id === sprintId}
+                        onSelect={() => pickSprint(sprint.id)}
+                      />
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              )}
+
               <TaskCost threads={item?.threads} />
             </PropertyGroup>
 
@@ -1634,7 +1740,12 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
+    | "onClose"
+    | "defaultStatus"
+    | "defaultRepo"
+    | "defaultSprintId"
+    | "onSubmit"
+    | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -2815,6 +2926,20 @@ function describeActivity(
       />
     );
   };
+  const sprintChip = (ref: unknown) => {
+    const name =
+      ref && typeof ref === "object" && "name" in ref
+        ? (ref as { name?: unknown }).name
+        : null;
+    return (
+      <ValueChip
+        icon={<Zap size={14} className="text-muted-foreground" />}
+        label={
+          typeof name === "string" ? name : t("taskBoard.sprints.goneLabel")
+        }
+      />
+    );
+  };
   const reviewerChip = (reviewer: unknown) => (
     <ValueChip
       icon={<ReviewerIcon size={14} />}
@@ -2907,6 +3032,19 @@ function describeActivity(
       });
     case "description_changed":
       return t("taskBoard.taskDialog.activityDescriptionUpdated");
+    // `from`/`to` are `{ id, name }`, or null for the backlog.
+    case "sprint_changed":
+      if (d.to == null)
+        return interleaveChips(
+          t("taskBoard.sprints.activityToBacklog", { from }),
+          { from: sprintChip(d.from) },
+        );
+      return interleaveChips(
+        d.from == null
+          ? t("taskBoard.sprints.activitySet", { to })
+          : t("taskBoard.sprints.activityFromTo", { from, to }),
+        { from: sprintChip(d.from), to: sprintChip(d.to) },
+      );
     case "tags_changed":
       if (!Array.isArray(d.to) || d.to.length === 0)
         return t("taskBoard.taskDialog.activityTagsCleared");

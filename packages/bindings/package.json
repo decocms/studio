@@ -1,6 +1,6 @@
 {
   "name": "@decocms/bindings",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
@@ -23,8 +23,7 @@
     "./assistant": "./src/well-known/assistant.ts",
     "./prompt": "./src/well-known/prompt.ts",
     "./ai-gateway": "./src/well-known/ai-gateway.ts",
-    "./trigger": "./src/well-known/trigger.ts",
-    "./brand": "./src/well-known/brand.ts"
+    "./trigger": "./src/well-known/trigger.ts"
   },
   "engines": {
     "node": ">=24.0.0"

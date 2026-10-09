@@ -58,6 +58,7 @@ import {
   ChevronRight,
   DotsHorizontal,
   HelpCircle,
+  Inbox01,
   Lightning01,
   Plus,
   RefreshCw01,
@@ -65,6 +66,7 @@ import {
   User01,
   UserPlus01,
   X,
+  Zap,
 } from "@untitledui/icons";
 import {
   Popover,
@@ -91,6 +93,13 @@ import {
   useTaskBoardItemActions,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
+import {
+  useTaskBoardSprints,
+  useTaskBoardSprintsLive,
+} from "@/hooks/use-task-board-sprints";
+import { currentSprintId } from "@decocms/shared/sprints";
+import { SprintSwitcher } from "./sprint-controls";
+import { sprintLabel } from "./sprint-label";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentRunState,
@@ -161,6 +170,7 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
+  resolveSprintFilter,
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters-core";
@@ -661,6 +671,18 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
+/** The sprint a card is planned into; nothing for a card in the backlog. */
+function SprintPill({ sprintId }: { sprintId: string | null }) {
+  const sprint = useTaskBoardSprints().find((s) => s.id === sprintId);
+  if (!sprint) return null;
+  return (
+    <span className={cn(PILL, "text-foreground")}>
+      <Zap size={10} className="shrink-0 text-muted-foreground" />
+      {sprint.name}
+    </span>
+  );
+}
+
 /** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
 function TagPill({ tag }: { tag: TaskBoardItemTag }) {
   return (
@@ -967,6 +989,8 @@ function TaskBoardBody({
     isLoading: itemsLoading,
   });
   const { data: orgTags = [] } = useTags();
+  const sprints = useTaskBoardSprints();
+  useTaskBoardSprintsLive();
   const actions = useTaskBoardItemActions();
   const repositories = useRepositories();
   const usableRepos = (repositories.data ?? []).filter(
@@ -1049,7 +1073,7 @@ function TaskBoardBody({
   );
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const {
-    filters,
+    filters: urlFilters,
     setFilters,
     layout: urlLayout,
     setLayout,
@@ -1072,11 +1096,22 @@ function TaskBoardBody({
               membersData ? new Set(memberByUserId.keys()) : null,
             ),
       groupBy: "status",
+      sprint: currentSprintId(sprints),
     },
     (assignee) => {
       if (viewerId !== null) setSavedAssignee(assignee);
     },
   );
+  const filters = {
+    ...urlFilters,
+    sprint: resolveSprintFilter(urlFilters.sprint, sprints),
+  };
+  /** The sprint a new card is planned into: the one the board is showing,
+   *  unless that one is closed and takes no new cards. */
+  const activeSprintId =
+    sprints.find(
+      (sprint) => sprint.id === filters.sprint && sprint.state !== "closed",
+    )?.id ?? null;
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
@@ -1435,6 +1470,13 @@ function TaskBoardBody({
           <Page.Actions
             secondary={
               <>
+                <SprintSwitcher
+                  sprints={sprints}
+                  value={filters.sprint}
+                  onChange={(sprint) =>
+                    handleFiltersChange({ ...filters, sprint })
+                  }
+                />
                 {items.length > 0 && (
                   <>
                     {/* No width swap: these three are ~100px together, so there
@@ -1457,6 +1499,7 @@ function TaskBoardBody({
                         items={items}
                         members={members}
                         tags={orgTags}
+                        sprints={sprints}
                         index={projectIndex}
                         onChange={handleFiltersChange}
                       />
@@ -1509,6 +1552,7 @@ function TaskBoardBody({
         items={items}
         members={members}
         tags={orgTags}
+        sprints={sprints}
         index={projectIndex}
         onChange={handleFiltersChange}
         view={layout === "list" ? { grouping, sorting } : undefined}
@@ -1671,6 +1715,12 @@ function TaskBoardBody({
           item={openItem}
           onClose={() => closeTask()}
           isSaving={actions.update.isPending}
+          onSetSprint={(sprintId) =>
+            actions.update.mutate(
+              { id: openItem.id, sprintId },
+              { onError: onDelegateError },
+            )
+          }
           onSubmit={(input) => {
             if (blockSuperAgentWithoutRepository(input.assigneeId)) {
               closeTask();
@@ -1706,6 +1756,12 @@ function TaskBoardBody({
               repo: openItem.repo,
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
+              sprintId:
+                sprints.find(
+                  (sprint) =>
+                    sprint.id === openItem.sprintId &&
+                    sprint.state !== "closed",
+                )?.id ?? null,
             });
             widenProjectFilterFor(openItem.repo ?? null);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
@@ -1751,6 +1807,7 @@ function TaskBoardBody({
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
         defaultRepo={activeProjectRepo}
+        defaultSprintId={activeSprintId}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutRepository(input.assigneeId)) {
@@ -1794,6 +1851,11 @@ function TaskBoardBody({
           }}
           onMoveTo={(status) => {
             for (const id of selectedIds) actions.update.mutate({ id, status });
+            clearSelection();
+          }}
+          onSetSprint={(sprintId) => {
+            for (const id of selectedIds)
+              actions.update.mutate({ id, sprintId });
             clearSelection();
           }}
           onSetPriority={(priority) => {
@@ -1895,6 +1957,7 @@ function SelectionBar({
   projectEntries,
   onSetRepo,
   onMoveTo,
+  onSetSprint,
   onSetPriority,
   onAddTag,
   onAssign,
@@ -1911,6 +1974,8 @@ function SelectionBar({
   /** Bulk-assign the project (persisted as the underlying repo), or clear it. */
   onSetRepo: (repo: string | null) => void;
   onMoveTo: (status: TaskBoardItemStatus) => void;
+  /** Bulk-plan into a sprint, or null for the backlog. */
+  onSetSprint: (sprintId: string | null) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
@@ -1926,6 +1991,9 @@ function SelectionBar({
 }) {
   const t = useT();
   const { data: orgTags = [] } = useTags();
+  const openSprints = useTaskBoardSprints().filter(
+    (sprint) => sprint.state !== "closed",
+  );
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
@@ -1959,6 +2027,28 @@ function SelectionBar({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {openSprints.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {t("taskBoard.sprints.moveToSprint")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuItem onClick={() => onSetSprint(null)}>
+                    <Inbox01 size={14} className="text-muted-foreground" />
+                    {t("taskBoard.sprints.backlog")}
+                  </DropdownMenuItem>
+                  {openSprints.map((sprint) => (
+                    <DropdownMenuItem
+                      key={sprint.id}
+                      onClick={() => onSetSprint(sprint.id)}
+                    >
+                      <Zap size={14} className="text-muted-foreground" />
+                      <span className="truncate">{sprintLabel(sprint, t)}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 {t("taskBoard.taskBoard.changePriorityButton")}
@@ -2974,8 +3064,9 @@ function TaskCard({
         {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {item.tags.length > 0 && (
+      {(item.tags.length > 0 || item.sprintId) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <SprintPill sprintId={item.sprintId} />
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -3820,6 +3911,11 @@ function ListRow({
       {runState && <AgentRunIndicator state={runState} />}
       {isTaskBlocked(item) && <BlockedBadge />}
       {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
+      {item.sprintId && (
+        <span className="hidden sm:inline-flex">
+          <SprintPill sprintId={item.sprintId} />
+        </span>
+      )}
       {item.tags.length > 0 && (
         <span className="hidden items-center gap-1.5 sm:inline-flex">
           {item.tags.slice(0, 2).map((tag) => (

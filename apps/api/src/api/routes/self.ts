@@ -28,7 +28,7 @@ export const createSelfRoutes = () => {
    */
   app.all("/", async (c) => {
     const ctx = c.get("studioContext");
-    const server = await managementMCP(ctx);
+    const server = managementMCP();
     const transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse:
         c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,

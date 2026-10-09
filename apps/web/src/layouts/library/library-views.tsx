@@ -20,6 +20,8 @@ import { Grid01, List, Palette, Zap } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { useChatNavigation } from "@/components/chat/hooks/use-chat-navigation";
 import { FolderIcon } from "@/components/folder-icon";
 import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { describeFileType } from "@/components/file-type-icon";
@@ -36,8 +38,8 @@ import {
   type ShareMode,
   useOrgFsFileUrl,
   useOrgFsList,
+  type OrgFsSourceThread,
   useOrgFsVolumeFiles,
-  VOLUME_FILES_LIMIT,
   useOrgFsPublicSets,
   useOrgFsRecent,
   useOrgFsSearch,
@@ -49,7 +51,10 @@ import { AgentAvatar } from "@/components/agent-icon";
 import { useVirtualMCPsNonBlocking } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { scopableProjects } from "@/hooks/use-project-scope";
-import { PROJECTS_FOLDER, projectFolderName } from "./project-folder";
+import {
+  PROJECTS_FOLDER,
+  projectFolderName,
+} from "@decocms/shared/organization/project-folder";
 import {
   type LibraryEntry,
   type LibrarySort,
@@ -609,6 +614,7 @@ export function ChatFilesView({
   const fileUrl = useOrgFsFileUrl();
   const volumeFiles = useOrgFsVolumeFiles(volume);
   const rootListing = useOrgFsList(volume, "");
+  const { navigateToTask } = useChatNavigation();
 
   if (volumeFiles.isPending || rootListing.isPending) {
     return <ListingSkeleton layout={view.layout} />;
@@ -623,7 +629,20 @@ export function ChatFilesView({
       </p>
     );
   }
-  const all = volumeFiles.data ?? [];
+  const pages = volumeFiles.data?.pages ?? [];
+  const all = pages.flatMap((page) => page.entries);
+  const threads: Record<string, OrgFsSourceThread> = Object.assign(
+    {},
+    ...pages.map((page) => page.threads),
+  );
+  const sourceOf = new Map(
+    all.map((e) => [
+      e.path,
+      e.sourceThreadId
+        ? { id: e.sourceThreadId, ...threads[e.sourceThreadId] }
+        : undefined,
+    ]),
+  );
   const files = all.filter((e) => matchesView(e, view));
   const folders = (rootListing.data ?? []).filter(
     (e) => e.kind === "dir" && !isGeneratedId(basename(e.path)),
@@ -670,25 +689,30 @@ export function ChatFilesView({
       <FilesSection
         view={view}
         count={files.length}
-        note={
-          all.length >= VOLUME_FILES_LIMIT
-            ? t("library.libraryViews.newestOnly", { count: all.length })
-            : undefined
-        }
+        locationLabel={t("library.libraryViews.sourceChat")}
       >
         {sorted.map((item) => {
           const previewPath = browsePathForEntry(volume, item.path);
           const downloadUrl = fileUrl(volume, item.path);
+          const source = sourceOf.get(item.path);
           return (
             <FileEntry
               key={item.path}
               entry={item}
               view={view}
+              secondary={source?.title}
               selected={view.previewPath === previewPath}
               publicState={publicStateOf(item.entry)}
               downloadUrl={downloadUrl}
               actions={{
                 onOpen: () => onOpenFile(previewPath),
+                onOpenSecondary:
+                  source?.agentId !== undefined
+                    ? () =>
+                        navigateToTask(source.id, {
+                          virtualMcpId: source.agentId,
+                        })
+                    : undefined,
                 download: { url: downloadUrl, filename: item.name },
                 onShare: () =>
                   onShare({
@@ -706,6 +730,16 @@ export function ChatFilesView({
           );
         })}
       </FilesSection>
+      {volumeFiles.hasNextPage && (
+        <Button
+          variant="outline"
+          className="self-center"
+          disabled={volumeFiles.isFetchingNextPage}
+          onClick={() => void volumeFiles.fetchNextPage()}
+        >
+          {t("library.libraryViews.loadMore")}
+        </Button>
+      )}
     </>
   );
 }

@@ -26,7 +26,6 @@ import {
   tabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
 import {
-  isBrandContextSetup,
   isReportsAgentId,
   isDecopilot,
   isRetiredStudioPackAgent,
@@ -203,7 +202,6 @@ export function isCanonicalAgentIdSegment(
   return (
     (id.startsWith("vir_") && id.length > "vir_".length) ||
     isDecopilot(id) !== null ||
-    isBrandContextSetup(id) !== null ||
     isSiteDiagnostics(id) !== null ||
     isReportsAgentId(id) !== null ||
     isStudioPackAgent(id) ||

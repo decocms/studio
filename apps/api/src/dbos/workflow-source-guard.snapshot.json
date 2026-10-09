@@ -1,5 +1,5 @@
 {
-  "auth/install-studio-pack-workflow.ts": "6f6c4fe37f2163dcf6a521164185fd364a22b1e5617653d14d1d5de40110a7ab",
+  "auth/install-studio-pack-workflow.ts": "2d29e13a9ada45c4dca448391957c75323e1a9d5e5b76d9b79c60a31171dbe29",
   "automations/dbos-workflow.ts": "e74af0a6556ca042e3fc07c10f8a205f30eb10879c5bf312e97201972940d2af",
   "billing/dbos-subscription-sweep.ts": "d5d90cb91f31146226c0b583e6e6af7a68504d28c256b05d9e564e985a37f4ca",
   "dispatch-queue/hosted-harness-workflow.ts": "99360d94dbf09d5974ccaa7dbe958b2b803e67b31c2ab9e7002e4753dadc674d",
@@ -7,7 +7,7 @@
   "file-storage/dbos-org-repo-sync.ts": "32c606976916fde2be7abe3084f7388744bdb610c178e9c2a07a8080f764904e",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
   "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",
-  "jira/dbos-jira-trigger-sweep.ts": "fd1628a5b8f871903b0f0169aae9f51fac1af8af77ef7cdb2256e14926d5782a",
+  "jira/dbos-jira-trigger-sweep.ts": "d2f331f391528fd1c257805bd6df4dda3c2a4c768e256a79a7a565946eeb58d7",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
   "notifications/dbos-digest.ts": "467276350cefc479263b7bfafc34002b3fbe54546bc8b246c4dba016a9f961ee",
   "sandbox/dbos-credential-push.ts": "3dcd1fbb94e563c3ab0ed8d92d612fc3dbb71c3d357cea06eb1dcd72a4c11ddd",

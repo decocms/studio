@@ -88,6 +88,8 @@ export interface EntryRowActions {
   onContextMenu?: (e: React.MouseEvent) => void;
   /** A folder takes the entries dragged onto it. */
   onDrop?: (e: React.DragEvent) => void;
+  /** Opens what the location column names, such as the chat a file came from. */
+  onOpenSecondary?: () => void;
 }
 
 export function EntryRow({
@@ -99,7 +101,8 @@ export function EntryRow({
 }: {
   entry: LibraryEntry;
   publicState?: PublicState;
-  /** The containing folder, in a cross-volume feed. */
+  /** The containing folder in a cross-volume feed, or the chat a file came
+   *  from in a chat volume. */
   secondary?: string;
   /** Its preview is open beside the list. */
   selected?: boolean;
@@ -135,7 +138,20 @@ export function EntryRow({
           className={cn(COL.location, "truncate text-muted-foreground")}
           title={secondary}
         >
-          {secondary}
+          {secondary && actions.onOpenSecondary ? (
+            <button
+              type="button"
+              className="max-w-full truncate hover:text-foreground hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.onOpenSecondary?.();
+              }}
+            >
+              {secondary}
+            </button>
+          ) : (
+            secondary
+          )}
         </TableCell>
       )}
       <TableCell className={cn(COL.owner, "text-muted-foreground")}>

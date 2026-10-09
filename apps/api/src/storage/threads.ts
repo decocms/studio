@@ -53,6 +53,13 @@ export function escapeLikePattern(value: string): string {
  * contexts). Any method call without a valid org throws immediately so misuse
  * surfaces at the call site rather than silently operating on `organization_id = ""`.
  */
+/** What a file listing needs to name the chat a file came from. */
+export interface ThreadSummary {
+  id: string;
+  title: string;
+  virtual_mcp_id: string;
+}
+
 export class OrgScopedThreadStorage {
   constructor(
     private inner: SqlThreadStorage,
@@ -95,6 +102,10 @@ export class OrgScopedThreadStorage {
 
   get(id: string): Promise<Thread | null> {
     return this.inner.get(id, this.requireOrg());
+  }
+
+  summaries(ids: readonly string[]): Promise<ThreadSummary[]> {
+    return this.inner.summaries(ids, this.requireOrg());
   }
 
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
@@ -373,6 +384,20 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .executeTakeFirstOrThrow();
 
     return { ...this.threadFromDbRow(existing), isNew: false };
+  }
+
+  /** Title and agent of each listed thread in the org; unknown ids are skipped. */
+  async summaries(
+    ids: readonly string[],
+    organizationId: string,
+  ): Promise<ThreadSummary[]> {
+    if (ids.length === 0) return [];
+    return this.db
+      .selectFrom("threads")
+      .select(["id", "title", "virtual_mcp_id"])
+      .where("organization_id", "=", organizationId)
+      .where("id", "in", [...ids])
+      .execute();
   }
 
   async get(id: string, organizationId: string): Promise<Thread | null> {
