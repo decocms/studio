@@ -568,6 +568,7 @@ export class OrgFsEntryStorage {
   /**
    * Live files whose path matches `query` (case-insensitive substring, so
    * folder names in the path match too), newest first across every volume.
+   * An empty `query` matches every file.
    */
   async searchFiles(params: {
     organizationId: string;
@@ -586,8 +587,8 @@ export class OrgFsEntryStorage {
       .selectFrom("org_fs_entry")
       .where("organization_id", "=", params.organizationId)
       .where("kind", "=", "file")
-      .where("deleted_at", "is", null)
-      .where("path", "ilike", `%${escaped}%`);
+      .where("deleted_at", "is", null);
+    if (escaped) qb = qb.where("path", "ilike", `%${escaped}%`);
     if (params.volumes) qb = qb.where("volume", "in", params.volumes);
     if (params.pathPrefix) {
       qb = qb.where("path", "like", `${escapeLike(params.pathPrefix)}/%`);

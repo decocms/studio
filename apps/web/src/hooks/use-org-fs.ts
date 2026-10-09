@@ -16,6 +16,8 @@ export interface OrgFsEntry {
   size: number;
   updatedAt: string;
   contentHash?: string | null;
+  /** The member who first wrote it. Agents write as the member they run for. */
+  createdBy?: string;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
   /** Dir is a brand folder (contains tokens.css or brand.md). */
@@ -30,11 +32,6 @@ export interface OrgFsEntry {
 }
 
 export type ShareMode = "private" | "public" | "password";
-
-export interface OrgFsUsage {
-  files: number;
-  bytes: number;
-}
 
 /** A `/fs/recent` entry — cross-volume, so the volume rides along. */
 export interface OrgFsRecentEntry extends OrgFsEntry {
@@ -152,17 +149,6 @@ export function useOrgFsStat(
   });
 }
 
-export function useOrgFsUsage(volume: string) {
-  const { org } = useProjectContext();
-  return useQuery({
-    queryKey: KEYS.orgFsUsage(org.id, volume),
-    queryFn: async () => {
-      const res = await fsFetch(fsUrl(org.slug, volume, "usage"));
-      return (await res.json()) as OrgFsUsage;
-    },
-  });
-}
-
 /**
  * Most recently written files across every volume, newest first — the
  * Library home's feed. The query key is limit-agnostic (single consumer);
@@ -176,6 +162,23 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
     queryFn: async () => {
       const res = await fsFetch(
         `/api/${encodeURIComponent(org.slug)}/fs/recent?limit=${limit}`,
+      );
+      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
+    },
+  });
+}
+
+/** The most the volume files route returns in one request. */
+export const VOLUME_FILES_LIMIT = 200;
+
+/** A volume's newest files at any depth, in one request. */
+export function useOrgFsVolumeFiles(volume: string) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
+    queryFn: async () => {
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/${encodeURIComponent(volume)}/files?limit=${VOLUME_FILES_LIMIT}`,
       );
       return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
     },
