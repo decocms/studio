@@ -317,6 +317,26 @@ describe("site slug lifecycle", () => {
       await create("twice");
       expect((await sites.getBySlug("twice"))?.projectId).toBe(first.item.id);
     });
+
+    // Hosted (hosted/claim-site.ts): a slug no org owns is claimed, then linked.
+    it("claims and links a slug nobody owns", async () => {
+      const { item } = await create("fresh");
+      const row = await sites.getBySlug("fresh");
+      expect(row?.organizationId).toBe(ORG);
+      expect(row?.projectId).toBe(item.id);
+      expect(row?.source).toBe("project-create");
+    });
+
+    it("never reuses a deleted org's slug", async () => {
+      await claim("gone", OTHER_ORG);
+      await sql`DELETE FROM organization WHERE id = ${OTHER_ORG}`.execute(
+        database.db,
+      );
+      await create("gone");
+      const row = await sites.getBySlug("gone");
+      expect(row?.organizationId).toBeNull();
+      expect(row?.projectId).toBeNull();
+    });
   });
 
   describe("COLLECTION_VIRTUAL_MCP_UPDATE", () => {

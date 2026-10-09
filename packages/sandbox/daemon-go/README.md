@@ -57,6 +57,7 @@ Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 | `internal/auth/` | Bearer-token authentication |
 | `internal/telemetry/` | OTLP metrics export |
 | `internal/worktree/` | Worktree lock |
+| `internal/content/` | Content protocol (`/_sandbox/rpc`, `/_sandbox/assets/*`): Go port of `@decocms/blocks/protocol`, checked by the conformance and parity e2e |
 
 ## Startup contract
 

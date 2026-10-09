@@ -233,6 +233,21 @@ Daemon control endpoints use the `/_sandbox/*` namespace, with `/health` at the
 root. AgentSandbox forwards those routes separately from the public preview
 contract.
 
+For v8 (Blocks) sites the daemon also serves the Deco content protocol over the
+working tree, so the site editor edits a sandbox the way it edits a local
+`deco serve`: `POST /_sandbox/rpc` (JSON-RPC: `describe`, `schema.get`,
+`blocks.list`, `blocks.apply`) and `PUT /_sandbox/assets/<name>` (uploads into
+`public/assets`). Both need the daemon token. Content lives in
+`<app root>/.deco/blocks/*.json` and is committed and pushed like code; there is
+no CDN draft in a sandbox. Commits take the worktree lock, so they serialize
+with fs writes, publish, discard and autosave. The `.deco/.blocks.lock` and
+`.deco/.tx-*/` files they use are listed in `.git/info/exclude`. The
+implementation is a Go port of `@decocms/blocks/protocol`, and
+`daemon-e2e/daemon.content-protocol.e2e.test.ts` runs the published conformance
+suite and a byte-for-byte parity check against it. Bump the pinned
+`@decocms/blocks` there when the protocol changes. `/_sandbox/decofile` (v7) is
+unchanged and reflects protocol writes.
+
 ## Export surface
 
 | Import | Purpose |

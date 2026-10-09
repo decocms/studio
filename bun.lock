@@ -54,6 +54,7 @@
         "@better-auth/sso": "1.4.1",
         "@decocms/better-auth": "1.5.17",
         "@decocms/bindings": "workspace:*",
+        "@decocms/blocks": "8.1.0-next.7",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -308,6 +309,7 @@
         "zod": "4.3.6",
       },
       "devDependencies": {
+        "@decocms/blocks": "8.1.0-next.6",
         "@types/bun": "latest",
         "postgres": "^3.4.5",
         "typescript": "^7.0.2",

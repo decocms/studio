@@ -126,6 +126,7 @@ type sandboxHandlers struct {
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
+	contentRPC, contentAssets             http.HandlerFunc
 	fs, git, setup                        map[string]http.HandlerFunc
 }
 
@@ -624,6 +625,15 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("POST "+pre+"/tasks/{id}/kill", d.authed(h.tasksKill))
 
 	mux.HandleFunc("POST "+pre+"/tools/sync", d.authed(h.toolsSync))
+
+	// The content protocol over the working tree (v8 sites). Every method but
+	// OPTIONS (the CORS preflight) reaches the handler, which answers anything
+	// but POST (PUT for uploads) with the protocol's own 405. Commits and
+	// uploads take the tree lock themselves; reads never do.
+	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
+		mux.HandleFunc(method+" "+pre+"/rpc", d.authed(h.contentRPC))
+		mux.HandleFunc(method+" "+pre+"/assets/{name...}", d.authed(h.contentAssets))
+	}
 	for _, step := range []string{"clone", "install", "start"} {
 		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
 	}
@@ -1225,6 +1235,13 @@ func main() {
 		GetConfigured:   func() bool { return d.store.Read() != nil },
 	})
 
+	contentRoutes := routes.NewContent(routes.ContentDeps{
+		RepoDir:  repoDir,
+		Store:    d.store,
+		TreeLock: &d.treeLock,
+		OnWrite:  fsDeps.OnWorkingTreeWrite,
+	})
+
 	h := sandboxHandlers{
 		scripts: routes.Scripts(func() []string {
 			if cached, ok := d.orchestrator.DiscoveredScripts(); ok {
@@ -1252,7 +1269,9 @@ func main() {
 			GetDecofileVersion:       d.getDecofileVersion,
 			OnDecofileVersionUnknown: func() { go d.announceDecofileVersion() },
 		}),
-		decofile: routes.Decofile(d.decofileDeps),
+		decofile:      routes.Decofile(d.decofileDeps),
+		contentRPC:    contentRoutes.RPC,
+		contentAssets: contentRoutes.Assets,
 		configRead: routes.ConfigRead(routes.ConfigDeps{
 			DaemonBootId:    bootId,
 			Store:           d.store,

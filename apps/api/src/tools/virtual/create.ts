@@ -18,11 +18,11 @@ import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
-import { isValidSiteSlug } from "@decocms/shared/site-slug";
-import { OrgSiteLinkError } from "../../storage/org-sites";
-
-const normalizeSiteSlug = (value: unknown) =>
-  typeof value === "string" ? value.trim().toLowerCase() : "";
+import {
+  claimProjectSite,
+  decoSiteExists,
+  otherOrgNamingSlugFromDb,
+} from "../../hosted/claim-site";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -149,26 +149,26 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       dataWithIcon,
     );
 
-    // The site slug is set once, here (the import flow passes it). Link it to
-    // the org's `org_sites` row so the database knows this project's site.
-    // When the org doesn't own a free row — the slug is another org's, another
-    // project's here, or unclaimed — the project keeps the stored value
-    // unlinked (the same storefront may be imported into several orgs).
-    const siteSlug = normalizeSiteSlug(metadata?.siteSlug);
-    if (siteSlug && isValidSiteSlug(siteSlug) && virtualMcp.id) {
-      try {
-        await ctx.storage.orgSites.link({
-          slug: siteSlug,
+    // The site slug is set once, here (the import flow passes it): link it to
+    // the project in `org_sites`. A slug no org owns is claimed for this org
+    // first, unless another org's project already names it or deco.cx has it;
+    // a reserved (deleted org's) slug, another org's, or another project's
+    // stays unlinked (see hosted/claim-site.ts). Best-effort: never fails the
+    // creation.
+    if (virtualMcp.id) {
+      await claimProjectSite(
+        {
+          orgSites: ctx.storage.orgSites,
+          isDecoSite: (slug) => decoSiteExists(slug),
+          otherOrgNamingSlug: otherOrgNamingSlugFromDb(ctx.db),
+        },
+        {
           organizationId: organization.id,
           projectId: virtualMcp.id,
+          metadata,
           by: userId,
-        });
-      } catch (error) {
-        if (!(error instanceof OrgSiteLinkError)) throw error;
-        console.warn(
-          `[virtual-mcp] project ${virtualMcp.id} keeps site "${siteSlug}" unlinked: ${error.code}`,
-        );
-      }
+        },
+      );
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
