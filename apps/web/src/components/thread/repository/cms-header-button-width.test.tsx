@@ -184,3 +184,24 @@ describe.each([
     },
   );
 });
+
+test("a label shared by two states renders once, with a single accessible name", () => {
+  const view = render(
+    <TooltipProvider>
+      <SplitButton
+        size="sm"
+        label="Saving…"
+        loading
+        menuAriaLabel="More actions"
+        stableLabels={["Saving…", "Review & Publish", "Saving…"]}
+      />
+    </TooltipProvider>,
+  );
+  expect(
+    document.querySelectorAll('[data-slot="split-button-label"]'),
+  ).toHaveLength(1);
+  expect(
+    document.querySelectorAll('[data-slot="split-button-label-reserve"]'),
+  ).toHaveLength(1);
+  expect(view.getByRole("button", { name: "Saving…" })).toBeInTheDocument();
+});

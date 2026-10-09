@@ -89,7 +89,9 @@ function StableLabels({
   label: string;
   leading: React.ReactNode;
 }) {
-  const all = labels.includes(label) ? labels : [...labels, label];
+  // Deduped: two states (or locales) can share a string, and a repeated
+  // active label would render twice — a duplicate key and a doubled name.
+  const all = [...new Set([...labels, label])];
   return (
     <span className="grid items-center justify-items-center gap-[inherit]">
       {all.map((candidate) =>
