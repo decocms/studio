@@ -230,6 +230,26 @@ function hasUnpublishedWork(
   return branch.aheadOfBase > 0;
 }
 
+/**
+ * Every label {@link selectCmsHeaderButton} can put on the primary half, in the
+ * active locale. The header reserves the widest of them so a state change
+ * ("Review & Publish" → "Saving…") never resizes the button and shifts the
+ * header on the x axis. Keep in sync with the selector — a test enforces it.
+ */
+export function cmsHeaderButtonLabels(t: TFunction): string[] {
+  return [
+    t("thread.cmsActions.retry"),
+    t("thread.headerActions.loading"),
+    t("thread.cmsActions.publishing"),
+    t("thread.cmsActions.gettingLatest"),
+    t("thread.headerActions.saving"),
+    t("thread.cmsActions.getLatest"),
+    t("thread.cmsActions.waitingForReview"),
+    t("thread.cmsActions.reviewAndPublish"),
+    t("thread.headerActions.upToDate"),
+  ];
+}
+
 /** Picks the Fast Preview header button; first match wins, so order is behavior. */
 export function selectCmsHeaderButton(
   input: SelectCmsHeaderButtonInput,
