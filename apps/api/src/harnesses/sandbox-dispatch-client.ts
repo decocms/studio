@@ -517,14 +517,17 @@ export class SandboxDispatchClient {
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
     const runMetadata = this.ctx.metadata?.runMetadata;
-    const modelEnv = claudeCodeEnvFromCredential(
-      this.credential,
-      modelClassFromMetadata(runMetadata?.[MODEL_CLASS_METADATA_KEY]),
-      // Task-board runs carry a run class and keep their per-class model.
-      runMetadata?.[RUN_CLASS_METADATA_KEY]
-        ? undefined
-        : input.models.thinking.id,
-    );
+    // Task-board runs carry a run class and keep their per-class model.
+    const modelEnv = runMetadata?.[RUN_CLASS_METADATA_KEY]
+      ? claudeCodeEnvFromCredential(
+          this.credential,
+          modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
+        )
+      : claudeCodeEnvFromCredential(
+          this.credential,
+          "chat",
+          input.models.thinking.id,
+        );
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(

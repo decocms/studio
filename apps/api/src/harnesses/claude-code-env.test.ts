@@ -11,6 +11,7 @@ const BUDGET = {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
   CLAUDE_CODE_MAX_TURNS: null,
   ENABLE_TOOL_SEARCH: "1",
+  FORCE_PROMPT_CACHING_5M: "1",
 };
 
 describe("claudeCodeEnvFromCredential", () => {
@@ -209,11 +210,8 @@ describe("claudeCodeEnvFromCredential", () => {
 
   test("the chat's chosen Claude model sets CLAUDE_CODE_MODEL", () => {
     const model = (providerId: string, chosen: string) =>
-      claudeCodeEnvFromCredential(
-        { providerId, apiKey: "k" },
-        "default",
-        chosen,
-      ).CLAUDE_CODE_MODEL;
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat", chosen)
+        .CLAUDE_CODE_MODEL;
     expect(model("anthropic", "claude-sonnet-5")).toBe("claude-sonnet-5");
     expect(model("openrouter", "anthropic/claude-haiku-5")).toBe(
       "anthropic/claude-haiku-5",
@@ -226,21 +224,28 @@ describe("claudeCodeEnvFromCredential", () => {
     );
   });
 
-  test("a chosen model the CLI cannot run on that credential keeps the default", () => {
+  test("a chosen model the CLI cannot run on that credential keeps the chat default", () => {
     const model = (providerId: string, chosen: string) =>
-      claudeCodeEnvFromCredential(
-        { providerId, apiKey: "k" },
-        "default",
-        chosen,
-      ).CLAUDE_CODE_MODEL;
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat", chosen)
+        .CLAUDE_CODE_MODEL;
     expect(model("openrouter", "google/gemini-3-pro")).toBe(
-      "anthropic/claude-opus-5.5",
+      "anthropic/claude-sonnet-5.5",
     );
     expect(model("anthropic", "anthropic/claude-sonnet-5")).toBe(
-      "claude-opus-5-5",
+      "claude-sonnet-5-5",
     );
     expect(
       model(CLAUDE_SUBSCRIPTION_PROVIDER_ID, "anthropic/claude-sonnet-5"),
+    ).toBe("claude-sonnet-5-5");
+  });
+
+  test("a task-board run stays on Opus whatever a chat would pick", () => {
+    expect(
+      claudeCodeEnvFromCredential(
+        { providerId: "anthropic", apiKey: "sk-a" },
+        "default",
+        "claude-sonnet-5",
+      ).CLAUDE_CODE_MODEL,
     ).toBe("claude-opus-5-5");
   });
 
