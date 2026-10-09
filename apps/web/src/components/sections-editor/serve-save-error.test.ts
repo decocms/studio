@@ -121,6 +121,8 @@ describe("one toast per publish", () => {
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect(shown).toHaveLength(1);
     expect((shown[0] as { title?: unknown }).title).toBe("Published");
+    // The success doesn't keep the failure's "Try again".
+    expect((shown[0] as { action?: unknown }).action).toBeUndefined();
     expect(retried).toBe(0);
   });
 });
