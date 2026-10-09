@@ -8,7 +8,12 @@ import { en } from "./en/index.ts";
 import { ptBR } from "./pt-br/index.ts";
 
 /** Namespaces whose every string a business user reads in the site editor. */
-const SITE_EDITOR_PREFIXES = ["siteEditor."];
+const SITE_EDITOR_PREFIXES = [
+  "siteEditor.",
+  "releases.",
+  "common.mainPanelTabs.releases",
+  "projects.apps.releases",
+];
 
 const BANNED: RegExp[] = [
   /\bCDN\b/i,
@@ -21,6 +26,7 @@ const BANNED: RegExp[] = [
   /latest\.json/i,
   /\brevision/i,
   /\bsha\b/i,
+  /\bcurrent\b/i,
   /make current/i,
   /tornar atual/i,
 ];

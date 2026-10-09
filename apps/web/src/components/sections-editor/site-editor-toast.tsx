@@ -13,9 +13,18 @@ import { saveErrorDetail, saveErrorMessage } from "./serve-save-error";
 
 /** Every save failure in the site editor shares this toast. */
 export const SITE_EDITOR_SAVE_TOAST = "site-editor-save";
+/** Publishing (from the editor or the Versions screen), its outcome and a
+ *  retry of it share this toast. */
+export const SITE_EDITOR_PUBLISH_TOAST = "site-editor-publish";
 
 /** A collapsed "Details" line holding the developer detail of a failure. */
-function ErrorDetails({ label, detail }: { label: string; detail: string }) {
+export function ErrorDetails({
+  label,
+  detail,
+}: {
+  label: string;
+  detail: string;
+}) {
   return (
     <details className="mt-1 text-xs">
       <summary className="cursor-pointer select-none text-muted-foreground">
@@ -45,4 +54,59 @@ export function toastSaveError(
     id: SITE_EDITOR_SAVE_TOAST,
     description: errorDetailsDescription(t, saveErrorDetail(error, source)),
   });
+}
+
+/** Published: what the site shows now. `description` says what went live. */
+export function toastPublished(t: TFunction, description: string) {
+  toast.success(t("siteEditor.publish.published"), {
+    id: SITE_EDITOR_PUBLISH_TOAST,
+    description,
+  });
+}
+
+/**
+ * Publishing didn't finish: `headline` says so in plain words, `detail` (the
+ * error's own text) sits behind Details, and `retry` offers "Try again".
+ * `tone: "warning"` when nothing is lost (the changes are saved).
+ */
+export function toastPublishFailed(
+  t: TFunction,
+  {
+    headline,
+    body,
+    detail,
+    retry,
+    tone = "error",
+  }: {
+    headline: string;
+    body?: string;
+    detail?: string | null;
+    retry?: () => void;
+    tone?: "error" | "warning";
+  },
+) {
+  const details = errorDetailsDescription(t, detail ?? null);
+  toast[tone](headline, {
+    id: SITE_EDITOR_PUBLISH_TOAST,
+    description:
+      body && details ? (
+        <>
+          <p>{body}</p>
+          {details}
+        </>
+      ) : (
+        (body ?? details)
+      ),
+    action: retry
+      ? { label: t("siteEditor.tryAgain"), onClick: retry }
+      : undefined,
+    // A failure waits for the user: it carries the next step.
+    duration: retry ? Number.POSITIVE_INFINITY : undefined,
+  });
+}
+
+/** The developer detail of a failed request, for Details. */
+export function errorDetail(error: unknown): string | null {
+  if (error instanceof Error) return error.message || null;
+  return error == null ? null : String(error);
 }
