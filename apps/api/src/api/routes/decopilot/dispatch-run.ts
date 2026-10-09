@@ -91,6 +91,7 @@ import { type ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 export type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
+import { sandboxWireUserMessage } from "./wire-user-message";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
@@ -1335,14 +1336,11 @@ async function prepareRun(
         ? input.historyPrefix
         : undefined;
     const wireUserMessage =
-      resolvedUserMessage && historyPrefix
-        ? {
-            ...resolvedUserMessage,
-            parts: [
-              { type: "text" as const, text: historyPrefix },
-              ...resolvedUserMessage.parts,
-            ],
-          }
+      resolvedUserMessage && sandboxHosted
+        ? sandboxWireUserMessage(resolvedUserMessage, {
+            historyPrefix,
+            turnContext: systemMessages,
+          })
         : resolvedUserMessage;
 
     if (!wireUserMessage || !materializedRequestMessage) {
