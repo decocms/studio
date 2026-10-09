@@ -37,6 +37,9 @@ const MAX_KEYWORDS = 50;
 const MAX_EXISTING_NAMES = 100;
 const MAX_TEXT_CHARS = 2_000;
 
+/** How much of the catalogue one prompt carries. A context is still a context. */
+const MAX_CATALOGUE_IN_PROMPT = 80;
+
 /**
  * Reading analytics *and* a catalogue is deeper than reading one site.
  *
@@ -74,9 +77,8 @@ const ProductSchema = z.object({
   url: z.string().max(MAX_TEXT_CHARS),
   images: z
     .array(z.string().max(MAX_TEXT_CHARS))
-    .max(MAX_CAMPAIGN_PRODUCT_IMAGES)
     .describe(
-      "Image URLs exactly as a tool reported them, never rebuilt. These are served from an image CDN whose host is NOT the store's address — copying them verbatim is the only way they load.",
+      "Left to the catalogue when the product is in it. Fill this only for a product no catalogue entry covers, copying the URLs a tool reported verbatim — they sit on a CDN whose host is NOT the store's.",
     ),
   category: z.string().max(MAX_TEXT_CHARS),
   description: z.string().max(MAX_TEXT_CHARS),
@@ -145,9 +147,9 @@ BUILDING A LINK IS NOT INVENTING ONE. When you are given the brand's store addre
 
 A PRODUCT WITHOUT A LINK IS STILL A PRODUCT. If the tools named a product but reported no URL and no images, return it anyway with its id, name, category and description — the person completes it in the editor with two clicks. Dropping it loses the one thing you learned. The same goes for a target: an id and a name are worth more than an empty list.
 
-HIGHLIGHTED PRODUCTS ARE A SHELF, NOT AN EXAMPLE. One product is almost never the right answer: a post that names a single item reads like an ad for it. You are given the store's catalogue as a list — take every entry in it that fits this campaign, copying the \`id\`, \`name\`, \`url\` and \`images\` as written. Usually a handful, and up to a dozen when the list has them. Returning one of fifteen is a failure to choose, not a choice. If the list genuinely holds only one that fits, say so in the trigger note.
+HIGHLIGHTED PRODUCTS ARE A SHELF, NOT AN EXAMPLE. One product is almost never the right answer: a post that names a single item reads like an ad for it. You are given the store's catalogue as a list — return every entry in it that fits this campaign, by its \`id\` and \`name\`. Usually a handful, and up to a dozen when the list has them. Returning one of fifteen is a failure to choose, not a choice. If the list genuinely holds only one that fits, say so in the trigger note.
 
-IMAGE URLS ARE COPIED, NEVER BUILT. They are given to you in the catalogue's \`images\` field, already verbatim. Copy them across, character for character, and keep up to three per product. An image lives on a CDN whose host has nothing to do with the store's address, so putting the store's address in front of an image path produces a link that silently fails to load. If a catalogue entry has no images, return the product anyway with an empty list.
+YOU DO NOT WRITE LINKS OR IMAGES FOR A CATALOGUED PRODUCT. Give the \`id\` and leave \`url\` and \`images\` empty: they are attached afterwards from the catalogue itself, verbatim. The id is what identifies the record, so retyping the rest only risks a URL that does not load. Fill them yourself ONLY for a product no catalogue entry covers, copying what a tool reported character for character.
 
 A COLLECTION HAS NO ADDRESS. Collections are clusters the store filters by, identified by id. Set \`url\` to '' for them and put the id in \`id\`. Only a category gets a URL.
 
@@ -219,7 +221,53 @@ function renderCatalogue(catalogue: Catalogue): string | null {
   if (catalogue.products.length === 0 && catalogue.targets.length === 0) {
     return null;
   }
-  return `## The store's actual catalogue — choose from here\n\nTranscribed from the same tool results, field by field. Any product or target you return must come from this list, copied: its \`id\`, its \`name\`, its \`url\` and its \`images\` exactly as written here. Nothing outside this list exists.\n\n${JSON.stringify(catalogue, null, 2)}`;
+  const shown = {
+    products: catalogue.products.slice(0, MAX_CATALOGUE_IN_PROMPT).map(trim),
+    targets: catalogue.targets.slice(0, MAX_CATALOGUE_IN_PROMPT).map(trim),
+  };
+  return `## The store's actual catalogue — choose from here\n\nTranscribed from the same tool results, field by field. It holds ${catalogue.products.length} product(s) and ${catalogue.targets.length} target(s). Take every entry that fits this campaign and return it by its \`id\` — returning one of ${catalogue.products.length} is a failure to choose, not a choice. The \`url\` and the images are attached from here afterwards, so you need only the id, the name and why it belongs.\n\n${JSON.stringify(shown)}`;
+}
+
+/** The catalogue costs prompt either way; images are the part it cannot spend on. */
+function trim<T extends object>(entry: T): Omit<T, "images"> {
+  const { images: _images, ...rest } = entry as T & { images?: unknown };
+  return rest as Omit<T, "images">;
+}
+
+/**
+ * Attach what the store reported to what the model chose.
+ *
+ * The model picks by id and writes the argument; the address and the images
+ * come from the catalogue, in code. Copying them was the model's job for
+ * exactly one run, and it lost every image doing it — a transcription step
+ * nobody needs, since the id already identifies the record.
+ *
+ * An entry with no match keeps whatever the model wrote: that is the
+ * ungrounded path, where a name and a description are still worth having.
+ */
+export function hydrate<
+  T extends { id: string; url: string; images?: string[]; category?: string },
+>(items: T[], entries: { id: string; url: string; images?: string[] }[]): T[] {
+  const byId = new Map(
+    entries.map((entry) => [entry.id.trim().toLowerCase(), entry]),
+  );
+  return items.map((item) => {
+    const found = byId.get(item.id.trim().toLowerCase());
+    if (!found) {
+      return item.images
+        ? { ...item, images: item.images.slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES) }
+        : item;
+    }
+    return {
+      ...item,
+      url: found.url || item.url,
+      ...(item.images === undefined
+        ? {}
+        : {
+            images: (found.images ?? []).slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES),
+          }),
+    };
+  });
 }
 
 /**
@@ -582,9 +630,15 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       .slice(0, input.count)
       .map((campaign) => {
         const targets = withoutCollectionUrls(
-          groundedOnly(campaign.intent.targets, evidence),
+          hydrate(
+            groundedOnly(campaign.intent.targets, evidence),
+            catalogue.targets,
+          ),
         );
-        const products = groundedOnly(campaign.intent.products, evidence);
+        const products = hydrate(
+          groundedOnly(campaign.intent.products, evidence),
+          catalogue.products,
+        );
         droppedTargets += campaign.intent.targets.length - targets.length;
         droppedProducts += campaign.intent.products.length - products.length;
         return {

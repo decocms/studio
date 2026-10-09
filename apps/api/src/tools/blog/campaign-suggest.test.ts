@@ -3,6 +3,7 @@ import {
   describeGaps,
   evidenceFrom,
   groundedOnly,
+  hydrate,
   pairReviews,
   unreviewed,
   withoutCollectionUrls,
@@ -227,5 +228,71 @@ describe("withoutCollectionUrls", () => {
       id: "623",
       name: "Volta",
     });
+  });
+});
+
+/**
+ * The model names what belongs in the campaign; the store says where it lives.
+ * Asking it to retype a CDN URL is asking for an image that does not load, and
+ * for one run that is exactly what came back.
+ */
+describe("hydrate", () => {
+  const entry = {
+    id: "148129",
+    url: "https://loja.com.br/mochila-frozen/p",
+    images: ["https://cdn/a.jpg", "https://cdn/b.jpg"],
+  };
+
+  test("attaches the store's url and images over whatever was proposed", () => {
+    const [product] = hydrate(
+      [
+        {
+          id: "148129",
+          url: "https://wrong.invalid/x",
+          images: [] as string[],
+        },
+      ],
+      [entry],
+    );
+    expect(product?.url).toBe(entry.url);
+    expect(product?.images).toEqual(entry.images);
+  });
+
+  test("matches an id the model retyped in another case", () => {
+    const [product] = hydrate(
+      [{ id: " SKU-9 ", url: "", images: [] as string[] }],
+      [{ id: "sku-9", url: "https://loja.com.br/x/p" }],
+    );
+    expect(product?.url).toBe("https://loja.com.br/x/p");
+  });
+
+  test("keeps a proposal the catalogue does not cover", () => {
+    const [product] = hydrate(
+      [{ id: "unknown", url: "https://kept", images: ["https://kept.jpg"] }],
+      [entry],
+    );
+    expect(product?.url).toBe("https://kept");
+    expect(product?.images).toEqual(["https://kept.jpg"]);
+  });
+
+  test("caps images rather than letting a long list through", () => {
+    const [product] = hydrate(
+      [{ id: "148129", url: "", images: [] as string[] }],
+      [{ ...entry, images: ["a", "b", "c", "d", "e"] }],
+    );
+    expect(product?.images).toEqual(["a", "b", "c"]);
+  });
+
+  test("a catalogued entry with no url keeps the one proposed", () => {
+    const [target] = hydrate(
+      [{ id: "38", url: "https://loja.com.br/escolar" }],
+      [{ id: "38", url: "" }],
+    );
+    expect(target?.url).toBe("https://loja.com.br/escolar");
+  });
+
+  test("leaves a target's missing images alone rather than inventing the field", () => {
+    const [target] = hydrate([{ id: "38", url: "" }], [entry]);
+    expect(target).not.toHaveProperty("images");
   });
 });
