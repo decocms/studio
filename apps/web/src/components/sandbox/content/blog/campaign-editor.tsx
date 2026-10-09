@@ -506,7 +506,14 @@ export function CampaignEditor({
                       const kind = CAMPAIGN_TARGET_KINDS.find(
                         (k) => t(TARGET_KIND_LABEL[k]) === label,
                       );
-                      if (kind) commitTarget(index, { kind });
+                      // A collection is identified by its id, not an address —
+                      // a URL carried over from a category would be a dead link.
+                      if (kind) {
+                        commitTarget(
+                          index,
+                          kind === "collection" ? { kind, url: "" } : { kind },
+                        );
+                      }
                     }}
                   />
                   <Input
@@ -517,17 +524,23 @@ export function CampaignEditor({
                     }
                     className="h-9"
                   />
-                  <Input
-                    value={target.url}
-                    placeholder={t("sandbox.campaigns.targetUrlPlaceholder")}
-                    onChange={(e) =>
-                      patchTarget(index, { url: e.target.value })
-                    }
-                    className="h-9"
-                  />
+                  {target.kind !== "collection" && (
+                    <Input
+                      value={target.url}
+                      placeholder={t("sandbox.campaigns.targetUrlPlaceholder")}
+                      onChange={(e) =>
+                        patchTarget(index, { url: e.target.value })
+                      }
+                      className="h-9"
+                    />
+                  )}
                   <Input
                     value={target.id}
-                    placeholder={t("sandbox.campaigns.targetIdPlaceholder")}
+                    placeholder={t(
+                      target.kind === "collection"
+                        ? "sandbox.campaigns.targetCollectionIdPlaceholder"
+                        : "sandbox.campaigns.targetIdPlaceholder",
+                    )}
                     onChange={(e) => patchTarget(index, { id: e.target.value })}
                     className="h-9"
                   />
@@ -541,7 +554,7 @@ export function CampaignEditor({
                       patchTarget(index, { description: e.target.value })
                     }
                   />
-                  {!target.url.trim() && (
+                  {target.kind !== "collection" && !target.url.trim() && (
                     <p className="text-xs text-warning">
                       {t("sandbox.campaigns.targetUrlRequired")}
                     </p>

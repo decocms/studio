@@ -50,12 +50,16 @@ const TargetSchema = z.object({
   id: z
     .string()
     .max(MAX_TEXT_CHARS)
-    .describe("The store's own id, exactly as a tool reported it. '' if none."),
+    .describe(
+      "The store's own id, exactly as a tool reported it. For a collection this IS the identifier, so it is required; for a category it is optional.",
+    ),
   name: z.string().max(MAX_TEXT_CHARS),
   url: z
     .string()
     .max(MAX_TEXT_CHARS)
-    .describe("The address a reader can open. Never invented."),
+    .describe(
+      "The address a reader can open. Never invented. Always '' for a collection: a collection is a cluster the store filters by, not a page, so it has no address of its own.",
+    ),
   description: z
     .string()
     .max(MAX_TEXT_CHARS)
@@ -68,7 +72,10 @@ const ProductSchema = z.object({
   url: z.string().max(MAX_TEXT_CHARS),
   images: z
     .array(z.string().max(MAX_TEXT_CHARS))
-    .max(MAX_CAMPAIGN_PRODUCT_IMAGES),
+    .max(MAX_CAMPAIGN_PRODUCT_IMAGES)
+    .describe(
+      "Image URLs exactly as a tool reported them, never rebuilt. These are served from an image CDN whose host is NOT the store's address — copying them verbatim is the only way they load.",
+    ),
   category: z.string().max(MAX_TEXT_CHARS),
   description: z.string().max(MAX_TEXT_CHARS),
 });
@@ -136,6 +143,12 @@ BUILDING A LINK IS NOT INVENTING ONE. When you are given the brand's store addre
 
 A PRODUCT WITHOUT A LINK IS STILL A PRODUCT. If the tools named a product but reported no URL and no images, return it anyway with its id, name, category and description — the person completes it in the editor with two clicks. Dropping it loses the one thing you learned. The same goes for a target: an id and a name are worth more than an empty list.
 
+HIGHLIGHTED PRODUCTS ARE A SHELF, NOT AN EXAMPLE. One product is almost never the right answer: a post that names a single item reads like an ad for it. List every product the tools surfaced that fits this campaign — usually a handful, and up to a dozen when the catalogue has them. If the tools returned only one, say so in the trigger note rather than leaving it looking like a choice you made.
+
+IMAGE URLS ARE COPIED, NEVER BUILT. Unlike a product page, an image lives on a CDN whose host has nothing to do with the store's address. Copy the URLs a tool returned, character for character. Putting the store's address in front of an image path produces a link that silently fails to load.
+
+A COLLECTION HAS NO ADDRESS. Collections are clusters the store filters by, identified by id. Set \`url\` to '' for them and put the id in \`id\`. Only a category gets a URL.
+
 The same goes for figures. A price, a stock level or a traffic number belongs here only if a tool returned it, copied exactly.
 
 DATES. You are given today's date. A seasonal campaign should carry the period it actually runs. When the moment has no fixed date, use null rather than guessing — a wrong date is read as a commitment.
@@ -189,6 +202,18 @@ function renderBrand(
     ]
       .filter(Boolean)
       .join("\n\n") || "No brand profile has been filled in yet."
+  );
+}
+
+/**
+ * A collection is a cluster the store filters by, not a page, so it has no
+ * address of its own. The prompt says so; this is what makes it true.
+ */
+export function withoutCollectionUrls<T extends { kind: string; url: string }>(
+  targets: T[],
+): T[] {
+  return targets.map((target) =>
+    target.kind === "collection" ? { ...target, url: "" } : target,
   );
 }
 
@@ -422,7 +447,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       timeoutMs: GROUNDING_TIMEOUT_MS,
       task: `Proposing blog campaigns for ${brandName}, starting from: ${input.seed.prompt}`,
       wanted: [
-        "What is selling and what has stalled, with the product names, ids, images and categories exactly as reported — plus each one's slug or `linkText`, which is what a catalogue API returns in place of an address.",
+        "What is selling and what has stalled. For EACH product, report its name, id, main category, price, and its image URLs verbatim, plus its slug or `linkText` — a catalogue API returns that instead of an address. Several products, not one example: a shelf is the useful answer.",
         "Which categories or collections these products sit in, with their ids and their slugs or paths.",
         "What readers arrive searching for, which pages they land on, and which queries bring traffic the brand does not rank for.",
         "Any promotion, season or launch already in flight.",
@@ -464,7 +489,9 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
     const candidates = object.campaigns
       .slice(0, input.count)
       .map((campaign) => {
-        const targets = groundedOnly(campaign.intent.targets, grounding);
+        const targets = withoutCollectionUrls(
+          groundedOnly(campaign.intent.targets, grounding),
+        );
         const products = groundedOnly(campaign.intent.products, grounding);
         droppedTargets += campaign.intent.targets.length - targets.length;
         droppedProducts += campaign.intent.products.length - products.length;

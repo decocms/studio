@@ -156,6 +156,8 @@ export const sandbox = {
   "sandbox.campaigns.removeProduct": "Remover produto",
   "sandbox.campaigns.targetDescriptionPlaceholder":
     "O que entra neste recorte, e para quem",
+  "sandbox.campaigns.targetCollectionIdPlaceholder":
+    "ID da coleção na loja — é ele que identifica",
   "sandbox.campaigns.targetIdPlaceholder": "ID na loja (opcional)",
   "sandbox.campaigns.targetNamePlaceholder": "Nome da categoria ou coleção",
   "sandbox.campaigns.triggerHelpLabel": "Quando usar cada gatilho",

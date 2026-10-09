@@ -4,6 +4,7 @@ import {
   groundedOnly,
   pairReviews,
   unreviewed,
+  withoutCollectionUrls,
 } from "./campaign-suggest";
 
 const target = (name: string, url: string) => ({
@@ -171,5 +172,33 @@ describe("unreviewed", () => {
     const stand = unreviewed(3);
     expect(stand.map((r) => r.index)).toEqual([1, 2, 3]);
     expect(stand.every((r) => r.verdict === "workable")).toBe(true);
+  });
+});
+
+describe("withoutCollectionUrls", () => {
+  test("blanks the URL on a collection, which has no page of its own", () => {
+    const [target] = withoutCollectionUrls([
+      { kind: "collection", url: "https://loja.com/invented" },
+    ]);
+    expect(target?.url).toBe("");
+  });
+
+  test("leaves a category's URL alone", () => {
+    const [target] = withoutCollectionUrls([
+      { kind: "category", url: "https://loja.com/escolar" },
+    ]);
+    expect(target?.url).toBe("https://loja.com/escolar");
+  });
+
+  test("keeps every other field of the collection", () => {
+    const [target] = withoutCollectionUrls([
+      { kind: "collection", url: "https://x", id: "623", name: "Volta" },
+    ]);
+    expect(target).toEqual({
+      kind: "collection",
+      url: "",
+      id: "623",
+      name: "Volta",
+    });
   });
 });

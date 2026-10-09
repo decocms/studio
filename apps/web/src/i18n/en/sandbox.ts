@@ -153,6 +153,8 @@ export const sandbox = {
   "sandbox.campaigns.removeProduct": "Remove product",
   "sandbox.campaigns.targetDescriptionPlaceholder":
     "What this slice covers, and who for",
+  "sandbox.campaigns.targetCollectionIdPlaceholder":
+    "Collection ID in the store — this is what identifies it",
   "sandbox.campaigns.targetIdPlaceholder": "Store ID (optional)",
   "sandbox.campaigns.targetNamePlaceholder": "Category or collection name",
   "sandbox.campaigns.triggerHelpLabel": "When to use each trigger",
