@@ -97,6 +97,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
       monitoring: null as never,
       users: null as never,
       tags: null as never,
+      sprints: null as never,
       aiProviderKeys: null as never,
       secrets: null as never,
       orgFileConfigs: null as never,

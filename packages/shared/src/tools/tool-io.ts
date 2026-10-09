@@ -367,6 +367,7 @@ export interface StudioToolIO {
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
+      sprintId?: string | null | undefined;
       prUrl?: string | null | undefined;
       onDuplicate?: "create" | "return_existing" | undefined;
     };
@@ -392,6 +393,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -467,6 +469,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -541,6 +544,7 @@ export interface StudioToolIO {
       sortOrder?: number | undefined;
       previewRoutes?: string[] | undefined;
       tagIds?: string[] | undefined;
+      sprintId?: string | null | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
     };
@@ -566,6 +570,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -755,7 +760,8 @@ export interface StudioToolIO {
           | "merge_conflict_resolution"
           | "type_changed"
           | "duplicate_reported"
-          | "finding_resolved";
+          | "finding_resolved"
+          | "sprint_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -839,6 +845,81 @@ export interface StudioToolIO {
   TASK_BOARD_DISMISSED_RESTORE: {
     input: { externalKeys?: string[] | undefined };
     output: { restored: number };
+  };
+  TASK_BOARD_SPRINT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      sprints: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      }[];
+    };
+  };
+  TASK_BOARD_SPRINT_CREATE: {
+    input: {
+      name: string;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_UPDATE: {
+    input: {
+      id: string;
+      name?: string | undefined;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_START: {
+    input: { id: string };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_COMPLETE: {
+    input: { id: string; moveOpenTo?: string | null | undefined };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+      movedTo: string | null;
+      movedCount: number;
+    };
+  };
+  TASK_BOARD_SPRINT_DELETE: {
+    input: { id: string };
+    output: { deleted: boolean; movedCount: number };
   };
   TASK_ADD_REPO: {
     input: { id?: string | undefined; connectionId?: string | undefined };

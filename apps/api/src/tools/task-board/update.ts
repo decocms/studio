@@ -19,6 +19,7 @@ import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
+import { assertPlannableSprint, sprintChangeEntry } from "./sprints";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { runColumnAutomation } from "./run-column-automation";
@@ -69,6 +70,7 @@ const UPDATABLE_FIELDS = [
   "sortOrder",
   "previewRoutes",
   "tagIds",
+  "sprintId",
 ] as const;
 
 /** Whether an update touches any persisted field, as opposed to only linking a thread or a PR. */
@@ -233,6 +235,14 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       ),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
+    sprintId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Plan the card into this sprint (an id from TASK_BOARD_SPRINT_LIST), " +
+          "or null to move it to the backlog. A closed sprint takes no new cards.",
+      ),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
     prUrl: z
@@ -307,6 +317,11 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // longer org-scoped itself (the join table has no organization_id).
     if (hasFieldUpdate && !previous) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+
+    // Only a move is checked: a card left in a closed sprint stays editable.
+    if (input.sprintId && input.sprintId !== previous?.sprintId) {
+      await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
 
     if (input.status !== undefined && isDeliveryLane(input.status)) {
@@ -410,6 +425,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
           previewRoutes: normalizePreviewRoutes(input.previewRoutes),
+          sprintId: input.sprintId,
         },
         getUserId(ctx)!,
       );
@@ -442,6 +458,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (previous) {
       const actorId = getUserId(ctx)!;
       const entries = diffTaskActivityEntries(previous, item);
+      if (item.sprintId !== previous.sprintId) {
+        entries.push(
+          sprintChangeEntry(
+            await ctx.storage.sprints.listByOrg(organizationId),
+            previous.sprintId,
+            item.sprintId,
+          ),
+        );
+      }
       if (entries.length > 0) {
         await recordTaskActivities(
           ctx,
