@@ -1505,6 +1505,7 @@ export interface StudioToolIO {
         title: string;
         description: string;
         schema: Record<string, unknown>;
+        example?: Record<string, unknown> | undefined;
       }[];
       categories?: { name: string; slug: string }[] | undefined;
       authors?:

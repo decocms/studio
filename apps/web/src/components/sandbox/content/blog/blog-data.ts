@@ -2448,6 +2448,41 @@ export interface GenerationBlock {
   title: string;
   description: string;
   schema: Record<string, unknown>;
+  /** How this site already stores the block, when it has one to show. */
+  example?: Record<string, unknown>;
+}
+
+/** How long an example may be before it costs more prompt than it teaches. */
+const MAX_EXAMPLE_CHARS = 600;
+
+/**
+ * One of this block as the site already stores it.
+ *
+ * The derived schema is not always the truth. A prop whose `$ref` did not
+ * resolve comes out of `resolveSchema` typed `object` with no properties —
+ * a guess, and one a writer acts on: a `List` that stores its items as one
+ * newline-joined string was handed a schema saying "object" and dutifully
+ * wrote a map. An existing post is what actually renders, so it settles the
+ * shape where the schema only describes it.
+ *
+ * Live posts first: a planning post may itself have been generated wrong, and
+ * copying our own mistake back in would make it permanent.
+ */
+export function blockExample(
+  resolveType: string,
+  decofile: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  for (const { payload } of listBlogPayloads(decofile, "posts")) {
+    for (const raw of toArray(payload.sections)) {
+      const section = asRecord(raw);
+      if (!section || section.__resolveType !== resolveType) continue;
+      const { __resolveType: _type, ...props } = section;
+      if (Object.keys(props).length === 0) continue;
+      if (JSON.stringify(props).length > MAX_EXAMPLE_CHARS) continue;
+      return props;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2466,6 +2501,7 @@ export interface GenerationBlock {
 export function blocksForFormat(
   format: { value: string },
   meta: LiveMeta,
+  decofile: Record<string, unknown>,
   options?: BlogBlockDiscoveryOptions,
 ): GenerationBlock[] {
   const available = mentionableSections(meta, options);
@@ -2485,6 +2521,7 @@ export function blocksForFormat(
       title: section.title,
       description: section.description ?? "",
       schema: prunedSchema(resolveSchema(section.resolveType, meta)),
+      example: blockExample(section.resolveType, decofile),
     });
   }
   return blocks;

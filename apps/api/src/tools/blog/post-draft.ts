@@ -69,6 +69,12 @@ const BlockSchema = z.object({
   schema: z
     .record(z.string(), z.unknown())
     .describe("The block's JSON Schema. Its props are exactly these."),
+  example: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "One of this block as the site already stores it. Where it disagrees with the schema, it is the one that renders.",
+    ),
 });
 
 const CampaignSchema = z.object({
@@ -192,6 +198,8 @@ THE CAMPAIGN IS THE BRIEF, THE FORMAT IS THE SHAPE. The campaign says why this p
 
 THE BLOCKS ARE TYPED, AND THE TYPE IS BINDING. Each available block comes with its JSON Schema. \`props\` is a JSON object matching THAT schema — its property names, its types, its enums, everything it marks required. A prop the schema does not declare is dropped. A value the schema rejects loses the entire section, not just that prop. Read the schema before you write the section: a field called \`items\` that is typed as a string is one string, not a list, however much it sounds like a list.
 
+WHERE A BLOCK SHOWS AN EXAMPLE, THE EXAMPLE WINS. Some schemas are derived and lose the shape on the way — a prop that renders as one newline-separated string can come through typed as an object. An example is a block this site already renders, so when the two disagree, follow the example and keep the schema's property names.
+
 USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not listed does not exist on this site.
 
 THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, link them with the links given, and use their image addresses exactly as written — those sit on a CDN and rebuilding one produces an image that silently fails to load. Never name a product the campaign did not give you.
@@ -304,13 +312,16 @@ function describeBlock(block: z.infer<typeof BlockSchema>): string {
       return `${name}=${prop.type}${enumValues}${widget}`;
     },
   );
-  return `${block.name}: ${props.join(" ")}`;
+  return `${block.name}: ${props.join(" ")}${block.example ? " +example" : ""}`;
 }
 
-/** A block, with its schema, as one prompt section. */
+/** A block, with its schema and a real one of it, as one prompt section. */
 function renderBlock(block: z.infer<typeof BlockSchema>): string {
   const schema = JSON.stringify(block.schema).slice(0, MAX_SCHEMA_CHARS);
-  return `### ${block.name} — ${block.title}\n${block.description}\n\`\`\`json\n${schema}\n\`\`\``;
+  const example = block.example
+    ? `\nAs this site stores it:\n\`\`\`json\n${JSON.stringify(block.example)}\n\`\`\``
+    : "";
+  return `### ${block.name} — ${block.title}\n${block.description}\n\`\`\`json\n${schema}\n\`\`\`${example}`;
 }
 
 export const BLOG_POST_DRAFT = defineTool({

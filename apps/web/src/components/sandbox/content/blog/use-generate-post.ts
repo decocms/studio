@@ -174,7 +174,9 @@ export function useGeneratePost({
           guardrails: briefing.campaign.guardrails,
         },
         format: briefing.format,
-        blocks: blocksForFormat(briefing.format, meta, { hideDefaults }),
+        blocks: blocksForFormat(briefing.format, meta, decofile, {
+          hideDefaults,
+        }),
         categories,
         // The draft tool only attributes the post — identity is enough.
         authors: authors.map(({ name, email }) => ({ name, email })),

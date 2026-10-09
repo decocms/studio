@@ -37,6 +37,7 @@ import {
   scanCampaignSeeds,
   PLANNING_POST_KEY_PREFIX,
   emptyDraftPostPayload,
+  blockExample,
   planningMeta,
   prunedSchema,
   buildPlanningPostBlock,
@@ -2967,5 +2968,72 @@ describe("prunedSchema — loader-driven fields", () => {
         },
       },
     });
+  });
+});
+
+/**
+ * The derived schema is not always the truth: a prop whose `$ref` did not
+ * resolve arrives typed `object` with no properties, and a writer acts on that.
+ * A block the site already renders settles the shape.
+ */
+describe("blockExample", () => {
+  const LIST = "site/sections/Blog/Post/List.tsx";
+  const post = (sections: Record<string, unknown>[]) => ({
+    __resolveType: "blog/loaders/Blogpost.ts",
+    post: { title: "Um post", sections },
+  });
+
+  test("finds how the site stores a block", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": post([
+          { __resolveType: LIST, items: "a\nb", style: "ordered" },
+        ]),
+      }),
+    ).toEqual({ items: "a\nb", style: "ordered" });
+  });
+
+  test("never carries the resolveType into the example", () => {
+    const example = blockExample(LIST, {
+      "collections/blog/posts/a": post([{ __resolveType: LIST, items: "a" }]),
+    });
+    expect(example).not.toHaveProperty("__resolveType");
+  });
+
+  test("skips a block stored with no props, which teaches nothing", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": post([
+          { __resolveType: LIST },
+          { __resolveType: LIST, items: "a" },
+        ]),
+      }),
+    ).toEqual({ items: "a" });
+  });
+
+  test("skips one too long to be worth the prompt", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": post([
+          { __resolveType: LIST, items: "x".repeat(900) },
+        ]),
+      }),
+    ).toBeUndefined();
+  });
+
+  /** A planning post may have been generated wrong; copying it back in would make it permanent. */
+  test("reads live posts only, never a draft of our own making", () => {
+    expect(
+      blockExample(LIST, {
+        "blog-manager/posts/draft": {
+          name: "blog-manager/posts/draft",
+          post: { sections: [{ __resolveType: LIST, items: { "1": "a" } }] },
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  test("answers nothing for a block no post uses yet", () => {
+    expect(blockExample(LIST, {})).toBeUndefined();
   });
 });
