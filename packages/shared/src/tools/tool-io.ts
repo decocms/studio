@@ -1565,7 +1565,18 @@ export interface StudioToolIO {
       }[];
       grounded: boolean;
       toolsUsed: string[];
-      gaps: string[];
+      gaps: {
+        code:
+          | "failed"
+          | "no-site"
+          | "no-tools"
+          | "timeout-partial"
+          | "timeout-empty"
+          | "nothing-useful"
+          | "targets-dropped"
+          | "products-dropped";
+        count?: number | undefined;
+      }[];
     };
   };
   BRAND_GET: {

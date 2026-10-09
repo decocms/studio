@@ -42,7 +42,7 @@ import { AddButton, PickList, RemoveButton } from "./blocks/primitives";
 import { CollapsibleList, CollapsibleRow } from "./blocks/collapsible-row";
 import { RuleList, TermsInput } from "./blocks/rule-list";
 import { CategoryTreeList } from "./blocks/category-tree-list";
-import { reHome } from "./blocks/store-url";
+import { reHome } from "@decocms/shared/store-url";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
 import type { ProductPickerOption } from "./blocks/product-picker-source";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";

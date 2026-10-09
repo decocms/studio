@@ -1,58 +1,91 @@
 import { describe, expect, test } from "bun:test";
 import {
   describeGaps,
+  evidenceFrom,
   groundedOnly,
   pairReviews,
   unreviewed,
   withoutCollectionUrls,
 } from "./campaign-suggest";
 
-const target = (name: string, url: string) => ({
+const target = (name: string, url: string, id = "") => ({
   kind: "category" as const,
-  id: "",
+  id,
   name,
   url,
   description: "",
 });
 
-describe("groundedOnly", () => {
-  const grounding = `
-GA4 reports the top landing page is https://loja.com/ar-condicionado.
-The catalogue lists "Split Inverter 12000" at R$ 2.199.
-`;
+const catalogued = (id: string, name: string) => ({
+  id,
+  name,
+  category: "",
+  price: "",
+  slug: "",
+  images: [],
+  description: "",
+  url: "",
+});
 
-  test("keeps an item the store actually reported, by name or by url", () => {
-    const kept = groundedOnly(
-      [
-        target("Split Inverter 12000", ""),
-        target("", "https://loja.com/ar-condicionado"),
-      ],
-      grounding,
-    );
-    expect(kept).toHaveLength(2);
+describe("groundedOnly", () => {
+  const raw = `
+### ga4_report
+{"landingPage":"https://loja.com/ar-condicionado"}
+
+### catalog_search
+{"productId":"148129","productName":"Split Inverter 12000","price":2199}
+`;
+  const catalogue = {
+    products: [catalogued("148129", "Split Inverter 12000")],
+    targets: [],
+  };
+  const evidence = evidenceFrom(catalogue, raw);
+
+  test("keeps an item the catalogue holds, by id", () => {
+    expect(groundedOnly([target("", "", "148129")], evidence)).toHaveLength(1);
   });
 
-  test("drops an item that appears nowhere in the grounding", () => {
-    const kept = groundedOnly(
-      [target("Ventilador de teto", "https://loja.com/ventiladores")],
-      grounding,
-    );
-    expect(kept).toEqual([]);
+  test("keeps an item the catalogue holds, by name", () => {
+    expect(
+      groundedOnly([target("Split Inverter 12000", "")], evidence),
+    ).toHaveLength(1);
+  });
+
+  test("keeps an item only the raw tool output mentions", () => {
+    expect(
+      groundedOnly([target("https://loja.com/ar-condicionado", "")], evidence),
+    ).toHaveLength(1);
+  });
+
+  test("drops an item that appears in neither", () => {
+    expect(
+      groundedOnly(
+        [target("Ventilador de teto", "https://loja.com/ventiladores")],
+        evidence,
+      ),
+    ).toEqual([]);
   });
 
   test("matches case-insensitively, since the model retypes names", () => {
     expect(
-      groundedOnly([target("SPLIT INVERTER 12000", "")], grounding),
+      groundedOnly([target("SPLIT INVERTER 12000", "")], evidence),
     ).toHaveLength(1);
   });
 
-  test("drops everything when nothing was grounded", () => {
-    expect(groundedOnly([target("Qualquer coisa", "/x")], "")).toEqual([]);
-    expect(groundedOnly([target("Qualquer coisa", "/x")], "   ")).toEqual([]);
+  test("a name the prose paraphrased survives, because the raw output has it", () => {
+    const proseOnly = evidenceFrom({ products: [], targets: [] }, raw);
+    expect(
+      groundedOnly([target("Split Inverter 12000", "")], proseOnly),
+    ).toHaveLength(1);
   });
 
-  test("an item with neither name nor url cannot be grounded", () => {
-    expect(groundedOnly([target("", "")], grounding)).toEqual([]);
+  test("drops everything when nothing was grounded at all", () => {
+    const nothing = evidenceFrom({ products: [], targets: [] }, "");
+    expect(groundedOnly([target("Qualquer coisa", "/x")], nothing)).toEqual([]);
+  });
+
+  test("an item with neither id nor name cannot be grounded", () => {
+    expect(groundedOnly([target("", "")], evidence)).toEqual([]);
   });
 });
 
@@ -64,53 +97,47 @@ describe("describeGaps", () => {
   };
   const none = { targets: 0, products: 0 };
 
-  test("a site with no connection is told to connect one", () => {
-    const gaps = describeGaps(
-      { toolNames: [], calls: [], outcome: "no-site" },
-      "",
-      none,
-    );
-    expect(gaps[0]).toContain("no connections to read");
+  test("a site with no connection gets its own code", () => {
+    expect(
+      describeGaps({ toolNames: [], calls: [], outcome: "no-site" }, "", none),
+    ).toEqual([{ code: "no-site" }]);
   });
 
   test("a connection exposing nothing read-only says so, not 'no answer'", () => {
-    const gaps = describeGaps(
-      { toolNames: [], calls: [], outcome: "no-tools" },
-      "",
-      none,
-    );
-    expect(gaps[0]).toContain("no read-only tools");
+    expect(
+      describeGaps({ toolNames: [], calls: [], outcome: "no-tools" }, "", none),
+    ).toEqual([{ code: "no-tools" }]);
   });
 
-  test("a timeout that got answers never claims nothing answered", () => {
-    const gaps = describeGaps(
-      { toolNames: ["x"], calls: [{}, {}], outcome: "timeout" },
-      "",
-      none,
-    );
-    expect(gaps[0]).toContain("2 call(s) came back");
-    expect(gaps[0]).not.toContain("no connections");
+  test("a timeout that got answers carries how many, never claims none", () => {
+    expect(
+      describeGaps(
+        { toolNames: ["x"], calls: [{}, {}], outcome: "timeout" },
+        "",
+        none,
+      ),
+    ).toEqual([{ code: "timeout-partial", count: 2 }]);
   });
 
-  test("a timeout before any answer says that instead", () => {
-    const gaps = describeGaps(
-      { toolNames: ["x"], calls: [], outcome: "timeout" },
-      "",
-      none,
-    );
-    expect(gaps[0]).toContain("ran out of time before anything came back");
+  test("a timeout before any answer is a different code", () => {
+    expect(
+      describeGaps(
+        { toolNames: ["x"], calls: [], outcome: "timeout" },
+        "",
+        none,
+      ),
+    ).toEqual([{ code: "timeout-empty" }]);
   });
 
   test("distinguishes reachable-but-silent from absent", () => {
-    const gaps = describeGaps(ok, "", none);
-    expect(gaps[0]).toContain("reported nothing useful");
+    expect(describeGaps(ok, "", none)).toEqual([{ code: "nothing-useful" }]);
   });
 
-  test("reports what was dropped for lack of backing", () => {
-    const gaps = describeGaps(ok, "something", { targets: 2, products: 1 });
-    expect(gaps).toHaveLength(2);
-    expect(gaps[0]).toContain("2 proposed target(s)");
-    expect(gaps[1]).toContain("1 proposed product(s)");
+  test("reports what was dropped, with the count the UI words", () => {
+    expect(describeGaps(ok, "something", { targets: 2, products: 1 })).toEqual([
+      { code: "targets-dropped", count: 2 },
+      { code: "products-dropped", count: 1 },
+    ]);
   });
 
   test("is silent when the pass worked and nothing was dropped", () => {

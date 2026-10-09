@@ -12,7 +12,7 @@
  * of it.
  */
 
-import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
+import { sanitizeSiteUrl } from "./deco-site-production-url";
 
 /** Lets a relative path parse; only pathname/search/hash are read back out. */
 const RELATIVE_BASE = "https://placeholder.invalid";
@@ -23,9 +23,10 @@ const RELATIVE_BASE = "https://placeholder.invalid";
  * Returns the input untouched whenever `storeUrl` is missing or unusable — a
  * blank brand field must never make a working link worse than it was.
  *
- * Narrower than `categoryPathFromUrl` in `product-picker-source.ts`, which also
- * drops the host but keeps only the path segment and discards the query. A PDP
- * address routinely carries one (`?skuId=`), so this keeps it.
+ * Also the join for a bare slug: a catalogue API answers with `linkText` rather
+ * than an address, and `/mochila-frozen/p` resolved against the store is a link
+ * the store itself authored. Shared because both ends need it — the editor when
+ * someone picks a product, the generator when a tool reported only the slug.
  */
 export function reHome(url: string | undefined, storeUrl: string): string {
   const raw = (url ?? "").trim();

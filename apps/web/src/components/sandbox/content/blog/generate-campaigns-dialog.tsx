@@ -84,6 +84,24 @@ const PHASES = [
 /** Reading the store dominates the wait, so the first phase holds longest. */
 const PHASE_MS = [25_000, 25_000];
 
+/**
+ * A gap code, worded.
+ *
+ * The tool answers in codes rather than sentences: it runs server-side with no
+ * notion of who is reading, and a sentence it composed would arrive in English
+ * inside an interface the person set to their own language.
+ */
+const GAP_KEYS = {
+  "no-site": "sandbox.campaignGen.gapNoSite",
+  "no-tools": "sandbox.campaignGen.gapNoTools",
+  "timeout-partial": "sandbox.campaignGen.gapTimeoutPartial",
+  "timeout-empty": "sandbox.campaignGen.gapTimeoutEmpty",
+  failed: "sandbox.campaignGen.gapFailed",
+  "nothing-useful": "sandbox.campaignGen.gapNothingUseful",
+  "targets-dropped": "sandbox.campaignGen.gapTargetsDropped",
+  "products-dropped": "sandbox.campaignGen.gapProductsDropped",
+} as const satisfies Record<string, TranslationKey>;
+
 export function GenerateCampaignsDialog({
   open,
   onOpenChange,
@@ -369,7 +387,9 @@ export function GenerateCampaignsDialog({
                   />
                   <ul className="space-y-1 text-xs text-muted-foreground">
                     {result.gaps.map((gap) => (
-                      <li key={gap}>{gap}</li>
+                      <li key={gap.code}>
+                        {t(GAP_KEYS[gap.code], { count: gap.count ?? 0 })}
+                      </li>
                     ))}
                   </ul>
                 </div>

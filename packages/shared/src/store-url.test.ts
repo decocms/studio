@@ -50,4 +50,10 @@ describe("reHome", () => {
       "https://loja.com.br/escolar",
     );
   });
+
+  test("joins a bare slug, which is what a catalogue API returns", () => {
+    expect(reHome("mochila-frozen/p", STORE)).toBe(
+      "https://loja.com.br/mochila-frozen/p",
+    );
+  });
 });

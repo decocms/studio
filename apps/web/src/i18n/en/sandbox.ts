@@ -241,6 +241,22 @@ export const sandbox = {
   "sandbox.campaignGen.countLabel": "How many proposals",
   "sandbox.campaignGen.create": "Create {count} campaign(s)",
   "sandbox.campaignGen.failed": "Could not generate the campaigns",
+  "sandbox.campaignGen.gapNoSite":
+    "This site has no connections to read, so nothing here was checked against the store: targets, products and any figure come from the brand context alone.",
+  "sandbox.campaignGen.gapNoTools":
+    "The connected systems offer no read-only tools, so none could be consulted. Nothing here was checked against the store.",
+  "sandbox.campaignGen.gapTimeoutPartial":
+    "The store was still answering when the search ran out of time — {count} call(s) came back, but the findings were discarded. Try again, or narrow the starting point.",
+  "sandbox.campaignGen.gapTimeoutEmpty":
+    "The search for store data ran out of time before anything came back.",
+  "sandbox.campaignGen.gapFailed":
+    "The search for store data could not be completed, so nothing here was checked against it.",
+  "sandbox.campaignGen.gapNothingUseful":
+    "The connected systems were reachable but reported nothing useful for this starting point.",
+  "sandbox.campaignGen.gapTargetsDropped":
+    "{count} proposed target(s) were dropped: nothing in the store data backed them.",
+  "sandbox.campaignGen.gapProductsDropped":
+    "{count} proposed product(s) were dropped: nothing in the store data backed them.",
   "sandbox.campaignGen.generate": "Generate",
   "sandbox.campaignGen.keywordsHint":
     "The terms this campaign should aim at. Enter or comma adds one.",

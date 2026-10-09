@@ -9,6 +9,8 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import {
+  type Catalogue,
+  extractCatalogue,
   type GroundingOutcome,
   groundSiteReport,
   renderGrounding,
@@ -143,9 +145,9 @@ BUILDING A LINK IS NOT INVENTING ONE. When you are given the brand's store addre
 
 A PRODUCT WITHOUT A LINK IS STILL A PRODUCT. If the tools named a product but reported no URL and no images, return it anyway with its id, name, category and description — the person completes it in the editor with two clicks. Dropping it loses the one thing you learned. The same goes for a target: an id and a name are worth more than an empty list.
 
-HIGHLIGHTED PRODUCTS ARE A SHELF, NOT AN EXAMPLE. One product is almost never the right answer: a post that names a single item reads like an ad for it. List every product the tools surfaced that fits this campaign — usually a handful, and up to a dozen when the catalogue has them. If the tools returned only one, say so in the trigger note rather than leaving it looking like a choice you made.
+HIGHLIGHTED PRODUCTS ARE A SHELF, NOT AN EXAMPLE. One product is almost never the right answer: a post that names a single item reads like an ad for it. You are given the store's catalogue as a list — take every entry in it that fits this campaign, copying the \`id\`, \`name\`, \`url\` and \`images\` as written. Usually a handful, and up to a dozen when the list has them. Returning one of fifteen is a failure to choose, not a choice. If the list genuinely holds only one that fits, say so in the trigger note.
 
-IMAGE URLS ARE COPIED, NEVER BUILT. Unlike a product page, an image lives on a CDN whose host has nothing to do with the store's address. Copy the URLs a tool returned, character for character. Putting the store's address in front of an image path produces a link that silently fails to load.
+IMAGE URLS ARE COPIED, NEVER BUILT. They are given to you in the catalogue's \`images\` field, already verbatim. Copy them across, character for character, and keep up to three per product. An image lives on a CDN whose host has nothing to do with the store's address, so putting the store's address in front of an image path produces a link that silently fails to load. If a catalogue entry has no images, return the product anyway with an empty list.
 
 A COLLECTION HAS NO ADDRESS. Collections are clusters the store filters by, identified by id. Set \`url\` to '' for them and put the id in \`id\`. Only a category gets a URL.
 
@@ -206,6 +208,21 @@ function renderBrand(
 }
 
 /**
+ * The shelf, as the generator sees it.
+ *
+ * JSON rather than prose because the model is meant to copy out of it, and a
+ * field it can address by name is harder to paraphrase than a sentence. This is
+ * where the image URLs and the composed product links live — the markdown
+ * grounding above has already lost them.
+ */
+function renderCatalogue(catalogue: Catalogue): string | null {
+  if (catalogue.products.length === 0 && catalogue.targets.length === 0) {
+    return null;
+  }
+  return `## The store's actual catalogue — choose from here\n\nTranscribed from the same tool results, field by field. Any product or target you return must come from this list, copied: its \`id\`, its \`name\`, its \`url\` and its \`images\` exactly as written here. Nothing outside this list exists.\n\n${JSON.stringify(catalogue, null, 2)}`;
+}
+
+/**
  * A collection is a cluster the store filters by, not a page, so it has no
  * address of its own. The prompt says so; this is what makes it true.
  */
@@ -217,25 +234,53 @@ export function withoutCollectionUrls<T extends { kind: string; url: string }>(
   );
 }
 
+/** What a proposal is checked against: the catalogue first, raw output after. */
+export interface Evidence {
+  ids: Set<string>;
+  names: Set<string>;
+  raw: string;
+}
+
+const norm = (value: string) => value.trim().toLowerCase();
+
+/** The index a campaign's targets and products are checked against. */
+export function evidenceFrom(catalogue: Catalogue, raw: string): Evidence {
+  const entries = [...catalogue.products, ...catalogue.targets];
+  return {
+    ids: new Set(entries.map((e) => norm(e.id)).filter(Boolean)),
+    names: new Set(entries.map((e) => norm(e.name)).filter(Boolean)),
+    raw: raw.toLowerCase(),
+  };
+}
+
 /**
  * Drop anything the store never reported.
  *
  * The prompt forbids inventing a target or a product, but a prompt is a request
- * and this is the guarantee. With no grounding there is nothing to check
- * against, so everything goes — that is the honest reading of "nothing was
- * verifiable", and the UI says so rather than showing invented links.
+ * and this is the guarantee. With nothing to check against, everything goes —
+ * that is the honest reading of "nothing was verifiable", and the UI says so
+ * rather than showing invented links.
+ *
+ * Matching is by id against the extracted catalogue first, because that is
+ * exact. The raw tool output is the fallback: it is what a tool actually
+ * returned, so a name in it is a name the store used. What this must never
+ * match against is the prose summary — that is one model's paraphrase, and a
+ * category it chose to abbreviate is not a category the store stopped having.
  */
-export function groundedOnly<T extends { name: string; url: string }>(
-  items: T[],
-  grounding: string,
-): T[] {
-  if (!grounding.trim()) return [];
-  const haystack = grounding.toLowerCase();
+export function groundedOnly<
+  T extends { id?: string; name: string; url: string },
+>(items: T[], evidence: Evidence): T[] {
+  const indexed = evidence.ids.size > 0 || evidence.names.size > 0;
+  if (!indexed && !evidence.raw.trim()) return [];
   return items.filter((item) => {
-    const name = item.name.trim().toLowerCase();
-    const url = item.url.trim().toLowerCase();
+    const id = norm(item.id ?? "");
+    const name = norm(item.name);
+    if (id && evidence.ids.has(id)) return true;
+    if (name && evidence.names.has(name)) return true;
+    if (!evidence.raw) return false;
     return (
-      (!!name && haystack.includes(name)) || (!!url && haystack.includes(url))
+      (!!id && evidence.raw.includes(id)) ||
+      (!!name && evidence.raw.includes(name))
     );
   });
 }
@@ -247,45 +292,79 @@ export function groundedOnly<T extends { name: string; url: string }>(
  * because telling someone nothing answered when their store was mid-reply is
  * how they go off and debug a connection that works.
  */
+const GAP_CODES = [
+  "no-site",
+  "no-tools",
+  "timeout-partial",
+  "timeout-empty",
+  "failed",
+  "nothing-useful",
+  "targets-dropped",
+  "products-dropped",
+] as const;
+
+const GapSchema = z.object({
+  code: z.enum(GAP_CODES),
+  /** How many were dropped. Absent for the codes that count nothing. */
+  count: z.number().int().optional(),
+});
+export type Gap = z.infer<typeof GapSchema>;
+
+/**
+ * A gap as a sentence, for the model reading `modelSummary`.
+ *
+ * The UI words these itself, from the code, in the person's own locale — this
+ * exists because an agent calling the tool has no translation table and a bare
+ * `targets-dropped` tells it nothing.
+ */
+function gapInEnglish(gap: Gap): string {
+  switch (gap.code) {
+    case "no-site":
+      return "the site has no connections to read.";
+    case "no-tools":
+      return "the connected systems offer no read-only tools.";
+    case "timeout-partial":
+      return `the search ran out of time after ${gap.count} call(s).`;
+    case "timeout-empty":
+      return "the search ran out of time before anything came back.";
+    case "failed":
+      return "the search for store data could not be completed.";
+    case "nothing-useful":
+      return "the connected systems reported nothing useful for this seed.";
+    case "targets-dropped":
+      return `${gap.count} proposed target(s) were dropped as ungrounded.`;
+    case "products-dropped":
+      return `${gap.count} proposed product(s) were dropped as ungrounded.`;
+  }
+}
+
 export function describeGaps(
   report: { toolNames: string[]; calls: unknown[]; outcome: GroundingOutcome },
   grounding: string,
   dropped: { targets: number; products: number },
-): string[] {
-  const gaps: string[] = [];
+): Gap[] {
+  const gaps: Gap[] = [];
   const answered = report.calls.length;
   if (report.outcome === "no-site") {
-    gaps.push(
-      "This site has no connections to read, so nothing here was checked against the store: targets, products and any figure are the brand context only.",
-    );
+    gaps.push({ code: "no-site" });
   } else if (report.outcome === "no-tools") {
-    gaps.push(
-      "The connected systems offer no read-only tools, so none could be consulted. Nothing here was checked against the store.",
-    );
+    gaps.push({ code: "no-tools" });
   } else if (report.outcome === "timeout") {
     gaps.push(
       answered > 0
-        ? `The store was still answering when the search ran out of time — ${answered} call(s) came back, but the findings were discarded. Try again, or narrow the starting point.`
-        : "The search for store data ran out of time before anything came back.",
+        ? { code: "timeout-partial", count: answered }
+        : { code: "timeout-empty" },
     );
   } else if (report.outcome === "failed") {
-    gaps.push(
-      "The search for store data could not be completed, so nothing here was checked against it.",
-    );
+    gaps.push({ code: "failed" });
   } else if (!grounding.trim()) {
-    gaps.push(
-      "The connected systems were reachable but reported nothing useful for this seed.",
-    );
+    gaps.push({ code: "nothing-useful" });
   }
   if (dropped.targets > 0) {
-    gaps.push(
-      `${dropped.targets} proposed target(s) were dropped: nothing in the store data backed them.`,
-    );
+    gaps.push({ code: "targets-dropped", count: dropped.targets });
   }
   if (dropped.products > 0) {
-    gaps.push(
-      `${dropped.products} proposed product(s) were dropped: nothing in the store data backed them.`,
-    );
+    gaps.push({ code: "products-dropped", count: dropped.products });
   }
   return gaps;
 }
@@ -413,8 +492,8 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
     grounded: z.boolean(),
     /** The tools actually called — offered is not the same as consulted. */
     toolsUsed: z.array(z.string()),
-    /** Plain sentences about what could not be checked. */
-    gaps: z.array(z.string()),
+    /** What could not be checked, as codes the caller words in its own locale. */
+    gaps: z.array(GapSchema),
   }),
 
   // Two model passes plus a tool-calling sweep — a spent envelope has to stop it.
@@ -425,7 +504,11 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       .map((c) => `${c.name} (${c.review.verdict})`)
       .join(
         "; ",
-      )}. ${r.grounded ? "Grounded in the site's systems." : "No store data available."} Not yet saved.`,
+      )}. ${r.grounded ? "Grounded in the site's systems." : "No store data available."}${
+      r.gaps.length > 0
+        ? ` Not checked: ${r.gaps.map(gapInEnglish).join(" ")}`
+        : ""
+    } Not yet saved.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -456,6 +539,14 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
     });
 
     const grounding = report.grounding;
+    const catalogue = await extractCatalogue(
+      ctx,
+      organizationId,
+      report.evidence,
+      input.brand.storeUrl,
+      "BLOG_CAMPAIGN_SUGGEST",
+    );
+    const evidence = evidenceFrom(catalogue, report.evidence);
     const today = new Date().toISOString().slice(0, 10);
 
     const tier = await resolveTier(ctx, "smart");
@@ -476,6 +567,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
           `## Terms to aim at\n${input.seed.keywords.map((k) => `- ${k}`).join("\n")}`,
         renderGrounding(grounding) ??
           "## What the store reported\nNo connected system answered. Leave `targets` and `products` empty — do not fill them from what you know about the category.",
+        renderCatalogue(catalogue),
         input.existingNames.length > 0 &&
           `## Campaigns this brand already has\n${input.existingNames.map((n) => `- ${n}`).join("\n")}`,
         `## Your task\nPropose at most ${input.count} campaign(s). One is a good answer when the seed only supports one.`,
@@ -490,9 +582,9 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       .slice(0, input.count)
       .map((campaign) => {
         const targets = withoutCollectionUrls(
-          groundedOnly(campaign.intent.targets, grounding),
+          groundedOnly(campaign.intent.targets, evidence),
         );
-        const products = groundedOnly(campaign.intent.products, grounding);
+        const products = groundedOnly(campaign.intent.products, evidence);
         droppedTargets += campaign.intent.targets.length - targets.length;
         droppedProducts += campaign.intent.products.length - products.length;
         return {

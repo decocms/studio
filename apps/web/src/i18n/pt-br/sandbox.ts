@@ -245,6 +245,22 @@ export const sandbox = {
   "sandbox.campaignGen.countLabel": "Quantas propostas",
   "sandbox.campaignGen.create": "Criar {count} campanha(s)",
   "sandbox.campaignGen.failed": "Não foi possível gerar as campanhas",
+  "sandbox.campaignGen.gapNoSite":
+    "Este site não tem conexões para consultar, então nada aqui foi conferido com a loja: alvos, produtos e qualquer número vêm só do contexto da marca.",
+  "sandbox.campaignGen.gapNoTools":
+    "Os sistemas conectados não oferecem nenhuma ferramenta de leitura, então nenhum pôde ser consultado. Nada aqui foi conferido com a loja.",
+  "sandbox.campaignGen.gapTimeoutPartial":
+    "A loja ainda estava respondendo quando a busca estourou o tempo — {count} chamada(s) voltaram, mas os achados foram descartados. Tente de novo, ou estreite o ponto de partida.",
+  "sandbox.campaignGen.gapTimeoutEmpty":
+    "A busca por dados da loja estourou o tempo antes de qualquer coisa voltar.",
+  "sandbox.campaignGen.gapFailed":
+    "A busca por dados da loja não pôde ser concluída, então nada aqui foi conferido com ela.",
+  "sandbox.campaignGen.gapNothingUseful":
+    "Os sistemas conectados responderam, mas não trouxeram nada de útil para este ponto de partida.",
+  "sandbox.campaignGen.gapTargetsDropped":
+    "{count} alvo(s) propostos foram descartados: nada nos dados da loja os sustentava.",
+  "sandbox.campaignGen.gapProductsDropped":
+    "{count} produto(s) propostos foram descartados: nada nos dados da loja os sustentava.",
   "sandbox.campaignGen.generate": "Gerar",
   "sandbox.campaignGen.keywordsHint":
     "Os termos que essa campanha deve mirar. Enter ou vírgula adiciona.",

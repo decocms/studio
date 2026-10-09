@@ -14,7 +14,7 @@ import type { LinkSource } from "@/components/sections-editor/rich-text-link-con
 import { applyBlogPageSlug, findBlogPageSlug } from "../blog-preview-url";
 import { listPostsWithMeta, readBlogContext } from "../blog-data";
 import { str } from "./primitives";
-import { reHome } from "./store-url";
+import { reHome } from "@decocms/shared/store-url";
 import {
   buildProductRequests,
   type ProductPickerOption,
