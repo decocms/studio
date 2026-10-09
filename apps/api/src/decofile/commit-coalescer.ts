@@ -34,9 +34,31 @@ import {
 
 const MAX_CAS_ATTEMPTS = 3;
 
+/**
+ * Repository files to write alongside the blocks. Pass a function when the
+ * content is a read-modify-write of what is already in the tree (a
+ * `package.json` gaining a dependency): it is called with the head each commit
+ * attempt is built against, so a CAS retry recomputes against the branch as it
+ * now is instead of replaying bytes derived from the head it lost to.
+ */
+export type DecofileFileSource =
+  | FileChange[]
+  | ((headSha: string) => Promise<FileChange[]>);
+
 export interface DecofilePatch {
   set?: Record<string, unknown>;
   delete?: string[];
+  /**
+   * Repo-root-relative files written in the SAME commit as the blocks — the
+   * caller prefixes the package path itself.
+   *
+   * Installing an app is the case this exists for: the block is useless
+   * without the module that resolves it (and, on TanStack, the dependency and
+   * the registry entry), so landing them separately leaves the branch broken
+   * in between. Not reachable from the HTTP PATCH surface — a browser must
+   * never name a repository path.
+   */
+  files?: DecofileFileSource;
 }
 
 export interface CommitDeps {
@@ -50,6 +72,8 @@ export interface CommitDeps {
 interface Batch {
   set: Map<string, unknown>;
   del: Set<string>;
+  /** Resolved per commit attempt; later sources win a shared path. */
+  files: DecofileFileSource[];
   deps: CommitDeps;
   resolvers: Array<(sha: string) => void>;
   rejecters: Array<(err: unknown) => void>;
@@ -81,6 +105,7 @@ export function enqueueDecofilePatch(
     state.pending = {
       set: new Map(),
       del: new Set(),
+      files: [],
       deps,
       resolvers: [],
       rejecters: [],
@@ -96,6 +121,7 @@ export function enqueueDecofilePatch(
     batch.del.add(key);
     batch.set.delete(key);
   }
+  if (patch.files) batch.files.push(patch.files);
   const done = new Promise<string>((resolve, reject) => {
     batch.resolvers.push(resolve);
     batch.rejecters.push(reject);
@@ -136,7 +162,9 @@ async function commitBatch(batch: Batch): Promise<string> {
     const tree = await client.listDecofileEntries(headSha, packagePath);
     const entries = blockEntriesInTree(tree, packagePath);
 
-    const writes: FileChange[] = [];
+    // First, so a block write of the same path would win.
+    const extraFiles = await resolveFiles(batch, headSha);
+    const writes: FileChange[] = [...extraFiles];
     // Post-patch view of the blocks dir, for blocks.gen.json regeneration.
     const nextBlocks = new Map<
       string,
@@ -200,7 +228,10 @@ async function commitBatch(batch: Batch): Promise<string> {
     try {
       const { sha } = await client.commitFiles({
         branch,
-        message: commitMessage(batch),
+        message: commitMessage(
+          batch,
+          extraFiles.map((file) => file.path),
+        ),
         expectedHead: headSha,
         changes: writes,
       });
@@ -218,7 +249,20 @@ async function commitBatch(batch: Batch): Promise<string> {
   }
 }
 
-function commitMessage(batch: Batch): string {
+/** The batch's extra files at `headSha`, deduped by path with the last winning. */
+async function resolveFiles(
+  batch: Batch,
+  headSha: string,
+): Promise<FileChange[]> {
+  const byPath = new Map<string, FileChange>();
+  for (const source of batch.files) {
+    const files = typeof source === "function" ? await source(headSha) : source;
+    for (const file of files) byPath.set(file.path, file);
+  }
+  return [...byPath.values()];
+}
+
+function commitMessage(batch: Batch, filePaths: string[]): string {
   const summarize = (keys: string[]): string => {
     const shown = keys.slice(0, 3).join(", ");
     return keys.length > 3 ? `${shown} (+${keys.length - 3} more)` : shown;
@@ -227,6 +271,7 @@ function commitMessage(batch: Batch): string {
   if (batch.set.size > 0)
     parts.push(`update ${summarize([...batch.set.keys()])}`);
   if (batch.del.size > 0) parts.push(`delete ${summarize([...batch.del])}`);
+  if (filePaths.length > 0) parts.push(`write ${summarize(filePaths)}`);
   const subject = `chore(decofile): ${parts.join("; ")}`;
   return appendCoAuthorTrailer(subject, batch.deps.coAuthor);
 }
