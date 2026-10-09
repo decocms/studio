@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Plus,
   Stars02,
+  Trash01,
   SearchLg,
   Columns03,
   List,
@@ -34,6 +35,16 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { str } from "./blocks/primitives";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import {
@@ -212,6 +223,14 @@ export function CampaignsPanel({
     }
   };
 
+  /**
+   * Deleting a campaign is final — there is no archived lane to land in, the
+   * way a post has. So it asks first, and asks from wherever it was triggered.
+   */
+  const [pendingDelete, setPendingDelete] = useState<CampaignEntry | null>(
+    null,
+  );
+
   const removeCampaign = (key: string) => {
     deleteBlock.mutate({ blockKey: key });
     setOpenKey((open) => (open === key ? null : open));
@@ -347,6 +366,7 @@ export function CampaignsPanel({
                               campaign={campaign}
                               moving={movingKeys.has(campaign.key)}
                               onOpen={() => setOpenKey(campaign.key)}
+                              onDelete={() => setPendingDelete(campaign)}
                             />
                           ))
                         )}
@@ -380,7 +400,11 @@ export function CampaignsPanel({
               ) : (
                 <ul className="divide-y">
                   {listed.map((campaign) => (
-                    <li key={campaign.key}>
+                    <li key={campaign.key} className="group/row relative">
+                      <DeleteButton
+                        label={t("sandbox.campaigns.remove")}
+                        onDelete={() => setPendingDelete(campaign)}
+                      />
                       <button
                         type="button"
                         onClick={() => setOpenKey(campaign.key)}
@@ -390,7 +414,7 @@ export function CampaignsPanel({
                           campaign.key === detailKey && "bg-muted",
                         )}
                       >
-                        <p className="truncate text-sm font-medium">
+                        <p className="truncate pr-6 text-sm font-medium">
                           {campaign.name || t("sandbox.campaigns.untitled")}
                         </p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -415,7 +439,10 @@ export function CampaignsPanel({
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
                 onSave={(data) => save.mutate({ blockKey: detailKey, data })}
-                onRemove={() => removeCampaign(detailKey)}
+                onRemove={() => {
+                  const campaign = campaigns.find((c) => c.key === detailKey);
+                  if (campaign) setPendingDelete(campaign);
+                }}
                 isSaving={save.isPending}
                 sandboxRef={sandboxRef}
                 storeUrl={storeUrl}
@@ -428,6 +455,40 @@ export function CampaignsPanel({
           </div>
         </div>
       )}
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sandbox.campaigns.deleteTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sandbox.campaigns.deleteDescription", {
+                name: pendingDelete?.name || t("sandbox.campaigns.untitled"),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("sandbox.campaigns.deleteCancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDelete) removeCampaign(pendingDelete.key);
+                setPendingDelete(null);
+              }}
+            >
+              {t("sandbox.campaigns.deleteConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <GenerateCampaignsDialog
         open={generateOpen}
@@ -458,7 +519,10 @@ export function CampaignsPanel({
               blockKey={boardKey}
               block={decofile[boardKey] as Record<string, unknown>}
               onSave={(data) => save.mutate({ blockKey: boardKey, data })}
-              onRemove={() => removeCampaign(boardKey)}
+              onRemove={() => {
+                const campaign = campaigns.find((c) => c.key === boardKey);
+                if (campaign) setPendingDelete(campaign);
+              }}
               onClose={() => setOpenKey(null)}
               isSaving={save.isPending}
               sandboxRef={sandboxRef}
@@ -475,41 +539,80 @@ function CampaignCard({
   campaign,
   moving,
   onOpen,
+  onDelete,
 }: {
   campaign: CampaignEntry;
   /** A status write is in flight — freeze it so a second drop cannot race. */
   moving: boolean;
   onOpen: () => void;
+  onDelete: () => void;
 }) {
   const t = useT();
   const period = periodLabel(campaign);
 
   return (
-    <button
-      type="button"
-      draggable={!moving}
-      onDragStart={(e) => e.dataTransfer.setData(DRAG_KEY, campaign.key)}
-      onClick={onOpen}
+    <div
       className={cn(
-        "block w-full rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40",
-        moving
-          ? "cursor-wait opacity-80"
-          : "cursor-grab active:cursor-grabbing",
+        "group/card relative rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40",
+        moving && "opacity-80",
       )}
     >
-      <p className="line-clamp-2 text-sm font-medium">
-        {campaign.name || t("sandbox.campaigns.untitled")}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="max-w-full truncate">
-          {t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type])}
-        </Badge>
-        {period && (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {period}
-          </span>
+      <DeleteButton
+        label={t("sandbox.campaigns.remove")}
+        disabled={moving}
+        onDelete={onDelete}
+      />
+      <button
+        type="button"
+        draggable={!moving}
+        onDragStart={(e) => e.dataTransfer.setData(DRAG_KEY, campaign.key)}
+        onClick={onOpen}
+        className={cn(
+          "block w-full p-3 text-left",
+          moving ? "cursor-wait" : "cursor-grab active:cursor-grabbing",
         )}
-      </div>
+      >
+        <p className="line-clamp-2 pr-6 text-sm font-medium">
+          {campaign.name || t("sandbox.campaigns.untitled")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge variant="secondary" className="max-w-full truncate">
+            {t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type])}
+          </Badge>
+          {period && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {period}
+            </span>
+          )}
+        </div>
+      </button>
+    </div>
+  );
+}
+
+/** Reveals on hover, like the post board's. Stops the click reaching the card. */
+function DeleteButton({
+  label,
+  onDelete,
+  disabled,
+}: {
+  label: string;
+  onDelete: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete();
+      }}
+      className="absolute right-2 top-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100"
+    >
+      <Trash01 size={13} />
     </button>
   );
 }

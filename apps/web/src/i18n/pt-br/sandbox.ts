@@ -284,6 +284,11 @@ export const sandbox = {
   "sandbox.campaigns.avoidNamePlaceholder": "Sobre o que é este guardrail",
   "sandbox.campaigns.close": "Fechar",
   "sandbox.campaigns.collapseLane": "Recolher {lane}",
+  "sandbox.campaigns.deleteCancel": "Cancelar",
+  "sandbox.campaigns.deleteConfirm": "Excluir",
+  "sandbox.campaigns.deleteDescription":
+    "“{name}” será apagada de vez, com os alvos, produtos e guardrails dentro dela. Os posts já escritos a partir dela continuam existindo.",
+  "sandbox.campaigns.deleteTitle": "Excluir esta campanha?",
   "sandbox.campaigns.empty":
     "Nenhuma campanha ainda. Campanha é um momento que vale escrever — um lançamento, uma data, uma busca que você não responde.",
   "sandbox.campaigns.expandLane": "Expandir {lane}",
