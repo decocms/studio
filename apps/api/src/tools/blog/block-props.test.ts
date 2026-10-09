@@ -170,3 +170,34 @@ describe("clearUnfilled", () => {
     });
   });
 });
+
+/**
+ * deco's `@format` picks an editor control, not a value constraint. ajv has
+ * never heard of `dynamic-options` and says so once per compile — a line per
+ * block per run, and a red herring every time someone reads the log.
+ */
+describe("readProps — widget hints", () => {
+  const SHELF = {
+    type: "object",
+    properties: {
+      products: {
+        type: "array",
+        items: { type: "string" },
+        format: "dynamic-options",
+      },
+      body: { type: "string", format: "textarea" },
+    },
+  };
+
+  test("a widget format never decides whether props are valid", () => {
+    expect(
+      readProps('{"products":["1948858"],"body":"oi"}', SHELF).props,
+    ).toEqual({ products: ["1948858"], body: "oi" });
+  });
+
+  test("the type under the hint is still enforced", () => {
+    expect(readProps('{"products":"1948858"}', SHELF).reason).toContain(
+      "must be array",
+    );
+  });
+});

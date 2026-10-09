@@ -102,9 +102,44 @@ export function readProps(raw: string, schema: Schema): PropsRead {
   const pruned = pruneProps(parsed, schema);
   const record = asSchema(pruned);
   if (!record) return { reason: "props are not an object" };
-  const { valid, errorMessage } =
-    sharedJsonSchemaValidator.getValidator(schema)(record);
+  const { valid, errorMessage } = sharedJsonSchemaValidator.getValidator(
+    forValidation(schema),
+  )(record);
   return valid ? { props: record } : { reason: errorMessage };
+}
+
+/** One stripped copy per schema, so the validator cache still hits by identity. */
+const validationSchemas = new WeakMap<Schema, Schema>();
+
+/**
+ * The schema with its widget hints taken out, for the validator alone.
+ *
+ * deco's `@format` picks an editor control — `textarea`, `dynamic-options`,
+ * `image-uri` — not a value constraint. ajv has never heard of them, ignores
+ * them, and says so once per compile, which is a line in the log for every
+ * block on every run and a red herring every time someone reads it.
+ *
+ * Only the copy ajv sees loses them. The prompt keeps `format`, because it is
+ * how the writer learns a field is loader-driven, and {@link imageRequests}
+ * reads it to find where an image was asked for.
+ */
+function forValidation(schema: Schema): Schema {
+  const cached = validationSchemas.get(schema);
+  if (cached) return cached;
+  const stripped = withoutFormats(schema) as Schema;
+  validationSchemas.set(schema, stripped);
+  return stripped;
+}
+
+function withoutFormats(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(withoutFormats);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Schema)) {
+    if (key === "format") continue;
+    out[key] = withoutFormats(value);
+  }
+  return out;
 }
 
 function message(err: unknown): string {
