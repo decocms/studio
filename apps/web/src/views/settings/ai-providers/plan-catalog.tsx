@@ -20,6 +20,7 @@ import { SettingsSection } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 import {
+  CUSTOM_PLAN_ID,
   FEATURE_ROWS,
   PlanPlant,
   SALES_CONTACT_HREF,
@@ -47,11 +48,11 @@ import { KEYS } from "@/lib/query-keys";
  *
  * Allowances stay on the gateway; prices come from Stripe (`usePlanPrices`).
  * Custom is not in the gateway's public list — deco staff assign it by
- * contract — so it is a static card here with no price, only a contact.
+ * contract — so it is a static card here with no price, only a contact. An org
+ * on it still sees the catalog and may move to any listed plan.
  *
  * An org deco flagged `invoice_upgrade` may also take a plan now and pay for
- * it on its deco invoice (`AI_PLAN_INVOICE_UPGRADE`) — on a contract plan,
- * only once its AI usage is spent.
+ * it on its deco invoice (`AI_PLAN_INVOICE_UPGRADE`).
  */
 
 /** The plans `AI_PLAN_INVOICE_UPGRADE` accepts. */
@@ -81,16 +82,15 @@ export function PlanCatalog() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
-  // Only a flagged org, and only at its limit — the same two conditions
-  // AI_PLAN_INVOICE_UPGRADE enforces, so the button never offers a refusal.
-  const canInvoice =
-    entitlements?.features.invoice_upgrade === true &&
-    entitlements.usage?.state === "exhausted";
+  // Same flag AI_PLAN_INVOICE_UPGRADE enforces, so the button never offers a
+  // refusal.
+  const canInvoice = entitlements?.features.invoice_upgrade === true;
+  const onContract = entitlements?.plan.id === CUSTOM_PLAN_ID;
   // Same query as the plan card's billing button. A live subscription owns the
   // plan, so the invoice path waits for a definite "none" before it shows.
   const { data: billingAccount } = useQuery({
     queryKey: KEYS.orgBillingAccount(org.id),
-    enabled: canInvoice,
+    enabled: canInvoice || onContract,
     staleTime: 60_000,
     queryFn: () => studio.call("ORGANIZATION_TASK_QUOTA_GET", {}),
   });
@@ -118,10 +118,7 @@ export function PlanCatalog() {
 
   const currentId = entitlements?.plan.id ?? null;
 
-  const staffManaged = isStaffManagedPlan(currentId);
-  const limitReached = staffManaged && canInvoice;
-
-  if (staffManaged && !limitReached) {
+  if (isStaffManagedPlan(currentId)) {
     return (
       <SettingsSection title={t("settings.plans.title")}>
         <Card className="p-5 flex-row items-center justify-between gap-3">
@@ -148,18 +145,12 @@ export function PlanCatalog() {
   // button, and the word is the only thing that says which of the two it is.
   // `free` is the absence of a plan, not one.
   // A contract org has no plan Stripe knows about; ask Stripe instead.
-  const subscribed = limitReached
+  const subscribed = onContract
     ? billingAccount?.subscribed === true
     : currentId !== null && currentId !== "free";
 
   return (
-    <SettingsSection
-      title={
-        limitReached
-          ? t("settings.plans.limitReached")
-          : t("settings.plans.title")
-      }
-    >
+    <SettingsSection title={t("settings.plans.title")}>
       {isLoading || isLoadingPlan ? (
         <div className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -196,7 +187,7 @@ export function PlanCatalog() {
               }
             />
           ))}
-          {!limitReached && <CustomPlanCard index={plans.length} />}
+          <CustomPlanCard index={plans.length} isCurrent={onContract} />
         </div>
       )}
 
@@ -358,10 +349,21 @@ function PlanCard({
 }
 
 /** Contract pricing, set by deco staff: no price to quote, only a contact. */
-function CustomPlanCard({ index }: { index: number }) {
+function CustomPlanCard({
+  index,
+  isCurrent,
+}: {
+  index: number;
+  isCurrent: boolean;
+}) {
   const t = useT();
   return (
-    <Card className="p-6 gap-6">
+    <Card
+      className={cn(
+        "p-6 gap-6",
+        isCurrent && "ring-1 ring-primary shadow-none",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-3">
           <h3 className="text-base font-medium leading-tight">
@@ -373,9 +375,15 @@ function CustomPlanCard({ index }: { index: number }) {
         </div>
         <PlanPlant index={index} />
       </div>
-      <Button variant="outline" className="w-full" asChild>
-        <a href={SALES_CONTACT_HREF}>{t("settings.plans.custom.cta")}</a>
-      </Button>
+      {isCurrent ? (
+        <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+          {t("settings.plans.currentPlan")}
+        </div>
+      ) : (
+        <Button variant="outline" className="w-full" asChild>
+          <a href={SALES_CONTACT_HREF}>{t("settings.plans.custom.cta")}</a>
+        </Button>
+      )}
     </Card>
   );
 }
