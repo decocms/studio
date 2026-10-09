@@ -42,3 +42,19 @@ export function getSectionPreviewImageSrc(
 
   return safeImageUrl(rendered);
 }
+
+/**
+ * A gallery card's image when nothing can render the section (the content
+ * protocol never runs site code): the schema's `@image` when it is a plain
+ * URL rather than a per-item template.
+ */
+export function resolveSectionGalleryImage(
+  resolveType: string,
+  meta: LiveMeta,
+): string | undefined {
+  for (const schema of sectionSchemaChain(resolveType, meta)) {
+    const image = typeof schema.image === "string" ? schema.image : undefined;
+    if (image && !image.includes("{{")) return safeImageUrl(image);
+  }
+  return undefined;
+}

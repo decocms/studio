@@ -11,7 +11,8 @@ const ASYNC_RENDER_DOCS_URL =
 interface SeoFormChromeProps {
   rawSeo: unknown;
   onEnableChange: (enabled: boolean) => void;
-  onAsyncRenderChange: (enabled: boolean) => void;
+  /** Unset where async rendering doesn't exist (v8): no switch is offered. */
+  onAsyncRenderChange?: (enabled: boolean) => void;
   children?: ReactNode;
 }
 
@@ -43,7 +44,7 @@ export function SeoFormChrome({
       </div>
 
       {enabled &&
-        (compact ? (
+        (compact || !onAsyncRenderChange ? (
           children
         ) : (
           <>

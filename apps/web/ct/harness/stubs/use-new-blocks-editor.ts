@@ -1,13 +1,13 @@
 /**
  * CT stub for `@/hooks/use-new-blocks-editor`.
  *
- * The real hook reads the `new_blocks_editor` org flag through
- * `useProjectContext()`, which needs the full app provider tree this harness
- * doesn't mount. Specs pick the editor by writing {@link NEW_BLOCKS_EDITOR_KEY}
+ * The real hook gives v8 sites the new editor and v7 ones the
+ * `new_blocks_editor` org flag, reading the site's content backend and the org
+ * settings, which need the full app provider tree this harness doesn't mount. Specs pick the editor by writing {@link NEW_BLOCKS_EDITOR_KEY}
  * before mounting (absent reads as off, like an unset flag); harnesses flip it
  * mid-test with {@link setNewBlocksEditor}.
  */
-import { useSyncExternalStore } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 
 export const NEW_BLOCKS_EDITOR_KEY = "ct:new-blocks-editor";
 
@@ -29,4 +29,13 @@ export function setNewBlocksEditor(enabled: boolean): void {
 
 export function useNewBlocksEditor(): boolean {
   return useSyncExternalStore(subscribe, read);
+}
+
+export function useNewBlocksEditorState(): boolean | undefined {
+  return useNewBlocksEditor();
+}
+
+/** No site to detect here: the stored choice stands for every site. */
+export function NewBlocksEditorProvider({ children }: { children: ReactNode }) {
+  return children;
 }

@@ -307,7 +307,8 @@ function SortableSectionItem({
   onDuplicate: () => void;
   onMakeReusable: () => void;
   onToggleHidden: () => void;
-  onToggleLazy: () => void;
+  /** Unset where async rendering doesn't exist (v8): no control is offered. */
+  onToggleLazy?: () => void;
   onAddVariant: () => void;
   onDetach: () => void;
 }) {
@@ -319,6 +320,7 @@ function SortableSectionItem({
   const isHidden = section.isHidden === true;
   const reserveActionButtonSpace = isAsyncRender || isHidden;
   const enableAddVariant = canAddSectionVariant(section);
+  const enableAsyncRender = !!onToggleLazy && !section.isMultivariate;
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -362,7 +364,7 @@ function SortableSectionItem({
         decofile={decofile}
       />
 
-      {!compact && !section.isMultivariate && (
+      {!compact && enableAsyncRender && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -382,7 +384,7 @@ function SortableSectionItem({
               )}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleLazy();
+                onToggleLazy?.();
               }}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -461,12 +463,12 @@ function SortableSectionItem({
         />
         <DropdownMenuContent align="end" className="w-44">
           {/* Classic keeps async rendering on its own row button. */}
-          {compact && !section.isMultivariate && (
+          {compact && enableAsyncRender && (
             <>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  onToggleLazy();
+                  onToggleLazy?.();
                 }}
               >
                 <Zap className="h-4 w-4" />
@@ -608,7 +610,8 @@ export function SectionList({
   onDuplicate: (index: number) => void;
   onMakeReusable: (index: number) => void;
   onToggleHidden: (index: number) => void;
-  onToggleLazy: (index: number) => void;
+  /** Unset where async rendering doesn't exist (v8): no control is offered. */
+  onToggleLazy?: (index: number) => void;
   onAddVariant: (index: number) => void;
   onDetach: (index: number) => void;
   /** Classic only: compact pins the add button to the panel's foot instead. */
@@ -736,7 +739,9 @@ export function SectionList({
                   onDuplicate={() => onDuplicate(entry.index)}
                   onMakeReusable={() => onMakeReusable(entry.index)}
                   onToggleHidden={() => onToggleHidden(entry.index)}
-                  onToggleLazy={() => onToggleLazy(entry.index)}
+                  onToggleLazy={
+                    onToggleLazy ? () => onToggleLazy(entry.index) : undefined
+                  }
                   onAddVariant={() => onAddVariant(entry.index)}
                   onDetach={() => onDetach(entry.index)}
                 />
