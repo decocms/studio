@@ -2902,7 +2902,6 @@ describe("prunedSchema", () => {
         type: "array",
         titleBy: "name",
         image: "{{{src}}}",
-        options: "site/loaders/options.ts",
         anyOfRefs: [{ resolveType: "site/sections/X.tsx", title: "X" }],
         items: { type: "string" },
       }),
@@ -2935,5 +2934,38 @@ describe("prunedSchema", () => {
   test("a block with no schema at all is an empty object, never null", () => {
     expect(prunedSchema(null)).toEqual({});
     expect(prunedSchema(undefined)).toEqual({});
+  });
+});
+
+describe("prunedSchema — loader-driven fields", () => {
+  /**
+   * A `dynamic-options` value is resolved by a loader against the live
+   * catalogue. Keeping the loader path is how the writer learns the value is
+   * not its to compose; without it the field looks like a free string and
+   * comes back full of plausible slugs that render nothing.
+   */
+  test("keeps the loader a dynamic-options field draws from", () => {
+    expect(
+      prunedSchema({
+        type: "object",
+        properties: {
+          products: {
+            type: "array",
+            format: "dynamic-options",
+            options: "site/loaders/productOptions.ts",
+            titleBy: "name",
+          },
+        },
+      }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        products: {
+          type: "array",
+          format: "dynamic-options",
+          options: "site/loaders/productOptions.ts",
+        },
+      },
+    });
   });
 });

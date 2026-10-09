@@ -2399,15 +2399,18 @@ const SCHEMA_KEYS = [
   "format",
   "enum",
   "default",
+  "options",
 ] as const;
 
 /**
  * A resolved block schema, down to what describes its props.
  *
  * `resolveSchema` answers with the editor's view: it carries `titleBy`, the
- * array-item thumbnail template, the dynamic-options loader path, and the whole
- * `anyOfRefs` expansion of every block that could fill a block-ref slot. None
- * of that says what a prop holds, and the last one is most of the bytes.
+ * array-item thumbnail template, and the whole `anyOfRefs` expansion of every
+ * block that could fill a block-ref slot. None of that says what a prop holds,
+ * and the last one is most of the bytes. `options` stays: it is the loader a
+ * dynamic-options field draws from, which is how the writer knows the value is
+ * not its to invent.
  *
  * Only the keyword positions are filtered. Under `properties` the keys are the
  * brand's own prop names — filtering those against a keyword list would empty

@@ -196,6 +196,8 @@ USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not li
 
 THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, link them with the links given, and use their image addresses exactly as written — those sit on a CDN and rebuilding one produces an image that silently fails to load. Never name a product the campaign did not give you.
 
+A LOADER-DRIVEN FIELD IS NOT YOURS TO FILL. A prop whose schema says \`"format": "dynamic-options"\` takes a value a loader resolves against the live catalogue — an id or a slug the store owns, which you have no way to know. Leave it empty unless the campaign handed you that exact value. A product shelf with an empty list is one someone fills in two clicks; a shelf full of slugs you composed renders blank and looks filled, which is worse.
+
 IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` takes an image address. For an image that does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and it is generated and uploaded for you. Use this at most twice in a post, and only where the format's blocks ask for an image. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
 
 WRITE SOMETHING WORTH READING. Open on the reader's problem or curiosity, never on the company. Make every section carry a specific claim, an example or a number rather than restating the heading. Vary section length. Close with one clear next step.
@@ -277,6 +279,32 @@ export function renderCampaign(
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/**
+ * A block's props as one log line.
+ *
+ * What a site publishes for its own sections is the one thing this tool cannot
+ * see from here, and two rounds of "why did that section come out wrong" went
+ * to guessing for want of it. Names, types and widgets only — the descriptions
+ * are the bulk and say nothing about shape.
+ */
+function describeBlock(block: z.infer<typeof BlockSchema>): string {
+  const properties = block.schema.properties;
+  if (!properties || typeof properties !== "object") {
+    return `${block.name}: no schema`;
+  }
+  const props = Object.entries(properties as Record<string, unknown>).map(
+    ([name, raw]) => {
+      const prop = (raw ?? {}) as Record<string, unknown>;
+      const enumValues = Array.isArray(prop.enum)
+        ? `(${prop.enum.join("|")})`
+        : "";
+      const widget = prop.format ? `:${prop.format}` : "";
+      return `${name}=${prop.type}${enumValues}${widget}`;
+    },
+  );
+  return `${block.name}: ${props.join(" ")}`;
 }
 
 /** A block, with its schema, as one prompt section. */
@@ -431,6 +459,11 @@ export const BLOG_POST_DRAFT = defineTool({
       wanted:
         "Anything these posts would otherwise have to assume: the products they will mention, their real names and current prices, what is in stock, any promotion running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
     });
+
+    console.info(
+      `[BLOG_POST_DRAFT] ${input.blocks.length} block(s) offered`,
+      input.blocks.map(describeBlock),
+    );
 
     const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
     const basePrompt = [
