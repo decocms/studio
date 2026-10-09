@@ -98,7 +98,7 @@ import {
   useTaskBoardSprintsLive,
 } from "@/hooks/use-task-board-sprints";
 import { currentSprintId } from "@decocms/shared/sprints";
-import { SprintsButton } from "./sprint-controls";
+import { SprintSwitcher } from "./sprint-controls";
 import { sprintLabel } from "./sprint-label";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
@@ -1470,6 +1470,13 @@ function TaskBoardBody({
           <Page.Actions
             secondary={
               <>
+                <SprintSwitcher
+                  sprints={sprints}
+                  value={filters.sprint}
+                  onChange={(sprint) =>
+                    handleFiltersChange({ ...filters, sprint })
+                  }
+                />
                 {items.length > 0 && (
                   <>
                     {/* No width swap: these three are ~100px together, so there
@@ -1505,7 +1512,6 @@ function TaskBoardBody({
                     </div>
                   </>
                 )}
-                <SprintsButton sprints={sprints} />
                 <BoardSettingsButton
                   onClick={openBoardSettings}
                   label={boardSettingsLabel}

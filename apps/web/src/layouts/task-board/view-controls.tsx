@@ -88,7 +88,7 @@ import {
 } from "./filter-fields";
 import { GROUP_BY_OPTIONS, type GroupBy } from "./list-groups";
 import { SORT_BY_OPTIONS, type SortBy, type SortDirection } from "./list-sort";
-import type { Sprint } from "@decocms/shared/sprints";
+import { currentSprintId, type Sprint } from "@decocms/shared/sprints";
 import { sprintLabel } from "./sprint-label";
 import {
   BACKLOG_SPRINT_FILTER,
@@ -528,7 +528,10 @@ function FilterMenu({
     ).length;
 
   // An org with no tags has no tag filter: the field would open onto nothing.
-  const offered = fields.filter((field) => field.options.length > 0);
+  // The sprint is picked from the view row's switcher, not from here.
+  const offered = fields.filter(
+    (field) => field.options.length > 0 && field.id !== "sprint",
+  );
 
   return (
     <Command
@@ -623,7 +626,8 @@ export function TaskFilterButton({
 }) {
   const t = useT();
   const fields = useFilterFields({ members, tags, sprints, index });
-  const active = activeFilterFieldIds(filters, index).length > 0;
+  const active =
+    activeFilterFieldIds(filters, index, currentSprintId(sprints)).length > 0;
 
   return (
     <FilterMenuPopover
@@ -1112,7 +1116,8 @@ export function AppliedFiltersBar({
 }) {
   const t = useT();
   const fields = useFilterFields({ members, tags, sprints, index });
-  const activeIds = activeFilterFieldIds(filters, index);
+  const currentSprint = currentSprintId(sprints);
+  const activeIds = activeFilterFieldIds(filters, index, currentSprint);
   const arranged =
     view !== undefined &&
     (view.grouping.groupBy !== null || view.sorting.sortBy !== null);
@@ -1154,7 +1159,9 @@ export function AppliedFiltersBar({
                 field: field.label,
               })}
               size="icon-sm"
-              onClick={() => onChange(withFieldCleared(filters, id))}
+              onClick={() =>
+                onChange(withFieldCleared(filters, id, currentSprint))
+              }
             >
               <X />
             </IconButton>
@@ -1179,7 +1186,11 @@ export function AppliedFiltersBar({
             variant="ghost"
             size="sm"
             onClick={() =>
-              onChange({ ...EMPTY_FILTERS, search: filters.search })
+              onChange({
+                ...EMPTY_FILTERS,
+                search: filters.search,
+                sprint: currentSprint,
+              })
             }
           >
             {t("taskBoard.viewControls.clear")}

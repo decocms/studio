@@ -458,6 +458,8 @@ export const taskBoard = {
   "taskBoard.sprints.label": "Sprint",
   "taskBoard.sprints.backlog": "Backlog",
   "taskBoard.sprints.manage": "Sprints",
+  "taskBoard.sprints.all": "All sprints",
+  "taskBoard.sprints.manageItem": "Manage sprints…",
   "taskBoard.sprints.title": "Sprints",
   "taskBoard.sprints.description":
     "Plan the next sprint, start it, and complete it when it ends. Tasks that are not done when a sprint completes move on to the next one.",

@@ -1,11 +1,20 @@
 /**
- * The board's sprint management: plan, start, complete, rename and delete
- * sprints. Opened from the view row; which sprint the board shows is the
- * filter's job, not this dialog's.
+ * The board's sprint controls: which sprint the board shows, and the dialog
+ * that plans, starts, completes, renames and deletes sprints.
  */
 
 import { useState } from "react";
-import { DotsHorizontal, Edit03, Plus, Trash01, Zap } from "@untitledui/icons";
+import {
+  Check,
+  ChevronDown,
+  DotsHorizontal,
+  Edit03,
+  Inbox01,
+  Plus,
+  Settings02,
+  Trash01,
+  Zap,
+} from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -20,6 +29,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
@@ -44,7 +57,8 @@ import { useTaskBoardItems } from "@/hooks/use-task-board-items";
 import { useSprintActions } from "@/hooks/use-task-board-sprints";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { localToday, suggestNextSprint } from "./sprint-draft";
-import { formatSprintDays } from "./sprint-label";
+import { formatSprintDays, sprintLabel } from "./sprint-label";
+import { BACKLOG_SPRINT_FILTER } from "./task-filters-core";
 
 /** Radix Select has no empty value, so the backlog needs a stand-in. */
 const BACKLOG_VALUE = "__backlog__";
@@ -63,21 +77,97 @@ const SECTIONS: { state: Sprint["state"]; labelKey: TranslationKey }[] = [
   { state: "closed", labelKey: "taskBoard.sprints.sectionClosed" },
 ];
 
-export function SprintsButton({ sprints }: { sprints: readonly Sprint[] }) {
+/**
+ * The sprint the board shows, picked from the view row like search and the
+ * filter menu rather than as one more chip: on a sprint board it is the
+ * board's scope, not a narrowing. Managing sprints sits at the menu's end.
+ */
+export function SprintSwitcher({
+  sprints,
+  value,
+  onChange,
+}: {
+  sprints: readonly Sprint[];
+  /** A sprint id, BACKLOG_SPRINT_FILTER, or null for every card. */
+  value: string | null;
+  onChange: (next: string | null) => void;
+}) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const selected = sprints.find((sprint) => sprint.id === value);
+  const open = sprints.filter((sprint) => sprint.state !== "closed");
+  const closed = sprints.filter((sprint) => sprint.state === "closed");
+
+  const option = (key: string, next: string | null, label: string) => (
+    <DropdownMenuItem key={key} onClick={() => onChange(next)}>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {value === next && <Check size={14} className="shrink-0" />}
+    </DropdownMenuItem>
+  );
+
   return (
     <>
-      <IconButton
-        label={t("taskBoard.sprints.manage")}
-        tooltipSide="bottom"
-        variant="secondary"
-        onClick={() => setOpen(true)}
-      >
-        <Zap />
-      </IconButton>
-      {open && (
-        <SprintsDialog sprints={sprints} onClose={() => setOpen(false)} />
+      {sprints.length === 0 ? (
+        <IconButton
+          label={t("taskBoard.sprints.manage")}
+          tooltipSide="bottom"
+          variant="secondary"
+          onClick={() => setManaging(true)}
+        >
+          <Zap />
+        </IconButton>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-label={t("taskBoard.sprints.label")}
+            >
+              {value === BACKLOG_SPRINT_FILTER ? <Inbox01 /> : <Zap />}
+              <span className="max-w-[10rem] truncate">
+                {selected
+                  ? selected.name
+                  : value === BACKLOG_SPRINT_FILTER
+                    ? t("taskBoard.sprints.backlog")
+                    : t("taskBoard.sprints.all")}
+              </span>
+              <ChevronDown className="text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            {open.map((sprint) =>
+              option(sprint.id, sprint.id, sprintLabel(sprint, t)),
+            )}
+            {open.length > 0 && <DropdownMenuSeparator />}
+            {option(
+              BACKLOG_SPRINT_FILTER,
+              BACKLOG_SPRINT_FILTER,
+              t("taskBoard.sprints.backlog"),
+            )}
+            {option("all", null, t("taskBoard.sprints.all"))}
+            {closed.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {t("taskBoard.sprints.sectionClosed")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-72 w-56 overflow-y-auto">
+                  {closed.map((sprint) =>
+                    option(sprint.id, sprint.id, sprint.name),
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setManaging(true)}>
+              <Settings02 size={14} className="text-muted-foreground" />
+              {t("taskBoard.sprints.manageItem")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      {managing && (
+        <SprintsDialog sprints={sprints} onClose={() => setManaging(false)} />
       )}
     </>
   );
