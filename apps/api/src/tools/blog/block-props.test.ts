@@ -201,3 +201,55 @@ describe("readProps — widget hints", () => {
     );
   });
 });
+
+/**
+ * A prop declared `string | string[]` is valid either way, so the schema
+ * cannot settle it and the writer picks one. The site already settled it.
+ */
+describe("asStored", () => {
+  const LIST = {
+    type: "object",
+    properties: {
+      items: { anyOf: [{ type: "string" }, { type: "array" }] },
+      style: { type: "string" },
+    },
+  };
+
+  test("joins a list the site keeps as one string", () => {
+    expect(
+      readProps('{"items":["a","b","c"],"style":"ordered"}', LIST, {
+        items: "x\ny",
+      }).props,
+    ).toEqual({ items: "a\nb\nc", style: "ordered" });
+  });
+
+  test("leaves it alone when the writer already agreed", () => {
+    expect(
+      readProps('{"items":"a\\nb"}', LIST, { items: "x\ny" }).props,
+    ).toEqual({ items: "a\nb" });
+  });
+
+  test("splits for a site that keeps the list as a list", () => {
+    expect(
+      readProps('{"items":"a\\nb"}', LIST, { items: ["x", "y"] }).props,
+    ).toEqual({ items: ["a", "b"] });
+  });
+
+  test("decides nothing with no block of the site's to go by", () => {
+    expect(readProps('{"items":["a","b"]}', LIST).props).toEqual({
+      items: ["a", "b"],
+    });
+  });
+
+  test("a string that is not a list is not split", () => {
+    expect(
+      readProps('{"style":"ordered"}', LIST, { style: "unordered" }).props,
+    ).toEqual({ style: "ordered" });
+  });
+
+  test("an empty list leaves the stored form undecided", () => {
+    expect(readProps('{"items":[]}', LIST, { items: "x\ny" }).props).toEqual({
+      items: [],
+    });
+  });
+});

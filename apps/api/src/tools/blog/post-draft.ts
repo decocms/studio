@@ -565,7 +565,7 @@ export const BLOG_POST_DRAFT = defineTool({
             note(dropped, `${section.type}: not a block this site has`);
             continue;
           }
-          const read = readProps(section.props, block.schema);
+          const read = readProps(section.props, block.schema, block.example);
           if (!read.props) {
             droppedSections += 1;
             note(dropped, `${section.type}: ${read.reason}`);

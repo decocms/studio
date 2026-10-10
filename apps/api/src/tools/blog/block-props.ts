@@ -92,7 +92,11 @@ export type PropsRead =
  * no reason attached is how a whole post comes back empty and nobody can say
  * which of three causes it was, so the reason travels to the log.
  */
-export function readProps(raw: string, schema: Schema): PropsRead {
+export function readProps(
+  raw: string,
+  schema: Schema,
+  example?: Schema,
+): PropsRead {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -100,12 +104,51 @@ export function readProps(raw: string, schema: Schema): PropsRead {
     return { reason: `props are not JSON: ${message(err)}` };
   }
   const pruned = pruneProps(parsed, schema);
-  const record = asSchema(pruned);
-  if (!record) return { reason: "props are not an object" };
+  const asObject = asSchema(pruned);
+  if (!asObject) return { reason: "props are not an object" };
+  const record = asStored(asObject, example);
   const { valid, errorMessage } = sharedJsonSchemaValidator.getValidator(
     forValidation(schema),
   )(record);
   return valid ? { props: record } : { reason: errorMessage };
+}
+
+/** How this site keeps a list in one value: `a\nb\nc`. */
+const ITEM_SEPARATOR = "\n";
+
+/**
+ * The props in the shape this site stores, where the two forms are the same list.
+ *
+ * A prop declared `string | string[]` is valid either way, so a schema cannot
+ * settle it and the writer picks one — and it picks the one the schema lists
+ * first as often as not. The site has already settled it: whatever a block it
+ * renders holds is what its section reads back.
+ *
+ * Only a list of strings is converted, and only where the two disagree. A
+ * string that is not a list and an array of objects are both left alone.
+ */
+function asStored(props: Schema, example: Schema | undefined): Schema {
+  if (!example) return props;
+  const out: Schema = { ...props };
+  for (const [key, stored] of Object.entries(example)) {
+    const value = out[key];
+    if (typeof stored === "string" && isStringList(value)) {
+      out[key] = value.join(ITEM_SEPARATOR);
+      continue;
+    }
+    if (isStringList(stored) && typeof value === "string") {
+      out[key] = value.split(ITEM_SEPARATOR).filter((entry) => entry.trim());
+    }
+  }
+  return out;
+}
+
+function isStringList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => typeof entry === "string")
+  );
 }
 
 /** One stripped copy per schema, so the validator cache still hits by identity. */
