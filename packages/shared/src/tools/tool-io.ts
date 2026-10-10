@@ -134,6 +134,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
+            blog_ai_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -214,6 +215,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
+            blog_ai_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | undefined;
@@ -290,6 +292,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
+            blog_ai_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -1200,65 +1203,57 @@ export interface StudioToolIO {
     };
   };
   BLOG_BRAND_EXTRACT: {
-    input: { blocks: { key: string; content: string }[] };
+    input: {
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+      virtualMcpId?: string | undefined;
+    };
     output: {
       companyName: string;
       description: string;
       language: string;
-      tone: string;
+      storeUrl: string;
       targetAudience: string;
       values: { name: string; value: string }[];
+      competitors: { name: string; value: string }[];
+      keywords: string[];
+      commercialPolicies: { name: string; value: string }[];
+      specialDates: { name: string; value: string }[];
+      sources: string[];
+      researchSources: string[];
+      searched: boolean;
+      discarded: number;
+      judged: boolean;
+    };
+  };
+  BLOG_CONTEXT_EXTRACT: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+      };
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+    };
+    output: {
+      tone: string;
       dos: { name: string; value: string }[];
       avoid: { name: string; value: string }[];
       categories: string[];
-      competitors: { name: string; value: string }[];
+      vocabulary: { name: string; value: string }[];
+      voiceExamples: { text: string; sounds: boolean }[];
       sources: string[];
-      searchedCompetitors: boolean;
+      discarded: number;
+      judged: boolean;
     };
-  };
-  BLOG_PILLAR_SUGGEST: {
-    input: {
-      brand: {
-        companyName?: string | undefined;
-        description?: string | undefined;
-        language?: string | undefined;
-        tone?: string | undefined;
-        targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
-        dos?: { name: string; value: string }[] | undefined;
-        avoid?: { name: string; value: string }[] | undefined;
-        categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
-      };
-      existingPillars?: string[] | undefined;
-      categories?: string[] | undefined;
-      guidance?: string | undefined;
-      count?: number | undefined;
-    };
-    output: { pillars: { title: string; body: string }[] };
-  };
-  BLOG_THEME_SUGGEST: {
-    input: {
-      brand: {
-        companyName?: string | undefined;
-        description?: string | undefined;
-        language?: string | undefined;
-        tone?: string | undefined;
-        targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
-        dos?: { name: string; value: string }[] | undefined;
-        avoid?: { name: string; value: string }[] | undefined;
-        categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
-      };
-      existingTitles?: string[] | undefined;
-      categories?: string[] | undefined;
-      guidance?: string | undefined;
-      pillar?: { title: string; body: string } | undefined;
-      formats?: string[] | undefined;
-      count?: number | undefined;
-    };
-    output: { themes: { title: string; body: string }[]; searched: boolean };
   };
   BLOG_FORMAT_SUGGEST: {
     input: {
@@ -1266,81 +1261,125 @@ export interface StudioToolIO {
         companyName?: string | undefined;
         description?: string | undefined;
         language?: string | undefined;
-        tone?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
         categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
       };
       sections?:
         | { name: string; title: string; description?: string | undefined }[]
         | undefined;
       postStructures?: { title: string; sections: string[] }[] | undefined;
+      guidance?: string | undefined;
       count?: number | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: { formats: { name: string; value: string }[] };
   };
   BLOG_POST_DRAFT: {
     input: {
       brand: {
-        companyName?: string | undefined;
         description?: string | undefined;
+        companyName?: string | undefined;
         language?: string | undefined;
-        tone?: string | undefined;
+        storeUrl?: string | undefined;
         targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
-        categories?: string[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
       };
-      theme: { title: string; body: string };
+      campaign: {
+        name: string;
+        period: { start: string | null; end: string | null };
+        trigger: {
+          type:
+            | "launch"
+            | "seasonal"
+            | "trend"
+            | "seo_gap"
+            | "inventory"
+            | "partnership"
+            | "reputation";
+          note: string;
+        };
+        intent: {
+          objective:
+            | "awareness"
+            | "education"
+            | "conversion"
+            | "retention"
+            | "repositioning";
+          targets?:
+            | { kind: string; name: string; url: string; description: string }[]
+            | undefined;
+          products?:
+            | {
+                id: string;
+                name: string;
+                url: string;
+                category: string;
+                description: string;
+                images?: string[] | undefined;
+              }[]
+            | undefined;
+          keywords?: string[] | undefined;
+        };
+        guardrails: {
+          avoidComplements?: { name: string; value: string }[] | undefined;
+          toneOverrides?: string | undefined;
+        };
+      };
       format: { name: string; value: string };
-      sections: {
-        type:
-          | "Heading"
-          | "Paragraph"
-          | "List"
-          | "Quote"
-          | "Callout"
-          | "Cta"
-          | "Divider";
-        purpose?: string | undefined;
+      blocks: {
+        name: string;
+        title: string;
+        description: string;
+        schema: Record<string, unknown>;
+        example?: Record<string, unknown> | undefined;
       }[];
-      pillar?: { title: string; body: string } | undefined;
       categories?: { name: string; slug: string }[] | undefined;
       authors?:
         | { name: string; email: string; bio?: string | undefined }[]
         | undefined;
       extraInstructions?: string | undefined;
+      count?: number | undefined;
+      fileConfigId?: string | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: {
-      title: string;
-      excerpt: string;
-      seo: { title: string; description: string };
-      categorySlugs: string[];
-      authorEmails: string[];
-      sections: {
-        type:
-          | "Heading"
-          | "Paragraph"
-          | "List"
-          | "Quote"
-          | "Callout"
-          | "Cta"
-          | "Divider";
-        text?: string | undefined;
-        level?: "1" | "2" | "3" | undefined;
-        html?: string | undefined;
-        items?: string[] | undefined;
-        style?: "ordered" | "unordered" | undefined;
-        quote?: string | undefined;
-        title?: string | undefined;
-        body?: string | undefined;
-        variant?: "info" | "tip" | "warning" | "product" | undefined;
-        href?: string | undefined;
+      posts: {
+        title: string;
+        seo: { title: string; description: string };
+        excerpt: string;
+        categorySlugs: string[];
+        authorEmails: string[];
+        cover: { url: string; alt: string };
+        sections: {
+          type: string;
+          props: Record<string, unknown>;
+          productIds: string[];
+        }[];
+      }[];
+      gaps: {
+        code:
+          | "no-store-data"
+          | "sections-dropped"
+          | "no-bucket"
+          | "no-image-model"
+          | "images-failed"
+          | "drafts-failed";
+        count?: number | undefined;
       }[];
     };
   };
@@ -1349,8 +1388,99 @@ export interface StudioToolIO {
       body: string;
       posts: { title: string; slug: string }[];
       count?: number | undefined;
+      virtualMcpId?: string | undefined;
     };
     output: { suggestions: { quote: string; slug: string }[] };
+  };
+  BLOG_CAMPAIGN_SUGGEST: {
+    input: {
+      seed: { prompt: string; keywords?: string[] | undefined };
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+        keywords?: string[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
+        specialDates?: { name: string; value: string }[] | undefined;
+        tone?: string | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+      };
+      existingNames?: string[] | undefined;
+      count?: number | undefined;
+      virtualMcpId?: string | undefined;
+    };
+    output: {
+      campaigns: {
+        name: string;
+        period: { start: string | null; end: string | null };
+        trigger: {
+          type:
+            | "launch"
+            | "seasonal"
+            | "trend"
+            | "seo_gap"
+            | "inventory"
+            | "partnership"
+            | "reputation";
+          note: string;
+        };
+        intent: {
+          objective:
+            | "awareness"
+            | "education"
+            | "conversion"
+            | "retention"
+            | "repositioning";
+          targets: {
+            kind: "category" | "collection";
+            id: string;
+            name: string;
+            url: string;
+            description: string;
+          }[];
+          products: {
+            id: string;
+            name: string;
+            url: string;
+            images: string[];
+            category: string;
+            description: string;
+          }[];
+          keywords: string[];
+        };
+        guardrails: {
+          avoidComplements: { name: string; value: string }[];
+          toneOverrides: string;
+        };
+        review: {
+          verdict: "strong" | "workable" | "weak";
+          rationale: string;
+          risks: string[];
+        };
+      }[];
+      grounded: boolean;
+      toolsUsed: string[];
+      gaps: {
+        code:
+          | "failed"
+          | "no-site"
+          | "no-tools"
+          | "timeout-partial"
+          | "timeout-empty"
+          | "nothing-useful"
+          | "targets-dropped"
+          | "products-dropped";
+        count?: number | undefined;
+      }[];
+    };
   };
   ORGANIZATION_DOMAIN_LIST: {
     input: { [x: string]: never };

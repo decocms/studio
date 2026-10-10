@@ -1,11 +1,11 @@
 /**
  * The Posts area: one workspace with two views of the same lifecycle — a Kanban
  * Board (lanes by status, drag to advance) and a grouped List (by status by
- * default, switchable to format or pillar). Opening a post swaps to the editor;
+ * default). Opening a post swaps to the editor;
  * the caller renders that with a Back button. Statuses are the blog app's own
  * `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
  */
-import { type ReactNode, Suspense, useRef, useState } from "react";
+import { Fragment, type ReactNode, Suspense, useRef, useState } from "react";
 import {
   AlertCircle,
   Copy01,
@@ -33,16 +33,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@decocms/ui/components/dialog.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
-import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
-import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import {
@@ -52,27 +48,18 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { GeneratePostDialog, type IdeaSeed } from "./generate-post-dialog";
+import { GeneratePostDialog } from "./generate-post-dialog";
 import { useGeneratePost } from "./use-generate-post";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
-  BRAND_BLOCK_KEY,
-  buildIdeaBlock,
   buildPlanningPostBlock,
-  dedupeSuggestedThemes,
   emptyDraftPostPayload,
-  filledBrandRules,
-  FORMATS_BLOCK_KEY,
   getBlogPayload,
   listAllPostsWithMeta,
   listBlogPayloads,
-  newIdeaKey,
   newPostId,
-  normalizeBrandRules,
   planningMeta,
   planningPostKey,
-  scanIdeas,
-  scanPillars,
   type PostMeta,
   type PostStatus,
   POST_STATUSES,
@@ -85,7 +72,7 @@ import {
   sectionsToBlocks,
 } from "./import-content";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
-import { PickList, str } from "./blocks/primitives";
+import { str } from "./blocks/primitives";
 import {
   PostFilterBar,
   PostSearchInput,
@@ -106,8 +93,14 @@ const STATUS_VARIANT: Record<
   archived: "outline",
 };
 
-/** Lanes whose feature isn't ready: shown as a closed rail, never opened. */
-const LOCKED_LANE: PostStatus = "generating";
+/** The agentic lanes sit ahead of the manual ones, in pipeline order. */
+const LEAD_LANE: PostStatus = "generating";
+
+/** Board order: what the agent is writing comes before what a human moves. */
+const BOARD_LANES: PostStatus[] = [
+  LEAD_LANE,
+  ...POST_STATUSES.filter((status) => status !== LEAD_LANE),
+];
 
 /** Go-live instant of a post (ISO, so lexical order is chronological). */
 const postDateKey = (post: PostMeta) =>
@@ -164,20 +157,14 @@ export function PostsWorkspace({
   ) => ReactNode;
 }) {
   const t = useT();
-  const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const blogAi = useBlogAi();
   const hideDefaults = useHideDefaultBlogBlocks();
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
-  const [guidance, setGuidance] = useState("");
-  const [count, setCount] = useState(3);
-  const [ideaPillarKey, setIdeaPillarKey] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
-  const [generateSeed, setGenerateSeed] = useState<IdeaSeed | undefined>();
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -200,12 +187,13 @@ export function PostsWorkspace({
     branch,
     decofile,
     meta,
-    onStarted: onOpen,
+    onStarted: (keys) => {
+      const first = keys[0];
+      if (first) onOpen(first);
+    },
   });
 
   const posts = listAllPostsWithMeta(decofile);
-  const ideas = scanIdeas(decofile);
-  const pillars = scanPillars(decofile);
   const payloadOf = (key: string) =>
     getBlogPayload(
       decofile[key] as Record<string, unknown> | undefined,
@@ -357,87 +345,6 @@ export function PostsWorkspace({
     onOpen(key);
   };
 
-  /** Propose ideas from the brand context and store them as idea blocks. */
-  const generateIdeas = async () => {
-    setIsGenerating(true);
-    const pillar = pillars.find((entry) => entry.key === ideaPillarKey);
-    try {
-      const brand =
-        (decofile[BRAND_BLOCK_KEY] as Record<string, unknown>) ?? {};
-      const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
-        | Record<string, unknown>
-        | undefined;
-      const formatNames = normalizeBrandRules(formatsBlock?.formats)
-        .map((f) => f.name)
-        .filter(Boolean);
-      const result = await studio.call("BLOG_THEME_SUGGEST", {
-        brand: {
-          companyName: str(brand.companyName),
-          description: str(brand.description),
-          language: str(brand.language),
-          tone: str(brand.tone),
-          targetAudience: str(brand.targetAudience),
-          values: filledBrandRules(normalizeBrandRules(brand.values)),
-          dos: filledBrandRules(normalizeBrandRules(brand.dos)),
-          avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
-        },
-        existingTitles: ideas.map((idea) => idea.title).filter(Boolean),
-        formats: formatNames,
-        guidance:
-          [
-            pillar &&
-              `Every idea must be one angle inside the pillar "${pillar.title}": ${pillar.body}`,
-            guidance.trim(),
-          ]
-            .filter(Boolean)
-            .join("\n\n") || undefined,
-        count,
-      });
-
-      const fresh = dedupeSuggestedThemes(
-        ideas.map((idea) => idea.title),
-        result.themes,
-      );
-      if (fresh.length === 0) {
-        toast.info(t("sandbox.postBoard.ideasFailed"));
-        return;
-      }
-
-      let created = 0;
-      // One at a time — parallel writes race the fast-preview decofile cache.
-      for (const idea of fresh) {
-        const key = newIdeaKey();
-        try {
-          await save.mutateAsync({
-            blockKey: key,
-            data: buildIdeaBlock(key, {
-              title: idea.title,
-              body: idea.body,
-              pillarKey: pillar?.key,
-              createdAt: new Date().toISOString(),
-            }),
-          });
-          created++;
-        } catch (err) {
-          console.warn("[posts] could not save a generated idea", err);
-        }
-      }
-      if (created === 0) {
-        toast.error(t("sandbox.postBoard.ideasFailed"));
-        return;
-      }
-      toast.success(
-        t("sandbox.postBoard.ideasAdded", { count: String(created) }),
-      );
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t("sandbox.postBoard.ideasFailed"),
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   return (
     <div className="relative flex h-full min-w-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
@@ -458,101 +365,6 @@ export function PostsWorkspace({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {isGenerating && (
-            <span
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-              aria-live="polite"
-              role="status"
-            >
-              <Loading02 size={12} className="animate-spin" />
-              {t("sandbox.postBoard.generatingLabel")}
-            </span>
-          )}
-          <Dialog open={askOpen} onOpenChange={setAskOpen}>
-            <DialogTrigger asChild>
-              {/* Off until idea generation is good enough; trigger stays wired. */}
-              <Button type="button" variant="outline" size="sm" disabled>
-                <Stars02 size={14} />
-                {t("sandbox.postBoard.generateIdeas")}
-                <Badge variant="secondary">{t("common.soon")}</Badge>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>
-                  {t("sandbox.postBoard.generateIdeas")}
-                </DialogTitle>
-                <DialogDescription>
-                  {t("sandbox.postBoard.ideaGuidanceLabel")}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Textarea
-                  id="idea-guidance"
-                  value={guidance}
-                  rows={6}
-                  autoFocus
-                  onChange={(e) => setGuidance(e.target.value)}
-                  placeholder={t("sandbox.postBoard.ideaGuidancePlaceholder")}
-                  className="resize-none text-sm"
-                />
-                {pillars.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">
-                      {t("sandbox.postBoard.ideaPillarLabel")}
-                    </Label>
-                    <PickList
-                      options={pillars.map((pillar) => pillar.title)}
-                      value={
-                        pillars.find((pillar) => pillar.key === ideaPillarKey)
-                          ?.title ?? ""
-                      }
-                      emptyLabel={t("sandbox.postBoard.ideaNoPillar")}
-                      onChange={(title) =>
-                        setIdeaPillarKey(
-                          pillars.find((pillar) => pillar.title === title)
-                            ?.key ?? "",
-                        )
-                      }
-                    />
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="idea-count" className="text-xs">
-                    {t("sandbox.postBoard.ideaCount")}
-                  </Label>
-                  <Input
-                    id="idea-count"
-                    type="number"
-                    min={1}
-                    max={8}
-                    value={count}
-                    onChange={(e) =>
-                      setCount(
-                        Math.max(1, Math.min(8, Number(e.target.value) || 1)),
-                      )
-                    }
-                    className="h-9 w-16"
-                  />
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {t("sandbox.postBoard.usesCredits")}
-                  </span>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setAskOpen(false);
-                    void generateIdeas();
-                  }}
-                >
-                  <Stars02 size={14} />
-                  {t("sandbox.postBoard.generateIdeas")}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" size="sm">
@@ -562,25 +374,17 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {/* Off until generation is good enough; the handler stays wired. */}
-              <DropdownMenuItem
-                disabled
-                onClick={() => {
-                  setGenerateSeed(undefined);
-                  setGenerateOpen(true);
-                }}
-              >
-                <Stars02 size={14} />
-                <div className="flex flex-col">
-                  <span className="flex items-center gap-1.5">
-                    {t("sandbox.postBoard.newPostGenerate")}
-                    <Badge variant="secondary">{t("common.soon")}</Badge>
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {t("sandbox.postBoard.newPostGenerateHint")}
-                  </span>
-                </div>
-              </DropdownMenuItem>
+              {blogAi && (
+                <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
+                  <Stars02 size={14} />
+                  <div className="flex flex-col">
+                    <span>{t("sandbox.postBoard.newPostGenerate")}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("sandbox.postBoard.newPostGenerateHint")}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={writePost}>
                 <Pilcrow01 size={14} />
                 <div className="flex flex-col">
@@ -601,15 +405,15 @@ export function PostsWorkspace({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <GeneratePostDialog
-            key={generateSeed?.title ?? "scratch"}
-            open={generateOpen}
-            onOpenChange={setGenerateOpen}
-            decofile={decofile}
-            hasAi={hasAi}
-            seed={generateSeed}
-            onGenerate={(briefing) => void generatePost(briefing)}
-          />
+          {blogAi && (
+            <GeneratePostDialog
+              open={generateOpen}
+              onOpenChange={setGenerateOpen}
+              decofile={decofile}
+              hasAi={hasAi}
+              onGenerate={(briefing) => void generatePost(briefing)}
+            />
+          )}
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogContent className="max-h-[85vh] sm:max-w-2xl">
               <DialogHeader>
@@ -681,24 +485,14 @@ export function PostsWorkspace({
         />
       ) : view === "board" ? (
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
-          <LockedLane label={t("sandbox.postBoard.ideasTray")} />
-          <LockedLane label={t(POST_STATUS_LABEL[LOCKED_LANE])} />
-          <div
-            aria-hidden
-            className="my-1 w-px shrink-0 self-stretch bg-border"
-          />
-          {POST_STATUSES.filter((status) => status !== LOCKED_LANE).map(
-            (status) => {
-              const laneLabel = t(POST_STATUS_LABEL[status]);
-              const lanePosts = posts.filter((p) => p.status === status);
-              if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
-              const isCollapsed = isLaneCollapsed(
-                status,
-                lanePosts.length === 0,
-              );
-              return (
+          {BOARD_LANES.map((status) => {
+            const laneLabel = t(POST_STATUS_LABEL[status]);
+            const lanePosts = posts.filter((p) => p.status === status);
+            if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
+            const isCollapsed = isLaneCollapsed(status, lanePosts.length === 0);
+            return (
+              <Fragment key={status}>
                 <div
-                  key={status}
                   onDragOver={(e) => {
                     e.preventDefault();
                     setDragOverLane(status);
@@ -779,9 +573,15 @@ export function PostsWorkspace({
                     </>
                   )}
                 </div>
-              );
-            },
-          )}
+                {status === LEAD_LANE && (
+                  <div
+                    aria-hidden
+                    className="my-1 w-px shrink-0 self-stretch bg-border"
+                  />
+                )}
+              </Fragment>
+            );
+          })}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -1123,19 +923,10 @@ function PostCard({
           {post.title || t("sandbox.postBoard.untitled")}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {post.status === "draft" && (
-            <>
-              {plan.pillarTitle && (
-                <Badge variant="secondary" className="max-w-full truncate">
-                  {plan.pillarTitle}
-                </Badge>
-              )}
-              {plan.format?.name && (
-                <Badge variant="outline" className="max-w-full truncate">
-                  {plan.format.name}
-                </Badge>
-              )}
-            </>
+          {post.status === "draft" && plan.format?.name && (
+            <Badge variant="outline" className="max-w-full truncate">
+              {plan.format.name}
+            </Badge>
           )}
           {post.status === "generating" && (
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1171,22 +962,6 @@ function PostCard({
           )}
         </div>
       </button>
-    </div>
-  );
-}
-
-/** A lane whose feature isn't shipped yet: never opens, never takes a drop. */
-function LockedLane({ label }: { label: string }) {
-  const t = useT();
-  return (
-    <div
-      aria-disabled
-      className="flex w-11 shrink-0 cursor-not-allowed flex-col items-center gap-2 rounded-xl border border-dashed border-primary/30 bg-primary/5 py-2.5 text-primary"
-    >
-      <span className="[writing-mode:vertical-rl] text-sm">{label}</span>
-      <span className="[writing-mode:vertical-rl] text-xs font-semibold">
-        {t("common.soon")}
-      </span>
     </div>
   );
 }

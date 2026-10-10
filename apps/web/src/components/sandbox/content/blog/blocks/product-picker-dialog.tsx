@@ -9,21 +9,18 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { KEYS } from "@/lib/query-keys";
 import { type PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import {
-  buildCategoryTreeRequest,
   buildProductRequests,
-  categoryOptionsFromPayload,
-  filterCategoryOptions,
   productOptionsFromPayload,
   type CategoryOption,
   type PickerLoaderRequest,
   type ProductPickerMode,
   type ProductPickerOption,
 } from "./product-picker-source";
+import { CategoryTreeList, sandboxKey, StatusLine } from "./category-tree-list";
 import { invokeLoader } from "./use-product-lookup";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
@@ -142,43 +139,6 @@ function ProductRow({
   );
 }
 
-/** Status line shared by the results and category panes. */
-function StatusLine({
-  query,
-  emptyLabel,
-  loadingLabel,
-}: {
-  query: { isLoading: boolean; isError: boolean };
-  emptyLabel: string;
-  loadingLabel: string;
-}) {
-  const t = useT();
-  if (query.isLoading) {
-    return (
-      <div className="flex items-center gap-2 px-2 py-6 text-sm text-muted-foreground">
-        <Spinner size="xs" />
-        {loadingLabel}
-      </div>
-    );
-  }
-  if (query.isError) {
-    return (
-      <p className="px-2 py-6 text-sm text-muted-foreground">
-        {t("sandbox.productPickerDialog.couldNotLoad")}
-      </p>
-    );
-  }
-  return (
-    <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-      {emptyLabel}
-    </p>
-  );
-}
-
-function sandboxKey(ref: PreviewProxyRef): string {
-  return `${ref.orgSlug}/${ref.virtualMcpId}/${ref.branch}`;
-}
-
 /** The category picker pane — pick one to filter products by it. */
 function CategoryPane({
   sandboxRef,
@@ -192,17 +152,6 @@ function CategoryPane({
   onSelect: (category: CategoryOption | null) => void;
 }) {
   const t = useT();
-  const [filter, setFilter] = useState("");
-  const query = useQuery({
-    queryKey: KEYS.sandboxInvoke(sandboxKey(sandboxRef), "blog-category-tree"),
-    queryFn: () =>
-      invokeLoader(sandboxRef, buildCategoryTreeRequest()).then(
-        categoryOptionsFromPayload,
-      ),
-    enabled: open && !selected,
-    staleTime: 60_000,
-    retry: 1,
-  });
 
   if (selected) {
     return (
@@ -221,50 +170,25 @@ function CategoryPane({
     );
   }
 
-  const options = filterCategoryOptions(query.data ?? [], filter);
-
   return (
-    <div className="space-y-2">
-      <Input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder={t(
-          "sandbox.productPickerDialog.filterCategoriesPlaceholder",
-        )}
-        className="h-9"
-      />
-      <div className="h-48 overflow-y-auto rounded-md border">
-        {options.length === 0 ? (
-          <StatusLine
-            query={query}
-            loadingLabel={t("sandbox.productPickerDialog.loadingCategories")}
-            emptyLabel={t("sandbox.productPickerDialog.noCategories")}
-          />
-        ) : (
-          <div className="p-1">
-            {options.map((option) => (
-              <button
-                key={option.path}
-                type="button"
-                onClick={() => onSelect(option)}
-                className="block w-full truncate px-2 py-1.5 text-left text-sm hover:bg-muted/60 rounded-lg"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <CategoryTreeList
+      sandboxRef={sandboxRef}
+      enabled={open}
+      onSelect={onSelect}
+      className="h-48"
+    />
   );
 }
 
 /**
- * Multi-select product picker for the blog ProductShelf/ProductCard blocks.
- * Browse by free search, category, or collection/cluster id (all VTEX
- * intelligent-search); toggling a product adds/removes its SKU id from
- * `selectedIds`. The picker only surfaces ids — the section still resolves
- * them to `Product[]`.
+ * Multi-select product picker. Browse by free search, category, or
+ * collection/cluster id (all VTEX intelligent-search); toggling a product
+ * adds/removes its SKU id from `selectedIds`.
+ *
+ * Blocks store ids and let the section resolve them at render time. Campaigns
+ * cannot: generation reads them long after, so they keep a copy of what was
+ * picked. `onPicked` serves that second caller — the ids stay authoritative,
+ * and it only reports what the picker already had in hand.
  */
 export function ProductPickerDialog({
   open,
@@ -272,6 +196,7 @@ export function ProductPickerDialog({
   sandboxRef,
   selectedIds,
   onChange,
+  onPicked,
   multiple = true,
 }: {
   open: boolean;
@@ -279,6 +204,12 @@ export function ProductPickerDialog({
   sandboxRef: PreviewProxyRef;
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  /**
+   * Takes over from `onChange` for callers that store more than the id: it
+   * receives the whole option and owns the update. Both would be a bug — two
+   * writes in one handler read the same pre-update state, so the second wins.
+   */
+  onPicked?: (option: ProductPickerOption, selected: boolean) => void;
   /** Product card selects a single product; shelf selects many. */
   multiple?: boolean;
 }) {
@@ -309,12 +240,16 @@ export function ProductPickerDialog({
 
   const selected = new Set(selectedIds.filter(Boolean));
 
-  const toggle = (id: string) => {
-    if (!multiple) {
-      onChange(selected.has(id) ? [] : [id]);
+  const toggle = (option: ProductPickerOption) => {
+    const id = option.id;
+    const wasSelected = selected.has(id);
+    if (onPicked) {
+      onPicked(option, !wasSelected);
       return;
     }
-    if (selected.has(id)) {
+    if (!multiple) {
+      onChange(wasSelected ? [] : [id]);
+    } else if (wasSelected) {
       onChange(selectedIds.filter((existing) => existing !== id));
     } else {
       onChange([...selectedIds.filter(Boolean), id]);
@@ -393,7 +328,7 @@ export function ProductPickerDialog({
                   key={option.id}
                   option={option}
                   selected={selected.has(option.id)}
-                  onToggle={() => toggle(option.id)}
+                  onToggle={() => toggle(option)}
                 />
               ))
             : !showEmptyPrompt && (

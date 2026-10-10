@@ -12,7 +12,9 @@ import { KEYS } from "@/lib/query-keys";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import type { LinkSource } from "@/components/sections-editor/rich-text-link-control";
 import { applyBlogPageSlug, findBlogPageSlug } from "../blog-preview-url";
-import { listPostsWithMeta } from "../blog-data";
+import { listPostsWithMeta, readBlogContext } from "../blog-data";
+import { str } from "./primitives";
+import { reHome } from "@decocms/shared/store-url";
 import {
   buildProductRequests,
   type ProductPickerOption,
@@ -149,9 +151,12 @@ function PostLinkPicker({
 /** Link to a catalog product — resolves the PDP url via the site's loader. */
 function ProductLinkPicker({
   sandboxRef,
+  storeUrl,
   onPick,
 }: {
   sandboxRef: PreviewProxyRef;
+  /** The brand's storefront domain; the loader reports the platform's. */
+  storeUrl: string;
   onPick: (url: string) => void;
 }) {
   const t = useT();
@@ -201,7 +206,7 @@ function ProductLinkPicker({
             key={option.id}
             label={option.label}
             image={option.image ?? ""}
-            onPick={() => option.url && onPick(option.url)}
+            onPick={() => option.url && onPick(reHome(option.url, storeUrl))}
           />
         ))
       )}
@@ -223,6 +228,11 @@ export function useLinkSources({
   sandboxRef?: PreviewProxyRef | null;
 }): LinkSource[] {
   const t = useT();
+  // The decofile is already here for the post picker, and the brand block it
+  // holds is where the storefront domain lives.
+  const storeUrl = decofile
+    ? str(readBlogContext(decofile).merged.storeUrl)
+    : "";
   const sources: LinkSource[] = [];
   if (decofile) {
     sources.push({
@@ -238,7 +248,11 @@ export function useLinkSources({
       label: t("sandbox.linkPicker.tabProduct"),
       icon: <Tag01 size={12} />,
       render: (apply) => (
-        <ProductLinkPicker sandboxRef={sandboxRef} onPick={apply} />
+        <ProductLinkPicker
+          sandboxRef={sandboxRef}
+          storeUrl={storeUrl}
+          onPick={apply}
+        />
       ),
     });
   }

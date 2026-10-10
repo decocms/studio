@@ -360,7 +360,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
-  "settings.blogBlocks.sectionTitle": "Blocos do blog",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "Blog com IA",
+  "settings.blog.aiDescription":
+    "Contexto da marca, campanhas e geração de posts. Sem isso, o blog é editado à mão.",
   "settings.blogBlocks.title": "Esconder os blocos de blog padrão",
   "settings.blogBlocks.description":
     "Só os blocos de post do próprio site ficam disponíveis ao escrever, gerar ou importar um post. Blocos já presentes em um post continuam sendo renderizados.",

@@ -31,6 +31,7 @@ interface ResolvedSuggestion {
 }
 
 export function SuggestLinksButton({
+  virtualMcpId,
   decofile,
   sections,
   currentKey,
@@ -38,6 +39,8 @@ export function SuggestLinksButton({
   onApply,
 }: {
   decofile: Record<string, unknown>;
+  /** The site, so the suggestion can weigh which targets actually get read. */
+  virtualMcpId: string;
   sections: Array<Record<string, unknown>>;
   /** The post being edited — excluded from its own link targets. */
   currentKey: string;
@@ -61,6 +64,7 @@ export function SuggestLinksButton({
     try {
       const body = postBodyText(sections);
       const result = await studio.call("BLOG_LINK_SUGGEST", {
+        virtualMcpId,
         body,
         posts: candidates.map((p) => ({ title: p.title, slug: p.slug })),
       });

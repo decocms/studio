@@ -15,6 +15,7 @@ import {
   Pilcrow01,
   Rocket01,
   SearchLg,
+  Stars02,
   Terminal,
   UserSquare,
 } from "@untitledui/icons";
@@ -438,15 +439,23 @@ export function VoiceModeSettings() {
 }
 
 /**
- * Whether the blog's post inserter still offers the `deco-cms/blog` built-in
- * blocks, or only the site's own. Org-level: an org that designed its own post
- * blocks wants writers reaching for those, not the generic ones.
+ * What the blog is, for this org: whether writers reach for the built-in post
+ * blocks or only the site's own, and whether the agentic half exists at all.
+ *
+ * One section rather than two. They are both answers to "how does this org
+ * blog", and a heading per toggle makes the page read like a changelog.
  */
-export function BlogBlocksSettings() {
+export function BlogSettings() {
   const t = useT();
   return (
-    <SettingsSection title={t("settings.blogBlocks.sectionTitle")}>
+    <SettingsSection title={t("settings.blog.sectionTitle")}>
       <SettingsCard>
+        <FlagToggle
+          flag="blog_ai_enabled"
+          icon={<Stars02 size={16} />}
+          titleKey="settings.blog.aiTitle"
+          descriptionKey="settings.blog.aiDescription"
+        />
         <FlagToggle
           flag="hide_default_blog_blocks"
           icon={<Pilcrow01 size={16} />}

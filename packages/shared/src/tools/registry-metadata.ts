@@ -61,11 +61,11 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
   "BLOG_BRAND_EXTRACT",
-  "BLOG_PILLAR_SUGGEST",
-  "BLOG_THEME_SUGGEST",
+  "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
   "BLOG_LINK_SUGGEST",
+  "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -400,22 +400,24 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_BRAND_EXTRACT",
     description:
-      "Infer editorial brand context (tone, dos and don'ts) from a site",
+      "Infer a brand's identity (name, audience, values, competitors) from a site",
     category: "Blog",
   },
   {
-    name: "BLOG_PILLAR_SUGGEST",
-    description: "Propose content pillars from a brand's editorial context",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_THEME_SUGGEST",
-    description: "Propose blog post ideas from a brand's editorial context",
+    name: "BLOG_CONTEXT_EXTRACT",
+    description:
+      "Infer a blog's writing context (tone, dos and don'ts) from a site",
     category: "Blog",
   },
   {
     name: "BLOG_FORMAT_SUGGEST",
     description: "Name the post formats a blog writes in",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CAMPAIGN_SUGGEST",
+    description:
+      "Propose campaigns from a seed, grounded in the site's systems",
     category: "Blog",
   },
   {

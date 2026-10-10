@@ -351,7 +351,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.blogBlocks.sectionTitle": "Blog blocks",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "AI blog",
+  "settings.blog.aiDescription":
+    "Brand context, campaigns and post generation. With this off the blog is written by hand.",
   "settings.blogBlocks.title": "Hide the default blog blocks",
   "settings.blogBlocks.description":
     "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",

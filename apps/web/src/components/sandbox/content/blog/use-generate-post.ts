@@ -1,62 +1,58 @@
 import { toast } from "sonner";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
 import {
   type AuthorRef,
-  BRAND_BLOCK_KEY,
+  blocksForFormat,
   buildGeneratedPostPayload,
   buildPlanningPostBlock,
+  type CampaignEntry,
   type CategoryRef,
+  contextForTools,
   emptyDraftPostPayload,
-  filledBrandRules,
   listAuthorRefs,
   listBlogPayloads,
   listPostsWithMeta,
-  mentionableSections,
   newPostId,
-  normalizeBrandRules,
   type PlanningMeta,
   planningPostKey,
+  readBlogContext,
   sectionResolveTypes,
   setPostStatus,
 } from "./blog-data";
 import { str } from "./blocks/primitives";
 
+type Gap = StudioToolOutput<"BLOG_POST_DRAFT">["gaps"][number];
+
 /**
- * Section kinds the draft tool knows how to write. A site may expose more — a
- * product shelf, an image — but those need data no model can invent, so they
- * stay out of generation and a human adds them on review.
+ * A gap code, worded.
+ *
+ * The tool answers in codes rather than sentences: it runs server-side with no
+ * notion of who is reading, and a sentence it composed would arrive in English
+ * inside an interface the person set to their own language.
  */
-const GENERATABLE = [
-  "Heading",
-  "Paragraph",
-  "List",
-  "Quote",
-  "Callout",
-  "Cta",
-  "Divider",
-] as const;
+const GAP_KEYS = {
+  "no-store-data": "sandbox.generatePost.gapNoStoreData",
+  "sections-dropped": "sandbox.generatePost.gapSectionsDropped",
+  "no-bucket": "sandbox.generatePost.gapNoBucket",
+  "no-image-model": "sandbox.generatePost.gapNoImageModel",
+  "images-failed": "sandbox.generatePost.gapImagesFailed",
+  "drafts-failed": "sandbox.generatePost.gapDraftsFailed",
+} as const satisfies Record<Gap["code"], TranslationKey>;
 
-type GeneratableSection = (typeof GENERATABLE)[number];
-
-function isGeneratable(name: string): name is GeneratableSection {
-  return (GENERATABLE as readonly string[]).includes(name);
-}
-
-/** Everything the wizard collected — what one post gets written from. */
+/** Everything the wizard collected — what the drafts get written from. */
 export interface PostBriefing {
-  idea: { key?: string; title: string; body: string };
-  /** The territory the idea sits in — steers the writing, and labels the card. */
-  pillar?: { key?: string; title: string; body: string };
+  campaign: CampaignEntry;
   format: { name: string; value: string };
-  /** Left empty to let the model file the post itself. */
-  category?: CategoryRef;
-  /** Left empty to let the model attribute the post itself. */
-  author?: AuthorRef;
   extraInstructions?: string;
+  /** How many drafts to write, each taking its own angle. */
+  count: number;
+  /** Where a generated image is uploaded. Absent means no image is made. */
+  fileConfigId?: string;
 }
 
 interface UseGeneratePostParams {
@@ -65,24 +61,26 @@ interface UseGeneratePostParams {
   branch: string;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
-  /** The placeholder card just landed on the board under this key. */
-  onStarted?: (key: string) => void;
+  /** The placeholder cards just landed on the board under these keys. */
+  onStarted?: (keys: string[]) => void;
 }
 
 /**
- * Write one post from a briefing, in the background.
+ * Write a campaign's posts from a briefing, in the background.
  *
- * The card is created first and sits in Generating, so the board shows the
- * work in flight rather than nothing at all; the draft is then written onto
- * that same planning key and the card moves itself to Awaiting review. A
- * failure drops it back to Draft with the briefing intact, so the operator can
- * retry from what they already filled in instead of starting over.
+ * One card per requested draft is created first and sits in Generating, so the
+ * board shows the work in flight rather than nothing at all; each draft is then
+ * written onto its own planning key and moves itself to Awaiting review. A
+ * failure drops the card back to Draft with the briefing intact, so the
+ * operator can retry from what they already filled in.
  *
- * A picked category or author is handed over as the tool's only option, so the
- * model confirms the operator's choice rather than second-guessing it; leaving
- * either empty passes the whole list and lets the model choose.
+ * One call, not one per draft: the grounding pass that reads the store is the
+ * slow half and its answer is the same for every angle.
  *
- * Resolves when the post is written. Callers fire and forget: the dialog that
+ * Every save is awaited in turn because they all land on the same decofile and
+ * are serialized there anyway — firing them together only queues them.
+ *
+ * Resolves when the posts are written. Callers fire and forget: the dialog that
  * started it is closed by then.
  */
 export function useGeneratePost({
@@ -99,96 +97,135 @@ export function useGeneratePost({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
 
   return async (briefing: PostBriefing) => {
-    const key = planningPostKey(newPostId());
     const planning: PlanningMeta = {
-      ideaKey: briefing.idea.key,
-      pillarKey: briefing.pillar?.key,
-      pillarTitle: briefing.pillar?.title,
+      campaignKey: briefing.campaign.key,
       format: briefing.format,
-      brief: briefing.idea.body,
+      brief: briefing.campaign.trigger.note,
     };
     const placeholder = setPostStatus(
       emptyDraftPostPayload({
-        title: briefing.idea.title,
+        title: briefing.campaign.name,
         planning,
         now: new Date(),
       }),
       "generating",
       new Date(),
     );
-    await save.mutateAsync({
-      blockKey: key,
-      data: buildPlanningPostBlock(key, placeholder),
-    });
-    onStarted?.(key);
 
-    const brandBlock = decofile[BRAND_BLOCK_KEY] as
-      | Record<string, unknown>
-      | undefined;
-    const categories: CategoryRef[] = briefing.category
-      ? [briefing.category]
-      : listBlogPayloads(decofile, "categories")
-          .map(({ payload }) => ({
-            name: str(payload.name),
-            slug: str(payload.slug),
-          }))
-          .filter((category) => category.slug);
-    const authors: AuthorRef[] = briefing.author
-      ? [briefing.author]
-      : listAuthorRefs(decofile);
+    const keys = Array.from({ length: briefing.count }, () =>
+      planningPostKey(newPostId()),
+    );
+    for (const key of keys) {
+      await save.mutateAsync({
+        blockKey: key,
+        data: buildPlanningPostBlock(key, placeholder),
+      });
+    }
+    onStarted?.(keys);
+
+    const { merged } = readBlogContext(decofile);
+    const brand = contextForTools(merged);
+    const categories: CategoryRef[] = listBlogPayloads(decofile, "categories")
+      .map(({ payload }) => ({
+        name: str(payload.name),
+        slug: str(payload.slug),
+      }))
+      .filter((category) => category.slug);
+    const authors: AuthorRef[] = listAuthorRefs(decofile);
+    const blocks = blocksForFormat(briefing.format, meta, decofile, {
+      hideDefaults,
+    });
+    // How each block already stores its product slot, so the ids the writer
+    // chose land in the shape this site reads.
+    const productShapes = Object.fromEntries(
+      blocks.map((block) => [block.name, block.example]),
+    );
+
+    /** A card left in Generating for a draft that never arrived would lie. */
+    const abandon = async (from: number) => {
+      for (const key of keys.slice(from)) {
+        await save.mutateAsync({
+          blockKey: key,
+          data: buildPlanningPostBlock(
+            key,
+            setPostStatus(placeholder, "draft", new Date()),
+          ),
+        });
+      }
+    };
 
     try {
-      const draft = await studio.call("BLOG_POST_DRAFT", {
+      const result = await studio.call("BLOG_POST_DRAFT", {
+        virtualMcpId,
         brand: {
-          companyName: str(brandBlock?.companyName),
-          description: str(brandBlock?.description),
-          language: str(brandBlock?.language),
-          tone: str(brandBlock?.tone),
-          targetAudience: str(brandBlock?.targetAudience),
-          values: filledBrandRules(normalizeBrandRules(brandBlock?.values)),
-          dos: filledBrandRules(normalizeBrandRules(brandBlock?.dos)),
-          avoid: filledBrandRules(normalizeBrandRules(brandBlock?.avoid)),
+          companyName: brand.companyName,
+          description: brand.description,
+          language: brand.language,
+          storeUrl: brand.storeUrl,
+          targetAudience: brand.targetAudience,
+          tone: brand.tone,
+          dos: brand.dos,
+          avoid: brand.avoid,
+          vocabulary: brand.vocabulary,
+          voiceExamples: brand.voiceExamples,
         },
-        pillar: briefing.pillar
-          ? { title: briefing.pillar.title, body: briefing.pillar.body }
-          : undefined,
-        theme: { title: briefing.idea.title, body: briefing.idea.body },
+        campaign: {
+          name: briefing.campaign.name,
+          period: briefing.campaign.period,
+          trigger: briefing.campaign.trigger,
+          intent: {
+            objective: briefing.campaign.intent.objective,
+            targets: briefing.campaign.intent.targets,
+            products: briefing.campaign.intent.products,
+            keywords: briefing.campaign.intent.keywords,
+          },
+          guardrails: briefing.campaign.guardrails,
+        },
         format: briefing.format,
-        sections: mentionableSections(meta, { hideDefaults })
-          .filter((section) => isGeneratable(section.name))
-          .map((section) => ({
-            type: section.name as GeneratableSection,
-            purpose: section.description,
-          })),
+        blocks,
         categories,
         // The draft tool only attributes the post — identity is enough.
         authors: authors.map(({ name, email }) => ({ name, email })),
         extraInstructions: briefing.extraInstructions?.trim() || undefined,
+        count: briefing.count,
+        fileConfigId: briefing.fileConfigId,
       });
 
-      const payload = buildGeneratedPostPayload({
-        draft,
-        resolveTypes: sectionResolveTypes(meta, { hideDefaults }),
-        categories,
-        authors,
-        planning,
-        takenSlugs: listPostsWithMeta(decofile).map((post) => post.slug),
-        now: new Date(),
-      });
-      await save.mutateAsync({
-        blockKey: key,
-        data: buildPlanningPostBlock(key, payload),
-      });
-      toast.success(t("sandbox.generatePost.done", { title: draft.title }));
+      const resolveTypes = sectionResolveTypes(meta, { hideDefaults });
+      const takenSlugs = listPostsWithMeta(decofile).map((post) => post.slug);
+      for (const [i, draft] of result.posts.entries()) {
+        const key = keys[i];
+        if (!key) break;
+        const payload = buildGeneratedPostPayload({
+          draft,
+          resolveTypes,
+          productShapes,
+          categories,
+          authors,
+          planning,
+          takenSlugs,
+          now: new Date(),
+        });
+        takenSlugs.push(str(payload.slug));
+        await save.mutateAsync({
+          blockKey: key,
+          data: buildPlanningPostBlock(key, payload),
+        });
+      }
+      await abandon(result.posts.length);
+
+      if (result.posts.length > 0) {
+        toast.success(
+          t("sandbox.generatePost.done", {
+            count: String(result.posts.length),
+          }),
+        );
+      }
+      for (const gap of result.gaps) {
+        toast.warning(t(GAP_KEYS[gap.code], { count: gap.count ?? 0 }));
+      }
     } catch (err) {
-      // Back to Draft, briefing intact: a card stuck in Generating would lie.
-      await save.mutateAsync({
-        blockKey: key,
-        data: buildPlanningPostBlock(
-          key,
-          setPostStatus(placeholder, "draft", new Date()),
-        ),
-      });
+      await abandon(0);
       toast.error(
         err instanceof Error ? err.message : t("sandbox.generatePost.failed"),
       );
