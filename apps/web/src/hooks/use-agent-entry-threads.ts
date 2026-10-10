@@ -41,6 +41,12 @@ export function useAgentEntryThreads(
     enabled: enabled && !!userId,
     // Overrides the app's 1-minute default: every entry re-reads the drafts.
     staleTime: 0,
+    // Entry resolution is a one-shot decision on entering the project. While a
+    // refetch runs the route shows its "resolving" spinner in place of the
+    // open view, so a focus or reconnect refetch would unmount whatever the
+    // user has open (an MCP app reloads from scratch).
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: async (): Promise<Task[]> => {
       try {
         const result = await studio.call("COLLECTION_THREADS_LIST", {
