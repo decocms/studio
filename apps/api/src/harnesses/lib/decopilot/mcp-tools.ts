@@ -10,6 +10,7 @@ import {
   type UIMessageStreamWriter,
 } from "ai";
 import { llmSafeInputSchema, restoreOriginalKeys } from "@decocms/mcp-utils";
+import type { AgentLoopPendingImage } from "./agent-loop-state";
 import { truncateForModel } from "./built-in-tools/read-tool-output";
 
 const DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS = 120_000;
@@ -178,6 +179,46 @@ export interface ToolsFromMcpOptions {
   ) => Promise<Record<string, unknown>>;
   onToolCalled?: (event: ToolCallAnalytics) => void;
   onPrOpened?: (event: PrOpenedEvent) => void;
+  /** Queue that prepareStep attaches as a user message. When set, image
+   *  content from MCP tool results is shown to the model through it. */
+  pendingImages?: AgentLoopPendingImage[];
+}
+
+/** Anthropic rejects images over 5 MB; larger ones are described instead. */
+const MAX_ATTACHED_IMAGE_BASE64_CHARS = 5_000_000;
+
+/**
+ * Swap `image` content for a short text placeholder, queueing the bytes on
+ * `pendingImages` so prepareStep attaches them as a user message — the same
+ * path take_screenshot and the VM Read tool use, because not every provider
+ * carries images inside tool results. Without a queue (or past the size cap)
+ * the image is only described: stringified base64 is unreadable to the model
+ * and costs ~1 token per 4 bytes.
+ */
+export function attachToolResultImages(
+  content: CallToolResult["content"],
+  toolName: string,
+  pendingImages?: AgentLoopPendingImage[],
+): CallToolResult["content"] {
+  return content.map((c) => {
+    if (c.type !== "image") return c;
+    const kb = Math.round((c.data.length * 3) / 4 / 1024);
+    if (pendingImages && c.data.length <= MAX_ATTACHED_IMAGE_BASE64_CHARS) {
+      pendingImages.push({
+        url: `data:${c.mimeType};base64,${c.data}`,
+        mediaType: c.mimeType,
+        label: `[Image returned by ${toolName}]`,
+      });
+      return {
+        type: "text",
+        text: `[${c.mimeType} image, ${kb} KB, attached below]`,
+      };
+    }
+    return {
+      type: "text",
+      text: `[${c.mimeType} image, ${kb} KB, not shown to the model]`,
+    };
+  });
 }
 
 export async function toolsFromMCP(
@@ -192,6 +233,8 @@ export async function toolsFromMCP(
   rawTools: Awaited<ReturnType<Client["listTools"]>>["tools"];
 }> {
   const truncate = !options.disableOutputTruncation;
+  // toModelOutput may run more than once per call; queue its images once.
+  const imagesQueued = new Set<string>();
   const list = await client.listTools();
   const visibleTools = list.tools.filter((t) =>
     (options.isToolVisible ?? defaultToolVisibility)(t),
@@ -285,7 +328,20 @@ export async function toolsFromMCP(
             });
           }
         },
-        toModelOutput: async ({ output, toolCallId }) => {
+        toModelOutput: async ({ output: rawOutput, toolCallId }) => {
+          const hasImages = rawOutput.content?.some((c) => c.type === "image");
+          // A repeat call reports the image as attached without re-queueing.
+          const queue =
+            options.pendingImages && imagesQueued.has(toolCallId)
+              ? []
+              : options.pendingImages;
+          if (hasImages && options.pendingImages) imagesQueued.add(toolCallId);
+          const output = hasImages
+            ? {
+                ...rawOutput,
+                content: attachToolResultImages(rawOutput.content, name, queue),
+              }
+            : rawOutput;
           if (truncate) {
             const capped = truncateForModel(
               output.structuredContent ?? output.content,

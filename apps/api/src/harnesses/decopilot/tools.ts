@@ -278,6 +278,7 @@ export async function assembleDecopilotTools(
         resolveArgs: extras.resolveArgs,
         onToolCalled: extras.onToolCalled,
         onPrOpened: extras.onPrOpened,
+        pendingImages: extras.pendingImages,
       },
     );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the
