@@ -96,9 +96,41 @@ describe("useDecoServeConnection (the Localhost choice)", () => {
     act(() => result.current.set({ endpoint: ENDPOINT }));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(result.current.connection).toBeNull();
-    const stored = Object.keys(localStorage).map((k) =>
-      localStorage.getItem(k),
+    expect(Object.keys(localStorage)).toEqual([]);
+  });
+
+  it("never writes a key without a project id", async () => {
+    for (const id of [null, undefined, ""]) {
+      const { result, unmount } = renderHook(() => useDecoServeConnection(id), {
+        wrapper,
+      });
+      act(() => result.current.set({ endpoint: ENDPOINT }));
+      act(() => result.current.clear());
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(result.current.connection).toBeNull();
+      unmount();
+    }
+    expect(Object.keys(localStorage)).toEqual([]);
+  });
+
+  it("reading stores nothing; only a choice is stored, under both ids", async () => {
+    const { result } = renderHook(() => useDecoServeConnection("vmcp"), {
+      wrapper,
+    });
+    expect(Object.keys(localStorage)).toEqual([]);
+    act(() => result.current.set({ endpoint: ENDPOINT }));
+    await waitFor(() =>
+      expect(result.current.connection?.endpoint).toBe(ENDPOINT),
     );
-    expect(stored.every((v) => v === null || v === "null")).toBe(true);
+    expect(Object.keys(localStorage).sort()).toEqual(
+      [
+        LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp"),
+        LOCALSTORAGE_KEYS.decoServeEndpoint("u1", "vmcp"),
+      ].sort(),
+    );
+    for (const key of Object.keys(localStorage)) {
+      expect(key.endsWith(":")).toBe(false);
+      expect(key).toContain(":u1:vmcp");
+    }
   });
 });
