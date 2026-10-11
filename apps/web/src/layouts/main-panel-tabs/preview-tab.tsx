@@ -70,12 +70,7 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   // Localhost (a project's `deco serve`): the preview is the app it reports.
   // Until there is one, guide instead of booting a sandbox or showing the
   // hosted draft. `/site-editor` has its own gate.
-  if (
-    serveConnection &&
-    entity &&
-    !servePreviewUrl(backend) &&
-    !(backend.kind === "protocol" && backend.source !== "local")
-  ) {
+  if (serveConnection && entity && !servePreviewUrl(backend)) {
     const connected = backend.kind === "protocol";
     return (
       <EmptyState

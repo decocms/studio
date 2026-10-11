@@ -1,6 +1,8 @@
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
+import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
+import { useVirtualMCP } from "@/sdk";
 
 export interface LocalPreviewUrl {
   /** The active override, or `null` when Local mode is off / no project. Always
@@ -23,6 +25,11 @@ export interface LocalPreviewUrl {
  * land on shared project metadata where a teammate would inherit an unreachable
  * URL. Reading is reactive via `useLocalStorage` (same QueryClient cache), so
  * every surface flips together when it changes.
+ *
+ * v7 only, as on main. A Blocks v8 site (the server's marker) reads as off:
+ * it previews the hosted draft, its sandbox or Localhost, so a tunnel saved
+ * before (main's Advanced → Local, or before a v7 → v8 upgrade) never
+ * replaces its preview or its editor.
  */
 export function useLocalPreviewUrl(
   virtualMcpId: string | null | undefined,
@@ -30,7 +37,11 @@ export function useLocalPreviewUrl(
   // Keyed unconditionally (hooks can't be conditional); no project reads as off.
   const key = LOCALSTORAGE_KEYS.localPreviewUrl(virtualMcpId ?? "");
   const [stored, setStored] = useLocalStorage<string | null>(key, null);
-  const url = virtualMcpId ? sanitizeSiteUrl(stored) : null;
+  const project = useVirtualMCP(virtualMcpId);
+  const url =
+    virtualMcpId && !isBlocksV8Project(project?.metadata)
+      ? sanitizeSiteUrl(stored)
+      : null;
   return {
     url,
     setUrl: (next) => setStored(sanitizeSiteUrl(next)),

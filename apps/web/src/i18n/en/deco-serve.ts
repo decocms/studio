@@ -71,9 +71,10 @@ export const decoServe = {
     "deco serve on {host} is running in another site's folder. Run deco serve in this site's folder; Studio connects as soon as it starts.",
   "decoServe.state.otherSite.bodyNamed":
     "deco serve on {host} is running the site {other}. Run deco serve in this site's folder; Studio connects as soon as it starts.",
-  "decoServe.state.siteUnverified.title": "Update deco serve to connect",
+  "decoServe.state.siteUnverified.title":
+    "Studio can't confirm this is your site",
   "decoServe.state.siteUnverified.body":
-    "Studio can't tell which site deco serve on {host} is running, so it won't edit it. Update @decocms/blocks in your site to the latest version, then start deco serve again.",
+    "Studio can't tell which site deco serve on {host} is running, so it won't edit it. Add your site's `.deco/secrets.pub` file to its repository; Studio connects on its own once it's there.",
   "decoServe.state.error.body":
     'It answered, but with an error: "{detail}". Check the terminal where deco serve runs for details, then try again.',
 

@@ -230,8 +230,9 @@ export interface ServeProblem {
  * 1. `describe.site` (newer `deco serve`) must equal the project's site id.
  * 2. Otherwise the site's public key (`.deco/secrets.pub`) must equal the one
  *    committed to the project's repository.
- * 3. Neither can be compared: `site-unverified` (update `deco serve`). It
- *    never connects silently.
+ * 3. Neither can be compared: `site-unverified` (the repository needs the
+ *    site's `.deco/secrets.pub` until `deco serve` names its site). It never
+ *    connects silently.
  *
  * `committedPublicKey`: `undefined` while the repository's copy loads (the
  * answer is then `pending` when rule 2 needs it), `null` when the repository

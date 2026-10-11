@@ -4,15 +4,22 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ContentBackend } from "@/components/sections-editor/content-backend";
 import {
+  DEFAULT_SERVE_ENDPOINT,
+  endpointHost,
   SERVE_COMMAND,
   type ServeProblem,
 } from "@/components/sections-editor/deco-serve-connection";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
   CommandSnippet,
   RichCode,
   serveProblemCopy,
 } from "@/components/sections-editor/deco-serve-notices";
-import type { LocalNetworkAccess } from "@/hooks/use-deco-serve-discovery";
+import type { DecoServeConnectionState } from "@/hooks/use-deco-serve-connection";
+import {
+  type LocalNetworkAccess,
+  useLocalNetworkAccess,
+} from "@/hooks/use-deco-serve-discovery";
 import { useT } from "@/i18n/use-t.ts";
 
 /** What the Localhost row says (Blocks v8 sites only). */
@@ -53,6 +60,48 @@ export function localhostStatus(input: {
     return { kind: "problem", problem };
   }
   return { kind: "connecting" };
+}
+
+/**
+ * The Localhost row wired to the editor (Blocks v8 only, so a v7 draft
+ * selector runs none of these hooks): its state is the editor's own content
+ * backend, so the row and the editor never disagree.
+ */
+export function V8LocalhostRow({
+  virtualMcpId,
+  branch,
+  serve,
+  rowRef,
+}: {
+  virtualMcpId: string;
+  branch: string | null | undefined;
+  serve: DecoServeConnectionState;
+  rowRef?: Ref<HTMLDivElement>;
+}) {
+  const backend = useContentBackend(virtualMcpId, branch);
+  const access = useLocalNetworkAccess();
+  const selected = !!serve.connection;
+  return (
+    <LocalhostRow
+      rowRef={rowRef}
+      status={localhostStatus({ selected, backend, access })}
+      host={endpointHost(
+        serve.connection?.endpoint ??
+          serve.lastEndpoint ??
+          DEFAULT_SERVE_ENDPOINT,
+      )}
+      onSelect={() => {
+        if (selected) return;
+        // Where this user last connected the project, else the default
+        // port. Nothing answering yet is fine: the editor connects as soon
+        // as `deco serve` starts.
+        serve.set({
+          endpoint: serve.lastEndpoint ?? DEFAULT_SERVE_ENDPOINT,
+        });
+      }}
+      onTurnOff={() => serve.clear()}
+    />
+  );
 }
 
 /**
