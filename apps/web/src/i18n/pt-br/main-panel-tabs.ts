@@ -557,4 +557,9 @@ export const mainPanelTabs = {
     "Aguardando seu computador",
   "mainPanelTabs.previewTab.localhostWaiting.body":
     "O preview mostra seu app assim que o Studio se conectar ao deco serve. Veja o próximo passo no seletor de rascunhos.",
+  "mainPanelTabs.previewTab.localAppWaiting.title": "Esperando seu app",
+  "mainPanelTabs.previewTab.localAppWaiting.body":
+    "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo.",
+  "mainPanelTabs.previewTab.localAppWaiting.hint":
+    "O preview carrega sozinho assim que seu app responder.",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;
