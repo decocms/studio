@@ -1,5 +1,9 @@
 import { useId } from "react";
+import { Check, Copy01 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { SettingsCardRow } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t";
 import {
@@ -28,7 +32,9 @@ export function projectSiteId(project: {
 /**
  * The project's site id, read-only. It is set once, by the flow that creates
  * or imports the site, and is the site's public id from then on — CDN paths,
- * site tokens and asset URLs carry it — so no form may change it.
+ * site tokens and asset URLs carry it — so no form may change it. Hovering or
+ * focusing the row reveals a copy button (always shown on touch screens, which
+ * have no hover); the icon turns into a check while the id is on the clipboard.
  */
 export function ProjectSiteId({
   siteSlug,
@@ -39,8 +45,9 @@ export function ProjectSiteId({
 }) {
   const t = useT();
   const id = useId();
+  const { handleCopy, copied } = useCopy();
   return (
-    <SettingsCardRow className={className}>
+    <SettingsCardRow className={cn("group", className)}>
       <div>
         <label htmlFor={id} className="text-sm font-medium">
           {t("virtualMcp.settings.identity.siteId")}
@@ -49,7 +56,32 @@ export function ProjectSiteId({
           {t("virtualMcp.settings.identity.siteIdDescription")}
         </p>
       </div>
-      <Input id={id} value={siteSlug} readOnly disabled className="font-mono" />
+      <div className="relative">
+        <Input
+          id={id}
+          value={siteSlug}
+          readOnly
+          disabled
+          className="pr-10 font-mono"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("virtualMcp.settings.identity.copySiteId")}
+          onClick={() => void handleCopy(siteSlug).catch(() => {})}
+          className={cn(
+            "absolute top-1/2 right-1 -translate-y-1/2 transition-opacity",
+            "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
+            copied && "opacity-100",
+          )}
+        >
+          {copied ? <Check className="text-success" /> : <Copy01 />}
+        </Button>
+        <span className="sr-only" aria-live="polite">
+          {copied ? t("virtualMcp.settings.identity.siteIdCopied") : ""}
+        </span>
+      </div>
     </SettingsCardRow>
   );
 }

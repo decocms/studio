@@ -130,6 +130,9 @@ export const virtualMcp = {
   "virtualMcp.settings.identity.siteId": "Id do site",
   "virtualMcp.settings.identity.siteIdDescription":
     "O id do site não pode mudar: caminhos de CDN, tokens e URLs de assets usam ele.",
+  "virtualMcp.settings.identity.copySiteId": "Copiar id do site",
+  "virtualMcp.settings.identity.siteIdCopied":
+    "Id do site copiado para a área de transferência",
   "virtualMcp.settings.identity.description": "Descrição",
   "virtualMcp.settings.general.title": "Geral",
   "virtualMcp.settings.site.title": "CMS",
