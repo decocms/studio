@@ -7,11 +7,7 @@ import {
   PROTOCOL_VERSION,
 } from "@decocms/blocks/protocol";
 import { selectContentBackend } from "./content-backend";
-import {
-  backgroundProbeRetry,
-  probe,
-  probeSandbox,
-} from "./use-content-backend";
+import { probe, probeSandbox, V8_PROBE_RETRY } from "./use-content-backend";
 
 const deco1 = {
   manifest: { blocks: {} },
@@ -42,22 +38,17 @@ function githubServing(schema: unknown): ContentClient {
   } as unknown as ContentClient;
 }
 
-/** What `useContentBackend` decides for a flag-on Fast Preview session. */
+/** What `useContentBackend` decides for a flag-on v8 Fast Preview session. */
 async function decideWithFlagOn(schema: unknown) {
   const probed = await probe(githubServing(schema));
-  const decide = (isV8Project: boolean) =>
-    selectContentBackend({
-      hasProject: true,
-      isV8Project,
-      flagEnabled: true,
-      hasServeConnection: false,
-      hasLocalTunnel: false,
-      runtime: "cms",
-      githubSite: probed.v8Schema ? "v8" : "v7",
-    });
-  // Marked or not, a settled probe decides the same way.
-  expect(decide(false)).toBe(decide(true));
-  return decide(true);
+  return selectContentBackend({
+    hasProject: true,
+    isV8Project: true,
+    flagEnabled: true,
+    hasServeConnection: false,
+    runtime: "cms",
+    githubSite: probed.v8Schema ? "v8" : "v7",
+  });
 }
 
 describe("v7/v8 detection over the GitHub backend", () => {
@@ -91,19 +82,15 @@ describe("v7/v8 detection over the GitHub backend", () => {
 describe("v7/v8 detection over a sandbox's daemon", () => {
   async function decide(schema: unknown) {
     const probed = await probe(githubServing(schema));
-    const decide = (isV8Project: boolean) =>
-      selectContentBackend({
-        hasProject: true,
-        isV8Project,
-        flagEnabled: true,
-        hasServeConnection: false,
-        hasLocalTunnel: false,
-        runtime: "sandbox",
-        githubSite: "loading",
-        sandboxSite: probed.v8Schema ? "v8" : "v7",
-      });
-    expect(decide(false)).toBe(decide(true));
-    return decide(true);
+    return selectContentBackend({
+      hasProject: true,
+      isV8Project: true,
+      flagEnabled: true,
+      hasServeConnection: false,
+      runtime: "sandbox",
+      githubSite: "loading",
+      sandboxSite: probed.v8Schema ? "v8" : "v7",
+    });
   }
 
   test('a working tree whose schema says "blocksMajor": 8 is a v8 site', async () => {
@@ -137,21 +124,12 @@ describe("sandbox probe", () => {
   });
 });
 
-describe("backgroundProbeRetry", () => {
-  const failed = { state: { status: "error" } };
-  const ok = { state: { status: "success" } };
-
-  test("v7: one quiet try, never re-polled after a 503 or 404", () => {
-    const v7 = backgroundProbeRetry(false);
-    expect(v7.retry).toBe(1);
-    expect(v7.refetchInterval).toBe(false);
-  });
-
-  test("v8: the editor waits on it, so a failure is re-polled until it recovers", () => {
-    const v8 = backgroundProbeRetry(true);
-    expect(v8.retry).toBe(2);
-    const interval = v8.refetchInterval as (q: typeof failed) => number | false;
-    expect(interval(failed)).toBeGreaterThan(0);
-    expect(interval(ok)).toBe(false);
+describe("V8_PROBE_RETRY", () => {
+  test("the editor waits on it, so a failure is re-polled until it recovers", () => {
+    const failed = { state: { status: "error" } };
+    const ok = { state: { status: "success" } };
+    expect(V8_PROBE_RETRY.retry).toBe(2);
+    expect(V8_PROBE_RETRY.refetchInterval(failed)).toBeGreaterThan(0);
+    expect(V8_PROBE_RETRY.refetchInterval(ok)).toBe(false);
   });
 });

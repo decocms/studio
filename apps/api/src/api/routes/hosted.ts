@@ -38,7 +38,10 @@ import {
   NotPublishedError,
   SchemaMismatchError,
 } from "@/hosted/releases";
-import { syncBlocksMajorMarker } from "@/hosted/blocks-major";
+import {
+  projectPackagePath,
+  syncBlocksMajorMarker,
+} from "@/hosted/blocks-major";
 import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import { createSiteTokens, importSigningKey } from "@/hosted/site-token";
 import { getSettings } from "@/settings";
@@ -104,12 +107,11 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
   if (!site || !repository) {
     return c.json({ error: "Project has no site or repository" }, 404);
   }
-  const runtime = metadata?.runtime as { path?: string | null } | undefined;
   c.set("hostedProject", {
     organizationId: organization.id,
     virtualMcpId,
     site,
-    packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
+    packagePath: projectPackagePath(metadata),
     repository,
     metadata,
   });
