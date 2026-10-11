@@ -94,6 +94,7 @@ describe("markBlocksV8OnCreate", () => {
       project: project({ siteSlug: "acme" }),
       by: "user",
       flags: flagOn,
+      hostedSite: async () => "acme",
       client: async () => git.client,
     });
     expect(patches.map((p) => p.set)).toEqual([{ blocksMajor: 8 }]);
@@ -107,6 +108,7 @@ describe("markBlocksV8OnCreate", () => {
       project: project({ runtime: { path: "/site/" } }),
       by: "user",
       flags: flagOn,
+      hostedSite: async () => "acme",
       client: async () => git.client,
     });
     expect(patches).toHaveLength(1);
@@ -120,6 +122,7 @@ describe("markBlocksV8OnCreate", () => {
       project: project({}),
       by: "user",
       flags: flagOn,
+      hostedSite: async () => "acme",
       client: async () => git.client,
     });
     expect(patches).toEqual([]);
@@ -133,6 +136,25 @@ describe("markBlocksV8OnCreate", () => {
       project: project({}),
       by: "user",
       flags: async () => ({}),
+      hostedSite: async () => "acme",
+      client: async () => {
+        read = true;
+        return fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT }).client;
+      },
+    });
+    expect(read).toBe(false);
+    expect(patches).toEqual([]);
+  });
+
+  it("does nothing, not even a read, without a hosted site", async () => {
+    const { projects, patches } = recordingStorage();
+    let read = false;
+    await markBlocksV8OnCreate({
+      projects,
+      project: project({}),
+      by: "user",
+      flags: flagOn,
+      hostedSite: async () => null,
       client: async () => {
         read = true;
         return fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT }).client;
@@ -149,6 +171,7 @@ describe("markBlocksV8OnCreate", () => {
       project: project({}),
       by: "user",
       flags: flagOn,
+      hostedSite: async () => "acme",
       client: async () => null,
     });
     expect(patches).toEqual([]);
@@ -162,6 +185,7 @@ describe("markBlocksV8OnCreate", () => {
         project: project({}),
         by: "user",
         flags: flagOn,
+        hostedSite: async () => "acme",
         client: async () => {
           throw new Error("no credential");
         },

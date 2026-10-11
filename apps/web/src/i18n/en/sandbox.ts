@@ -846,6 +846,8 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.blocksV8.needsPreviewServerUrl":
+    "Add your site's address above to preview drafts. Until then, new chats start a coding session.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
