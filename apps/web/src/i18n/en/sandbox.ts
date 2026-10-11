@@ -863,6 +863,8 @@ export const sandbox = {
     "Continue this branch in a coding session",
   "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
+  "sandbox.previewServerUrlField.descriptionBlocksV8":
+    "Your live site's address. Studio shows your drafts on it before you publish.",
   "sandbox.previewServerUrlField.label": "Preview server",
   "sandbox.previewServerUrlField.placeholder": "https://example.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",

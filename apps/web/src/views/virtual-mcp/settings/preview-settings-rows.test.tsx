@@ -97,4 +97,19 @@ describe("PreviewSettingsRows", () => {
     expect(queryByText("Fast Preview")).not.toBeInTheDocument();
     expect(queryByText(/Add your site's address/)).toBeInTheDocument();
   });
+
+  it("names Fast Preview in the preview server hint on v7 only", () => {
+    const v7 = renderBare(<Harness isBlocksV8={false} fastPreview />, {
+      wrapper,
+    });
+    expect(v7.queryByText(/Required for Fast Preview/)).toBeInTheDocument();
+    v7.unmount();
+    const v8 = renderBare(<Harness isBlocksV8 fastPreview={false} />, {
+      wrapper,
+    });
+    expect(v8.queryByText(/Fast Preview/)).not.toBeInTheDocument();
+    expect(
+      v8.queryByText(/Studio shows your drafts on it/),
+    ).toBeInTheDocument();
+  });
 });
