@@ -83,7 +83,13 @@ describe("PreviewTab with Localhost: waits for the app", () => {
     const { getByText, queryByTestId } = render();
     expect(refs.probedUrl).toBe(APP);
     expect(getByText("Waiting for your app")).toBeInTheDocument();
-    expect(getByText(/localhost:3000/)).toBeInTheDocument();
+    // The address is inline <code> inside the one sentence, which points to
+    // the Content tab for editing meanwhile.
+    const address = getByText("localhost:3000");
+    expect(address.tagName).toBe("CODE");
+    expect(address.parentElement?.textContent).toBe(
+      "Your app at localhost:3000 isn't answering yet. If it isn't running, start it on your computer. Meanwhile, you can edit your content in the Content tab.",
+    );
     expect(
       getByText("The preview loads on its own as soon as your app answers."),
     ).toBeInTheDocument();
