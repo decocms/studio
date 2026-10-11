@@ -12,6 +12,7 @@ import {
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
+  isBlocksV8Project,
   readThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { authClient } from "@/lib/auth-client";
@@ -98,6 +99,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         key={`${repoTargetKey(repoTarget)}:${repository.owner}/${repository.name}`}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
+        isV8={isBlocksV8Project(virtualMcp?.metadata)}
         value={currentBranch}
         baseBranch={baseBranch}
         orgId={org.id}

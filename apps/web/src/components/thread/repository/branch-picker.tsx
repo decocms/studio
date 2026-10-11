@@ -72,6 +72,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { resolveLocalSubmit } from "./local-url-submit.ts";
+import { LocalUrlForm } from "./local-url-form.tsx";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
 import {
@@ -83,6 +84,9 @@ import {
 
 interface Props {
   virtualMcpId: string;
+  /** A Blocks v8 site (the server's `blocksMajor` marker). v7 keeps main's
+   *  Local tunnel exactly; only v8 connects a `deco serve`. */
+  isV8?: boolean;
   /** Human-readable creator label used to seed the generated branch name. */
   userLabel: string | null | undefined;
   /** The current branch (a release's branch, or the base). */
@@ -124,6 +128,7 @@ interface Props {
  *  It still surfaces as the trigger label when you happen to be on production. */
 export function BranchPicker({
   virtualMcpId,
+  isV8 = false,
   userLabel,
   value,
   baseBranch,
@@ -171,7 +176,7 @@ export function BranchPicker({
   const localActive = !!localUrl;
   const clearLocal = () => {
     clearTunnel();
-    serve.clear();
+    if (isV8) serve.clear();
   };
   // Non-suspense + deferred to `open`: the trigger renders before members load.
   const { data: membersData } = useMembersQuery({ enabled: open });
@@ -224,7 +229,7 @@ export function BranchPicker({
 
   // Save + activate a Local tunnel URL, or turn it off when cleared.
   const activateLocal = (url: string | null) => {
-    serve.clear();
+    if (isV8) serve.clear();
     setTunnelUrl(url);
     setAdvanced(false);
     setOpen(false);
@@ -431,6 +436,7 @@ export function BranchPicker({
             enabled={open}
             tab={advancedTab}
             onTabChange={setAdvancedTab}
+            isV8={isV8}
             localUrl={tunnelUrl}
             serveEndpoint={serve.connection?.endpoint ?? null}
             onSaveLocal={activateLocal}
@@ -785,6 +791,7 @@ function AdvancedPicker({
   enabled,
   tab,
   onTabChange,
+  isV8,
   localUrl,
   serveEndpoint,
   onSaveLocal,
@@ -792,6 +799,8 @@ function AdvancedPicker({
   onBack,
   onAdopt,
 }: {
+  /** A Blocks v8 site (the server's marker). v7 gets main's Local tab. */
+  isV8: boolean;
   orgId: string;
   orgSlug: string;
   userId: string;
@@ -888,12 +897,16 @@ function AdvancedPicker({
         </TabsList>
       </Tabs>
       {tab === "local" ? (
-        <LocalUrlForm
-          url={localUrl}
-          serveEndpoint={serveEndpoint}
-          onSave={onSaveLocal}
-          onSaveServe={onSaveServe}
-        />
+        isV8 ? (
+          <ServeLocalUrlForm
+            url={localUrl}
+            serveEndpoint={serveEndpoint}
+            onSave={onSaveLocal}
+            onSaveServe={onSaveServe}
+          />
+        ) : (
+          <LocalUrlForm url={localUrl} onSave={onSaveLocal} />
+        )
       ) : (
         <Command
           filter={
@@ -1010,10 +1023,10 @@ function AdvancedPicker({
   );
 }
 
-/** "Local" tab: paste the link `deco serve` prints (v8: the content protocol
- *  to this machine, once it answers `describe`) or, for a v7 site, a tunnel
- *  URL to point preview + CMS at your own dev server; or turn Local off. */
-function LocalUrlForm({
+/** Blocks v8 "Local" tab: paste the link `deco serve` prints (the content
+ *  protocol to this machine, once it answers `describe`) or a tunnel URL; or
+ *  turn Local off. v7 sites get main's {@link LocalUrlForm}. */
+function ServeLocalUrlForm({
   url,
   serveEndpoint,
   onSave,
