@@ -124,29 +124,32 @@ export type BackendDecision =
   | "legacy"
   | "protocol-local"
   | "protocol-github"
-  | "protocol-sandbox";
+  | "protocol-sandbox"
+  | "unavailable-github"
+  | "unavailable-sandbox";
 
 /**
  * Which backend a project's editor uses.
  *
  * `isV8Project` is the server's Blocks v8 marker (`isBlocksV8Project`; the
  * account-less `/site-editor` counts as v8, since only a v8 `deco serve`
- * answers it). It decides who waits:
+ * answers it). It decides everything:
  *
+ * - **v7 project (no marker):** legacy, always and right away, as on main:
+ *   never `pending`, no probe (see `contentProbesEnabled`), a stored
+ *   `deco serve` connection is ignored, and it never switches. A v7 → v8
+ *   upgrade gets the marker once it reaches main.
  * - **v8 project:** the editor waits (`pending`) for its backend's answer and
  *   never shows the v7 editor first. A connected `deco serve` (Localhost)
  *   wins; a `cms` session uses the GitHub backend (the hosted draft); a
  *   sandbox session uses its daemon's content protocol once the working tree
- *   is there. A daemon without the protocol, a v7 working tree, or a failed
- *   probe falls back to legacy.
- * - **v7 project (no marker):** legacy right away, as on main: never
- *   `pending`, and a stored `deco serve` connection is ignored. Behind the
- *   org flag a background probe can still switch it to the protocol, but
- *   only when it answers v8 (an upgrade branch on a v7 main).
+ *   is there. A tunnel saved by the v7 Advanced → Local is ignored. Only a
+ *   confirmed v7 answer (a daemon without the protocol, a v7 working tree or
+ *   committed schema) or the org flag off falls back to legacy; a failed
+ *   probe is `unavailable` while it keeps retrying.
  *
  * Outside a project (forms with no project id, such as SEO and the blog
- * registry) there is no site to probe: legacy. The legacy Local tunnel is
- * legacy.
+ * registry) there is no site to probe: legacy.
  */
 export function selectContentBackend(input: {
   /** Whether there is a project to probe (a virtual MCP id). */
@@ -156,7 +159,6 @@ export function selectContentBackend(input: {
   /** The org flag; `undefined` while it loads. */
   flagEnabled: boolean | undefined;
   hasServeConnection: boolean;
-  hasLocalTunnel: boolean;
   runtime: "cms" | "sandbox";
   /** The GitHub probe: is the branch's committed schema a v8 one? */
   githubSite: "v8" | "v7" | "loading" | "error";
@@ -166,23 +168,41 @@ export function selectContentBackend(input: {
    */
   sandboxSite?: "v8" | "v7" | "loading" | "error" | "unavailable";
 }): BackendDecision {
-  if (!input.hasProject) return "legacy";
-  if (input.hasServeConnection && input.isV8Project) return "protocol-local";
-  if (input.hasLocalTunnel) return "legacy";
-  const site =
-    input.runtime === "sandbox" ? input.sandboxSite : input.githubSite;
-  const protocol =
-    input.runtime === "sandbox" ? "protocol-sandbox" : "protocol-github";
-  if (!input.isV8Project) {
-    // v7: main's editor, with no wait. Only a confirmed v8 answer switches.
-    return input.flagEnabled === true && site === "v8" ? protocol : "legacy";
-  }
+  if (!input.hasProject || !input.isV8Project) return "legacy";
+  if (input.hasServeConnection) return "protocol-local";
   if (input.flagEnabled === undefined) return "pending";
   if (!input.flagEnabled) return "legacy";
-  if (site === "v8") return protocol;
-  if (site === "v7" || site === "error") return "legacy";
+  const sandbox = input.runtime === "sandbox";
+  const site = sandbox ? input.sandboxSite : input.githubSite;
+  if (site === "v8") return sandbox ? "protocol-sandbox" : "protocol-github";
+  if (site === "v7") return "legacy";
+  if (site === "error") {
+    return sandbox ? "unavailable-sandbox" : "unavailable-github";
+  }
   // Loading, or the sandbox's working tree isn't there yet.
   return "pending";
+}
+
+/**
+ * Which background probes `useContentBackend` runs. Only a v8 project in an
+ * org with the content protocol probes; a v7 project makes no request at
+ * all, as on main. Localhost (a connected `deco serve`) needs no probe here.
+ */
+export function contentProbesEnabled(input: {
+  isV8Project: boolean;
+  flagEnabled: boolean | undefined;
+  hasServeConnection: boolean;
+  runtime: "cms" | "sandbox";
+  workingTreeReady: boolean;
+}): { github: boolean; sandbox: boolean } {
+  const base =
+    input.isV8Project &&
+    input.flagEnabled === true &&
+    !input.hasServeConnection;
+  return {
+    github: base && input.runtime === "cms",
+    sandbox: base && input.runtime === "sandbox" && input.workingTreeReady,
+  };
 }
 
 /**
