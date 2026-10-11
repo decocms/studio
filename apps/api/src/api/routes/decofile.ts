@@ -66,7 +66,10 @@ import { deliveryPurge } from "@/hosted/delivery-purge";
 import { createDraftContentStorage } from "@/hosted/draft-content-storage";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
-import { syncBlocksMajorMarker } from "@/hosted/blocks-major";
+import {
+  projectPackagePath,
+  syncBlocksMajorMarker,
+} from "@/hosted/blocks-major";
 import { hostedDrafts, mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
@@ -231,12 +234,11 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     return c.json({ error: "Project has no repository" }, 404);
   }
 
-  const runtime = metadata?.runtime as { path?: string | null } | undefined;
   c.set("decofileScope", {
     organizationId: organization.id,
     virtualMcpId,
     branch,
-    packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
+    packagePath: projectPackagePath(metadata),
     repository,
     userId,
     previewServerUrl,

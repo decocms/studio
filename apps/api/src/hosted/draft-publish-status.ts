@@ -25,7 +25,11 @@ import type {
   LoadedDraft,
 } from "./draft-store";
 import { draftFileChanges } from "./publish";
-import { type BlocksMajorStorage, syncBlocksMajorMarker } from "./blocks-major";
+import {
+  type BlocksMajorStorage,
+  projectPackagePath,
+  syncBlocksMajorMarker,
+} from "./blocks-major";
 import { hostedDrafts, mainIsV8, ownedProjectSite } from "./scope";
 
 interface DraftRepo {
@@ -83,10 +87,9 @@ export async function loadHostedDraft(req: HostedDraftRequest) {
     site,
   };
   const client = await req.gitClient();
-  const runtime = req.metadata?.runtime as { path?: string | null } | undefined;
   const repo: DraftRepo = {
     client,
-    packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
+    packagePath: projectPackagePath(req.metadata),
     mainBranch: await client.getDefaultBranch(),
   };
   const draft = await drafts.load(ref);

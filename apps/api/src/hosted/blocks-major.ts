@@ -68,8 +68,11 @@ export async function syncBlocksMajorMarker(
 
 /**
  * For a just-created (or imported) project bound to a repository: read main's
- * schema once and set the marker when it is v8. Nothing happens when the org
- * doesn't have the content protocol. Never throws.
+ * schema once and set the marker when it is v8. Nothing happens unless the
+ * hosted CMS can serve the project — the org has the content protocol, the
+ * project owns its site id and a delivery bucket is configured (the same
+ * preconditions as the hosted routes) — so the marker always means "the
+ * hosted CMS serves this project". Never throws; callers don't await it.
  */
 export async function markBlocksV8OnCreate(deps: {
   projects: BlocksMajorStorage;
@@ -77,6 +80,11 @@ export async function markBlocksV8OnCreate(deps: {
   by: string;
   /** The org's flags (`organization_settings.flags`). */
   flags: () => Promise<Record<string, unknown> | null | undefined>;
+  /**
+   * The site id the project owns (`ownedProjectSite`), or null when it owns
+   * none or no delivery bucket is configured.
+   */
+  hostedSite: () => Promise<string | null>;
   /** The project repo's content client, or null when it has none. */
   client: () => Promise<RepoContentClient | null>;
 }): Promise<void> {
@@ -84,6 +92,7 @@ export async function markBlocksV8OnCreate(deps: {
     if (!orgFlagEnabled(await deps.flags(), "site_editor_content_protocol")) {
       return;
     }
+    if (!(await deps.hostedSite())) return;
     const client = await deps.client();
     if (!client) return;
     const isV8 = await mainIsV8(
