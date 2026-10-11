@@ -37,6 +37,7 @@ import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
 import { decoServe } from "./deco-serve.ts";
+import { siteEditor } from "./site-editor.ts";
 import { chat } from "./chat.ts";
 import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
@@ -89,6 +90,7 @@ export const en = {
   ...collections,
   ...chooseEditor,
   ...decoServe,
+  ...siteEditor,
   ...chat,
   ...credits,
   ...automations,

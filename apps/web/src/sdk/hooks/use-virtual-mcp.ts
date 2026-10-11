@@ -269,9 +269,10 @@ export function useVirtualMCPsLastUsed(ids: string[]) {
 /**
  * Hook to get virtual MCP mutation actions (create, update, delete)
  *
+ * @param options.silent - No toasts: the caller owns the feedback.
  * @returns Object with create, update, and delete mutation hooks
  */
-export function useVirtualMCPActions() {
+export function useVirtualMCPActions(options: { silent?: boolean } = {}) {
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -279,5 +280,10 @@ export function useVirtualMCPActions() {
     orgSlug: org.slug,
   });
 
-  return useCollectionActions<VirtualMCPEntity>(org.id, "VIRTUAL_MCP", client);
+  return useCollectionActions<VirtualMCPEntity>(
+    org.id,
+    "VIRTUAL_MCP",
+    client,
+    options,
+  );
 }

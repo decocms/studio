@@ -1,4 +1,8 @@
 import { type Ref, useRef, useState } from "react";
+import {
+  errorDetail,
+  errorDetailsDescription,
+} from "@/components/sections-editor/site-editor-toast.tsx";
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -57,17 +61,18 @@ import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import {
-  type DecoServeConnection,
-  classifyServeProbeError,
+  DEFAULT_SERVE_ENDPOINT,
   endpointHost,
+  readLastConnection,
+  serveCandidates,
 } from "@/components/sections-editor/deco-serve-connection";
-import { serveProblemShort } from "@/components/sections-editor/deco-serve-notices";
-import { DISCOVERY_PROBE_TIMEOUT_MS } from "@/components/sections-editor/deco-serve-discovery";
-import { probeServeEndpoint } from "@/hooks/use-deco-serve-discovery";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useLocalNetworkAccess } from "@/hooks/use-deco-serve-discovery";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
-import { resolveLocalSubmit } from "./local-url-submit.ts";
+import { LocalUrlForm } from "./local-url-form.tsx";
+import { LocalhostRow, localhostStatus } from "./localhost-row.tsx";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
 import {
@@ -79,6 +84,9 @@ import {
 
 interface Props {
   virtualMcpId: string;
+  /** A Blocks v8 site (the server's `blocksMajor` marker). v7 keeps main's
+   *  Local tunnel exactly; only v8 connects a `deco serve`. */
+  isV8?: boolean;
   /** Human-readable creator label used to seed the generated branch name. */
   userLabel: string | null | undefined;
   /** The current branch (a release's branch, or the base). */
@@ -120,6 +128,7 @@ interface Props {
  *  It still surfaces as the trigger label when you happen to be on production. */
 export function BranchPicker({
   virtualMcpId,
+  isV8 = false,
   userLabel,
   value,
   baseBranch,
@@ -153,9 +162,9 @@ export function BranchPicker({
     useReleases(virtualMcpId);
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
-   * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). Either a
-   * `deco serve` link (v8: the content protocol to this machine) or, for v7
-   * sites, a tunnel URL that overrides preview + CMS meta.
+   * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
+   * tunnel URL that overrides preview + CMS meta (Advanced → Local, as on
+   * main). Blocks v8: Localhost, a `deco serve` on this computer.
    */
   const {
     url: tunnelUrl,
@@ -163,11 +172,25 @@ export function BranchPicker({
     clear: clearTunnel,
   } = useLocalPreviewUrl(virtualMcpId);
   const serve = useDecoServeConnection(virtualMcpId);
-  const localUrl = serve.connection?.endpoint ?? tunnelUrl;
+  const localhostActive = isV8 && !!serve.connection;
+  const localUrl = isV8 ? (serve.connection?.endpoint ?? null) : tunnelUrl;
   const localActive = !!localUrl;
   const clearLocal = () => {
     clearTunnel();
-    serve.clear();
+    if (isV8) serve.clear();
+  };
+  // The Localhost row's state (v8): the editor's own content backend, so the
+  // row and the editor never disagree.
+  const backend = useContentBackend(isV8 ? virtualMcpId : null, value);
+  const lnaAccess = useLocalNetworkAccess();
+  const chooseLocalhost = () => {
+    if (localhostActive) return;
+    clearTunnel();
+    // The remembered `deco serve`, else the default port. Nothing answering
+    // yet is fine: the editor connects as soon as it starts.
+    serve.set({
+      endpoint: serveCandidates(null, readLastConnection())[0]!,
+    });
   };
   // Non-suspense + deferred to `open`: the trigger renders before members load.
   const { data: membersData } = useMembersQuery({ enabled: open });
@@ -193,11 +216,13 @@ export function BranchPicker({
   const currentLabel = isBase
     ? t("thread.branchPicker.live")
     : (current?.name ?? t("thread.branchPicker.defaultVersionName"));
-  const label = localActive
-    ? t("thread.branchPicker.localLabel")
-    : value
-      ? currentLabel
-      : t("thread.branchPicker.selectVersion");
+  const label = localhostActive
+    ? t("thread.branchPicker.localhost.label")
+    : localActive
+      ? t("thread.branchPicker.localLabel")
+      : value
+        ? currentLabel
+        : t("thread.branchPicker.selectVersion");
   const currentDot = localActive
     ? "bg-special"
     : isBase
@@ -213,23 +238,14 @@ export function BranchPicker({
 
   // A failed release write reverts the row silently otherwise — surface it.
   const reportReleaseError = (err: unknown) => {
-    toast.error(
-      err instanceof Error ? err.message : t("thread.branchPicker.saveError"),
-    );
+    toast.error(t("thread.branchPicker.saveError"), {
+      description: errorDetailsDescription(t, errorDetail(err)),
+    });
   };
 
-  // Save + activate a Local tunnel URL, or turn it off when cleared.
+  // Save + activate a Local tunnel URL (v7), or turn it off when cleared.
   const activateLocal = (url: string | null) => {
-    serve.clear();
     setTunnelUrl(url);
-    setAdvanced(false);
-    setOpen(false);
-  };
-
-  // Connect a `deco serve` that answered `describe` (a v8 site).
-  const activateServe = (connection: DecoServeConnection) => {
-    clearTunnel();
-    serve.set(connection);
     setAdvanced(false);
     setOpen(false);
   };
@@ -427,10 +443,9 @@ export function BranchPicker({
             enabled={open}
             tab={advancedTab}
             onTabChange={setAdvancedTab}
+            isV8={isV8}
             localUrl={tunnelUrl}
-            serveEndpoint={serve.connection?.endpoint ?? null}
             onSaveLocal={activateLocal}
-            onSaveServe={activateServe}
             onBack={() => setAdvanced(false)}
             onAdopt={adoptBranch}
           />
@@ -438,7 +453,7 @@ export function BranchPicker({
           <>
             {/* Scroll the list, not the popover: the rows below must stay reachable. */}
             <div className="always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
-              {localActive && localUrl && (
+              {!isV8 && localActive && localUrl && (
                 <LocalRow
                   rowRef={selectedRowRef}
                   url={localUrl}
@@ -503,8 +518,23 @@ export function BranchPicker({
                   />
                 ),
               )}
+              {isV8 && (
+                <LocalhostRow
+                  rowRef={localhostActive ? selectedRowRef : undefined}
+                  status={localhostStatus({
+                    selected: localhostActive,
+                    backend,
+                    access: lnaAccess,
+                  })}
+                  host={endpointHost(
+                    serve.connection?.endpoint ?? DEFAULT_SERVE_ENDPOINT,
+                  )}
+                  onSelect={chooseLocalhost}
+                  onTurnOff={() => serve.clear()}
+                />
+              )}
             </div>
-            {(unlisted || releases.length > 0) && (
+            {(unlisted || releases.length > 0 || isV8) && (
               <div className="my-1 border-t" />
             )}
             <button
@@ -781,13 +811,15 @@ function AdvancedPicker({
   enabled,
   tab,
   onTabChange,
+  isV8,
   localUrl,
-  serveEndpoint,
   onSaveLocal,
-  onSaveServe,
   onBack,
   onAdopt,
 }: {
+  /** A Blocks v8 site (the server's marker): no Local tab, Localhost is in
+   *  the drafts list instead. v7 gets main's Local tab. */
+  isV8: boolean;
   orgId: string;
   orgSlug: string;
   userId: string;
@@ -800,11 +832,8 @@ function AdvancedPicker({
   onTabChange: (tab: "branches" | "prs" | "local") => void;
   /** Currently-registered Local tunnel URL, prefilled into the form. */
   localUrl: string | null;
-  /** The connected `deco serve`'s endpoint, if any. */
-  serveEndpoint: string | null;
   /** Save + activate a Local URL, or turn it off with `null`. */
   onSaveLocal: (url: string | null) => void;
-  onSaveServe: (connection: DecoServeConnection) => void;
   onBack: () => void;
   onAdopt: (branch: string, name: string) => void;
 }) {
@@ -878,18 +907,15 @@ function AdvancedPicker({
           <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
             {t("thread.branchPicker.prsTab")}
           </TabsTrigger>
-          <TabsTrigger value="local" className="h-6 px-2.5 text-xs">
-            {t("thread.branchPicker.localTab")}
-          </TabsTrigger>
+          {!isV8 && (
+            <TabsTrigger value="local" className="h-6 px-2.5 text-xs">
+              {t("thread.branchPicker.localTab")}
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
-      {tab === "local" ? (
-        <LocalUrlForm
-          url={localUrl}
-          serveEndpoint={serveEndpoint}
-          onSave={onSaveLocal}
-          onSaveServe={onSaveServe}
-        />
+      {tab === "local" && !isV8 ? (
+        <LocalUrlForm url={localUrl} onSave={onSaveLocal} />
       ) : (
         <Command
           filter={
@@ -1002,108 +1028,6 @@ function AdvancedPicker({
           </CommandList>
         </Command>
       )}
-    </div>
-  );
-}
-
-/** "Local" tab: paste the link `deco serve` prints (v8: the content protocol
- *  to this machine, once it answers `describe`) or, for a v7 site, a tunnel
- *  URL to point preview + CMS at your own dev server; or turn Local off. */
-function LocalUrlForm({
-  url,
-  serveEndpoint,
-  onSave,
-  onSaveServe,
-}: {
-  url: string | null;
-  serveEndpoint: string | null;
-  onSave: (url: string | null) => void;
-  onSaveServe: (connection: DecoServeConnection) => void;
-}) {
-  const t = useT();
-  const [value, setValue] = useState(url ?? "");
-  const [checking, setChecking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const trimmed = value.trim();
-  const submit = async () => {
-    // The first request is what makes Chrome ask to reach this machine.
-    setChecking(true);
-    setError(null);
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      DISCOVERY_PROBE_TIMEOUT_MS,
-    );
-    try {
-      const outcome = await resolveLocalSubmit(trimmed, (endpoint) =>
-        probeServeEndpoint(endpoint, controller.signal),
-      );
-      if (outcome.kind === "serve") onSaveServe(outcome.connection);
-      else if (outcome.kind === "tunnel") onSave(outcome.url);
-      else {
-        setError(
-          serveProblemShort(
-            t,
-            classifyServeProbeError(outcome.failure),
-            endpointHost(outcome.connection.endpoint),
-          ),
-        );
-      }
-    } finally {
-      clearTimeout(timeout);
-      setChecking(false);
-    }
-  };
-  return (
-    <div className="flex flex-col gap-2 p-2">
-      <p className="text-xs text-muted-foreground">
-        {serveEndpoint
-          ? t("thread.branchPicker.localServeConnected", {
-              host: endpointHost(serveEndpoint),
-            })
-          : t("thread.branchPicker.localHint")}
-      </p>
-      <input
-        type="url"
-        inputMode="url"
-        aria-label={t("thread.branchPicker.localUrlLabel")}
-        placeholder={t("thread.branchPicker.localUrlPlaceholder")}
-        value={value}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setError(null);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && trimmed && !checking) void submit();
-        }}
-        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-      />
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
-      <div className="flex items-center justify-between gap-2">
-        {url || serveEndpoint ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-destructive hover:text-destructive"
-            onClick={() => onSave(null)}
-          >
-            {t("thread.branchPicker.localTurnOff")}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button
-          size="sm"
-          disabled={!trimmed || checking}
-          onClick={() => void submit()}
-        >
-          {t("thread.branchPicker.save")}
-        </Button>
-      </div>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
-import { saveErrorMessage } from "./serve-save-error";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,6 +48,7 @@ import { PageSeoForm } from "./page-seo-form";
 import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
+import { errorDetail, errorDetailsDescription } from "./site-editor-toast";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
@@ -385,7 +385,7 @@ export function SectionsEditor({
       { blockKey: refKey, data },
       {
         onSuccess: () => onSaved?.(),
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   });
@@ -780,7 +780,7 @@ export function SectionsEditor({
       { blockKey: activePageKey, data: fullPageData },
       {
         onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -839,7 +839,7 @@ export function SectionsEditor({
           { blockKey, data: nextValue },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(saveErrorMessage(t, err)),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -922,7 +922,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(saveErrorMessage(t, err)),
+          onError: saveBlock.reportError,
         },
       );
     };
@@ -1471,11 +1471,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -1530,9 +1528,10 @@ export function SectionsEditor({
       await deleteBlock.mutateAsync({ blockKey });
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        {
+          description: errorDetailsDescription(t, errorDetail(err)),
+        },
       );
     }
   };
@@ -1582,7 +1581,7 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(saveErrorMessage(t, err)),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -1600,7 +1599,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(saveErrorMessage(t, err)),
+          onError: saveBlock.reportError,
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1683,11 +1682,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -1750,7 +1747,7 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(saveErrorMessage(t, err)),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -1780,7 +1777,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(saveErrorMessage(t, err)),
+          onError: saveBlock.reportError,
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1875,11 +1872,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -2121,7 +2116,7 @@ export function SectionsEditor({
           setRuleFormValue(null);
           setRuleResolveType(null);
         },
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -2186,7 +2181,7 @@ export function SectionsEditor({
             }
           })();
         },
-        onError: (err) => toast.error(saveErrorMessage(t, err)),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -2460,11 +2455,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2622,11 +2615,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2755,11 +2746,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2810,11 +2799,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 

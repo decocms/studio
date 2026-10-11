@@ -83,7 +83,7 @@ describe("connection messages", () => {
   });
 });
 
-describe("save messages", () => {
+describe("save messages (a local deco serve)", () => {
   test("each refusal says what to do", () => {
     const cases: [Error, RegExp][] = [
       [
@@ -112,16 +112,16 @@ describe("save messages", () => {
       ],
     ];
     for (const [error, message] of cases) {
-      const text = saveErrorMessage(t, error);
+      const text = saveErrorMessage(t, error, "local");
       expect(text).toMatch(/^Not saved: /);
       expect(text).toMatch(message);
       expect(text).not.toContain("Failed to fetch");
     }
   });
 
-  test("other backends keep their own message", () => {
-    expect(saveErrorMessage(t, new Error("GitHub said no"))).toBe(
-      "Save failed: GitHub said no",
+  test("any other failure keeps its own text", () => {
+    expect(saveErrorMessage(t, new Error("disk full"), "local")).toBe(
+      "Save failed: disk full",
     );
   });
 });

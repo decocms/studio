@@ -20,8 +20,16 @@ export const thread = {
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
     "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.",
-  "thread.branchPicker.localServeConnected":
-    "Connected to deco serve on {host} (Blocks v8).",
+  "thread.branchPicker.localhost.label": "Localhost",
+  "thread.branchPicker.localhost.available":
+    "Edit the site running on your computer",
+  "thread.branchPicker.localhost.connecting": "Connecting…",
+  "thread.branchPicker.localhost.connected": "Connected to {host}",
+  "thread.branchPicker.localhost.notRunning":
+    "Run `deco serve` in your site's folder:",
+  "thread.branchPicker.localhost.notRunningHint":
+    "We'll connect as soon as it starts.",
+  "thread.branchPicker.localhost.turnOff": "Stop using Localhost",
   "thread.branchPicker.localUrlLabel": "Local tunnel URL",
   "thread.branchPicker.localUrlPlaceholder": "https://your-tunnel.example.com",
   "thread.branchPicker.localTurnOff": "Turn off",
@@ -31,7 +39,7 @@ export const thread = {
     "Version limit reached ({max}). Delete a version to create a new one.",
   "thread.branchPicker.rename": "Rename",
   "thread.branchPicker.save": "Save",
-  "thread.branchPicker.saveError": "Couldn't save the version. Try again.",
+  "thread.branchPicker.saveError": "Couldn't update your draft. Try again.",
   "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
@@ -146,22 +154,10 @@ export const thread = {
   "thread.mergeRefused.notFound": "It no longer exists.",
   "thread.mergeRefused.error": "Failed to merge.",
   "thread.publishDialog.openingComparison": "Opening the comparison…",
-  "thread.publishDialog.publishedTo": "Published to {baseBranch}",
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
   "thread.publishDialog.viewOnProvider": "View on provider",
-  "thread.publishDialog.viewPr": "View PR",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.mergedCurrent": "Merged · Current on the CDN",
-  "thread.publishPopover.mergedNotCurrent":
-    "Merged · release created, making it current failed — use Make current on Releases",
-  "thread.publishPopover.mergedNoRelease":
-    "Merged · no release created (the next Publish includes these changes)",
-  "thread.publishPopover.upToDate": "Up to date, nothing to publish",
-  "thread.publishPopover.mainMoved":
-    "Main changed while publishing, so nothing was published. Publish again.",
-  "thread.publishPopover.branchMoved":
-    "This branch changed since these changes were shown. Close and reopen to review what will be published.",
   "thread.publishPopover.detailsUnavailable":
     "Details for these changes could not be loaded.",
   "thread.publishPopover.loadFailed": "Couldn't load your changes",
@@ -173,7 +169,6 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
-  "thread.publishPopover.failedDiscard": "Failed to discard changes",
   "thread.publishPopover.globalSection": "Global section",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
@@ -197,7 +192,6 @@ export const thread = {
   "thread.publishPopover.publishOneInProduction":
     "Publish 1 change in production",
   "thread.publishPopover.publishOne": "Publish 1 change",
-  "thread.publishPopover.publishedTo": "Published to {host}",
   "thread.publishPopover.publishing": "Publishing…",
   "thread.publishPopover.requestApproval": "Request approval",
   "thread.publishPopover.discarded": "Discarded {name}",

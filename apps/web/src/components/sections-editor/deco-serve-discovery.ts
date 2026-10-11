@@ -18,7 +18,7 @@ import {
 /** Retries back off up to this, so a closed port is rarely re-asked. */
 const DISCOVERY_MAX_DELAY_MS = 15_000;
 /** A probe that takes longer than this counts as no answer. */
-export const DISCOVERY_PROBE_TIMEOUT_MS = 3_000;
+const DISCOVERY_PROBE_TIMEOUT_MS = 3_000;
 
 export interface DiscoveryState {
   /** `paused`: the tab is hidden; nothing is probed until it shows again. */

@@ -3,6 +3,7 @@ import { subSeconds } from "date-fns";
 import {
   computeElapsedMs,
   formatDuration,
+  formatRelativeTime,
   formatTimeAgo,
   toEpochMs,
 } from "./format-time";
@@ -124,5 +125,26 @@ describe("computeElapsedMs", () => {
 
   test("clamps to 0 for small sub-second skew", () => {
     expect(computeElapsedMs(1_500, 1_200)).toBe(0);
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = Date.parse("2026-10-09T12:00:00Z");
+  const ago = (seconds: number) => new Date(now - seconds * 1000);
+
+  test("speaks the viewer's language", () => {
+    expect(formatRelativeTime(ago(2 * 3600), "en", now)).toBe("2 hours ago");
+    expect(formatRelativeTime(ago(2 * 3600), "pt-BR", now)).toBe("há 2 horas");
+  });
+
+  test("under a minute is now", () => {
+    expect(formatRelativeTime(ago(20), "en", now)).toBe("now");
+    expect(formatRelativeTime(ago(20), "pt-BR", now)).toBe("agora");
+  });
+
+  test("picks the largest whole unit", () => {
+    expect(formatRelativeTime(ago(90), "en", now)).toBe("1 minute ago");
+    expect(formatRelativeTime(ago(86_400), "en", now)).toBe("yesterday");
+    expect(formatRelativeTime(ago(3 * 86_400), "pt-BR", now)).toBe("há 3 dias");
   });
 });

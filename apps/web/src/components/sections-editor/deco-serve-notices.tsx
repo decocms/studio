@@ -159,6 +159,21 @@ export function serveProblemCopy(
         title: t("decoServe.state.notDecoServe.title", { host }),
         body: t("decoServe.state.notDecoServe.body", { host }),
       };
+    case "other-site":
+      return {
+        title: t("decoServe.state.otherSite.title"),
+        body: problem.detail
+          ? t("decoServe.state.otherSite.bodyNamed", {
+              host,
+              other: problem.detail,
+            })
+          : t("decoServe.state.otherSite.body", { host }),
+      };
+    case "site-unverified":
+      return {
+        title: t("decoServe.state.siteUnverified.title"),
+        body: t("decoServe.state.siteUnverified.body", { host }),
+      };
     case "error":
       return {
         title: t("decoServe.state.error.title"),

@@ -29,7 +29,7 @@ export interface ProtocolBackend {
 }
 
 export type ContentBackend =
-  /** Not decided yet: the flag or the probe is still loading. */
+  /** Not decided yet (v8 projects only): the flag or the probe is loading. */
   | { kind: "pending" }
   | { kind: "legacy" }
   | ProtocolBackend
@@ -74,6 +74,19 @@ export function newBlocksEditorEnabled(input: {
 }
 
 /**
+ * Whether the project gets the hosted Deco CMS's own features (Versions, Site
+ * tokens): a Blocks v8 site in an org with the content protocol. A v7 site
+ * never does, and never waits for the flag; `undefined` only while a v8
+ * site's flag loads.
+ */
+export function hostedCmsAvailable(
+  flag: boolean | undefined,
+  isV8Project: boolean,
+): boolean | undefined {
+  return isV8Project ? flag : false;
+}
+
+/**
  * The app a connected `deco serve` previews (`describe.preview`, which
  * `deco serve --preview` sets): its URL when it is on this machine, else
  * `null`. Anywhere else would put an arbitrary page in the editor's frame.
@@ -114,24 +127,33 @@ export type BackendDecision =
   | "protocol-sandbox";
 
 /**
- * Which backend a project's editor uses. Outside a project (forms with no
- * project id, such as SEO and the blog registry) there is no site to probe:
- * legacy. A connected `deco serve` wins, for every org: it exists only once
- * someone pasted its link into the "Local" draft option or opened the link it
- * printed, and only a Blocks v8 `deco serve` answers it. Then the legacy
- * Local tunnel. Behind the org flag, a Fast Preview (`cms`) session uses the
- * GitHub backend only when the branch's committed schema says
- * `"blocksMajor": 8` ({@link isV8Schema}). Everything else is v7 and legacy,
- * as before next-major Blocks — including a failed probe, which is retried in
- * the background (a site already known to be v8 keeps that answer). A sandbox
- * session, behind the same flag, uses its daemon's content protocol (the
- * working tree, saved like a `deco serve`'s) once the working tree is there
- * and its schema says `"blocksMajor": 8`; until then, and for v7, legacy.
+ * Which backend a project's editor uses.
+ *
+ * `isV8Project` is the server's Blocks v8 marker (`isBlocksV8Project`; the
+ * account-less `/site-editor` counts as v8, since only a v8 `deco serve`
+ * answers it). It decides who waits:
+ *
+ * - **v8 project:** the editor waits (`pending`) for its backend's answer and
+ *   never shows the v7 editor first. A connected `deco serve` (Localhost)
+ *   wins; a `cms` session uses the GitHub backend (the hosted draft); a
+ *   sandbox session uses its daemon's content protocol once the working tree
+ *   is there. A daemon without the protocol, a v7 working tree, or a failed
+ *   probe falls back to legacy.
+ * - **v7 project (no marker):** legacy right away, as on main: never
+ *   `pending`, and a stored `deco serve` connection is ignored. Behind the
+ *   org flag a background probe can still switch it to the protocol, but
+ *   only when it answers v8 (an upgrade branch on a v7 main).
+ *
+ * Outside a project (forms with no project id, such as SEO and the blog
+ * registry) there is no site to probe: legacy. The legacy Local tunnel is
+ * legacy.
  */
 export function selectContentBackend(input: {
   /** Whether there is a project to probe (a virtual MCP id). */
   hasProject: boolean;
-  /** The org flag (GitHub backend only); `undefined` while it loads. */
+  /** The server's Blocks v8 marker (or the account-less `/site-editor`). */
+  isV8Project: boolean;
+  /** The org flag; `undefined` while it loads. */
   flagEnabled: boolean | undefined;
   hasServeConnection: boolean;
   hasLocalTunnel: boolean;
@@ -145,21 +167,22 @@ export function selectContentBackend(input: {
   sandboxSite?: "v8" | "v7" | "loading" | "error" | "unavailable";
 }): BackendDecision {
   if (!input.hasProject) return "legacy";
-  if (input.hasServeConnection) return "protocol-local";
+  if (input.hasServeConnection && input.isV8Project) return "protocol-local";
   if (input.hasLocalTunnel) return "legacy";
-  if (input.runtime === "sandbox") {
-    // Legacy until a v8 site is confirmed: never `pending`, so a v7 sandbox
-    // keeps today's editor with no wait on the flag or the daemon probe.
-    // OPEN: a v8 site shows legacy until the working tree lands and the
-    // probe answers, then switches (smallest option; no new wait state).
-    return input.flagEnabled === true && input.sandboxSite === "v8"
-      ? "protocol-sandbox"
-      : "legacy";
+  const site =
+    input.runtime === "sandbox" ? input.sandboxSite : input.githubSite;
+  const protocol =
+    input.runtime === "sandbox" ? "protocol-sandbox" : "protocol-github";
+  if (!input.isV8Project) {
+    // v7: main's editor, with no wait. Only a confirmed v8 answer switches.
+    return input.flagEnabled === true && site === "v8" ? protocol : "legacy";
   }
   if (input.flagEnabled === undefined) return "pending";
   if (!input.flagEnabled) return "legacy";
-  if (input.githubSite === "loading") return "pending";
-  return input.githubSite === "v8" ? "protocol-github" : "legacy";
+  if (site === "v8") return protocol;
+  if (site === "v7" || site === "error") return "legacy";
+  // Loading, or the sandbox's working tree isn't there yet.
+  return "pending";
 }
 
 /**

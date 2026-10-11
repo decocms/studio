@@ -11,6 +11,10 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useT } from "@/i18n/use-t.ts";
 import { resolvePreviewSource } from "./preview-source";
+import { Monitor01 } from "@untitledui/icons";
+import { servePreviewUrl } from "@/components/sections-editor/content-backend";
+import { RichCode } from "@/components/sections-editor/deco-serve-notices";
+import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { useTaskMetadata } from "./use-task-metadata";
 
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
@@ -20,6 +24,7 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { activeTask, taskId, currentBranch } = useChatTask();
   const threadMetadata = useTaskMetadata(taskId);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const backend = useContentBackend(virtualMcpId, currentBranch);
   // Resolved exactly like the tab bar (see preview-source) off the same thread
   // metadata, so a visible Preview tab can never render "no source to preview"
   // — and a repo-less sandbox task run, whose tab is hidden, still renders the
@@ -59,6 +64,42 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
           mode="agent"
         />
       </>
+    );
+  }
+
+  // Localhost (a project's `deco serve`): the preview is the app it reports.
+  // Until there is one, guide instead of booting a sandbox or showing the
+  // hosted draft. `/site-editor` has its own gate.
+  if (
+    serveConnection &&
+    entity &&
+    !servePreviewUrl(backend) &&
+    !(backend.kind === "protocol" && backend.source !== "local")
+  ) {
+    const connected = backend.kind === "protocol";
+    return (
+      <EmptyState
+        className="h-full"
+        image={
+          <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+            <Monitor01 className="size-7 text-foreground" />
+          </div>
+        }
+        title={t(
+          connected
+            ? "mainPanelTabs.previewTab.localhostNoPreview.title"
+            : "mainPanelTabs.previewTab.localhostWaiting.title",
+        )}
+        description={
+          <RichCode
+            text={t(
+              connected
+                ? "mainPanelTabs.previewTab.localhostNoPreview.body"
+                : "mainPanelTabs.previewTab.localhostWaiting.body",
+            )}
+          />
+        }
+      />
     );
   }
 

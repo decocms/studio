@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import {
+  matchServeSite,
   classifyServeProbeError,
   DEFAULT_SERVE_ENDPOINT,
   NotDecoServeError,
@@ -361,5 +362,57 @@ describe("serveCandidates", () => {
     expect(serveCandidates(null, { endpoint: DEFAULT_SERVE_ENDPOINT })).toEqual(
       [DEFAULT_SERVE_ENDPOINT],
     );
+  });
+});
+
+describe("matchServeSite", () => {
+  const KEY = "age1publickey";
+  const expected = { siteSlug: "acme", committedPublicKey: KEY };
+
+  test("a deco serve naming this site connects; another site never does", () => {
+    expect(matchServeSite({ site: "acme" }, expected)).toEqual({ ok: true });
+    expect(matchServeSite({ site: "other" }, expected)).toEqual({
+      ok: false,
+      problem: { reason: "other-site", detail: "other" },
+    });
+  });
+
+  test("without a site name, the committed public key decides", () => {
+    expect(
+      matchServeSite({ secrets: { publicKey: `${KEY}\n` } }, expected),
+    ).toEqual({ ok: true });
+    expect(
+      matchServeSite({ secrets: { publicKey: "age1other" } }, expected),
+    ).toEqual({ ok: false, problem: { reason: "other-site" } });
+  });
+
+  test("waits for the repository's key only when it needs it", () => {
+    const loading = { siteSlug: "acme", committedPublicKey: undefined };
+    expect(matchServeSite({ secrets: { publicKey: KEY } }, loading)).toBe(
+      "pending",
+    );
+    expect(matchServeSite({ site: "acme" }, loading)).toEqual({ ok: true });
+  });
+
+  test("nothing to compare: update needed, never a silent connect", () => {
+    for (const describe of [
+      {},
+      { secrets: null },
+      { secrets: { publicKey: KEY } },
+    ]) {
+      expect(
+        matchServeSite(describe, {
+          siteSlug: "acme",
+          committedPublicKey: null,
+        }),
+      ).toEqual({ ok: false, problem: { reason: "site-unverified" } });
+    }
+    // A site name with no project site id to compare it with.
+    expect(
+      matchServeSite(
+        { site: "acme" },
+        { siteSlug: null, committedPublicKey: null },
+      ),
+    ).toEqual({ ok: false, problem: { reason: "site-unverified" } });
   });
 });

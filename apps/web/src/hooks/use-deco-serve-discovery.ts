@@ -8,7 +8,7 @@ import {
 import { probe } from "@/components/sections-editor/use-content-backend";
 
 /** Probes one endpoint, aborting with `signal`; throws when it can't be used. */
-export function probeServeEndpoint(
+function probeServeEndpoint(
   endpoint: string,
   signal: AbortSignal,
 ): Promise<unknown> {
@@ -125,6 +125,15 @@ function discoveryStore(key: string): DiscoveryStore {
   return store;
 }
 
+/** Chrome's permission to reach this machine (see {@link LocalNetworkAccess}). */
+export function useLocalNetworkAccess(): LocalNetworkAccess {
+  return useSyncExternalStore(
+    subscribeLocalNetworkAccess,
+    lnaSnapshot,
+    lnaSnapshot,
+  );
+}
+
 const noSubscribe = () => () => {};
 const idleSnapshot = () => IDLE;
 const lnaSnapshot = () => lnaState;
@@ -143,11 +152,7 @@ export function useDecoServeDiscovery({
   onFound: (endpoint: string) => void;
 }) {
   const [asked, setAsked] = useState(false);
-  const access = useSyncExternalStore(
-    subscribeLocalNetworkAccess,
-    lnaSnapshot,
-    lnaSnapshot,
-  );
+  const access = useLocalNetworkAccess();
   const canProbe =
     access === "granted" ||
     access === "unsupported" ||

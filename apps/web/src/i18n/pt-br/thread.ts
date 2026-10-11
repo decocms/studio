@@ -22,8 +22,16 @@ export const thread = {
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
     "Aponte o preview e o CMS para o seu próprio dev server. Cole uma URL de túnel público (ex.: ngrok, cloudflared) acessível a partir deste navegador.",
-  "thread.branchPicker.localServeConnected":
-    "Conectado ao deco serve em {host} (Blocks v8).",
+  "thread.branchPicker.localhost.label": "Localhost",
+  "thread.branchPicker.localhost.available":
+    "Edite o site rodando no seu computador",
+  "thread.branchPicker.localhost.connecting": "Conectando…",
+  "thread.branchPicker.localhost.connected": "Conectado a {host}",
+  "thread.branchPicker.localhost.notRunning":
+    "Rode `deco serve` na pasta do seu site:",
+  "thread.branchPicker.localhost.notRunningHint":
+    "Vamos conectar assim que ele iniciar.",
+  "thread.branchPicker.localhost.turnOff": "Parar de usar o Localhost",
   "thread.branchPicker.localUrlLabel": "URL do túnel local",
   "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
   "thread.branchPicker.localTurnOff": "Desligar",
@@ -34,7 +42,7 @@ export const thread = {
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
   "thread.branchPicker.saveError":
-    "Não foi possível salvar a versão. Tente novamente.",
+    "Não foi possível atualizar seu rascunho. Tente de novo.",
   "thread.branchPicker.selectVersion": "Selecione uma versão",
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
@@ -153,27 +161,15 @@ export const thread = {
   "thread.mergeRefused.notFound": "Não existe mais.",
   "thread.mergeRefused.error": "Falha ao fazer merge.",
   "thread.publishDialog.openingComparison": "Abrindo a comparação…",
-  "thread.publishDialog.publishedTo": "Publicado em {baseBranch}",
   "thread.publishDialog.submittedForReview":
     "Pull request #{prNumber} enviado para revisão",
   "thread.publishDialog.viewOnProvider": "Ver no provedor",
-  "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishPopover.blocksGroup": "Blocos",
-  "thread.publishPopover.mergedCurrent": "Mesclado · Atual na CDN",
-  "thread.publishPopover.mergedNotCurrent":
-    "Mesclado · versão criada, mas não foi possível torná-la atual — use Tornar atual em Versões",
-  "thread.publishPopover.mergedNoRelease":
-    "Mesclado · nenhuma versão criada (a próxima publicação inclui estas alterações)",
-  "thread.publishPopover.upToDate": "Tudo atualizado, nada para publicar",
-  "thread.publishPopover.mainMoved":
-    "A main mudou durante a publicação, então nada foi publicado. Publique novamente.",
-  "thread.publishPopover.branchMoved":
-    "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
   "thread.publishPopover.detailsUnavailable":
     "Não foi possível carregar os detalhes destas alterações.",
   "thread.publishPopover.loadFailed":
     "Não foi possível carregar suas alterações",
-  "thread.publishPopover.retry": "Tentar novamente",
+  "thread.publishPopover.retry": "Tentar de novo",
   "thread.publishPopover.showingFirst":
     "Mostrando as primeiras {shown} de {total} alterações",
   "thread.publishPopover.chipEdited": "Editado",
@@ -182,7 +178,6 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
-  "thread.publishPopover.failedDiscard": "Falha ao descartar alterações",
   "thread.publishPopover.globalSection": "Seção global",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
@@ -208,7 +203,6 @@ export const thread = {
   "thread.publishPopover.publishOneInProduction":
     "Publicar 1 alteração em produção",
   "thread.publishPopover.publishOne": "Publicar 1 alteração",
-  "thread.publishPopover.publishedTo": "Publicado em {host}",
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
   "thread.publishPopover.discarded": "{name} descartado",

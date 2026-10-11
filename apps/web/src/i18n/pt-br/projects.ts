@@ -71,7 +71,7 @@ export const projects = {
   "projects.apps.assets": "Assets",
   "projects.apps.assetsCaption": "Imagens e arquivos que o site usa",
   "projects.apps.releases": "Versões",
-  "projects.apps.releasesCaption": "O que o site serve, e reversões",
+  "projects.apps.releasesCaption": "O que está no ar e versões anteriores",
   "projects.apps.hosting": "Hosting",
   "projects.apps.hostingCaption": "Deploys, domínios e ambientes",
   "projects.apps.e2e": "Testes ponta a ponta",

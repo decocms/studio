@@ -1,5 +1,6 @@
 import {
   defaultThreadRuntime,
+  isBlocksV8Project,
   parseThreadRuntime,
   readThreadRuntime,
   type ThreadRuntime,
@@ -25,6 +26,8 @@ export interface SessionRuntime {
   /** The URL a CMS session renders against, or `null`. Ungated: a project can
    *  have one without the Fast Preview switch being on. */
   previewServerUrl: string | null;
+  /** The project is a Blocks v8 site (the server's marker). */
+  isBlocksV8: boolean;
 }
 
 /**
@@ -53,5 +56,6 @@ export function useSessionRuntime(
     resolved: !!stamp || (threadLoaded && !!project),
     projectDefault: defaultThreadRuntime(metadata),
     previewServerUrl: resolvePreviewServerUrl(metadata),
+    isBlocksV8: isBlocksV8Project(metadata),
   };
 }

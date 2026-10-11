@@ -244,7 +244,10 @@ async function commitDraftToMain(
  * Step 3 for commit `sha`: its companion release, written only when missing
  * (it is immutable). Returns its schemaHash.
  */
-async function ensureRevision(repo: HostedRepo, sha: string): Promise<string> {
+export async function ensureRevision(
+  repo: HostedRepo,
+  sha: string,
+): Promise<string> {
   if (await hasRevision(repo.store, repo.site, sha)) {
     return schemaHashAt(repo.client, repo.packagePath, sha);
   }

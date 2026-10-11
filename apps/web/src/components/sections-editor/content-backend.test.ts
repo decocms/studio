@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
+  hostedCmsAvailable,
   isProtocolProject,
   isV8Schema,
   mergePolledBlocks,
@@ -10,155 +11,173 @@ import {
 } from "./content-backend";
 
 describe("selectContentBackend", () => {
-  const base = {
+  const v8 = {
     hasProject: true,
+    isV8Project: true,
     flagEnabled: true,
     hasServeConnection: false,
     hasLocalTunnel: false,
     runtime: "cms" as const,
     githubSite: "v8" as const,
   };
+  const v7 = { ...v8, isV8Project: false, githubSite: "v7" as const };
+  const SITES = ["v8", "v7", "loading", "error"] as const;
+  const SANDBOX_SITES = [...SITES, "unavailable", undefined] as const;
+  const FLAGS = [true, false, undefined] as const;
 
-  test("waits for the org flag before the GitHub backend", () => {
-    expect(selectContentBackend({ ...base, flagEnabled: undefined })).toBe(
-      "pending",
-    );
-    // The tunnel and sandbox sessions don't need the flag to be known.
-    expect(
-      selectContentBackend({
-        ...base,
-        flagEnabled: undefined,
-        hasLocalTunnel: true,
-      }),
-    ).toBe("legacy");
-  });
-
-  test("the flag off keeps the GitHub backend legacy", () => {
-    expect(selectContentBackend({ ...base, flagEnabled: false })).toBe(
-      "legacy",
-    );
-  });
-
-  test("a connected deco serve needs no flag", () => {
-    for (const flagEnabled of [false, undefined]) {
-      expect(
-        selectContentBackend({
-          ...base,
-          flagEnabled,
-          hasServeConnection: true,
-        }),
-      ).toBe("protocol-local");
-    }
-  });
-
-  test("a connected deco serve wins, over the tunnel and any runtime", () => {
-    expect(
-      selectContentBackend({
-        ...base,
-        hasServeConnection: true,
-        hasLocalTunnel: true,
-        runtime: "sandbox",
-        githubSite: "v7",
-      }),
-    ).toBe("protocol-local");
-  });
-
-  test("the legacy tunnel and sandbox sessions stay legacy", () => {
-    expect(selectContentBackend({ ...base, hasLocalTunnel: true })).toBe(
-      "legacy",
-    );
-    expect(selectContentBackend({ ...base, runtime: "sandbox" })).toBe(
-      "legacy",
-    );
-  });
-
-  test("a sandbox session follows its working tree's blocksMajor", () => {
-    const sandbox = {
-      ...base,
-      runtime: "sandbox" as const,
-      githubSite: "v7" as const,
-    };
-    expect(selectContentBackend({ ...sandbox, sandboxSite: "v8" })).toBe(
-      "protocol-sandbox",
-    );
-    // Never pending: a v7 sandbox keeps the legacy editor mounted while the
-    // probe loads; a v7 working tree, or a failed probe: as before.
-    for (const sandboxSite of ["loading", "v7", "error"] as const) {
-      expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe("legacy");
-    }
-  });
-
-  test("a sandbox session is legacy while booting, and with the flag off", () => {
-    const sandbox = { ...base, runtime: "sandbox" as const };
-    // No wait on the flag or the probe: today's UX until v8 is confirmed.
-    for (const flagEnabled of [true, false, undefined]) {
-      for (const sandboxSite of [
-        "unavailable",
-        "loading",
-        "v7",
-        "error",
-        undefined,
-      ] as const) {
-        expect(
-          selectContentBackend({ ...sandbox, flagEnabled, sandboxSite }),
-        ).toBe("legacy");
+  describe("v7 project (no marker): as on main", () => {
+    test("is never pending, whatever the flag or the probes say", () => {
+      for (const flagEnabled of FLAGS) {
+        for (const runtime of ["cms", "sandbox"] as const) {
+          for (const githubSite of SITES) {
+            for (const sandboxSite of SANDBOX_SITES) {
+              const decision = selectContentBackend({
+                ...v7,
+                flagEnabled,
+                runtime,
+                githubSite,
+                sandboxSite,
+              });
+              expect(decision).not.toBe("pending");
+            }
+          }
+        }
       }
-    }
-    expect(
-      selectContentBackend({
-        ...sandbox,
-        flagEnabled: false,
-        sandboxSite: "v8",
-      }),
-    ).toBe("legacy");
-    expect(
-      selectContentBackend({
-        ...sandbox,
-        flagEnabled: undefined,
-        sandboxSite: "v8",
-      }),
-    ).toBe("legacy");
-    // A connected deco serve and the tunnel still win.
-    expect(
-      selectContentBackend({
-        ...sandbox,
-        sandboxSite: "v8",
-        hasServeConnection: true,
-      }),
-    ).toBe("protocol-local");
-    expect(
-      selectContentBackend({
-        ...sandbox,
-        sandboxSite: "v8",
-        hasLocalTunnel: true,
-      }),
-    ).toBe("legacy");
-  });
+    });
 
-  test("a cms session follows the committed schema's blocksMajor", () => {
-    expect(selectContentBackend(base)).toBe("protocol-github");
-    expect(selectContentBackend({ ...base, githubSite: "v7" })).toBe("legacy");
-    expect(selectContentBackend({ ...base, githubSite: "loading" })).toBe(
-      "pending",
-    );
-  });
-
-  test("a failed GitHub probe is v7, never unavailable", () => {
-    expect(selectContentBackend({ ...base, githubSite: "error" })).toBe(
-      "legacy",
-    );
-  });
-
-  test("without a project (SEO, blog forms) it is legacy right away", () => {
-    for (const flagEnabled of [true, false, undefined]) {
+    test("is legacy right away while the flag and the probe load", () => {
       expect(
         selectContentBackend({
-          ...base,
-          hasProject: false,
-          flagEnabled,
+          ...v7,
+          flagEnabled: undefined,
           githubSite: "loading",
         }),
       ).toBe("legacy");
+      expect(selectContentBackend({ ...v7, githubSite: "error" })).toBe(
+        "legacy",
+      );
+    });
+
+    test("ignores a stored deco serve connection", () => {
+      for (const runtime of ["cms", "sandbox"] as const) {
+        expect(
+          selectContentBackend({ ...v7, runtime, hasServeConnection: true }),
+        ).toBe("legacy");
+      }
+    });
+
+    test("an upgrade branch that answers v8 switches, behind the flag only", () => {
+      expect(selectContentBackend({ ...v7, githubSite: "v8" })).toBe(
+        "protocol-github",
+      );
+      expect(
+        selectContentBackend({
+          ...v7,
+          runtime: "sandbox",
+          sandboxSite: "v8",
+        }),
+      ).toBe("protocol-sandbox");
+      for (const flagEnabled of [false, undefined]) {
+        expect(
+          selectContentBackend({ ...v7, flagEnabled, githubSite: "v8" }),
+        ).toBe("legacy");
+      }
+    });
+  });
+
+  describe("v8 project (marker)", () => {
+    test("Localhost (a connected deco serve) wins over everything", () => {
+      for (const flagEnabled of FLAGS) {
+        expect(
+          selectContentBackend({
+            ...v8,
+            flagEnabled,
+            hasServeConnection: true,
+            hasLocalTunnel: true,
+            runtime: "sandbox",
+            githubSite: "v7",
+          }),
+        ).toBe("protocol-local");
+      }
+    });
+
+    test("a cms session waits for the flag and the GitHub probe (the hosted draft)", () => {
+      expect(selectContentBackend({ ...v8, flagEnabled: undefined })).toBe(
+        "pending",
+      );
+      expect(selectContentBackend({ ...v8, githubSite: "loading" })).toBe(
+        "pending",
+      );
+      expect(selectContentBackend(v8)).toBe("protocol-github");
+    });
+
+    test("a v7 answer, a failed probe or the flag off fall back to legacy", () => {
+      expect(selectContentBackend({ ...v8, githubSite: "v7" })).toBe("legacy");
+      expect(selectContentBackend({ ...v8, githubSite: "error" })).toBe(
+        "legacy",
+      );
+      expect(selectContentBackend({ ...v8, flagEnabled: false })).toBe(
+        "legacy",
+      );
+    });
+
+    test("a sandbox session waits for the daemon, then uses its protocol", () => {
+      const sandbox = {
+        ...v8,
+        runtime: "sandbox" as const,
+        githubSite: "v7" as const,
+      };
+      for (const sandboxSite of [
+        "unavailable",
+        "loading",
+        undefined,
+      ] as const) {
+        expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe(
+          "pending",
+        );
+      }
+      expect(selectContentBackend({ ...sandbox, sandboxSite: "v8" })).toBe(
+        "protocol-sandbox",
+      );
+      // An older daemon (404) or a v7 working tree reads as v7: legacy.
+      for (const sandboxSite of ["v7", "error"] as const) {
+        expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe(
+          "legacy",
+        );
+      }
+    });
+
+    test("the legacy tunnel stays legacy", () => {
+      expect(selectContentBackend({ ...v8, hasLocalTunnel: true })).toBe(
+        "legacy",
+      );
+    });
+  });
+
+  test("without a project (SEO, blog forms) it is legacy right away", () => {
+    for (const isV8Project of [true, false]) {
+      for (const flagEnabled of FLAGS) {
+        expect(
+          selectContentBackend({
+            ...v8,
+            isV8Project,
+            hasProject: false,
+            flagEnabled,
+            githubSite: "loading",
+          }),
+        ).toBe("legacy");
+      }
+    }
+  });
+});
+
+describe("hostedCmsAvailable", () => {
+  test("Versions and Site tokens: v8 sites behind the flag; never v7, never waiting", () => {
+    expect(hostedCmsAvailable(true, true)).toBe(true);
+    expect(hostedCmsAvailable(false, true)).toBe(false);
+    expect(hostedCmsAvailable(undefined, true)).toBeUndefined();
+    for (const flag of [true, false, undefined]) {
+      expect(hostedCmsAvailable(flag, false)).toBe(false);
     }
   });
 });

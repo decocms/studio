@@ -18,6 +18,9 @@ import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import { markBlocksV8OnCreate } from "../../hosted/blocks-major";
+import { contentClientForProjectRepo } from "../../git-providers";
+import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 import {
   claimProjectSite,
   decoSiteExists,
@@ -169,6 +172,33 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
           by: userId,
         },
       );
+    }
+
+    // A Blocks v8 site gets the server-managed `blocksMajor` marker, so its
+    // first thread already opens in Fast Preview (hosted/blocks-major.ts).
+    // Only for orgs with the content protocol; best-effort.
+    if (virtualMcp.id) {
+      const project = {
+        id: virtualMcp.id,
+        organizationId: organization.id,
+        metadata: metadata ?? null,
+      };
+      await markBlocksV8OnCreate({
+        projects: ctx.storage.virtualMcps,
+        project,
+        by: userId,
+        flags: async () =>
+          (await ctx.storage.organizationSettings.get(organization.id))?.flags,
+        client: async () => {
+          const repository = parseRepositoryBinding(
+            project.metadata,
+            createData.connections.map((c) => c.connection_id),
+          );
+          return repository
+            ? contentClientForProjectRepo(ctx, organization.id, repository)
+            : null;
+        },
+      });
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as

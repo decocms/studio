@@ -65,6 +65,14 @@ export const decoServe = {
     "Algo que não é o deco serve respondeu em {host}. Inicie o deco serve em outra porta com `--port 4546` e abra o link do Site editor que ele mostra.",
   "decoServe.state.error.title":
     "O deco serve não conseguiu abrir seu conteúdo",
+  "decoServe.state.otherSite.title": "Este é outro site",
+  "decoServe.state.otherSite.body":
+    "O deco serve em {host} está rodando na pasta de outro site. Rode o deco serve na pasta deste site; o Studio se conecta assim que ele iniciar.",
+  "decoServe.state.otherSite.bodyNamed":
+    "O deco serve em {host} está rodando o site {other}. Rode o deco serve na pasta deste site; o Studio se conecta assim que ele iniciar.",
+  "decoServe.state.siteUnverified.title": "Atualize o deco serve para conectar",
+  "decoServe.state.siteUnverified.body":
+    "O Studio não consegue saber qual site o deco serve em {host} está rodando, então não vai editá-lo. Atualize o @decocms/blocks do seu site para a versão mais recente e inicie o deco serve de novo.",
   "decoServe.state.error.body":
     'Ele respondeu, mas com um erro: "{detail}". Veja os detalhes no terminal onde o deco serve está rodando e tente de novo.',
 

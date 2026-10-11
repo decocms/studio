@@ -19,7 +19,10 @@ import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { pinnedSiteSlugOnRename } from "./pin-site-slug";
 import { assertSiteSlugUnchanged } from "./site-slug-guard";
-import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import {
+  metadataKeptOnClear,
+  stripServerManagedMetadata,
+} from "../strip-server-managed-metadata";
 
 /**
  * Input schema for updating a virtual MCP
@@ -88,18 +91,8 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
     let metadata = stripServerManagedMetadata(rawMetadata);
     if (metadata && existing.metadata) {
       metadata = { ...existing.metadata, ...metadata };
-    } else if (
-      metadata === null &&
-      (existing.metadata?.sandboxMap || existing.metadata?.siteSlug)
-    ) {
-      metadata = {
-        ...(existing.metadata.sandboxMap
-          ? { sandboxMap: existing.metadata.sandboxMap }
-          : {}),
-        ...(existing.metadata.siteSlug
-          ? { siteSlug: existing.metadata.siteSlug }
-          : {}),
-      };
+    } else if (metadata === null) {
+      metadata = metadataKeptOnClear(existing.metadata);
     }
     const data = {
       ...updateData,

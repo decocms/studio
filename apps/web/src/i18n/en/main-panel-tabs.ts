@@ -528,4 +528,12 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Connect a GitHub repository to build and preview your site here.",
   "mainPanelTabs.previewTab.noSourceToPreview": "No source to preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.title":
+    "Start your app to see the preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.body":
+    "deco serve didn't find your app. Start it, then restart deco serve with `--preview` and its address, such as `--preview localhost:3000`. You can edit your content in the meantime.",
+  "mainPanelTabs.previewTab.localhostWaiting.title":
+    "Waiting for your computer",
+  "mainPanelTabs.previewTab.localhostWaiting.body":
+    "The preview shows your app once Studio connects to deco serve. Check the draft selector for the next step.",
 } as const;

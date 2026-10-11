@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useContext } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   assertSupportedEndpoint,
   type ContentClient,
@@ -7,12 +8,15 @@ import {
   type DescribeResult,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
-import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import {
+  TabDecoServeConnectionContext,
+  useDecoServeConnection,
+} from "@/hooks/use-deco-serve-connection";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -25,8 +29,10 @@ import {
 } from "./content-backend";
 import {
   classifyServeProbeError,
+  matchServeSite,
   NotDecoServeError,
   probeRetryDelay,
+  saveLastConnection,
 } from "./deco-serve-connection";
 import { isSchemaAbsent } from "./schemaless";
 
@@ -140,9 +146,14 @@ export function useContentBackend(
 ): ContentBackend {
   const { org } = useProjectContext();
   const flagEnabled = useOrgFlagState("site_editor_content_protocol");
+  // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost).
   const { connection } = useDecoServeConnection(virtualMcpId);
   const { url: tunnel } = useLocalPreviewUrl(virtualMcpId);
-  const { runtime } = useSessionRuntime(virtualMcpId);
+  const { runtime, isBlocksV8 } = useSessionRuntime(virtualMcpId);
+  // The account-less `/site-editor` is v8 by definition (only a v8
+  // `deco serve` answers it).
+  const tabConnection = useContext(TabDecoServeConnectionContext);
+  const isV8Project = isBlocksV8 || tabConnection !== null;
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The daemon answers once the working tree is there; before that the
   // sandbox is booting and the editor keeps today's (legacy) boot UX.
@@ -181,11 +192,7 @@ export function useContentBackend(
     },
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    retry: 2,
-    // A failed probe reads as v7 (legacy) and is retried quietly. A site
-    // already known to be v8 keeps its data through a failed refetch.
-    refetchInterval: (query) =>
-      query.state.status === "error" ? PROBE_RETRY_MS : false,
+    ...backgroundProbeRetry(isV8Project),
   });
 
   const sandboxEnabled =
@@ -217,12 +224,36 @@ export function useContentBackend(
     },
     enabled: sandboxEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    retry: 2,
-    refetchInterval: (query) =>
-      query.state.status === "error" ? PROBE_RETRY_MS : false,
+    ...backgroundProbeRetry(isV8Project),
   });
 
-  // No flag: a connection exists only once its link was pasted or opened.
+  // This project's site id, for `matchServeSite`, and the public key its
+  // repository commits (filled in below, read by the local probe's poll).
+  const project = useVirtualMCP(tabConnection ? null : virtualMcpId);
+  const siteSlug =
+    typeof project?.metadata?.siteSlug === "string"
+      ? project.metadata.siteSlug
+      : null;
+  const queryClient = useQueryClient();
+  const committedKeyQuery = KEYS.contentBackend(
+    org.slug,
+    virtualMcpId ?? "",
+    branch ?? "",
+    "github-describe",
+  );
+  const serveMismatch = (data: Probe | undefined) => {
+    if (!data || tabConnection) return false;
+    const match = matchServeSite(data.describe, {
+      siteSlug,
+      committedPublicKey: committedKeyOf(
+        queryClient.getQueryState<string | null>(committedKeyQuery),
+      ),
+    });
+    return match !== "pending" && !match.ok;
+  };
+
+  // No flag: a connection exists only on a v8 site, once someone chose
+  // Localhost or opened the link `deco serve` printed.
   const localEnabled = !!connection;
   const local = useQuery({
     queryKey: KEYS.contentBackend(
@@ -231,8 +262,14 @@ export function useContentBackend(
       "local",
       connection?.endpoint ?? "",
     ),
-    queryFn: () =>
-      probe(createContentClient({ endpoint: connection!.endpoint })),
+    queryFn: async () => {
+      const result = await probe(
+        createContentClient({ endpoint: connection!.endpoint }),
+      );
+      // Tried first the next time someone chooses Localhost.
+      saveLastConnection(connection!);
+      return result;
+    },
     enabled: localEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     // Waits for `deco serve` to (re)start and reconnects on its own, backing
@@ -244,15 +281,47 @@ export function useContentBackend(
       !(error instanceof NotDecoServeError),
     retryDelay: (failures) => probeRetryDelay(failures + 1),
     // Also re-probed while there is no schema, so `deco schema` is picked up
-    // on its own.
+    // on its own, and while it serves another site (or can't say which), so
+    // starting `deco serve` in the right folder connects on its own.
     refetchInterval: (query) =>
-      query.state.status === "error" || query.state.data?.hasSchema === false
+      query.state.status === "error" ||
+      query.state.data?.hasSchema === false ||
+      serveMismatch(query.state.data)
         ? PROBE_RETRY_MS
         : false,
   });
 
+  // The site match of a project's `deco serve` (see `matchServeSite`): the
+  // public key committed to the project's repository, read only when a newer
+  // `deco serve` doesn't name its site.
+  const needsCommittedKey =
+    !!local.data &&
+    !tabConnection &&
+    !(
+      typeof (local.data.describe as { site?: unknown }).site === "string" &&
+      siteSlug
+    );
+  const committed = useQuery({
+    queryKey: committedKeyQuery,
+    queryFn: async (): Promise<string | null> => {
+      const client = createContentClient({
+        endpoint: githubContentEndpoint({
+          orgSlug: org.slug,
+          virtualMcpId: virtualMcpId!,
+          branch: branch!,
+        }),
+      });
+      const described = await client.describe();
+      return described.secrets?.publicKey ?? null;
+    },
+    enabled: needsCommittedKey && !!org.slug && !!virtualMcpId && !!branch,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: 2,
+  });
+
   const decision = selectContentBackend({
     hasProject: !!virtualMcpId,
+    isV8Project,
     flagEnabled,
     hasServeConnection: !!connection,
     hasLocalTunnel: !!tunnel,
@@ -284,6 +353,18 @@ export function useContentBackend(
     return toBackend("sandbox", sandbox.data!, ":sandbox");
   }
   if (local.data) {
+    const match = tabConnection
+      ? ({ ok: true } as const)
+      : matchServeSite(local.data.describe, {
+          siteSlug,
+          committedPublicKey: committedKeyOf(committed),
+        });
+    if (match === "pending") return { kind: "pending" };
+    if (!match.ok) {
+      // Another site's `deco serve`: never used. The probe keeps polling, so
+      // starting the right one connects on its own.
+      return { kind: "unavailable", source: "local", problem: match.problem };
+    }
     return toBackend("local", local.data, `:serve:${connection!.endpoint}`);
   }
   // Still retrying after a failure: `deco serve` is down or restarting.
@@ -295,6 +376,34 @@ export function useContentBackend(
     };
   }
   return { kind: "pending" };
+}
+
+/** The committed public key once read: `null` when the repository has none
+ *  (or it can't be read), `undefined` while it loads. */
+function committedKeyOf(
+  state: { status: string; data?: string | null } | undefined,
+): string | null | undefined {
+  if (state?.status === "success") return state.data ?? null;
+  if (state?.status === "error") return null;
+  return undefined;
+}
+
+/**
+ * How the GitHub and sandbox probes retry. A v8 project waits on the answer,
+ * so a failure is retried until it recovers. A v7 project never waits: one
+ * quiet background try (an upgrade branch may answer v8), and no re-poll, so
+ * a v7 site makes no repeated requests.
+ */
+export function backgroundProbeRetry(isV8Project: boolean) {
+  return isV8Project
+    ? {
+        retry: 2,
+        // A site already known to be v8 keeps its data through a failed
+        // refetch.
+        refetchInterval: (query: { state: { status: string } }) =>
+          query.state.status === "error" ? PROBE_RETRY_MS : false,
+      }
+    : { retry: 1, refetchInterval: false as const };
 }
 
 function toBackend(

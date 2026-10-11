@@ -467,7 +467,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("publish commits the draft to main and makes its release current; Make current switches the CDN", async ({
+  test("Publish commits the draft to main and makes it live; publishing a version or Try again switches what the site serves", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -571,6 +571,18 @@ test.describe("content protocol on GitHub", () => {
       });
       expect(await noop.json()).toEqual({ result: "up-to-date" });
       expect(await publishedAt()).toBe(rolledBackAt);
+
+      // Publish's "Try again" ({ head: true }) puts main's head live: the
+      // newest Publish, never an older one.
+      const retried = await ctx.post(`${hosted}/releases/current`, {
+        data: { head: true },
+      });
+      expect(retried.status()).toBe(200);
+      expect(await retried.json()).toMatchObject({
+        current: { revision: second.sha },
+      });
+      releases = await (await ctx.get(`${hosted}/releases`)).json();
+      expect(releases).toMatchObject({ current: { revision: second.sha } });
     } finally {
       await ctx.dispose();
     }
