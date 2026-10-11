@@ -40,7 +40,10 @@ import {
   type SiteClaimCandidate,
 } from "@/hosted/claim-site";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { syncBlocksMajorMarker } from "@/hosted/blocks-major";
+import {
+  projectPackagePath,
+  syncBlocksMajorMarker,
+} from "@/hosted/blocks-major";
 import { mainIsV8, projectSite } from "@/hosted/scope";
 import { contentClientForProjectRepo } from "@/git-providers";
 import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
@@ -1049,12 +1052,9 @@ export function createAdminRoutes(): Hono<Env> {
           organizationId,
           repository,
         );
-        const runtime = metadata?.runtime as
-          | { path?: string | null }
-          | undefined;
         const isV8 = await mainIsV8(
           client,
-          runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
+          projectPackagePath(metadata),
           await client.getDefaultBranch(),
         );
         // The project's Blocks v8 marker, for orgs with the content protocol

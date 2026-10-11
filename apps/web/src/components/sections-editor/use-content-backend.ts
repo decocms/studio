@@ -17,12 +17,12 @@ import {
   TabDecoServeConnectionContext,
   useDecoServeConnection,
 } from "@/hooks/use-deco-serve-connection";
-import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
 import {
   type ContentBackend,
+  contentProbesEnabled,
   isV8Schema,
   type ProtocolBackend,
   selectContentBackend,
@@ -136,9 +136,9 @@ export async function probeSandbox(
 
 /**
  * The content backend of a project's editor (see `selectContentBackend`).
+ * A v7 project is `legacy` right away and runs no probe. A v8 project is
  * `pending` while the org flag or the backend probe loads: callers hold their
- * reads until then, so a project never reads from one backend and then
- * switches to another.
+ * reads until then, so it never reads from the v7 backend and then switches.
  */
 export function useContentBackend(
   virtualMcpId: string | null | undefined,
@@ -148,7 +148,6 @@ export function useContentBackend(
   const flagEnabled = useOrgFlagState("site_editor_content_protocol");
   // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost).
   const { connection } = useDecoServeConnection(virtualMcpId);
-  const { url: tunnel } = useLocalPreviewUrl(virtualMcpId);
   const { runtime, isBlocksV8 } = useSessionRuntime(virtualMcpId);
   // The account-less `/site-editor` is v8 by definition (only a v8
   // `deco serve` answers it).
@@ -161,14 +160,15 @@ export function useContentBackend(
     useSandboxEvents().lifecycle.phase,
   );
 
+  const probes = contentProbesEnabled({
+    isV8Project,
+    flagEnabled,
+    hasServeConnection: !!connection,
+    runtime,
+    workingTreeReady,
+  });
   const githubEnabled =
-    !!org.slug &&
-    !!flagEnabled &&
-    !connection &&
-    !tunnel &&
-    runtime === "cms" &&
-    !!virtualMcpId &&
-    !!branch;
+    probes.github && !!org.slug && !!virtualMcpId && !!branch;
   const github = useQuery({
     queryKey: KEYS.contentBackend(
       org.slug,
@@ -192,18 +192,11 @@ export function useContentBackend(
     },
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    ...backgroundProbeRetry(isV8Project),
+    ...V8_PROBE_RETRY,
   });
 
   const sandboxEnabled =
-    !!org.slug &&
-    !!flagEnabled &&
-    !connection &&
-    !tunnel &&
-    runtime === "sandbox" &&
-    workingTreeReady &&
-    !!virtualMcpId &&
-    !!branch;
+    probes.sandbox && !!org.slug && !!virtualMcpId && !!branch;
   const sandbox = useQuery({
     queryKey: KEYS.contentBackend(
       org.slug,
@@ -224,7 +217,7 @@ export function useContentBackend(
     },
     enabled: sandboxEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    ...backgroundProbeRetry(isV8Project),
+    ...V8_PROBE_RETRY,
   });
 
   // This project's site id, for `matchServeSite`, and the public key its
@@ -324,7 +317,6 @@ export function useContentBackend(
     isV8Project,
     flagEnabled,
     hasServeConnection: !!connection,
-    hasLocalTunnel: !!tunnel,
     runtime,
     githubSite: github.data
       ? "v8"
@@ -351,6 +343,14 @@ export function useContentBackend(
   }
   if (decision === "protocol-sandbox") {
     return toBackend("sandbox", sandbox.data!, ":sandbox");
+  }
+  // A v8 probe failed (a GitHub hiccup, the sandbox restarting): retried
+  // every PROBE_RETRY_MS, never the v7 editor in the meantime.
+  if (decision === "unavailable-github") {
+    return { kind: "unavailable", source: "github" };
+  }
+  if (decision === "unavailable-sandbox") {
+    return { kind: "unavailable", source: "sandbox" };
   }
   if (local.data) {
     const match = tabConnection
@@ -389,22 +389,16 @@ function committedKeyOf(
 }
 
 /**
- * How the GitHub and sandbox probes retry. A v8 project waits on the answer,
- * so a failure is retried until it recovers. A v7 project never waits: one
- * quiet background try (an upgrade branch may answer v8), and no re-poll, so
- * a v7 site makes no repeated requests.
+ * How the GitHub and sandbox probes retry (v8 projects only: v7 never
+ * probes). The editor waits on the answer, so a failure is re-polled until it
+ * recovers; a site already known to be v8 keeps its data through a failed
+ * refetch.
  */
-export function backgroundProbeRetry(isV8Project: boolean) {
-  return isV8Project
-    ? {
-        retry: 2,
-        // A site already known to be v8 keeps its data through a failed
-        // refetch.
-        refetchInterval: (query: { state: { status: string } }) =>
-          query.state.status === "error" ? PROBE_RETRY_MS : false,
-      }
-    : { retry: 1, refetchInterval: false as const };
-}
+export const V8_PROBE_RETRY = {
+  retry: 2,
+  refetchInterval: (query: { state: { status: string } }) =>
+    query.state.status === "error" ? PROBE_RETRY_MS : false,
+};
 
 function toBackend(
   source: ProtocolBackend["source"],

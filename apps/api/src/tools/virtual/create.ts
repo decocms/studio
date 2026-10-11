@@ -19,6 +19,8 @@ import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 import { markBlocksV8OnCreate } from "../../hosted/blocks-major";
+import { deliveryStore } from "../../hosted/delivery-store";
+import { ownedProjectSite } from "../../hosted/scope";
 import { contentClientForProjectRepo } from "../../git-providers";
 import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 import {
@@ -176,19 +178,30 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
 
     // A Blocks v8 site gets the server-managed `blocksMajor` marker, so its
     // first thread already opens in Fast Preview (hosted/blocks-major.ts).
-    // Only for orgs with the content protocol; best-effort.
+    // Only for projects the hosted CMS can serve. Best-effort and off the
+    // request path (it never throws): creating a site never waits on GitHub.
+    // A miss is covered by the write-through when the editor first opens and
+    // by the admin backfill.
     if (virtualMcp.id) {
       const project = {
         id: virtualMcp.id,
         organizationId: organization.id,
         metadata: metadata ?? null,
       };
-      await markBlocksV8OnCreate({
+      void markBlocksV8OnCreate({
         projects: ctx.storage.virtualMcps,
         project,
         by: userId,
         flags: async () =>
           (await ctx.storage.organizationSettings.get(organization.id))?.flags,
+        hostedSite: async () =>
+          deliveryStore()
+            ? ownedProjectSite(
+                ctx.storage.orgSites,
+                project.id,
+                organization.id,
+              )
+            : null,
         client: async () => {
           const repository = parseRepositoryBinding(
             project.metadata,
