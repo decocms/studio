@@ -112,4 +112,24 @@ describe("LocalhostRow", () => {
     expect(getByRole("alert")).toBeInTheDocument();
     expect(getByText("This deco serve is out of date")).toBeInTheDocument();
   });
+
+  it("the dot is always black, whatever the state", () => {
+    const states: LocalhostStatus[] = [
+      { kind: "available" },
+      { kind: "connecting" },
+      { kind: "connected" },
+      { kind: "not-running" },
+      { kind: "needs-permission" },
+      { kind: "problem", problem: { reason: "outdated" } },
+    ];
+    for (const status of states) {
+      const view = renderRow(status);
+      const dot = view.getByTestId("localhost-dot");
+      expect(dot).toHaveClass("bg-foreground");
+      expect(dot.className).not.toMatch(
+        /animate-|bg-(special|success|warning|destructive)/,
+      );
+      view.unmount();
+    }
+  });
 });

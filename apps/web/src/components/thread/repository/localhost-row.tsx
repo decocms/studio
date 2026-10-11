@@ -140,7 +140,11 @@ export function LocalhostRow({
           !selected && "hover:bg-accent",
         )}
       >
-        <span className="h-2 w-2 shrink-0 rounded-full bg-special" />
+        {/* Always black, whatever the connection state. */}
+        <span
+          data-testid="localhost-dot"
+          className="h-2 w-2 shrink-0 rounded-full bg-foreground"
+        />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate">
             {t("thread.branchPicker.localhost.label")}

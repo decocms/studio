@@ -202,11 +202,14 @@ export function BranchPicker({
       : value
         ? currentLabel
         : t("thread.branchPicker.selectVersion");
-  const currentDot = localActive
-    ? "bg-special"
-    : isBase
-      ? "bg-success"
-      : releaseDotClass(current?.color ?? "orange");
+  // Localhost (v8) is always a black dot, whatever its connection state.
+  const currentDot = localhostActive
+    ? "bg-foreground"
+    : localActive
+      ? "bg-special"
+      : isBase
+        ? "bg-success"
+        : releaseDotClass(current?.color ?? "orange");
 
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
@@ -431,7 +434,13 @@ export function BranchPicker({
         ) : (
           <>
             {/* Scroll the list, not the popover: the rows below must stay reachable. */}
-            <div className="always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
+            <div
+              className={cn(
+                "always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto",
+                // v8: a small gap between drafts and Localhost (v7 unchanged).
+                isV8 && "gap-1",
+              )}
+            >
               {!isV8 && localActive && localUrl && (
                 <LocalRow
                   rowRef={selectedRowRef}
@@ -526,7 +535,10 @@ export function BranchPicker({
             <button
               type="button"
               onClick={() => openAdvanced("branches")}
-              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+                isV8 && "mt-1",
+              )}
             >
               {t("thread.branchPicker.advanced")}
               <ChevronRight className="h-4 w-4 shrink-0" />
