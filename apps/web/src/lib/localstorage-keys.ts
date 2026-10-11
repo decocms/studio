@@ -62,4 +62,8 @@ export const LOCALSTORAGE_KEYS = {
    *  user and project, per-browser for the same reason as the tunnel URL. */
   decoServeConnection: (userId: string, virtualMcpId: string) =>
     `studio:deco-serve-connection:${userId}:${virtualMcpId}`,
+  /** The `deco serve` endpoint a project last connected to, kept after
+   *  Localhost is turned off so choosing it again goes back there. */
+  decoServeEndpoint: (userId: string, virtualMcpId: string) =>
+    `studio:deco-serve-endpoint:${userId}:${virtualMcpId}`,
 } as const;

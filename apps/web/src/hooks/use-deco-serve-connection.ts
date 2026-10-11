@@ -12,6 +12,12 @@ import { useVirtualMCP } from "@/sdk";
 export interface DecoServeConnectionState {
   /** The project's connected `deco serve`, or `null`. */
   connection: DecoServeConnection | null;
+  /**
+   * The endpoint this user last connected the project to, kept after
+   * Localhost is turned off: where choosing Localhost again goes. `null`
+   * before the first connection (and in `/site-editor`).
+   */
+  lastEndpoint?: string | null;
   set: (next: DecoServeConnection) => void;
   clear: () => void;
 }
@@ -41,16 +47,22 @@ export function useDecoServeConnection(
   const userId = session?.user?.id ?? "";
   const key = LOCALSTORAGE_KEYS.decoServeConnection(userId, virtualMcpId ?? "");
   const [stored, setStored] = useLocalStorage<unknown>(key, null);
+  const [lastEndpoint, setLastEndpoint] = useLocalStorage<string | null>(
+    LOCALSTORAGE_KEYS.decoServeEndpoint(userId, virtualMcpId ?? ""),
+    null,
+  );
   if (tab) return tab;
   // Nothing to read or write until the user is known.
   const usable = !!virtualMcpId && !!userId;
+  const isV8 = usable && isBlocksV8Project(project?.metadata);
   return {
-    connection:
-      usable && isBlocksV8Project(project?.metadata)
-        ? parseStoredConnection(stored)
-        : null,
+    connection: isV8 ? parseStoredConnection(stored) : null,
+    lastEndpoint:
+      isV8 && typeof lastEndpoint === "string" ? lastEndpoint : null,
     set: (next) => {
-      if (usable) setStored(next);
+      if (!usable) return;
+      setStored(next);
+      setLastEndpoint(next.endpoint);
     },
     clear: () => {
       if (usable) setStored(null);

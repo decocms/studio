@@ -8,9 +8,12 @@ import {
 } from "@decocms/blocks/protocol";
 import { selectContentBackend } from "./content-backend";
 import {
-  backgroundProbeRetry,
+  committedKeyOf,
+  localBackendOf,
+  type Probe,
   probe,
   probeSandbox,
+  V8_PROBE_RETRY,
 } from "./use-content-backend";
 
 const deco1 = {
@@ -42,22 +45,17 @@ function githubServing(schema: unknown): ContentClient {
   } as unknown as ContentClient;
 }
 
-/** What `useContentBackend` decides for a flag-on Fast Preview session. */
+/** What `useContentBackend` decides for a flag-on v8 Fast Preview session. */
 async function decideWithFlagOn(schema: unknown) {
   const probed = await probe(githubServing(schema));
-  const decide = (isV8Project: boolean) =>
-    selectContentBackend({
-      hasProject: true,
-      isV8Project,
-      flagEnabled: true,
-      hasServeConnection: false,
-      hasLocalTunnel: false,
-      runtime: "cms",
-      githubSite: probed.v8Schema ? "v8" : "v7",
-    });
-  // Marked or not, a settled probe decides the same way.
-  expect(decide(false)).toBe(decide(true));
-  return decide(true);
+  return selectContentBackend({
+    hasProject: true,
+    isV8Project: true,
+    flagEnabled: true,
+    hasServeConnection: false,
+    runtime: "cms",
+    githubSite: probed.v8Schema ? "v8" : "v7",
+  });
 }
 
 describe("v7/v8 detection over the GitHub backend", () => {
@@ -91,19 +89,15 @@ describe("v7/v8 detection over the GitHub backend", () => {
 describe("v7/v8 detection over a sandbox's daemon", () => {
   async function decide(schema: unknown) {
     const probed = await probe(githubServing(schema));
-    const decide = (isV8Project: boolean) =>
-      selectContentBackend({
-        hasProject: true,
-        isV8Project,
-        flagEnabled: true,
-        hasServeConnection: false,
-        hasLocalTunnel: false,
-        runtime: "sandbox",
-        githubSite: "loading",
-        sandboxSite: probed.v8Schema ? "v8" : "v7",
-      });
-    expect(decide(false)).toBe(decide(true));
-    return decide(true);
+    return selectContentBackend({
+      hasProject: true,
+      isV8Project: true,
+      flagEnabled: true,
+      hasServeConnection: false,
+      runtime: "sandbox",
+      githubSite: "loading",
+      sandboxSite: probed.v8Schema ? "v8" : "v7",
+    });
   }
 
   test('a working tree whose schema says "blocksMajor": 8 is a v8 site', async () => {
@@ -137,21 +131,130 @@ describe("sandbox probe", () => {
   });
 });
 
-describe("backgroundProbeRetry", () => {
-  const failed = { state: { status: "error" } };
-  const ok = { state: { status: "success" } };
+describe("V8_PROBE_RETRY", () => {
+  test("the editor waits on it, so a failure is re-polled until it recovers", () => {
+    const failed = { state: { status: "error" } };
+    const ok = { state: { status: "success" } };
+    expect(V8_PROBE_RETRY.retry).toBe(2);
+    expect(V8_PROBE_RETRY.refetchInterval(failed)).toBeGreaterThan(0);
+    expect(V8_PROBE_RETRY.refetchInterval(ok)).toBe(false);
+  });
+});
 
-  test("v7: one quiet try, never re-polled after a 503 or 404", () => {
-    const v7 = backgroundProbeRetry(false);
-    expect(v7.retry).toBe(1);
-    expect(v7.refetchInterval).toBe(false);
+describe("Localhost site check (localBackendOf)", () => {
+  const KEY = "age1publickey";
+  const probed = {
+    client: {} as ContentClient,
+    describe: { protocol: PROTOCOL_NAME, version: PROTOCOL_VERSION },
+    hasSchema: true,
+    v8Schema: true,
+  } as unknown as Probe;
+  const withKey = (publicKey: string) =>
+    ({
+      ...probed.describe,
+      secrets: { publicKey },
+    }) as unknown as Probe["describe"];
+  const base = {
+    probed,
+    endpoint: "http://localhost:4545/rpc",
+    verifySite: true,
+    siteSlug: "acme",
+  };
+  const loaded = (data: string | null) => ({ status: "success", data });
+  const kind = (backend: ReturnType<typeof localBackendOf>) =>
+    backend.kind === "unavailable"
+      ? `unavailable:${backend.problem?.reason}`
+      : backend.kind;
+
+  test("this site's deco serve connects", () => {
+    expect(
+      kind(
+        localBackendOf({
+          ...base,
+          describe: withKey(KEY),
+          committed: loaded(KEY),
+        }),
+      ),
+    ).toBe("protocol");
   });
 
-  test("v8: the editor waits on it, so a failure is re-polled until it recovers", () => {
-    const v8 = backgroundProbeRetry(true);
-    expect(v8.retry).toBe(2);
-    const interval = v8.refetchInterval as (q: typeof failed) => number | false;
-    expect(interval(failed)).toBeGreaterThan(0);
-    expect(interval(ok)).toBe(false);
+  test("another site's deco serve is never used", () => {
+    expect(
+      kind(
+        localBackendOf({
+          ...base,
+          describe: withKey("age1other"),
+          committed: loaded(KEY),
+        }),
+      ),
+    ).toBe("unavailable:other-site");
+  });
+
+  test("waits while the committed key loads", () => {
+    for (const committed of [undefined, { status: "pending" }]) {
+      expect(
+        kind(localBackendOf({ ...base, describe: withKey(KEY), committed })),
+      ).toBe("pending");
+    }
+  });
+
+  test("a failed key read is retried, never 'can't tell the site': pending, then protocol", () => {
+    const describe = withKey(KEY);
+    expect(
+      kind(
+        localBackendOf({ ...base, describe, committed: { status: "error" } }),
+      ),
+    ).toBe("pending");
+    expect(
+      kind(localBackendOf({ ...base, describe, committed: loaded(KEY) })),
+    ).toBe("protocol");
+  });
+
+  test("a repository with no key can't tell the site", () => {
+    expect(
+      kind(
+        localBackendOf({
+          ...base,
+          describe: withKey(KEY),
+          committed: loaded(null),
+        }),
+      ),
+    ).toBe("unavailable:site-unverified");
+  });
+
+  test("a deco serve restarted in another site's folder is caught on the next describe", () => {
+    const committed = loaded(KEY);
+    expect(
+      kind(localBackendOf({ ...base, describe: withKey(KEY), committed })),
+    ).toBe("protocol");
+    expect(
+      kind(
+        localBackendOf({ ...base, describe: withKey("age1other"), committed }),
+      ),
+    ).toBe("unavailable:other-site");
+  });
+
+  test("/site-editor (no project) skips the check", () => {
+    expect(
+      kind(
+        localBackendOf({
+          ...base,
+          verifySite: false,
+          siteSlug: null,
+          describe: probed.describe,
+          committed: undefined,
+        }),
+      ),
+    ).toBe("protocol");
+  });
+});
+
+describe("committedKeyOf", () => {
+  test("a failed read keeps the last answer, or stays undecided", () => {
+    expect(committedKeyOf({ status: "error" })).toBeUndefined();
+    expect(committedKeyOf({ status: "error", data: "k" })).toBe("k");
+    expect(committedKeyOf({ status: "error", data: null })).toBeNull();
+    expect(committedKeyOf({ status: "success", data: null })).toBeNull();
+    expect(committedKeyOf(undefined)).toBeUndefined();
   });
 });

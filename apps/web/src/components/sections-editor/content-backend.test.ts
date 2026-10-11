@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
+  contentProbesEnabled,
   hostedCmsAvailable,
   isProtocolProject,
   isV8Schema,
@@ -16,7 +17,6 @@ describe("selectContentBackend", () => {
     isV8Project: true,
     flagEnabled: true,
     hasServeConnection: false,
-    hasLocalTunnel: false,
     runtime: "cms" as const,
     githubSite: "v8" as const,
   };
@@ -45,42 +45,51 @@ describe("selectContentBackend", () => {
       }
     });
 
-    test("is legacy right away while the flag and the probe load", () => {
-      expect(
-        selectContentBackend({
-          ...v7,
-          flagEnabled: undefined,
-          githubSite: "loading",
-        }),
-      ).toBe("legacy");
-      expect(selectContentBackend({ ...v7, githubSite: "error" })).toBe(
-        "legacy",
-      );
-    });
-
-    test("ignores a stored deco serve connection", () => {
-      for (const runtime of ["cms", "sandbox"] as const) {
-        expect(
-          selectContentBackend({ ...v7, runtime, hasServeConnection: true }),
-        ).toBe("legacy");
+    test("is always legacy, whatever the flag, the probes or a stored connection say", () => {
+      for (const flagEnabled of FLAGS) {
+        for (const runtime of ["cms", "sandbox"] as const) {
+          for (const githubSite of SITES) {
+            for (const sandboxSite of SANDBOX_SITES) {
+              for (const hasServeConnection of [true, false]) {
+                expect(
+                  selectContentBackend({
+                    ...v7,
+                    flagEnabled,
+                    runtime,
+                    githubSite,
+                    sandboxSite,
+                    hasServeConnection,
+                  }),
+                ).toBe("legacy");
+              }
+            }
+          }
+        }
       }
     });
 
-    test("an upgrade branch that answers v8 switches, behind the flag only", () => {
-      expect(selectContentBackend({ ...v7, githubSite: "v8" })).toBe(
-        "protocol-github",
-      );
+    test("never switches mid-session, even when the probe would say v8 (an upgrade branch)", () => {
+      expect(selectContentBackend({ ...v7, githubSite: "v8" })).toBe("legacy");
       expect(
-        selectContentBackend({
-          ...v7,
-          runtime: "sandbox",
-          sandboxSite: "v8",
-        }),
-      ).toBe("protocol-sandbox");
-      for (const flagEnabled of [false, undefined]) {
-        expect(
-          selectContentBackend({ ...v7, flagEnabled, githubSite: "v8" }),
-        ).toBe("legacy");
+        selectContentBackend({ ...v7, runtime: "sandbox", sandboxSite: "v8" }),
+      ).toBe("legacy");
+    });
+
+    test("runs no probe at all", () => {
+      for (const flagEnabled of FLAGS) {
+        for (const runtime of ["cms", "sandbox"] as const) {
+          for (const hasServeConnection of [true, false]) {
+            expect(
+              contentProbesEnabled({
+                isV8Project: false,
+                flagEnabled,
+                hasServeConnection,
+                runtime,
+                workingTreeReady: true,
+              }),
+            ).toEqual({ github: false, sandbox: false });
+          }
+        }
       }
     });
   });
@@ -93,7 +102,6 @@ describe("selectContentBackend", () => {
             ...v8,
             flagEnabled,
             hasServeConnection: true,
-            hasLocalTunnel: true,
             runtime: "sandbox",
             githubSite: "v7",
           }),
@@ -111,14 +119,24 @@ describe("selectContentBackend", () => {
       expect(selectContentBackend(v8)).toBe("protocol-github");
     });
 
-    test("a v7 answer, a failed probe or the flag off fall back to legacy", () => {
+    test("a v7 answer or the flag off fall back to legacy", () => {
       expect(selectContentBackend({ ...v8, githubSite: "v7" })).toBe("legacy");
-      expect(selectContentBackend({ ...v8, githubSite: "error" })).toBe(
-        "legacy",
-      );
       expect(selectContentBackend({ ...v8, flagEnabled: false })).toBe(
         "legacy",
       );
+    });
+
+    test("a failed probe is unavailable (retried), never the v7 editor", () => {
+      expect(selectContentBackend({ ...v8, githubSite: "error" })).toBe(
+        "unavailable-github",
+      );
+      expect(
+        selectContentBackend({
+          ...v8,
+          runtime: "sandbox",
+          sandboxSite: "error",
+        }),
+      ).toBe("unavailable-sandbox");
     });
 
     test("a sandbox session waits for the daemon, then uses its protocol", () => {
@@ -140,17 +158,39 @@ describe("selectContentBackend", () => {
         "protocol-sandbox",
       );
       // An older daemon (404) or a v7 working tree reads as v7: legacy.
-      for (const sandboxSite of ["v7", "error"] as const) {
-        expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe(
-          "legacy",
-        );
-      }
-    });
-
-    test("the legacy tunnel stays legacy", () => {
-      expect(selectContentBackend({ ...v8, hasLocalTunnel: true })).toBe(
+      expect(selectContentBackend({ ...sandbox, sandboxSite: "v7" })).toBe(
         "legacy",
       );
+    });
+
+    test("probes only behind the flag, and not while Localhost is connected", () => {
+      const input = {
+        isV8Project: true,
+        flagEnabled: true,
+        hasServeConnection: false,
+        runtime: "cms" as const,
+        workingTreeReady: false,
+      };
+      expect(contentProbesEnabled(input)).toEqual({
+        github: true,
+        sandbox: false,
+      });
+      expect(
+        contentProbesEnabled({
+          ...input,
+          runtime: "sandbox",
+          workingTreeReady: true,
+        }),
+      ).toEqual({ github: false, sandbox: true });
+      for (const flagEnabled of [false, undefined]) {
+        expect(contentProbesEnabled({ ...input, flagEnabled })).toEqual({
+          github: false,
+          sandbox: false,
+        });
+      }
+      expect(
+        contentProbesEnabled({ ...input, hasServeConnection: true }),
+      ).toEqual({ github: false, sandbox: false });
     });
   });
 

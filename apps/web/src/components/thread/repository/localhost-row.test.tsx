@@ -7,7 +7,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, mock } from "bun:test";
 import type { ReactNode } from "react";
 import type { ContentBackend } from "@/components/sections-editor/content-backend";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import {
   LocalhostRow,
   type LocalhostStatus,
@@ -115,23 +114,14 @@ describe("LocalhostRow", () => {
     expect(getByText(/running the site other-store/)).toBeInTheDocument();
   });
 
-  it("update needed when it can't tell the site", () => {
+  it("can't tell the site: asks for the site's key in the repository", () => {
+    const { getByText } = renderRow({
+      kind: "problem",
+      problem: { reason: "site-unverified" },
+    });
     expect(
-      renderRow({
-        kind: "problem",
-        problem: { reason: "site-unverified" },
-      }).getByText("Update deco serve to connect"),
+      getByText("Studio can't confirm this is your site"),
     ).toBeInTheDocument();
-  });
-});
-
-describe("the Localhost choice is remembered per user and project", () => {
-  it("keys the connection on both", () => {
-    expect(LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp")).toBe(
-      "studio:deco-serve-connection:u1:vmcp",
-    );
-    expect(LOCALSTORAGE_KEYS.decoServeConnection("u2", "vmcp")).not.toBe(
-      LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp"),
-    );
+    expect(getByText(/secrets\.pub/)).toBeInTheDocument();
   });
 });

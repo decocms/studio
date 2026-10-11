@@ -28,14 +28,16 @@ interface FormShape {
 function Harness({
   isBlocksV8,
   fastPreview,
+  previewServerUrl = "https://acme.com",
 }: {
   isBlocksV8: boolean;
   fastPreview: boolean;
+  previewServerUrl?: string;
 }) {
   const form = useForm<FormShape>({
     defaultValues: {
       metadata: {
-        previewServerUrl: "https://acme.com",
+        previewServerUrl,
         fastPreview,
         fastPreviewInPlace: false,
       },
@@ -73,18 +75,26 @@ describe("PreviewSettingsRows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("Blocks v8: only the preview URL, never a Fast Preview switch", () => {
+  it("Blocks v8: no Fast Preview switch; in-place render is always offered", () => {
     for (const fastPreview of [true, false]) {
-      const { queryByText, queryAllByRole, unmount } = renderBare(
+      const { queryByText, getAllByRole, unmount } = renderBare(
         <Harness isBlocksV8 fastPreview={fastPreview} />,
         { wrapper },
       );
       expect(queryByText("Fast Preview")).not.toBeInTheDocument();
-      expect(
-        queryByText("Instant preview (experimental)"),
-      ).not.toBeInTheDocument();
-      expect(queryAllByRole("switch")).toHaveLength(0);
+      expect(queryByText("Instant preview (experimental)")).toBeInTheDocument();
+      expect(getAllByRole("switch")).toHaveLength(1);
+      expect(queryByText(/Add your site's address/)).not.toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("Blocks v8 without a site address: a hint where the switch was", () => {
+    const { queryByText } = renderBare(
+      <Harness isBlocksV8 fastPreview={false} previewServerUrl="" />,
+      { wrapper },
+    );
+    expect(queryByText("Fast Preview")).not.toBeInTheDocument();
+    expect(queryByText(/Add your site's address/)).toBeInTheDocument();
   });
 });

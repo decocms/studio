@@ -60,19 +60,11 @@ import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
-import {
-  DEFAULT_SERVE_ENDPOINT,
-  endpointHost,
-  readLastConnection,
-  serveCandidates,
-} from "@/components/sections-editor/deco-serve-connection";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { useLocalNetworkAccess } from "@/hooks/use-deco-serve-discovery";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { LocalUrlForm } from "./local-url-form.tsx";
-import { LocalhostRow, localhostStatus } from "./localhost-row.tsx";
+import { V8LocalhostRow } from "./localhost-row.tsx";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
 import {
@@ -178,19 +170,6 @@ export function BranchPicker({
   const clearLocal = () => {
     clearTunnel();
     if (isV8) serve.clear();
-  };
-  // The Localhost row's state (v8): the editor's own content backend, so the
-  // row and the editor never disagree.
-  const backend = useContentBackend(isV8 ? virtualMcpId : null, value);
-  const lnaAccess = useLocalNetworkAccess();
-  const chooseLocalhost = () => {
-    if (localhostActive) return;
-    clearTunnel();
-    // The remembered `deco serve`, else the default port. Nothing answering
-    // yet is fine: the editor connects as soon as it starts.
-    serve.set({
-      endpoint: serveCandidates(null, readLastConnection())[0]!,
-    });
   };
   // Non-suspense + deferred to `open`: the trigger renders before members load.
   const { data: membersData } = useMembersQuery({ enabled: open });
@@ -519,18 +498,11 @@ export function BranchPicker({
                 ),
               )}
               {isV8 && (
-                <LocalhostRow
+                <V8LocalhostRow
+                  virtualMcpId={virtualMcpId}
+                  branch={value}
+                  serve={serve}
                   rowRef={localhostActive ? selectedRowRef : undefined}
-                  status={localhostStatus({
-                    selected: localhostActive,
-                    backend,
-                    access: lnaAccess,
-                  })}
-                  host={endpointHost(
-                    serve.connection?.endpoint ?? DEFAULT_SERVE_ENDPOINT,
-                  )}
-                  onSelect={chooseLocalhost}
-                  onTurnOff={() => serve.clear()}
                 />
               )}
             </div>
