@@ -82,6 +82,8 @@ import {
 } from "@/components/settings/settings-section";
 import { useProjectSettingsSection } from "./settings/use-settings-section";
 import { SiteTokenSection } from "./settings/site-token-section";
+import { PreviewSettingsRows } from "./settings/preview-settings-rows";
+import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
@@ -96,11 +98,8 @@ import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
-import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
-import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
-import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
@@ -1166,32 +1165,20 @@ function VirtualMcpDetailViewWithData({
               )}
 
               {/* Preview — the URL, and the Fast Preview switch it gates
-                (Fast Preview renders against that URL, so it needs one). */}
+                (Fast Preview renders against that URL, so it needs one).
+                Blocks v8 sites are always Fast Preview: no switch. */}
               {section === "site" && !cmsOff && (
                 <SettingsSection
                   title={t("sandbox.cmsSettings.preview.title")}
                   description={t("sandbox.cmsSettings.preview.description")}
                 >
                   <SettingsCard>
-                    <SettingsCardRow>
-                      <PreviewServerUrlField control={form.control} />
-                    </SettingsCardRow>
-                    <SettingsCardRow>
-                      <FastPreviewField
-                        control={form.control}
-                        previewServerUrl={form.watch(
-                          "metadata.previewServerUrl",
-                        )}
-                      />
-                    </SettingsCardRow>
-                    {form.watch("metadata.fastPreview") && (
-                      <SettingsCardRow>
-                        <InPlaceRenderField
-                          control={form.control}
-                          fastPreview={form.watch("metadata.fastPreview")}
-                        />
-                      </SettingsCardRow>
-                    )}
+                    <PreviewSettingsRows
+                      control={form.control}
+                      isBlocksV8={isBlocksV8Project(virtualMcp.metadata)}
+                      previewServerUrl={form.watch("metadata.previewServerUrl")}
+                      fastPreview={form.watch("metadata.fastPreview")}
+                    />
                   </SettingsCard>
                 </SettingsSection>
               )}

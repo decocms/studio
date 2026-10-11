@@ -58,14 +58,16 @@ export const BLOCKS_MAJOR_METADATA_KEY = "blocksMajor";
  * no-op for v7.
  */
 export function isBlocksV8Project(
-  vmcpMetadata: { blocksMajor?: unknown } | null | undefined,
+  vmcpMetadata: object | null | undefined,
 ): boolean {
-  return vmcpMetadata?.blocksMajor === 8;
+  return (vmcpMetadata as { blocksMajor?: unknown } | null)?.blocksMajor === 8;
 }
 
 /**
- * The project's Fast Preview capability: the switch is on AND there is a
- * preview server to render against. A bare flag with no URL is inert.
+ * The project's Fast Preview capability: there is a preview server to render
+ * against AND either the project is a Blocks v8 site (always Fast Preview; its
+ * settings have no switch) or the switch is on (v7, as before). A bare flag
+ * with no URL is inert.
  *
  * This is the ONE capability predicate. It answers a PROJECT question, never a
  * session one — `defaultThreadRuntime` turns it into the runtime a NEW thread
@@ -76,7 +78,7 @@ export function fastPreviewCapability(
 ): boolean {
   return (
     !!resolvePreviewServerUrl(vmcpMetadata) &&
-    vmcpMetadata?.fastPreview === true
+    (isBlocksV8Project(vmcpMetadata) || vmcpMetadata?.fastPreview === true)
   );
 }
 

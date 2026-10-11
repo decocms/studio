@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   defaultThreadRuntime,
   fastPreviewCapability,
+  isBlocksV8Project,
   parseThreadRuntime,
   readThreadRuntime,
 } from "./session-runtime.ts";
@@ -108,5 +109,53 @@ describe("parseThreadRuntime", () => {
     expect(parseThreadRuntime(undefined)).toBeNull();
     expect(parseThreadRuntime(null)).toBeNull();
     expect(parseThreadRuntime(true)).toBeNull();
+  });
+});
+
+describe("isBlocksV8Project", () => {
+  test("only the server's marker 8 counts", () => {
+    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(true);
+    expect(isBlocksV8Project({ blocksMajor: "8" })).toBe(false);
+    expect(isBlocksV8Project({ blocksMajor: 7 })).toBe(false);
+    expect(isBlocksV8Project({})).toBe(false);
+    expect(isBlocksV8Project(null)).toBe(false);
+  });
+});
+
+describe("Blocks v8 is always Fast Preview; v7 keeps main's rule", () => {
+  const URL = "https://acme.com";
+  // [marker, fastPreview, preview URL] -> default runtime
+  const rows: Array<
+    [8 | undefined, boolean | undefined, string | undefined, "cms" | "sandbox"]
+  > = [
+    // v7 (no marker): exactly main's rule — the switch AND a URL.
+    [undefined, true, URL, "cms"],
+    [undefined, false, URL, "sandbox"],
+    [undefined, undefined, URL, "sandbox"],
+    [undefined, true, undefined, "sandbox"],
+    [undefined, false, undefined, "sandbox"],
+    // v8: always cms with a URL, whatever a stale switch says.
+    [8, true, URL, "cms"],
+    [8, false, URL, "cms"],
+    [8, undefined, URL, "cms"],
+    // v8 with no URL still has nothing to render against.
+    [8, true, undefined, "sandbox"],
+    [8, undefined, undefined, "sandbox"],
+  ];
+  for (const [blocksMajor, fastPreview, previewServerUrl, expected] of rows) {
+    test(`marker=${blocksMajor} fastPreview=${fastPreview} url=${!!previewServerUrl} -> ${expected}`, () => {
+      const meta = { blocksMajor, fastPreview, previewServerUrl };
+      expect(defaultThreadRuntime(meta)).toBe(expected);
+      expect(fastPreviewCapability(meta)).toBe(expected === "cms");
+    });
+  }
+
+  test("a stamp still wins on a v8 project", () => {
+    expect(
+      readThreadRuntime(
+        { runtime: "sandbox" },
+        { blocksMajor: 8, previewServerUrl: URL },
+      ),
+    ).toBe("sandbox");
   });
 });
