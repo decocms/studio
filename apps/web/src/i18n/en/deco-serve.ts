@@ -74,7 +74,11 @@ export const decoServe = {
   "decoServe.state.siteUnverified.title":
     "Studio can't confirm this is your site",
   "decoServe.state.siteUnverified.body":
-    "Studio can't tell which site deco serve on {host} is running, so it won't edit it. Add your site's `.deco/secrets.pub` file to its repository; Studio connects on its own once it's there.",
+    "Studio can't tell which site deco serve on {host} is running, so it won't edit it. Your site needs its `.deco/secrets.pub` file, and neither the repository nor the folder deco serve runs in has it. Add it to the repository, then run deco serve from the site's folder; Studio connects on its own.",
+  "decoServe.state.siteUnverified.bodyLocalKeyMissing":
+    "The folder deco serve on {host} runs in doesn't have this site's `.deco/secrets.pub` file, though the repository does. Pull the latest changes into your site's folder, or run deco serve from the folder the site is cloned in; Studio connects on its own.",
+  "decoServe.state.siteUnverified.bodyRepoKeyMissing":
+    "Studio can't tell which site deco serve on {host} is running, so it won't edit it. Add the `.deco/secrets.pub` file from your site's folder to its repository; Studio connects on its own once it's there.",
   "decoServe.state.error.body":
     'It answered, but with an error: "{detail}". Check the terminal where deco serve runs for details, then try again.',
 

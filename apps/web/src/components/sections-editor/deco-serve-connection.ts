@@ -221,6 +221,13 @@ export interface ServeProblem {
   /** The server's own message, for `error`; the other site, for
    *  `other-site` (when `deco serve` names it). */
   detail?: string;
+  /**
+   * For `site-unverified`: where the site's `.deco/secrets.pub` is missing.
+   * `local`: the repository has it, the folder `deco serve` runs in doesn't
+   * (an old checkout, or another folder). `repository`: the folder has it,
+   * the repository doesn't. `both`: neither has it.
+   */
+  missingKey?: "local" | "repository" | "both";
 }
 
 /**
@@ -230,13 +237,13 @@ export interface ServeProblem {
  * 1. `describe.site` (newer `deco serve`) must equal the project's site id.
  * 2. Otherwise the site's public key (`.deco/secrets.pub`) must equal the one
  *    committed to the project's repository.
- * 3. Neither can be compared: `site-unverified` (the repository needs the
- *    site's `.deco/secrets.pub` until `deco serve` names its site). It never
- *    connects silently.
+ * 3. Neither can be compared: `site-unverified`, with which copy of the
+ *    site's `.deco/secrets.pub` is missing (`missingKey`). It never connects
+ *    silently.
  *
  * `committedPublicKey`: `undefined` while the repository's copy loads (the
- * answer is then `pending` when rule 2 needs it), `null` when the repository
- * has none.
+ * answer is then `pending` unless rule 1 decides), `null` when the
+ * repository has none.
  */
 export function matchServeSite(
   describe: { site?: unknown; secrets?: { publicKey: string } | null },
@@ -252,22 +259,28 @@ export function matchServeSite(
       : { ok: false, problem: { reason: "other-site", detail: site } };
   }
   const localKey = describe.secrets?.publicKey?.trim() || null;
-  if (localKey) {
-    if (expected.committedPublicKey === undefined) return "pending";
-    const committed = expected.committedPublicKey?.trim() || null;
-    if (committed) {
-      return localKey === committed
-        ? { ok: true }
-        : {
-            ok: false,
-            problem: {
-              reason: "other-site",
-              ...(site ? { detail: site } : {}),
-            },
-          };
-    }
+  // Rule 2 needs the repository's key; its answer also says which copy is
+  // missing, so the guide names the right next step.
+  if (expected.committedPublicKey === undefined) return "pending";
+  const committed = expected.committedPublicKey?.trim() || null;
+  if (localKey && committed) {
+    return localKey === committed
+      ? { ok: true }
+      : {
+          ok: false,
+          problem: {
+            reason: "other-site",
+            ...(site ? { detail: site } : {}),
+          },
+        };
   }
-  return { ok: false, problem: { reason: "site-unverified" } };
+  return {
+    ok: false,
+    problem: {
+      reason: "site-unverified",
+      missingKey: committed ? "local" : localKey ? "repository" : "both",
+    },
+  };
 }
 
 /** Thrown by a probe whose server answered, but isn't `deco serve`. */
