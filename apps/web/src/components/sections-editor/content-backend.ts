@@ -87,6 +87,26 @@ export function hostedCmsAvailable(
 }
 
 /**
+ * Whether a session's draft lives on the hosted Deco CMS: a Blocks v8 site
+ * whose editor reads and writes through Studio's GitHub backend (or is still
+ * waiting for it). Nothing boots for such a session, and its draft exists
+ * only once the first edit creates it. A v7 site never is one; neither is
+ * Localhost (a connected `deco serve`) nor a sandbox's daemon, nor a v8 site
+ * that fell back to the v7 editor.
+ */
+export function hostedDraftSession(
+  backend: ContentBackend,
+  isV8Project: boolean,
+): boolean {
+  if (!isV8Project) return false;
+  if (backend.kind === "pending") return true;
+  return (
+    (backend.kind === "protocol" || backend.kind === "unavailable") &&
+    backend.source === "github"
+  );
+}
+
+/**
  * The app a connected `deco serve` previews (`describe.preview`, which
  * `deco serve --preview` sets): its URL when it is on this machine, else
  * `null`. Anywhere else would put an arbitrary page in the editor's frame.
