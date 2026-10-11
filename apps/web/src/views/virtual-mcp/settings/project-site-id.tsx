@@ -56,7 +56,7 @@ export function ProjectSiteId({
           {t("virtualMcp.settings.identity.siteIdDescription")}
         </p>
       </div>
-      <div className="relative">
+      <div className="relative h-fit">
         <Input
           id={id}
           value={siteSlug}
