@@ -9,28 +9,23 @@ export const decoServe = {
     "deco serve was started with `--read-only`, so changes can't be saved. Restart it without that flag to edit.",
   "decoServe.connect.reaching": "Connecting to deco serve on {host}…",
 
-  "decoServe.guide.title": "Edit your site's content on your computer",
-  "decoServe.guide.lead":
-    "The site editor turns the content files of a site on this computer into forms. Changes are saved to those files, and nothing is committed: you review them and commit them yourself.",
+  "decoServe.waiting.title": "Waiting for your computer",
+  "decoServe.waiting.lead":
+    "Your preview and content open here as soon as Studio connects to deco serve on this computer.",
+  "decoServe.waiting.step2.title": "Studio connects on its own",
+  "decoServe.waiting.step2.body":
+    "Keep this tab open. Your preview opens here as soon as deco serve starts.",
   "decoServe.guide.step1.title": "Start deco serve in your site's folder",
   "decoServe.guide.step1.body":
     "In a terminal, in your site's folder (the one that has the `.deco` folder), run:",
-  "decoServe.guide.step1.preview":
-    "The Preview tab shows your app on the port in your Vite config, or localhost:5173. If it runs somewhere else, add `--preview` with its address, such as `--preview localhost:3000`.",
   "decoServe.guide.copy": "Copy command",
   "decoServe.guide.copyShort": "Copy",
   "decoServe.guide.copied": "Copied",
   "decoServe.guide.copiedAnnouncement": "Command copied to the clipboard",
-  "decoServe.guide.step2.title": "This page connects on its own",
-  "decoServe.guide.step2.body":
-    "Leave this tab open. The editor opens here as soon as deco serve starts, with no link to click.",
   "decoServe.guide.step2.looking": "Looking for deco serve on {hosts}…",
   "decoServe.guide.step2.paused":
     "Paused while this tab is in the background. It looks again when you come back.",
   "decoServe.guide.step2.start": "Look for deco serve on this computer",
-  "decoServe.guide.v7":
-    "Working on an older Deco site (deco.cx or @decocms/start)? deco serve is for Blocks v8 sites. Open the site from its Studio project and choose Local in the draft selector.",
-  "decoServe.guide.checkingFirst": "Looking for deco serve…",
 
   "decoServe.docs.heading": "Learn more",
   "decoServe.docs.quickstart": "Quickstart",

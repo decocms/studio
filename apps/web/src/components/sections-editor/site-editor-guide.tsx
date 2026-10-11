@@ -1,33 +1,22 @@
 /**
  * `/site-editor`'s one rule: while `deco serve` answers, the editor; while it
- * doesn't, this guide, which keeps looking for it (backing off, paused while
- * the tab is hidden) and opens the editor as soon as it answers. The guide
- * explains what the site editor is and how to start `deco serve`.
+ * doesn't, the empty state a project's Localhost shows too
+ * (`LocalServeEmptyState`), which keeps looking for it (backing off, paused
+ * while the tab is hidden) and opens the editor as soon as it answers.
  */
 
 import { type ReactNode, useState } from "react";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@decocms/ui/components/alert.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { useDecoServeDiscovery } from "@/hooks/use-deco-serve-discovery";
 import { usePreferences } from "@/hooks/use-preferences";
-import { useT } from "@/i18n/use-t.ts";
 import type { ContentBackend } from "./content-backend";
 import {
   type DecoServeConnection,
   endpointHost,
-  SERVE_COMMAND,
 } from "./deco-serve-connection";
 import {
-  DocsLinks,
-  RichCode,
-  LocalNetworkDeniedAlert,
-  ServeProblemAlert,
-} from "./deco-serve-notices";
-import { ConnectionWire, ServeConnectState } from "./serve-connect-state";
+  LocalServeEmptyState,
+  type LocalServeWait,
+} from "./local-serve-empty-state";
 
 /** The editor's server stopped answering: back to the guide until it's back. */
 export function isServeLost(backend: ContentBackend): boolean {
@@ -81,7 +70,6 @@ export function SiteEditorGuide({
   invalidLink?: boolean;
   onConnect: (connection: DecoServeConnection) => void;
 }) {
-  const t = useT();
   const [{ language }] = usePreferences();
   const discovery = useDecoServeDiscovery({
     candidates,
@@ -93,105 +81,20 @@ export function SiteEditorGuide({
     type: "conjunction",
   }).format(candidates.map(endpointHost));
 
-  // While the first look runs, a short "Looking…", not a flash of the guide
-  // before the editor opens.
-  const firstLook =
-    !invalidLink &&
-    access !== "denied" &&
-    !needsGesture &&
-    !state.firstRoundDone &&
-    state.status !== "found";
-  if (firstLook) {
-    return (
-      <div
-        role="status"
-        className="flex h-full w-full flex-col items-center justify-center gap-3 p-6"
-      >
-        <ConnectionWire waiting />
-        <p className="text-sm text-muted-foreground">
-          {t("decoServe.guide.checkingFirst")}
-        </p>
-      </div>
-    );
-  }
-
-  const looking = !needsGesture && access !== "denied";
+  // Same empty state, same states, as a project's Localhost.
+  const wait: LocalServeWait =
+    access === "denied"
+      ? { kind: "denied" }
+      : needsGesture
+        ? { kind: "needs-gesture", onStart: discovery.start }
+        : state.problem
+          ? {
+              kind: "problem",
+              problem: state.problem,
+              host: endpointHost(state.problem.endpoint),
+            }
+          : { kind: "looking", paused: state.status === "paused" };
   return (
-    <ServeConnectState
-      title={t("decoServe.guide.title")}
-      lead={t("decoServe.guide.lead")}
-      waiting={looking && state.status !== "paused" && !state.problem}
-      alerts={
-        <>
-          {invalidLink && (
-            <Alert variant="warning">
-              <div className="flex min-w-0 flex-col gap-1">
-                <AlertTitle className="line-clamp-none text-foreground">
-                  {t("decoServe.link.invalidTitle")}
-                </AlertTitle>
-                <AlertDescription>
-                  {t("decoServe.link.invalidBody")}
-                </AlertDescription>
-              </div>
-            </Alert>
-          )}
-          {access === "denied" && <LocalNetworkDeniedAlert />}
-        </>
-      }
-      steps={[
-        {
-          title: t("decoServe.guide.step1.title"),
-          body: <RichCode text={t("decoServe.guide.step1.body")} />,
-          command: SERVE_COMMAND,
-          after: (
-            <p className="text-sm text-muted-foreground">
-              <RichCode text={t("decoServe.guide.step1.preview")} />
-            </p>
-          ),
-        },
-        {
-          title: t("decoServe.guide.step2.title"),
-          body: t("decoServe.guide.step2.body"),
-          after: (
-            <>
-              {state.problem && (
-                <ServeProblemAlert
-                  problem={state.problem}
-                  host={endpointHost(state.problem.endpoint)}
-                />
-              )}
-              {needsGesture ? (
-                <Button
-                  variant="outline"
-                  className="self-start"
-                  onClick={discovery.start}
-                >
-                  {t("decoServe.guide.step2.start")}
-                </Button>
-              ) : (
-                looking && (
-                  <p role="status" className="text-sm text-muted-foreground">
-                    {state.status === "paused"
-                      ? t("decoServe.guide.step2.paused")
-                      : t("decoServe.guide.step2.looking", { hosts })}
-                  </p>
-                )
-              )}
-            </>
-          ),
-        },
-      ]}
-      footer={
-        <>
-          <p className="text-sm text-muted-foreground">
-            {t("decoServe.guide.v7")}
-          </p>
-          <DocsLinks
-            className="border-t border-border pt-4"
-            links={["quickstart", "siteEditor", "serve", "troubleshooting"]}
-          />
-        </>
-      }
-    />
+    <LocalServeEmptyState wait={wait} hosts={hosts} invalidLink={invalidLink} />
   );
 }

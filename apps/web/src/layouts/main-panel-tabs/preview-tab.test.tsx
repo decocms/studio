@@ -149,7 +149,7 @@ describe("PreviewTab with Localhost: the empty state while it connects", () => {
   const wire = (view: ReturnType<typeof render>) =>
     view.getByTestId("connection-wire").dataset.waiting;
 
-  it("connecting: the guide with the command, and the dot travelling", () => {
+  it("connecting: the guide with the command, looking, the dot travelling", () => {
     refs.backend = { kind: "pending" };
     const view = render();
     expect(
@@ -162,7 +162,7 @@ describe("PreviewTab with Localhost: the empty state while it connects", () => {
       view.getByRole("button", { name: "Copy command" }),
     ).toBeInTheDocument();
     expect(
-      view.getByText("Connecting to deco serve on localhost:4545…"),
+      view.getByText("Looking for deco serve on localhost:4545…"),
     ).toBeInTheDocument();
     expect(wire(view)).toBe("true");
     expect(view.queryByTestId("preview-frame")).not.toBeInTheDocument();

@@ -27,7 +27,7 @@ export interface ServeConnectStep {
  * back and forth on it (still, mid-wire, with reduced motion); otherwise the
  * wire is plain.
  */
-export function ConnectionWire({ waiting }: { waiting: boolean }) {
+function ConnectionWire({ waiting }: { waiting: boolean }) {
   return (
     <div
       aria-hidden="true"

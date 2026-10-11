@@ -15,7 +15,7 @@
  * One rule (`LocalServeSwitch`): it looks for `deco serve` at the link's
  * endpoint, or else the last one used and the default port
  * (`serveCandidates`). If it answers, the editor opens; if not, the guide
- * (`SiteEditorGuide`) shows and keeps looking, and the editor opens as soon
+ * (`SiteEditorGuide`, the same empty state as a project's Localhost) shows and keeps looking, and the editor opens as soon
  * as it answers. When the server stops answering while editing, the guide
  * comes back until it does. There is no Disconnect.
  *
@@ -47,11 +47,7 @@ import {
   saveLastConnection,
   serveCandidates,
 } from "@/components/sections-editor/deco-serve-connection";
-import {
-  DocsLinks,
-  RichCode,
-  serveProblemCopy,
-} from "@/components/sections-editor/deco-serve-notices";
+import { LocalServeEmptyState } from "@/components/sections-editor/local-serve-empty-state";
 import {
   isServeLost,
   LocalServeSwitch,
@@ -192,23 +188,14 @@ function BackendGate({ children }: { children: ReactNode }) {
     );
   }
   // It answered, but can't be used; the probe keeps polling on its own.
-  const { title, body } = serveProblemCopy(
-    t,
-    backend.problem ?? { reason: "not-answering" },
-    host,
-  );
   return (
-    <ServeConnectState
-      headingLevel={2}
-      waiting={false}
-      title={title}
-      lead={<RichCode text={body} />}
-      footer={
-        <DocsLinks
-          className="border-t border-border pt-4"
-          links={["troubleshooting", "serve"]}
-        />
-      }
+    <LocalServeEmptyState
+      wait={{
+        kind: "problem",
+        problem: backend.problem ?? { reason: "not-answering" },
+        host,
+      }}
+      hosts={host}
     />
   );
 }

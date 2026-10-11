@@ -14,6 +14,7 @@ import {
   DEFAULT_SERVE_ENDPOINT,
   serveCandidates,
 } from "./deco-serve-connection";
+import { LocalServeEmptyState, localhostWait } from "./local-serve-empty-state";
 import {
   isServeLost,
   LocalServeSwitch,
@@ -73,20 +74,19 @@ describe("SiteEditorGuide", () => {
       />,
     );
 
-    // A short "Looking…" first, then the guide once nothing answered.
-    expect(view.getByText("Looking for deco serve…")).toBeInTheDocument();
+    // The empty state a project's Localhost shows, from the first render.
     expect(
-      await view.findByRole("heading", {
-        level: 1,
-        name: "Edit your site's content on your computer",
+      view.getByRole("heading", {
+        level: 2,
+        name: "Waiting for your computer",
       }),
     ).toBeInTheDocument();
     expect(view.queryByText(/incomplete/i)).toBeNull();
     // The two steps, in order; no address field and no way to disconnect.
-    const steps = view.getAllByRole("heading", { level: 2 });
+    const steps = view.getAllByRole("heading", { level: 3 });
     expect(steps.map((step) => step.textContent)).toEqual([
       "Start deco serve in your site's folder",
-      "This page connects on its own",
+      "Studio connects on its own",
     ]);
     expect(view.queryByRole("textbox")).toBeNull();
     expect(view.queryByRole("button", { name: /disconnect/i })).toBeNull();
@@ -108,7 +108,11 @@ describe("SiteEditorGuide", () => {
     // Docs links open in a new tab, from the one docs base.
     const docs = view.getByRole("navigation", { name: "Learn more" });
     const links = [...docs.querySelectorAll("a")];
-    expect(links.length).toBe(4);
+    expect(links.map((link) => link.textContent)).toEqual([
+      expect.stringContaining("Site editor guide"),
+      expect.stringContaining("deco serve options"),
+      expect.stringContaining("Troubleshooting"),
+    ]);
     for (const link of links) {
       expect(link.getAttribute("href")).toStartWith(
         "https://docs.decocms.com/storefront/blocks/next/",
@@ -148,6 +152,68 @@ describe("SiteEditorGuide", () => {
   });
 });
 
+/** Something else answering on 4545: a JSON-RPC server, but not deco serve. */
+const otherProgram = mock(async (input: RequestInfo | URL) => {
+  const request = input instanceof Request ? input : new Request(input);
+  const calls = (await request.json()) as { id: number }[];
+  return Response.json(
+    calls.map((call) => ({
+      jsonrpc: "2.0",
+      id: call.id,
+      result: { protocol: "something-else" },
+    })),
+  );
+});
+
+/** Rendered markup, without the per-render ids `useId` hands out. */
+const markup = (container: HTMLElement) =>
+  container.innerHTML.replace(/ (id|aria-labelledby)="[^"]*"/g, "");
+
+describe("one empty state: /site-editor and a project's Localhost", () => {
+  test("nothing answering: the very same output in both", async () => {
+    globalThis.fetch = serveOn([]) as unknown as typeof fetch;
+    const guide = render(
+      <SiteEditorGuide
+        candidates={[DEFAULT_SERVE_ENDPOINT]}
+        onConnect={() => {}}
+      />,
+    );
+    await guide.findByText("Looking for deco serve on localhost:4545…");
+    // What a project's Preview renders for Localhost (preview-tab.tsx).
+    const project = render(
+      <LocalServeEmptyState
+        wait={localhostWait({ kind: "not-running" }, "localhost:4545")}
+        hosts="localhost:4545"
+      />,
+    );
+    expect(project.container.textContent).toContain(
+      "Waiting for your computer",
+    );
+    expect(markup(guide.container)).toBe(markup(project.container));
+  });
+
+  test("another program on the port: the very same output in both", async () => {
+    globalThis.fetch = otherProgram as unknown as typeof fetch;
+    const guide = render(
+      <SiteEditorGuide
+        candidates={[DEFAULT_SERVE_ENDPOINT]}
+        onConnect={() => {}}
+      />,
+    );
+    await guide.findByText("Another program is using localhost:4545");
+    const project = render(
+      <LocalServeEmptyState
+        wait={localhostWait(
+          { kind: "problem", problem: { reason: "not-deco-serve" } },
+          "localhost:4545",
+        )}
+        hosts="localhost:4545"
+      />,
+    );
+    expect(markup(guide.container)).toBe(markup(project.container));
+  });
+});
+
 /** The editor stand-in: names its server, and stops when the server does. */
 function editor(
   connection: { endpoint: string },
@@ -163,7 +229,7 @@ function editor(
   );
 }
 
-const GUIDE_TITLE = "Edit your site's content on your computer";
+const GUIDE_TITLE = "Waiting for your computer";
 
 describe("LocalServeSwitch", () => {
   test("no link and nothing answering: the empty state", async () => {
@@ -175,7 +241,7 @@ describe("LocalServeSwitch", () => {
       />,
     );
     expect(
-      await view.findByRole("heading", { level: 1, name: GUIDE_TITLE }),
+      await view.findByRole("heading", { level: 2, name: GUIDE_TITLE }),
     ).toBeInTheDocument();
     expect(view.queryByText(/^Editing/)).toBeNull();
   });
@@ -208,7 +274,7 @@ describe("LocalServeSwitch", () => {
     ports.length = 0;
     fireEvent.click(view.getByRole("button", { name: "server stopped" }));
     expect(
-      await view.findByRole("heading", { level: 1, name: GUIDE_TITLE }),
+      await view.findByRole("heading", { level: 2, name: GUIDE_TITLE }),
     ).toBeInTheDocument();
 
     ports.push(4545);
