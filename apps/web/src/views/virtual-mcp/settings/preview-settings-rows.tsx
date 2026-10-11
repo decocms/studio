@@ -33,7 +33,7 @@ export function PreviewSettingsRows<T extends FieldValues>({
   return (
     <>
       <SettingsCardRow>
-        <PreviewServerUrlField control={control} />
+        <PreviewServerUrlField control={control} isBlocksV8={isBlocksV8} />
       </SettingsCardRow>
       {isBlocksV8 ? (
         !sanitizeSiteUrl(previewServerUrl) && (
