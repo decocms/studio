@@ -22,10 +22,13 @@ import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-ur
 // path is a literal contract asserted via `FieldPath<T>`, kept to this leaf.
 export interface PreviewServerUrlFieldProps<T extends FieldValues> {
   control: Control<T>;
+  /** A Blocks v8 site has no Fast Preview switch, so its hint doesn't name it. */
+  isBlocksV8?: boolean;
 }
 
 export function PreviewServerUrlField<T extends FieldValues>({
   control,
+  isBlocksV8 = false,
 }: PreviewServerUrlFieldProps<T>) {
   const t = useT();
   return (
@@ -60,7 +63,11 @@ export function PreviewServerUrlField<T extends FieldValues>({
         }}
       />
       <p className="text-xs text-muted-foreground">
-        {t("sandbox.previewServerUrlField.description")}
+        {t(
+          isBlocksV8
+            ? "sandbox.previewServerUrlField.descriptionBlocksV8"
+            : "sandbox.previewServerUrlField.description",
+        )}
       </p>
     </div>
   );
