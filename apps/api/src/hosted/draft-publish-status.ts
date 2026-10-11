@@ -25,6 +25,7 @@ import type {
   LoadedDraft,
 } from "./draft-store";
 import { draftFileChanges } from "./publish";
+import { type BlocksMajorStorage, syncBlocksMajorMarker } from "./blocks-major";
 import { hostedDrafts, mainIsV8, ownedProjectSite } from "./scope";
 
 interface DraftRepo {
@@ -42,7 +43,12 @@ export interface HostedDraftRequest {
         organizationId: string,
       ): Promise<{ flags?: Record<string, unknown> | null } | null>;
     };
+    /** When given, `mainIsV8`'s answer is written through to the project's
+     *  Blocks v8 marker (hosted/blocks-major.ts). */
+    virtualMcps?: BlocksMajorStorage;
   };
+  /** Who the marker write is attributed to. */
+  userId?: string;
   organizationId: string;
   virtualMcpId: string;
   branch: string;
@@ -84,8 +90,21 @@ export async function loadHostedDraft(req: HostedDraftRequest) {
     mainBranch: await client.getDefaultBranch(),
   };
   const draft = await drafts.load(ref);
-  if (!draft && !(await mainIsV8(client, repo.packagePath, repo.mainBranch))) {
-    return null;
+  if (!draft) {
+    const isV8 = await mainIsV8(client, repo.packagePath, repo.mainBranch);
+    if (req.storage.virtualMcps && req.userId) {
+      await syncBlocksMajorMarker(
+        req.storage.virtualMcps,
+        {
+          id: req.virtualMcpId,
+          organizationId: req.organizationId,
+          metadata: req.metadata,
+        },
+        isV8,
+        req.userId,
+      );
+    }
+    if (!isV8) return null;
   }
   return { drafts, ref, repo, draft };
 }

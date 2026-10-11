@@ -416,6 +416,7 @@ function loadHostedDraftFor(c: Context<VmEnv>) {
     virtualMcpId: claim.virtualMcpId,
     branch: claim.branch,
     metadata: claim.virtualMcpMetadata,
+    userId: claim.callerUserId,
     gitClient: () => fastPreviewGitClient(c),
   });
 }

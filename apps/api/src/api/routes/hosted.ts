@@ -38,6 +38,7 @@ import {
   NotPublishedError,
   SchemaMismatchError,
 } from "@/hosted/releases";
+import { syncBlocksMajorMarker } from "@/hosted/blocks-major";
 import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import { createSiteTokens, importSigningKey } from "@/hosted/site-token";
 import { getSettings } from "@/settings";
@@ -51,6 +52,8 @@ interface HostedProject {
   site: string;
   packagePath: string | null;
   repository: RepositoryBinding;
+  /** For the Blocks v8 marker write-through (hosted/blocks-major.ts). */
+  metadata: Record<string, unknown> | null;
 }
 
 type HostedEnv = Env & {
@@ -108,6 +111,7 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
     site,
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     repository,
+    metadata,
   });
   return next();
 });
@@ -239,15 +243,22 @@ export function createHostedRoutes() {
         project.organizationId,
         project.repository,
       );
-      if (
-        !(await mainIsV8(
-          client,
-          project.packagePath,
-          await client.getDefaultBranch(),
-        ))
-      ) {
-        return c.json({ error: "not a Blocks v8 site" }, 409);
-      }
+      const isV8 = await mainIsV8(
+        client,
+        project.packagePath,
+        await client.getDefaultBranch(),
+      );
+      await syncBlocksMajorMarker(
+        c.var.studioContext.storage.virtualMcps,
+        {
+          id: project.virtualMcpId,
+          organizationId: project.organizationId,
+          metadata: project.metadata,
+        },
+        isV8,
+        c.var.studioContext.auth?.user?.id ?? "system",
+      );
+      if (!isV8) return c.json({ error: "not a Blocks v8 site" }, 409);
       return c.json(await tokens.issue(project.organizationId, project.site));
     } catch (err) {
       return hostedError(c, err);

@@ -42,6 +42,25 @@ export interface VmcpRuntimeMetadata {
   previewServerUrl?: string | null;
   productionUrl?: string | null;
   fastPreview?: boolean | null;
+  /** Server-managed: `8` when main is a Blocks v8 site (see
+   *  {@link isBlocksV8Project}). Absent on every v7 site. */
+  blocksMajor?: number | null;
+}
+
+/** The project metadata key the server writes for a Blocks v8 site. */
+export const BLOCKS_MAJOR_METADATA_KEY = "blocksMajor";
+
+/**
+ * Whether the project is a Blocks v8 site: the server-managed
+ * `metadata.blocksMajor` marker, written only when the org has the content
+ * protocol and main's `.deco/schema.gen.json` is v8 (and cleared when main is
+ * no longer v8). A v7 site never has it, so every rule keyed on this is a
+ * no-op for v7.
+ */
+export function isBlocksV8Project(
+  vmcpMetadata: { blocksMajor?: unknown } | null | undefined,
+): boolean {
+  return vmcpMetadata?.blocksMajor === 8;
 }
 
 /**

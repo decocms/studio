@@ -66,6 +66,7 @@ import { deliveryPurge } from "@/hosted/delivery-purge";
 import { createDraftContentStorage } from "@/hosted/draft-content-storage";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
+import { syncBlocksMajorMarker } from "@/hosted/blocks-major";
 import { hostedDrafts, mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
@@ -84,6 +85,8 @@ interface DecofileScope {
   previewServerUrl: string | null;
   /** The public site id (`metadata.siteSlug`), the hosted CMS's key. */
   site: string | null;
+  /** The project's metadata, for the Blocks v8 marker write-through. */
+  metadata: Record<string, unknown> | null;
 }
 
 type DecofileEnv = Env & {
@@ -242,6 +245,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
       virtualMcpId,
       organization.id,
     ),
+    metadata,
   });
   return next();
 });
@@ -295,6 +299,33 @@ async function hostedScope(
       site: scope.site,
     },
   };
+}
+
+/**
+ * `mainIsV8` for this scope, writing the answer through to the project's
+ * Blocks v8 marker (hosted/blocks-major.ts). Only reached on the hosted path,
+ * so only for orgs with the content protocol.
+ */
+async function scopeMainIsV8(
+  c: Context<DecofileEnv>,
+  client: RepoContentClient,
+  mainBranch: string,
+): Promise<boolean> {
+  const scope = c.get("decofileScope");
+  const isV8 = await mainIsV8(client, scope.packagePath, mainBranch);
+  if (scope.userId) {
+    await syncBlocksMajorMarker(
+      c.var.studioContext.storage.virtualMcps,
+      {
+        id: scope.virtualMcpId,
+        organizationId: scope.organizationId,
+        metadata: scope.metadata,
+      },
+      isV8,
+      scope.userId,
+    );
+  }
+  return isV8;
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {
@@ -363,11 +394,7 @@ export function createDecofileRoutes() {
         const draft = await hosted.drafts.load(hosted.ref);
         if (
           draft ||
-          (await mainIsV8(
-            client,
-            scope.packagePath,
-            await client.getDefaultBranch(),
-          ))
+          (await scopeMainIsV8(c, client, await client.getDefaultBranch()))
         ) {
           const version = bareEtag(draft?.etag);
           return c.json(
@@ -536,7 +563,7 @@ export function createDecofileRoutes() {
       if (
         hosted &&
         ((await hosted.drafts.load(hosted.ref)) ||
-          (await mainIsV8(client, scope.packagePath, baseBranch)))
+          (await scopeMainIsV8(c, client, baseBranch)))
       ) {
         const store = deliveryStore();
         if (!store) {

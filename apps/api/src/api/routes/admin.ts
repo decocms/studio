@@ -39,6 +39,8 @@ import {
   decoSiteExists,
   type SiteClaimCandidate,
 } from "@/hosted/claim-site";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { syncBlocksMajorMarker } from "@/hosted/blocks-major";
 import { mainIsV8, projectSite } from "@/hosted/scope";
 import { contentClientForProjectRepo } from "@/git-providers";
 import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
@@ -963,7 +965,9 @@ export function createAdminRoutes(): Hono<Env> {
    * deco.cx has, nor a deleted org's (reported as `refused`), and links
    * nobody to a slug several orgs' or projects name (`ambiguous`). A dry run
    * unless the body says `{"dryRun": false}`. A route rather than a
-   * migration: telling a v8 project needs a GitHub read.
+   * migration: telling a v8 project needs a GitHub read. A real run also
+   * writes each project's Blocks v8 marker (`metadata.blocksMajor`) in orgs
+   * with the content protocol.
    */
   app.post("/hosted/site-claims/backfill", async (c) => {
     const raw = (await c.req.json().catch(() => ({}))) as {
@@ -1021,6 +1025,7 @@ export function createAdminRoutes(): Hono<Env> {
       });
     }
     const projects = new VirtualMCPStorage(db);
+    const orgSettings = new OrganizationSettingsStorage(db);
     const report = await backfillSiteClaims({
       orgSites: new OrgSiteStorage(db),
       isDecoSite: decoSiteExists,
@@ -1047,11 +1052,26 @@ export function createAdminRoutes(): Hono<Env> {
         const runtime = metadata?.runtime as
           | { path?: string | null }
           | undefined;
-        return mainIsV8(
+        const isV8 = await mainIsV8(
           client,
           runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
           await client.getDefaultBranch(),
         );
+        // The project's Blocks v8 marker, for orgs with the content protocol
+        // (hosted/blocks-major.ts). Run this once before release so existing
+        // v8 projects open in Fast Preview.
+        if (!dryRun && project) {
+          const settings = await orgSettings.get(organizationId);
+          if (orgFlagEnabled(settings?.flags, "site_editor_content_protocol")) {
+            await syncBlocksMajorMarker(
+              projects,
+              { id: projectId, organizationId, metadata },
+              isV8,
+              actorId,
+            );
+          }
+        }
+        return isV8;
       },
     });
     auditAdminAction("hosted_site_claims_backfill", {
