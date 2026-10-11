@@ -757,6 +757,8 @@ export const KEYS = {
   // Which content backend (legacy / content protocol) a project's editor uses.
   contentBackend: (...parts: string[]) =>
     ["content-backend", ...parts] as const,
+  // Whether Localhost's app (the preview `deco serve` names) answers.
+  localAppReachable: (url: string) => ["local-app-reachable", url] as const,
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,

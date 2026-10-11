@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys";
 
 /** Whether the app answers: resolves `true` on any HTTP answer. */
 export type AppProbe = (url: string, signal: AbortSignal) => Promise<boolean>;
@@ -65,40 +66,40 @@ export function useLocalAppReachable(
   url: string | null,
   probe: AppProbe = fetchAppProbe,
 ): boolean | null {
-  const [state, setState] = useState<{
-    url: string | null;
-    up: boolean | null;
-  }>({ url, up: null });
-
-  useEffect(() => {
-    if (!url) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let controller: AbortController | undefined;
-    let up: boolean | null = null;
-    let failures = 0;
-    setState({ url, up: null });
-
-    const run = async () => {
-      controller = new AbortController();
-      const timeout = setTimeout(() => controller?.abort(), PROBE_TIMEOUT_MS);
-      const ok = await probe(url, controller.signal).catch(() => false);
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.localAppReachable(url ?? "");
+  const { data } = useQuery({
+    queryKey,
+    queryFn: async ({ signal }): Promise<AppReachability> => {
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal.addEventListener("abort", abort);
+      const timeout = setTimeout(abort, PROBE_TIMEOUT_MS);
+      const ok = await probe(url!, controller.signal).catch(() => false);
       clearTimeout(timeout);
-      if (cancelled) return;
-      failures = ok ? 0 : failures + 1;
-      up = nextAppReachable(up, ok, failures);
-      setState({ url, up });
-      timer = setTimeout(run, nextAppProbeDelay(up, failures));
-    };
-    void run();
+      signal.removeEventListener("abort", abort);
+      const previous = queryClient.getQueryData<AppReachability>(queryKey);
+      const failures = ok ? 0 : (previous?.failures ?? 0) + 1;
+      return {
+        up: nextAppReachable(previous?.up ?? null, ok, failures),
+        failures,
+      };
+    },
+    enabled: !!url,
+    // Never throws: every answer is data, so the poll below keeps going.
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) =>
+      query.state.data
+        ? nextAppProbeDelay(query.state.data.up, query.state.data.failures)
+        : false,
+  });
+  return url ? (data?.up ?? null) : null;
+}
 
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      controller?.abort();
-    };
-  }, [url, probe]);
-
-  // A URL that just changed hasn't been probed yet.
-  return url && state.url === url ? state.up : null;
+interface AppReachability {
+  up: boolean;
+  /** Failed probes in a row. */
+  failures: number;
 }

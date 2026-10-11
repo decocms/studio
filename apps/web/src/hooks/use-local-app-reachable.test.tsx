@@ -2,7 +2,9 @@ import { setupComponentTest } from "../../test/setup";
 setupComponentTest();
 
 import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "bun:test";
+import type { ReactNode } from "react";
 import {
   APP_GONE_AFTER_FAILURES,
   type AppProbe,
@@ -12,6 +14,11 @@ import {
 } from "./use-local-app-reachable";
 
 const APP = "http://localhost:3000/";
+
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient();
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
 
 /** A probe answering from a script, then repeating its last answer. */
 function scripted(answers: boolean[]): AppProbe & { calls: number } {
@@ -49,14 +56,18 @@ describe("nextAppReachable / nextAppProbeDelay", () => {
 describe("useLocalAppReachable", () => {
   it("no URL: nothing to probe", () => {
     const probe = scripted([true]);
-    const { result } = renderHook(() => useLocalAppReachable(null, probe));
+    const { result } = renderHook(() => useLocalAppReachable(null, probe), {
+      wrapper,
+    });
     expect(result.current).toBeNull();
     expect(probe.calls).toBe(0);
   });
 
   it("waits while the app isn't listening, then reports it up on its own", async () => {
     const probe = scripted([false, true]);
-    const { result } = renderHook(() => useLocalAppReachable(APP, probe));
+    const { result } = renderHook(() => useLocalAppReachable(APP, probe), {
+      wrapper,
+    });
     expect(result.current).toBeNull();
     await waitFor(() => expect(result.current).toBe(false));
     await waitFor(() => expect(result.current).toBe(true), { timeout: 3_000 });
@@ -66,7 +77,7 @@ describe("useLocalAppReachable", () => {
     const probe = scripted([true]);
     const { result, rerender } = renderHook(
       ({ url }) => useLocalAppReachable(url, probe),
-      { initialProps: { url: APP } },
+      { initialProps: { url: APP }, wrapper },
     );
     await waitFor(() => expect(result.current).toBe(true));
     rerender({ url: "http://localhost:3001/" });
