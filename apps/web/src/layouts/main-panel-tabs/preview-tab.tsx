@@ -17,16 +17,15 @@ import {
   endpointHost,
   SERVE_COMMAND,
 } from "@/components/sections-editor/deco-serve-connection";
-import {
-  DocsLinks,
-  LocalNetworkDeniedAlert,
-  RichCode,
-  serveProblemCopy,
-} from "@/components/sections-editor/deco-serve-notices";
+import { RichCode } from "@/components/sections-editor/deco-serve-notices";
 import {
   type LocalhostStatus,
   localhostStatus,
 } from "@/components/sections-editor/localhost-status";
+import {
+  LocalServeEmptyState,
+  localhostWait,
+} from "@/components/sections-editor/local-serve-empty-state";
 import { ServeConnectState } from "@/components/sections-editor/serve-connect-state";
 import { useLocalNetworkAccess } from "@/hooks/use-deco-serve-discovery";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
@@ -144,8 +143,8 @@ function hostOf(url: string): string {
 }
 
 /**
- * A chosen Localhost with no app to show yet: the same empty state as
- * `/site-editor`'s guide, with the one next step for where it stands.
+ * A chosen Localhost with no app to show yet: `/site-editor`'s empty state,
+ * exactly (`LocalServeEmptyState`); once connected with no app, how to name it.
  */
 function LocalhostEmptyState({
   status,
@@ -176,56 +175,7 @@ function LocalhostEmptyState({
       />
     );
   }
-  if (status.kind === "problem") {
-    // Something answered but can't be used; it keeps checking on its own.
-    const { title, body } = serveProblemCopy(t, status.problem, host);
-    return (
-      <ServeConnectState
-        headingLevel={2}
-        waiting={false}
-        title={title}
-        lead={<RichCode text={body} />}
-        footer={
-          <DocsLinks
-            className="border-t border-border pt-4"
-            links={["troubleshooting", "serve"]}
-          />
-        }
-      />
-    );
-  }
-  const blocked = status.kind === "needs-permission";
   return (
-    <ServeConnectState
-      headingLevel={2}
-      waiting={!blocked}
-      title={t("mainPanelTabs.previewTab.localhostWaiting.title")}
-      lead={t("mainPanelTabs.previewTab.localhostWaiting.body")}
-      alerts={blocked && <LocalNetworkDeniedAlert />}
-      steps={[
-        {
-          title: t("decoServe.guide.step1.title"),
-          body: <RichCode text={t("decoServe.guide.step1.body")} />,
-          command: SERVE_COMMAND,
-        },
-        {
-          title: t("mainPanelTabs.previewTab.localhostWaiting.step2.title"),
-          body: t("mainPanelTabs.previewTab.localhostWaiting.step2.body"),
-          after: !blocked && (
-            <p role="status" className="text-sm text-muted-foreground">
-              {status.kind === "connecting"
-                ? t("decoServe.connect.reaching", { host })
-                : t("decoServe.guide.step2.looking", { hosts: host })}
-            </p>
-          ),
-        },
-      ]}
-      footer={
-        <DocsLinks
-          className="border-t border-border pt-4"
-          links={["siteEditor", "serve", "troubleshooting"]}
-        />
-      }
-    />
+    <LocalServeEmptyState wait={localhostWait(status, host)} hosts={host} />
   );
 }

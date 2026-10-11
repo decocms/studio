@@ -6,7 +6,7 @@
  * Preview while Localhost connects) and the draft selector's Local tab.
  */
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment } from "react";
 import { Check, Copy01, LinkExternal01 } from "@untitledui/icons";
 import {
   Alert,
@@ -167,33 +167,6 @@ export function serveProblemCopy(
         }),
       };
   }
-}
-
-/** A problem as an Alert, with an optional action under it. */
-export function ServeProblemAlert({
-  problem,
-  host,
-  children,
-}: {
-  problem: ServeProblem;
-  host: string;
-  children?: ReactNode;
-}) {
-  const t = useT();
-  const { title, body } = serveProblemCopy(t, problem, host);
-  return (
-    <Alert variant="warning">
-      <div className="flex min-w-0 flex-col gap-1">
-        <AlertTitle className="line-clamp-none text-foreground">
-          {title}
-        </AlertTitle>
-        <AlertDescription>
-          <RichCode text={body} />
-        </AlertDescription>
-        {children}
-      </div>
-    </Alert>
-  );
 }
 
 /** Chrome blocks Studio from reaching this computer (local network access). */

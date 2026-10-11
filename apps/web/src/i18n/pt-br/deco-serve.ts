@@ -6,29 +6,24 @@ export const decoServe = {
     "O deco serve foi iniciado com `--read-only`, então as mudanças não podem ser salvas. Reinicie sem essa opção para editar.",
   "decoServe.connect.reaching": "Conectando ao deco serve em {host}…",
 
-  "decoServe.guide.title": "Edite o conteúdo do seu site no seu computador",
-  "decoServe.guide.lead":
-    "O editor do site transforma os arquivos de conteúdo de um site neste computador em formulários. As mudanças são salvas nesses arquivos e nada é commitado: você revisa e faz o commit.",
+  "decoServe.waiting.title": "Aguardando seu computador",
+  "decoServe.waiting.lead":
+    "Seu preview e seu conteúdo abrem aqui assim que o Studio se conectar ao deco serve neste computador.",
+  "decoServe.waiting.step2.title": "O Studio se conecta sozinho",
+  "decoServe.waiting.step2.body":
+    "Deixe esta aba aberta. Seu preview abre aqui assim que o deco serve iniciar.",
   "decoServe.guide.step1.title": "Inicie o deco serve na pasta do seu site",
   "decoServe.guide.step1.body":
     "Em um terminal, na pasta do seu site (a que tem a pasta `.deco`), rode:",
-  "decoServe.guide.step1.preview":
-    "A aba Preview mostra seu app na porta da configuração do Vite, ou em localhost:5173. Se ele roda em outro endereço, adicione `--preview` com esse endereço, como `--preview localhost:3000`.",
   "decoServe.guide.copy": "Copiar comando",
   "decoServe.guide.copyShort": "Copiar",
   "decoServe.guide.copied": "Copiado",
   "decoServe.guide.copiedAnnouncement":
     "Comando copiado para a área de transferência",
-  "decoServe.guide.step2.title": "Esta página se conecta sozinha",
-  "decoServe.guide.step2.body":
-    "Deixe esta aba aberta. O editor abre aqui assim que o deco serve iniciar, sem precisar clicar em link nenhum.",
   "decoServe.guide.step2.looking": "Procurando o deco serve em {hosts}…",
   "decoServe.guide.step2.paused":
     "Pausado enquanto esta aba está em segundo plano. A busca recomeça quando você voltar.",
   "decoServe.guide.step2.start": "Procurar o deco serve neste computador",
-  "decoServe.guide.v7":
-    "Trabalhando em um site Deco mais antigo (deco.cx ou @decocms/start)? O deco serve é para sites Blocks v8. Abra o site pelo projeto dele no Studio e escolha Local no seletor de rascunhos.",
-  "decoServe.guide.checkingFirst": "Procurando o deco serve…",
 
   "decoServe.docs.heading": "Saiba mais",
   "decoServe.docs.quickstart": "Primeiros passos",
