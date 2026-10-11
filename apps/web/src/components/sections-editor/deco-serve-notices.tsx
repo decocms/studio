@@ -1,9 +1,9 @@
 /**
  * The pieces the site editor explains a `deco serve` connection with: the
  * command to copy, docs links, and one message per connection problem (what
- * happened, why, and the one thing to do next). Shared by `/site-editor`'s
- * guide, its connection gate, the "Local server" chip and the draft
- * selector's Local tab.
+ * happened, why, and the one thing to do next). Shared by the connection's
+ * empty state (`ServeConnectState`: `/site-editor`'s guide and gate, the
+ * Preview while Localhost connects) and the draft selector's Local tab.
  */
 
 import { Fragment, type ReactNode } from "react";
@@ -169,19 +169,6 @@ export function serveProblemCopy(
   }
 }
 
-/** One line for tight spots (the chip's tooltip, the Local tab). */
-export function serveProblemShort(
-  t: TFunction,
-  problem: ServeProblem,
-  host: string,
-): string {
-  if (problem.reason === "not-answering") {
-    return t("decoServe.state.notAnswering.short", { host });
-  }
-  const { title, body } = serveProblemCopy(t, problem, host);
-  return `${title}. ${body}`;
-}
-
 /** A problem as an Alert, with an optional action under it. */
 export function ServeProblemAlert({
   problem,
@@ -204,6 +191,21 @@ export function ServeProblemAlert({
           <RichCode text={body} />
         </AlertDescription>
         {children}
+      </div>
+    </Alert>
+  );
+}
+
+/** Chrome blocks Studio from reaching this computer (local network access). */
+export function LocalNetworkDeniedAlert() {
+  const t = useT();
+  return (
+    <Alert variant="destructive">
+      <div className="flex min-w-0 flex-col gap-1">
+        <AlertTitle className="line-clamp-none">
+          {t("decoServe.lna.deniedTitle")}
+        </AlertTitle>
+        <AlertDescription>{t("decoServe.lna.deniedBody")}</AlertDescription>
       </div>
     </Alert>
   );

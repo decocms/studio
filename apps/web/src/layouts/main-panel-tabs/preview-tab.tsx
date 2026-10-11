@@ -11,10 +11,24 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { RepositoryImportPicker } from "@/components/repository-import-picker";
 import { useT } from "@/i18n/use-t.ts";
 import { resolvePreviewSource } from "./preview-source";
-import { Loading02, Monitor01 } from "@untitledui/icons";
 import { useLocalAppReachable } from "@/hooks/use-local-app-reachable";
 import { servePreviewUrl } from "@/components/sections-editor/content-backend";
-import { RichCode } from "@/components/sections-editor/deco-serve-notices";
+import {
+  endpointHost,
+  SERVE_COMMAND,
+} from "@/components/sections-editor/deco-serve-connection";
+import {
+  DocsLinks,
+  LocalNetworkDeniedAlert,
+  RichCode,
+  serveProblemCopy,
+} from "@/components/sections-editor/deco-serve-notices";
+import {
+  type LocalhostStatus,
+  localhostStatus,
+} from "@/components/sections-editor/localhost-status";
+import { ServeConnectState } from "@/components/sections-editor/serve-connect-state";
+import { useLocalNetworkAccess } from "@/hooks/use-deco-serve-discovery";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { useTaskMetadata } from "./use-task-metadata";
 
@@ -30,6 +44,7 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   // answers, and reloads on its own when it comes back.
   const localAppUrl = serveConnection ? servePreviewUrl(backend) : null;
   const localAppUp = useLocalAppReachable(localAppUrl);
+  const access = useLocalNetworkAccess();
   // Resolved exactly like the tab bar (see preview-source) off the same thread
   // metadata, so a visible Preview tab can never render "no source to preview"
   // — and a repo-less sandbox task run, whose tab is hidden, still renders the
@@ -76,29 +91,10 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   // Until there is one, guide instead of booting a sandbox or showing the
   // hosted draft. `/site-editor` has its own gate.
   if (serveConnection && entity && !servePreviewUrl(backend)) {
-    const connected = backend.kind === "protocol";
     return (
-      <EmptyState
-        className="h-full"
-        image={
-          <div className="flex size-14 items-center justify-center rounded-full bg-muted">
-            <Monitor01 className="size-7 text-foreground" />
-          </div>
-        }
-        title={t(
-          connected
-            ? "mainPanelTabs.previewTab.localhostNoPreview.title"
-            : "mainPanelTabs.previewTab.localhostWaiting.title",
-        )}
-        description={
-          <RichCode
-            text={t(
-              connected
-                ? "mainPanelTabs.previewTab.localhostNoPreview.body"
-                : "mainPanelTabs.previewTab.localhostWaiting.body",
-            )}
-          />
-        }
+      <LocalhostEmptyState
+        status={localhostStatus({ backend, access })}
+        host={endpointHost(serveConnection.endpoint)}
       />
     );
   }
@@ -108,29 +104,24 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   // now would leave Chrome's error page until a save or a reload.
   if (localAppUrl && localAppUp !== true) {
     return (
-      <EmptyState
-        className="h-full"
-        image={
-          <div className="flex size-14 items-center justify-center rounded-full bg-muted">
-            <Monitor01 className="size-7 text-foreground" />
-          </div>
-        }
+      <ServeConnectState
+        headingLevel={2}
+        waiting
         title={t("mainPanelTabs.previewTab.localAppWaiting.title")}
-        description={
-          <span className="flex flex-col items-center gap-2">
-            {/* One flex item, so the inline <code> address stays in the sentence. */}
-            <span>
-              <RichCode
-                text={t("mainPanelTabs.previewTab.localAppWaiting.body", {
-                  host: hostOf(localAppUrl),
-                })}
-              />
-            </span>
-            <span className="flex items-center gap-1 text-xs">
-              <Loading02 className="size-3 shrink-0 animate-spin" />
-              {t("mainPanelTabs.previewTab.localAppWaiting.hint")}
-            </span>
-          </span>
+        lead={
+          <RichCode
+            text={t("mainPanelTabs.previewTab.localAppWaiting.body", {
+              host: hostOf(localAppUrl),
+            })}
+          />
+        }
+        footer={
+          <p
+            role="status"
+            className="text-center text-sm text-muted-foreground"
+          >
+            {t("mainPanelTabs.previewTab.localAppWaiting.hint")}
+          </p>
         }
       />
     );
@@ -150,4 +141,91 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * A chosen Localhost with no app to show yet: the same empty state as
+ * `/site-editor`'s guide, with the one next step for where it stands.
+ */
+function LocalhostEmptyState({
+  status,
+  host,
+}: {
+  status: LocalhostStatus;
+  host: string;
+}) {
+  const t = useT();
+  if (status.kind === "connected") {
+    // Connected, but `deco serve` reports no app.
+    return (
+      <ServeConnectState
+        headingLevel={2}
+        waiting={false}
+        title={t("mainPanelTabs.previewTab.localhostNoPreview.title")}
+        lead={
+          <RichCode
+            text={t("mainPanelTabs.previewTab.localhostNoPreview.body")}
+          />
+        }
+        steps={[
+          {
+            title: t("mainPanelTabs.previewTab.localhostNoPreview.step.title"),
+            command: `${SERVE_COMMAND} --preview localhost:3000`,
+          },
+        ]}
+      />
+    );
+  }
+  if (status.kind === "problem") {
+    // Something answered but can't be used; it keeps checking on its own.
+    const { title, body } = serveProblemCopy(t, status.problem, host);
+    return (
+      <ServeConnectState
+        headingLevel={2}
+        waiting={false}
+        title={title}
+        lead={<RichCode text={body} />}
+        footer={
+          <DocsLinks
+            className="border-t border-border pt-4"
+            links={["troubleshooting", "serve"]}
+          />
+        }
+      />
+    );
+  }
+  const blocked = status.kind === "needs-permission";
+  return (
+    <ServeConnectState
+      headingLevel={2}
+      waiting={!blocked}
+      title={t("mainPanelTabs.previewTab.localhostWaiting.title")}
+      lead={t("mainPanelTabs.previewTab.localhostWaiting.body")}
+      alerts={blocked && <LocalNetworkDeniedAlert />}
+      steps={[
+        {
+          title: t("decoServe.guide.step1.title"),
+          body: <RichCode text={t("decoServe.guide.step1.body")} />,
+          command: SERVE_COMMAND,
+        },
+        {
+          title: t("mainPanelTabs.previewTab.localhostWaiting.step2.title"),
+          body: t("mainPanelTabs.previewTab.localhostWaiting.step2.body"),
+          after: !blocked && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {status.kind === "connecting"
+                ? t("decoServe.connect.reaching", { host })
+                : t("decoServe.guide.step2.looking", { hosts: host })}
+            </p>
+          ),
+        },
+      ]}
+      footer={
+        <DocsLinks
+          className="border-t border-border pt-4"
+          links={["siteEditor", "serve", "troubleshooting"]}
+        />
+      }
+    />
+  );
 }

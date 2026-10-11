@@ -13,6 +13,7 @@ const refs = {
   connection: null as { endpoint: string } | null,
   reachable: null as boolean | null,
   probedUrl: undefined as string | null | undefined,
+  access: "granted" as "granted" | "denied",
 };
 
 mock.module("@/components/sandbox/preview/preview", () => ({
@@ -50,6 +51,10 @@ mock.module("@/hooks/use-local-app-reachable", () => ({
     refs.probedUrl = url;
     return url ? refs.reachable : null;
   },
+}));
+
+mock.module("@/hooks/use-deco-serve-discovery", () => ({
+  useLocalNetworkAccess: () => refs.access,
 }));
 
 const { PreviewTab } = await import("./preview-tab");
@@ -132,5 +137,88 @@ describe("PreviewTab with Localhost: waits for the app", () => {
     const { getByTestId } = render();
     expect(refs.probedUrl).toBeNull();
     expect(getByTestId("preview-frame")).toBeInTheDocument();
+  });
+});
+
+describe("PreviewTab with Localhost: the empty state while it connects", () => {
+  beforeEach(() => {
+    refs.connection = { endpoint: "http://localhost:4545/rpc" };
+    refs.reachable = null;
+    refs.access = "granted";
+  });
+  const wire = (view: ReturnType<typeof render>) =>
+    view.getByTestId("connection-wire").dataset.waiting;
+
+  it("connecting: the guide with the command, and the dot travelling", () => {
+    refs.backend = { kind: "pending" };
+    const view = render();
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: "Waiting for your computer",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      view.getByRole("button", { name: "Copy command" }),
+    ).toBeInTheDocument();
+    expect(
+      view.getByText("Connecting to deco serve on localhost:4545…"),
+    ).toBeInTheDocument();
+    expect(wire(view)).toBe("true");
+    expect(view.queryByTestId("preview-frame")).not.toBeInTheDocument();
+  });
+
+  it("nothing answering: keeps looking, the dot travelling", () => {
+    refs.backend = { kind: "unavailable", source: "local" };
+    const view = render();
+    expect(
+      view.getByText("Looking for deco serve on localhost:4545…"),
+    ).toBeInTheDocument();
+    expect(wire(view)).toBe("true");
+  });
+
+  it("Chrome blocking: says how to allow it, the dot still", () => {
+    refs.backend = { kind: "unavailable", source: "local" };
+    refs.access = "denied";
+    const view = render();
+    expect(
+      view.getByText("Chrome is blocking Studio from reaching your computer"),
+    ).toBeInTheDocument();
+    expect(wire(view)).toBe("false");
+  });
+
+  it("a server that can't be used: what it is and the next step (was the header pill)", () => {
+    refs.backend = {
+      kind: "unavailable",
+      source: "local",
+      problem: { reason: "not-deco-serve" },
+    };
+    const view = render();
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: "Another program is using localhost:4545",
+      }),
+    ).toBeInTheDocument();
+    expect(wire(view)).toBe("false");
+  });
+
+  it("connected with no app: how to name it, with the command", () => {
+    refs.backend = { kind: "protocol", source: "local", describe: {} };
+    const view = render();
+    expect(
+      view.getByText("Start your app to see the preview"),
+    ).toBeInTheDocument();
+    expect(
+      view.getByText("localhost:3000", { selector: "span" }),
+    ).toBeInTheDocument();
+    expect(wire(view)).toBe("false");
+  });
+
+  it("waiting for the app: the same empty state, the dot travelling", () => {
+    refs.backend = connectedWithApp;
+    refs.reachable = false;
+    const view = render();
+    expect(wire(view)).toBe("true");
   });
 });

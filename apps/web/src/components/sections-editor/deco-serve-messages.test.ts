@@ -9,7 +9,7 @@ import {
   NotDecoServeError,
   type ServeProblem,
 } from "./deco-serve-connection";
-import { serveProblemCopy, serveProblemShort } from "./deco-serve-notices";
+import { serveProblemCopy } from "./deco-serve-notices";
 import { ServeLostError, saveErrorMessage } from "./serve-save-error";
 
 const t: TFunction = (key, vars) => interpolate(en[key], vars);
@@ -62,9 +62,6 @@ describe("connection messages", () => {
         expect(copy.title).not.toMatch(jargon);
         expect(copy.body).not.toMatch(jargon);
       }
-      expect(serveProblemShort(t, problem, HOST)).toContain(
-        reason === "not-answering" ? HOST : copy.title,
-      );
     });
   }
 
