@@ -5,11 +5,28 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import type { ContentBackend } from "./content-backend";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
 import { endpointHost } from "./deco-serve-connection";
 import { RichCode, serveProblemShort } from "./deco-serve-notices";
 import { useContentBackend } from "./use-content-backend";
+
+/**
+ * How the "Local server" chip looks: `pending` while it connects or waits
+ * for `deco serve` to start (it reconnects on its own, nothing is wrong
+ * yet), `failure` only when something answered and can't be used (another
+ * site, out of date, an error), `ok` when connected.
+ */
+export function serveChipTone(
+  backend: ContentBackend,
+): "ok" | "pending" | "failure" {
+  if (backend.kind === "unavailable") {
+    const reason = backend.problem?.reason ?? "not-answering";
+    return reason === "not-answering" ? "pending" : "failure";
+  }
+  return backend.kind === "protocol" ? "ok" : "pending";
+}
 
 /** The site editor's "Local server" chip: what it edits and its state. */
 export function DecoServeChip({
@@ -23,6 +40,7 @@ export function DecoServeChip({
   const { connection } = useDecoServeConnection(virtualMcpId);
   const backend = useContentBackend(virtualMcpId, branch);
   if (!connection) return null;
+  const tone = serveChipTone(backend);
   const problem =
     backend.kind === "unavailable"
       ? serveProblemShort(
@@ -42,13 +60,17 @@ export function DecoServeChip({
           <span
             tabIndex={0}
             data-testid="deco-serve-chip"
+            data-tone={tone}
             className={cn(
-              "rounded-full px-2 py-0.5 text-xs font-medium",
-              problem
+              "flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+              tone === "failure"
                 ? "bg-destructive/10 text-destructive"
                 : "bg-muted text-muted-foreground",
             )}
           >
+            {tone === "pending" && (
+              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-muted-foreground" />
+            )}
             {t("decoServe.chip.label")}
           </span>
         </TooltipTrigger>
