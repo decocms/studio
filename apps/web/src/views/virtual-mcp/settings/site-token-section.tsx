@@ -1,11 +1,13 @@
 /**
  * Site tokens of a hosted v8 site: what the site passes as
- * `createCMS({ site, token })` to send telemetry. A token is shown once;
- * issuing always works, and the list shows every token issued.
+ * `createCMS({ site, token })` to send telemetry, next to the site id (the
+ * only place settings show it; hover the row to copy it). A token is shown
+ * once, in a dialog with its copy button; issuing always works, and the list
+ * shows every token issued (their key ids, never the tokens).
  */
 
-import { useState } from "react";
-import { Copy01, Key01, Plus } from "@untitledui/icons";
+import { useId, useState } from "react";
+import { Key01, Plus } from "@untitledui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -27,6 +29,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
 import { KEYS } from "@/lib/query-keys";
+import { CopyableField, CopyValueButton } from "./copy-value-button";
 
 interface SiteTokenRecord {
   kid: string;
@@ -51,6 +54,7 @@ export function SiteTokenSection({
   const base = `/api/${orgSlug}/hosted/${encodeURIComponent(virtualMcpId)}/site-tokens`;
   const key = KEYS.hostedSiteTokens(orgSlug, virtualMcpId);
   const [created, setCreated] = useState<string | null>(null);
+  const siteIdField = useId();
 
   const list = useQuery({
     queryKey: key,
@@ -65,6 +69,7 @@ export function SiteTokenSection({
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
   const tokens = list.data?.tokens ?? [];
+  const site = list.data?.site;
 
   return (
     <SettingsSection
@@ -72,17 +77,31 @@ export function SiteTokenSection({
       description={t("siteTokens.description")}
     >
       <SettingsCard>
-        <SettingsCardRow>
-          <div className="flex w-full items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{t("siteTokens.siteId")}</p>
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                {list.data?.site ?? "—"}
+        <SettingsCardRow className="group">
+          <label htmlFor={siteIdField} className="text-sm font-medium">
+            {t("siteTokens.siteId")}
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("siteTokens.siteIdDescription")}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            {site ? (
+              <CopyableField
+                id={siteIdField}
+                value={site}
+                copyLabel={t("siteTokens.copySiteId")}
+                copiedLabel={t("siteTokens.siteIdCopied")}
+                className="min-w-0 flex-1"
+              />
+            ) : (
+              <p className="min-w-0 flex-1 font-mono text-xs text-muted-foreground">
+                —
               </p>
-            </div>
+            )}
             <Button
               type="button"
               size="sm"
+              className="shrink-0"
               disabled={!list.data || issue.isPending}
               onClick={() => issue.mutate()}
             >
@@ -131,22 +150,20 @@ export function SiteTokenSection({
           <div className="flex items-center gap-2">
             <Input
               readOnly
+              aria-label={t("siteTokens.createdTitle")}
               value={created ?? ""}
               className="font-mono text-xs"
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                if (!created) return;
-                void navigator.clipboard?.writeText(created);
-                toast.success(t("siteTokens.copied"));
-              }}
-              aria-label={t("siteTokens.copy")}
-            >
-              <Copy01 size={14} />
-            </Button>
+            {created ? (
+              <CopyValueButton
+                value={created}
+                label={t("siteTokens.copy")}
+                copiedLabel={t("siteTokens.copied")}
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+              />
+            ) : null}
           </div>
           <DialogFooter>
             <Button onClick={() => setCreated(null)}>
