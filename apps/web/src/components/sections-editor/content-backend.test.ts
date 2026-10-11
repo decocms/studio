@@ -3,6 +3,7 @@ import {
   blockKeysOfWrite,
   contentProbesEnabled,
   hostedCmsAvailable,
+  hostedDraftSession,
   isProtocolProject,
   isV8Schema,
   mergePolledBlocks,
@@ -291,6 +292,43 @@ describe("blockKeysOfWrite", () => {
     ).toEqual(["b", "c", "a"]);
     expect(blockKeysOfWrite(undefined)).toEqual([]);
     expect(blockKeysOfWrite("nope")).toEqual([]);
+  });
+});
+
+describe("hostedDraftSession", () => {
+  const protocol = (source: "github" | "local" | "sandbox") =>
+    ({
+      kind: "protocol",
+      source,
+      client: {},
+      describe: {},
+      cacheKeySuffix: "",
+    }) as unknown as Parameters<typeof hostedDraftSession>[0];
+
+  test("a v8 site on the GitHub backend, usable, unreachable or still deciding", () => {
+    expect(hostedDraftSession(protocol("github"), true)).toBe(true);
+    expect(
+      hostedDraftSession({ kind: "unavailable", source: "github" }, true),
+    ).toBe(true);
+    expect(hostedDraftSession({ kind: "pending" }, true)).toBe(true);
+  });
+
+  test("never a v7 site, whatever its backend", () => {
+    expect(hostedDraftSession({ kind: "legacy" }, false)).toBe(false);
+    expect(hostedDraftSession({ kind: "pending" }, false)).toBe(false);
+    expect(hostedDraftSession(protocol("github"), false)).toBe(false);
+  });
+
+  test("not Localhost, a sandbox, or a v8 site on the v7 editor", () => {
+    expect(hostedDraftSession(protocol("local"), true)).toBe(false);
+    expect(hostedDraftSession(protocol("sandbox"), true)).toBe(false);
+    expect(
+      hostedDraftSession({ kind: "unavailable", source: "local" }, true),
+    ).toBe(false);
+    expect(
+      hostedDraftSession({ kind: "unavailable", source: "sandbox" }, true),
+    ).toBe(false);
+    expect(hostedDraftSession({ kind: "legacy" }, true)).toBe(false);
   });
 });
 

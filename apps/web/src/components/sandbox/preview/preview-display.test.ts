@@ -245,4 +245,95 @@ describe("resolvePreviewDisplay", () => {
       expect(result.showWakingPill).toBe(true);
     });
   });
+
+  describe("hosted draft (Blocks v8, no sandbox)", () => {
+    it("shows the published site with no pill before the first edit", () => {
+      // Nothing boots on a hosted v8 session: "not ready" only means no
+      // draft exists yet, so the published site is the preview.
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: false,
+          hostedDraft: true,
+        }),
+      ).toEqual({
+        mode: "production",
+        iframeBase: PROD,
+        showBlockingOverlay: false,
+        showWakingPill: false,
+      });
+    });
+
+    it("shows the draft once the first edit creates one, as before", () => {
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          fastPreviewActive: true,
+          fastPreviewReady: true,
+          hostedDraft: true,
+        }),
+      ).toEqual({
+        mode: "production",
+        iframeBase: PROD,
+        showBlockingOverlay: false,
+        showWakingPill: false,
+      });
+    });
+
+    it("never paints the pill whatever the (absent) sandbox reports", () => {
+      for (const previewState of [STARTING, IFRAME]) {
+        for (const progressStatus of ["doing", "done", "failed"] as const) {
+          const result = run({
+            previewState,
+            progressStatus,
+            fastPreviewActive: true,
+            hostedDraft: true,
+          });
+          expect(result.mode).toBe("production");
+          expect(result.showWakingPill).toBe(false);
+        }
+      }
+    });
+
+    it("is ignored outside Fast Preview (a sandbox session boots visibly)", () => {
+      const result = run({
+        previewState: STARTING,
+        progressStatus: "doing",
+        fastPreviewActive: false,
+        hostedDraft: true,
+      });
+      expect(result.showWakingPill).toBe(true);
+    });
+
+    it("leaves a v7 Fast Preview's pill exactly as before", () => {
+      const result = run({
+        previewState: STARTING,
+        progressStatus: "doing",
+        fastPreviewActive: true,
+        fastPreviewReady: false,
+        hostedDraft: false,
+      });
+      expect(result.showWakingPill).toBe(true);
+    });
+
+    it("still yields to Local mode and to a suspended sandbox", () => {
+      expect(
+        run({
+          fastPreviewActive: true,
+          hostedDraft: true,
+          localPreviewUrl: "http://localhost:8000",
+        }).mode,
+      ).toBe("sandbox");
+      expect(
+        run({
+          previewState: SUSPENDED,
+          fastPreviewActive: true,
+          hostedDraft: true,
+        }).mode,
+      ).toBe("none");
+    });
+  });
 });

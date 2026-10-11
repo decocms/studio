@@ -156,6 +156,7 @@ import {
   type PreviewEditingMode,
 } from "./editing-mode";
 import {
+  hostedDraftSession,
   isProtocolProject,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
@@ -739,6 +740,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (no production URL) the blocking booting overlay.
   // Coding sessions boot visibly: no production fallback → the boot console.
   const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
+  // A v8 site's hosted draft: nothing boots, and no draft until the first edit.
+  const hostedDraft = hostedDraftSession(contentBackend, session.isBlocksV8);
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
@@ -747,7 +750,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fastPreviewReady: !!draftPreviewUrl,
     codingSession,
     localPreviewUrl,
+    hostedDraft,
   });
+  /** The frame shows the published site: nothing to draft-render yet. */
+  const showsPublished =
+    display.showWakingPill ||
+    (hostedDraft && display.mode === "production" && !draftPreviewUrl);
   const previewSurfaceActive = display.mode !== "none";
 
   // Origin of the "production" mode's base — an external, org-owned domain
@@ -849,13 +857,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           withVariantMatcherOverride(
             withDeviceHint(
               withForcedVariantsInDraftUrl(
-                // Waking pill up ⇒ no draft is renderable yet, so ask for published.
+                // No draft renderable yet (waking, or a hosted draft with no edits), so ask for published.
                 withDraftPointer(
                   directPreviewUrl ??
                     effectiveDraftPreviewUrl ??
                     resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
                     display.iframeBase!,
-                  display.showWakingPill ? DRAFT_OFF : null,
+                  showsPublished ? DRAFT_OFF : null,
                 ),
                 forcedVariants,
               ),

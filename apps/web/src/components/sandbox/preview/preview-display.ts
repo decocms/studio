@@ -77,6 +77,14 @@ export interface PreviewDisplayInput {
    * managed sandbox lifecycle, Fast Preview, and the boot gating below.
    */
   localPreviewUrl?: string | null;
+  /**
+   * The session's draft lives on the hosted Deco CMS (a Blocks v8 site edited
+   * through Studio's GitHub backend; see `hostedDraftSession`). Nothing boots
+   * there, and no draft exists until the first edit, so a Fast Preview that
+   * isn't `fastPreviewReady` simply has no changes to show: the published site
+   * IS the preview, with no "waking" pill.
+   */
+  hostedDraft?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -97,6 +105,7 @@ export function resolvePreviewDisplay(
     fastPreviewActive = false,
     fastPreviewReady = false,
     codingSession = false,
+    hostedDraft = false,
   } = input;
   /** Withheld for a coding session — see `codingSession`. */
   const previewServerUrl = codingSession ? null : input.previewServerUrl;
@@ -124,6 +133,17 @@ export function resolvePreviewDisplay(
   // over it, so every production-mode base is a page we can actually navigate to
   // (and the URL-bar label doesn't jump between origins mid-boot).
   if (fastPreviewActive && fastPreviewReady && previewServerUrl) {
+    return {
+      mode: "production",
+      iframeBase: previewServerUrl,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    };
+  }
+
+  // A hosted v8 draft with no edits yet: the published site is exactly what
+  // the draft would render, and nothing is starting — no pill.
+  if (fastPreviewActive && hostedDraft && previewServerUrl) {
     return {
       mode: "production",
       iframeBase: previewServerUrl,
