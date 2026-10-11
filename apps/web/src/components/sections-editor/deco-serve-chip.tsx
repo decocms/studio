@@ -15,8 +15,8 @@ import { useContentBackend } from "./use-content-backend";
 /**
  * How the "Local server" chip looks: `pending` while it connects or waits
  * for `deco serve` to start (it reconnects on its own, nothing is wrong
- * yet), `failure` only when something answered and can't be used (another
- * site, out of date, an error), `ok` when connected.
+ * yet), `failure` only when something answered and can't be used (out of
+ * date, another program, an error), `ok` when connected.
  */
 export function serveChipTone(
   backend: ContentBackend,
