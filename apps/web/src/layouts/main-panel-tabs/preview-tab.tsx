@@ -118,11 +118,14 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
         title={t("mainPanelTabs.previewTab.localAppWaiting.title")}
         description={
           <span className="flex flex-col items-center gap-2">
-            <RichCode
-              text={t("mainPanelTabs.previewTab.localAppWaiting.body", {
-                host: hostOf(localAppUrl),
-              })}
-            />
+            {/* One flex item, so the inline <code> address stays in the sentence. */}
+            <span>
+              <RichCode
+                text={t("mainPanelTabs.previewTab.localAppWaiting.body", {
+                  host: hostOf(localAppUrl),
+                })}
+              />
+            </span>
             <span className="flex items-center gap-1 text-xs">
               <Loading02 className="size-3 shrink-0 animate-spin" />
               {t("mainPanelTabs.previewTab.localAppWaiting.hint")}

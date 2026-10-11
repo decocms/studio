@@ -531,14 +531,14 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.localhostNoPreview.title":
     "Start your app to see the preview",
   "mainPanelTabs.previewTab.localhostNoPreview.body":
-    "deco serve didn't find your app. Start it, then restart deco serve with `--preview` and its address, such as `--preview localhost:3000`. You can edit your content in the meantime.",
+    "deco serve didn't find your app. Start it, then restart deco serve with `--preview` and its address, such as `--preview localhost:3000`. Meanwhile, you can edit your content in the Content tab.",
   "mainPanelTabs.previewTab.localhostWaiting.title":
     "Waiting for your computer",
   "mainPanelTabs.previewTab.localhostWaiting.body":
     "The preview shows your app once Studio connects to deco serve. Check the draft selector for the next step.",
   "mainPanelTabs.previewTab.localAppWaiting.title": "Waiting for your app",
   "mainPanelTabs.previewTab.localAppWaiting.body":
-    "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. You can edit your content in the meantime.",
+    "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. Meanwhile, you can edit your content in the Content tab.",
   "mainPanelTabs.previewTab.localAppWaiting.hint":
     "The preview loads on its own as soon as your app answers.",
 } as const;
