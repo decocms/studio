@@ -65,19 +65,6 @@ export const decoServe = {
     "Algo que não é o deco serve respondeu em {host}. Inicie o deco serve em outra porta com `--port 4546` e abra o link do Site editor que ele mostra.",
   "decoServe.state.error.title":
     "O deco serve não conseguiu abrir seu conteúdo",
-  "decoServe.state.otherSite.title": "Este é outro site",
-  "decoServe.state.otherSite.body":
-    "O deco serve em {host} está rodando na pasta de outro site. Rode o deco serve na pasta deste site; o Studio se conecta assim que ele iniciar.",
-  "decoServe.state.otherSite.bodyNamed":
-    "O deco serve em {host} está rodando o site {other}. Rode o deco serve na pasta deste site; o Studio se conecta assim que ele iniciar.",
-  "decoServe.state.siteUnverified.title":
-    "O Studio não consegue confirmar que este é o seu site",
-  "decoServe.state.siteUnverified.body":
-    "O Studio não consegue saber qual site o deco serve em {host} está rodando, então não vai editá-lo. Seu site precisa do arquivo `.deco/secrets.pub`, e nem o repositório nem a pasta onde o deco serve roda têm esse arquivo. Adicione-o ao repositório e rode o deco serve na pasta do site; o Studio se conecta sozinho.",
-  "decoServe.state.siteUnverified.bodyLocalKeyMissing":
-    "A pasta onde o deco serve em {host} roda não tem o arquivo `.deco/secrets.pub` deste site, mas o repositório tem. Baixe as últimas alterações (pull) na pasta do seu site, ou rode o deco serve na pasta onde o site está clonado; o Studio se conecta sozinho.",
-  "decoServe.state.siteUnverified.bodyRepoKeyMissing":
-    "O Studio não consegue saber qual site o deco serve em {host} está rodando, então não vai editá-lo. Adicione ao repositório o arquivo `.deco/secrets.pub` da pasta do seu site; o Studio se conecta sozinho assim que ele estiver lá.",
   "decoServe.state.error.body":
     'Ele respondeu, mas com um erro: "{detail}". Veja os detalhes no terminal onde o deco serve está rodando e tente de novo.',
 

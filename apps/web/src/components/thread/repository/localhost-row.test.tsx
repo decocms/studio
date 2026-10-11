@@ -20,7 +20,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-const local = (problem?: { reason: "not-answering" | "other-site" }) =>
+const local = (problem?: { reason: "not-answering" | "outdated" }) =>
   ({ kind: "unavailable", source: "local", problem }) as ContentBackend;
 const connected = {
   kind: "protocol",
@@ -41,7 +41,7 @@ describe("localhostStatus", () => {
     expect(at(true, local({ reason: "not-answering" }), "denied")).toBe(
       "needs-permission",
     );
-    expect(at(true, local({ reason: "other-site" }))).toBe("problem");
+    expect(at(true, local({ reason: "outdated" }))).toBe("problem");
   });
 });
 
@@ -104,33 +104,12 @@ describe("LocalhostRow", () => {
     ).toBeInTheDocument();
   });
 
-  it("another site: explains it, names the other site", () => {
+  it("a problem: explains it with the next step", () => {
     const { getByRole, getByText } = renderRow({
       kind: "problem",
-      problem: { reason: "other-site", detail: "other-store" },
+      problem: { reason: "outdated" },
     });
     expect(getByRole("alert")).toBeInTheDocument();
-    expect(getByText("This is another site")).toBeInTheDocument();
-    expect(getByText(/running the site other-store/)).toBeInTheDocument();
-  });
-
-  it("can't tell the site: asks for the site's key in the repository", () => {
-    const { getByText } = renderRow({
-      kind: "problem",
-      problem: { reason: "site-unverified" },
-    });
-    expect(
-      getByText("Studio can't confirm this is your site"),
-    ).toBeInTheDocument();
-    expect(getByText(/secrets\.pub/)).toBeInTheDocument();
-  });
-
-  it("can't tell the site, key only in the repository: pull, don't add it", () => {
-    const { getByText, queryByText } = renderRow({
-      kind: "problem",
-      problem: { reason: "site-unverified", missingKey: "local" },
-    });
-    expect(getByText(/Pull the latest changes/)).toBeInTheDocument();
-    expect(queryByText(/to its repository/)).not.toBeInTheDocument();
+    expect(getByText("This deco serve is out of date")).toBeInTheDocument();
   });
 });

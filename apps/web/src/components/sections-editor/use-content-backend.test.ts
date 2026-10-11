@@ -9,9 +9,7 @@ import {
 import { selectContentBackend } from "./content-backend";
 import { NotDecoServeError } from "./deco-serve-connection";
 import {
-  committedKeyOf,
   LOCAL_RECONNECT_GRACE_FAILURES,
-  localBackendOf,
   localServeBackend,
   type Probe,
   probe,
@@ -144,136 +142,16 @@ describe("V8_PROBE_RETRY", () => {
   });
 });
 
-describe("Localhost site check (localBackendOf)", () => {
-  const KEY = "age1publickey";
+describe("Localhost (localServeBackend)", () => {
   const probed = {
     client: {} as ContentClient,
     describe: { protocol: PROTOCOL_NAME, version: PROTOCOL_VERSION },
     hasSchema: true,
     v8Schema: true,
   } as unknown as Probe;
-  const withKey = (publicKey: string) =>
-    ({
-      ...probed.describe,
-      secrets: { publicKey },
-    }) as unknown as Probe["describe"];
-  const base = {
-    probed,
-    endpoint: "http://localhost:4545/rpc",
-    verifySite: true,
-    siteSlug: "acme",
-  };
-  const loaded = (data: string | null) => ({ status: "success", data });
-  const kind = (backend: ReturnType<typeof localBackendOf>) =>
-    backend.kind === "unavailable"
-      ? `unavailable:${backend.problem?.reason}`
-      : backend.kind;
-
-  test("this site's deco serve connects", () => {
-    expect(
-      kind(
-        localBackendOf({
-          ...base,
-          describe: withKey(KEY),
-          committed: loaded(KEY),
-        }),
-      ),
-    ).toBe("protocol");
-  });
-
-  test("another site's deco serve is never used", () => {
-    expect(
-      kind(
-        localBackendOf({
-          ...base,
-          describe: withKey("age1other"),
-          committed: loaded(KEY),
-        }),
-      ),
-    ).toBe("unavailable:other-site");
-  });
-
-  test("waits while the committed key loads", () => {
-    for (const committed of [undefined, { status: "pending" }]) {
-      expect(
-        kind(localBackendOf({ ...base, describe: withKey(KEY), committed })),
-      ).toBe("pending");
-    }
-  });
-
-  test("a failed key read is retried, never 'can't tell the site': pending, then protocol", () => {
-    const describe = withKey(KEY);
-    expect(
-      kind(
-        localBackendOf({ ...base, describe, committed: { status: "error" } }),
-      ),
-    ).toBe("pending");
-    expect(
-      kind(localBackendOf({ ...base, describe, committed: loaded(KEY) })),
-    ).toBe("protocol");
-  });
-
-  test("a repository with no key can't tell the site", () => {
-    expect(
-      kind(
-        localBackendOf({
-          ...base,
-          describe: withKey(KEY),
-          committed: loaded(null),
-        }),
-      ),
-    ).toBe("unavailable:site-unverified");
-  });
-
-  test("a deco serve restarted in another site's folder is caught on the next describe", () => {
-    const committed = loaded(KEY);
-    expect(
-      kind(localBackendOf({ ...base, describe: withKey(KEY), committed })),
-    ).toBe("protocol");
-    expect(
-      kind(
-        localBackendOf({ ...base, describe: withKey("age1other"), committed }),
-      ),
-    ).toBe("unavailable:other-site");
-  });
-
-  test("/site-editor (no project) skips the check", () => {
-    expect(
-      kind(
-        localBackendOf({
-          ...base,
-          verifySite: false,
-          siteSlug: null,
-          describe: probed.describe,
-          committed: undefined,
-        }),
-      ),
-    ).toBe("protocol");
-  });
-});
-
-describe("Localhost after deco serve stops (localServeBackend)", () => {
-  const KEY = "age1publickey";
-  const probed = {
-    client: {} as ContentClient,
-    describe: {
-      protocol: PROTOCOL_NAME,
-      version: PROTOCOL_VERSION,
-      secrets: { publicKey: KEY },
-    },
-    hasSchema: true,
-    v8Schema: true,
-  } as unknown as Probe;
-  const otherSite = {
-    ...probed,
-    describe: { ...probed.describe, secrets: { publicKey: "age1other" } },
-  } as unknown as Probe;
   const base = {
     endpoint: "http://localhost:4545/rpc",
-    verifySite: true,
-    siteSlug: "acme",
     describe: undefined,
-    committed: { status: "success", data: KEY },
     isError: false,
     failureCount: 0,
     failure: null as unknown,
@@ -284,47 +162,29 @@ describe("Localhost after deco serve stops (localServeBackend)", () => {
       ? `unavailable:${backend.problem?.reason}`
       : backend.kind;
 
-  test("another site's answer is replaced by 'not running' once a probe fails", () => {
-    expect(kind(localServeBackend({ ...base, probed: otherSite }))).toBe(
-      "unavailable:other-site",
+  test("whatever site deco serve runs, it connects (no site check)", () => {
+    const anySite = {
+      ...probed,
+      describe: {
+        ...probed.describe,
+        site: "another-store",
+        secrets: { publicKey: "age1another" },
+      },
+    } as unknown as Probe;
+    expect(kind(localServeBackend({ ...base, probed: anySite }))).toBe(
+      "protocol",
     );
     expect(
       kind(
         localServeBackend({
           ...base,
-          probed: otherSite,
-          failureCount: 1,
-          failure: stopped,
+          probed: {
+            ...probed,
+            describe: { ...probed.describe, secrets: null },
+          } as unknown as Probe,
         }),
       ),
-    ).toBe("unavailable:not-answering");
-  });
-
-  test("an 'update needed' answer is replaced too", () => {
-    const old = {
-      ...probed,
-      describe: { ...probed.describe, secrets: null },
-    } as unknown as Probe;
-    expect(
-      kind(
-        localServeBackend({
-          ...base,
-          probed: old,
-          committed: { status: "success", data: null },
-        }),
-      ),
-    ).toBe("unavailable:site-unverified");
-    expect(
-      kind(
-        localServeBackend({
-          ...base,
-          probed: old,
-          committed: { status: "success", data: null },
-          failureCount: 2,
-          failure: stopped,
-        }),
-      ),
-    ).toBe("unavailable:not-answering");
+    ).toBe("protocol");
   });
 
   test("a connected site rides out a short outage, then says it's not running", () => {
@@ -384,15 +244,5 @@ describe("Localhost after deco serve stops (localServeBackend)", () => {
       ),
     ).toBe("unavailable:not-answering");
     expect(kind(localServeBackend({ ...base, probed }))).toBe("protocol");
-  });
-});
-
-describe("committedKeyOf", () => {
-  test("a failed read keeps the last answer, or stays undecided", () => {
-    expect(committedKeyOf({ status: "error" })).toBeUndefined();
-    expect(committedKeyOf({ status: "error", data: "k" })).toBe("k");
-    expect(committedKeyOf({ status: "error", data: null })).toBeNull();
-    expect(committedKeyOf({ status: "success", data: null })).toBeNull();
-    expect(committedKeyOf(undefined)).toBeUndefined();
   });
 });

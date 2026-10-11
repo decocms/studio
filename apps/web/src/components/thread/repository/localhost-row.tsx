@@ -33,7 +33,7 @@ export type LocalhostStatus =
   | { kind: "not-running" }
   /** Chrome blocks Studio from reaching this machine. */
   | { kind: "needs-permission" }
-  /** Something answered but can't be used: another site, out of date, … */
+  /** Something answered but can't be used: out of date, another program, … */
   | { kind: "problem"; problem: ServeProblem };
 
 /**

@@ -139,32 +139,3 @@ describe("pt-br", () => {
     }
   });
 });
-
-describe("can't confirm the site: the guide names the missing copy of the key", () => {
-  const tPt: TFunction = (key, vars) => interpolate(ptBR[key] ?? en[key], vars);
-  const copy = (missingKey: ServeProblem["missingKey"], tf = t) =>
-    serveProblemCopy(tf, { reason: "site-unverified", missingKey }, HOST);
-
-  test("repository has it, local folder doesn't: pull or run from the site's folder", () => {
-    const { title, body } = copy("local");
-    expect(title).toBe("Studio can't confirm this is your site");
-    expect(body).toMatch(/Pull the latest changes/);
-    expect(body).toMatch(/though the repository does/);
-    expect(body).not.toMatch(/Add .* to its repository/);
-    expect(copy("local", tPt).body).toMatch(/pull/);
-  });
-
-  test("repository doesn't have it: add it to the repository", () => {
-    const { body } = copy("repository");
-    expect(body).toMatch(/to its repository/);
-    expect(body).not.toMatch(/Pull/);
-  });
-
-  test("neither has it: explains both steps", () => {
-    for (const missingKey of ["both", undefined] as const) {
-      const { body } = copy(missingKey);
-      expect(body).toMatch(/neither the repository nor the folder/);
-      expect(body).toMatch(/run deco serve from the site's folder/);
-    }
-  });
-});

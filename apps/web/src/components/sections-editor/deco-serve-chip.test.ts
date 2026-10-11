@@ -18,8 +18,6 @@ describe("serveChipTone (the Local server chip)", () => {
 
   test("red only when something answered and can't be used", () => {
     for (const reason of [
-      "other-site",
-      "site-unverified",
       "outdated",
       "version-mismatch",
       "not-deco-serve",

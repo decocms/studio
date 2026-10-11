@@ -8,7 +8,7 @@ import {
   type DescribeResult,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -29,7 +29,6 @@ import {
 } from "./content-backend";
 import {
   classifyServeProbeError,
-  matchServeSite,
   NotDecoServeError,
   probeRetryDelay,
 } from "./deco-serve-connection";
@@ -49,9 +48,6 @@ class NoSandboxProtocolError extends Error {}
 
 /** How often a failed probe is retried, so a backend recovers on its own. */
 const PROBE_RETRY_MS = 5_000;
-
-/** How often a repository with no committed public key is re-read. */
-const COMMITTED_KEY_RECHECK_MS = 30_000;
 
 /** The Studio GitHub backend's endpoint for one project and branch. */
 function githubContentEndpoint(params: {
@@ -222,32 +218,6 @@ export function useContentBackend(
     ...V8_PROBE_RETRY,
   });
 
-  // This project's site id, for `matchServeSite`, and the public key its
-  // repository commits (filled in below, read by the local probe's poll).
-  const project = useVirtualMCP(tabConnection ? null : virtualMcpId);
-  const siteSlug =
-    typeof project?.metadata?.siteSlug === "string"
-      ? project.metadata.siteSlug
-      : null;
-  const queryClient = useQueryClient();
-  // Per project, not per draft: the server reads main's `.deco/secrets.pub`
-  // whatever the draft.
-  const committedKeyQuery = KEYS.contentBackend(
-    org.slug,
-    virtualMcpId ?? "",
-    "committed-public-key",
-  );
-  const serveMismatch = (data: Probe | undefined) => {
-    if (!data || tabConnection) return false;
-    const match = matchServeSite(data.describe, {
-      siteSlug,
-      committedPublicKey: committedKeyOf(
-        queryClient.getQueryState<string | null>(committedKeyQuery),
-      ),
-    });
-    return match !== "pending" && !match.ok;
-  };
-
   // No flag: a connection exists only on a v8 site, once someone chose
   // Localhost or opened the link `deco serve` printed.
   const localEnabled = !!connection;
@@ -271,19 +241,16 @@ export function useContentBackend(
       !(error instanceof NotDecoServeError),
     retryDelay: (failures) => probeRetryDelay(failures + 1),
     // Also re-probed while there is no schema, so `deco schema` is picked up
-    // on its own, and while it serves another site (or can't say which), so
-    // starting `deco serve` in the right folder connects on its own.
+    // on its own.
     refetchInterval: (query) =>
-      query.state.status === "error" ||
-      query.state.data?.hasSchema === false ||
-      serveMismatch(query.state.data)
+      query.state.status === "error" || query.state.data?.hasSchema === false
         ? PROBE_RETRY_MS
         : false,
   });
 
-  // Once connected, the site check keeps running: `describe` is re-read on
-  // every poll, so a `deco serve` restarted in another site's folder on the
-  // same port is caught without waiting for a failed read or write.
+  // Once connected, `describe` is re-read on every poll, so a stopped
+  // `deco serve` is noticed without waiting for a failed read or write.
+  const queryClient = useQueryClient();
   const localKey = KEYS.contentBackend(
     org.slug,
     virtualMcpId ?? "",
@@ -298,9 +265,8 @@ export function useContentBackend(
       connection?.endpoint ?? "",
     ),
     queryFn: async () => {
-      let described: DescribeResult;
       try {
-        described = await local.data!.client.describe();
+        return await local.data!.client.describe();
       } catch (error) {
         // It stopped answering: probe it again, so the Localhost row and
         // the editor say it's not running (and reconnect once it is back)
@@ -311,54 +277,12 @@ export function useContentBackend(
         );
         throw error;
       }
-      // A different server answered: probe it again (its schema, too).
-      const probed = queryClient.getQueryData<Probe>(localKey);
-      if (siteIdentity(described) !== siteIdentity(probed?.describe)) {
-        void queryClient.invalidateQueries(
-          { queryKey: localKey, exact: true },
-          { cancelRefetch: false },
-        );
-      }
-      return described;
     },
     enabled: !!local.data && !tabConnection,
     refetchInterval: PROBE_RETRY_MS,
     retry: false,
   });
   const describe = liveDescribe.data ?? local.data?.describe;
-
-  // The site match of a project's `deco serve` (see `matchServeSite`): the
-  // public key committed to the project's repository, read only when a newer
-  // `deco serve` doesn't name its site.
-  const needsCommittedKey =
-    !!describe &&
-    !tabConnection &&
-    !(typeof (describe as { site?: unknown }).site === "string" && siteSlug);
-  const committed = useQuery({
-    queryKey: committedKeyQuery,
-    queryFn: async (): Promise<string | null> => {
-      const client = createContentClient({
-        endpoint: githubContentEndpoint({
-          orgSlug: org.slug,
-          virtualMcpId: virtualMcpId!,
-          branch: branch!,
-        }),
-      });
-      const described = await client.describe();
-      return described.secrets?.publicKey ?? null;
-    },
-    enabled: needsCommittedKey && !!org.slug && !!virtualMcpId && !!branch,
-    staleTime: Number.POSITIVE_INFINITY,
-    retry: 2,
-    // A failed read is not an answer: re-read until it is. A repository with
-    // no key is re-read now and then, so adding one connects on its own.
-    refetchInterval: (query) =>
-      query.state.status === "error"
-        ? PROBE_RETRY_MS
-        : query.state.data === null
-          ? COMMITTED_KEY_RECHECK_MS
-          : false,
-  });
 
   const decision = selectContentBackend({
     hasProject: !!virtualMcpId,
@@ -405,11 +329,8 @@ export function useContentBackend(
     isError: local.isError,
     failureCount: local.failureCount,
     failure: local.error ?? local.failureReason,
-    describe: describe ?? local.data?.describe,
+    describe,
     endpoint: connection?.endpoint ?? "",
-    verifySite: !tabConnection,
-    siteSlug,
-    committed,
   });
 }
 
@@ -420,10 +341,10 @@ export function useContentBackend(
 export const LOCAL_RECONNECT_GRACE_FAILURES = 3;
 
 /**
- * The backend of a project's `deco serve` (Localhost) from its probe. The
- * latest probe wins: once it fails, an earlier answer (another site, an
- * update needed) no longer describes what runs there, so the editor and the
- * Localhost row say it isn't answering, and connect again once it answers.
+ * The backend of a `deco serve` (Localhost) from its probe, whichever site
+ * it serves (by the PO's decision, Studio doesn't check). The latest probe
+ * wins: once it fails, the editor and the Localhost row say it isn't
+ * answering, and connect again once it answers.
  * Only a connected site rides out a short outage
  * (`LOCAL_RECONNECT_GRACE_FAILURES`).
  */
@@ -434,19 +355,13 @@ export function localServeBackend(input: {
   failure: unknown;
   describe: DescribeResult | undefined;
   endpoint: string;
-  verifySite: boolean;
-  siteSlug: string | null;
-  committed: { status: string; data?: string | null } | undefined;
 }): ContentBackend {
   const settled = input.probed
-    ? localBackendOf({
-        probed: input.probed,
-        describe: input.describe ?? input.probed.describe,
-        endpoint: input.endpoint,
-        verifySite: input.verifySite,
-        siteSlug: input.siteSlug,
-        committed: input.committed,
-      })
+    ? toBackend(
+        "local",
+        { ...input.probed, describe: input.describe ?? input.probed.describe },
+        `:serve:${input.endpoint}`,
+      )
     : null;
   const failing = input.isError || input.failureCount > 0;
   if (!failing) return settled ?? { kind: "pending" };
@@ -463,64 +378,6 @@ export function localServeBackend(input: {
     source: "local",
     problem: classifyServeProbeError(input.failure),
   };
-}
-
-/**
- * A connected `deco serve`'s backend once the site check (`matchServeSite`)
- * has run on its latest `describe`: `protocol` for this project's site,
- * `unavailable` (with the reason) for another site or one that can't be
- * told, `pending` while the committed public key is still being read.
- * `/site-editor` belongs to no project and skips the check (`verifySite`).
- */
-export function localBackendOf(input: {
-  probed: Probe;
-  describe: DescribeResult;
-  endpoint: string;
-  verifySite: boolean;
-  siteSlug: string | null;
-  committed: { status: string; data?: string | null } | undefined;
-}): ContentBackend {
-  const match = input.verifySite
-    ? matchServeSite(input.describe, {
-        siteSlug: input.siteSlug,
-        committedPublicKey: committedKeyOf(input.committed),
-      })
-    : ({ ok: true } as const);
-  if (match === "pending") return { kind: "pending" };
-  if (!match.ok) {
-    // Never used. The probe keeps polling, so starting the right
-    // `deco serve` connects on its own.
-    return { kind: "unavailable", source: "local", problem: match.problem };
-  }
-  return toBackend(
-    "local",
-    { ...input.probed, describe: input.describe },
-    `:serve:${input.endpoint}`,
-  );
-}
-
-/**
- * The committed public key once read: `null` when the repository has none,
- * `undefined` while it loads or while a failed read is retried (a GitHub
- * hiccup is not "no key", so it never reads as `site-unverified`). After a
- * successful read, a failed re-read keeps that answer.
- */
-export function committedKeyOf(
-  state: { status: string; data?: string | null } | undefined,
-): string | null | undefined {
-  if (state?.data !== undefined) return state.data ?? null;
-  return undefined;
-}
-
-/** Which site a `describe` says it serves (its id and public key). */
-function siteIdentity(describe: DescribeResult | undefined): string {
-  const d = describe as
-    | { site?: unknown; secrets?: { publicKey?: string } | null }
-    | undefined;
-  return JSON.stringify([
-    typeof d?.site === "string" ? d.site : null,
-    d?.secrets?.publicKey ?? null,
-  ]);
 }
 
 /**

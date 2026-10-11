@@ -9,7 +9,7 @@ export type AppProbe = (url: string, signal: AbortSignal) => Promise<boolean>;
  * is listening). `no-cors` can't read the status, but it only rejects when
  * nothing answered: connection refused, a reset, or the timeout.
  */
-export const fetchAppProbe: AppProbe = async (url, signal) => {
+const fetchAppProbe: AppProbe = async (url, signal) => {
   try {
     await fetch(url, {
       method: "HEAD",
