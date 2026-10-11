@@ -7,9 +7,12 @@ import {
   PROTOCOL_VERSION,
 } from "@decocms/blocks/protocol";
 import { selectContentBackend } from "./content-backend";
+import { NotDecoServeError } from "./deco-serve-connection";
 import {
   committedKeyOf,
+  LOCAL_RECONNECT_GRACE_FAILURES,
   localBackendOf,
+  localServeBackend,
   type Probe,
   probe,
   probeSandbox,
@@ -246,6 +249,141 @@ describe("Localhost site check (localBackendOf)", () => {
         }),
       ),
     ).toBe("protocol");
+  });
+});
+
+describe("Localhost after deco serve stops (localServeBackend)", () => {
+  const KEY = "age1publickey";
+  const probed = {
+    client: {} as ContentClient,
+    describe: {
+      protocol: PROTOCOL_NAME,
+      version: PROTOCOL_VERSION,
+      secrets: { publicKey: KEY },
+    },
+    hasSchema: true,
+    v8Schema: true,
+  } as unknown as Probe;
+  const otherSite = {
+    ...probed,
+    describe: { ...probed.describe, secrets: { publicKey: "age1other" } },
+  } as unknown as Probe;
+  const base = {
+    endpoint: "http://localhost:4545/rpc",
+    verifySite: true,
+    siteSlug: "acme",
+    describe: undefined,
+    committed: { status: "success", data: KEY },
+    isError: false,
+    failureCount: 0,
+    failure: null as unknown,
+  };
+  const stopped = new TypeError("Failed to fetch");
+  const kind = (backend: ReturnType<typeof localServeBackend>) =>
+    backend.kind === "unavailable"
+      ? `unavailable:${backend.problem?.reason}`
+      : backend.kind;
+
+  test("another site's answer is replaced by 'not running' once a probe fails", () => {
+    expect(kind(localServeBackend({ ...base, probed: otherSite }))).toBe(
+      "unavailable:other-site",
+    );
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed: otherSite,
+          failureCount: 1,
+          failure: stopped,
+        }),
+      ),
+    ).toBe("unavailable:not-answering");
+  });
+
+  test("an 'update needed' answer is replaced too", () => {
+    const old = {
+      ...probed,
+      describe: { ...probed.describe, secrets: null },
+    } as unknown as Probe;
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed: old,
+          committed: { status: "success", data: null },
+        }),
+      ),
+    ).toBe("unavailable:site-unverified");
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed: old,
+          committed: { status: "success", data: null },
+          failureCount: 2,
+          failure: stopped,
+        }),
+      ),
+    ).toBe("unavailable:not-answering");
+  });
+
+  test("a connected site rides out a short outage, then says it's not running", () => {
+    for (
+      let failures = 0;
+      failures < LOCAL_RECONNECT_GRACE_FAILURES;
+      failures++
+    ) {
+      expect(
+        kind(
+          localServeBackend({
+            ...base,
+            probed,
+            failureCount: failures,
+            failure: failures ? stopped : null,
+          }),
+        ),
+      ).toBe("protocol");
+    }
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed,
+          failureCount: LOCAL_RECONNECT_GRACE_FAILURES,
+          failure: stopped,
+        }),
+      ),
+    ).toBe("unavailable:not-answering");
+  });
+
+  test("an answered error (not retried) wins over an earlier answer", () => {
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed,
+          isError: true,
+          failure: new NotDecoServeError(),
+        }),
+      ),
+    ).toBe("unavailable:not-deco-serve");
+  });
+
+  test("never answered: pending, then not running; answering again connects", () => {
+    expect(kind(localServeBackend({ ...base, probed: undefined }))).toBe(
+      "pending",
+    );
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed: undefined,
+          failureCount: 1,
+          failure: stopped,
+        }),
+      ),
+    ).toBe("unavailable:not-answering");
+    expect(kind(localServeBackend({ ...base, probed }))).toBe("protocol");
   });
 });
 

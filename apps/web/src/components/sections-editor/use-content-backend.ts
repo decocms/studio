@@ -298,7 +298,19 @@ export function useContentBackend(
       connection?.endpoint ?? "",
     ),
     queryFn: async () => {
-      const described = await local.data!.client.describe();
+      let described: DescribeResult;
+      try {
+        described = await local.data!.client.describe();
+      } catch (error) {
+        // It stopped answering: probe it again, so the Localhost row and
+        // the editor say it's not running (and reconnect once it is back)
+        // instead of keeping its last answer.
+        void queryClient.invalidateQueries(
+          { queryKey: localKey, exact: true },
+          { cancelRefetch: false },
+        );
+        throw error;
+      }
       // A different server answered: probe it again (its schema, too).
       const probed = queryClient.getQueryData<Probe>(localKey);
       if (siteIdentity(described) !== siteIdentity(probed?.describe)) {
@@ -388,25 +400,69 @@ export function useContentBackend(
   if (decision === "unavailable-sandbox") {
     return { kind: "unavailable", source: "sandbox" };
   }
-  if (local.data) {
-    return localBackendOf({
-      probed: local.data,
-      describe: describe ?? local.data.describe,
-      endpoint: connection!.endpoint,
-      verifySite: !tabConnection,
-      siteSlug,
-      committed,
-    });
+  return localServeBackend({
+    probed: local.data,
+    isError: local.isError,
+    failureCount: local.failureCount,
+    failure: local.error ?? local.failureReason,
+    describe: describe ?? local.data?.describe,
+    endpoint: connection?.endpoint ?? "",
+    verifySite: !tabConnection,
+    siteSlug,
+    committed,
+  });
+}
+
+/**
+ * Failed probes a connected `deco serve` rides out before the editor says
+ * it's not running (about 7 s of backoff: a quick restart stays seamless).
+ */
+export const LOCAL_RECONNECT_GRACE_FAILURES = 3;
+
+/**
+ * The backend of a project's `deco serve` (Localhost) from its probe. The
+ * latest probe wins: once it fails, an earlier answer (another site, an
+ * update needed) no longer describes what runs there, so the editor and the
+ * Localhost row say it isn't answering, and connect again once it answers.
+ * Only a connected site rides out a short outage
+ * (`LOCAL_RECONNECT_GRACE_FAILURES`).
+ */
+export function localServeBackend(input: {
+  probed: Probe | undefined;
+  isError: boolean;
+  failureCount: number;
+  failure: unknown;
+  describe: DescribeResult | undefined;
+  endpoint: string;
+  verifySite: boolean;
+  siteSlug: string | null;
+  committed: { status: string; data?: string | null } | undefined;
+}): ContentBackend {
+  const settled = input.probed
+    ? localBackendOf({
+        probed: input.probed,
+        describe: input.describe ?? input.probed.describe,
+        endpoint: input.endpoint,
+        verifySite: input.verifySite,
+        siteSlug: input.siteSlug,
+        committed: input.committed,
+      })
+    : null;
+  const failing = input.isError || input.failureCount > 0;
+  if (!failing) return settled ?? { kind: "pending" };
+  if (
+    settled?.kind === "protocol" &&
+    !input.isError &&
+    input.failureCount < LOCAL_RECONNECT_GRACE_FAILURES
+  ) {
+    return settled;
   }
-  // Still retrying after a failure: `deco serve` is down or restarting.
-  if (local.isError || local.failureCount > 0) {
-    return {
-      kind: "unavailable",
-      source: "local",
-      problem: classifyServeProbeError(local.error ?? local.failureReason),
-    };
-  }
-  return { kind: "pending" };
+  // Still retrying: `deco serve` is down, restarting or answering an error.
+  return {
+    kind: "unavailable",
+    source: "local",
+    problem: classifyServeProbeError(input.failure),
+  };
 }
 
 /**
