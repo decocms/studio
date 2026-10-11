@@ -23,15 +23,7 @@ export const thread = {
   "thread.branchPicker.localHint":
     "Aponte o preview e o CMS para o seu próprio dev server. Cole uma URL de túnel público (ex.: ngrok, cloudflared) acessível a partir deste navegador.",
   "thread.branchPicker.localhost.label": "Localhost",
-  "thread.branchPicker.localhost.available":
-    "Edite o site rodando no seu computador",
-  "thread.branchPicker.localhost.connecting": "Conectando…",
-  "thread.branchPicker.localhost.connected": "Conectado a {host}",
-  "thread.branchPicker.localhost.notRunning":
-    "Rode `deco serve` na pasta do seu site:",
-  "thread.branchPicker.localhost.notRunningHint":
-    "Vamos conectar assim que ele iniciar.",
-  "thread.branchPicker.localhost.turnOff": "Parar de usar o Localhost",
+  "thread.branchPicker.localhost.connected": "Conectado",
   "thread.branchPicker.localUrlLabel": "URL do túnel local",
   "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
   "thread.branchPicker.localTurnOff": "Desligar",

@@ -1,11 +1,8 @@
 import type { decoServe as decoServeEn } from "../en/deco-serve.ts";
 
 export const decoServe = {
-  "decoServe.chip.label": "Servidor local",
-  "decoServe.chip.tooltip":
-    "Editando os arquivos deste computador pelo deco serve. Nada é commitado: você revisa as mudanças e faz o commit.",
-  "decoServe.chip.readOnly": "Somente leitura",
-  "decoServe.chip.readOnlyTooltip":
+  "decoServe.readOnly.label": "Somente leitura",
+  "decoServe.readOnly.tooltip":
     "O deco serve foi iniciado com `--read-only`, então as mudanças não podem ser salvas. Reinicie sem essa opção para editar.",
   "decoServe.connect.reaching": "Conectando ao deco serve em {host}…",
 

@@ -5,15 +5,13 @@
  * explains what the site editor is and how to start `deco serve`.
  */
 
-import { type ReactNode, useId, useState } from "react";
-import { Monitor04 } from "@untitledui/icons";
+import { type ReactNode, useState } from "react";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
 } from "@decocms/ui/components/alert.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useDecoServeDiscovery } from "@/hooks/use-deco-serve-discovery";
 import { usePreferences } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
@@ -24,11 +22,12 @@ import {
   SERVE_COMMAND,
 } from "./deco-serve-connection";
 import {
-  CommandSnippet,
   DocsLinks,
   RichCode,
+  LocalNetworkDeniedAlert,
   ServeProblemAlert,
 } from "./deco-serve-notices";
+import { ConnectionWire, ServeConnectState } from "./serve-connect-state";
 
 /** The editor's server stopped answering: back to the guide until it's back. */
 export function isServeLost(backend: ContentBackend): boolean {
@@ -71,37 +70,6 @@ export function LocalServeSwitch({
   );
 }
 
-function Step({
-  index,
-  title,
-  children,
-}: {
-  index: number;
-  title: string;
-  children: ReactNode;
-}) {
-  const headingId = useId();
-  return (
-    <li
-      aria-labelledby={headingId}
-      className="surface flex flex-col gap-3 p-4 sm:p-5"
-    >
-      <div className="flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium tabular-nums text-foreground"
-        >
-          {index}
-        </span>
-        <h2 id={headingId} className="text-sm font-medium text-foreground">
-          {title}
-        </h2>
-      </div>
-      <div className="flex min-w-0 flex-col gap-3 sm:pl-9">{children}</div>
-    </li>
-  );
-}
-
 export function SiteEditorGuide({
   candidates,
   invalidLink = false,
@@ -139,7 +107,7 @@ export function SiteEditorGuide({
         role="status"
         className="flex h-full w-full flex-col items-center justify-center gap-3 p-6"
       >
-        <Spinner className="size-6 text-muted-foreground" />
+        <ConnectionWire waiting />
         <p className="text-sm text-muted-foreground">
           {t("decoServe.guide.checkingFirst")}
         </p>
@@ -147,110 +115,83 @@ export function SiteEditorGuide({
     );
   }
 
+  const looking = !needsGesture && access !== "denied";
   return (
-    <div className="h-full w-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8 sm:py-12">
-        <header className="flex flex-col items-center gap-3 text-center">
-          <span
-            aria-hidden="true"
-            className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground sm:size-12"
-          >
-            <Monitor04 className="size-5 sm:size-6" />
-          </span>
-          <h1
-            tabIndex={-1}
-            className="text-balance text-lg font-medium text-foreground outline-none sm:text-xl"
-          >
-            {t("decoServe.guide.title")}
-          </h1>
-          <p className="text-pretty text-sm text-muted-foreground">
-            {t("decoServe.guide.lead")}
-          </p>
-        </header>
-
-        {invalidLink && (
-          <Alert variant="warning">
-            <div className="flex min-w-0 flex-col gap-1">
-              <AlertTitle className="line-clamp-none text-foreground">
-                {t("decoServe.link.invalidTitle")}
-              </AlertTitle>
-              <AlertDescription>
-                {t("decoServe.link.invalidBody")}
-              </AlertDescription>
-            </div>
-          </Alert>
-        )}
-        {access === "denied" && (
-          <Alert variant="destructive">
-            <div className="flex min-w-0 flex-col gap-1">
-              <AlertTitle className="line-clamp-none">
-                {t("decoServe.lna.deniedTitle")}
-              </AlertTitle>
-              <AlertDescription>
-                {t("decoServe.lna.deniedBody")}
-              </AlertDescription>
-            </div>
-          </Alert>
-        )}
-
-        <ol className="flex flex-col gap-3">
-          <Step index={1} title={t("decoServe.guide.step1.title")}>
-            <p className="text-sm text-muted-foreground">
-              <RichCode text={t("decoServe.guide.step1.body")} />
-            </p>
-            <CommandSnippet command={SERVE_COMMAND} />
+    <ServeConnectState
+      title={t("decoServe.guide.title")}
+      lead={t("decoServe.guide.lead")}
+      waiting={looking && state.status !== "paused" && !state.problem}
+      alerts={
+        <>
+          {invalidLink && (
+            <Alert variant="warning">
+              <div className="flex min-w-0 flex-col gap-1">
+                <AlertTitle className="line-clamp-none text-foreground">
+                  {t("decoServe.link.invalidTitle")}
+                </AlertTitle>
+                <AlertDescription>
+                  {t("decoServe.link.invalidBody")}
+                </AlertDescription>
+              </div>
+            </Alert>
+          )}
+          {access === "denied" && <LocalNetworkDeniedAlert />}
+        </>
+      }
+      steps={[
+        {
+          title: t("decoServe.guide.step1.title"),
+          body: <RichCode text={t("decoServe.guide.step1.body")} />,
+          command: SERVE_COMMAND,
+          after: (
             <p className="text-sm text-muted-foreground">
               <RichCode text={t("decoServe.guide.step1.preview")} />
             </p>
-          </Step>
-
-          <Step index={2} title={t("decoServe.guide.step2.title")}>
-            <p className="text-sm text-muted-foreground">
-              {t("decoServe.guide.step2.body")}
-            </p>
-            {state.problem && (
-              <ServeProblemAlert
-                problem={state.problem}
-                host={endpointHost(state.problem.endpoint)}
-              />
-            )}
-            {needsGesture ? (
-              <Button
-                variant="outline"
-                className="self-start"
-                onClick={discovery.start}
-              >
-                {t("decoServe.guide.step2.start")}
-              </Button>
-            ) : (
-              access !== "denied" && (
-                <p
-                  role="status"
-                  className="flex items-center gap-2 text-sm text-muted-foreground"
+          ),
+        },
+        {
+          title: t("decoServe.guide.step2.title"),
+          body: t("decoServe.guide.step2.body"),
+          after: (
+            <>
+              {state.problem && (
+                <ServeProblemAlert
+                  problem={state.problem}
+                  host={endpointHost(state.problem.endpoint)}
+                />
+              )}
+              {needsGesture ? (
+                <Button
+                  variant="outline"
+                  className="self-start"
+                  onClick={discovery.start}
                 >
-                  {state.status === "paused" ? (
-                    t("decoServe.guide.step2.paused")
-                  ) : (
-                    <>
-                      <Spinner className="size-4" />
-                      {t("decoServe.guide.step2.looking", { hosts })}
-                    </>
-                  )}
-                </p>
-              )
-            )}
-          </Step>
-        </ol>
-
-        <p className="text-sm text-muted-foreground">
-          {t("decoServe.guide.v7")}
-        </p>
-
-        <DocsLinks
-          className="border-t border-border pt-4"
-          links={["quickstart", "siteEditor", "serve", "troubleshooting"]}
-        />
-      </div>
-    </div>
+                  {t("decoServe.guide.step2.start")}
+                </Button>
+              ) : (
+                looking && (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    {state.status === "paused"
+                      ? t("decoServe.guide.step2.paused")
+                      : t("decoServe.guide.step2.looking", { hosts })}
+                  </p>
+                )
+              )}
+            </>
+          ),
+        },
+      ]}
+      footer={
+        <>
+          <p className="text-sm text-muted-foreground">
+            {t("decoServe.guide.v7")}
+          </p>
+          <DocsLinks
+            className="border-t border-border pt-4"
+            links={["quickstart", "siteEditor", "serve", "troubleshooting"]}
+          />
+        </>
+      }
+    />
   );
 }

@@ -291,7 +291,7 @@ test.describe("site editor over deco serve", () => {
     try {
       await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
-      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+      await expect(page.getByTestId("content-version-badge")).toBeVisible({
         timeout: 30_000,
       });
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
@@ -320,7 +320,7 @@ test.describe("site editor over deco serve", () => {
       // The browser remembers the endpoint: `/site-editor` with no link
       // reconnects to it.
       await page.goto("/site-editor");
-      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+      await expect(page.getByTestId("content-version-badge")).toBeVisible({
         timeout: 30_000,
       });
     } finally {
@@ -354,7 +354,7 @@ test.describe("site editor over deco serve", () => {
         .fill(`${getE2EAppOrigin()}${linkOf(stub)}`);
       await page.getByRole("button", { name: "Save" }).click();
 
-      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+      await expect(page.getByTestId("content-version-badge")).toBeVisible({
         timeout: 30_000,
       });
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
@@ -479,7 +479,7 @@ test.describe("site editor over deco serve", () => {
     ).toBeVisible({ timeout: 30_000 });
     const stub = await startStub(publicKey, port);
     try {
-      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+      await expect(page.getByTestId("content-version-badge")).toBeVisible({
         timeout: 30_000,
       });
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
@@ -509,7 +509,7 @@ test.describe("site editor over deco serve", () => {
     try {
       await page.goto(linkOf(stub));
       await expect(page).toHaveURL("/site-editor", { timeout: 30_000 });
-      await expect(page.getByTestId("deco-serve-chip")).toBeVisible({
+      await expect(page.getByTestId("content-version-badge")).toBeVisible({
         timeout: 30_000,
       });
       const rail = page.getByLabel("Organizations", { exact: true });

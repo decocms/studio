@@ -32,7 +32,6 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   ChatTaskValueProvider,
   type ChatTaskContextValue,
@@ -41,7 +40,6 @@ import { ChatLayout } from "@/components/chat-layout";
 import { Layout } from "@/components/layout";
 import { Page } from "@/components/page";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import { ConnectCentered as Centered } from "@/components/sections-editor/deco-serve-chip";
 import {
   endpointHost,
   parseConnectFragment,
@@ -58,6 +56,7 @@ import {
   isServeLost,
   LocalServeSwitch,
 } from "@/components/sections-editor/site-editor-guide";
+import { ServeConnectState } from "@/components/sections-editor/serve-connect-state";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
   TabDecoServeConnectionContext,
@@ -168,17 +167,6 @@ function SiteEditorTabs() {
   );
 }
 
-/** A connection problem, centered in the editor's frame, scrolling when tall. */
-function GateFrame({ children }: { children: ReactNode }) {
-  return (
-    <div className="h-full w-full overflow-y-auto">
-      <div className="mx-auto flex min-h-full w-full max-w-lg flex-col justify-center gap-4 px-4 py-10">
-        {children}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Holds the editor until the local server answers its probe, and explains
  * why when it answered but can't be used: out of date, another version,
@@ -196,12 +184,11 @@ function BackendGate({ children }: { children: ReactNode }) {
   if (backend.kind === "protocol") return children;
   if (backend.kind !== "unavailable" || isServeLost(backend)) {
     return (
-      <Centered>
-        <Spinner className="size-6 text-muted-foreground" />
-        <p role="status" className="text-sm text-muted-foreground">
-          {t("decoServe.connect.reaching", { host })}
-        </p>
-      </Centered>
+      <ServeConnectState
+        headingLevel={2}
+        waiting
+        title={t("decoServe.connect.reaching", { host })}
+      />
     );
   }
   // It answered, but can't be used; the probe keeps polling on its own.
@@ -211,15 +198,18 @@ function BackendGate({ children }: { children: ReactNode }) {
     host,
   );
   return (
-    <GateFrame>
-      <div role="status" className="flex flex-col gap-2">
-        <h2 className="text-base font-medium text-foreground">{title}</h2>
-        <p className="text-sm text-muted-foreground">
-          <RichCode text={body} />
-        </p>
-      </div>
-      <DocsLinks links={["troubleshooting", "serve"]} />
-    </GateFrame>
+    <ServeConnectState
+      headingLevel={2}
+      waiting={false}
+      title={title}
+      lead={<RichCode text={body} />}
+      footer={
+        <DocsLinks
+          className="border-t border-border pt-4"
+          links={["troubleshooting", "serve"]}
+        />
+      }
+    />
   );
 }
 

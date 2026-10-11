@@ -4,11 +4,8 @@
  * backticks renders as code (`RichCode`); commands and flags stay in English.
  */
 export const decoServe = {
-  "decoServe.chip.label": "Local server",
-  "decoServe.chip.tooltip":
-    "Editing the files on this computer through deco serve. Nothing is committed: you review the changes and commit them yourself.",
-  "decoServe.chip.readOnly": "Read-only",
-  "decoServe.chip.readOnlyTooltip":
+  "decoServe.readOnly.label": "Read-only",
+  "decoServe.readOnly.tooltip":
     "deco serve was started with `--read-only`, so changes can't be saved. Restart it without that flag to edit.",
   "decoServe.connect.reaching": "Connecting to deco serve on {host}…",
 

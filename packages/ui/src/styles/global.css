@@ -666,6 +666,18 @@
   }
 }
 
+/* A dot shuttling back and forth on the wire between "your computer" and
+   "Studio" while the site editor waits for deco serve (or your app) to
+   answer. Runs with `alternate`, so each leg eases in and out. */
+@keyframes connection-shuttle {
+  from {
+    left: 0%;
+  }
+  to {
+    left: calc(100% - 0.5rem);
+  }
+}
+
 /* Top progress bar over the preview, shown while a page/section loads or a
    block autosave commit is in flight. YouTube-style asymptotic fill: races to
    ~60% in the first moments, then decelerates along a log-ish curve and creeps
@@ -772,6 +784,14 @@
     0%,
     100% {
       opacity: 0;
+    }
+  }
+
+  /* A still dot mid-wire: the state reads the same without motion. */
+  @keyframes connection-shuttle {
+    from,
+    to {
+      left: calc(50% - 0.25rem);
     }
   }
 }

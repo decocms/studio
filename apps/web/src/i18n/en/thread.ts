@@ -21,15 +21,7 @@ export const thread = {
   "thread.branchPicker.localHint":
     "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.",
   "thread.branchPicker.localhost.label": "Localhost",
-  "thread.branchPicker.localhost.available":
-    "Edit the site running on your computer",
-  "thread.branchPicker.localhost.connecting": "Connecting…",
-  "thread.branchPicker.localhost.connected": "Connected to {host}",
-  "thread.branchPicker.localhost.notRunning":
-    "Run `deco serve` in your site's folder:",
-  "thread.branchPicker.localhost.notRunningHint":
-    "We'll connect as soon as it starts.",
-  "thread.branchPicker.localhost.turnOff": "Stop using Localhost",
+  "thread.branchPicker.localhost.connected": "Connected",
   "thread.branchPicker.localUrlLabel": "Local tunnel URL",
   "thread.branchPicker.localUrlPlaceholder": "https://your-tunnel.example.com",
   "thread.branchPicker.localTurnOff": "Turn off",

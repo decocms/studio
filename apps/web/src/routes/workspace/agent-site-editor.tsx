@@ -15,7 +15,7 @@ import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-dra
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
 import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
-import { DecoServeChip } from "@/components/sections-editor/deco-serve-chip";
+import { DecoServeReadOnlyBadge } from "@/components/sections-editor/deco-serve-read-only-badge";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { ContentVersionBadge } from "@/components/sections-editor/content-version-badge";
 
@@ -38,7 +38,10 @@ function SiteEditorActions() {
     <>
       <ContentVersionBadge virtualMcpId={virtualMcpId} branch={currentBranch} />
       {servingLocally && (
-        <DecoServeChip virtualMcpId={virtualMcpId} branch={currentBranch} />
+        <DecoServeReadOnlyBadge
+          virtualMcpId={virtualMcpId}
+          branch={currentBranch}
+        />
       )}
       {entity && (
         <div className="flex min-w-0 shrink items-center justify-end">
