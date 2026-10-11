@@ -394,25 +394,45 @@ describe("matchServeSite", () => {
     expect(matchServeSite({ site: "acme" }, loading)).toEqual({ ok: true });
   });
 
-  test("nothing to compare: update needed, never a silent connect", () => {
-    for (const describe of [
-      {},
-      { secrets: null },
-      { secrets: { publicKey: KEY } },
-    ]) {
-      expect(
-        matchServeSite(describe, {
-          siteSlug: "acme",
-          committedPublicKey: null,
-        }),
-      ).toEqual({ ok: false, problem: { reason: "site-unverified" } });
+  test("nothing to compare: never a silent connect, and says which key is missing", () => {
+    const noRepoKey = { siteSlug: "acme", committedPublicKey: null };
+    for (const describe of [{}, { secrets: null }]) {
+      expect(matchServeSite(describe, noRepoKey)).toEqual({
+        ok: false,
+        problem: { reason: "site-unverified", missingKey: "both" },
+      });
     }
+    expect(matchServeSite({ secrets: { publicKey: KEY } }, noRepoKey)).toEqual({
+      ok: false,
+      problem: { reason: "site-unverified", missingKey: "repository" },
+    });
     // A site name with no project site id to compare it with.
     expect(
       matchServeSite(
         { site: "acme" },
         { siteSlug: null, committedPublicKey: null },
       ),
-    ).toEqual({ ok: false, problem: { reason: "site-unverified" } });
+    ).toEqual({
+      ok: false,
+      problem: { reason: "site-unverified", missingKey: "both" },
+    });
+  });
+
+  test("the repository has the key, the local folder doesn't: missingKey local", () => {
+    for (const describe of [{}, { secrets: null }]) {
+      expect(matchServeSite(describe, expected)).toEqual({
+        ok: false,
+        problem: { reason: "site-unverified", missingKey: "local" },
+      });
+    }
+  });
+
+  test("with no local key, waits for the repository's answer before guiding", () => {
+    expect(
+      matchServeSite(
+        { secrets: null },
+        { siteSlug: "acme", committedPublicKey: undefined },
+      ),
+    ).toBe("pending");
   });
 });

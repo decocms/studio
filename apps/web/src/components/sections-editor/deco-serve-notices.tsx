@@ -172,7 +172,14 @@ export function serveProblemCopy(
     case "site-unverified":
       return {
         title: t("decoServe.state.siteUnverified.title"),
-        body: t("decoServe.state.siteUnverified.body", { host }),
+        body:
+          problem.missingKey === "local"
+            ? t("decoServe.state.siteUnverified.bodyLocalKeyMissing", { host })
+            : problem.missingKey === "repository"
+              ? t("decoServe.state.siteUnverified.bodyRepoKeyMissing", {
+                  host,
+                })
+              : t("decoServe.state.siteUnverified.body", { host }),
       };
     case "error":
       return {

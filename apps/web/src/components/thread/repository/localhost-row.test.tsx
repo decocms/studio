@@ -124,4 +124,13 @@ describe("LocalhostRow", () => {
     ).toBeInTheDocument();
     expect(getByText(/secrets\.pub/)).toBeInTheDocument();
   });
+
+  it("can't tell the site, key only in the repository: pull, don't add it", () => {
+    const { getByText, queryByText } = renderRow({
+      kind: "problem",
+      problem: { reason: "site-unverified", missingKey: "local" },
+    });
+    expect(getByText(/Pull the latest changes/)).toBeInTheDocument();
+    expect(queryByText(/to its repository/)).not.toBeInTheDocument();
+  });
 });

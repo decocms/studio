@@ -536,4 +536,9 @@ export const mainPanelTabs = {
     "Waiting for your computer",
   "mainPanelTabs.previewTab.localhostWaiting.body":
     "The preview shows your app once Studio connects to deco serve. Check the draft selector for the next step.",
+  "mainPanelTabs.previewTab.localAppWaiting.title": "Waiting for your app",
+  "mainPanelTabs.previewTab.localAppWaiting.body":
+    "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. You can edit your content in the meantime.",
+  "mainPanelTabs.previewTab.localAppWaiting.hint":
+    "The preview loads on its own as soon as your app answers.",
 } as const;

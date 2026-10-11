@@ -1,10 +1,10 @@
 import { createContext, useContext } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type DecoServeConnection,
   parseStoredConnection,
 } from "@/components/sections-editor/deco-serve-connection";
 import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
-import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { authClient } from "@/lib/auth-client";
 import { useVirtualMCP } from "@/sdk";
@@ -45,15 +45,16 @@ export function useDecoServeConnection(
   const project = useVirtualMCP(tab ? null : virtualMcpId);
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
-  const key = LOCALSTORAGE_KEYS.decoServeConnection(userId, virtualMcpId ?? "");
-  const [stored, setStored] = useLocalStorage<unknown>(key, null);
-  const [lastEndpoint, setLastEndpoint] = useLocalStorage<string | null>(
-    LOCALSTORAGE_KEYS.decoServeEndpoint(userId, virtualMcpId ?? ""),
-    null,
+  // Nothing to read or write until both the user and the project are known:
+  // a key is never built with an empty id.
+  const usable = !!virtualMcpId && !!userId;
+  const [stored, setStored] = useScopedStorage(
+    usable ? LOCALSTORAGE_KEYS.decoServeConnection(userId, virtualMcpId) : null,
+  );
+  const [lastEndpoint, setLastEndpoint] = useScopedStorage(
+    usable ? LOCALSTORAGE_KEYS.decoServeEndpoint(userId, virtualMcpId) : null,
   );
   if (tab) return tab;
-  // Nothing to read or write until the user is known.
-  const usable = !!virtualMcpId && !!userId;
   const isV8 = usable && isBlocksV8Project(project?.metadata);
   return {
     connection: isV8 ? parseStoredConnection(stored) : null,
@@ -68,4 +69,45 @@ export function useDecoServeConnection(
       if (usable) setStored(null);
     },
   };
+}
+
+function readStored(key: string): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A localStorage value under `key`, or `null` with no key. Unlike
+ * `useLocalStorage` it never writes on read (no default is stored), and with
+ * no key it neither reads nor writes. It shares `useLocalStorage`'s query
+ * key, so every reader of the same key sees a write at once.
+ */
+function useScopedStorage(
+  key: string | null,
+): [unknown, (value: unknown) => void] {
+  const queryClient = useQueryClient();
+  const queryKey = ["localStorage", key ?? ""] as const;
+  const { data } = useQuery({
+    queryKey,
+    queryFn: () => (key ? readStored(key) : null),
+    initialData: () => (key ? readStored(key) : null),
+    enabled: !!key,
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+  const set = (value: unknown) => {
+    if (!key) return;
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Storage full or blocked: the choice lasts for this session only.
+    }
+    queryClient.setQueryData(queryKey, value);
+  };
+  return [key ? (data ?? null) : null, set];
 }
