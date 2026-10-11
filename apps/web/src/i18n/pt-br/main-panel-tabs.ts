@@ -549,4 +549,12 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.connectGithubDescription":
     "Conecte um repositório do GitHub para construir e visualizar seu site aqui.",
   "mainPanelTabs.previewTab.noSourceToPreview": "Nenhuma fonte para visualizar",
+  "mainPanelTabs.previewTab.localhostNoPreview.title":
+    "Inicie seu app para ver o preview",
+  "mainPanelTabs.previewTab.localhostNoPreview.body":
+    "O deco serve não encontrou seu app. Inicie-o e reinicie o deco serve com `--preview` e o endereço dele, como `--preview localhost:3000`. Enquanto isso, você já pode editar o conteúdo.",
+  "mainPanelTabs.previewTab.localhostWaiting.title":
+    "Aguardando seu computador",
+  "mainPanelTabs.previewTab.localhostWaiting.body":
+    "O preview mostra seu app assim que o Studio se conectar ao deco serve. Veja o próximo passo no seletor de rascunhos.",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;

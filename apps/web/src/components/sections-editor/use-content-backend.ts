@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   assertSupportedEndpoint,
   type ContentClient,
@@ -8,7 +8,7 @@ import {
   type DescribeResult,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -29,8 +29,10 @@ import {
 } from "./content-backend";
 import {
   classifyServeProbeError,
+  matchServeSite,
   NotDecoServeError,
   probeRetryDelay,
+  saveLastConnection,
 } from "./deco-serve-connection";
 import { isSchemaAbsent } from "./schemaless";
 
@@ -225,6 +227,31 @@ export function useContentBackend(
     ...backgroundProbeRetry(isV8Project),
   });
 
+  // This project's site id, for `matchServeSite`, and the public key its
+  // repository commits (filled in below, read by the local probe's poll).
+  const project = useVirtualMCP(tabConnection ? null : virtualMcpId);
+  const siteSlug =
+    typeof project?.metadata?.siteSlug === "string"
+      ? project.metadata.siteSlug
+      : null;
+  const queryClient = useQueryClient();
+  const committedKeyQuery = KEYS.contentBackend(
+    org.slug,
+    virtualMcpId ?? "",
+    branch ?? "",
+    "github-describe",
+  );
+  const serveMismatch = (data: Probe | undefined) => {
+    if (!data || tabConnection) return false;
+    const match = matchServeSite(data.describe, {
+      siteSlug,
+      committedPublicKey: committedKeyOf(
+        queryClient.getQueryState<string | null>(committedKeyQuery),
+      ),
+    });
+    return match !== "pending" && !match.ok;
+  };
+
   // No flag: a connection exists only on a v8 site, once someone chose
   // Localhost or opened the link `deco serve` printed.
   const localEnabled = !!connection;
@@ -235,8 +262,14 @@ export function useContentBackend(
       "local",
       connection?.endpoint ?? "",
     ),
-    queryFn: () =>
-      probe(createContentClient({ endpoint: connection!.endpoint })),
+    queryFn: async () => {
+      const result = await probe(
+        createContentClient({ endpoint: connection!.endpoint }),
+      );
+      // Tried first the next time someone chooses Localhost.
+      saveLastConnection(connection!);
+      return result;
+    },
     enabled: localEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     // Waits for `deco serve` to (re)start and reconnects on its own, backing
@@ -248,11 +281,42 @@ export function useContentBackend(
       !(error instanceof NotDecoServeError),
     retryDelay: (failures) => probeRetryDelay(failures + 1),
     // Also re-probed while there is no schema, so `deco schema` is picked up
-    // on its own.
+    // on its own, and while it serves another site (or can't say which), so
+    // starting `deco serve` in the right folder connects on its own.
     refetchInterval: (query) =>
-      query.state.status === "error" || query.state.data?.hasSchema === false
+      query.state.status === "error" ||
+      query.state.data?.hasSchema === false ||
+      serveMismatch(query.state.data)
         ? PROBE_RETRY_MS
         : false,
+  });
+
+  // The site match of a project's `deco serve` (see `matchServeSite`): the
+  // public key committed to the project's repository, read only when a newer
+  // `deco serve` doesn't name its site.
+  const needsCommittedKey =
+    !!local.data &&
+    !tabConnection &&
+    !(
+      typeof (local.data.describe as { site?: unknown }).site === "string" &&
+      siteSlug
+    );
+  const committed = useQuery({
+    queryKey: committedKeyQuery,
+    queryFn: async (): Promise<string | null> => {
+      const client = createContentClient({
+        endpoint: githubContentEndpoint({
+          orgSlug: org.slug,
+          virtualMcpId: virtualMcpId!,
+          branch: branch!,
+        }),
+      });
+      const described = await client.describe();
+      return described.secrets?.publicKey ?? null;
+    },
+    enabled: needsCommittedKey && !!org.slug && !!virtualMcpId && !!branch,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: 2,
   });
 
   const decision = selectContentBackend({
@@ -289,6 +353,18 @@ export function useContentBackend(
     return toBackend("sandbox", sandbox.data!, ":sandbox");
   }
   if (local.data) {
+    const match = tabConnection
+      ? ({ ok: true } as const)
+      : matchServeSite(local.data.describe, {
+          siteSlug,
+          committedPublicKey: committedKeyOf(committed),
+        });
+    if (match === "pending") return { kind: "pending" };
+    if (!match.ok) {
+      // Another site's `deco serve`: never used. The probe keeps polling, so
+      // starting the right one connects on its own.
+      return { kind: "unavailable", source: "local", problem: match.problem };
+    }
     return toBackend("local", local.data, `:serve:${connection!.endpoint}`);
   }
   // Still retrying after a failure: `deco serve` is down or restarting.
@@ -300,6 +376,16 @@ export function useContentBackend(
     };
   }
   return { kind: "pending" };
+}
+
+/** The committed public key once read: `null` when the repository has none
+ *  (or it can't be read), `undefined` while it loads. */
+function committedKeyOf(
+  state: { status: string; data?: string | null } | undefined,
+): string | null | undefined {
+  if (state?.status === "success") return state.data ?? null;
+  if (state?.status === "error") return null;
+  return undefined;
 }
 
 /**
