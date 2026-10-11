@@ -1,3 +1,4 @@
+import { useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   assertSupportedEndpoint,
@@ -12,7 +13,10 @@ import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
-import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import {
+  TabDecoServeConnectionContext,
+  useDecoServeConnection,
+} from "@/hooks/use-deco-serve-connection";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -140,9 +144,14 @@ export function useContentBackend(
 ): ContentBackend {
   const { org } = useProjectContext();
   const flagEnabled = useOrgFlagState("site_editor_content_protocol");
+  // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost).
   const { connection } = useDecoServeConnection(virtualMcpId);
   const { url: tunnel } = useLocalPreviewUrl(virtualMcpId);
-  const { runtime } = useSessionRuntime(virtualMcpId);
+  const { runtime, isBlocksV8 } = useSessionRuntime(virtualMcpId);
+  // The account-less `/site-editor` is v8 by definition (only a v8
+  // `deco serve` answers it).
+  const tabConnection = useContext(TabDecoServeConnectionContext);
+  const isV8Project = isBlocksV8 || tabConnection !== null;
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The daemon answers once the working tree is there; before that the
   // sandbox is booting and the editor keeps today's (legacy) boot UX.
@@ -181,11 +190,7 @@ export function useContentBackend(
     },
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    retry: 2,
-    // A failed probe reads as v7 (legacy) and is retried quietly. A site
-    // already known to be v8 keeps its data through a failed refetch.
-    refetchInterval: (query) =>
-      query.state.status === "error" ? PROBE_RETRY_MS : false,
+    ...backgroundProbeRetry(isV8Project),
   });
 
   const sandboxEnabled =
@@ -217,12 +222,11 @@ export function useContentBackend(
     },
     enabled: sandboxEnabled,
     staleTime: Number.POSITIVE_INFINITY,
-    retry: 2,
-    refetchInterval: (query) =>
-      query.state.status === "error" ? PROBE_RETRY_MS : false,
+    ...backgroundProbeRetry(isV8Project),
   });
 
-  // No flag: a connection exists only once its link was pasted or opened.
+  // No flag: a connection exists only on a v8 site, once someone chose
+  // Localhost or opened the link `deco serve` printed.
   const localEnabled = !!connection;
   const local = useQuery({
     queryKey: KEYS.contentBackend(
@@ -253,6 +257,7 @@ export function useContentBackend(
 
   const decision = selectContentBackend({
     hasProject: !!virtualMcpId,
+    isV8Project,
     flagEnabled,
     hasServeConnection: !!connection,
     hasLocalTunnel: !!tunnel,
@@ -295,6 +300,24 @@ export function useContentBackend(
     };
   }
   return { kind: "pending" };
+}
+
+/**
+ * How the GitHub and sandbox probes retry. A v8 project waits on the answer,
+ * so a failure is retried until it recovers. A v7 project never waits: one
+ * quiet background try (an upgrade branch may answer v8), and no re-poll, so
+ * a v7 site makes no repeated requests.
+ */
+export function backgroundProbeRetry(isV8Project: boolean) {
+  return isV8Project
+    ? {
+        retry: 2,
+        // A site already known to be v8 keeps its data through a failed
+        // refetch.
+        refetchInterval: (query: { state: { status: string } }) =>
+          query.state.status === "error" ? PROBE_RETRY_MS : false,
+      }
+    : { retry: 1, refetchInterval: false as const };
 }
 
 function toBackend(

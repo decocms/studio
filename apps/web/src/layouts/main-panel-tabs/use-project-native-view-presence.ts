@@ -8,6 +8,8 @@ import {
 } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
+import { hostedCmsAvailable } from "@/components/sections-editor/content-backend";
+import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
 import { useProjectContext } from "@/sdk";
 import {
   resolveAgentSiteSlug,
@@ -35,8 +37,12 @@ export function useProjectNativeViewPresence(
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
-  // The hosted Deco CMS (Blocks v8) is behind the content-protocol flag.
-  const hostedCms = useOrgFlagState("site_editor_content_protocol");
+  // The hosted Deco CMS: Blocks v8 sites (the server's marker) behind the
+  // content-protocol flag. A v7 site never gets Versions, nor waits on it.
+  const hostedCms = hostedCmsAvailable(
+    useOrgFlagState("site_editor_content_protocol"),
+    isBlocksV8Project(project?.metadata),
+  );
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
   const monitorEnabled =

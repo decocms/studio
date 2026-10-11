@@ -83,6 +83,7 @@ import {
 import { useProjectSettingsSection } from "./settings/use-settings-section";
 import { SiteTokenSection } from "./settings/site-token-section";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
+import { hostedCmsAvailable } from "@/components/sections-editor/content-backend";
 import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
@@ -883,7 +884,13 @@ function VirtualMcpDetailViewWithData({
 
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
   const { section } = useProjectSettingsSection();
-  const hostedCms = useOrgFlagState("site_editor_content_protocol") === true;
+  // Site tokens are for Blocks v8 sites only (hosted Deco CMS); a v7 site
+  // never shows them.
+  const hostedCms =
+    hostedCmsAvailable(
+      useOrgFlagState("site_editor_content_protocol"),
+      isBlocksV8Project(virtualMcp.metadata),
+    ) === true;
   const views = useProjectViews({
     virtualMcpId: virtualMcp.id,
     form,
