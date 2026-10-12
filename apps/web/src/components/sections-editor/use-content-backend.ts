@@ -17,13 +17,11 @@ import {
   TabDecoServeConnectionContext,
   useDecoServeConnection,
 } from "@/hooks/use-deco-serve-connection";
-import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
 import {
   type ContentBackend,
   contentProbesEnabled,
-  isV8Schema,
   type ProtocolBackend,
   selectContentBackend,
 } from "./content-backend";
@@ -33,6 +31,7 @@ import {
   probeRetryDelay,
 } from "./deco-serve-connection";
 import { isSchemaAbsent } from "./schemaless";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 
 export interface Probe {
   client: ContentClient;
@@ -135,22 +134,20 @@ export async function probeSandbox(
 /**
  * The content backend of a project's editor (see `selectContentBackend`).
  * A v7 project is `legacy` right away and runs no probe. A v8 project is
- * `pending` while the org flag or the backend probe loads: callers hold their
- * reads until then, so it never reads from the v7 backend and then switches.
+ * `pending` while the backend probe loads: callers hold their reads until
+ * then, so it never reads from the v7 backend and then switches.
  */
 export function useContentBackend(
   virtualMcpId: string | null | undefined,
   branch: string | null | undefined,
 ): ContentBackend {
   const { org } = useProjectContext();
-  const flagEnabled = useOrgFlagState("site_editor_content_protocol");
-  // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost).
+  // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost). On the
+  // account-less `/site-editor` it is the page's own connection.
   const { connection } = useDecoServeConnection(virtualMcpId);
-  const { runtime, isBlocksV8 } = useSessionRuntime(virtualMcpId);
-  // The account-less `/site-editor` is v8 by definition (only a v8
-  // `deco serve` answers it).
+  // The server's cached `isV8Schema` answer for main (the project's marker).
+  const { runtime, isBlocksV8: isV8Project } = useSessionRuntime(virtualMcpId);
   const tabConnection = useContext(TabDecoServeConnectionContext);
-  const isV8Project = isBlocksV8 || tabConnection !== null;
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The daemon answers once the working tree is there; before that the
   // sandbox is booting and the editor keeps today's (legacy) boot UX.
@@ -160,7 +157,6 @@ export function useContentBackend(
 
   const probes = contentProbesEnabled({
     isV8Project,
-    flagEnabled,
     hasServeConnection: !!connection,
     runtime,
     workingTreeReady,
@@ -218,8 +214,8 @@ export function useContentBackend(
     ...V8_PROBE_RETRY,
   });
 
-  // No flag: a connection exists only on a v8 site, once someone chose
-  // Localhost or opened the link `deco serve` printed.
+  // A connection exists only on a v8 site, once someone chose Localhost, or
+  // on `/site-editor`; its own schema decides (`localServeBackend`).
   const localEnabled = !!connection;
   const local = useQuery({
     queryKey: KEYS.contentBackend(
@@ -240,10 +236,10 @@ export function useContentBackend(
       !(error instanceof ContentProtocolError) &&
       !(error instanceof NotDecoServeError),
     retryDelay: (failures) => probeRetryDelay(failures + 1),
-    // Also re-probed while there is no schema, so `deco schema` is picked up
-    // on its own.
+    // Also re-probed while there is no v8 schema, so `deco schema` is
+    // picked up on its own.
     refetchInterval: (query) =>
-      query.state.status === "error" || query.state.data?.hasSchema === false
+      query.state.status === "error" || query.state.data?.v8Schema === false
         ? PROBE_RETRY_MS
         : false,
   });
@@ -287,7 +283,6 @@ export function useContentBackend(
   const decision = selectContentBackend({
     hasProject: !!virtualMcpId,
     isV8Project,
-    flagEnabled,
     hasServeConnection: !!connection,
     runtime,
     githubSite: github.data
@@ -342,8 +337,10 @@ export const LOCAL_RECONNECT_GRACE_FAILURES = 3;
 
 /**
  * The backend of a `deco serve` (Localhost) from its probe, whichever site
- * it serves (by the PO's decision, Studio doesn't check). The latest probe
- * wins: once it fails, the editor and the Localhost row say it isn't
+ * it serves (by the PO's decision, Studio doesn't check which). Its schema
+ * must be a Blocks v8 one (`isV8Schema`): another schema is a problem the
+ * editor explains (`not-v8`), and no schema yet is the schemaless guide. The
+ * latest probe wins: once it fails, the editor and the Localhost row say it isn't
  * answering, and connect again once it answers.
  * Only a connected site rides out a short outage
  * (`LOCAL_RECONNECT_GRACE_FAILURES`).
@@ -356,6 +353,13 @@ export function localServeBackend(input: {
   describe: DescribeResult | undefined;
   endpoint: string;
 }): ContentBackend {
+  if (input.probed?.hasSchema && !input.probed.v8Schema) {
+    return {
+      kind: "unavailable",
+      source: "local",
+      problem: { reason: "not-v8" },
+    };
+  }
   const settled = input.probed
     ? toBackend(
         "local",

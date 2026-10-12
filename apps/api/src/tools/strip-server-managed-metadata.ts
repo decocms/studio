@@ -1,4 +1,4 @@
-import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/thread/session-runtime";
+import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
 
 /**
  * Metadata keys only the server writes. A client write (the settings form,

@@ -1,5 +1,5 @@
 /**
- * The hosted Deco CMS screens of a Blocks v8 project (session, org flag):
+ * The hosted Deco CMS screens of a Blocks v8 project (session, v8 marker):
  *
  *   GET    /api/:org/hosted/:virtualMcpId/releases?cursor=   Releases screen
  *   POST   /api/:org/hosted/:virtualMcpId/releases/current   Make current { sha, confirm? }
@@ -16,7 +16,7 @@
 // reuse, so they are these Studio-internal routes (with site tokens beside them).
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { orgHasFeature } from "@/core/plan-feature-gate";
@@ -79,12 +79,6 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
       403,
     );
   }
-  const settings = await ctx.storage.organizationSettings
-    .get(organization.id)
-    .catch(() => null);
-  if (!orgFlagEnabled(settings?.flags, "site_editor_content_protocol")) {
-    return c.json({ error: "Not found" }, 404);
-  }
   const virtualMcpId = c.req.param("virtualMcpId") ?? "";
   const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
   if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
@@ -95,6 +89,12 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
     return c.json({ error: "Virtual MCP not found" }, 404);
   }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
+  // Only a Blocks v8 project has these screens: its marker, the cached answer
+  // of `isV8Schema` on main (writes below confirm it with `mainIsV8`; Releases
+  // and Make current check each commit's schema themselves).
+  if (!isBlocksV8Project(metadata)) {
+    return c.json({ error: "Not found" }, 404);
+  }
   const site = await ownedProjectSite(
     ctx.storage.orgSites,
     virtualMcpId,

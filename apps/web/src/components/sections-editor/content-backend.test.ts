@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
   contentProbesEnabled,
-  hostedCmsAvailable,
   hostedDraftSession,
   isProtocolProject,
-  isV8Schema,
   mergePolledBlocks,
   newBlocksEditorEnabled,
   selectContentBackend,
@@ -16,7 +14,6 @@ describe("selectContentBackend", () => {
   const v8 = {
     hasProject: true,
     isV8Project: true,
-    flagEnabled: true,
     hasServeConnection: false,
     runtime: "cms" as const,
     githubSite: "v8" as const,
@@ -24,46 +21,20 @@ describe("selectContentBackend", () => {
   const v7 = { ...v8, isV8Project: false, githubSite: "v7" as const };
   const SITES = ["v8", "v7", "loading", "error"] as const;
   const SANDBOX_SITES = [...SITES, "unavailable", undefined] as const;
-  const FLAGS = [true, false, undefined] as const;
 
-  describe("v7 project (no marker): as on main", () => {
-    test("is never pending, whatever the flag or the probes say", () => {
-      for (const flagEnabled of FLAGS) {
-        for (const runtime of ["cms", "sandbox"] as const) {
-          for (const githubSite of SITES) {
-            for (const sandboxSite of SANDBOX_SITES) {
-              const decision = selectContentBackend({
+  describe("v7 project (no marker): as on main, in every org", () => {
+    test("is always legacy right away, whatever the probes say", () => {
+      for (const runtime of ["cms", "sandbox"] as const) {
+        for (const githubSite of SITES) {
+          for (const sandboxSite of SANDBOX_SITES) {
+            expect(
+              selectContentBackend({
                 ...v7,
-                flagEnabled,
                 runtime,
                 githubSite,
                 sandboxSite,
-              });
-              expect(decision).not.toBe("pending");
-            }
-          }
-        }
-      }
-    });
-
-    test("is always legacy, whatever the flag, the probes or a stored connection say", () => {
-      for (const flagEnabled of FLAGS) {
-        for (const runtime of ["cms", "sandbox"] as const) {
-          for (const githubSite of SITES) {
-            for (const sandboxSite of SANDBOX_SITES) {
-              for (const hasServeConnection of [true, false]) {
-                expect(
-                  selectContentBackend({
-                    ...v7,
-                    flagEnabled,
-                    runtime,
-                    githubSite,
-                    sandboxSite,
-                    hasServeConnection,
-                  }),
-                ).toBe("legacy");
-              }
-            }
+              }),
+            ).toBe("legacy");
           }
         }
       }
@@ -77,54 +48,42 @@ describe("selectContentBackend", () => {
     });
 
     test("runs no probe at all", () => {
-      for (const flagEnabled of FLAGS) {
-        for (const runtime of ["cms", "sandbox"] as const) {
-          for (const hasServeConnection of [true, false]) {
-            expect(
-              contentProbesEnabled({
-                isV8Project: false,
-                flagEnabled,
-                hasServeConnection,
-                runtime,
-                workingTreeReady: true,
-              }),
-            ).toEqual({ github: false, sandbox: false });
-          }
+      for (const runtime of ["cms", "sandbox"] as const) {
+        for (const hasServeConnection of [true, false]) {
+          expect(
+            contentProbesEnabled({
+              isV8Project: false,
+              hasServeConnection,
+              runtime,
+              workingTreeReady: true,
+            }),
+          ).toEqual({ github: false, sandbox: false });
         }
       }
     });
   });
 
   describe("v8 project (marker)", () => {
-    test("Localhost (a connected deco serve) wins over everything", () => {
-      for (const flagEnabled of FLAGS) {
-        expect(
-          selectContentBackend({
-            ...v8,
-            flagEnabled,
-            hasServeConnection: true,
-            runtime: "sandbox",
-            githubSite: "v7",
-          }),
-        ).toBe("protocol-local");
-      }
+    test("Localhost (a connected deco serve) wins; its own schema decides", () => {
+      expect(
+        selectContentBackend({
+          ...v8,
+          hasServeConnection: true,
+          runtime: "sandbox",
+          githubSite: "v7",
+        }),
+      ).toBe("protocol-local");
     });
 
-    test("a cms session waits for the flag and the GitHub probe (the hosted draft)", () => {
-      expect(selectContentBackend({ ...v8, flagEnabled: undefined })).toBe(
-        "pending",
-      );
+    test("a cms session waits for the GitHub probe (the hosted draft)", () => {
       expect(selectContentBackend({ ...v8, githubSite: "loading" })).toBe(
         "pending",
       );
       expect(selectContentBackend(v8)).toBe("protocol-github");
     });
 
-    test("a v7 answer or the flag off fall back to legacy", () => {
+    test("a v7 answer falls back to legacy", () => {
       expect(selectContentBackend({ ...v8, githubSite: "v7" })).toBe("legacy");
-      expect(selectContentBackend({ ...v8, flagEnabled: false })).toBe(
-        "legacy",
-      );
     });
 
     test("a failed probe is unavailable (retried), never the v7 editor", () => {
@@ -164,10 +123,9 @@ describe("selectContentBackend", () => {
       );
     });
 
-    test("probes only behind the flag, and not while Localhost is connected", () => {
+    test("probes in every org, but not while Localhost is connected", () => {
       const input = {
         isV8Project: true,
-        flagEnabled: true,
         hasServeConnection: false,
         runtime: "cms" as const,
         workingTreeReady: false,
@@ -183,64 +141,35 @@ describe("selectContentBackend", () => {
           workingTreeReady: true,
         }),
       ).toEqual({ github: false, sandbox: true });
-      for (const flagEnabled of [false, undefined]) {
-        expect(contentProbesEnabled({ ...input, flagEnabled })).toEqual({
-          github: false,
-          sandbox: false,
-        });
-      }
       expect(
         contentProbesEnabled({ ...input, hasServeConnection: true }),
       ).toEqual({ github: false, sandbox: false });
     });
   });
 
+  test("the account-less /site-editor: only its deco serve, whose schema decides", () => {
+    // No marker there (no project to mark): the connection is the backend.
+    expect(
+      selectContentBackend({
+        ...v7,
+        hasServeConnection: true,
+      }),
+    ).toBe("protocol-local");
+  });
+
   test("without a project (SEO, blog forms) it is legacy right away", () => {
     for (const isV8Project of [true, false]) {
-      for (const flagEnabled of FLAGS) {
+      for (const hasServeConnection of [true, false]) {
         expect(
           selectContentBackend({
             ...v8,
             isV8Project,
+            hasServeConnection,
             hasProject: false,
-            flagEnabled,
             githubSite: "loading",
           }),
         ).toBe("legacy");
       }
-    }
-  });
-});
-
-describe("hostedCmsAvailable", () => {
-  test("Versions and Site tokens: v8 sites behind the flag; never v7, never waiting", () => {
-    expect(hostedCmsAvailable(true, true)).toBe(true);
-    expect(hostedCmsAvailable(false, true)).toBe(false);
-    expect(hostedCmsAvailable(undefined, true)).toBeUndefined();
-    for (const flag of [true, false, undefined]) {
-      expect(hostedCmsAvailable(flag, false)).toBe(false);
-    }
-  });
-});
-
-describe("isV8Schema", () => {
-  test('only "blocksMajor": 8 is v8', () => {
-    expect(isV8Schema({ major: 1, blocksMajor: 8 })).toBe(true);
-  });
-
-  test("a missing field or any other value is v7", () => {
-    for (const schema of [
-      { major: 1 },
-      { major: 1, blocksMajor: 7 },
-      { major: 1, blocksMajor: "8" },
-      { major: 1, blocksMajor: null },
-      { major: 1, blocksMajor: 9 },
-      null,
-      undefined,
-      "8",
-      8,
-    ]) {
-      expect(isV8Schema(schema)).toBe(false);
     }
   });
 });

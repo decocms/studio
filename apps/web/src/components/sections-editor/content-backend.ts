@@ -29,7 +29,7 @@ export interface ProtocolBackend {
 }
 
 export type ContentBackend =
-  /** Not decided yet (v8 projects only): the flag or the probe is loading. */
+  /** Not decided yet (v8 projects only): the probe is loading. */
   | { kind: "pending" }
   | { kind: "legacy" }
   | ProtocolBackend
@@ -74,19 +74,6 @@ export function newBlocksEditorEnabled(input: {
 }
 
 /**
- * Whether the project gets the hosted Deco CMS's own features (Versions, Site
- * tokens): a Blocks v8 site in an org with the content protocol. A v7 site
- * never does, and never waits for the flag; `undefined` only while a v8
- * site's flag loads.
- */
-export function hostedCmsAvailable(
-  flag: boolean | undefined,
-  isV8Project: boolean,
-): boolean | undefined {
-  return isV8Project ? flag : false;
-}
-
-/**
  * Whether a session's draft lives on the hosted Deco CMS: a Blocks v8 site
  * whose editor reads and writes through Studio's GitHub backend (or is still
  * waiting for it). Nothing boots for such a session, and its draft exists
@@ -117,28 +104,6 @@ export function servePreviewUrl(backend: ContentBackend): string | null {
   return url && isLoopbackEndpoint(url) ? url : null;
 }
 
-/**
- * The Blocks major a v8 schema declares: `deco schema` writes a top-level
- * `"blocksMajor": 8` into `.deco/schema.gen.json` (`BLOCKS_MAJOR` in
- * `@decocms/blocks/protocol`, which `deco check` requires). Kept here rather
- * than imported because the pinned `@decocms/blocks` predates the constant.
- */
-const V8_BLOCKS_MAJOR = 8;
-
-/**
- * Whether a committed schema is a Blocks v8 one: only `blocksMajor === 8`
- * says so. The file name doesn't (v7 sites commit `meta.gen.json`, and either
- * name may lack the field); a missing field, any other value, or anything
- * that isn't a schema object is v7.
- */
-export function isV8Schema(schema: unknown): boolean {
-  return (
-    typeof schema === "object" &&
-    schema !== null &&
-    (schema as { blocksMajor?: unknown }).blocksMajor === V8_BLOCKS_MAJOR
-  );
-}
-
 export type BackendDecision =
   | "pending"
   | "legacy"
@@ -151,22 +116,25 @@ export type BackendDecision =
 /**
  * Which backend a project's editor uses.
  *
- * `isV8Project` is the server's Blocks v8 marker (`isBlocksV8Project`; the
- * account-less `/site-editor` counts as v8, since only a v8 `deco serve`
- * answers it). It decides everything:
+ * Every v8 answer here comes from `isV8Schema` (`@decocms/shared/blocks-major`)
+ * on some schema: `isV8Project` is the server's cached answer for main (the
+ * project's `blocksMajor` marker, `isBlocksV8Project`), and each probe applies
+ * it to the schema its backend serves.
  *
+ * - **A connected `deco serve`** (Localhost, or the account-less
+ *   `/site-editor`): `protocol-local`; the probe of its own schema decides
+ *   whether it can be edited (`localServeBackend`). A project has one only
+ *   when it is v8 (`useDecoServeConnection`).
  * - **v7 project (no marker):** legacy, always and right away, as on main:
- *   never `pending`, no probe (see `contentProbesEnabled`), a stored
- *   `deco serve` connection is ignored, and it never switches. A v7 → v8
- *   upgrade gets the marker once it reaches main.
+ *   never `pending`, no probe (see `contentProbesEnabled`), and it never
+ *   switches. A v7 → v8 upgrade gets the marker once it reaches main.
  * - **v8 project:** the editor waits (`pending`) for its backend's answer and
- *   never shows the v7 editor first. A connected `deco serve` (Localhost)
- *   wins; a `cms` session uses the GitHub backend (the hosted draft); a
- *   sandbox session uses its daemon's content protocol once the working tree
- *   is there. A tunnel saved by the v7 Advanced → Local is ignored. Only a
- *   confirmed v7 answer (a daemon without the protocol, a v7 working tree or
- *   committed schema) or the org flag off falls back to legacy; a failed
- *   probe is `unavailable` while it keeps retrying.
+ *   never shows the v7 editor first. A `cms` session uses the GitHub backend
+ *   (the hosted draft); a sandbox session uses its daemon's content protocol
+ *   once the working tree is there. A tunnel saved by the v7 Advanced → Local
+ *   is ignored. Only a confirmed v7 answer (a daemon without the protocol, a
+ *   v7 working tree or committed schema) falls back to legacy; a failed probe
+ *   is `unavailable` while it keeps retrying.
  *
  * Outside a project (forms with no project id, such as SEO and the blog
  * registry) there is no site to probe: legacy.
@@ -174,10 +142,8 @@ export type BackendDecision =
 export function selectContentBackend(input: {
   /** Whether there is a project to probe (a virtual MCP id). */
   hasProject: boolean;
-  /** The server's Blocks v8 marker (or the account-less `/site-editor`). */
+  /** The server's cached answer for main's schema (the project's marker). */
   isV8Project: boolean;
-  /** The org flag; `undefined` while it loads. */
-  flagEnabled: boolean | undefined;
   hasServeConnection: boolean;
   runtime: "cms" | "sandbox";
   /** The GitHub probe: is the branch's committed schema a v8 one? */
@@ -188,10 +154,9 @@ export function selectContentBackend(input: {
    */
   sandboxSite?: "v8" | "v7" | "loading" | "error" | "unavailable";
 }): BackendDecision {
-  if (!input.hasProject || !input.isV8Project) return "legacy";
+  if (!input.hasProject) return "legacy";
   if (input.hasServeConnection) return "protocol-local";
-  if (input.flagEnabled === undefined) return "pending";
-  if (!input.flagEnabled) return "legacy";
+  if (!input.isV8Project) return "legacy";
   const sandbox = input.runtime === "sandbox";
   const site = sandbox ? input.sandboxSite : input.githubSite;
   if (site === "v8") return sandbox ? "protocol-sandbox" : "protocol-github";
@@ -204,21 +169,17 @@ export function selectContentBackend(input: {
 }
 
 /**
- * Which background probes `useContentBackend` runs. Only a v8 project in an
- * org with the content protocol probes; a v7 project makes no request at
- * all, as on main. Localhost (a connected `deco serve`) needs no probe here.
+ * Which background probes `useContentBackend` runs. Only a v8 project probes;
+ * a v7 project makes no request at all, as on main. Localhost (a connected
+ * `deco serve`) needs no probe here.
  */
 export function contentProbesEnabled(input: {
   isV8Project: boolean;
-  flagEnabled: boolean | undefined;
   hasServeConnection: boolean;
   runtime: "cms" | "sandbox";
   workingTreeReady: boolean;
 }): { github: boolean; sandbox: boolean } {
-  const base =
-    input.isV8Project &&
-    input.flagEnabled === true &&
-    !input.hasServeConnection;
+  const base = input.isV8Project && !input.hasServeConnection;
   return {
     github: base && input.runtime === "cms",
     sandbox: base && input.runtime === "sandbox" && input.workingTreeReady,

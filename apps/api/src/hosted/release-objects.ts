@@ -18,6 +18,7 @@ import {
   resolveSpellings,
   sha256Hex,
 } from "@decocms/blocks/protocol";
+import { isV8SchemaText, schemaGenPath } from "@decocms/shared/blocks-major";
 import type { RepoContentClient } from "@/git-providers";
 import {
   blockEntriesInTree,
@@ -47,29 +48,10 @@ export interface RevisionObject {
   blocks: Record<string, Record<string, unknown>>;
 }
 
-function schemaPath(packagePath: string | null): string {
-  return packagePath
-    ? `${packagePath}/.deco/schema.gen.json`
-    : ".deco/schema.gen.json";
-}
-
 /** The schemaHash of schema text, or null when it isn't a v8 schema. */
 export async function schemaHashOfText(text: string): Promise<string | null> {
-  let schema: unknown;
-  try {
-    schema = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  if (
-    typeof schema !== "object" ||
-    schema === null ||
-    Array.isArray(schema) ||
-    (schema as { blocksMajor?: unknown }).blocksMajor !== 8
-  ) {
-    return null;
-  }
-  return sha256Hex(canonicalJson(schema));
+  if (!isV8SchemaText(text)) return null;
+  return sha256Hex(canonicalJson(JSON.parse(text)));
 }
 
 /** The schemaHash at `sha`; throws {@link NotV8Site} when there is none. */
@@ -78,7 +60,7 @@ export async function schemaHashAt(
   packagePath: string | null,
   sha: string,
 ): Promise<string> {
-  const text = await client.readFileAtRef(sha, schemaPath(packagePath));
+  const text = await client.readFileAtRef(sha, schemaGenPath(packagePath));
   const hash = text === null ? null : await schemaHashOfText(text);
   if (!hash) throw new NotV8Site();
   return hash;

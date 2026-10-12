@@ -1,10 +1,10 @@
 import {
   defaultThreadRuntime,
-  isBlocksV8Project,
   parseThreadRuntime,
   readThreadRuntime,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useVirtualMCP } from "@/sdk";

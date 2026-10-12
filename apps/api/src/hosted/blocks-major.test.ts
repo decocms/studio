@@ -84,19 +84,16 @@ describe("syncBlocksMajorMarker", () => {
 });
 
 describe("markBlocksV8OnCreate", () => {
-  const flagOn = async () => ({ site_editor_content_protocol: true });
-
-  it("marks a project whose repo's main is v8", async () => {
+  it("marks a project whose repo's main is v8, in any org", async () => {
     const { projects, patches } = recordingStorage();
     const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
-    await markBlocksV8OnCreate({
+    const isV8 = await markBlocksV8OnCreate({
       projects,
       project: project({ siteSlug: "acme" }),
       by: "user",
-      flags: flagOn,
-      hostedSite: async () => "acme",
       client: async () => git.client,
     });
+    expect(isV8).toBe(true);
     expect(patches.map((p) => p.set)).toEqual([{ blocksMajor: 8 }]);
   });
 
@@ -107,8 +104,6 @@ describe("markBlocksV8OnCreate", () => {
       projects,
       project: project({ runtime: { path: "/site/" } }),
       by: "user",
-      flags: flagOn,
-      hostedSite: async () => "acme",
       client: async () => git.client,
     });
     expect(patches).toHaveLength(1);
@@ -116,64 +111,48 @@ describe("markBlocksV8OnCreate", () => {
 
   it("never marks a v7 site", async () => {
     const { projects, patches } = recordingStorage();
+    const v7Repos: Record<string, string>[] = [
+      { ".deco/schema.gen.json": V7_SCHEMA },
+      { ".deco/schema.gen.json": '{"blocksMajor":7}' },
+      // Only `.deco/schema.gen.json` is read, never `meta.gen.json`.
+      { ".deco/meta.gen.json": SCHEMA_TEXT },
+      { ".deco/schema.gen.json": "{" },
+      {},
+    ];
+    for (const files of v7Repos) {
+      const git = fakeRepo(files);
+      const isV8 = await markBlocksV8OnCreate({
+        projects,
+        project: project({}),
+        by: "user",
+        client: async () => git.client,
+      });
+      expect(isV8).toBe(false);
+    }
+    expect(patches).toEqual([]);
+  });
+
+  it("clears the marker when main is back on v7", async () => {
+    const { projects, patches } = recordingStorage();
     const git = fakeRepo({ ".deco/schema.gen.json": V7_SCHEMA });
     await markBlocksV8OnCreate({
       projects,
-      project: project({}),
+      project: project({ blocksMajor: 8 }),
       by: "user",
-      flags: flagOn,
-      hostedSite: async () => "acme",
       client: async () => git.client,
     });
-    expect(patches).toEqual([]);
-  });
-
-  it("does nothing, not even a read, when the org flag is off", async () => {
-    const { projects, patches } = recordingStorage();
-    let read = false;
-    await markBlocksV8OnCreate({
-      projects,
-      project: project({}),
-      by: "user",
-      flags: async () => ({}),
-      hostedSite: async () => "acme",
-      client: async () => {
-        read = true;
-        return fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT }).client;
-      },
-    });
-    expect(read).toBe(false);
-    expect(patches).toEqual([]);
-  });
-
-  it("does nothing, not even a read, without a hosted site", async () => {
-    const { projects, patches } = recordingStorage();
-    let read = false;
-    await markBlocksV8OnCreate({
-      projects,
-      project: project({}),
-      by: "user",
-      flags: flagOn,
-      hostedSite: async () => null,
-      client: async () => {
-        read = true;
-        return fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT }).client;
-      },
-    });
-    expect(read).toBe(false);
-    expect(patches).toEqual([]);
+    expect(patches.map((p) => p.unset)).toEqual([["blocksMajor"]]);
   });
 
   it("does nothing for a project without a repository", async () => {
     const { projects, patches } = recordingStorage();
-    await markBlocksV8OnCreate({
+    const isV8 = await markBlocksV8OnCreate({
       projects,
       project: project({}),
       by: "user",
-      flags: flagOn,
-      hostedSite: async () => "acme",
       client: async () => null,
     });
+    expect(isV8).toBeNull();
     expect(patches).toEqual([]);
   });
 
@@ -184,14 +163,37 @@ describe("markBlocksV8OnCreate", () => {
         projects,
         project: project({}),
         by: "user",
-        flags: flagOn,
-        hostedSite: async () => "acme",
         client: async () => {
           throw new Error("no credential");
         },
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
     expect(patches).toEqual([]);
+  });
+
+  it("stops waiting after the timeout; the answer still lands", async () => {
+    const { projects, patches } = recordingStorage();
+    const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const isV8 = await markBlocksV8OnCreate(
+      {
+        projects,
+        project: project({}),
+        by: "user",
+        client: async () => {
+          await gate;
+          return git.client;
+        },
+      },
+      10,
+    );
+    expect(isV8).toBeNull();
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(patches.map((p) => p.set)).toEqual([{ blocksMajor: 8 }]);
   });
 });
 

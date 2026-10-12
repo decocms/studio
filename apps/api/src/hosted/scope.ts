@@ -1,17 +1,19 @@
 /**
  * Which projects get the hosted Deco CMS, and the pieces a hosted request
- * needs. Hosted is for Blocks v8 sites on GitHub only (main's
- * `.deco/schema.gen.json` has `"blocksMajor": 8`), behind the
- * `site_editor_content_protocol` org flag; v7 sites never reach it.
+ * needs. Hosted is for Blocks v8 sites on GitHub only: main's schema passes
+ * `isV8Schema` (`@decocms/shared/blocks-major`), whatever the org. v7 sites
+ * never reach it.
  */
 
+import { isV8SchemaText, schemaGenPath } from "@decocms/shared/blocks-major";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
-import type { RepoContentClient } from "@/git-providers";
+import { resolveBlockContents } from "@/decofile/read-decofile";
+import { type RepoContentClient, requireBranchHead } from "@/git-providers";
+import { createTtlLruCache } from "@/lib/ttl-lru-cache";
 import type { KVStorage } from "@/storage/kv";
 import type { OrgSiteStoragePort } from "@/storage/ports";
 import { deliveryStore } from "./delivery-store";
 import { createDraftStore, type DraftStore } from "./draft-store";
-import { schemaHashOfText } from "./release-objects";
 
 /**
  * The site id a project names in `metadata.siteSlug` (what it was created
@@ -47,15 +49,38 @@ export function hostedDrafts(kv: KVStorage): DraftStore | null {
   return store ? createDraftStore({ kv, store }) : null;
 }
 
-/** Whether main's committed schema is a Blocks v8 one. */
+/**
+ * `isV8Schema`'s answer per schema blob. A blob is immutable, so an answer
+ * never goes stale; keyed by repository too, so tenants never share entries.
+ */
+const v8ByBlob = createTtlLruCache<boolean>({
+  ttlMs: 24 * 60 * 60_000,
+  maxSize: 5_000,
+});
+
+/**
+ * Whether main's `.deco/schema.gen.json` is a Blocks v8 one (`isV8Schema`).
+ * Cheap enough for every hosted request: main's head is an ETag-cached ref
+ * read (an unchanged head is a free 304), the schema's entry comes from that
+ * commit's cached tree, and the answer is remembered per blob, so the schema
+ * itself is downloaded (through the blob cache) only when it changes.
+ */
 export async function mainIsV8(
   client: RepoContentClient,
   packagePath: string | null,
   mainBranch: string,
 ): Promise<boolean> {
-  const path = packagePath
-    ? `${packagePath}/.deco/schema.gen.json`
-    : ".deco/schema.gen.json";
-  const text = await client.readFileAtRef(mainBranch, path);
-  return text !== null && (await schemaHashOfText(text)) !== null;
+  const path = schemaGenPath(packagePath);
+  const head = await requireBranchHead(client, mainBranch);
+  const entry = (await client.getEntriesAtPaths(head, [path])).get(path);
+  if (entry?.type !== "blob") return false;
+  const key = `${client.repo.provider}:${client.repo.host}/${client.repo.path}@${entry.sha}`;
+  const cached = v8ByBlob.get(key);
+  if (cached !== undefined) return cached;
+  const [file] = await resolveBlockContents(client, [
+    { stem: path, sha: entry.sha },
+  ]);
+  const isV8 = isV8SchemaText(file?.content);
+  v8ByBlob.set(key, isV8);
+  return isV8;
 }

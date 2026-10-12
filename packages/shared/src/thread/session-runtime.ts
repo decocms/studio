@@ -24,6 +24,7 @@
  */
 
 import { resolvePreviewServerUrl } from "../deco-site-production-url.ts";
+import { isBlocksV8Project } from "../blocks-major.ts";
 
 /** How a session reads and writes the project: sandbox-less CMS over the
  *  decofile API, or a sandbox pod with a daemon and dev server. */
@@ -42,25 +43,10 @@ export interface VmcpRuntimeMetadata {
   previewServerUrl?: string | null;
   productionUrl?: string | null;
   fastPreview?: boolean | null;
-  /** Server-managed: `8` when main is a Blocks v8 site (see
-   *  {@link isBlocksV8Project}). Absent on every v7 site. */
+  /** Server-managed: `8` when main's schema is a Blocks v8 one (see
+   *  `isBlocksV8Project` in `@decocms/shared/blocks-major`). Absent on every
+   *  v7 site. */
   blocksMajor?: number | null;
-}
-
-/** The project metadata key the server writes for a Blocks v8 site. */
-export const BLOCKS_MAJOR_METADATA_KEY = "blocksMajor";
-
-/**
- * Whether the project is a Blocks v8 site: the server-managed
- * `metadata.blocksMajor` marker, written only when the org has the content
- * protocol and main's `.deco/schema.gen.json` is v8 (and cleared when main is
- * no longer v8). A v7 site never has it, so every rule keyed on this is a
- * no-op for v7.
- */
-export function isBlocksV8Project(
-  vmcpMetadata: object | null | undefined,
-): boolean {
-  return (vmcpMetadata as { blocksMajor?: unknown } | null)?.blocksMajor === 8;
 }
 
 /**

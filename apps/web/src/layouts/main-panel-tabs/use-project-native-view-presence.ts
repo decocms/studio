@@ -2,14 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
-import {
-  useControlPlaneViews,
-  useOrgFlagState,
-} from "@/hooks/use-organization-settings";
+import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
-import { hostedCmsAvailable } from "@/components/sections-editor/content-backend";
-import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { useProjectContext } from "@/sdk";
 import {
   resolveAgentSiteSlug,
@@ -21,7 +17,6 @@ export interface ProjectNativeViewPresenceResult {
   presence: ProjectNativeViewPresence;
   assetsPending: boolean;
   siteAccessPending: boolean;
-  releasesPending: boolean;
 }
 
 /**
@@ -37,12 +32,9 @@ export function useProjectNativeViewPresence(
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
-  // The hosted Deco CMS: Blocks v8 sites (the server's marker) behind the
-  // content-protocol flag. A v7 site never gets Versions, nor waits on it.
-  const hostedCms = hostedCmsAvailable(
-    useOrgFlagState("site_editor_content_protocol"),
-    isBlocksV8Project(project?.metadata),
-  );
+  // The hosted Deco CMS: Blocks v8 sites (the server's cached `isV8Schema`
+  // answer for main). A v7 site never gets Versions.
+  const hostedCms = isBlocksV8Project(project?.metadata);
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
   const monitorEnabled =
@@ -68,7 +60,7 @@ export function useProjectNativeViewPresence(
   return {
     presence: {
       assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
-      releases: hostedCms === true && !!project?.metadata?.siteSlug,
+      releases: hostedCms && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
@@ -76,7 +68,6 @@ export function useProjectNativeViewPresence(
       experiments: controlPlaneViews.experiments,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
-    releasesPending: hostedCms === undefined,
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending:

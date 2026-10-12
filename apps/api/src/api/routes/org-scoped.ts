@@ -45,6 +45,7 @@ import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
 import { createHostedRoutes } from "./hosted";
+import { createBlocksMajorRoutes } from "./blocks-major";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -122,6 +123,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
   app.route("/hosted", createHostedRoutes()); // /api/:org/hosted/:virtualMcpId/* — hosted Deco CMS (v8) releases and site tokens
+  app.route("/blocks-major", createBlocksMajorRoutes()); // /api/:org/blocks-major/:virtualMcpId — refresh the project's Blocks v8 marker
   app.route("/", createHomeNextActionsRoutes());
   app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites

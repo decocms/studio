@@ -82,9 +82,7 @@ import {
 import { useProjectSettingsSection } from "./settings/use-settings-section";
 import { SiteTokenSection } from "./settings/site-token-section";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
-import { hostedCmsAvailable } from "@/components/sections-editor/content-backend";
-import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
-import { useOrgFlagState } from "@/hooks/use-organization-settings";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
@@ -885,11 +883,7 @@ function VirtualMcpDetailViewWithData({
   const { section } = useProjectSettingsSection();
   // Site tokens are for Blocks v8 sites only (hosted Deco CMS); a v7 site
   // never shows them.
-  const hostedCms =
-    hostedCmsAvailable(
-      useOrgFlagState("site_editor_content_protocol"),
-      isBlocksV8Project(virtualMcp.metadata),
-    ) === true;
+  const hostedCms = isBlocksV8Project(virtualMcp.metadata);
   const views = useProjectViews({
     virtualMcpId: virtualMcp.id,
     form,
