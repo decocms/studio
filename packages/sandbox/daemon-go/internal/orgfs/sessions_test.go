@@ -98,12 +98,12 @@ func writeLocalSession(t *testing.T, local, threadId, sessionId, transcript stri
 func TestSessionSurvivesThePod(t *testing.T) {
 	l, local := sessionFixture(t)
 	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}`)
-	l.SaveSession("thread1")
+	l.SaveSession("claude-code", "thread1")
 
 	// A brand-new pod: same org volume, empty local disk.
 	next := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", next)
-	l.RestoreSession("thread1")
+	l.RestoreSession("claude-code", "thread1")
 
 	id, err := os.ReadFile(filepath.Join(next, localSessionDir, "thread1"))
 	if err != nil {
@@ -126,10 +126,10 @@ func TestSessionSurvivesThePod(t *testing.T) {
 func TestRestoreDoesNotClobberALiveSession(t *testing.T) {
 	l, local := sessionFixture(t)
 	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}`)
-	l.SaveSession("thread1")
+	l.SaveSession("claude-code", "thread1")
 
 	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}{"turn":2}`)
-	l.RestoreSession("thread1")
+	l.RestoreSession("claude-code", "thread1")
 
 	body, _ := os.ReadFile(filepath.Join(local, "projects", "-app-repo", "sess-abc.jsonl"))
 	if string(body) != `{"turn":1}{"turn":2}` {
@@ -148,9 +148,9 @@ func TestSaveWritesNoIdWithoutATranscript(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(idDir, "thread1"), []byte("sess-abc"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	l.SaveSession("thread1")
+	l.SaveSession("claude-code", "thread1")
 
-	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"), "thread1")
 	if _, err := os.Stat(filepath.Join(store, sessionIdName)); err == nil {
 		t.Fatal("stored an id with no transcript")
 	}
@@ -160,13 +160,13 @@ func TestSaveWritesNoIdWithoutATranscript(t *testing.T) {
 func TestSaveWithNothingLocalKeepsTheStoredSession(t *testing.T) {
 	l, local := sessionFixture(t)
 	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}`)
-	l.SaveSession("thread1")
+	l.SaveSession("claude-code", "thread1")
 
 	empty := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", empty)
-	l.SaveSession("thread1")
+	l.SaveSession("claude-code", "thread1")
 
-	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"), "thread1")
 	id, err := os.ReadFile(filepath.Join(store, sessionIdName))
 	if err != nil || string(id) != "sess-abc" {
 		t.Fatalf("stored session lost: id=%q err=%v", id, err)
@@ -181,10 +181,10 @@ func TestSessionIsANoOpWithoutTheHomeMount(t *testing.T) {
 	l := &Links{AppRoot: t.TempDir()} // no StatusPath/ConfigPath: org-fs absent
 
 	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}`)
-	l.SaveSession("thread1")
-	l.RestoreSession("thread1")
+	l.SaveSession("claude-code", "thread1")
+	l.RestoreSession("claude-code", "thread1")
 
-	if _, err := os.Stat(filepath.Join(l.AppRoot, "org", "home", sessionsDirName)); err == nil {
+	if _, err := os.Stat(filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"))); err == nil {
 		t.Fatal("wrote a session store with no mount")
 	}
 }
@@ -194,13 +194,32 @@ func TestSessionIsANoOpWithoutTheHomeMount(t *testing.T) {
 func TestSessionRejectsATraversingThreadId(t *testing.T) {
 	l, local := sessionFixture(t)
 	writeLocalSession(t, local, "../escape", "sess-abc", `{"turn":1}`)
-	l.SaveSession("../escape")
+	l.SaveSession("claude-code", "../escape")
 
-	if _, err := os.Stat(filepath.Join(l.AppRoot, "org", sessionsDirName)); err == nil {
+	if _, err := os.Stat(filepath.Join(l.AppRoot, "org", sessionsDir("claude-code"))); err == nil {
 		t.Fatal("a traversing thread id wrote outside the store")
 	}
-	if _, ok := l.sessionStore("../escape"); ok {
+	if _, ok := l.sessionStore("claude-code", "../escape"); ok {
 		t.Fatal("resolved a store for a traversing thread id")
+	}
+}
+
+// claude-code keeps `claude-sessions` so existing sessions resume; others get their own.
+func TestSessionStoreIsPerHarness(t *testing.T) {
+	l, _ := sessionFixture(t)
+	home := filepath.Join(l.AppRoot, "org", "home")
+	for harness, want := range map[string]string{
+		"claude-code": filepath.Join(home, "claude-sessions", "thread1"),
+		"codex":       filepath.Join(home, "codex-sessions", "thread1"),
+	} {
+		if got, ok := l.sessionStore(harness, "thread1"); !ok || got != want {
+			t.Errorf("%s: store %q (ok=%v), want %q", harness, got, ok, want)
+		}
+	}
+	for _, harness := range []string{"", "../escape"} {
+		if _, ok := l.sessionStore(harness, "thread1"); ok {
+			t.Errorf("resolved a store for harness %q", harness)
+		}
 	}
 }
 
@@ -233,18 +252,18 @@ func mustReturn(t *testing.T, what string, fn func()) {
 
 func TestRestoreGivesUpOnAWedgedIdRead(t *testing.T) {
 	l, _ := sessionFixture(t)
-	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"), "thread1")
 	wedged(t, filepath.Join(store, sessionIdName))
-	mustReturn(t, "RestoreSession", func() { l.RestoreSession("thread1") })
+	mustReturn(t, "RestoreSession", func() { l.RestoreSession("claude-code", "thread1") })
 }
 
 func TestSaveGivesUpOnAWedgedStore(t *testing.T) {
 	l, local := sessionFixture(t)
 	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}`)
-	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"), "thread1")
 	// The staging dir is a FIFO, so the copy's first MkdirAll/open blocks.
 	wedged(t, filepath.Join(store, projectsStaging))
-	mustReturn(t, "SaveSession", func() { l.SaveSession("thread1") })
+	mustReturn(t, "SaveSession", func() { l.SaveSession("claude-code", "thread1") })
 }
 
 // The invariant the store's id is supposed to carry: it names a transcript that
@@ -254,14 +273,14 @@ func TestSaveGivesUpOnAWedgedStore(t *testing.T) {
 // FAILS the run ("No conversation found with session ID").
 func TestRestoreWritesNoIdWhenTheTranscriptDidNotLand(t *testing.T) {
 	l, local := sessionFixture(t)
-	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"), "thread1")
 	if err := os.MkdirAll(filepath.Join(store, projectsSubdir, "-app-repo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(store, sessionIdName), []byte("sess-ghost"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	l.RestoreSession("thread1")
+	l.RestoreSession("claude-code", "thread1")
 	if id, err := os.ReadFile(filepath.Join(local, localSessionDir, "thread1")); err == nil {
 		t.Fatalf("restored id %q with no transcript behind it", id)
 	}
@@ -275,7 +294,7 @@ func TestRestoreDoesNotOverwriteAnotherThreadsTranscript(t *testing.T) {
 	// Thread B's saved session, stored while its pod also held an older A.
 	writeLocalSession(t, local, "threadB", "sess-b", `{"b":1}`)
 	writeLocalSession(t, local, "threadA", "sess-a", `{"a":1}`)
-	l.SaveSession("threadB")
+	l.SaveSession("claude-code", "threadB")
 
 	// A newer pod: A has run further, B has never run here.
 	if err := os.WriteFile(
@@ -287,7 +306,7 @@ func TestRestoreDoesNotOverwriteAnotherThreadsTranscript(t *testing.T) {
 	if err := os.Remove(filepath.Join(local, localSessionDir, "threadB")); err != nil {
 		t.Fatal(err)
 	}
-	l.RestoreSession("threadB")
+	l.RestoreSession("claude-code", "threadB")
 
 	if body, _ := os.ReadFile(filepath.Join(local, "projects", "-app-repo", "sess-a.jsonl")); string(body) != `{"a":1}{"a":2}` {
 		t.Fatalf("thread A's live transcript was rewound: %q", body)
@@ -308,15 +327,15 @@ func TestAWedgedTransferDoesNotPoisonTheNextOne(t *testing.T) {
 	sessionIOBudget = 2 * time.Second
 	t.Cleanup(func() { sessionIOBudget = prev })
 
-	sessions := filepath.Join(l.AppRoot, "org", "home", sessionsDirName)
+	sessions := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"))
 	wedged(t, filepath.Join(sessions, "wedged-thread", sessionIdName))
-	l.RestoreSession("wedged-thread") // abandoned at the budget, goroutine parked
+	l.RestoreSession("claude-code", "wedged-thread") // abandoned at the budget, goroutine parked
 
 	writeLocalSession(t, local, "good-thread", "sess-good", `{"turn":1}`)
-	l.SaveSession("good-thread")
+	l.SaveSession("claude-code", "good-thread")
 	next := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", next)
-	l.RestoreSession("good-thread")
+	l.RestoreSession("claude-code", "good-thread")
 
 	id, err := os.ReadFile(filepath.Join(next, localSessionDir, "good-thread"))
 	if err != nil || string(id) != "sess-good" {
@@ -336,12 +355,12 @@ func TestASupersededSaveKeepsTheNewerSession(t *testing.T) {
 	// finish. The first flight's swap must decline.
 	gen := saveGen.Add(1)
 	writeLocalSession(t, local, "thread1", "sess-new", `{"turn":1}{"turn":2}`)
-	l.SaveSession("thread1")
+	l.SaveSession("claude-code", "thread1")
 	if saveGen.Load() == gen {
 		t.Fatal("the later save did not claim a newer generation")
 	}
 
-	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDir("claude-code"), "thread1")
 	id, err := os.ReadFile(filepath.Join(store, sessionIdName))
 	if err != nil {
 		t.Fatalf("stored id unreadable: %v", err)
@@ -371,11 +390,11 @@ func TestSessionPointerMatchesTheHarnessSpelling(t *testing.T) {
 		t.Fatalf("localSessionName(%q) = %q, want thread_1",
 			threadId, localSessionName(threadId))
 	}
-	l.SaveSession(threadId)
+	l.SaveSession("claude-code", threadId)
 
 	next := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", next)
-	l.RestoreSession(threadId)
+	l.RestoreSession("claude-code", threadId)
 
 	id, err := os.ReadFile(filepath.Join(next, localSessionDir, "thread_1"))
 	if err != nil {
