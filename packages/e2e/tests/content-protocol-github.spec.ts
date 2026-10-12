@@ -786,10 +786,24 @@ test.describe("v7/v8 detection with the org flag on", () => {
   }) => {
     const preview = await startPreviewSite();
     try {
-      const { url } = await openEditor(page.request, orgSlug, preview.url, {
-        ".deco/schema.gen.json": JSON.stringify({ ...v7Meta, blocksMajor: 8 }),
-        ".deco/blocks/home.json": homePage,
-      });
+      const { url, project } = await openEditor(
+        page.request,
+        orgSlug,
+        preview.url,
+        {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...v7Meta,
+            blocksMajor: 8,
+          }),
+          ".deco/blocks/home.json": homePage,
+        },
+      );
+      // The editor's first read of main's schema writes the project's v8
+      // marker; the page picks the backend from that marker.
+      const opened = await page.request.get(
+        `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+      );
+      expect(opened.status()).toBe(200);
       await page.goto(url);
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
         timeout: 60_000,
