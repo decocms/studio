@@ -9,9 +9,11 @@
  * {@link isV8Schema}: the hosted routes, the content backends (GitHub,
  * sandbox daemon, `deco serve`), Releases and site tokens. The project's
  * `metadata.blocksMajor` marker is only that predicate's cached answer for
- * main's schema: the server writes it right after running the predicate, and
- * nothing else writes it. `blocks-major.test.ts` keeps this the only
- * detector.
+ * main's schema, kept by the server: the server writes it right after running
+ * the predicate, and nothing else writes it. The web app never decides from
+ * it: it waits for the server's fresh answer for main (`POST /blocks-major`)
+ * or reads the schema of its mode's backend. `blocks-major.test.ts` keeps
+ * this the only detector.
  */
 
 /** The Blocks major this Studio edits over the content protocol. */
@@ -51,11 +53,13 @@ export function isV8SchemaText(text: string | null | undefined): boolean {
 export const BLOCKS_MAJOR_METADATA_KEY = "blocksMajor";
 
 /**
- * Whether the project is a Blocks v8 site, read from the cached answer the
- * server keeps in `metadata.blocksMajor`: {@link isV8Schema} on main's
- * `.deco/schema.gen.json`, written by the server on create/import, whenever
- * it reads main's schema, and when the project is opened (cleared when main
- * is no longer v8). A v7 site never has it.
+ * The server's cached answer in `metadata.blocksMajor`: {@link isV8Schema} on
+ * main's `.deco/schema.gen.json`, written by the server on create/import,
+ * whenever it reads main's schema, and when the project is opened (cleared
+ * when main is no longer v8). A cache, never the decision: the hosted gates
+ * recompute main's answer (using this only to know when their last answer
+ * may be reused), a new thread's default runtime reads it, and the web app
+ * never decides from it.
  */
 export function isBlocksV8Project(
   metadata: object | null | undefined,

@@ -772,9 +772,10 @@ export const KEYS = {
   // session decofile read (GitHub backend).
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
-  // The refresh of an open project's Blocks v8 marker (once per session).
-  blocksMajorRefresh: (orgSlug: string, virtualMcpId: string) =>
-    ["blocks-major-refresh", orgSlug, virtualMcpId] as const,
+  // Main's schema answer (`isV8Schema` on main, from the server), once per
+  // project per session: what the editor waits for.
+  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
+    ["main-schema-v8", orgSlug, virtualMcpId] as const,
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,

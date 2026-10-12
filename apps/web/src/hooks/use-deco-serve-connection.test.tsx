@@ -10,18 +10,21 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 const sessionRef: { current: { user: { id: string } } | null } = {
   current: null,
 };
-const projectRef: { current: { metadata: Record<string, unknown> } | null } = {
-  current: null,
+/** Main's schema answer (`useMainSchemaV8`), never the project's marker. */
+const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
+  current: "v8",
 };
 
 mock.module("@/lib/auth-client", () => ({
   authClient: { useSession: () => ({ data: sessionRef.current }) },
 }));
-mock.module("@/sdk/hooks/use-virtual-mcp", () => ({
-  useVirtualMCP: () => projectRef.current,
+mock.module("./use-main-schema-v8", () => ({
+  useMainSchemaV8: () => mainRef.current,
 }));
 
-const { useDecoServeConnection } = await import("./use-deco-serve-connection");
+const { storedConnectionApplies, useDecoServeConnection } = await import(
+  "./use-deco-serve-connection"
+);
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -30,15 +33,13 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-const V8 = { metadata: { blocksMajor: 8 } };
-const V7 = { metadata: {} };
 const ENDPOINT = "http://localhost:4546/rpc";
 
 describe("useDecoServeConnection (the Localhost choice)", () => {
   beforeEach(() => {
     localStorage.clear();
     sessionRef.current = { user: { id: "u1" } };
-    projectRef.current = V8;
+    mainRef.current = "v8";
   });
 
   it("is remembered per user and project", async () => {
@@ -80,12 +81,52 @@ describe("useDecoServeConnection (the Localhost choice)", () => {
       LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp"),
       JSON.stringify({ endpoint: ENDPOINT }),
     );
-    projectRef.current = V7;
+    mainRef.current = "v7";
     const { result } = renderHook(() => useDecoServeConnection("vmcp"), {
       wrapper,
     });
     expect(result.current.connection).toBeNull();
+    expect(result.current.undecided).toBe(false);
     expect(result.current.lastEndpoint).toBeNull();
+  });
+
+  it("a stored choice waits for main's answer instead of reading as none", () => {
+    localStorage.setItem(
+      LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp"),
+      JSON.stringify({ endpoint: ENDPOINT }),
+    );
+    mainRef.current = "loading";
+    const { result } = renderHook(() => useDecoServeConnection("vmcp"), {
+      wrapper,
+    });
+    expect(result.current.connection).toBeNull();
+    expect(result.current.undecided).toBe(true);
+  });
+
+  it("storedConnectionApplies: v8 uses it, v7 never, loading waits", () => {
+    expect(storedConnectionApplies("v8", true)).toEqual({
+      applies: true,
+      undecided: false,
+    });
+    expect(storedConnectionApplies("v7", true)).toEqual({
+      applies: false,
+      undecided: false,
+    });
+    expect(storedConnectionApplies("loading", true)).toEqual({
+      applies: false,
+      undecided: true,
+    });
+    // Main unreadable: the choice stands; deco serve's own schema decides.
+    expect(storedConnectionApplies("error", true)).toEqual({
+      applies: true,
+      undecided: false,
+    });
+    for (const main of ["v8", "v7", "loading", "error"] as const) {
+      expect(storedConnectionApplies(main, false)).toEqual({
+        applies: false,
+        undecided: false,
+      });
+    }
   });
 
   it("writes nothing before the session loads", async () => {

@@ -67,18 +67,9 @@ import { deliveryPurge } from "@/hosted/delivery-purge";
 import { createDraftContentStorage } from "@/hosted/draft-content-storage";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
-import {
-  projectPackagePath,
-  syncBlocksMajorMarker,
-} from "@/hosted/blocks-major";
-import {
-  hostedDrafts,
-  mainIsV8,
-  ownedProjectSite,
-  SITE_NOT_OWNED,
-} from "@/hosted/scope";
+import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
+import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -293,41 +284,36 @@ function hostedScope(
 }
 
 /**
- * Whether this project is a Blocks v8 site right now. A project without the
- * marker (`isBlocksV8Project`, the cached answer for main) is v7 at no cost,
- * exactly as on main: create/import and the refresh on open keep that answer
- * current. A marked one is confirmed with `mainIsV8` before anything hosted
- * happens, and the answer is written through (clearing the marker when main
- * went back to v7).
+ * Whether this project is a Blocks v8 site right now: `isV8Schema` on main's
+ * schema (`projectMainIsV8`: at most one head read per minute per repository,
+ * so a v7 site's decofile reads stay as cheap as on main). Never the marker
+ * alone: a missing marker (repo seeded after create) or a stale one (main
+ * went back to v7) still gets main's answer, written through to the marker.
  */
-async function scopeIsV8(
+function scopeIsV8(
   c: Context<DecofileEnv>,
   client: RepoContentClient,
   mainBranch: string,
 ): Promise<boolean> {
   const scope = c.get("decofileScope");
-  if (!isBlocksV8Project(scope.metadata)) return false;
-  const isV8 = await mainIsV8(client, scope.packagePath, mainBranch);
-  if (scope.userId) {
-    await syncBlocksMajorMarker(
-      c.var.studioContext.storage.virtualMcps,
-      {
-        id: scope.virtualMcpId,
-        organizationId: scope.organizationId,
-        metadata: scope.metadata,
-      },
-      isV8,
-      scope.userId,
-    );
-  }
-  return isV8;
+  return projectMainIsV8({
+    projects: c.var.studioContext.storage.virtualMcps,
+    project: {
+      id: scope.virtualMcpId,
+      organizationId: scope.organizationId,
+      metadata: scope.metadata,
+    },
+    by: scope.userId,
+    client,
+    mainBranch,
+  });
 }
 
 /**
  * A Blocks v8 project that doesn't own its site id: its content lives on the
  * hosted CMS, which only the owning project can reach, so these routes answer
- * {@link SITE_NOT_OWNED} instead of serving the v7 decofile. Free for a v7
- * project (no marker) and for an owner.
+ * {@link SITE_NOT_OWNED} instead of serving the v7 decofile. Free for an
+ * owner and for an anonymous (draft token) read.
  */
 async function unownedV8(
   c: Context<DecofileEnv>,
@@ -335,9 +321,7 @@ async function unownedV8(
   mainBranch: () => Promise<string>,
 ): Promise<boolean> {
   const scope = c.get("decofileScope");
-  if (!scope.userId || scope.site || !isBlocksV8Project(scope.metadata)) {
-    return false;
-  }
+  if (!scope.userId || scope.site) return false;
   return scopeIsV8(c, client, await mainBranch());
 }
 
@@ -692,18 +676,25 @@ export function createDecofileRoutes(
 
   app.post("/:virtualMcpId/:branch/rpc", async (c) => {
     const scope = c.get("decofileScope");
-    // Only a Blocks v8 project (its marker) has the protocol, as the editor
-    // only probes one; the storage below still checks main's schema itself
-    // (`isV8Schema`) on every read and refuses to commit to a v7 main.
-    if (!isBlocksV8Project(scope.metadata)) {
-      return c.json({ error: "Not found" }, 404);
+    let client: RepoContentClient;
+    let mainBranch: string;
+    try {
+      client = await contentClientForScope(c);
+      mainBranch = await client.getDefaultBranch();
+      // Only a Blocks v8 site (main's schema, `isV8Schema`) has the protocol;
+      // the storage below still checks main's schema itself on every read
+      // and refuses to commit to a v7 main.
+      if (!(await scopeIsV8(c, client, mainBranch))) {
+        return c.json({ error: "Not found" }, 404);
+      }
+    } catch (err) {
+      return errorResponse(c, err);
     }
     if (scope.userId && !scope.site) return c.json(SITE_NOT_OWNED, 409);
     const hosted = hostedScope(c);
     if (!hosted) {
       return c.json({ error: "hosted delivery not configured" }, 503);
     }
-    const client = await contentClientForScope(c);
     // Per request: the storage carries this caller's repository credential.
     // The body cache is off for the same reason, and the blob cache under
     // the storage already makes repeated reads cheap.
@@ -711,7 +702,7 @@ export function createDecofileRoutes(
       createDraftContentStorage({
         client,
         packagePath: scope.packagePath,
-        mainBranch: await client.getDefaultBranch(),
+        mainBranch,
         drafts: hosted.drafts,
         ref: hosted.ref,
       }),

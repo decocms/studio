@@ -159,11 +159,13 @@ import {
   type PreviewEditingMode,
 } from "./editing-mode";
 import {
+  contentMode,
   hostedDraftSession,
   isProtocolProject,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useContentRevision } from "@/components/sections-editor/content-protocol-api";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
@@ -501,6 +503,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    */
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
+  const mainSchema = useMainSchemaV8(virtualMcpId);
   const runsSiteCode = !isProtocolProject(contentBackend);
   const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
   const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
@@ -744,7 +747,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Coding sessions boot visibly: no production fallback → the boot console.
   const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
   // A v8 site's hosted draft: nothing boots, and no draft until the first edit.
-  const hostedDraft = hostedDraftSession(contentBackend, session.isBlocksV8);
+  const hostedDraft = hostedDraftSession(
+    contentBackend,
+    contentMode({
+      hasServeConnection: !!serveConnection,
+      runtime: session.runtime,
+    }),
+    mainSchema,
+  );
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,

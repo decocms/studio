@@ -7,11 +7,11 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { ReactNode } from "react";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
-const projectRef: { current: { metadata: Record<string, unknown> } | null } = {
-  current: null,
+const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
+  current: "v7",
 };
-mock.module("@/sdk", () => ({
-  useVirtualMCP: () => projectRef.current,
+mock.module("@/hooks/use-main-schema-v8", () => ({
+  useMainSchemaV8: () => mainRef.current,
 }));
 
 const { useLocalPreviewUrl } = await import("./use-local-preview-url");
@@ -35,15 +35,19 @@ describe("useLocalPreviewUrl (the v7 Local tunnel)", () => {
   });
 
   it("v7: a saved tunnel is in use, as on main", () => {
-    projectRef.current = { metadata: {} };
-    const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
-      wrapper,
-    });
-    expect(result.current.url).toBe(TUNNEL);
+    // Also while main's answer loads or can't be read: never a sandbox boot
+    // a v7 site didn't have on main.
+    for (const main of ["v7", "loading", "error"] as const) {
+      mainRef.current = main;
+      const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
+        wrapper,
+      });
+      expect(result.current.url).toBe(TUNNEL);
+    }
   });
 
-  it("Blocks v8: a tunnel saved earlier is ignored (preview and editor)", () => {
-    projectRef.current = { metadata: { blocksMajor: 8 } };
+  it("Blocks v8 (main's schema): a tunnel saved earlier is ignored (preview and editor)", () => {
+    mainRef.current = "v8";
     const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
       wrapper,
     });

@@ -82,7 +82,7 @@ import {
 import { useProjectSettingsSection } from "./settings/use-settings-section";
 import { SiteTokenSection } from "./settings/site-token-section";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
@@ -883,7 +883,7 @@ function VirtualMcpDetailViewWithData({
   const { section } = useProjectSettingsSection();
   // Site tokens are for Blocks v8 sites only (hosted Deco CMS); a v7 site
   // never shows them.
-  const hostedCms = isBlocksV8Project(virtualMcp.metadata);
+  const hostedCms = useMainSchemaV8(virtualMcp.id) === "v8";
   const views = useProjectViews({
     virtualMcpId: virtualMcp.id,
     form,
@@ -1171,7 +1171,7 @@ function VirtualMcpDetailViewWithData({
                   <SettingsCard>
                     <PreviewSettingsRows
                       control={form.control}
-                      isBlocksV8={isBlocksV8Project(virtualMcp.metadata)}
+                      isBlocksV8={hostedCms}
                       previewServerUrl={form.watch("metadata.previewServerUrl")}
                       fastPreview={form.watch("metadata.fastPreview")}
                     />

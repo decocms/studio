@@ -391,7 +391,7 @@ test.describe("content protocol on GitHub", () => {
       const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
 
-      // No marker, no protocol: the editor stays on the classic one.
+      // main isn't v8, so no protocol: the editor stays on the classic one.
       expect((await rpc(ctx, path, "describe")).status).toBe(404);
       expect(
         (
@@ -924,6 +924,17 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
           [file]: JSON.stringify(meta),
           ".deco/blocks/home.json": homePage,
         });
+        // The editor decides from main's schema (read by the server), never
+        // from the project's marker; a v7 main never reaches the protocol.
+        const mainReads: number[] = [];
+        const rpcCalls: string[] = [];
+        page.on("response", (response) => {
+          const path = new URL(response.url()).pathname;
+          if (path.includes("/blocks-major/")) {
+            mainReads.push(response.status());
+          }
+          if (/\/decofile\/.+\/rpc$/.test(path)) rpcCalls.push(path);
+        });
         await page.goto(url);
         // The classic editor (the org's `new_blocks_editor` is off): v8
         // sites always get the new one, so this is the v7 path.
@@ -932,6 +943,8 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
           blocks.getByPlaceholder("Page name", { exact: true }),
         ).toHaveValue("Home", { timeout: 60_000 });
         await expect(page.getByTestId("content-version-badge")).toHaveCount(0);
+        expect(mainReads).toContain(200);
+        expect(rpcCalls).toEqual([]);
       } finally {
         await preview.close();
       }
@@ -979,7 +992,7 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
         ".deco/blocks/home.json": homePage,
       });
       // Seeded after create: opening the project reads main's schema and
-      // writes its v8 marker; the page then picks the backend from it.
+      // waits for that answer (never the marker) before picking a backend.
       await page.goto(url);
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
         timeout: 60_000,

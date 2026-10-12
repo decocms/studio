@@ -5,7 +5,7 @@ import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useProjectContext } from "@/sdk";
 import {
   resolveAgentSiteSlug,
@@ -32,9 +32,9 @@ export function useProjectNativeViewPresence(
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
-  // The hosted Deco CMS: Blocks v8 sites (the server's cached `isV8Schema`
-  // answer for main). A v7 site never gets Versions.
-  const hostedCms = isBlocksV8Project(project?.metadata);
+  // The hosted Deco CMS: Blocks v8 sites (main's schema, `isV8Schema`). A v7
+  // site never gets Versions.
+  const hostedCms = useMainSchemaV8(project?.id) === "v8";
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
   const monitorEnabled =

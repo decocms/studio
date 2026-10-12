@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
+  contentMode,
   contentProbesEnabled,
   hostedDraftSession,
   isProtocolProject,
@@ -10,160 +11,249 @@ import {
   servePreviewUrl,
 } from "./content-backend";
 
-describe("selectContentBackend", () => {
-  const v8 = {
+type Input = Parameters<typeof selectContentBackend>[0];
+type Answer = "v8" | "v7" | "loading" | "error";
+const ANSWERS = ["v8", "v7", "loading", "error"] as const;
+
+describe("selectContentBackend: the editor waits for a schema, then reads it", () => {
+  const github: Input = {
     hasProject: true,
-    isV8Project: true,
     hasServeConnection: false,
-    runtime: "cms" as const,
-    githubSite: "v8" as const,
+    runtime: "cms",
+    mainSchema: "v8",
+    githubSite: "v8",
   };
-  const v7 = { ...v8, isV8Project: false, githubSite: "v7" as const };
-  const SITES = ["v8", "v7", "loading", "error"] as const;
-  const SANDBOX_SITES = [...SITES, "unavailable", undefined] as const;
+  const sandbox: Input = {
+    ...github,
+    runtime: "sandbox",
+    githubSite: "loading",
+    sandboxSite: "v8",
+  };
 
-  describe("v7 project (no marker): as on main, in every org", () => {
-    test("is always legacy right away, whatever the probes say", () => {
-      for (const runtime of ["cms", "sandbox"] as const) {
-        for (const githubSite of SITES) {
-          for (const sandboxSite of SANDBOX_SITES) {
-            expect(
-              selectContentBackend({
-                ...v7,
-                runtime,
-                githubSite,
-                sandboxSite,
-              }),
-            ).toBe("legacy");
-          }
-        }
+  describe("the decision table (mode × schema)", () => {
+    const table: Array<[string, Input, string]> = [
+      // GitHub mode: main's schema (from the server) decides.
+      ["github, main loading", { ...github, mainSchema: "loading" }, "pending"],
+      [
+        "github, main v7",
+        { ...github, mainSchema: "v7", githubSite: "loading" },
+        "legacy",
+      ],
+      [
+        "github, main unreadable",
+        { ...github, mainSchema: "error" },
+        "unavailable-github",
+      ],
+      [
+        "github, main v8, backend loading",
+        { ...github, githubSite: "loading" },
+        "pending",
+      ],
+      ["github, main v8, backend v8", github, "protocol-github"],
+      [
+        "github, main v8, backend failing",
+        { ...github, githubSite: "error" },
+        "unavailable-github",
+      ],
+      [
+        "github, main v8, not this project's site",
+        { ...github, githubSite: "not-owned" },
+        "site-not-owned-github",
+      ],
+      // Sandbox mode: the daemon's working tree decides; main plays no part.
+      [
+        "sandbox, booting",
+        { ...sandbox, sandboxSite: "unavailable" },
+        "pending",
+      ],
+      [
+        "sandbox, daemon loading",
+        { ...sandbox, sandboxSite: "loading" },
+        "pending",
+      ],
+      ["sandbox, working tree v8", sandbox, "protocol-sandbox"],
+      [
+        "sandbox, working tree v7 (or an older daemon)",
+        { ...sandbox, sandboxSite: "v7" },
+        "legacy",
+      ],
+      [
+        "sandbox, daemon failing",
+        { ...sandbox, sandboxSite: "error" },
+        "unavailable-sandbox",
+      ],
+      // Localhost: the deco serve's own schema decides (localServeBackend).
+      [
+        "localhost",
+        { ...github, hasServeConnection: true, mainSchema: "loading" },
+        "protocol-local",
+      ],
+      [
+        "localhost chosen, main's answer loading",
+        { ...github, serveConnectionUndecided: true },
+        "pending",
+      ],
+    ];
+    for (const [name, input, expected] of table) {
+      test(`${name} → ${expected}`, () => {
+        expect(selectContentBackend(input)).toBe(expected as never);
+      });
+    }
+  });
+
+  test("Sandbox mode never reads main's answer", () => {
+    for (const mainSchema of ANSWERS) {
+      for (const sandboxSite of [...ANSWERS, "unavailable"] as const) {
+        expect(
+          selectContentBackend({ ...sandbox, mainSchema, sandboxSite }),
+        ).toBe(
+          selectContentBackend({ ...sandbox, mainSchema: "v8", sandboxSite }),
+        );
       }
-    });
+    }
+  });
 
-    test("never switches mid-session, even when the probe would say v8 (an upgrade branch)", () => {
-      expect(selectContentBackend({ ...v7, githubSite: "v8" })).toBe("legacy");
+  test("Localhost wins in every mode, whatever main says", () => {
+    for (const runtime of ["cms", "sandbox"] as const) {
+      for (const mainSchema of ANSWERS) {
+        expect(
+          selectContentBackend({
+            ...github,
+            runtime,
+            mainSchema,
+            hasServeConnection: true,
+          }),
+        ).toBe("protocol-local");
+      }
+    }
+  });
+
+  test("a v7 site in GitHub mode is legacy whatever the branch says, and probes nothing", () => {
+    for (const githubSite of [...ANSWERS, "not-owned"] as const) {
       expect(
-        selectContentBackend({ ...v7, runtime: "sandbox", sandboxSite: "v8" }),
+        selectContentBackend({ ...github, mainSchema: "v7", githubSite }),
       ).toBe("legacy");
+    }
+    expect(
+      contentProbesEnabled({
+        mode: "github",
+        mainSchema: "v7",
+        workingTreeReady: true,
+      }),
+    ).toEqual({ github: false, sandbox: false });
+  });
+
+  describe("no v7 flash: once decided, it never switches as reads land", () => {
+    // Every order in which the reads of a mode can land, from nothing known
+    // to everything known: the decision goes from `pending` (or an
+    // `unavailable` retry) to its final answer, never from one editor to the
+    // other.
+    const EDITORS = new Set(["legacy", "protocol-github", "protocol-sandbox"]);
+    function assertNoSwitch(steps: Input[]) {
+      const decisions = steps.map((step) => selectContentBackend(step));
+      const editors = decisions.filter((d) => EDITORS.has(d));
+      expect(new Set(editors).size).toBeLessThanOrEqual(1);
+      return decisions;
+    }
+
+    test("GitHub, v8 main: pending until the backend answers, never legacy", () => {
+      const decisions = assertNoSwitch([
+        { ...github, mainSchema: "loading", githubSite: "loading" },
+        { ...github, mainSchema: "v8", githubSite: "loading" },
+        { ...github, mainSchema: "v8", githubSite: "v8" },
+      ]);
+      expect(decisions).toEqual(["pending", "pending", "protocol-github"]);
     });
 
-    test("runs no probe at all", () => {
-      for (const runtime of ["cms", "sandbox"] as const) {
-        for (const hasServeConnection of [true, false]) {
-          expect(
-            contentProbesEnabled({
-              isV8Project: false,
-              hasServeConnection,
-              runtime,
-              workingTreeReady: true,
-            }),
-          ).toEqual({ github: false, sandbox: false });
-        }
+    test("GitHub, v7 main: pending, then legacy (as on main)", () => {
+      const decisions = assertNoSwitch([
+        { ...github, mainSchema: "loading", githubSite: "loading" },
+        { ...github, mainSchema: "v7", githubSite: "loading" },
+      ]);
+      expect(decisions).toEqual(["pending", "legacy"]);
+    });
+
+    test("Sandbox: pending while it boots, then the working tree's answer", () => {
+      for (const final of ["v8", "v7"] as const) {
+        const decisions = assertNoSwitch([
+          { ...sandbox, sandboxSite: "unavailable" },
+          { ...sandbox, sandboxSite: "loading" },
+          { ...sandbox, sandboxSite: final },
+        ]);
+        expect(decisions.slice(0, 2)).toEqual(["pending", "pending"]);
       }
+    });
+
+    test("a stored Localhost choice waits for main, never another backend first", () => {
+      const decisions = assertNoSwitch([
+        { ...github, mainSchema: "loading", serveConnectionUndecided: true },
+        { ...github, mainSchema: "v8", hasServeConnection: true },
+      ]);
+      expect(decisions).toEqual(["pending", "protocol-local"]);
+    });
+
+    test("every answer that isn't known yet is pending, in every mode", () => {
+      expect(selectContentBackend({ ...github, mainSchema: "loading" })).toBe(
+        "pending",
+      );
+      expect(selectContentBackend({ ...sandbox, sandboxSite: "loading" })).toBe(
+        "pending",
+      );
+      expect(
+        selectContentBackend({ ...github, serveConnectionUndecided: true }),
+      ).toBe("pending");
     });
   });
 
-  describe("v8 project (marker)", () => {
-    test("Localhost (a connected deco serve) wins; its own schema decides", () => {
-      expect(
-        selectContentBackend({
-          ...v8,
-          hasServeConnection: true,
-          runtime: "sandbox",
-          githubSite: "v7",
-        }),
-      ).toBe("protocol-local");
-    });
-
-    test("a cms session waits for the GitHub probe (the hosted draft)", () => {
-      expect(selectContentBackend({ ...v8, githubSite: "loading" })).toBe(
-        "pending",
-      );
-      expect(selectContentBackend(v8)).toBe("protocol-github");
-    });
-
-    test("a v7 answer falls back to legacy", () => {
-      expect(selectContentBackend({ ...v8, githubSite: "v7" })).toBe("legacy");
-    });
-
-    test("a failed probe is unavailable (retried), never the v7 editor", () => {
-      expect(selectContentBackend({ ...v8, githubSite: "error" })).toBe(
-        "unavailable-github",
-      );
-      expect(
-        selectContentBackend({
-          ...v8,
-          runtime: "sandbox",
-          sandboxSite: "error",
-        }),
-      ).toBe("unavailable-sandbox");
-    });
-
-    test("a sandbox session waits for the daemon, then uses its protocol", () => {
-      const sandbox = {
-        ...v8,
-        runtime: "sandbox" as const,
-        githubSite: "v7" as const,
-      };
-      for (const sandboxSite of [
-        "unavailable",
-        "loading",
-        undefined,
-      ] as const) {
-        expect(selectContentBackend({ ...sandbox, sandboxSite })).toBe(
-          "pending",
-        );
-      }
-      expect(selectContentBackend({ ...sandbox, sandboxSite: "v8" })).toBe(
-        "protocol-sandbox",
-      );
-      // An older daemon (404) or a v7 working tree reads as v7: legacy.
-      expect(selectContentBackend({ ...sandbox, sandboxSite: "v7" })).toBe(
-        "legacy",
-      );
-    });
-
-    test("probes in every org, but not while Localhost is connected", () => {
-      const input = {
-        isV8Project: true,
-        hasServeConnection: false,
-        runtime: "cms" as const,
-        workingTreeReady: false,
-      };
-      expect(contentProbesEnabled(input)).toEqual({
-        github: true,
+  test("the probes: the daemon in Sandbox mode, the GitHub backend only for a v8 main", () => {
+    const probes = (
+      mode: "github" | "sandbox" | "local",
+      mainSchema: Answer,
+      workingTreeReady = true,
+    ) => contentProbesEnabled({ mode, mainSchema, workingTreeReady });
+    expect(probes("github", "v8")).toEqual({ github: true, sandbox: false });
+    for (const main of ["v7", "loading", "error"] as const) {
+      expect(probes("github", main)).toEqual({ github: false, sandbox: false });
+    }
+    for (const main of ANSWERS) {
+      expect(probes("sandbox", main)).toEqual({ github: false, sandbox: true });
+      expect(probes("sandbox", main, false)).toEqual({
+        github: false,
         sandbox: false,
       });
-      expect(
-        contentProbesEnabled({
-          ...input,
-          runtime: "sandbox",
-          workingTreeReady: true,
-        }),
-      ).toEqual({ github: false, sandbox: true });
-      expect(
-        contentProbesEnabled({ ...input, hasServeConnection: true }),
-      ).toEqual({ github: false, sandbox: false });
-    });
+      expect(probes("local", main)).toEqual({ github: false, sandbox: false });
+    }
+  });
+
+  test("the mode: Localhost, else Sandbox for a sandbox session, else GitHub", () => {
+    expect(contentMode({ hasServeConnection: true, runtime: "sandbox" })).toBe(
+      "local",
+    );
+    expect(contentMode({ hasServeConnection: false, runtime: "sandbox" })).toBe(
+      "sandbox",
+    );
+    expect(contentMode({ hasServeConnection: false, runtime: "cms" })).toBe(
+      "github",
+    );
   });
 
   test("the account-less /site-editor: only its deco serve, whose schema decides", () => {
-    // No marker there (no project to mark): the connection is the backend.
     expect(
       selectContentBackend({
-        ...v7,
+        ...github,
+        mainSchema: "v7",
         hasServeConnection: true,
       }),
     ).toBe("protocol-local");
   });
 
   test("without a project (SEO, blog forms) it is legacy right away", () => {
-    for (const isV8Project of [true, false]) {
+    for (const mainSchema of ANSWERS) {
       for (const hasServeConnection of [true, false]) {
         expect(
           selectContentBackend({
-            ...v8,
-            isV8Project,
+            ...github,
+            mainSchema,
             hasServeConnection,
             hasProject: false,
             githubSite: "loading",
@@ -234,37 +324,63 @@ describe("hostedDraftSession", () => {
       cacheKeySuffix: "",
     }) as unknown as Parameters<typeof hostedDraftSession>[0];
 
-  test("a v8 site on the GitHub backend, usable, unreachable or still deciding", () => {
-    expect(hostedDraftSession(protocol("github"), true)).toBe(true);
+  test("GitHub mode on a v8 main, usable, unreachable or still deciding", () => {
+    expect(hostedDraftSession(protocol("github"), "github", "v8")).toBe(true);
     expect(
-      hostedDraftSession({ kind: "unavailable", source: "github" }, true),
+      hostedDraftSession(
+        { kind: "unavailable", source: "github" },
+        "github",
+        "v8",
+      ),
     ).toBe(true);
-    expect(hostedDraftSession({ kind: "pending" }, true)).toBe(true);
+    expect(hostedDraftSession({ kind: "pending" }, "github", "v8")).toBe(true);
   });
 
-  test("never a v7 site, whatever its backend", () => {
-    expect(hostedDraftSession({ kind: "legacy" }, false)).toBe(false);
-    expect(hostedDraftSession({ kind: "pending" }, false)).toBe(false);
-    expect(hostedDraftSession(protocol("github"), false)).toBe(false);
+  test("never a v7 site, nor while main's answer is unknown", () => {
+    for (const main of ["v7", "loading", "error"] as const) {
+      expect(hostedDraftSession({ kind: "legacy" }, "github", main)).toBe(
+        false,
+      );
+      expect(hostedDraftSession({ kind: "pending" }, "github", main)).toBe(
+        false,
+      );
+      expect(hostedDraftSession(protocol("github"), "github", main)).toBe(
+        false,
+      );
+    }
   });
 
-  test("not Localhost, a sandbox, or a v8 site on the v7 editor", () => {
-    expect(hostedDraftSession(protocol("local"), true)).toBe(false);
-    expect(hostedDraftSession(protocol("sandbox"), true)).toBe(false);
+  test("not Localhost or a sandbox (a sandbox session boots, v8 or not)", () => {
+    for (const mode of ["local", "sandbox"] as const) {
+      expect(hostedDraftSession({ kind: "pending" }, mode, "v8")).toBe(false);
+    }
+    expect(hostedDraftSession(protocol("local"), "local", "v8")).toBe(false);
+    expect(hostedDraftSession(protocol("sandbox"), "sandbox", "v8")).toBe(
+      false,
+    );
     expect(
-      hostedDraftSession({ kind: "unavailable", source: "local" }, true),
+      hostedDraftSession(
+        { kind: "unavailable", source: "local" },
+        "local",
+        "v8",
+      ),
     ).toBe(false);
     expect(
-      hostedDraftSession({ kind: "unavailable", source: "sandbox" }, true),
+      hostedDraftSession(
+        { kind: "unavailable", source: "sandbox" },
+        "sandbox",
+        "v8",
+      ),
     ).toBe(false);
-    expect(hostedDraftSession({ kind: "legacy" }, true)).toBe(false);
+    expect(hostedDraftSession({ kind: "legacy" }, "github", "v8")).toBe(false);
   });
 
   test("not a v8 site another project owns (its draft lives there)", () => {
     expect(
       hostedDraftSession(
         { kind: "unavailable", source: "github", siteNotOwned: true },
-        true,
+        "github",
+        "v8",
       ),
     ).toBe(false);
   });

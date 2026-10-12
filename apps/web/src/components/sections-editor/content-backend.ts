@@ -80,18 +80,20 @@ export function newBlocksEditorEnabled(input: {
 }
 
 /**
- * Whether a session's draft lives on the hosted Deco CMS: a Blocks v8 site
- * whose editor reads and writes through Studio's GitHub backend (or is still
- * waiting for it). Nothing boots for such a session, and its draft exists
- * only once the first edit creates it. A v7 site never is one; neither is
- * Localhost (a connected `deco serve`) nor a sandbox's daemon, nor a v8 site
- * that fell back to the v7 editor.
+ * Whether a session's draft lives on the hosted Deco CMS: GitHub mode on a
+ * site whose main schema is a Blocks v8 one, with the editor on Studio's
+ * GitHub backend (or still waiting for it). Nothing boots for such a session,
+ * and its draft exists only once the first edit creates it. Never a v7 site,
+ * never while main's answer is still loading (the v7 Fast Preview surface,
+ * as on main, holds until then); never Localhost (a connected `deco serve`)
+ * nor a sandbox's daemon, nor a v8 site this project doesn't own.
  */
 export function hostedDraftSession(
   backend: ContentBackend,
-  isV8Project: boolean,
+  mode: ContentMode,
+  mainSchema: SchemaAnswer,
 ): boolean {
-  if (!isV8Project) return false;
+  if (mode !== "github" || mainSchema !== "v8") return false;
   if (backend.kind === "pending") return true;
   if (backend.kind === "unavailable" && backend.siteNotOwned) return false;
   return (
@@ -122,81 +124,116 @@ export type BackendDecision =
   | "site-not-owned-github";
 
 /**
- * Which backend a project's editor uses.
+ * An answer of `isV8Schema` (`@decocms/shared/blocks-major`) on some schema:
+ * main's (from the server), a sandbox working tree's, a branch's. `loading`
+ * while it is read, `error` when it couldn't be (retried).
+ */
+export type SchemaAnswer = "v8" | "v7" | "loading" | "error";
+
+/** Where the editor's schema and content come from. */
+export type ContentMode = "local" | "sandbox" | "github";
+
+/**
+ * The editor's mode: Localhost when a `deco serve` connection is chosen (or
+ * on the account-less `/site-editor`), Sandbox when the session has a sandbox
+ * (a coding session), else GitHub.
+ */
+export function contentMode(input: {
+  hasServeConnection: boolean;
+  runtime: "cms" | "sandbox";
+}): ContentMode {
+  if (input.hasServeConnection) return "local";
+  return input.runtime === "sandbox" ? "sandbox" : "github";
+}
+
+/**
+ * Which backend a project's editor uses. The editor always waits for a
+ * schema and the content of its mode, then reads the schema to decide v8 or
+ * not (`isV8Schema`); it never shows the v7 path first and switches.
  *
- * Every v8 answer here comes from `isV8Schema` (`@decocms/shared/blocks-major`)
- * on some schema: `isV8Project` is the server's cached answer for main (the
- * project's `blocksMajor` marker, `isBlocksV8Project`), and each probe applies
- * it to the schema its backend serves.
+ * - **Localhost** (a connected `deco serve`): `protocol-local`. Schema and
+ *   content come from the `deco serve`, whose own schema decides
+ *   (`localServeBackend`: a non-v8 one is a guided "not v8" state). A stored
+ *   connection waits for main's answer (`serveConnectionUndecided`): only a
+ *   v8 site uses one.
+ * - **Sandbox** (the session has a sandbox): the Go daemon's working tree
+ *   decides. Its schema v8 → `protocol-sandbox` (content protocol); not v8, or
+ *   an older daemon without the protocol → `legacy` (the v7 sandbox path).
+ *   Waits (`pending`) until the working tree is there and the daemon answers.
+ * - **GitHub** (otherwise): main's schema decides, read by the server
+ *   (`mainSchema`). Not v8 → `legacy`: content from the branch, exactly as on
+ *   main. v8 → `protocol-github`: content is main plus the CDN draft (the
+ *   hosted CMS), once Studio's GitHub backend answers; a v8 site another
+ *   project owns is `site-not-owned-github` (guided, not retried).
  *
- * - **A connected `deco serve`** (Localhost, or the account-less
- *   `/site-editor`): `protocol-local`; the probe of its own schema decides
- *   whether it can be edited (`localServeBackend`). A project has one only
- *   when it is v8 (`useDecoServeConnection`).
- * - **v7 project (no marker):** legacy, always and right away, as on main:
- *   never `pending`, no probe (see `contentProbesEnabled`), and it never
- *   switches. A v7 → v8 upgrade gets the marker once it reaches main.
- * - **v8 project:** the editor waits (`pending`) for its backend's answer and
- *   never shows the v7 editor first. A `cms` session uses the GitHub backend
- *   (the hosted draft); a sandbox session uses its daemon's content protocol
- *   once the working tree is there. A tunnel saved by the v7 Advanced → Local
- *   is ignored. Only a confirmed v7 answer (a daemon without the protocol, a
- *   v7 working tree or committed schema) falls back to legacy; a failed probe
- *   is `unavailable` while it keeps retrying. A v8 site another project owns
- *   is `site-not-owned-github`: a guided state, never retried.
+ * A read that failed is `unavailable-*` while it keeps retrying, never the
+ * v7 editor. The project's `blocksMajor` marker plays no part: it is only the
+ * server's cache of main's answer.
  *
  * Outside a project (forms with no project id, such as SEO and the blog
- * registry) there is no site to probe: legacy.
+ * registry) there is no site to read: legacy.
  */
 export function selectContentBackend(input: {
   /** Whether there is a project to probe (a virtual MCP id). */
   hasProject: boolean;
-  /** The server's cached answer for main's schema (the project's marker). */
-  isV8Project: boolean;
   hasServeConnection: boolean;
+  /** A connection is stored but main's answer isn't known yet. */
+  serveConnectionUndecided?: boolean;
   runtime: "cms" | "sandbox";
+  /** `isV8Schema` on main's schema, from the server (GitHub mode). */
+  mainSchema: SchemaAnswer;
   /**
-   * The GitHub probe: is the branch's committed schema a v8 one?
-   * `not-owned` when the project doesn't own its site (Studio answers 409
-   * `site_not_owned`).
+   * Studio's GitHub backend (main plus the CDN draft): does its schema say
+   * v8? `not-owned` when the project doesn't own its site (Studio answers
+   * 409 `site_not_owned`). Only asked once main is v8.
    */
-  githubSite: "v8" | "v7" | "loading" | "error" | "not-owned";
+  githubSite: SchemaAnswer | "not-owned";
   /**
    * The sandbox's daemon probe: is the working tree's schema a v8 one?
    * `unavailable` until the working tree is there (the sandbox is booting).
    */
-  sandboxSite?: "v8" | "v7" | "loading" | "error" | "unavailable";
+  sandboxSite?: SchemaAnswer | "unavailable";
 }): BackendDecision {
   if (!input.hasProject) return "legacy";
-  if (input.hasServeConnection) return "protocol-local";
-  if (!input.isV8Project) return "legacy";
-  const sandbox = input.runtime === "sandbox";
-  const site = sandbox ? input.sandboxSite : input.githubSite;
-  if (site === "v8") return sandbox ? "protocol-sandbox" : "protocol-github";
-  if (site === "v7") return "legacy";
-  if (site === "not-owned") return "site-not-owned-github";
-  if (site === "error") {
-    return sandbox ? "unavailable-sandbox" : "unavailable-github";
+  const mode = contentMode(input);
+  if (mode === "local") return "protocol-local";
+  if (input.serveConnectionUndecided) return "pending";
+  if (mode === "sandbox") {
+    const site = input.sandboxSite;
+    if (site === "v8") return "protocol-sandbox";
+    if (site === "v7") return "legacy";
+    if (site === "error") return "unavailable-sandbox";
+    // Loading, or the sandbox's working tree isn't there yet.
+    return "pending";
   }
-  // Loading, or the sandbox's working tree isn't there yet.
+  if (input.mainSchema === "loading") return "pending";
+  if (input.mainSchema === "error") return "unavailable-github";
+  if (input.mainSchema === "v7") return "legacy";
+  const site = input.githubSite;
+  if (site === "v8") return "protocol-github";
+  if (site === "not-owned") return "site-not-owned-github";
+  if (site === "error") return "unavailable-github";
+  // main turned v7 between the two reads: main's answer is re-read on the
+  // next open; the branch-backed v7 path meanwhile.
+  if (site === "v7") return "legacy";
   return "pending";
 }
 
 /**
- * Which background probes `useContentBackend` runs. Only a v8 project probes;
- * a v7 project makes no request at all, as on main. Localhost (a connected
- * `deco serve`) needs no probe here.
+ * Which background probes `useContentBackend` runs: the sandbox's daemon in
+ * Sandbox mode once its working tree is there (v7 and v8 alike: its schema
+ * decides), Studio's GitHub backend in GitHub mode once main is known to be
+ * v8. A v7 site in GitHub mode makes no probe: only main's (cached) schema
+ * read. Localhost needs no probe here.
  */
 export function contentProbesEnabled(input: {
-  isV8Project: boolean;
-  hasServeConnection: boolean;
-  runtime: "cms" | "sandbox";
+  mode: ContentMode;
+  mainSchema: SchemaAnswer;
   workingTreeReady: boolean;
 }): { github: boolean; sandbox: boolean } {
-  const base = input.isV8Project && !input.hasServeConnection;
   return {
-    github: base && input.runtime === "cms",
-    sandbox: base && input.runtime === "sandbox" && input.workingTreeReady,
+    github: input.mode === "github" && input.mainSchema === "v8",
+    sandbox: input.mode === "sandbox" && input.workingTreeReady,
   };
 }
 

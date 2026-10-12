@@ -21,10 +21,12 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
 import {
   type ContentBackend,
+  contentMode,
   contentProbesEnabled,
   type ProtocolBackend,
   selectContentBackend,
 } from "./content-backend";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import {
   classifyServeProbeError,
   NotDecoServeError,
@@ -62,9 +64,10 @@ async function isSiteNotOwnedResponse(response: Response): Promise<boolean> {
 }
 
 /**
- * Probes Studio's GitHub backend: the probe when the branch's committed schema
- * is a v8 one, null when it isn't (legacy), or {@link GITHUB_SITE_NOT_OWNED}
- * when the project doesn't own its site.
+ * Probes Studio's GitHub backend (main plus the CDN draft; asked only once
+ * main's schema is known to be v8): the probe when its schema is a v8 one,
+ * null when it isn't (legacy), or {@link GITHUB_SITE_NOT_OWNED} when the
+ * project doesn't own its site.
  */
 export async function probeGithub(
   endpoint: string,
@@ -178,9 +181,11 @@ export async function probeSandbox(
 
 /**
  * The content backend of a project's editor (see `selectContentBackend`).
- * A v7 project is `legacy` right away and runs no probe. A v8 project is
- * `pending` while the backend probe loads: callers hold their reads until
- * then, so it never reads from the v7 backend and then switches.
+ * It is `pending` until the editor has a schema for its mode (Localhost: the
+ * `deco serve`'s; Sandbox: the daemon's working tree; GitHub: main's, from
+ * the server) and, for a v8 site, its content backend: callers hold their
+ * reads until then, so it never reads from the v7 backend and then switches.
+ * The project's `blocksMajor` marker is never read here.
  */
 export function useContentBackend(
   virtualMcpId: string | null | undefined,
@@ -189,10 +194,13 @@ export function useContentBackend(
   const { org } = useProjectContext();
   // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost). On the
   // account-less `/site-editor` it is the page's own connection.
-  const { connection } = useDecoServeConnection(virtualMcpId);
-  // The server's cached `isV8Schema` answer for main (the project's marker).
-  const { runtime, isBlocksV8: isV8Project } = useSessionRuntime(virtualMcpId);
+  const { connection, undecided: serveConnectionUndecided } =
+    useDecoServeConnection(virtualMcpId);
+  const { runtime } = useSessionRuntime(virtualMcpId);
   const tabConnection = useContext(TabDecoServeConnectionContext);
+  // `isV8Schema` on main's schema, from the server (GitHub mode decides on it).
+  const mainSchema = useMainSchemaV8(tabConnection ? null : virtualMcpId);
+  const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The daemon answers once the working tree is there; before that the
   // sandbox is booting and the editor keeps today's (legacy) boot UX.
@@ -201,9 +209,8 @@ export function useContentBackend(
   );
 
   const probes = contentProbesEnabled({
-    isV8Project,
-    hasServeConnection: !!connection,
-    runtime,
+    mode,
+    mainSchema,
     workingTreeReady,
   });
   const githubEnabled =
@@ -321,9 +328,10 @@ export function useContentBackend(
 
   const decision = selectContentBackend({
     hasProject: !!virtualMcpId,
-    isV8Project,
     hasServeConnection: !!connection,
+    serveConnectionUndecided,
     runtime,
+    mainSchema,
     githubSite:
       github.data === GITHUB_SITE_NOT_OWNED
         ? "not-owned"
@@ -431,10 +439,9 @@ export function localServeBackend(input: {
 }
 
 /**
- * How the GitHub and sandbox probes retry (v8 projects only: v7 never
- * probes). The editor waits on the answer, so a failure is re-polled until it
- * recovers; a site already known to be v8 keeps its data through a failed
- * refetch.
+ * How the GitHub and sandbox probes retry. The editor waits on the answer,
+ * so a failure is re-polled until it recovers; a site already known to be v8
+ * keeps its data through a failed refetch.
  */
 export const V8_PROBE_RETRY = {
   retry: 2,

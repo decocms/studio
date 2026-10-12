@@ -191,9 +191,10 @@ async function decryptSecret(privateKey: CryptoKey, ciphertext: string) {
 
 /**
  * A Blocks v8 site project: its repository's main has a `"blocksMajor": 8`
- * schema (any org; there is no flag). Opening the project reads main's schema
- * and writes its v8 marker; that refresh happens here first, so the page
- * opens on v8 (a project without the marker is v7).
+ * schema (any org; there is no flag). The page decides from main's schema,
+ * which it asks the server for on open; reading it here first also writes
+ * the server's cached answer (the marker), so new threads default to the
+ * hosted CMS runtime.
  */
 async function createV8Project(api: APIRequestContext, orgSlug: string) {
   const owner = uniqueOwner();
@@ -381,7 +382,7 @@ test.describe("site editor over deco serve", () => {
   }) => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
-    // Only a Blocks v8 site connects to deco serve: a v7 one (no marker)
+    // Only a Blocks v8 site (main's schema) connects to deco serve: a v7 one
     // keeps main's Local tunnel.
     const project = await createV8Project(api, orgSlug);
     const { privateKey, publicKey } = await generateKeyPair();

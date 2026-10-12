@@ -82,13 +82,8 @@ function blobSha(content: string): string {
     .digest("hex");
 }
 
-const REPO: RepoRef = {
-  provider: "github",
-  host: "github.com",
-  path: "acme/site",
-};
-
-/** Distinct commit shas across fake repos (process-wide caches key on them). */
+/** Distinct commit shas and repository paths across fake repos
+ *  (process-wide caches key on them). */
 let fakeRepos = 0;
 
 /** A repository with one branch, `main`, whose commits are file maps. */
@@ -119,7 +114,11 @@ export function fakeRepo(files: Record<string, string>) {
   };
 
   const client: RepoContentClient = {
-    repo: REPO,
+    repo: {
+      provider: "github",
+      host: "github.com",
+      path: `acme/site-${repoId}`,
+    } satisfies RepoRef,
     getDefaultBranch: async () => "main",
     getBranch: async (branch) => (branch === "main" ? { sha: head } : null),
     searchBranches: async () => ({

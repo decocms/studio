@@ -48,15 +48,19 @@ function githubServing(schema: unknown): ContentClient {
   } as unknown as ContentClient;
 }
 
-/** What `useContentBackend` decides for a v8 Fast Preview session, any org. */
+/**
+ * What `useContentBackend` decides in GitHub mode when main's schema (read by
+ * the server with the same `isV8Schema`) is `schema`, any org.
+ */
 async function decideV8Session(schema: unknown) {
   const probed = await probe(githubServing(schema));
+  const answer = probed.v8Schema ? "v8" : "v7";
   return selectContentBackend({
     hasProject: true,
-    isV8Project: true,
     hasServeConnection: false,
     runtime: "cms",
-    githubSite: probed.v8Schema ? "v8" : "v7",
+    mainSchema: answer,
+    githubSite: answer,
   });
 }
 
@@ -92,9 +96,10 @@ describe("v7/v8 detection over a sandbox's daemon", () => {
     const probed = await probe(githubServing(schema));
     return selectContentBackend({
       hasProject: true,
-      isV8Project: true,
       hasServeConnection: false,
       runtime: "sandbox",
+      // Main's answer plays no part in Sandbox mode, whatever it is.
+      mainSchema: "loading",
       githubSite: "loading",
       sandboxSite: probed.v8Schema ? "v8" : "v7",
     });
@@ -146,9 +151,9 @@ describe("GitHub probe", () => {
     expect(
       selectContentBackend({
         hasProject: true,
-        isV8Project: true,
         hasServeConnection: false,
         runtime: "cms",
+        mainSchema: "v8",
         githubSite: "not-owned",
       }),
     ).toBe("site-not-owned-github");
