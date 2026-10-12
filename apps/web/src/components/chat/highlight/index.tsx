@@ -19,6 +19,7 @@ import {
 } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import { SuggestTaskHighlight } from "./suggest-task";
+import { isSuggestTaskPending } from "./is-suggest-task-pending";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
@@ -220,8 +221,7 @@ export function ChatHighlight({
     (part) => part.type === "tool-user_ask",
   );
   const suggestTaskParts = assistantParts.filter(
-    (part) =>
-      part.type === "tool-suggest_task" && part.state === "input-available",
+    isSuggestTaskPending,
   ) as SuggestTaskToolPart[];
   const pendingPlans = extractPendingPlans(assistantParts);
   const pendingApprovals = extractPendingApprovals(

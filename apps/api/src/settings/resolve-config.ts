@@ -423,6 +423,10 @@ export function resolveConfig(
       true,
     ),
     sandboxReleaseOnRunEndEnabled: toBool(envVars.SANDBOX_RELEASE_ON_RUN_END),
+    sandboxPrewarmOnThreadCreateEnabled: toBool(
+      envVars.SANDBOX_PREWARM_ON_THREAD_CREATE,
+    ),
+    sandboxPersistentHarnessEnabled: toBool(envVars.SANDBOX_PERSISTENT_HARNESS),
     sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
       "SANDBOX_RELEASE_GRACE_MS",
       envVars.SANDBOX_RELEASE_GRACE_MS,
@@ -432,7 +436,6 @@ export function resolveConfig(
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
-    firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
     controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
     controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
     analyticsDataUrl: envVars.ANALYTICS_URL,

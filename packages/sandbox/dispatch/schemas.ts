@@ -1,3 +1,4 @@
+import type { HarnessId } from "@decocms/shared/harness/types";
 import { z } from "zod";
 
 /**
@@ -27,6 +28,8 @@ export const harnessRunResultSchema = z.object({
     .object({ code: z.string(), message: z.string() })
     .nullish()
     .transform((e) => e ?? null),
+  /** Runner-side ms since its process started, on its first frame only; `emit` is when that frame left. */
+  timings: z.record(z.string(), z.number()).optional(),
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 
@@ -109,7 +112,13 @@ export const harnessStreamInputSchema = z
           .strict(),
       )
       .optional(),
-    mode: z.enum(["default", "plan", "web-search", "gen-image"]),
+    mode: z.enum([
+      "default",
+      "plan",
+      "web-search",
+      "deep-research",
+      "gen-image",
+    ]),
     temperature: z.number(),
     toolApprovalLevel: z.enum(["auto", "readonly"]),
     // Per-run tool allowlist (model-facing names). null/absent = full toolset.
@@ -154,3 +163,19 @@ export const harnessStreamInputSchema = z
   .strict();
 
 export type HarnessStreamInputWire = z.infer<typeof harnessStreamInputSchema>;
+
+/**
+ * Body of `POST /_sandbox/dispatch`. The daemon runs an envelope without
+ * `harnessId` as `claude-code`: Studio and the daemon roll out independently.
+ */
+export interface HarnessDispatchEnvelope {
+  harnessId: HarnessId;
+  runId: string;
+  /** Checked by the daemon against `harnessStreamInputSchema`. */
+  input: unknown;
+  /**
+   * Run on the thread's kept runner process when one was spawned with the same
+   * key (daemon `internal/dispatch/session.go`). Absent = a process per run.
+   */
+  sessionKey?: string;
+}
