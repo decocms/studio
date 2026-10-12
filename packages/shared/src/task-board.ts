@@ -517,6 +517,13 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
 export const TASK_BOARD_RULES_UPDATED_EVENT = "task-board.rules.updated";
 
 /**
+ * Org-scoped SSE event: a sprint was created, edited, started, completed or
+ * deleted. `data` is `{ sprintId }`. Completing or deleting one moves cards
+ * too, so the web board re-reads both its sprints and its cards.
+ */
+export const TASK_BOARD_SPRINTS_UPDATED_EVENT = "task-board.sprints.updated";
+
+/**
  * Org-scoped SSE event pushed on `sseHub` whenever a task board item is deleted.
  * Its `data` is `{ id }`; the web board drops that item from its react-query
  * cache, so a delete on one client clears the card on every open board.
