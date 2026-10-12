@@ -219,6 +219,78 @@ test("an absent pinned ref changes nothing", () => {
   }
 });
 
+/** `chat_harness_sandbox_only` changes only the repo-less rows; every other row must match flag-off exactly. */
+test.each([
+  {
+    row: "no repo",
+    args: { threadId: "t1", threadRepo: null },
+    off: "ephemeral",
+    on: "thread:t1",
+  },
+  {
+    row: "no repo, stale client branch",
+    args: { threadId: "t1", threadRepo: null, runBranch: "ephemeral" },
+    off: "ephemeral",
+    on: "thread:t1",
+  },
+  {
+    row: "thread-bound repo",
+    args: {
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
+    },
+    off: "thread:t1/conn_a",
+    on: "thread:t1/conn_a",
+  },
+  {
+    row: "repo-agent with a branch",
+    args: {
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
+      runBranch: "feature/x",
+    },
+    off: "feature/x",
+    on: "feature/x",
+  },
+  {
+    row: "repo-agent without a branch",
+    args: {
+      threadId: "t1",
+      threadRepo: null,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
+    },
+    off: "thread:t1",
+    on: "thread:t1",
+  },
+  {
+    row: "pinned ref",
+    args: { threadId: "t1", threadRepo: null, pinnedRef: "fix/pr-branch" },
+    off: "fix/pr-branch",
+    on: "fix/pr-branch",
+  },
+])("sandbox-only chats keying: $row", ({ args, off, on }) => {
+  expect(resolveSandboxBranch(args)).toBe(off);
+  expect(resolveSandboxBranch({ ...args, sandboxOnlyChats: false })).toBe(off);
+  expect(resolveSandboxBranch({ ...args, sandboxOnlyChats: true })).toBe(on);
+});
+
+test("sandbox-only chats never share a sandbox across threads", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      sandboxOnlyChats: true,
+    }),
+  ).not.toBe(
+    resolveSandboxBranch({
+      threadId: "t2",
+      threadRepo: null,
+      sandboxOnlyChats: true,
+    }),
+  );
+});
+
 const DEAD_REPO: RepositoryBinding = {
   url: "https://github.com/acme/storefront",
   owner: "acme",
