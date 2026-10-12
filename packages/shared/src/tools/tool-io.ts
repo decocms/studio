@@ -124,6 +124,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -204,6 +205,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -280,6 +282,7 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
+            chat_harness_sandbox_only?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -367,6 +370,7 @@ export interface StudioToolIO {
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
+      sprintId?: string | null | undefined;
       prUrl?: string | null | undefined;
       onDuplicate?: "create" | "return_existing" | undefined;
     };
@@ -392,6 +396,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -467,6 +472,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -541,6 +547,7 @@ export interface StudioToolIO {
       sortOrder?: number | undefined;
       previewRoutes?: string[] | undefined;
       tagIds?: string[] | undefined;
+      sprintId?: string | null | undefined;
       linkThreadId?: string | undefined;
       prUrl?: string | null | undefined;
     };
@@ -566,6 +573,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -755,7 +763,8 @@ export interface StudioToolIO {
           | "merge_conflict_resolution"
           | "type_changed"
           | "duplicate_reported"
-          | "finding_resolved";
+          | "finding_resolved"
+          | "sprint_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -840,6 +849,81 @@ export interface StudioToolIO {
     input: { externalKeys?: string[] | undefined };
     output: { restored: number };
   };
+  TASK_BOARD_SPRINT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      sprints: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      }[];
+    };
+  };
+  TASK_BOARD_SPRINT_CREATE: {
+    input: {
+      name: string;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_UPDATE: {
+    input: {
+      id: string;
+      name?: string | undefined;
+      startDate?: string | null | undefined;
+      endDate?: string | null | undefined;
+    };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_START: {
+    input: { id: string };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+    };
+  };
+  TASK_BOARD_SPRINT_COMPLETE: {
+    input: { id: string; moveOpenTo?: string | null | undefined };
+    output: {
+      sprint: {
+        id: string;
+        name: string;
+        state: "active" | "closed" | "future";
+        startDate: string | null;
+        endDate: string | null;
+      };
+      movedTo: string | null;
+      movedCount: number;
+    };
+  };
+  TASK_BOARD_SPRINT_DELETE: {
+    input: { id: string };
+    output: { deleted: boolean; movedCount: number };
+  };
   TASK_ADD_REPO: {
     input: { id?: string | undefined; connectionId?: string | undefined };
     output: {
@@ -850,6 +934,62 @@ export interface StudioToolIO {
       cloned?: boolean | undefined;
       files?: string | undefined;
     };
+  };
+  generate_image: {
+    input: {
+      prompt: string;
+      referenceImages?: { uri: string }[] | undefined;
+      aspectRatio?:
+        | "1:1"
+        | "16:9"
+        | "9:16"
+        | "4:3"
+        | "3:4"
+        | "3:2"
+        | "2:3"
+        | undefined;
+      n?: number | undefined;
+    };
+    output: {
+      success: true;
+      images: { uri: string; mediaType: string }[];
+      prompt: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
+      usedReferenceImages: number;
+    };
+  };
+  web_search: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  deep_research: {
+    input: { query: string };
+    output: {
+      success: true;
+      query: string;
+      usage: { inputTokens: number; outputTokens: number };
+      content?: string | undefined;
+      uri?: string | undefined;
+      preview?: string | undefined;
+      citations?: { url: string; title?: string | undefined }[] | undefined;
+    };
+  };
+  suggest_task: {
+    input: { title: string; summary: string };
+    output: { shown: true };
+  };
+  update_interests: {
+    input: { interests: { title: string; summary: string }[] };
+    output: { ok: true; count: number };
   };
   TASK_BOARD_ADMIN_ORG_LIST: {
     input: { [x: string]: never };
@@ -1062,247 +1202,6 @@ export interface StudioToolIO {
       )[];
     };
   };
-  BRAND_CONTEXT_LIST: {
-    input: { includeArchived?: boolean | undefined };
-    output: {
-      items: {
-        id: string;
-        name: string;
-        domain: string;
-        overview: string;
-        organizationId: string;
-        createdAt: string;
-        updatedAt: string;
-        logo?: string | null | undefined;
-        favicon?: string | null | undefined;
-        ogImage?: string | null | undefined;
-        fonts?:
-          | {
-              heading?: string | undefined;
-              body?: string | undefined;
-              code?: string | undefined;
-            }
-          | null
-          | undefined;
-        colors?:
-          | {
-              primary?: string | undefined;
-              secondary?: string | undefined;
-              accent?: string | undefined;
-              background?: string | undefined;
-              foreground?: string | undefined;
-            }
-          | null
-          | undefined;
-        images?: Record<string, unknown>[] | null | undefined;
-        metadata?: Record<string, unknown> | null | undefined;
-        isDefault?: boolean | undefined;
-        archivedAt?: string | null | undefined;
-      }[];
-    };
-  };
-  BRAND_CONTEXT_GET: {
-    input: { id: string };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      createdAt: string;
-      updatedAt: string;
-      organizationId: string;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      isDefault?: boolean | undefined;
-      archivedAt?: string | null | undefined;
-    };
-  };
-  BRAND_CONTEXT_CREATE: {
-    input: {
-      name: string;
-      domain: string;
-      overview: string;
-      metadata?: Record<string, unknown> | null | undefined;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
-    };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      organizationId: string;
-      createdAt: string;
-      updatedAt: string;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
-    };
-  };
-  BRAND_CONTEXT_UPDATE: {
-    input: {
-      id: string;
-      name?: string | undefined;
-      domain?: string | undefined;
-      overview?: string | undefined;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
-    };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      organizationId: string;
-      createdAt: string;
-      updatedAt: string;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-      images?: Record<string, unknown>[] | null | undefined;
-      metadata?: Record<string, unknown> | null | undefined;
-      archivedAt?: string | null | undefined;
-      isDefault?: boolean | undefined;
-    };
-  };
-  BRAND_CONTEXT_DELETE: { input: { id: string }; output: { success: boolean } };
-  BRAND_CONTEXT_EXTRACT: {
-    input: { domain: string; brandId?: string | undefined };
-    output: {
-      id: string;
-      name: string;
-      domain: string;
-      overview: string;
-      success: boolean;
-      logo?: string | null | undefined;
-      favicon?: string | null | undefined;
-      ogImage?: string | null | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | null
-        | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | null
-        | undefined;
-    };
-  };
   BLOG_BRAND_EXTRACT: {
     input: { blocks: { key: string; content: string }[] };
     output: {
@@ -1455,78 +1354,6 @@ export interface StudioToolIO {
       count?: number | undefined;
     };
     output: { suggestions: { quote: string; slug: string }[] };
-  };
-  BRAND_GET: {
-    input: { id?: string | undefined };
-    output: {
-      id: string;
-      name: string;
-      domain?: string | undefined;
-      colors?:
-        | {
-            primary?: string | undefined;
-            secondary?: string | undefined;
-            accent?: string | undefined;
-            background?: string | undefined;
-            foreground?: string | undefined;
-          }
-        | undefined;
-      fonts?:
-        | {
-            heading?: string | undefined;
-            body?: string | undefined;
-            code?: string | undefined;
-          }
-        | undefined;
-      assets?:
-        | {
-            logo?: string | undefined;
-            favicon?: string | undefined;
-            ogImage?: string | undefined;
-          }
-        | undefined;
-      overview?: string | undefined;
-      tagline?: string | undefined;
-      tone?: string | undefined;
-      metadata?: Record<string, unknown> | undefined;
-    };
-  };
-  BRAND_LIST: {
-    input: { [x: string]: never };
-    output: {
-      items: {
-        id: string;
-        name: string;
-        domain?: string | undefined;
-        colors?:
-          | {
-              primary?: string | undefined;
-              secondary?: string | undefined;
-              accent?: string | undefined;
-              background?: string | undefined;
-              foreground?: string | undefined;
-            }
-          | undefined;
-        fonts?:
-          | {
-              heading?: string | undefined;
-              body?: string | undefined;
-              code?: string | undefined;
-            }
-          | undefined;
-        assets?:
-          | {
-              logo?: string | undefined;
-              favicon?: string | undefined;
-              ogImage?: string | undefined;
-            }
-          | undefined;
-        overview?: string | undefined;
-        tagline?: string | undefined;
-        tone?: string | undefined;
-        metadata?: Record<string, unknown> | undefined;
-      }[];
-    };
   };
   ORGANIZATION_DOMAIN_LIST: {
     input: { [x: string]: never };
@@ -2372,6 +2199,33 @@ export interface StudioToolIO {
   CONNECTION_TEST: {
     input: { id: string };
     output: { id: string; healthy: boolean; latencyMs: number };
+  };
+  CONNECTION_TOOLS_SEARCH: {
+    input: {
+      query: string;
+      limit?: number | undefined;
+      withSchema?: boolean | undefined;
+    };
+    output: {
+      tools: {
+        name: string;
+        description: string;
+        connections: { id: string; title: string }[];
+        inputSchema?: unknown;
+      }[];
+    };
+  };
+  CONNECTION_TOOL_CALL: {
+    input: {
+      connectionId: string;
+      toolName: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: {
+      content: unknown[];
+      structuredContent?: unknown;
+      isError?: boolean | undefined;
+    };
   };
   REPORTS_SETUP: {
     input: { siteUrl: string };
@@ -4884,7 +4738,7 @@ export interface StudioToolIO {
         | "failed"
         | "completed"
         | undefined;
-      kind?: "automation" | "chat" | "task" | undefined;
+      kind?: "automation" | "task" | "chat" | undefined;
       limit?: number | undefined;
     };
     output: {
@@ -4896,7 +4750,7 @@ export interface StudioToolIO {
         orgSlug: string;
         title: string;
         status: string;
-        kind: "automation" | "chat" | "task";
+        kind: "automation" | "task" | "chat";
         failureKind: string | null;
         failureReason: string | null;
         lastError: string | null;
@@ -5586,6 +5440,10 @@ export interface StudioToolIO {
         last_used_by?: string | undefined;
       }[];
     };
+  };
+  PROJECT_FOLDER_ENSURE: {
+    input: { id: string };
+    output: { path: string; created: boolean };
   };
   AI_PROVIDERS_LIST: {
     input: { [x: string]: never };
@@ -7289,9 +7147,9 @@ export interface StudioToolIO {
           conclusion:
             | "success"
             | "skipped"
+            | "cancelled"
             | "failure"
             | "neutral"
-            | "cancelled"
             | "timed_out"
             | "action_required"
             | null;
@@ -7432,7 +7290,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("connection" | "task" | "thread")[] | undefined;
+      types?: ("task" | "connection" | "thread")[] | undefined;
     };
     output: {
       items: (
