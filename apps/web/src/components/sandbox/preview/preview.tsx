@@ -55,7 +55,10 @@ import {
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { Panel } from "@/components/panel";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+import {
+  inlinePageOverrideParams,
+  withVariantMatcherOverride,
+} from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -1041,10 +1044,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       pathTemplate: currentPath,
     });
     if (!req) return;
-    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the variant live right now.
     const src = withVariantMatcherOverride(
       req.src,
-      workspace.state.variantOverride ?? [],
+      inlinePageOverrideParams(
+        workspace.state.variantOverride ?? [],
+        currentPageKey,
+      ),
     );
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },

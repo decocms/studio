@@ -362,17 +362,19 @@ export async function generateImageCore(
   };
 }
 
+export const GENERATE_IMAGE_DESCRIPTION =
+  "Generate an image from a text description, optionally using reference images. " +
+  "Use this when the user asks you to create, generate, draw, or design an image. " +
+  "If the user has attached images and wants to modify or use them as a reference, " +
+  "pass them as referenceImages. " +
+  "The image is displayed automatically by the UI — do NOT include image URLs or markdown images in your response.";
+
 export function createPortableGenerateImageTool(
   writer: UIMessageStreamWriter,
   params: GenerateImageCoreParams,
 ) {
   return tool({
-    description:
-      "Generate an image from a text description, optionally using reference images. " +
-      "Use this when the user asks you to create, generate, draw, or design an image. " +
-      "If the user has attached images and wants to modify or use them as a reference, " +
-      "pass them as referenceImages. " +
-      "The image is displayed automatically by the UI — do NOT include image URLs or markdown images in your response.",
+    description: GENERATE_IMAGE_DESCRIPTION,
     inputSchema: zodSchema(GenerateImageInputSchema),
     execute: async (input, options) => {
       const startTime = performance.now();
