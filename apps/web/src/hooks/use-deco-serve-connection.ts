@@ -7,7 +7,7 @@ import {
 import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { authClient } from "@/lib/auth-client";
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 
 export interface DecoServeConnectionState {
   /** The project's connected `deco serve`, or `null`. */
