@@ -68,6 +68,8 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
+import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
+import type { Task } from "@/components/chat/task/types";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { canonicalThreadRouteTarget } from "@/layouts/main-panel-tabs/tab-route";
@@ -544,6 +546,28 @@ function ThreadSessionProvider() {
   const hasActiveRepository = !!(entity && getActiveRepository(entity));
   const baseBranch = useBaseBranch(entity, null);
 
+  const resolvingEntry = routeThreadId === null && !!routeAgentId && !!entity;
+  const findEntry = (candidates: Task[]) =>
+    findAgentEntryThread(
+      candidates,
+      virtualMcpId,
+      session?.user?.id,
+      defaultThreadRuntime(entity?.metadata),
+      hasActiveRepository,
+      { baseBranch },
+    );
+  const localEntry =
+    resolvingEntry && threadsStatus.kind !== "loading"
+      ? findEntry(threads)
+      : undefined;
+  // The shared feed is the user's latest page across the org, so this agent's
+  // last draft can be missing from it; read the agent's own threads before
+  // minting a duplicate draft.
+  const scopedEntryThreads = useAgentEntryThreads(
+    virtualMcpId,
+    resolvingEntry && threadsStatus.kind !== "loading" && !localEntry,
+  );
+
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
   // "Creating task…" state until the row is persisted. Without this the
@@ -638,9 +662,12 @@ function ThreadSessionProvider() {
   }
 
   // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
-  if (routeThreadId === null && routeAgentId && entity) {
-    // Wait for the first thread page: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
-    if (threadsStatus.kind === "loading") {
+  if (resolvingEntry) {
+    // Wait for the thread lists: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
+    if (
+      threadsStatus.kind === "loading" ||
+      scopedEntryThreads.status === "loading"
+    ) {
       return (
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div
@@ -655,14 +682,11 @@ function ThreadSessionProvider() {
       );
     }
     // Resume the last version/conversation for this agent; a repo editor mints a fresh thread when none resolves, a branchless agent falls through to its lazy composer.
-    const entry = findAgentEntryThread(
-      threads,
-      virtualMcpId,
-      session?.user?.id,
-      defaultThreadRuntime(entity.metadata),
-      hasActiveRepository,
-      { baseBranch },
-    );
+    const entry =
+      localEntry ??
+      (scopedEntryThreads.status === "ready"
+        ? findEntry(scopedEntryThreads.threads)
+        : undefined);
     const threadId =
       entry?.id ?? (hasActiveRepository ? generatedThreadId : null);
     if (threadId) {

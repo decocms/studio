@@ -60,6 +60,11 @@ type Links struct {
 	// ConfigPath is ORGFS_SIDECAR_CONFIG_PATH. Its presence alone means org-fs is
 	// expected, which is what makes the first-touch wait fire before any status.
 	ConfigPath string
+	// PruneEmptyThreadDirs is ORGFS_PRUNE_EMPTY_THREAD_DIRS. A repoint creates
+	// the thread's subtree before anything is written, and over the mount that
+	// becomes a permanent org-fs folder per chat; with this on, moving to
+	// another thread removes the previous one's if it stayed empty.
+	PruneEmptyThreadDirs bool
 
 	firstWait sync.Once
 	firstOk   bool
@@ -282,6 +287,13 @@ func (l *Links) RepointForRun(threadId string) bool {
 			}
 		}
 		return false
+	}
+	if l.PruneEmptyThreadDirs && l.lastOutputThread != "" {
+		for _, dir := range []string{".uploads", ".outputs"} {
+			if mounted(dir) {
+				l.removeIfEmpty(dir, l.lastOutputThread)
+			}
+		}
 	}
 	// Best-effort: older sandboxes have no `.uploads` mount, and attachments flow
 	// through Studio regardless.
@@ -838,6 +850,20 @@ func pruneUnpublished(dir string, published map[string]bool) int {
 		}
 	}
 	return n
+}
+
+// removeIfEmpty drops a thread's subtree that nothing was written into.
+// rmdir refuses a non-empty dir, so a thread with files keeps them, and the
+// next repoint to that thread recreates the dir. Under `mu`, so no repoint can
+// recreate it halfway.
+func (l *Links) removeIfEmpty(mountDir, threadId string) {
+	if !safeSegment.MatchString(threadId) {
+		return
+	}
+	dir := filepath.Join(l.AppRoot, "org", mountDir, threadId)
+	if err := os.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Debug("org-fs thread dir kept", "dir", dir, "err", err)
+	}
 }
 
 // repointThreadLink points `org/<linkName>` at `<mountDir>/<threadId>`, creating

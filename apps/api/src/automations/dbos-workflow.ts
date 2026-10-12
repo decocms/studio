@@ -59,6 +59,7 @@ import {
   type ResolvedAutomationModel,
 } from "./build-stream-request";
 import { computeNextRunAt, type StudioContextFactory } from "./fire";
+import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
 
 /**
  * Automation fires run on ONE partitioned queue, partitioned by orgId.
@@ -316,7 +317,18 @@ async function createRunThreadStep(
   triggerId: string | null,
 ): Promise<string> {
   const rt = requireRuntime();
-  return await rt.storage.createAutomationRunThread(automation, triggerId);
+  const studioCtx = await rt.studioContextFactory(
+    automation.organization_id,
+    automation.created_by,
+  );
+  const sandboxOnly =
+    studioCtx !== null &&
+    (await sandboxOnlyChatsEnabled(studioCtx, automation.organization_id));
+  return await rt.storage.createAutomationRunThread(
+    automation,
+    triggerId,
+    sandboxOnly ? "claude-code" : "decopilot",
+  );
 }
 
 async function updateTriggerTimingStep(triggerId: string): Promise<void> {
@@ -371,12 +383,15 @@ async function buildDispatchRequestStep(
     return { ok: false, reason: "creator membership lost mid-fire" };
   }
 
+  // The run's harness is the one its thread was created with.
+  const thread = await studioCtx.storage.threads.get(taskId);
   const request = buildStreamRequest(
     automation,
     ctx.triggerId,
     taskId,
     resolvedModel,
     ctx.runMetadata,
+    thread?.harness_id === "claude-code" ? "claude-code" : "decopilot",
   );
   if (ctx.contextMessages && ctx.contextMessages.length > 0) {
     // The dispatch path (`dispatch-run.ts`) persists and forwards only the

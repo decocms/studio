@@ -68,25 +68,3 @@ export {
   type DeleteObjectsInput,
   type DeleteObjectsOutput,
 } from "./well-known/object-storage";
-
-// Re-export brand binding types (for reading org brand context)
-export {
-  BrandColorsSchema,
-  type BrandColors,
-  BrandFontsSchema,
-  type BrandFonts,
-  BrandAssetsSchema,
-  type BrandAssets,
-  BrandSchema,
-  type Brand,
-  BrandGetInputSchema,
-  type BrandGetInput,
-  type BrandGetOutput,
-  BrandListInputSchema,
-  type BrandListInput,
-  BrandListOutputSchema,
-  type BrandListOutput,
-  BRAND_BINDING,
-  BrandBinding,
-  type BrandBindingClient,
-} from "./well-known/brand";

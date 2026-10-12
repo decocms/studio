@@ -3,7 +3,7 @@
  * The harness-runner: the TS half of the Go daemon's `/dispatch` path.
  *
  * One process per run. The daemon execs the argv in `HARNESS_RUNNER_CMD`, writes
- * `{input}` to stdin, and reads a stream of `HarnessRunResult` frames
+ * `{harnessId, input}` to stdin, and reads a stream of `HarnessRunResult` frames
  * back off stdout — one JSON line each, forwarded to Studio as they arrive so a
  * long turn persists as it goes. The wire is
  * `daemon-go/internal/dispatch/runner.go`. stderr is the pod's log.
@@ -23,11 +23,48 @@ function emit(frame: HarnessRunResult): void {
 /** Always answer with at least one frame, so the daemon never has to infer. */
 function fail(code: string, message: string): never {
   emit({ chunks: [], error: { code, message } });
+  process.exit(1);
+}
+
+// Persistent (the daemon's session pool): one envelope per line, the process
+// kept between turns. A turn that ends in an error ends the process, so the next
+// one starts clean; a clean one ends with `turnEnd`.
+if (process.env.HARNESS_RUNNER_PERSISTENT === "1") {
+  for await (const line of console) {
+    if (!line.trim()) continue;
+    const turnStartedAt = performance.now();
+    let turn: { harnessId?: unknown; input?: unknown; beforeRunMs?: unknown };
+    try {
+      turn = JSON.parse(line);
+    } catch {
+      fail("bad_input", "a turn line is not JSON");
+    }
+    if (turn.harnessId !== "claude-code") {
+      fail(
+        "unknown_harness",
+        `harness-runner does not implement ${JSON.stringify(turn.harnessId)}`,
+      );
+    }
+    // The daemon's prep for THIS turn; the spawn env only had the first's.
+    process.env.HARNESS_BEFORE_RUN_MS =
+      typeof turn.beforeRunMs === "string" ? turn.beforeRunMs : "";
+    let failed = false;
+    await runClaudeCode(
+      turn.input as Parameters<typeof runClaudeCode>[0],
+      (frame) => {
+        if (frame.error) failed = true;
+        emit(frame);
+      },
+      turnStartedAt,
+    );
+    if (failed) process.exit(1);
+    emit({ chunks: [], turnEnd: true });
+  }
   process.exit(0);
 }
 
 const raw = await Bun.stdin.text();
-let body: { input?: unknown };
+let body: { harnessId?: unknown; input?: unknown };
 try {
   body = JSON.parse(raw);
 } catch {
@@ -38,5 +75,16 @@ if (typeof body.input !== "object" || body.input === null) {
 }
 // The daemon validated the envelope (internal/dispatch/validate.go) before
 // exec'ing this, so the shape is trusted from here.
-await runClaudeCode(body.input as Parameters<typeof runClaudeCode>[0], emit);
-process.exit(0);
+switch (body.harnessId) {
+  case "claude-code":
+    await runClaudeCode(
+      body.input as Parameters<typeof runClaudeCode>[0],
+      emit,
+    );
+    process.exit(0);
+  default:
+    fail(
+      "unknown_harness",
+      `harness-runner does not implement ${JSON.stringify(body.harnessId)}`,
+    );
+}

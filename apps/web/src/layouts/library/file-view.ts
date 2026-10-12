@@ -66,3 +66,25 @@ export function matchesLibraryFileView(
     extension,
   );
 }
+
+export const LIBRARY_MODIFIED = ["any", "today", "week", "month"] as const;
+export type LibraryModified = (typeof LIBRARY_MODIFIED)[number];
+
+const MODIFIED_WINDOW_DAYS: Record<Exclude<LibraryModified, "any">, number> = {
+  today: 1,
+  week: 7,
+  month: 30,
+};
+
+/** `today` is the last 24 hours, not the calendar day: a file from 11pm
+ *  should not vanish at midnight. */
+export function matchesLibraryModified(
+  updatedAt: string,
+  modified: LibraryModified,
+  now: number = Date.now(),
+): boolean {
+  if (modified === "any") return true;
+  const time = Date.parse(updatedAt);
+  if (Number.isNaN(time)) return false;
+  return now - time <= MODIFIED_WINDOW_DAYS[modified] * 24 * 60 * 60 * 1000;
+}
