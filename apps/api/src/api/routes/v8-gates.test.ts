@@ -445,7 +445,9 @@ describe("decofile routes", () => {
       method: "POST",
       body: "{}",
     });
-    expect(rpc.status).toBe(404);
+    // Only an editor that read main as v8 calls rpc: main changed since.
+    expect(rpc.status).toBe(409);
+    expect(await rpc.json()).toMatchObject({ code: "main_schema_changed" });
     expect(repo.schemaReads().length).toBe(1);
     expect(patches).toEqual([]);
   });
@@ -479,6 +481,98 @@ describe("decofile routes", () => {
     const res = await app.request("/decofile/p1/main");
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ code: "site_not_owned" });
+  });
+
+  it("a v7 project whose main can't be read still gets its decofile (the unowned check is advisory)", async () => {
+    const { app, repo } = setup(
+      {},
+      { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+    );
+    const getEntriesAtPaths = repo.git.client.getEntriesAtPaths;
+    repo.git.client.getEntriesAtPaths = async (ref, paths) => {
+      if (paths.some((path) => path.endsWith("schema.gen.json"))) {
+        throw new Error("GitHub is down");
+      }
+      return getEntriesAtPaths.call(repo.git.client, ref, paths);
+    };
+    const res = await app.request("/decofile/p1/main");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toHaveProperty("decofile");
+    // The real gate still fails closed.
+    const rpc = await app.request("/decofile/p1/main/rpc", {
+      method: "POST",
+      body: "{}",
+    });
+    expect(rpc.status).toBeGreaterThanOrEqual(500);
+  });
+
+  describe("main changed mid-session (the editor says which main it acts on)", () => {
+    const asV7 = { "x-deco-main-schema": "v7" };
+    const asV8 = { "x-deco-main-schema": "v8" };
+
+    it("a v7 editor reading a site whose main is now v8 is told, never served the hosted shape", async () => {
+      const { app } = setup({}, v8Files, { p1: ORG });
+      const res = await app.request("/decofile/p1/main", { headers: asV7 });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "main_schema_changed" });
+    });
+
+    it("a v8 editor reading a main back on v7 is told, never served the v7 decofile", async () => {
+      const { app } = setup(
+        { blocksMajor: 8 },
+        { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+        { p1: ORG },
+      );
+      const res = await app.request("/decofile/p1/main", { headers: asV8 });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "main_schema_changed" });
+    });
+
+    it("a v8 editor's Publish on a main back on v7 is refused, never merged", async () => {
+      const { app, repo } = setup(
+        { blocksMajor: 8 },
+        { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+        { p1: ORG },
+      );
+      const res = await app.request("/decofile/p1/feature/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...asV8 },
+        body: JSON.stringify({ note: "x" }),
+      });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "main_schema_changed" });
+      expect(repo.calls.some((c) => c.startsWith("mergeBranches"))).toBe(false);
+    });
+
+    it("an editor whose answer still holds is served as before", async () => {
+      const v7 = setup(
+        {},
+        { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+        { p1: ORG },
+      );
+      const legacy = await v7.app.request("/decofile/p1/main", {
+        headers: asV7,
+      });
+      expect(legacy.status).toBe(200);
+      expect(await legacy.json()).toHaveProperty("decofile");
+    });
+
+    it("a v7 editor's reads cost at most one (cached) read of main", async () => {
+      for (const sites of [{}, { p1: ORG }] as Array<Record<string, string>>) {
+        const { app, repo } = setup(
+          {},
+          { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+          sites,
+        );
+        for (let i = 0; i < 3; i++) {
+          const res = await app.request("/decofile/p1/main", {
+            headers: asV7,
+          });
+          expect(res.status).toBe(200);
+        }
+        expect(repo.schemaReads().length).toBeLessThanOrEqual(1);
+      }
+    });
   });
 
   it("an unowned project whose main went back to v7 gets the v7 decofile", async () => {

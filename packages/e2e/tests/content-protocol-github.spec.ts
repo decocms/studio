@@ -392,14 +392,16 @@ test.describe("content protocol on GitHub", () => {
         .refs;
 
       // main isn't v8, so no protocol: the editor stays on the classic one.
-      expect((await rpc(ctx, path, "describe")).status).toBe(404);
+      // (409 `main_schema_changed`: only an editor that read main as v8
+      // calls it, and it re-reads main's answer.)
+      expect((await rpc(ctx, path, "describe")).status).toBe(409);
       expect(
         (
           await rpc(ctx, path, "blocks.apply", {
             set: { "hero-home": { __resolveType: "hero", title: "x" } },
           })
         ).status,
-      ).toBe(404);
+      ).toBe(409);
       expect(
         (
           await ctx.get(`/api/${project.org}/hosted/${project.vmcpId}/releases`)
@@ -456,7 +458,7 @@ test.describe("content protocol on GitHub", () => {
 
       // Opening the project again clears the marker: no protocol, no hosted.
       expect(await refreshV8(ctx, project)).toBe(false);
-      expect((await rpc(ctx, path, "describe")).status).toBe(404);
+      expect((await rpc(ctx, path, "describe")).status).toBe(409);
       expect(
         (
           await ctx.get(`/api/${project.org}/hosted/${project.vmcpId}/releases`)

@@ -76,7 +76,9 @@ export function useDecofile(
    * localhost origin, so `buildDecofileFetchUrl`'s proxy path can't reach it —
    * the Local branch below fetches it directly instead.
    */
-  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  // A saved Local tunnel waits for main's answer (v7 uses it, v8 never).
+  const { url: localPreviewUrl, undecided: tunnelUndecided } =
+    useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
   // Next-major Blocks sites: the content protocol, polled (see content-backend).
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
@@ -184,7 +186,7 @@ export function useDecofile(
       });
       throw err;
     },
-    enabled: !!params && backend.kind !== "pending",
+    enabled: !!params && backend.kind !== "pending" && !tunnelUndecided,
     staleTime: protocol ? 0 : 30_000,
     refetchInterval: protocol?.describe.pollIntervalMs,
     refetchIntervalInBackground: false,

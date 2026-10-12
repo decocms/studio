@@ -16,8 +16,11 @@ import {
   GITHUB_SITE_NOT_OWNED,
   probeGithub,
   probeSandbox,
+  sandboxSiteAnswer,
   V8_PROBE_RETRY,
 } from "./use-content-backend";
+import { MainSchemaChangedError } from "@/hooks/main-schema-changed";
+import { MAIN_SCHEMA_HEADER } from "@decocms/shared/blocks-major";
 
 const deco1 = {
   manifest: { blocks: {} },
@@ -170,6 +173,93 @@ describe("GitHub probe", () => {
         Response.json({ error: "not configured" }, { status: 503 }),
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe("main changed mid-session (the GitHub backend)", () => {
+  const endpoint = "http://studio.test/rpc";
+
+  test("every call says it acts on a v8 main", async () => {
+    const seen: Array<string | null> = [];
+    await probeGithub(endpoint, async (request) => {
+      seen.push(request.headers.get(MAIN_SCHEMA_HEADER));
+      return new Response("boom", { status: 502 });
+    }).catch(() => {});
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set(["v8"]));
+  });
+
+  test("main back on v7: the editor re-reads main's answer instead of failing as unavailable", async () => {
+    let resets = 0;
+    await expect(
+      probeGithub(
+        endpoint,
+        async () =>
+          Response.json(
+            { code: "main_schema_changed", error: "main changed" },
+            { status: 409 },
+          ),
+        () => resets++,
+      ),
+    ).rejects.toBeInstanceOf(MainSchemaChangedError);
+    expect(resets).toBe(1);
+  });
+});
+
+describe("the sandbox daemon's answer (sandboxSiteAnswer)", () => {
+  const v8Probe = { v8Schema: true } as unknown as Probe;
+
+  test("before its first answer it waits for the working tree", () => {
+    expect(
+      sandboxSiteAnswer({
+        data: undefined,
+        isError: false,
+        workingTreeReady: false,
+      }),
+    ).toBe("unavailable");
+    expect(
+      sandboxSiteAnswer({
+        data: undefined,
+        isError: false,
+        workingTreeReady: true,
+      }),
+    ).toBe("loading");
+    expect(
+      sandboxSiteAnswer({
+        data: undefined,
+        isError: true,
+        workingTreeReady: true,
+      }),
+    ).toBe("error");
+  });
+
+  test("decided v7, then a restart (cloning): stays legacy", () => {
+    const base = {
+      hasProject: true,
+      hasServeConnection: false,
+      runtime: "sandbox" as const,
+      mainSchema: "v8" as const,
+      githubSite: "loading" as const,
+    };
+    const steps = [
+      { data: null, workingTreeReady: true },
+      { data: null, workingTreeReady: false },
+      { data: null, workingTreeReady: true },
+    ].map((step) =>
+      selectContentBackend({
+        ...base,
+        sandboxSite: sandboxSiteAnswer({ ...step, isError: false }),
+      }),
+    );
+    expect(steps).toEqual(["legacy", "legacy", "legacy"]);
+  });
+
+  test("decided v8, then hibernate/wake: stays on the protocol", () => {
+    for (const workingTreeReady of [true, false]) {
+      expect(
+        sandboxSiteAnswer({ data: v8Probe, isError: false, workingTreeReady }),
+      ).toBe("v8");
+    }
   });
 });
 

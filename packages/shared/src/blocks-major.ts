@@ -70,3 +70,15 @@ export function isBlocksV8Project(
     ] === BLOCKS_V8_MAJOR
   );
 }
+
+/**
+ * The header a site editor sends with its decofile reads, publishes and
+ * content-protocol calls: main's answer it acts on (`v8` or `v7`). When the
+ * server's own answer for main differs (main changed during the session),
+ * it refuses with 409 `{ code: MAIN_SCHEMA_CHANGED }` instead of serving
+ * the other generation's shape, and the editor re-reads main's answer.
+ */
+export const MAIN_SCHEMA_HEADER = "x-deco-main-schema";
+
+/** The 409 code for a request made on a main answer that is out of date. */
+export const MAIN_SCHEMA_CHANGED = "main_schema_changed";

@@ -26,6 +26,11 @@
  * decofile; publish commits the draft to main and releases it. `rpc` doesn't
  * need a preview server: the protocol never renders.
  *
+ * The editor says which main answer it acts on (`MAIN_SCHEMA_HEADER`); when
+ * main changed during its session the GET, publish and `rpc` answer 409
+ * `main_schema_changed` instead of the other generation's shape, and the
+ * editor reads main's answer again.
+ *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
  * self-enforces the signed draft token, mirroring automation-webhooks.ts.
@@ -69,6 +74,10 @@ import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
+import {
+  MAIN_SCHEMA_CHANGED,
+  MAIN_SCHEMA_HEADER,
+} from "@decocms/shared/blocks-major";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
@@ -322,7 +331,72 @@ async function unownedV8(
 ): Promise<boolean> {
   const scope = c.get("decofileScope");
   if (!scope.userId || scope.site) return false;
-  return scopeIsV8(c, client, await mainBranch());
+  try {
+    return await scopeIsV8(c, client, await mainBranch());
+  } catch (error) {
+    // Advisory: /rpc and the hosted routes are the real gates and still
+    // fail closed. A main that can't be read here must not fail a v7 read
+    // or publish that never needed main.
+    console.warn("decofile: main's schema unreadable, not an unowned v8", {
+      organizationId: scope.organizationId,
+      virtualMcpId: scope.virtualMcpId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+/** The 409 body for a request made on a main answer that is out of date. */
+const MAIN_CHANGED_BODY = {
+  code: MAIN_SCHEMA_CHANGED,
+  error: "main's schema changed: read it again",
+} as const;
+
+/**
+ * The main answer the editor says it acts on (`MAIN_SCHEMA_HEADER`), or
+ * null when it doesn't say (the site's own draft pull, older clients).
+ */
+function expectedMain(c: Context<DecofileEnv>): "v8" | "v7" | null {
+  const value = c.req.header(MAIN_SCHEMA_HEADER);
+  return value === "v8" || value === "v7" ? value : null;
+}
+
+/**
+ * Main's answer for a GET or publish, read only when it matters: a signed-in
+ * owner of its site id (a v8 site's hosted draft could be served), or an
+ * editor that said it acts on a v8 main. `null` when not read (any other v7
+ * request: as cheap as on main). A failed read is v7 for an editor acting
+ * on v7 (as on main, which never read main here), and an error otherwise.
+ */
+async function mainAnswerFor(
+  c: Context<DecofileEnv>,
+  client: RepoContentClient,
+  mainBranch: () => Promise<string>,
+): Promise<boolean | null> {
+  const expected = expectedMain(c);
+  const scope = c.get("decofileScope");
+  const ownsSite = !!scope.userId && !!scope.site;
+  if (!ownsSite && expected !== "v8") return null;
+  try {
+    return await scopeIsV8(c, client, await mainBranch());
+  } catch (error) {
+    if (expected !== "v7") throw error;
+    console.warn("decofile: main's schema unreadable, serving v7", {
+      organizationId: scope.organizationId,
+      virtualMcpId: scope.virtualMcpId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+/**
+ * Whether the editor's main answer (`expectedMain`) differs from the
+ * server's (`mainV8`, when read): main changed during its session.
+ */
+function mainChanged(c: Context<DecofileEnv>, mainV8: boolean | null): boolean {
+  const expected = expectedMain(c);
+  return expected !== null && mainV8 !== null && (expected === "v8") !== mainV8;
 }
 
 function signScopeDraftToken(scope: DecofileScope): string {
@@ -397,10 +471,12 @@ export function createDecofileRoutes(
         return c.json(SITE_NOT_OWNED, 409);
       }
       const hosted = hostedScope(c);
-      if (
-        hosted &&
-        (await scopeIsV8(c, client, await client.getDefaultBranch()))
-      ) {
+      const mainV8 = await mainAnswerFor(c, client, () =>
+        client.getDefaultBranch(),
+      );
+      // The editor acts on another main answer: never the other shape.
+      if (mainChanged(c, mainV8)) return c.json(MAIN_CHANGED_BODY, 409);
+      if (hosted && mainV8) {
         const draft = await hosted.drafts.load(hosted.ref);
         const version = bareEtag(draft?.etag);
         return c.json(
@@ -568,7 +644,11 @@ export function createDecofileRoutes(
         return c.json(SITE_NOT_OWNED, 409);
       }
       const hosted = hostedScope(c);
-      if (hosted && (await scopeIsV8(c, client, baseBranch))) {
+      const mainV8 = await mainAnswerFor(c, client, async () => baseBranch);
+      // A v8 editor's Publish on a main that went back to v7 (or the
+      // reverse) is refused, never merged or published as the other kind.
+      if (mainChanged(c, mainV8)) return c.json(MAIN_CHANGED_BODY, 409);
+      if (hosted && mainV8) {
         const store = deliveryStore();
         if (!store) {
           return c.json({ error: "hosted delivery not configured" }, 503);
@@ -684,8 +764,11 @@ export function createDecofileRoutes(
       // Only a Blocks v8 site (main's schema, `isV8Schema`) has the protocol;
       // the storage below still checks main's schema itself on every read
       // and refuses to commit to a v7 main.
+      // A main that isn't v8 answers `main_schema_changed`: only an editor
+      // that read main as v8 calls this, so main changed since (its editor
+      // re-reads main's answer instead of failing as unavailable).
       if (!(await scopeIsV8(c, client, mainBranch))) {
-        return c.json({ error: "Not found" }, 404);
+        return c.json(MAIN_CHANGED_BODY, 409);
       }
     } catch (err) {
       return errorResponse(c, err);

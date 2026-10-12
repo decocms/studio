@@ -109,7 +109,9 @@ export function useLiveMeta(
    * the sandbox `/read` proxy and the git route go through gated/absent surfaces
    * a tunnel-only project doesn't have.
    */
-  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  // A saved Local tunnel waits for main's answer (v7 uses it, v8 never).
+  const { url: localPreviewUrl, undecided: tunnelUndecided } =
+    useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
   const fetchEnabled = localOverride || (options?.fetchEnabled ?? true);
   const previewUrl = localPreviewUrl ?? params?.previewUrl;
@@ -202,7 +204,7 @@ export function useLiveMeta(
       (err as { status?: number }).status = 502;
       throw err;
     },
-    enabled: !!params && backend.kind !== "pending",
+    enabled: !!params && backend.kind !== "pending" && !tunnelUndecided,
     // On the protocol, the decofile's poll refreshes the schema too.
     refetchInterval: protocol ? false : options?.refetchInterval,
     refetchIntervalInBackground: false,
