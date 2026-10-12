@@ -104,14 +104,13 @@ export function planUnlocking(
   return plan ? { plan, index } : null;
 }
 
-/**
- * Plans deco staff assign by contract. They are not on the ladder, so an org on
- * one is shown neither the catalog nor a checkout — only who to talk to.
- */
-const STAFF_MANAGED_PLAN_IDS: ReadonlySet<string> = new Set([
-  "custom",
-  "ai_service",
-]);
+/** Contract pricing, assigned by deco staff. Off the ladder, but an org on it
+ *  may still move to any catalog plan. */
+export const CUSTOM_PLAN_ID = "custom";
+
+/** deco's own plan: shown neither the catalog nor a checkout — only who to
+ *  talk to. */
+const STAFF_MANAGED_PLAN_IDS: ReadonlySet<string> = new Set(["ai_service"]);
 
 export function isStaffManagedPlan(planId: string | null | undefined): boolean {
   return !!planId && STAFF_MANAGED_PLAN_IDS.has(planId);
