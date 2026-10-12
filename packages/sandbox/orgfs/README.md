@@ -80,7 +80,7 @@ mount point would put user files on ephemeral disk.
 
 | Volume | Mount path | Mode | Purpose |
 | --- | --- | --- | --- |
-| `home` | `org/home` | read-write | Org-wide shared folder; also holds `skills/` and `claude-sessions/` |
+| `home` | `org/home` | read-write | Org-wide shared folder; also holds `skills/` and per-harness session dirs (`claude-sessions/`) |
 | `outputs` | `org/.outputs` | read-write | Per-thread outputs; the agent sees them through `org/output` |
 | `uploads` | `org/.uploads` | read-write | Per-thread chat attachments; the agent sees them through `org/upload` |
 | `public-<set>` | `org/public/<set>` | read-only | Shared public skill sets |
@@ -120,7 +120,8 @@ dispatch gate described below.
   `GET /api/:org/fs/:volume/skills.tar` first and falls back to walking the
   mount. It is capped in bytes and time and runs once per pod.
 - **Sessions.** Before each run, `RestoreSession` copies
-  `org/home/claude-sessions/<threadId>/` into the Claude config directory.
+  `org/home/<harness>-sessions/<threadId>/` (`claude-sessions/` for
+  `claude-code`) into the Claude config directory.
   After each run, `SaveSession` copies it back, so a follow-up in a new pod
   resumes the conversation. These are copies, never mounts, because the SDK
   reads the transcript on its startup path.

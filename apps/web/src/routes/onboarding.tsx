@@ -18,7 +18,6 @@ import {
   Building02,
   CheckCircle,
   Globe04,
-  Palette,
   Upload01,
   Users03,
 } from "@untitledui/icons";
@@ -74,7 +73,6 @@ interface DomainLookupResult {
 interface DomainSetupResult {
   success: boolean;
   slug?: string;
-  brandExtracted?: boolean;
   alreadyExists?: boolean;
   error?: string;
 }
@@ -396,7 +394,7 @@ function SetupForm({
     },
   });
 
-  // Animated workflow only fires for corporate flow with brand extraction
+  // Animated workflow only fires for the corporate domain-setup flow
   if (domainSetupMutation.isPending || pendingRedirectSlug) {
     return (
       <AuthSplitLayout>
@@ -606,11 +604,6 @@ const SETUP_STEPS_CONFIG = [
     icon: Users03,
     labelKey: "routes.onboarding.step.enablingAutoJoin",
     claimOnly: true,
-  },
-  {
-    icon: Palette,
-    labelKey: "routes.onboarding.step.extractingBrand",
-    claimOnly: false,
   },
 ] as const;
 
