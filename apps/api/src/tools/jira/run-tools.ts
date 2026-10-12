@@ -59,8 +59,9 @@ const issueKeyInput = z
  *
  * `threadId` is the run's thread. Omitted on the MCP endpoint, where the path
  * already names it; passed explicitly by the built-in path, which has no
- * request scope to read it from. Absent altogether when the call comes from a
- * chat (`/mcp/self`): then the issue must be named and on the board.
+ * request scope to read it from. A chat — on `/mcp/self`, or on its own thread
+ * endpoint, whose thread is no Jira run — has no run issue: then the issue must
+ * be named and on the board.
  */
 async function resolveRunIssue(
   ctx: StudioContext,
@@ -77,13 +78,14 @@ async function resolveRunIssue(
     integration.email,
     integration.apiToken,
   );
-  if (!threadId) {
+  const thread = threadId ? await ctx.storage.threads.get(threadId) : null;
+  const runKeys = runIssueKeys(thread?.metadata);
+  if (runKeys.length === 0) {
     const issueKey = requireIssueKey(requestedKey);
     await assertOnBoard(client, integration, issueKey);
     return { integration, client, issueKey };
   }
-  const thread = await ctx.storage.threads.get(threadId);
-  const picked = pickIssue(runIssueKeys(thread?.metadata), requestedKey);
+  const picked = pickIssue(runKeys, requestedKey);
   if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
   return { integration, client, issueKey: picked.key };
 }
@@ -383,7 +385,6 @@ export const JIRA_ISSUE_CREATE = defineTool({
   handler: async (input, ctx) => {
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    // Absent when called from a chat: no run issue, no per-run cap or record.
     const threadId = taskRunContextStore.getStore()?.threadId;
     const integration = await ctx.storage.jiraIntegrations.getByOrg(
       organization.id,
@@ -396,11 +397,10 @@ export const JIRA_ISSUE_CREATE = defineTool({
     );
     const thread = threadId ? await ctx.storage.threads.get(threadId) : null;
     const runKeys = runIssueKeys(thread?.metadata);
+    // A chat's thread is not a Jira run: no run issue, no per-run cap or record.
+    const jiraRunThreadId = runKeys.length > 0 ? threadId : undefined;
     let projectKey: string | undefined;
-    if (threadId) {
-      if (runKeys.length === 0) {
-        throw new Error("This run is not working on a Jira issue");
-      }
+    if (jiraRunThreadId) {
       const projects = [...new Set(runKeys.map(projectOf))];
       projectKey = projects[0];
       if (projects.length !== 1) {
@@ -423,7 +423,7 @@ export const JIRA_ISSUE_CREATE = defineTool({
     // behind with half its links.
     const relatesTo: string[] = [];
     for (const requested of input.relatesTo) {
-      const picked = threadId
+      const picked = jiraRunThreadId
         ? pickIssue(runKeys, requested)
         : { key: requireIssueKey(requested), inRun: false };
       if (relatesTo.includes(picked.key)) continue;
@@ -478,8 +478,8 @@ export const JIRA_ISSUE_CREATE = defineTool({
       }));
       // Before linking, which can fail: the cap and the repeat check both
       // read this record.
-      if (threadId) {
-        await ctx.storage.threads.recordJiraIssueCreated(threadId, key);
+      if (jiraRunThreadId) {
+        await ctx.storage.threads.recordJiraIssueCreated(jiraRunThreadId, key);
       }
     }
 

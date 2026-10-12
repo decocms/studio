@@ -22,8 +22,9 @@ Studio can tell a live sandbox from a dead one.
 
 ### Dispatch is single-writer per run
 
-One run id, one active runner process. The dispatch endpoint always invokes the
-installed Claude Code runner; callers send only the run id and input. A dispatch
+One run id, one active runner process. Callers send the run id, the input, and
+the `harnessId` the runner should run; an envelope without one runs
+`claude-code`, so an older Studio keeps working. A dispatch
 for a run that is already in flight is a TAKEOVER: the daemon cancels the run it
 displaces, waits for that process group to die, and only then execs the
 replacement. Studio sends exactly that when the pod driving a run was replaced
@@ -70,6 +71,7 @@ Set by the sandbox template, not by the daemon:
 | `APP_ROOT` (or `WORKDIR`) | Workspace root — `repo/` checkout, daemon state, log tees |
 | `PROXY_PORT` (or `DAEMON_PORT`) | Listen port |
 | `ORGFS_SIDECAR_CONFIG_PATH` / `ORGFS_SIDECAR_STATUS_PATH` | Org-fs relay to the mounter sidecar; org-fs is inert without them |
+| `ORGFS_PRUNE_EMPTY_THREAD_DIRS` | `1` removes the previous thread's empty `.uploads`/`.outputs` dir when a run moves to another thread; off by default |
 
 `/health` is unauthenticated on purpose: Studio polls it and marks the sandbox
 **dead on a single miss**, so never block that path behind slow I/O or a held
