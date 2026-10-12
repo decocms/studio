@@ -230,23 +230,13 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcp.subAgents": "Sub-projects",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "Project URL copied to clipboard",
-  "virtualMcp.virtualMcpShareModal.callFromYourApp": "Call from your app",
-  "virtualMcp.virtualMcpShareModal.callFromYourAppDescription":
-    "Create a scoped API key to start a thread, run this project, and stream results from an external system (e.g. a chatbot webhook).",
   "virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied":
     "Claude Code command copied to clipboard",
   "virtualMcp.virtualMcpShareModal.commandCopied":
     "Command copied to clipboard",
   "virtualMcp.virtualMcpShareModal.connect": "Connect",
-  "virtualMcp.virtualMcpShareModal.connectionDetails": "Connection details",
-  "virtualMcp.virtualMcpShareModal.connectionDetailsCopied":
-    "Connection details copied to clipboard",
   "virtualMcp.virtualMcpShareModal.copied": "Copied!",
   "virtualMcp.virtualMcpShareModal.copyUrl": "Copy URL",
-  "virtualMcp.virtualMcpShareModal.createApiKey": "Create API key",
-  "virtualMcp.virtualMcpShareModal.creating": "Creating…",
-  "virtualMcp.virtualMcpShareModal.failedCreateApiKey":
-    "Failed to create API key",
   "virtualMcp.virtualMcpShareModal.failedGenerateApiKey":
     "Failed to generate API key",
   "virtualMcp.virtualMcpShareModal.generateApiKey": "Generate API key",
