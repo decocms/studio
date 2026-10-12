@@ -53,7 +53,6 @@ export interface PublicConfig {
   logo?: string | { light: string; dark: string };
   internalUrl?: string;
   enableDecoImport?: boolean;
-  brandExtractEnabled?: boolean;
   /** Whether the per-site Hosting tab (control-plane BFF proxy) is available. */
   hostingEnabled?: boolean;
   /**

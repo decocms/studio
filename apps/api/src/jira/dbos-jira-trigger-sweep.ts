@@ -6,7 +6,7 @@
  * pod restarting mid-wait resumes it instead of dropping the move; keyed by the
  * changelog entry, so a redelivered webhook joins the wait already running.
  *
- * The safety net: every ten minutes, ask each enabled integration which issues
+ * The safety net: every five minutes, ask each enabled integration which issues
  * changed status recently and settle each one's latest move. A webhook the
  * tenant never configured, or one Jira dropped, costs latency instead of a
  * missed run; the per-transition claim makes the overlap free. Same shape as
@@ -28,14 +28,14 @@ import {
   triggerRunForSettledMove,
 } from "./trigger";
 
-/** Every ten minutes at :07 — off the other sweeps' ticks. */
-const SWEEP_CRONTAB = "7-59/10 * * * *";
+/** Every five minutes. */
+const SWEEP_CRONTAB = "*/5 * * * *";
 
 /** Three ticks and a margin, so one skipped tick (a deploy, a pod restart)
  *  is covered by the next instead of losing its transitions. Without a
  *  webhook this sweep is the only trigger. The per-transition claim dedupes
  *  the overlap. */
-const LOOKBACK_MINUTES = 35;
+const LOOKBACK_MINUTES = 20;
 
 /** Pages of 100 issues per integration per tick. Past this the tenant has a
  *  problem this sweep should not paper over. */
