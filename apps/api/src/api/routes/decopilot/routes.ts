@@ -66,12 +66,27 @@ import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-regi
 import { broadcastFlip } from "./flip-broadcast";
 import { PartEmitter } from "./part-emitter";
 import { uploadFileParts } from "./file-materializer";
+import { answerPrompt, toolOutputAnswer } from "./tool-answer";
 import {
   cancelThreadGateHead,
   cancelThreadGateWorkflow,
   listThreadGateQueue,
 } from "@/dispatch-queue/thread-gate-queue";
 import { type QueuePartRow, foldQueueHydration } from "./queue-text";
+import { claudeSubscriptionChatModel } from "@/harnesses/claude-code-env";
+import {
+  ClaudeCodeProviderRequiredError,
+  hasClaudeCodeCredential,
+  hasLiveClaudeSubscription,
+  sandboxOnlyChatsEnabled,
+} from "@/harnesses/sandbox-only-chats";
+import { markTurn, startTurnClock } from "@/harnesses/turn-latency";
+import { threadBranch } from "@/tools/sandbox/thread-repo";
+import { buildHistoryPrefix } from "./history-prefix";
+
+/** Newest messages scanned for a re-pinned thread's history; the token budget
+ *  in `buildHistoryPrefix` trims further. */
+const HISTORY_PREFIX_WINDOW = 50;
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -266,6 +281,8 @@ export function applyThreadLock(args: {
   taskIdInput: string | undefined;
   thread: Pick<Thread, "harness_id" | "branch"> | null;
   requestedBranch: string | null | undefined;
+  /** The org's `chat_harness_sandbox_only` flag: unlocked threads take claude-code. */
+  sandboxOnlyChats?: boolean;
 }): {
   harnessId: HarnessId | null | undefined;
   branch: string | null | undefined;
@@ -279,7 +296,7 @@ export function applyThreadLock(args: {
     thread?.harness_id === undefined
   ) {
     return {
-      harnessId: "decopilot",
+      harnessId: args.sandboxOnlyChats ? "claude-code" : "decopilot",
       // Prefer the thread's own branch even while the thread is still
       // unlocked (harness_id null = this is the first message). The branch is
       // assigned at COLLECTION_THREADS_CREATE time, so it exists before the
@@ -341,7 +358,9 @@ async function resolveDefaultHarness(
   ctx: StudioContext,
   organizationId: string,
   agentId: string,
+  sandboxOnlyChats: boolean,
 ): Promise<HostedHarnessId> {
+  if (sandboxOnlyChats) return "claude-code";
   // Without a hosted sandbox, claude-code only fails later, at dispatch.
   if (!agentSandboxEnabled()) return "decopilot";
   try {
@@ -416,10 +435,11 @@ export function assertHostedHarness(
  *
  * `claude-code` belongs here now that its thread takes follow-ups. Cancel
  * reaches it by the same route Decopilot uses: the abort travels to whichever
- * pod owns the turn, aborts the dispatch HTTP request, and the daemon's harness
- * child is spawned on that request's context (`exec.CommandContext`), so the
- * disconnect kills the agent. A turn a user can start and cannot stop is not a
- * boundary, it is a bug.
+ * pod owns the turn and aborts the dispatch HTTP request. The daemon only
+ * detaches on a lost client (the harness keeps running for a reattach), so that
+ * pod's dispatch client also sends `DELETE /_sandbox/runs/:runId`, which kills
+ * the agent. A turn a user can start and cannot stop is not a boundary, it is a
+ * bug.
  */
 export function assertPersistedHostedRuntime(
   harnessId: string | null | undefined,
@@ -448,6 +468,7 @@ export function assertPersistedHostedRuntime(
 async function validate(
   c: Context<{ Variables: { studioContext: StudioContext } }>,
   threadIdParam: string | undefined,
+  sandboxOnlyChats: boolean,
 ): Promise<DispatchRunInput> {
   const ctx = c.get("studioContext");
 
@@ -512,6 +533,7 @@ async function validate(
       taskIdInput,
       thread: lockedThread,
       requestedBranch: branch,
+      sandboxOnlyChats,
     });
 
   // A thread explicitly marked read-only takes no follow-up. Nothing sets the
@@ -533,7 +555,19 @@ async function validate(
 
   assertHostedHarness(effectiveHarnessId);
 
-  const resolvedModels = await resolvePerRequestModels(ctx, tier);
+  const resolvedModels = await resolvePerRequestModels(ctx, tier).catch(
+    async (err): Promise<ModelsConfig> => {
+      // A sandbox chat on the user's own Claude plan needs no org model.
+      if (
+        err instanceof TierUnavailableError &&
+        sandboxOnlyChats &&
+        (await hasLiveClaudeSubscription(ctx, userId))
+      ) {
+        return claudeSubscriptionChatModel();
+      }
+      throw err;
+    },
+  );
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -575,7 +609,7 @@ async function validate(
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
     branch: effectiveBranch ?? null,
-    harnessId: "decopilot",
+    harnessId: sandboxOnlyChats ? "claude-code" : "decopilot",
   };
 }
 
@@ -674,12 +708,28 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // STUDIO_PLANS_ENABLED.
       await assertAiBudget(ctx, organizationId, "Chat");
 
-      const input = await validate(c, c.req.param("threadId"));
+      const sandboxOnlyChats = await sandboxOnlyChatsEnabled(
+        ctx,
+        organizationId,
+      );
+      const input = await validate(
+        c,
+        c.req.param("threadId"),
+        sandboxOnlyChats,
+      );
       const taskId = input.taskId;
       if (!taskId) {
         // validate() always sets taskId from the URL param, so this is
         // a structural invariant rather than a user-facing error.
         throw new HTTPException(400, { message: "threadId is required" });
+      }
+      startTurnClock(taskId);
+      // Checked before any write, so a refused send leaves nothing behind.
+      if (
+        sandboxOnlyChats &&
+        !(await hasClaudeCodeCredential(ctx, organizationId, input.userId))
+      ) {
+        throw new ClaudeCodeProviderRequiredError();
       }
 
       // Re-read the canonical row for its pin and message-storage version.
@@ -695,7 +745,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // out — exactly the right semantics for Decopilot threads on
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
-      let branch = existingThread?.branch ?? input.branch ?? "ephemeral";
+      const fallbackBranch = sandboxOnlyChats
+        ? threadBranch(taskId)
+        : "ephemeral";
+      let branch = existingThread?.branch ?? input.branch ?? fallbackBranch;
 
       // Determine the pinned harness. If the thread row has one, use it.
       // Otherwise this is the first message — derive the hosted default and
@@ -713,6 +766,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           ctx,
           input.organizationId,
           input.agent.id,
+          sandboxOnlyChats,
         );
         assertHostedHarness(pinnedHarness);
 
@@ -747,7 +801,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             throw new HTTPException(404, { message: "Thread not found" });
           }
           pinnedHarness = claimed.thread.harness_id as HarnessId | null;
-          branch = claimed.thread.branch ?? "ephemeral";
+          branch = claimed.thread.branch ?? fallbackBranch;
           messageStorageVersion = claimed.thread.message_storage_version;
         }
       }
@@ -769,11 +823,29 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
 
-      const requestMessage = input.messages.find((m) => m.role !== "system");
+      let requestMessage = input.messages.find((m) => m.role !== "system");
       if (!requestMessage) {
         throw new HTTPException(400, {
           message: "No user message found in input",
         });
+      }
+      const answer =
+        pinnedHarness === "claude-code" && requestMessage.role === "user"
+          ? toolOutputAnswer(requestMessage.metadata)
+          : null;
+      if (answer) {
+        const answered = await ctx.storage.threads
+          .messageParts()
+          .answerToolCall(taskId, answer.toolCallId, answer.output);
+        if (!answered) {
+          throw new HTTPException(409, {
+            message: "The answered tool call is not in this thread",
+          });
+        }
+        requestMessage = {
+          ...requestMessage,
+          parts: [{ type: "text", text: answerPrompt(answered) }],
+        };
       }
       const materializedRequestMessage = (
         await uploadFileParts([requestMessage], ctx, {
@@ -825,6 +897,31 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         await emitter.emitRequestMessage(persistedRequestMessage);
       }
 
+      // Only the send that wins the move carries history: there is no session to resume.
+      let historyPrefix: string | undefined;
+      if (sandboxOnlyChats && pinnedHarness === "decopilot") {
+        const repinned = await ctx.storage.threads.repinDecopilotToClaudeCode(
+          taskId,
+          threadBranch(taskId),
+        );
+        if (!repinned.thread) {
+          throw new HTTPException(404, { message: "Thread not found" });
+        }
+        pinnedHarness = repinned.thread.harness_id as HarnessId | null;
+        branch = repinned.thread.branch ?? fallbackBranch;
+        if (repinned.claimed) {
+          const { messages } = await ctx.storage.threads
+            .messageParts()
+            .loadWindow(taskId, {
+              limit: HISTORY_PREFIX_WINDOW,
+              excludeSubtasks: true,
+            });
+          historyPrefix =
+            buildHistoryPrefix(messages.filter((m) => m.id !== messageId)) ??
+            undefined;
+        }
+      }
+
       // The RUN's harness is the row's pin, not `validate()`'s default. This is
       // the whole difference between accepting a follow-up and answering it: the
       // gate above opens for `claude-code`, but `validate()` returns a fixed
@@ -836,7 +933,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       assertHostedDispatchHarness(pinnedHarness);
       const serializableRequest = buildDurableDispatchInput(
         { ...input, harnessId: pinnedHarness },
-        { messageId, branch },
+        { messageId, branch, historyPrefix },
       );
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
@@ -860,10 +957,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
         { workflowID },
       );
+      markTurn(taskId, "enqueued");
       return c.json({ taskId }, 202);
     } catch (err) {
       // Expected refusal, not an incident — logged as a warning below rather
       // than through the error path.
+      if (err instanceof ClaudeCodeProviderRequiredError) {
+        return c.json({ error: err.message, code: err.code }, 409);
+      }
       if (
         err instanceof FeatureNotInPlanError ||
         err instanceof AiBudgetExhaustedError
