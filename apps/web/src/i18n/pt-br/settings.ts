@@ -697,7 +697,6 @@ export const settings = {
     "Para grandes times com contrato próprio",
   "settings.plans.custom.cta": "Fale com a gente",
   "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
-  "settings.plans.limitReached": "Você atingiu o seu limite de uso de AI",
   "settings.plans.invoice.cta": "Adicionar à minha fatura",
   "settings.plans.invoice.confirm":
     "O plano {plan} será adicionado à sua próxima fatura. Mudar agora?",
@@ -889,6 +888,11 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Descartar",
   "settings.agentTools.orgMcpsPickSaved":
     "Conex\u00f5es que os runs alcan\u00e7am salvas",
+  "settings.agentTools.chatRuntimeSection": "Chats",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Rodar todo chat com o Claude Code no seu pr\u00f3prio sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Todo chat novo roda o Claude Code em um sandbox s\u00f3 dele em vez de rodar no Decopilot, e chats existentes do Decopilot mudam na pr\u00f3xima mensagem. A primeira mensagem de um chat espera o sandbox iniciar. Requer uma chave da Anthropic, OpenRouter ou do gateway de IA da deco, ou uma assinatura do Claude.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

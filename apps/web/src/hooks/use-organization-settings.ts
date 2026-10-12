@@ -249,6 +249,15 @@ export function useOrgFlagState(flag: keyof OrgFlags): boolean | undefined {
 }
 
 /**
+ * `chat_harness_sandbox_only` as the API applies it: a deployment without
+ * hosted sandboxes keeps Decopilot whatever the flag says.
+ */
+export function useSandboxOnlyChats(): boolean {
+  const flag = useOrgFlag("chat_harness_sandbox_only");
+  return usePublicConfig().runtime.agentSandbox && flag;
+}
+
+/**
  * Writer for the org's blocks editor. Not `useSetOrgFlag`: that goes through
  * ORGANIZATION_SETTINGS_UPDATE (org:manage), while any member may switch the
  * editor through the basic-usage ORGANIZATION_BLOCKS_EDITOR_SET.

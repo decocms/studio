@@ -1145,6 +1145,46 @@ describe("resolveSchema – collapsed array keeps its loader picker", () => {
   });
 });
 
+describe("resolveSchema – block-ref keeps the prop's own title", () => {
+  test("an ImageWidget prop behind a $ref keeps its @title/@description", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        background: {
+          $ref: "#/definitions/ImageWidget",
+          title: "Background image",
+          description: "Shown behind the CTA",
+        },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      ImageWidget: {
+        anyOf: [
+          { type: "string", format: "image-uri", title: "ImageWidget" },
+          {
+            title: "Image Variants",
+            type: "object",
+            properties: {
+              __resolveType: {
+                type: "string",
+                enum: ["website/flags/multivariate/image.ts"],
+                default: "website/flags/multivariate/image.ts",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const background = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.background;
+    expect(background?.type).toBe("block-ref");
+    expect(background?.title).toBe("Background image");
+    expect(background?.description).toBe("Shown behind the CTA");
+    expect(background?.plainSchema?.format).toBe("image-uri");
+  });
+});
+
 describe("resolveSchema – @hide on block-ref fields", () => {
   // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
   // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in
