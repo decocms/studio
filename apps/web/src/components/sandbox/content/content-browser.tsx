@@ -128,6 +128,10 @@ import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
+import {
+  isSiteNotOwned,
+  SiteNotOwnedState,
+} from "@/layouts/main-panel-tabs/blocks-tab-states";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import {
   isProtocolProject,
@@ -301,6 +305,9 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   if (!virtualMcpId || !branch) {
     return <EmptyMessage title="Waiting for sandbox context…" />;
   }
+
+  // A v8 site another project owns: say where it's edited, never an error.
+  if (isSiteNotOwned(contentBackend)) return <SiteNotOwnedState />;
 
   return (
     <ContentBrowserReady

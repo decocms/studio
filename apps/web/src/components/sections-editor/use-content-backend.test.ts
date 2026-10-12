@@ -13,6 +13,8 @@ import {
   localServeBackend,
   type Probe,
   probe,
+  GITHUB_SITE_NOT_OWNED,
+  probeGithub,
   probeSandbox,
   V8_PROBE_RETRY,
 } from "./use-content-backend";
@@ -66,17 +68,17 @@ describe("v7/v8 detection over the GitHub backend", () => {
   });
 
   // Only the field makes a site v8 (`isV8Schema`), never the file.
-  test("a committed schema without blocksMajor stays v7", async () => {
+  test("a committed schema without the v8 field stays v7", async () => {
     // A v7-shaped schema, and a `schema.gen.json` from an older `deco schema`.
     expect(await decideV8Session(deco1)).toBe("legacy");
     expect(await decideV8Session({ major: 1, ...deco1 })).toBe("legacy");
   });
 
-  test("any other blocksMajor stays v7", async () => {
-    for (const blocksMajor of [7, "8", null, 9]) {
-      expect(await decideV8Session({ major: 1, blocksMajor, ...deco1 })).toBe(
-        "legacy",
-      );
+  test("any other value of the v8 field stays v7", async () => {
+    for (const value of [7, "8", null, 9]) {
+      expect(
+        await decideV8Session({ major: 1, blocksMajor: value, ...deco1 }),
+      ).toBe("legacy");
     }
   });
 
@@ -125,6 +127,43 @@ describe("sandbox probe", () => {
   test("any other failure is an error (retried)", async () => {
     await expect(
       probeSandbox(endpoint, async () => new Response("boom", { status: 502 })),
+    ).rejects.toThrow();
+  });
+});
+
+describe("GitHub probe", () => {
+  const endpoint = "http://studio.test/rpc";
+
+  test("a v8 site this project doesn't own is a guided state, not an error", async () => {
+    expect(
+      await probeGithub(endpoint, async () =>
+        Response.json(
+          { error: "linked to another project", code: "site_not_owned" },
+          { status: 409 },
+        ),
+      ),
+    ).toBe(GITHUB_SITE_NOT_OWNED);
+    expect(
+      selectContentBackend({
+        hasProject: true,
+        isV8Project: true,
+        hasServeConnection: false,
+        runtime: "cms",
+        githubSite: "not-owned",
+      }),
+    ).toBe("site-not-owned-github");
+  });
+
+  test("any other failure is an error (retried)", async () => {
+    await expect(
+      probeGithub(endpoint, async () =>
+        Response.json({ error: "conflict" }, { status: 409 }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      probeGithub(endpoint, async () =>
+        Response.json({ error: "not configured" }, { status: 503 }),
+      ),
     ).rejects.toThrow();
   });
 });

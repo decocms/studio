@@ -100,6 +100,8 @@ export async function createFastPreviewProject(
     previewServerUrl?: string;
     /** The public site id (`metadata.siteSlug`) the hosted Deco CMS keys on. */
     siteSlug?: string;
+    /** The v7 Fast Preview switch (default on). */
+    fastPreview?: boolean;
   },
 ): Promise<FastPreviewProject> {
   const {
@@ -163,7 +165,7 @@ export async function createFastPreviewProject(
       data: {
         title: `${repo} ${Date.now()}`,
         metadata: {
-          fastPreview: true,
+          fastPreview: params.fastPreview ?? true,
           ...(params.siteSlug ? { siteSlug: params.siteSlug } : {}),
           previewServerUrl:
             params.previewServerUrl ?? `https://${repo}.example.com`,

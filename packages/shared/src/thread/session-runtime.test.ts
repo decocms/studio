@@ -131,9 +131,9 @@ describe("Blocks v8 is always Fast Preview; v7 keeps main's rule", () => {
     [8, true, undefined, "sandbox"],
     [8, undefined, undefined, "sandbox"],
   ];
-  for (const [blocksMajor, fastPreview, previewServerUrl, expected] of rows) {
-    test(`marker=${blocksMajor} fastPreview=${fastPreview} url=${!!previewServerUrl} -> ${expected}`, () => {
-      const meta = { blocksMajor, fastPreview, previewServerUrl };
+  for (const [marker, fastPreview, previewServerUrl, expected] of rows) {
+    test(`marker=${marker} fastPreview=${fastPreview} url=${!!previewServerUrl} -> ${expected}`, () => {
+      const meta = { blocksMajor: marker, fastPreview, previewServerUrl };
       expect(defaultThreadRuntime(meta)).toBe(expected);
       expect(fastPreviewCapability(meta)).toBe(expected === "cms");
     });

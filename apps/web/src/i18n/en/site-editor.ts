@@ -32,4 +32,8 @@ export const siteEditor = {
     "Not saved: some fields aren't filled in correctly. Fix them and try again.",
   "siteEditor.save.tooLarge":
     "Not saved: this content is too large. Make it smaller and try again.",
+  "siteEditor.siteNotOwned.title": "This site is edited from another project",
+  "siteEditor.siteNotOwned.body":
+    "Another project in Studio was set up with this site first, so its content is edited and published there. Open that project to change the site's content. Here you can still chat and work on the site's code.",
+  "siteEditor.siteNotOwned.openProjects": "See projects",
 };

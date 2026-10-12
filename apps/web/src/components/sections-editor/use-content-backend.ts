@@ -45,6 +45,51 @@ export interface Probe {
 /** The sandbox answered 404 on `/_sandbox/rpc`: its daemon predates it. */
 class NoSandboxProtocolError extends Error {}
 
+/** Studio answered 409 `site_not_owned`: another project owns this site. */
+class SiteNotOwnedError extends Error {}
+
+/** The GitHub probe's answer for a v8 site this project doesn't own. */
+export const GITHUB_SITE_NOT_OWNED = "site-not-owned" as const;
+
+/** Whether a Studio response is the 409 `site_not_owned` answer. */
+async function isSiteNotOwnedResponse(response: Response): Promise<boolean> {
+  if (response.status !== 409) return false;
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => null)) as { code?: unknown } | null;
+  return body?.code === "site_not_owned";
+}
+
+/**
+ * Probes Studio's GitHub backend: the probe when the branch's committed schema
+ * is a v8 one, null when it isn't (legacy), or {@link GITHUB_SITE_NOT_OWNED}
+ * when the project doesn't own its site.
+ */
+export async function probeGithub(
+  endpoint: string,
+  doFetch: (request: Request) => Promise<Response> = (request) =>
+    fetch(request),
+): Promise<Probe | null | typeof GITHUB_SITE_NOT_OWNED> {
+  const client = createContentClient({
+    endpoint,
+    fetch: async (request) => {
+      const response = await doFetch(request);
+      if (await isSiteNotOwnedResponse(response)) throw new SiteNotOwnedError();
+      return response;
+    },
+  });
+  try {
+    const result = await probe(client);
+    // Only a committed schema with `"blocksMajor": 8` is a v8 site; no
+    // schema, or one without the field (a v7 `meta.gen.json`), is legacy.
+    return result.v8Schema ? result : null;
+  } catch (error) {
+    if (error instanceof SiteNotOwnedError) return GITHUB_SITE_NOT_OWNED;
+    throw error;
+  }
+}
+
 /** How often a failed probe is retried, so a backend recovers on its own. */
 const PROBE_RETRY_MS = 5_000;
 
@@ -170,20 +215,14 @@ export function useContentBackend(
       branch ?? "",
       "github",
     ),
-    queryFn: async (): Promise<Probe | null> => {
-      const params = {
-        orgSlug: org.slug,
-        virtualMcpId: virtualMcpId!,
-        branch: branch!,
-      };
-      const client = createContentClient({
-        endpoint: githubContentEndpoint(params),
-      });
-      const result = await probe(client);
-      // Only a committed schema with `"blocksMajor": 8` is a v8 site; no
-      // schema, or one without the field (a v7 `meta.gen.json`), is legacy.
-      return result.v8Schema ? result : null;
-    },
+    queryFn: () =>
+      probeGithub(
+        githubContentEndpoint({
+          orgSlug: org.slug,
+          virtualMcpId: virtualMcpId!,
+          branch: branch!,
+        }),
+      ),
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     ...V8_PROBE_RETRY,
@@ -285,13 +324,16 @@ export function useContentBackend(
     isV8Project,
     hasServeConnection: !!connection,
     runtime,
-    githubSite: github.data
-      ? "v8"
-      : github.data === null
-        ? "v7"
-        : github.isError
-          ? "error"
-          : "loading",
+    githubSite:
+      github.data === GITHUB_SITE_NOT_OWNED
+        ? "not-owned"
+        : github.data
+          ? "v8"
+          : github.data === null
+            ? "v7"
+            : github.isError
+              ? "error"
+              : "loading",
     sandboxSite: !workingTreeReady
       ? "unavailable"
       : sandbox.data
@@ -306,7 +348,11 @@ export function useContentBackend(
   if (decision === "pending") return { kind: "pending" };
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
-    return toBackend("github", github.data!, "");
+    return toBackend("github", github.data as Probe, "");
+  }
+  // A v8 site another project owns: the editor guides (no retry).
+  if (decision === "site-not-owned-github") {
+    return { kind: "unavailable", source: "github", siteNotOwned: true };
   }
   if (decision === "protocol-sandbox") {
     return toBackend("sandbox", sandbox.data!, ":sandbox");

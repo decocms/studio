@@ -88,8 +88,12 @@ const REPO: RepoRef = {
   path: "acme/site",
 };
 
+/** Distinct commit shas across fake repos (process-wide caches key on them). */
+let fakeRepos = 0;
+
 /** A repository with one branch, `main`, whose commits are file maps. */
 export function fakeRepo(files: Record<string, string>) {
+  const repoId = ++fakeRepos;
   const blobs = new Map<string, string>();
   const commits = new Map<string, Map<string, string>>();
   // Each commit is dated now (tests move the clock with setSystemTime).
@@ -97,7 +101,9 @@ export function fakeRepo(files: Record<string, string>) {
   let head = "";
   let n = 0;
   const commit = (tree: Map<string, string>, message: string) => {
-    const sha = createHash("sha1").update(`commit ${++n}`).digest("hex");
+    const sha = createHash("sha1")
+      .update(`repo ${repoId} commit ${++n}`)
+      .digest("hex");
     for (const content of tree.values()) blobs.set(blobSha(content), content);
     commits.set(sha, tree);
     history.unshift({ sha, message, date: new Date().toISOString() });

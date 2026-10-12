@@ -22,11 +22,7 @@ import {
   persistProjectFolderName,
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
-import {
-  BLOCKS_MAJOR_METADATA_KEY,
-  BLOCKS_V8_MAJOR,
-} from "@decocms/shared/blocks-major";
-import { markBlocksV8OnCreate } from "../../hosted/blocks-major";
+import { refreshBlocksMajorMarker } from "../../hosted/blocks-major";
 import { contentClientForProjectRepo } from "../../git-providers";
 import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 import {
@@ -183,18 +179,17 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     }
 
     // A Blocks v8 site (main's schema passes `isV8Schema`) gets the
-    // server-managed `blocksMajor` marker, so its first thread already opens
-    // in Fast Preview (hosted/blocks-major.ts). Waits a few seconds at most;
-    // a later answer lands in the background, and opening the project
-    // refreshes it (a repo seeded after create, a site upgraded later).
-    let created = virtualMcp;
+    // server-managed `blocksMajor` marker (hosted/blocks-major.ts). Off the
+    // request path (it never throws): creating a project never waits on
+    // GitHub, v7 included. A miss is covered by the refresh when the project
+    // is opened and by the check when its first thread is created.
     if (virtualMcp.id) {
       const project = {
         id: virtualMcp.id,
         organizationId: organization.id,
         metadata: metadata ?? null,
       };
-      const isV8 = await markBlocksV8OnCreate({
+      void refreshBlocksMajorMarker({
         projects: ctx.storage.virtualMcps,
         project,
         by: userId,
@@ -208,15 +203,6 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
             : null;
         },
       });
-      if (isV8) {
-        created = {
-          ...virtualMcp,
-          metadata: {
-            ...virtualMcp.metadata,
-            [BLOCKS_MAJOR_METADATA_KEY]: BLOCKS_V8_MAJOR,
-          },
-        };
-      }
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
@@ -227,7 +213,7 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     }
 
     // Best-effort too: opening the project's files claims it later.
-    let item = created;
+    let item = virtualMcp;
     if (virtualMcp.id) {
       try {
         const folderName = await claimProjectFolderFor(
@@ -245,8 +231,8 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
             userId,
           );
           item = {
-            ...created,
-            metadata: { ...created.metadata, projectFolderName: folderName },
+            ...virtualMcp,
+            metadata: { ...virtualMcp.metadata, projectFolderName: folderName },
           };
         }
       } catch (err) {

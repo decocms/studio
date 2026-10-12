@@ -42,7 +42,7 @@ import {
   projectPackagePath,
   syncBlocksMajorMarker,
 } from "@/hosted/blocks-major";
-import { mainIsV8, ownedProjectSite } from "@/hosted/scope";
+import { mainIsV8, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
 import { createSiteTokens, importSigningKey } from "@/hosted/site-token";
 import { getSettings } from "@/settings";
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
@@ -59,8 +59,14 @@ interface HostedProject {
   metadata: Record<string, unknown> | null;
 }
 
+/** Opens the project repository's content client (tests pass a fake). */
+type RepoClientFor = typeof contentClientForProjectRepo;
+
 type HostedEnv = Env & {
-  Variables: Env["Variables"] & { hostedProject: HostedProject };
+  Variables: Env["Variables"] & {
+    hostedProject: HostedProject;
+    repoClientFor: RepoClientFor;
+  };
 };
 
 const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
@@ -104,9 +110,10 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
     metadata,
     virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
   );
-  if (!site || !repository) {
-    return c.json({ error: "Project has no site or repository" }, 404);
+  if (!repository) {
+    return c.json({ error: "Project has no repository" }, 404);
   }
+  if (!site) return c.json(SITE_NOT_OWNED, 409);
   c.set("hostedProject", {
     organizationId: organization.id,
     virtualMcpId,
@@ -124,7 +131,7 @@ async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
   const store = deliveryStore();
   if (!store) return null;
   const project = c.get("hostedProject");
-  const client: RepoContentClient = await contentClientForProjectRepo(
+  const client: RepoContentClient = await c.var.repoClientFor(
     c.var.studioContext,
     project.organizationId,
     project.repository,
@@ -165,8 +172,15 @@ function hostedError(c: Context<HostedEnv>, err: unknown) {
   return c.json({ error: message }, 500);
 }
 
-export function createHostedRoutes() {
+export function createHostedRoutes(
+  options: { repoClientFor?: RepoClientFor } = {},
+) {
   const app = new Hono<HostedEnv>();
+  const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
+  app.use("*", async (c, next) => {
+    c.set("repoClientFor", repoClientFor);
+    await next();
+  });
   app.use("/:virtualMcpId/*", resolveHostedProject);
 
   app.get("/:virtualMcpId/releases", async (c) => {
@@ -240,7 +254,7 @@ export function createHostedRoutes() {
     if (!tokens) return c.json({ error: "site tokens not configured" }, 503);
     try {
       // Site tokens are for Blocks v8 sites only.
-      const client = await contentClientForProjectRepo(
+      const client = await c.var.repoClientFor(
         c.var.studioContext,
         project.organizationId,
         project.repository,

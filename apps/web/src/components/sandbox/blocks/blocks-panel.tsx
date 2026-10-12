@@ -21,6 +21,8 @@ import {
 import {
   BlocksEmptyState,
   BlocksErrorState,
+  isSiteNotOwned,
+  SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { isProtocolProject } from "@/components/sections-editor/content-backend";
@@ -95,6 +97,10 @@ export function BlocksPanel({
     </div>
   );
 
+  // A v8 site another project owns: say where it's edited, never an error.
+  if (isSiteNotOwned(contentBackend)) {
+    return panel(<SiteNotOwnedState />);
+  }
   if (state.kind === "loading" || editorUndecided) {
     return panel(<PanelLoading />);
   }

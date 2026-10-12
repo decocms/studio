@@ -234,9 +234,7 @@ test.describe("content protocol on GitHub", () => {
       });
       const path = rpcPath(project, "main");
 
-      // Seeded after create: not known as v8 until the project is opened.
-      expect((await rpc(ctx, path, "describe")).status).toBe(404);
-
+      // Seeded after create: opening the project finds it is v8.
       expect(await refreshV8(ctx, project)).toBe(true);
       const described = await rpc<DescribeResult>(ctx, path, "describe");
       expect(described.result).toMatchObject({
@@ -410,6 +408,149 @@ test.describe("content protocol on GitHub", () => {
       expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
         headBefore,
       );
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("a site whose main goes back to v7 is refused, then loses the protocol", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const project = await setUp(ctx, {
+        ".deco/schema.gen.json": JSON.stringify(schema),
+        ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
+      });
+      expect(await refreshV8(ctx, project)).toBe(true);
+      const path = rpcPath(project, "main");
+
+      // main goes back to v7 behind Studio's back; the marker is now stale.
+      await seedStubRepo(ctx, {
+        owner: project.owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: {
+              ".deco/schema.gen.json": JSON.stringify({
+                manifest: schema.manifest,
+                schema: schema.schema,
+              }),
+              ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
+            },
+          },
+        },
+      });
+      const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
+        .refs;
+
+      // The storage checks main's schema itself: nothing is saved or committed.
+      const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
+        set: { "hero-home": { __resolveType: "hero", title: "x" } },
+      });
+      expect(applied.error?.code).toBe(-32006);
+      expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
+        headBefore,
+      );
+
+      // Opening the project again clears the marker: no protocol, no hosted.
+      expect(await refreshV8(ctx, project)).toBe(false);
+      expect((await rpc(ctx, path, "describe")).status).toBe(404);
+      expect(
+        (
+          await ctx.get(`/api/${project.org}/hosted/${project.vmcpId}/releases`)
+        ).status(),
+      ).toBe(404);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("a v8 site seeded after create gets a CMS thread right away", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const create = async (files: Record<string, string>) => {
+        const owner = uniqueOwner();
+        const project = await createFastPreviewProject(ctx, user.orgSlug, {
+          owner,
+          repo: "site",
+          siteSlug: owner,
+          // Off: only the v8 check can make a new thread `cms`.
+          fastPreview: false,
+        });
+        await seedStubRepo(ctx, {
+          owner,
+          repo: "site",
+          defaultBranch: "main",
+          branches: { main: { files } },
+        });
+        return project;
+      };
+      const runtimeOfNewThread = async (project: FastPreviewProject) => {
+        // No refresh first: the thread is created as the project opens.
+        const { item } = await callSelfMcpTool<{
+          item: { metadata?: { runtime?: string } };
+        }>(ctx, user.orgSlug, "COLLECTION_THREADS_CREATE", {
+          data: { virtual_mcp_id: project.vmcpId },
+        });
+        return item.metadata?.runtime;
+      };
+
+      const v8 = await create({
+        ".deco/schema.gen.json": JSON.stringify(schema),
+      });
+      expect(await runtimeOfNewThread(v8)).toBe("cms");
+
+      const v7 = await create({
+        ".deco/schema.gen.json": JSON.stringify({
+          manifest: schema.manifest,
+          schema: schema.schema,
+        }),
+      });
+      expect(await runtimeOfNewThread(v7)).toBe("sandbox");
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("a v8 site this project doesn't own says so instead of failing", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      // No siteSlug: the project isn't linked to a site in org_sites.
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo: "site",
+      });
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/schema.gen.json": JSON.stringify(schema) } },
+        },
+      });
+      const refreshed = await ctx.post(
+        `/api/${project.org}/blocks-major/${project.vmcpId}`,
+      );
+      expect(await refreshed.json()).toEqual({ isV8: true, hostedSite: false });
+
+      const described = await ctx.post(rpcPath(project, "main"), {
+        data: { jsonrpc: "2.0", id: 1, method: "describe", params: {} },
+      });
+      expect(described.status()).toBe(409);
+      expect(await described.json()).toMatchObject({ code: "site_not_owned" });
+      const releases = await ctx.get(
+        `/api/${project.org}/hosted/${project.vmcpId}/releases`,
+      );
+      expect(releases.status()).toBe(409);
     } finally {
       await ctx.dispose();
     }
@@ -729,6 +870,8 @@ async function openEditor(
   orgSlug: string,
   previewServerUrl: string,
   files: Record<string, string>,
+  /** `siteSlug: null`: the project isn't linked to a site (doesn't own it). */
+  options: { siteSlug?: null } = {},
 ): Promise<{ url: string; project: FastPreviewProject }> {
   const owner = uniqueOwner();
   const project = await createFastPreviewProject(api, orgSlug, {
@@ -737,7 +880,7 @@ async function openEditor(
     // The header's PR lookup dials this; a closed port fails fast.
     connectionUrl: "http://127.0.0.1:1/unused",
     previewServerUrl,
-    siteSlug: owner,
+    ...(options.siteSlug === null ? {} : { siteSlug: owner }),
   });
   await seedStubRepo(api, {
     owner,
@@ -790,6 +933,34 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
       }
     });
   }
+
+  test("a v8 site another project owns shows where it is edited", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const preview = await startPreviewSite();
+    try {
+      const { url } = await openEditor(
+        page.request,
+        orgSlug,
+        preview.url,
+        {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...v7Meta,
+            blocksMajor: 8,
+          }),
+          ".deco/blocks/home.json": homePage,
+        },
+        { siteSlug: null },
+      );
+      await page.goto(url);
+      await expect(
+        page.getByText("This site is edited from another project"),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId("site-not-owned-projects")).toBeVisible();
+    } finally {
+      await preview.close();
+    }
+  });
 
   test('a schema with "blocksMajor": 8 is a v8 site', async ({
     authedPage: { page, orgSlug },

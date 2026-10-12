@@ -43,6 +43,17 @@ export async function ownedProjectSite(
   return site && site.organizationId === organizationId ? site.slug : null;
 }
 
+/**
+ * The answer for a Blocks v8 project that doesn't own its site id in
+ * `org_sites` (a second project on the same repository, an import whose site
+ * another project or org already claimed): 409 with this code, apart from an
+ * unconfigured delivery bucket (503), so the editor can say what to do.
+ */
+export const SITE_NOT_OWNED = {
+  error: "This site is linked to another project",
+  code: "site_not_owned",
+} as const;
+
 /** The draft store over the delivery bucket, or null when none is configured. */
 export function hostedDrafts(kv: KVStorage): DraftStore | null {
   const store = deliveryStore();
@@ -59,11 +70,23 @@ const v8ByBlob = createTtlLruCache<boolean>({
 });
 
 /**
+ * `isV8Schema`'s answer per (repository, site folder, commit). A commit is
+ * immutable too, so a repeat check on an unchanged main is just the head read:
+ * no tree read, no blob read.
+ */
+const v8ByCommit = createTtlLruCache<boolean>({
+  ttlMs: 24 * 60 * 60_000,
+  maxSize: 5_000,
+});
+
+/**
  * Whether main's `.deco/schema.gen.json` is a Blocks v8 one (`isV8Schema`).
  * Cheap enough for every hosted request: main's head is an ETag-cached ref
- * read (an unchanged head is a free 304), the schema's entry comes from that
- * commit's cached tree, and the answer is remembered per blob, so the schema
- * itself is downloaded (through the blob cache) only when it changes.
+ * read (an unchanged head is a free 304) and the answer is remembered per
+ * head commit, so an unchanged main costs nothing else. A new head reads the
+ * schema's entry from that commit's cached tree, and the answer is also
+ * remembered per blob, so the schema itself is downloaded (through the blob
+ * cache) only when it changes.
  */
 export async function mainIsV8(
   client: RepoContentClient,
@@ -72,9 +95,24 @@ export async function mainIsV8(
 ): Promise<boolean> {
   const path = schemaGenPath(packagePath);
   const head = await requireBranchHead(client, mainBranch);
+  const repo = `${client.repo.provider}:${client.repo.host}/${client.repo.path}`;
+  const commitKey = `${repo}@${head}:${path}`;
+  const known = v8ByCommit.get(commitKey);
+  if (known !== undefined) return known;
+  const isV8 = await schemaBlobIsV8(client, repo, head, path);
+  v8ByCommit.set(commitKey, isV8);
+  return isV8;
+}
+
+async function schemaBlobIsV8(
+  client: RepoContentClient,
+  repo: string,
+  head: string,
+  path: string,
+): Promise<boolean> {
   const entry = (await client.getEntriesAtPaths(head, [path])).get(path);
   if (entry?.type !== "blob") return false;
-  const key = `${client.repo.provider}:${client.repo.host}/${client.repo.path}@${entry.sha}`;
+  const key = `${repo}@${entry.sha}`;
   const cached = v8ByBlob.get(key);
   if (cached !== undefined) return cached;
   const [file] = await resolveBlockContents(client, [
