@@ -16,7 +16,12 @@ import {
   type DecoServeStub,
   startDecoServeStub,
 } from "../fixtures/deco-serve-stub";
-import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
+import {
+  createFastPreviewProject,
+  seedStubRepo,
+  uniqueOwner,
+} from "../fixtures/fast-preview";
+import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
 import { expect, getE2EAppOrigin, test } from "../fixtures/test";
 
 /** A deco-meta@1 schema, as `deco schema` writes it, for one section type. */
@@ -179,35 +184,45 @@ async function decryptSecret(privateKey: CryptoKey, ciphertext: string) {
   );
 }
 
-/** A site project: a repository, with the CMS layout on. */
-async function createProject(api: APIRequestContext, orgSlug: string) {
-  const title = `deco serve e2e ${Date.now()}`;
-  const connection = await createHttpConnection(api, orgSlug, {
-    title: "deco-serve-e2e-placeholder",
-    url: "http://127.0.0.1:1/unused",
+/**
+ * A Blocks v8 site project: its repository's main has a `"blocksMajor": 8`
+ * schema and the org has the content protocol. Opening its editor reads
+ * main's schema and writes the project's v8 marker; that read happens here
+ * first, so the page opens on v8 (a project without the marker is v7).
+ */
+async function createV8Project(api: APIRequestContext, orgSlug: string) {
+  const owner = uniqueOwner();
+  const project = await createFastPreviewProject(api, orgSlug, {
+    owner,
+    repo: "site",
+    // The header's PR lookup dials this; a closed port fails fast.
+    connectionUrl: "http://127.0.0.1:1/unused",
+    siteSlug: owner,
   });
-  const project = await callSelfMcpTool<{ item: { id: string } }>(
-    api,
-    orgSlug,
-    "COLLECTION_VIRTUAL_MCP_CREATE",
-    {
-      data: {
-        title,
-        status: "active",
-        connections: [{ connection_id: connection.id }],
-        metadata: {
-          repository: {
-            url: "https://github.com/example/site",
-            owner: "example",
-            name: "site",
-            connectionId: connection.id,
-          },
-          ui: { layout: { cms: "on" } },
+  await seedStubRepo(api, {
+    owner,
+    repo: "site",
+    defaultBranch: "main",
+    branches: {
+      main: {
+        files: {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...schema,
+            blocksMajor: 8,
+          }),
         },
       },
     },
+  });
+  await callSelfMcpTool(api, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+    organizationId: await findOrgId(api, orgSlug),
+    flags: { site_editor_content_protocol: true },
+  });
+  const opened = await api.get(
+    `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
   );
-  return { id: project.item.id, title };
+  expect(opened.status()).toBe(200);
+  return { id: project.vmcpId };
 }
 
 async function heroOf(stub: DecoServeStub): Promise<Record<string, unknown>> {
@@ -333,8 +348,9 @@ test.describe("site editor over deco serve", () => {
   }) => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
-    // No org flag: the local path works for every org.
-    const project = await createProject(api, orgSlug);
+    // Only a Blocks v8 site connects to deco serve: a v7 one (no marker)
+    // keeps main's Local tunnel.
+    const project = await createV8Project(api, orgSlug);
     const { privateKey, publicKey } = await generateKeyPair();
     const stub = await startStub(publicKey);
     try {
@@ -343,8 +359,9 @@ test.describe("site editor over deco serve", () => {
         '[data-tour="tour-layout-branch-picker"]',
       );
       await expect(branchPicker).toBeVisible({ timeout: 30_000 });
-      // A v7 site shows no version badge: only v8 sites get one.
-      await expect(page.getByTestId("content-version-badge")).toHaveCount(0);
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 30_000,
+      });
 
       await branchPicker.click();
       await page.getByRole("button", { name: "Advanced" }).click();
