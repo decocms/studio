@@ -71,7 +71,12 @@ import {
   projectPackagePath,
   syncBlocksMajorMarker,
 } from "@/hosted/blocks-major";
-import { hostedDrafts, mainIsV8, ownedProjectSite } from "@/hosted/scope";
+import {
+  hostedDrafts,
+  mainIsV8,
+  ownedProjectSite,
+  SITE_NOT_OWNED,
+} from "@/hosted/scope";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
@@ -93,8 +98,14 @@ interface DecofileScope {
   metadata: Record<string, unknown> | null;
 }
 
+/** Opens the project repository's content client (tests pass a fake). */
+export type RepoClientFor = typeof contentClientForProjectRepo;
+
 type DecofileEnv = Env & {
-  Variables: Env["Variables"] & { decofileScope: DecofileScope };
+  Variables: Env["Variables"] & {
+    decofileScope: DecofileScope;
+    repoClientFor: RepoClientFor;
+  };
 };
 
 const BRANCH_RE = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
@@ -312,6 +323,24 @@ async function scopeIsV8(
   return isV8;
 }
 
+/**
+ * A Blocks v8 project that doesn't own its site id: its content lives on the
+ * hosted CMS, which only the owning project can reach, so these routes answer
+ * {@link SITE_NOT_OWNED} instead of serving the v7 decofile. Free for a v7
+ * project (no marker) and for an owner.
+ */
+async function unownedV8(
+  c: Context<DecofileEnv>,
+  client: RepoContentClient,
+  mainBranch: () => Promise<string>,
+): Promise<boolean> {
+  const scope = c.get("decofileScope");
+  if (!scope.userId || scope.site || !isBlocksV8Project(scope.metadata)) {
+    return false;
+  }
+  return scopeIsV8(c, client, await mainBranch());
+}
+
 function signScopeDraftToken(scope: DecofileScope): string {
   return signDraftToken({
     organizationId: scope.organizationId,
@@ -336,7 +365,7 @@ async function contentClientForScope(
   c: Context<DecofileEnv>,
 ): Promise<RepoContentClient> {
   const scope = c.get("decofileScope");
-  return contentClientForProjectRepo(
+  return c.var.repoClientFor(
     c.var.studioContext,
     scope.organizationId,
     scope.repository,
@@ -361,8 +390,15 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   return c.json({ error: message }, 500);
 }
 
-export function createDecofileRoutes() {
+export function createDecofileRoutes(
+  options: { repoClientFor?: RepoClientFor } = {},
+) {
   const app = new Hono<DecofileEnv>();
+  const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
+  app.use("*", async (c, next) => {
+    c.set("repoClientFor", repoClientFor);
+    await next();
+  });
 
   app.use("/:virtualMcpId/:branch", resolveDecofileScope);
   app.use("/:virtualMcpId/:branch/*", resolveDecofileScope);
@@ -373,6 +409,9 @@ export function createDecofileRoutes() {
       const client = await contentClientForScope(c);
       // OPEN: O-S3 — a v8 project's editor reads its `?__draft=` pointer
       // here, in place of v7's decofile, token and API host.
+      if (await unownedV8(c, client, () => client.getDefaultBranch())) {
+        return c.json(SITE_NOT_OWNED, 409);
+      }
       const hosted = hostedScope(c);
       if (
         hosted &&
@@ -541,6 +580,9 @@ export function createDecofileRoutes() {
     try {
       const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
+      if (await unownedV8(c, client, async () => baseBranch)) {
+        return c.json(SITE_NOT_OWNED, 409);
+      }
       const hosted = hostedScope(c);
       if (hosted && (await scopeIsV8(c, client, baseBranch))) {
         const store = deliveryStore();
@@ -656,6 +698,7 @@ export function createDecofileRoutes() {
     if (!isBlocksV8Project(scope.metadata)) {
       return c.json({ error: "Not found" }, 404);
     }
+    if (scope.userId && !scope.site) return c.json(SITE_NOT_OWNED, 409);
     const hosted = hostedScope(c);
     if (!hosted) {
       return c.json({ error: "hosted delivery not configured" }, 503);

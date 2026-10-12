@@ -4,7 +4,9 @@ import {
   hostedDraftPublishDiff,
   draftGitDiscard,
   hostedDraftPublishStatus,
+  loadHostedDraft,
 } from "./draft-publish-status";
+import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
 import { createDraftStore, type HostedDraftRef } from "./draft-store";
 import {
   fakeRepo,
@@ -77,5 +79,91 @@ describe("hosted draft publish status", () => {
     );
     expect(status.changedFiles).toEqual([]);
     expect(status.aheadOfBase).toBe(0);
+  });
+});
+
+describe("loadHostedDraft: the v8 marker gate", () => {
+  const SITE = "acme";
+  const V7_SCHEMA = '{\n  "definitions": {},\n  "root": {}\n}\n';
+
+  function request(params: {
+    metadata: Record<string, unknown> | null;
+    files: Record<string, string>;
+    owned?: boolean;
+  }) {
+    const git = fakeRepo(params.files);
+    const delivery = memoryDeliveryStore();
+    const kv = memoryKv();
+    const calls = { git: 0, orgSites: 0 };
+    const patches: Array<{ set: object; unset: string[] }> = [];
+    const req = {
+      storage: {
+        kv,
+        orgSites: {
+          getByProject: async () => {
+            calls.orgSites++;
+            return params.owned === false
+              ? null
+              : { slug: SITE, organizationId: "org" };
+          },
+        },
+        virtualMcps: {
+          patchMetadata: async (p: { set: object; unset: string[] }) => {
+            patches.push({ set: p.set, unset: p.unset });
+            return true;
+          },
+        },
+      },
+      userId: "user",
+      organizationId: "org",
+      virtualMcpId: "vmcp",
+      branch: "thread-1",
+      metadata: params.metadata,
+      gitClient: async () => {
+        calls.git++;
+        return git.client;
+      },
+      drafts: createDraftStore({ kv, store: delivery.store }),
+    } as unknown as Parameters<typeof loadHostedDraft>[0];
+    return { req, calls, patches };
+  }
+
+  it("an unmarked (v7) project reads nothing: no org_sites, no GitHub", async () => {
+    const { req, calls, patches } = request({
+      metadata: {},
+      files: { ".deco/schema.gen.json": SCHEMA_TEXT },
+    });
+    expect(await loadHostedDraft(req)).toBeNull();
+    expect(calls).toEqual({ git: 0, orgSites: 0 });
+    expect(patches).toEqual([]);
+  });
+
+  it("a marked project whose main is v8 gets its draft", async () => {
+    const { req, patches } = request({
+      metadata: { blocksMajor: 8 },
+      files: { ".deco/schema.gen.json": SCHEMA_TEXT },
+    });
+    const hosted = await loadHostedDraft(req);
+    expect(hosted?.ref).toEqual({ ...REF, site: SITE });
+    expect(patches).toEqual([]);
+  });
+
+  it("a marked project whose main is back on v7: null, marker cleared", async () => {
+    const { req, patches } = request({
+      metadata: { blocksMajor: 8 },
+      files: { ".deco/schema.gen.json": V7_SCHEMA },
+    });
+    expect(await loadHostedDraft(req)).toBeNull();
+    expect(patches).toEqual([{ set: {}, unset: [BLOCKS_MAJOR_METADATA_KEY] }]);
+  });
+
+  it("a marked project that doesn't own its site reads no GitHub", async () => {
+    const { req, calls } = request({
+      metadata: { blocksMajor: 8 },
+      files: { ".deco/schema.gen.json": SCHEMA_TEXT },
+      owned: false,
+    });
+    expect(await loadHostedDraft(req)).toBeNull();
+    expect(calls.git).toBe(0);
   });
 });

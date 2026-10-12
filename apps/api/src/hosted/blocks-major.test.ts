@@ -1,8 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
 import {
   type BlocksMajorStorage,
-  markBlocksV8OnCreate,
+  refreshBlocksMajorMarkerWithin,
+  metadataForThreadRuntime,
   projectPackagePath,
+  refreshBlocksMajorMarker,
+  threadRuntimeAwaitsBlocksMajor,
   syncBlocksMajorMarker,
 } from "./blocks-major";
 import { fakeRepo, SCHEMA_TEXT } from "./hosted-test-helpers";
@@ -57,7 +61,7 @@ describe("syncBlocksMajorMarker", () => {
         id: "vmcp",
         organizationId: "org",
         set: {},
-        unset: ["blocksMajor"],
+        unset: [BLOCKS_MAJOR_METADATA_KEY],
         by: "user",
       },
     ]);
@@ -75,19 +79,38 @@ describe("syncBlocksMajorMarker", () => {
     expect(patches).toEqual([]);
   });
 
-  it("swallows a failed write", async () => {
+  it("reports whether the stored marker matches", async () => {
+    const { projects } = recordingStorage();
+    expect(
+      await syncBlocksMajorMarker(projects, project({}), true, "user"),
+    ).toBe(true);
+    expect(
+      await syncBlocksMajorMarker(
+        projects,
+        project({ blocksMajor: 8 }),
+        true,
+        "user",
+      ),
+    ).toBe(true);
+    const missing: BlocksMajorStorage = { patchMetadata: async () => false };
+    expect(
+      await syncBlocksMajorMarker(missing, project({}), true, "user"),
+    ).toBe(false);
+  });
+
+  it("swallows a failed write and reports it", async () => {
     const { projects } = recordingStorage(true);
     await expect(
       syncBlocksMajorMarker(projects, project({}), true, "user"),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 });
 
-describe("markBlocksV8OnCreate", () => {
+describe("refreshBlocksMajorMarkerWithin", () => {
   it("marks a project whose repo's main is v8, in any org", async () => {
     const { projects, patches } = recordingStorage();
     const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
-    const isV8 = await markBlocksV8OnCreate({
+    const isV8 = await refreshBlocksMajorMarkerWithin({
       projects,
       project: project({ siteSlug: "acme" }),
       by: "user",
@@ -100,7 +123,7 @@ describe("markBlocksV8OnCreate", () => {
   it("reads the schema under the site's folder", async () => {
     const { projects, patches } = recordingStorage();
     const git = fakeRepo({ "site/.deco/schema.gen.json": SCHEMA_TEXT });
-    await markBlocksV8OnCreate({
+    await refreshBlocksMajorMarkerWithin({
       projects,
       project: project({ runtime: { path: "/site/" } }),
       by: "user",
@@ -121,7 +144,7 @@ describe("markBlocksV8OnCreate", () => {
     ];
     for (const files of v7Repos) {
       const git = fakeRepo(files);
-      const isV8 = await markBlocksV8OnCreate({
+      const isV8 = await refreshBlocksMajorMarkerWithin({
         projects,
         project: project({}),
         by: "user",
@@ -135,18 +158,18 @@ describe("markBlocksV8OnCreate", () => {
   it("clears the marker when main is back on v7", async () => {
     const { projects, patches } = recordingStorage();
     const git = fakeRepo({ ".deco/schema.gen.json": V7_SCHEMA });
-    await markBlocksV8OnCreate({
+    await refreshBlocksMajorMarkerWithin({
       projects,
       project: project({ blocksMajor: 8 }),
       by: "user",
       client: async () => git.client,
     });
-    expect(patches.map((p) => p.unset)).toEqual([["blocksMajor"]]);
+    expect(patches.map((p) => p.unset)).toEqual([[BLOCKS_MAJOR_METADATA_KEY]]);
   });
 
   it("does nothing for a project without a repository", async () => {
     const { projects, patches } = recordingStorage();
-    const isV8 = await markBlocksV8OnCreate({
+    const isV8 = await refreshBlocksMajorMarkerWithin({
       projects,
       project: project({}),
       by: "user",
@@ -159,7 +182,7 @@ describe("markBlocksV8OnCreate", () => {
   it("never throws when the repo read fails", async () => {
     const { projects, patches } = recordingStorage();
     await expect(
-      markBlocksV8OnCreate({
+      refreshBlocksMajorMarkerWithin({
         projects,
         project: project({}),
         by: "user",
@@ -171,6 +194,55 @@ describe("markBlocksV8OnCreate", () => {
     expect(patches).toEqual([]);
   });
 
+  it("answers null when the marker write failed", async () => {
+    const { projects } = recordingStorage(true);
+    const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
+    expect(
+      await refreshBlocksMajorMarker({
+        projects,
+        project: project({}),
+        by: "user",
+        client: async () => git.client,
+      }),
+    ).toBeNull();
+    // Already marked: nothing to write, so the answer stands.
+    expect(
+      await refreshBlocksMajorMarker({
+        projects,
+        project: project({ blocksMajor: 8 }),
+        by: "user",
+        client: async () => git.client,
+      }),
+    ).toBe(true);
+  });
+
+  it("re-reads only main's head while it is unchanged", async () => {
+    const { projects } = recordingStorage();
+    const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
+    let treeReads = 0;
+    const client = {
+      ...git.client,
+      getEntriesAtPaths: (
+        ...args: Parameters<typeof git.client.getEntriesAtPaths>
+      ) => {
+        treeReads++;
+        return git.client.getEntriesAtPaths(...args);
+      },
+    };
+    const deps = {
+      projects,
+      project: project({ blocksMajor: 8 }),
+      by: "user",
+      client: async () => client,
+    };
+    expect(await refreshBlocksMajorMarker(deps)).toBe(true);
+    expect(await refreshBlocksMajorMarker(deps)).toBe(true);
+    expect(treeReads).toBe(1);
+    git.pushDirect({ ".deco/schema.gen.json": V7_SCHEMA });
+    expect(await refreshBlocksMajorMarker(deps)).toBe(false);
+    expect(treeReads).toBe(2);
+  });
+
   it("stops waiting after the timeout; the answer still lands", async () => {
     const { projects, patches } = recordingStorage();
     const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
@@ -178,7 +250,7 @@ describe("markBlocksV8OnCreate", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const isV8 = await markBlocksV8OnCreate(
+    const isV8 = await refreshBlocksMajorMarkerWithin(
       {
         projects,
         project: project({}),
@@ -194,6 +266,92 @@ describe("markBlocksV8OnCreate", () => {
     release();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(patches.map((p) => p.set)).toEqual([{ blocksMajor: 8 }]);
+  });
+});
+
+describe("metadataForThreadRuntime", () => {
+  const repository = { owner: "acme", name: "site" };
+  const previewServerUrl = "https://acme.example.com";
+
+  it("runs the check only when the answer decides the stamp", () => {
+    expect(
+      threadRuntimeAwaitsBlocksMajor({ repository, previewServerUrl }),
+    ).toBe(true);
+    for (const metadata of [
+      null,
+      { previewServerUrl },
+      { repository },
+      { repository, previewServerUrl, blocksMajor: 8 },
+      { repository, previewServerUrl, fastPreview: true },
+    ]) {
+      expect(threadRuntimeAwaitsBlocksMajor(metadata)).toBe(false);
+    }
+  });
+
+  it("adds the marker a v8 main just got, so the thread is cms", async () => {
+    const { projects, patches } = recordingStorage();
+    const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
+    const metadata = await metadataForThreadRuntime({
+      projects,
+      project: project({ repository, previewServerUrl }),
+      by: "user",
+      client: async () => git.client,
+    });
+    expect(metadata).toEqual({ repository, previewServerUrl, blocksMajor: 8 });
+    expect(patches.map((p) => p.set)).toEqual([{ blocksMajor: 8 }]);
+  });
+
+  it("leaves a v7 project's metadata as stored", async () => {
+    const { projects, patches } = recordingStorage();
+    const git = fakeRepo({ ".deco/schema.gen.json": V7_SCHEMA });
+    const stored = { repository, previewServerUrl };
+    expect(
+      await metadataForThreadRuntime({
+        projects,
+        project: project(stored),
+        by: "user",
+        client: async () => git.client,
+      }),
+    ).toBe(stored);
+    expect(patches).toEqual([]);
+  });
+
+  it("never reads the repo when the answer can't change the stamp", async () => {
+    const { projects } = recordingStorage();
+    let reads = 0;
+    for (const stored of [
+      { repository },
+      { previewServerUrl },
+      { repository, previewServerUrl, fastPreview: true },
+      { repository, previewServerUrl, blocksMajor: 8 },
+    ]) {
+      expect(
+        await metadataForThreadRuntime({
+          projects,
+          project: project(stored),
+          by: "user",
+          client: async () => {
+            reads++;
+            return null;
+          },
+        }),
+      ).toBe(stored);
+    }
+    expect(reads).toBe(0);
+  });
+
+  it("keeps the stored metadata when the marker write failed", async () => {
+    const { projects } = recordingStorage(true);
+    const git = fakeRepo({ ".deco/schema.gen.json": SCHEMA_TEXT });
+    const stored = { repository, previewServerUrl };
+    expect(
+      await metadataForThreadRuntime({
+        projects,
+        project: project(stored),
+        by: "user",
+        client: async () => git.client,
+      }),
+    ).toBe(stored);
   });
 });
 

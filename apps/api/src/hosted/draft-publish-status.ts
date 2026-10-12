@@ -54,6 +54,8 @@ export interface HostedDraftRequest {
   metadata: Record<string, unknown> | null | undefined;
   /** The project repo's content client (only called for a hosted project). */
   gitClient: () => Promise<RepoContentClient>;
+  /** The draft store; defaults to the configured delivery bucket's. */
+  drafts?: DraftStore | null;
 }
 
 /**
@@ -70,7 +72,11 @@ export async function loadHostedDraft(req: HostedDraftRequest) {
     req.virtualMcpId,
     req.organizationId,
   );
-  const drafts = site ? hostedDrafts(req.storage.kv) : null;
+  const drafts = site
+    ? req.drafts !== undefined
+      ? req.drafts
+      : hostedDrafts(req.storage.kv)
+    : null;
   if (!site || !drafts) return null;
   const ref: HostedDraftRef = {
     organizationId: req.organizationId,

@@ -29,7 +29,7 @@ import {
 /** The commit has no Blocks v8 schema; nothing is published for it. */
 export class NotV8Site extends Error {
   constructor() {
-    super("not a Blocks v8 site (.deco/schema.gen.json without blocksMajor 8)");
+    super("not a Blocks v8 site (.deco/schema.gen.json isn't a v8 schema)");
     this.name = "NotV8Site";
   }
 }
