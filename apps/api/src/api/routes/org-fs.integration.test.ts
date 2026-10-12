@@ -34,6 +34,10 @@ import {
 import { ForbiddenError } from "../../core/access-control";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
 import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
+import {
+  OrgScopedThreadStorage,
+  SqlThreadStorage,
+} from "../../storage/threads";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import { createOrgFsRoutes } from "./org-fs";
 
@@ -75,7 +79,7 @@ function buildApp(
         check: opts.accessCheck ?? (async () => {}),
       },
       storage: {
-        threads: { setOrganizationId: () => {} },
+        threads: new OrgScopedThreadStorage(new SqlThreadStorage(db.db), ORG),
         asyncResearchJobs: { setOrganizationId: () => {} },
         orgFsEntries: new OrgFsEntryStorage(db.db),
         // Real storage, not a stub: the write guard queries it, and a `as
@@ -169,6 +173,63 @@ describe("org-fs HTTP routes (integration)", () => {
 
     const missing = await app.request(`${BASE}/skills/stat?path=nope.txt`);
     expect(missing.status).toBe(404);
+  });
+
+  it("lists a volume's files at any depth, newest first, extensionless included", async () => {
+    await put("t1/report.md", "a");
+    await put("t2/Makefile", "b");
+    await put("root.txt", "c");
+    const res = await app.request(`${BASE}/skills/files?limit=2`);
+    expect(res.status).toBe(200);
+    const { entries, next } = await res.json();
+    expect(entries.map((e: { path: string }) => e.path)).toEqual([
+      "root.txt",
+      "t2/Makefile",
+    ]);
+
+    const rest = await (
+      await app.request(`${BASE}/skills/files?limit=2&before=${next}`)
+    ).json();
+    expect(rest.entries.map((e: { path: string }) => e.path)).toEqual([
+      "t1/report.md",
+    ]);
+    expect(rest.next).toBeNull();
+    expect(
+      (await app.request(`${BASE}/skills/files?before=1;drop`)).status,
+    ).toBe(400);
+  });
+
+  it("names the chat each file came from, by its thread-id folder", async () => {
+    const thread = "0b6c3f5e-6f1d-4c2a-9d3e-1a2b3c4d5e6f";
+    const stranger = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
+    await new SqlThreadStorage(db.db).create({
+      id: thread,
+      organization_id: ORG,
+      created_by: USER,
+      title: "Quarterly report",
+      virtual_mcp_id: "vir_reports",
+    });
+    await put(`${thread}/report.md`, "a");
+    await put(`${stranger}/notes.md`, "b");
+    await put("loose.md", "c");
+
+    const { entries, threads } = await (
+      await app.request(`${BASE}/skills/files`)
+    ).json();
+    const sources = Object.fromEntries(
+      entries.map((e: { path: string; sourceThreadId: string | null }) => [
+        e.path,
+        e.sourceThreadId,
+      ]),
+    );
+    expect(sources).toEqual({
+      [`${thread}/report.md`]: thread,
+      [`${stranger}/notes.md`]: stranger,
+      "loose.md": null,
+    });
+    expect(threads).toEqual({
+      [thread]: { title: "Quarterly report", agentId: "vir_reports" },
+    });
   });
 
   it("returns a presigned URL when ?presign=1", async () => {
@@ -291,6 +352,8 @@ describe("org-fs HTTP routes (integration)", () => {
         await app.request(`${BASE}/search?q=MEMORY`)
       ).json();
       expect(search.entries).toEqual([]);
+      const files = await (await app.request(`${BASE}/home/files`)).json();
+      expect(files.entries).toEqual([]);
 
       const admin = as("user_fs_admin");
       expect((await admin.request(homeUrl("read", theirs))).status).toBe(403);
