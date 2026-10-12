@@ -159,6 +159,11 @@ export function serveProblemCopy(
         title: t("decoServe.state.notDecoServe.title", { host }),
         body: t("decoServe.state.notDecoServe.body", { host }),
       };
+    case "not-v8":
+      return {
+        title: t("decoServe.state.notV8.title"),
+        body: t("decoServe.state.notV8.body", { host }),
+      };
     case "error":
       return {
         title: t("decoServe.state.error.title"),

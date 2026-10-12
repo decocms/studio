@@ -46,13 +46,12 @@ function githubServing(schema: unknown): ContentClient {
   } as unknown as ContentClient;
 }
 
-/** What `useContentBackend` decides for a flag-on v8 Fast Preview session. */
-async function decideWithFlagOn(schema: unknown) {
+/** What `useContentBackend` decides for a v8 Fast Preview session, any org. */
+async function decideV8Session(schema: unknown) {
   const probed = await probe(githubServing(schema));
   return selectContentBackend({
     hasProject: true,
     isV8Project: true,
-    flagEnabled: true,
     hasServeConnection: false,
     runtime: "cms",
     githubSite: probed.v8Schema ? "v8" : "v7",
@@ -61,29 +60,28 @@ async function decideWithFlagOn(schema: unknown) {
 
 describe("v7/v8 detection over the GitHub backend", () => {
   test('a schema with "blocksMajor": 8 is a v8 site', async () => {
-    expect(await decideWithFlagOn({ major: 1, blocksMajor: 8, ...deco1 })).toBe(
+    expect(await decideV8Session({ major: 1, blocksMajor: 8, ...deco1 })).toBe(
       "protocol-github",
     );
   });
 
-  // The server serves `schema.gen.json`, else a v7 `meta.gen.json`, as
-  // written: the file name never makes a site v8, only the field does.
-  test("a committed schema without blocksMajor stays v7 with the flag on", async () => {
-    // A v7 `meta.gen.json`, and a `schema.gen.json` from an older `deco schema`.
-    expect(await decideWithFlagOn(deco1)).toBe("legacy");
-    expect(await decideWithFlagOn({ major: 1, ...deco1 })).toBe("legacy");
+  // Only the field makes a site v8 (`isV8Schema`), never the file.
+  test("a committed schema without blocksMajor stays v7", async () => {
+    // A v7-shaped schema, and a `schema.gen.json` from an older `deco schema`.
+    expect(await decideV8Session(deco1)).toBe("legacy");
+    expect(await decideV8Session({ major: 1, ...deco1 })).toBe("legacy");
   });
 
   test("any other blocksMajor stays v7", async () => {
     for (const blocksMajor of [7, "8", null, 9]) {
-      expect(await decideWithFlagOn({ major: 1, blocksMajor, ...deco1 })).toBe(
+      expect(await decideV8Session({ major: 1, blocksMajor, ...deco1 })).toBe(
         "legacy",
       );
     }
   });
 
   test("no committed schema stays v7", async () => {
-    expect(await decideWithFlagOn(null)).toBe("legacy");
+    expect(await decideV8Session(null)).toBe("legacy");
   });
 });
 
@@ -93,7 +91,6 @@ describe("v7/v8 detection over a sandbox's daemon", () => {
     return selectContentBackend({
       hasProject: true,
       isV8Project: true,
-      flagEnabled: true,
       hasServeConnection: false,
       runtime: "sandbox",
       githubSite: "loading",
@@ -227,6 +224,22 @@ describe("Localhost (localServeBackend)", () => {
         }),
       ),
     ).toBe("unavailable:not-deco-serve");
+  });
+
+  test("a schema that isn't v8 can't be edited; no schema yet is the schemaless guide", () => {
+    expect(
+      kind(
+        localServeBackend({
+          ...base,
+          probed: { ...probed, v8Schema: false } as Probe,
+        }),
+      ),
+    ).toBe("unavailable:not-v8");
+    const schemaless = localServeBackend({
+      ...base,
+      probed: { ...probed, hasSchema: false, v8Schema: false } as Probe,
+    });
+    expect(schemaless).toMatchObject({ kind: "protocol", hasSchema: false });
   });
 
   test("never answered: pending, then not running; answering again connects", () => {

@@ -26,6 +26,7 @@ import {
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { useBlocksMajorRefresh } from "@/hooks/use-blocks-major-refresh";
 import { useChatTask } from "@/components/chat/index";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -127,6 +128,7 @@ export function useMainPanelTabs(ctx: {
     entity,
   );
   const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
+  useBlocksMajorRefresh(mainViewContext.project);
   const mainViewPresence = projectMainViewPresence(
     mainViewContext.resolvedScopeId,
     agentHasClonableSource(mainViewContext.project?.metadata),
@@ -224,7 +226,6 @@ export function useMainPanelTabs(ctx: {
   const nativeViewPending = {
     assets: nativeViews.assetsPending,
     siteAccess: nativeViews.siteAccessPending,
-    releases: nativeViews.releasesPending,
   };
 
   const { activeTab: rawActiveTab, mainOpen } = resolveActiveTabAndOpen({

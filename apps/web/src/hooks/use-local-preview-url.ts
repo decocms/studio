@@ -1,5 +1,5 @@
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
-import { isBlocksV8Project } from "@decocms/shared/thread/session-runtime";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useVirtualMCP } from "@/sdk";

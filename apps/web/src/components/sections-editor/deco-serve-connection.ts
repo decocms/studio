@@ -203,6 +203,8 @@ export function parseServeAddress(input: string): ParsedServeAddress {
  * - `outdated`: an older `deco serve`, which asked for an access token;
  * - `version-mismatch`: a `deco serve` of another major protocol version;
  * - `not-deco-serve`: another program answered on that port;
+ * - `not-v8`: its schema isn't a Blocks v8 one (no `"blocksMajor": 8`, see
+ *   `isV8Schema`), so it can't be edited here;
  * - `error`: `deco serve` answered with an error (`detail`).
  */
 export type ServeProblemReason =
@@ -210,6 +212,7 @@ export type ServeProblemReason =
   | "outdated"
   | "version-mismatch"
   | "not-deco-serve"
+  | "not-v8"
   | "error";
 
 export interface ServeProblem {

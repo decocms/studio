@@ -57,6 +57,9 @@ export const decoServe = {
   "decoServe.state.notDecoServe.title": "Another program is using {host}",
   "decoServe.state.notDecoServe.body":
     "Something other than deco serve answered on {host}. Start deco serve on another port with `--port 4546` and open the Site editor link it prints.",
+  "decoServe.state.notV8.title": "This site's schema isn't a Blocks v8 one",
+  "decoServe.state.notV8.body":
+    'The schema deco serve on {host} serves has no "blocksMajor": 8, so Studio can\'t edit it. Update @decocms/blocks in your site, run deco schema, and Studio opens the editor on its own.',
   "decoServe.state.error.title": "deco serve couldn't open your content",
   "decoServe.state.error.body":
     'It answered, but with an error: "{detail}". Check the terminal where deco serve runs for details, then try again.',

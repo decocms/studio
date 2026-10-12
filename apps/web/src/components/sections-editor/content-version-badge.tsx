@@ -4,13 +4,15 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t.ts";
+import type { ContentBackend } from "./content-backend";
 import { useContentBackend } from "./use-content-backend";
 
 /**
- * Marks a Blocks v8 site: one edited over the content protocol, from a
- * GitHub schema with `"blocksMajor": 8` or a `deco serve` (connected or
- * reconnecting). v7 sites, and sites still being detected, show nothing:
- * the editor looks as it did before next-major Blocks.
+ * Marks a Blocks v8 site, as `isV8Schema` decided it: a backend serving a
+ * `"blocksMajor": 8` schema (GitHub, the sandbox's daemon or a `deco serve`),
+ * or a v8 project (its marker) whose backend is reconnecting. v7 sites, a
+ * `deco serve` with no v8 schema yet, and sites still being detected show
+ * nothing: the editor looks as it did before next-major Blocks.
  */
 export function ContentVersionBadge({
   virtualMcpId,
@@ -21,9 +23,7 @@ export function ContentVersionBadge({
 }) {
   const t = useT();
   const backend = useContentBackend(virtualMcpId, branch);
-  if (backend.kind !== "protocol" && backend.kind !== "unavailable") {
-    return null;
-  }
+  if (!showsV8Badge(backend)) return null;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -39,4 +39,12 @@ export function ContentVersionBadge({
       </TooltipContent>
     </Tooltip>
   );
+}
+
+/** Whether the backend's schema was found to be v8 (see the badge above). */
+function showsV8Badge(backend: ContentBackend): boolean {
+  if (backend.kind === "protocol") return backend.hasSchema !== false;
+  // GitHub and the daemon are only probed on a v8 project; a `deco serve`
+  // that isn't answering hasn't said which schema it serves.
+  return backend.kind === "unavailable" && backend.source !== "local";
 }

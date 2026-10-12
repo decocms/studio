@@ -50,7 +50,6 @@ export type ProjectSidebarViewPresence = Record<ProjectSidebarViewId, boolean>;
 export interface ProjectNativeViewPending {
   assets: boolean;
   siteAccess: boolean;
-  releases: boolean;
 }
 
 export interface ProjectSidebarViewsMetadata {
@@ -217,11 +216,9 @@ export function projectSidebarViewUnavailable(
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
-  return !(viewId === "assets"
-    ? pending.assets
-    : viewId === "releases"
-      ? pending.releases
-      : pending.siteAccess);
+  // Releases follows the project's v8 marker, known with the project itself.
+  if (viewId === "releases") return true;
+  return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 
 /** Validate a persisted built-in landing view, including retired Preview and

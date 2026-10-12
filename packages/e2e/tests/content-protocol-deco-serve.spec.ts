@@ -23,11 +23,14 @@ import {
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
-import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
-/** A deco-meta@1 schema, as `deco schema` writes it, for one section type. */
+/**
+ * A deco-meta@1 schema, as `deco schema` writes it (with `"blocksMajor": 8`,
+ * which is what makes a site v8), for one section type.
+ */
 const schema = {
+  blocksMajor: 8,
   manifest: {
     blocks: {
       sections: { hero: { $ref: "#/definitions/aGVybw==" } },
@@ -188,9 +191,9 @@ async function decryptSecret(privateKey: CryptoKey, ciphertext: string) {
 
 /**
  * A Blocks v8 site project: its repository's main has a `"blocksMajor": 8`
- * schema and the org has the content protocol. Opening its editor reads
- * main's schema and writes the project's v8 marker; that read happens here
- * first, so the page opens on v8 (a project without the marker is v7).
+ * schema (any org; there is no flag). Opening the project reads main's schema
+ * and writes its v8 marker; that refresh happens here first, so the page
+ * opens on v8 (a project without the marker is v7).
  */
 async function createV8Project(api: APIRequestContext, orgSlug: string) {
   const owner = uniqueOwner();
@@ -208,22 +211,16 @@ async function createV8Project(api: APIRequestContext, orgSlug: string) {
     branches: {
       main: {
         files: {
-          ".deco/schema.gen.json": JSON.stringify({
-            ...schema,
-            blocksMajor: 8,
-          }),
+          ".deco/schema.gen.json": JSON.stringify(schema),
         },
       },
     },
   });
-  await callSelfMcpTool(api, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
-    organizationId: await findOrgId(api, orgSlug),
-    flags: { site_editor_content_protocol: true },
-  });
-  const opened = await api.get(
-    `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+  const opened = await api.post(
+    `/api/${orgSlug}/blocks-major/${project.vmcpId}`,
   );
   expect(opened.status()).toBe(200);
+  expect(await opened.json()).toEqual({ isV8: true });
   return { id: project.vmcpId };
 }
 

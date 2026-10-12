@@ -12,9 +12,9 @@ import {
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
-  isBlocksV8Project,
   readThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 

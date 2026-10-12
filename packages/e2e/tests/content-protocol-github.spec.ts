@@ -3,7 +3,7 @@
  * CMS: the content protocol over main with the project's CDN draft layered
  * on, and the publish that commits that draft to main and releases it.
  *
- *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc        (session, org flag)
+ *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc        (session, v8 site)
  *   GET  /api/:org/decofile/:virtualMcpId/:branch            the draft pointer (session)
  *   POST /api/:org/decofile/:virtualMcpId/:branch/publish    commit + release
  *   /api/:org/hosted/:virtualMcpId/{releases,releases/current,site-tokens}
@@ -11,11 +11,11 @@
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts)
  * and the delivery bucket on its stub (fixtures/delivery-stub-server.ts). The
- * cases below it cover what's specific to this backend: the flag, auth,
+ * cases below it cover what's specific to this backend: v8 detection, auth,
  * saves into the CDN draft (never git), v7 secret blocks left in a migrated
  * site, the `?__draft=` pointer the site revalidates with ETags, publish and
  * releases, site tokens, and the editor's v7/v8 detection: only a committed
- * schema with `"blocksMajor": 8` is a v8 site, even with the org flag on.
+ * schema with `"blocksMajor": 8` is a v8 site, in any org (no flag).
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -34,7 +34,7 @@ import {
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
-import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
@@ -160,14 +160,20 @@ async function draftPointer(
   return (await res.json()) as { draft: string | null; version: string | null };
 }
 
-async function enableContentProtocol(
+/**
+ * What opening the project does: the server reads main's schema and refreshes
+ * the project's v8 marker (`isV8Schema`). The repository is seeded after the
+ * project is created, so create's own check found nothing yet.
+ */
+async function refreshV8(
   ctx: APIRequestContext,
-  orgSlug: string,
-): Promise<void> {
-  await callSelfMcpTool(ctx, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
-    organizationId: await findOrgId(ctx, orgSlug),
-    flags: { site_editor_content_protocol: true },
-  });
+  project: { org: string; vmcpId: string },
+): Promise<boolean | null> {
+  const res = await ctx.post(
+    `/api/${project.org}/blocks-major/${project.vmcpId}`,
+  );
+  expect(res.status()).toBe(200);
+  return ((await res.json()) as { isV8: boolean | null }).isV8;
 }
 
 async function setUp(
@@ -201,7 +207,7 @@ test.describe("content protocol on GitHub", () => {
         ".deco/secrets.pub": publicKey,
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
 
       const report = await runConformance({
         endpoint: `${getE2EAppOrigin()}${rpcPath(project, "main")}`,
@@ -217,7 +223,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("is off without the org flag, and needs a session", async ({
+  test("is on as soon as main's schema is v8, in any org, and needs a session", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -228,9 +234,10 @@ test.describe("content protocol on GitHub", () => {
       });
       const path = rpcPath(project, "main");
 
+      // Seeded after create: not known as v8 until the project is opened.
       expect((await rpc(ctx, path, "describe")).status).toBe(404);
 
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
       const described = await rpc<DescribeResult>(ctx, path, "describe");
       expect(described.result).toMatchObject({
         protocol: "deco-content",
@@ -256,7 +263,7 @@ test.describe("content protocol on GitHub", () => {
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
         ".deco/blocks/promo.json": '{"__resolveType":"hero","title":"Old"}\n',
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
       const path = rpcPath(project, "draft-1");
       const refsBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
@@ -342,7 +349,7 @@ test.describe("content protocol on GitHub", () => {
         ".deco/schema.gen.json": JSON.stringify(migratedSchema),
         ".deco/blocks/site.json": '{"__resolveType":"site/apps/site.ts"}\n',
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
 
       const applied = await rpc<BlocksApplyResult>(
         ctx,
@@ -368,7 +375,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("never reads or writes a v7 site over /rpc, even with the flag on", async ({
+  test("a v7 site has no /rpc and never gets the v8 marker", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -381,20 +388,25 @@ test.describe("content protocol on GitHub", () => {
         }),
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(false);
       const path = rpcPath(project, "main");
       const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
 
-      // It reads as schemaless, so the editor stays on the classic one.
-      const read = await rpc<{ schema?: unknown }>(ctx, path, "schema.get");
-      expect(read.error ?? read.result?.schema ?? null).not.toEqual(
-        expect.objectContaining({ blocksMajor: expect.anything() }),
-      );
-      const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
-        set: { "hero-home": { __resolveType: "hero", title: "x" } },
-      });
-      expect(applied.error?.code).toBe(-32006);
+      // No marker, no protocol: the editor stays on the classic one.
+      expect((await rpc(ctx, path, "describe")).status).toBe(404);
+      expect(
+        (
+          await rpc(ctx, path, "blocks.apply", {
+            set: { "hero-home": { __resolveType: "hero", title: "x" } },
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await ctx.get(`/api/${project.org}/hosted/${project.vmcpId}/releases`)
+        ).status(),
+      ).toBe(404);
       expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
         headBefore,
       );
@@ -413,7 +425,7 @@ test.describe("content protocol on GitHub", () => {
         ".deco/schema.gen.json": JSON.stringify(schema),
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
 
       // Nothing saved yet: no draft, so no pointer.
       expect(await draftPointer(ctx, project, "draft-1")).toEqual({
@@ -476,7 +488,7 @@ test.describe("content protocol on GitHub", () => {
         ".deco/schema.gen.json": JSON.stringify(schema),
         ".deco/blocks/hero-home.json": '{"__resolveType":"hero"}\n',
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
       const decofile = `/api/${project.org}/decofile/${project.vmcpId}`;
       const hosted = `/api/${project.org}/hosted/${project.vmcpId}`;
       const site = project.owner;
@@ -594,7 +606,7 @@ test.describe("content protocol on GitHub", () => {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
       const tokens = `/api/${project.org}/hosted/${project.vmcpId}/site-tokens`;
 
       const issued = await ctx.post(tokens);
@@ -630,7 +642,7 @@ test.describe("content protocol on GitHub", () => {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
       // Hosted ownership is the `org_sites` link made at creation, never
       // `metadata.siteSlug`, and the API refuses to rewrite the slug.
       await expect(
@@ -658,13 +670,12 @@ test.describe("content protocol on GitHub", () => {
       const project = await setUp(ctx, {
         ".deco/schema.gen.json": JSON.stringify(schema),
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(true);
       const tokens = `/api/${project.org}/hosted/${project.vmcpId}/site-tokens`;
       expect((await ctx.post(tokens)).status()).toBe(200);
 
       // Another org naming the same site gets no link and no hosted features.
       const user = await signUpViaApi(other);
-      await enableContentProtocol(other, user.orgSlug);
       const copy = await createFastPreviewProject(other, user.orgSlug, {
         owner: project.owner,
         repo: "site",
@@ -712,7 +723,7 @@ const homePage = JSON.stringify({
   sections: [{ __resolveType: "site/sections/Hero.tsx", title: "Hello" }],
 });
 
-/** A Fast Preview project in the signed-in user's org, with the flag on. */
+/** A Fast Preview project in the signed-in user's org (no flag needed). */
 async function openEditor(
   api: APIRequestContext,
   orgSlug: string,
@@ -734,7 +745,6 @@ async function openEditor(
     defaultBranch: "main",
     branches: { main: { files } },
   });
-  await enableContentProtocol(api, orgSlug);
   const { item: thread } = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,
@@ -747,7 +757,7 @@ async function openEditor(
   };
 }
 
-test.describe("v7/v8 detection with the org flag on", () => {
+test.describe("v7/v8 detection from the schema, in any org", () => {
   test.setTimeout(120_000);
 
   for (const [name, file, meta] of [
@@ -786,24 +796,15 @@ test.describe("v7/v8 detection with the org flag on", () => {
   }) => {
     const preview = await startPreviewSite();
     try {
-      const { url, project } = await openEditor(
-        page.request,
-        orgSlug,
-        preview.url,
-        {
-          ".deco/schema.gen.json": JSON.stringify({
-            ...v7Meta,
-            blocksMajor: 8,
-          }),
-          ".deco/blocks/home.json": homePage,
-        },
-      );
-      // The editor's first read of main's schema writes the project's v8
-      // marker; the page picks the backend from that marker.
-      const opened = await page.request.get(
-        `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
-      );
-      expect(opened.status()).toBe(200);
+      const { url } = await openEditor(page.request, orgSlug, preview.url, {
+        ".deco/schema.gen.json": JSON.stringify({
+          ...v7Meta,
+          blocksMajor: 8,
+        }),
+        ".deco/blocks/home.json": homePage,
+      });
+      // Seeded after create: opening the project reads main's schema and
+      // writes its v8 marker; the page then picks the backend from it.
       await page.goto(url);
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
         timeout: 60_000,
@@ -823,7 +824,7 @@ test.describe("v7/v8 detection with the org flag on", () => {
         ".deco/meta.gen.json": JSON.stringify(v7Meta),
         ".deco/blocks/home.json": homePage,
       });
-      await enableContentProtocol(ctx, project.org);
+      expect(await refreshV8(ctx, project)).toBe(false);
       const url = `/api/${project.org}/decofile/${project.vmcpId}/draft-1`;
 
       const saved = await ctx.patch(url, {

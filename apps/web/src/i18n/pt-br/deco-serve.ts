@@ -55,6 +55,9 @@ export const decoServe = {
   "decoServe.state.notDecoServe.title": "Outro programa está usando {host}",
   "decoServe.state.notDecoServe.body":
     "Algo que não é o deco serve respondeu em {host}. Inicie o deco serve em outra porta com `--port 4546` e abra o link do Site editor que ele mostra.",
+  "decoServe.state.notV8.title": "O schema deste site não é do Blocks v8",
+  "decoServe.state.notV8.body":
+    'O schema que o deco serve em {host} serve não tem "blocksMajor": 8, então o Studio não consegue editá-lo. Atualize o @decocms/blocks do seu site, rode deco schema e o Studio abre o editor sozinho.',
   "decoServe.state.error.title":
     "O deco serve não conseguiu abrir seu conteúdo",
   "decoServe.state.error.body":
