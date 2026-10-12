@@ -822,8 +822,12 @@ test.describe("content protocol on GitHub", () => {
         repo: "site",
         siteSlug: project.owner,
       });
+      // Its main is v8, so it is a v8 project, but the site isn't its own.
+      expect(await refreshV8(other, copy)).toBe(true);
       const hosted = `/api/${copy.org}/hosted/${copy.vmcpId}`;
-      expect((await other.post(`${hosted}/site-tokens`)).status()).toBe(404);
+      const minted = await other.post(`${hosted}/site-tokens`);
+      expect(minted.status()).toBe(409);
+      expect(await minted.json()).toMatchObject({ code: "site_not_owned" });
       // And the first org keeps it.
       expect(
         ((await (await ctx.get(tokens)).json()) as { site: string }).site,

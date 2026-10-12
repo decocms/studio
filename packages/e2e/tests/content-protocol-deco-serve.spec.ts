@@ -220,7 +220,7 @@ async function createV8Project(api: APIRequestContext, orgSlug: string) {
     `/api/${orgSlug}/blocks-major/${project.vmcpId}`,
   );
   expect(opened.status()).toBe(200);
-  expect(await opened.json()).toEqual({ isV8: true });
+  expect(await opened.json()).toEqual({ isV8: true, hostedSite: true });
   return { id: project.vmcpId };
 }
 
