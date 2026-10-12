@@ -1,21 +1,23 @@
 /**
- * The project's Blocks v8 marker: `metadata.blocksMajor: 8`, written by the
- * server only, so the web app and the sandbox proxy know a project is v8
- * before any thread exists (see `isBlocksV8Project` in
- * `@decocms/shared/thread/session-runtime`).
+ * The project's Blocks v8 marker: `metadata.blocksMajor: 8`, the cached answer
+ * of `isV8Schema` (`@decocms/shared/blocks-major`) on main's
+ * `.deco/schema.gen.json`. The web app and the sandbox proxy read it to know
+ * a project is v8 before any thread exists (`isBlocksV8Project`).
  *
- * Written only for orgs with `site_editor_content_protocol`, from code that
- * already reads main's `.deco/schema.gen.json` (project create/import, the
- * admin backfill, and write-through wherever `mainIsV8` runs). Cleared when
- * main is no longer v8. A v7 site never gets it. Best-effort everywhere: a
- * failed write is logged and never fails the request.
+ * Only code that just ran the predicate on main (`mainIsV8`) writes it: project
+ * create/import, the refresh when a project is opened, the admin backfill, and
+ * the hosted routes that read main's schema anyway. Every org gets it: v8 is
+ * per site, on as soon as main's schema says so. Cleared when main is no
+ * longer v8, so a v7 site never has it. Best-effort everywhere: a failed write
+ * is logged and never fails the request.
  */
 
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   BLOCKS_MAJOR_METADATA_KEY,
+  BLOCKS_V8_MAJOR,
   isBlocksV8Project,
-} from "@decocms/shared/thread/session-runtime";
+} from "@decocms/shared/blocks-major";
+import { delay } from "@decocms/shared/std";
 import type { RepoContentClient } from "@/git-providers";
 import { mainIsV8 } from "./scope";
 
@@ -37,9 +39,8 @@ export interface BlocksMajorProject {
 }
 
 /**
- * Bring the marker in line with what main's schema says. A no-op when it
- * already matches. Single-key patch, so a concurrent `sandboxMap` write is
- * never lost.
+ * Bring the marker in line with `mainIsV8`'s answer. A no-op when it already
+ * matches. Single-key patch, so a concurrent `sandboxMap` write is never lost.
  */
 export async function syncBlocksMajorMarker(
   projects: BlocksMajorStorage,
@@ -52,7 +53,7 @@ export async function syncBlocksMajorMarker(
     await projects.patchMetadata({
       id: project.id,
       organizationId: project.organizationId,
-      set: isV8 ? { [BLOCKS_MAJOR_METADATA_KEY]: 8 } : {},
+      set: isV8 ? { [BLOCKS_MAJOR_METADATA_KEY]: BLOCKS_V8_MAJOR } : {},
       unset: isV8 ? [] : [BLOCKS_MAJOR_METADATA_KEY],
       by,
     });
@@ -67,48 +68,60 @@ export async function syncBlocksMajorMarker(
 }
 
 /**
- * For a just-created (or imported) project bound to a repository: read main's
- * schema once and set the marker when it is v8. Nothing happens unless the
- * hosted CMS can serve the project — the org has the content protocol, the
- * project owns its site id and a delivery bucket is configured (the same
- * preconditions as the hosted routes) — so the marker always means "the
- * hosted CMS serves this project". Never throws; callers don't await it.
+ * Run `mainIsV8` for a project bound to a repository and sync its marker.
+ * The answer, or null when the project has no repository or main couldn't be
+ * read (the marker is then left as it is). Never throws.
  */
-export async function markBlocksV8OnCreate(deps: {
+export async function refreshBlocksMajorMarker(deps: {
   projects: BlocksMajorStorage;
   project: BlocksMajorProject;
   by: string;
-  /** The org's flags (`organization_settings.flags`). */
-  flags: () => Promise<Record<string, unknown> | null | undefined>;
-  /**
-   * The site id the project owns (`ownedProjectSite`), or null when it owns
-   * none or no delivery bucket is configured.
-   */
-  hostedSite: () => Promise<string | null>;
   /** The project repo's content client, or null when it has none. */
   client: () => Promise<RepoContentClient | null>;
-}): Promise<void> {
+}): Promise<boolean | null> {
   try {
-    if (!orgFlagEnabled(await deps.flags(), "site_editor_content_protocol")) {
-      return;
-    }
-    if (!(await deps.hostedSite())) return;
     const client = await deps.client();
-    if (!client) return;
+    if (!client) return null;
     const isV8 = await mainIsV8(
       client,
       projectPackagePath(deps.project.metadata),
       await client.getDefaultBranch(),
     );
     await syncBlocksMajorMarker(deps.projects, deps.project, isV8, deps.by);
+    return isV8;
   } catch (error) {
     console.warn("hosted: blocks v8 detection failed", {
       organizationId: deps.project.organizationId,
       projectId: deps.project.id,
       error: error instanceof Error ? error.message : String(error),
     });
+    return null;
   }
 }
+
+/**
+ * {@link refreshBlocksMajorMarker} for a just-created (or imported) project,
+ * waiting at most `timeoutMs`: a v8 project then comes back already marked, so
+ * its first thread opens in Fast Preview. A slower answer still lands in the
+ * background (the refresh on open covers a repo seeded later). The answer, or
+ * null when it isn't known in time.
+ */
+export async function markBlocksV8OnCreate(
+  deps: Parameters<typeof refreshBlocksMajorMarker>[0],
+  timeoutMs = CREATE_DETECTION_TIMEOUT_MS,
+): Promise<boolean | null> {
+  const timeout = new AbortController();
+  try {
+    return await Promise.race([
+      refreshBlocksMajorMarker(deps),
+      delay(timeoutMs, { signal: timeout.signal }).then(() => null),
+    ]);
+  } finally {
+    timeout.abort();
+  }
+}
+
+const CREATE_DETECTION_TIMEOUT_MS = 3_000;
 
 /** The site's folder inside the repo (`metadata.runtime.path`), or null. */
 export function projectPackagePath(

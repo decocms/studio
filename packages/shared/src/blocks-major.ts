@@ -1,0 +1,68 @@
+/**
+ * The one Blocks v8 detector. A site is v8 when its schema's content says so:
+ * `deco schema` writes a top-level `"blocksMajor": 8` into
+ * `.deco/schema.gen.json`, and only that strict value counts. A missing
+ * field, any other value (a future 9 is not v8), something that isn't a
+ * schema object, unparseable text or a missing file are all v7.
+ *
+ * Every v8 decision, on the server and in the web app, goes through
+ * {@link isV8Schema}: the hosted routes, the content backends (GitHub,
+ * sandbox daemon, `deco serve`), Releases and site tokens. The project's
+ * `metadata.blocksMajor` marker is only that predicate's cached answer for
+ * main's schema: the server writes it right after running the predicate, and
+ * nothing else writes it. `blocks-major.test.ts` keeps this the only
+ * detector.
+ */
+
+/** The Blocks major this Studio edits over the content protocol. */
+export const BLOCKS_V8_MAJOR = 8;
+
+/** The schema file `deco schema` writes, under the site's `.deco/`. */
+const SCHEMA_FILE = "schema.gen.json";
+
+/** Where a site's schema lives: `<packagePath>/.deco/schema.gen.json`. */
+export function schemaGenPath(packagePath: string | null): string {
+  return packagePath
+    ? `${packagePath}/.deco/${SCHEMA_FILE}`
+    : `.deco/${SCHEMA_FILE}`;
+}
+
+/** Whether a parsed schema is a Blocks v8 one (`"blocksMajor": 8`). */
+export function isV8Schema(schema: unknown): boolean {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    !Array.isArray(schema) &&
+    (schema as { blocksMajor?: unknown }).blocksMajor === BLOCKS_V8_MAJOR
+  );
+}
+
+/** {@link isV8Schema} on schema text; unparseable or missing text is v7. */
+export function isV8SchemaText(text: string | null | undefined): boolean {
+  if (typeof text !== "string") return false;
+  try {
+    return isV8Schema(JSON.parse(text));
+  } catch {
+    return false;
+  }
+}
+
+/** The project metadata key holding the cached answer for main's schema. */
+export const BLOCKS_MAJOR_METADATA_KEY = "blocksMajor";
+
+/**
+ * Whether the project is a Blocks v8 site, read from the cached answer the
+ * server keeps in `metadata.blocksMajor`: {@link isV8Schema} on main's
+ * `.deco/schema.gen.json`, written by the server on create/import, whenever
+ * it reads main's schema, and when the project is opened (cleared when main
+ * is no longer v8). A v7 site never has it.
+ */
+export function isBlocksV8Project(
+  metadata: object | null | undefined,
+): boolean {
+  return (
+    (metadata as Record<string, unknown> | null | undefined)?.[
+      BLOCKS_MAJOR_METADATA_KEY
+    ] === BLOCKS_V8_MAJOR
+  );
+}

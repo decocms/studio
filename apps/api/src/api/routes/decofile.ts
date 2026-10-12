@@ -8,7 +8,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
- *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, flag)
+ *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, v8)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -17,8 +17,9 @@
  * with, and gating this on it would strand an already-stamped session.
  *
  * The content-protocol routes serve Blocks v8 sites on the hosted Deco CMS
- * (see `hosted/`) and exist only behind the `site_editor_content_protocol`
- * org flag. The editor's draft is an object on the delivery CDN
+ * (see `hosted/`): projects whose main schema passes `isV8Schema`
+ * (`@decocms/shared/blocks-major`), in any org. A v7 project never reaches
+ * them and keeps every answer it has on main. The editor's draft is an object on the delivery CDN
  * (`hosted/draft-content-storage.ts`), never a git branch: `rpc` reads main
  * with the draft layered on and saves into the draft; the session GET answers
  * a v8 project's `?__draft=` pointer (`{ draft, version }`) instead of the
@@ -72,7 +73,7 @@ import {
 } from "@/hosted/blocks-major";
 import { hostedDrafts, mainIsV8, ownedProjectSite } from "@/hosted/scope";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -258,38 +259,15 @@ function isContentProtocolPath(path: string): boolean {
 }
 
 /**
- * The `site_editor_content_protocol` org flag, read before a content-protocol
- * route does anything (and so before any commit). A failed read is "off":
- * the route answers 404 and the editor stays on the v7 path.
+ * The draft store and this session's draft, for a member of a project that
+ * owns its site id, with a delivery bucket configured. Null otherwise;
+ * whether the project is a v8 one is the caller's question (`scopeIsV8`).
  */
-async function contentProtocolEnabled(
+function hostedScope(
   c: Context<DecofileEnv>,
-): Promise<boolean> {
-  const ctx = c.var.studioContext;
-  const organizationId = c.get("decofileScope").organizationId;
-  try {
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    return orgFlagEnabled(settings?.flags, "site_editor_content_protocol");
-  } catch (error) {
-    console.error("decofile: org settings read failed; protocol off", {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
-
-/**
- * The draft store and this session's draft, for a member on a flag-on org
- * with a delivery bucket configured. Null otherwise; whether the project is
- * a v8 one is the caller's question.
- */
-async function hostedScope(
-  c: Context<DecofileEnv>,
-): Promise<{ drafts: DraftStore; ref: HostedDraftRef } | null> {
+): { drafts: DraftStore; ref: HostedDraftRef } | null {
   const scope = c.get("decofileScope");
   if (!scope.userId || !scope.site) return null;
-  if (!(await contentProtocolEnabled(c))) return null;
   const drafts = hostedDrafts(c.var.studioContext.storage.kv);
   if (!drafts) return null;
   return {
@@ -304,16 +282,20 @@ async function hostedScope(
 }
 
 /**
- * `mainIsV8` for this scope, writing the answer through to the project's
- * Blocks v8 marker (hosted/blocks-major.ts). Only reached on the hosted path,
- * so only for orgs with the content protocol.
+ * Whether this project is a Blocks v8 site right now. A project without the
+ * marker (`isBlocksV8Project`, the cached answer for main) is v7 at no cost,
+ * exactly as on main: create/import and the refresh on open keep that answer
+ * current. A marked one is confirmed with `mainIsV8` before anything hosted
+ * happens, and the answer is written through (clearing the marker when main
+ * went back to v7).
  */
-async function scopeMainIsV8(
+async function scopeIsV8(
   c: Context<DecofileEnv>,
   client: RepoContentClient,
   mainBranch: string,
 ): Promise<boolean> {
   const scope = c.get("decofileScope");
+  if (!isBlocksV8Project(scope.metadata)) return false;
   const isV8 = await mainIsV8(client, scope.packagePath, mainBranch);
   if (scope.userId) {
     await syncBlocksMajorMarker(
@@ -391,26 +373,24 @@ export function createDecofileRoutes() {
       const client = await contentClientForScope(c);
       // OPEN: O-S3 — a v8 project's editor reads its `?__draft=` pointer
       // here, in place of v7's decofile, token and API host.
-      const hosted = await hostedScope(c);
-      if (hosted) {
+      const hosted = hostedScope(c);
+      if (
+        hosted &&
+        (await scopeIsV8(c, client, await client.getDefaultBranch()))
+      ) {
         const draft = await hosted.drafts.load(hosted.ref);
-        if (
-          draft ||
-          (await scopeMainIsV8(c, client, await client.getDefaultBranch()))
-        ) {
-          const version = bareEtag(draft?.etag);
-          return c.json(
-            {
-              draft:
-                draft && version
-                  ? draftPointerTarget(hosted.ref.site, draft.slug)
-                  : null,
-              version,
-            },
-            200,
-            { "Cache-Control": "no-store" },
-          );
-        }
+        const version = bareEtag(draft?.etag);
+        return c.json(
+          {
+            draft:
+              draft && version
+                ? draftPointerTarget(hosted.ref.site, draft.slug)
+                : null,
+            version,
+          },
+          200,
+          { "Cache-Control": "no-store" },
+        );
       }
       const snapshot = await readDecofileSnapshot(
         client,
@@ -561,12 +541,8 @@ export function createDecofileRoutes() {
     try {
       const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
-      const hosted = await hostedScope(c);
-      if (
-        hosted &&
-        ((await hosted.drafts.load(hosted.ref)) ||
-          (await scopeMainIsV8(c, client, baseBranch)))
-      ) {
+      const hosted = hostedScope(c);
+      if (hosted && (await scopeIsV8(c, client, baseBranch))) {
         const store = deliveryStore();
         if (!store) {
           return c.json({ error: "hosted delivery not configured" }, 503);
@@ -673,11 +649,14 @@ export function createDecofileRoutes() {
   });
 
   app.post("/:virtualMcpId/:branch/rpc", async (c) => {
-    if (!(await contentProtocolEnabled(c))) {
+    const scope = c.get("decofileScope");
+    // Only a Blocks v8 project (its marker) has the protocol, as the editor
+    // only probes one; the storage below still checks main's schema itself
+    // (`isV8Schema`) on every read and refuses to commit to a v7 main.
+    if (!isBlocksV8Project(scope.metadata)) {
       return c.json({ error: "Not found" }, 404);
     }
-    const scope = c.get("decofileScope");
-    const hosted = await hostedScope(c);
+    const hosted = hostedScope(c);
     if (!hosted) {
       return c.json({ error: "hosted delivery not configured" }, 503);
     }

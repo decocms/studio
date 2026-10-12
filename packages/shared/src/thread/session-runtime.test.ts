@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   defaultThreadRuntime,
   fastPreviewCapability,
-  isBlocksV8Project,
   parseThreadRuntime,
   readThreadRuntime,
 } from "./session-runtime.ts";
@@ -109,16 +108,6 @@ describe("parseThreadRuntime", () => {
     expect(parseThreadRuntime(undefined)).toBeNull();
     expect(parseThreadRuntime(null)).toBeNull();
     expect(parseThreadRuntime(true)).toBeNull();
-  });
-});
-
-describe("isBlocksV8Project", () => {
-  test("only the server's marker 8 counts", () => {
-    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(true);
-    expect(isBlocksV8Project({ blocksMajor: "8" })).toBe(false);
-    expect(isBlocksV8Project({ blocksMajor: 7 })).toBe(false);
-    expect(isBlocksV8Project({})).toBe(false);
-    expect(isBlocksV8Project(null)).toBe(false);
   });
 });
 

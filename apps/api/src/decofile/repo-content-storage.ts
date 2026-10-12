@@ -16,6 +16,7 @@ import {
   StorageNotFoundError,
   StorageUnavailableError,
 } from "@decocms/blocks/protocol";
+import { isV8SchemaText, schemaGenPath } from "@decocms/shared/blocks-major";
 import {
   type RepoContentClient,
   repoRateLimitRetryAfterMs,
@@ -39,26 +40,6 @@ interface RepoContentStorageOptions {
   packagePath: string | null;
   /** The one branch this storage reads. */
   branch: string;
-}
-
-/**
- * Whether committed schema text is a Blocks v8 one: only a top-level
- * `"blocksMajor": 8` (written by `deco schema`) counts. Missing, any other
- * value or unparseable text is a v7 site, which this protocol never serves.
- * Mirrors the web's `isV8Schema`.
- */
-function isV8SchemaText(text: string): boolean {
-  try {
-    const schema: unknown = JSON.parse(text);
-    return (
-      typeof schema === "object" &&
-      schema !== null &&
-      !Array.isArray(schema) &&
-      (schema as { blocksMajor?: unknown }).blocksMajor === 8
-    );
-  } catch {
-    return false;
-  }
 }
 
 function decoPath(packagePath: string | null, file: string): string {
@@ -98,18 +79,11 @@ export function createRepoContentReader(
     };
   };
 
-  /** `schema.gen.json`, else `meta.gen.json`, at one commit. */
+  /** `.deco/schema.gen.json` at one commit (`schemaGenPath`). */
   const schemaEntryAt = async (sha: string) => {
-    const paths = [
-      decoPath(packagePath, "schema.gen.json"),
-      decoPath(packagePath, "meta.gen.json"),
-    ];
-    const entries = await client.getEntriesAtPaths(sha, paths);
-    for (const path of paths) {
-      const entry = entries.get(path);
-      if (entry?.type === "blob") return entry;
-    }
-    return null;
+    const path = schemaGenPath(packagePath);
+    const entry = (await client.getEntriesAtPaths(sha, [path])).get(path);
+    return entry?.type === "blob" ? entry : null;
   };
 
   /** The schema the bound branch sees, falling back to the default branch's. */

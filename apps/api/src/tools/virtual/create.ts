@@ -22,9 +22,11 @@ import {
   persistProjectFolderName,
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import {
+  BLOCKS_MAJOR_METADATA_KEY,
+  BLOCKS_V8_MAJOR,
+} from "@decocms/shared/blocks-major";
 import { markBlocksV8OnCreate } from "../../hosted/blocks-major";
-import { deliveryStore } from "../../hosted/delivery-store";
-import { ownedProjectSite } from "../../hosted/scope";
 import { contentClientForProjectRepo } from "../../git-providers";
 import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 import {
@@ -180,32 +182,22 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       );
     }
 
-    // A Blocks v8 site gets the server-managed `blocksMajor` marker, so its
-    // first thread already opens in Fast Preview (hosted/blocks-major.ts).
-    // Only for projects the hosted CMS can serve. Best-effort and off the
-    // request path (it never throws): creating a site never waits on GitHub.
-    // A miss is covered by the write-through when the editor first opens and
-    // by the admin backfill.
+    // A Blocks v8 site (main's schema passes `isV8Schema`) gets the
+    // server-managed `blocksMajor` marker, so its first thread already opens
+    // in Fast Preview (hosted/blocks-major.ts). Waits a few seconds at most;
+    // a later answer lands in the background, and opening the project
+    // refreshes it (a repo seeded after create, a site upgraded later).
+    let created = virtualMcp;
     if (virtualMcp.id) {
       const project = {
         id: virtualMcp.id,
         organizationId: organization.id,
         metadata: metadata ?? null,
       };
-      void markBlocksV8OnCreate({
+      const isV8 = await markBlocksV8OnCreate({
         projects: ctx.storage.virtualMcps,
         project,
         by: userId,
-        flags: async () =>
-          (await ctx.storage.organizationSettings.get(organization.id))?.flags,
-        hostedSite: async () =>
-          deliveryStore()
-            ? ownedProjectSite(
-                ctx.storage.orgSites,
-                project.id,
-                organization.id,
-              )
-            : null,
         client: async () => {
           const repository = parseRepositoryBinding(
             project.metadata,
@@ -216,6 +208,15 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
             : null;
         },
       });
+      if (isV8) {
+        created = {
+          ...virtualMcp,
+          metadata: {
+            ...virtualMcp.metadata,
+            [BLOCKS_MAJOR_METADATA_KEY]: BLOCKS_V8_MAJOR,
+          },
+        };
+      }
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
@@ -226,7 +227,7 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     }
 
     // Best-effort too: opening the project's files claims it later.
-    let item = virtualMcp;
+    let item = created;
     if (virtualMcp.id) {
       try {
         const folderName = await claimProjectFolderFor(
@@ -244,8 +245,8 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
             userId,
           );
           item = {
-            ...virtualMcp,
-            metadata: { ...virtualMcp.metadata, projectFolderName: folderName },
+            ...created,
+            metadata: { ...created.metadata, projectFolderName: folderName },
           };
         }
       } catch (err) {
