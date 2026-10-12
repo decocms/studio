@@ -17,7 +17,7 @@ export interface InterestsWrite {
   interests: Array<{ title: string; summary: string }>;
 }
 
-const UpdateInterestsInputSchema = z.object({
+export const UpdateInterestsInputSchema = z.object({
   interests: z
     .array(
       z.object({
@@ -36,7 +36,7 @@ const UpdateInterestsInputSchema = z.object({
 
 export type UpdateInterestsInput = z.infer<typeof UpdateInterestsInputSchema>;
 
-const description =
+export const UPDATE_INTERESTS_DESCRIPTION =
   "Record what the user is durably working toward (their goals/interests). " +
   "Call this when you learn a real, lasting goal — NOT for one-off questions. " +
   "Pass the FULL list every time: it replaces the stored one, so carry forward " +
@@ -50,7 +50,7 @@ export function createUpdateInterestsTool(deps: {
   userId?: string;
 }) {
   return tool({
-    description,
+    description: UPDATE_INTERESTS_DESCRIPTION,
     inputSchema: zodSchema(UpdateInterestsInputSchema),
     execute: async ({ interests }: UpdateInterestsInput) => {
       await deps.write({
