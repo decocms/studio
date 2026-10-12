@@ -2,7 +2,7 @@
  * The site editor on a developer's machine, over the local content-protocol
  * server: at `/site-editor` (the link `deco serve` prints, ungated and always
  * in the New Layout), account-less or signed in, and signed in through the
- * draft selector's "Local" option. Edits land in its
+ * draft selector's "Localhost" (Blocks v8 projects). Edits land in its
  * working tree through `blocks.apply`.
  *
  * `deco serve` is played by fixtures/deco-serve-stub.ts (the protocol's own
@@ -10,6 +10,8 @@
  * localhost with no token).
  */
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import {
@@ -22,7 +24,7 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
-import { expect, getE2EAppOrigin, test } from "../fixtures/test";
+import { expect, test } from "../fixtures/test";
 
 /** A deco-meta@1 schema, as `deco schema` writes it, for one section type. */
 const schema = {
@@ -271,17 +273,43 @@ async function editHero(
   expect(stub.requestBodies.join("\n")).not.toContain(secret);
 }
 
+/**
+ * The dev app `deco serve --preview` names: any page. The preview waits until
+ * it answers, so it must listen.
+ */
+async function startPreviewApp(): Promise<{
+  url: string;
+  close: () => Promise<void>;
+}> {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<!doctype html><title>app</title><p>app</p>");
+  });
+  await new Promise<void>((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve()),
+  );
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections?.();
+        server.close(() => resolve());
+      }),
+  };
+}
+
 async function startStub(
   publicKey: string,
   port?: number,
   siteSchema: object = schema,
-) {
-  return startDecoServeStub({
+): Promise<DecoServeStub & { previewUrl: string }> {
+  const app = await startPreviewApp();
+  const stub = await startDecoServeStub({
     port,
     schema: siteSchema,
     secretsPublicKey: publicKey,
-    // The dev app; nothing listens, the preview just has nothing to show.
-    previewUrl: "http://127.0.0.1:9",
+    previewUrl: app.url,
     files: {
       [`${HERO}.json`]: heroFile({
         __resolveType: "hero",
@@ -290,6 +318,14 @@ async function startStub(
       }),
     },
   });
+  return {
+    ...stub,
+    previewUrl: app.url,
+    close: async () => {
+      await stub.close();
+      await app.close();
+    },
+  };
 }
 
 const linkOf = (stub: DecoServeStub, path = "/site-editor") =>
@@ -312,7 +348,7 @@ test.describe("site editor over deco serve", () => {
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
       // Preview loads the app `deco serve --preview` names.
       await expect(
-        page.locator('iframe[src^="http://127.0.0.1:9/"]'),
+        page.locator(`iframe[src^="${stub.previewUrl}/"]`),
       ).toBeAttached({ timeout: 30_000 });
 
       // The saved section, from blocks.list, on the Content tab.
@@ -343,7 +379,7 @@ test.describe("site editor over deco serve", () => {
     }
   });
 
-  test("signed in, the Local draft option connects a project to deco serve", async ({
+  test("signed in, Localhost in the drafts list connects a project to deco serve", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -353,6 +389,16 @@ test.describe("site editor over deco serve", () => {
     const project = await createV8Project(api, orgSlug);
     const { privateKey, publicKey } = await generateKeyPair();
     const stub = await startStub(publicKey);
+    const session = await api.get("/api/auth/get-session");
+    const { user } = (await session.json()) as { user: { id: string } };
+    await page.addInitScript(
+      ({ key, endpoint }) =>
+        localStorage.setItem(key, JSON.stringify(endpoint)),
+      {
+        key: `studio:deco-serve-endpoint:${user.id}:${project.id}`,
+        endpoint: stub.endpoint,
+      },
+    );
     try {
       await page.goto(`/${orgSlug}/projects/${project.id}/site-editor/content`);
       const branchPicker = page.locator(
@@ -363,18 +409,14 @@ test.describe("site editor over deco serve", () => {
         timeout: 30_000,
       });
 
+      // Localhost, in the drafts list, connects to where this user last
+      // connected the project (the default port otherwise).
       await branchPicker.click();
-      await page.getByRole("button", { name: "Advanced" }).click();
-      await page.getByRole("tab", { name: "Local" }).click();
-      await page
-        .getByLabel("Local tunnel URL")
-        .fill(`${getE2EAppOrigin()}${linkOf(stub)}`);
-      await page.getByRole("button", { name: "Save" }).click();
-
-      await expect(page.getByTestId("content-version-badge")).toBeVisible({
+      await page.getByRole("button", { name: "Localhost" }).click();
+      await expect(page.getByText("Connected", { exact: true })).toBeVisible({
         timeout: 30_000,
       });
-      await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
+      await page.keyboard.press("Escape");
 
       const content = page.getByTestId("main-panel");
       await content.getByRole("button", { name: "Advanced" }).click();
