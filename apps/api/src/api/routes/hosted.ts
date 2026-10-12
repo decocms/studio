@@ -1,5 +1,6 @@
 /**
- * The hosted Deco CMS screens of a Blocks v8 project (session, v8 marker):
+ * The hosted Deco CMS screens of a Blocks v8 project (session; main's schema
+ * passes `isV8Schema`):
  *
  *   GET    /api/:org/hosted/:virtualMcpId/releases?cursor=   Releases screen
  *   POST   /api/:org/hosted/:virtualMcpId/releases/current   Make current { sha, confirm? }
@@ -16,7 +17,6 @@
 // reuse, so they are these Studio-internal routes (with site tokens beside them).
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { orgHasFeature } from "@/core/plan-feature-gate";
@@ -39,6 +39,7 @@ import {
   SchemaMismatchError,
 } from "@/hosted/releases";
 import {
+  projectMainIsV8,
   projectPackagePath,
   syncBlocksMajorMarker,
 } from "@/hosted/blocks-major";
@@ -95,17 +96,6 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
     return c.json({ error: "Virtual MCP not found" }, 404);
   }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
-  // Only a Blocks v8 project has these screens: its marker, the cached answer
-  // of `isV8Schema` on main (writes below confirm it with `mainIsV8`; Releases
-  // and Make current check each commit's schema themselves).
-  if (!isBlocksV8Project(metadata)) {
-    return c.json({ error: "Not found" }, 404);
-  }
-  const site = await ownedProjectSite(
-    ctx.storage.orgSites,
-    virtualMcpId,
-    organization.id,
-  );
   const repository = parseRepositoryBinding(
     metadata,
     virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
@@ -113,6 +103,27 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
   if (!repository) {
     return c.json({ error: "Project has no repository" }, 404);
   }
+  // Only a Blocks v8 site has these screens: `isV8Schema` on main's schema
+  // (`projectMainIsV8`, at most one head read per minute), never the marker
+  // alone. Releases and Make current also check each commit's schema.
+  try {
+    const client = await c.var.repoClientFor(ctx, organization.id, repository);
+    const isV8 = await projectMainIsV8({
+      projects: ctx.storage.virtualMcps,
+      project: { id: virtualMcpId, organizationId: organization.id, metadata },
+      by: ctx.auth.user.id,
+      client,
+      mainBranch: await client.getDefaultBranch(),
+    });
+    if (!isV8) return c.json({ error: "Not found" }, 404);
+  } catch (err) {
+    return hostedError(c, err);
+  }
+  const site = await ownedProjectSite(
+    ctx.storage.orgSites,
+    virtualMcpId,
+    organization.id,
+  );
   if (!site) return c.json(SITE_NOT_OWNED, 409);
   c.set("hostedProject", {
     organizationId: organization.id,

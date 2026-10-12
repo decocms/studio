@@ -14,7 +14,6 @@ import {
   type CompatGitStatus,
 } from "@/decofile/git-compat";
 import { resolveBlockContents } from "@/decofile/read-decofile";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { type RepoContentClient, requireBranchHead } from "@/git-providers";
 import type { KVStorage } from "@/storage/kv";
 import { bareEtag } from "./delivery-store";
@@ -27,10 +26,10 @@ import type {
 import { draftFileChanges } from "./publish";
 import {
   type BlocksMajorStorage,
+  projectMainIsV8,
   projectPackagePath,
-  syncBlocksMajorMarker,
 } from "./blocks-major";
-import { hostedDrafts, mainIsV8, ownedProjectSite } from "./scope";
+import { hostedDrafts, ownedProjectSite } from "./scope";
 
 interface DraftRepo {
   client: RepoContentClient;
@@ -42,7 +41,7 @@ export interface HostedDraftRequest {
   storage: {
     kv: KVStorage;
     orgSites: Parameters<typeof ownedProjectSite>[0];
-    /** When given, `mainIsV8`'s answer is written through to the project's
+    /** When given, main's answer is written through to the project's
      *  Blocks v8 marker (hosted/blocks-major.ts). */
     virtualMcps?: BlocksMajorStorage;
   };
@@ -61,12 +60,13 @@ export interface HostedDraftRequest {
 /**
  * A hosted v8 project's draft, for the sandbox-less git routes: its changes
  * live on the CDN draft, not on the branch. Null for every other project,
- * which keeps the branch-backed answers. A project without the v8 marker (the
- * cached `isV8Schema` answer for main) is v7 at no cost, exactly as on main;
- * a marked one is confirmed with `mainIsV8` (written through).
+ * which keeps the branch-backed answers. A project that doesn't own its
+ * site id, or with no delivery bucket, is never hosted and makes no
+ * repository read; otherwise main's schema decides (`projectMainIsV8`:
+ * `isV8Schema` with a one-minute reuse, written through to the marker), never
+ * the marker alone.
  */
 export async function loadHostedDraft(req: HostedDraftRequest) {
-  if (!isBlocksV8Project(req.metadata)) return null;
   const site = await ownedProjectSite(
     req.storage.orgSites,
     req.virtualMcpId,
@@ -90,19 +90,17 @@ export async function loadHostedDraft(req: HostedDraftRequest) {
     packagePath: projectPackagePath(req.metadata),
     mainBranch: await client.getDefaultBranch(),
   };
-  const isV8 = await mainIsV8(client, repo.packagePath, repo.mainBranch);
-  if (req.storage.virtualMcps && req.userId) {
-    await syncBlocksMajorMarker(
-      req.storage.virtualMcps,
-      {
-        id: req.virtualMcpId,
-        organizationId: req.organizationId,
-        metadata: req.metadata,
-      },
-      isV8,
-      req.userId,
-    );
-  }
+  const isV8 = await projectMainIsV8({
+    projects: req.storage.virtualMcps,
+    project: {
+      id: req.virtualMcpId,
+      organizationId: req.organizationId,
+      metadata: req.metadata,
+    },
+    by: req.userId,
+    client,
+    mainBranch: repo.mainBranch,
+  });
   if (!isV8) return null;
   return { drafts, ref, repo, draft: await drafts.load(ref) };
 }

@@ -1,8 +1,11 @@
 /**
  * The project's Blocks v8 marker: `metadata.blocksMajor: 8`, the cached answer
  * of `isV8Schema` (`@decocms/shared/blocks-major`) on main's
- * `.deco/schema.gen.json`. The web app and the sandbox proxy read it to know
- * a project is v8 before any thread exists (`isBlocksV8Project`).
+ * `.deco/schema.gen.json`. Only the server reads it, as a cache: a new
+ * thread's default runtime (`defaultThreadRuntime`) and the admin backfill.
+ * The web app never decides from it: it asks for main's answer
+ * (`POST /blocks-major`), and every hosted gate recomputes it
+ * ({@link projectMainIsV8}).
  *
  * Only code that just ran the predicate on main (`mainIsV8`) writes it: project
  * create/import (in the background), the refresh when a project is opened,
@@ -73,33 +76,49 @@ export async function syncBlocksMajorMarker(
 }
 
 /**
- * Run `mainIsV8` for a project bound to a repository and sync its marker.
- * The answer, or null when the project has no repository, main couldn't be
- * read (the marker is then left as it is) or the marker write failed (so a
- * caller never reports a marker the database doesn't have). Never throws.
+ * `isV8Schema` on main's schema, read fresh (`mainIsV8`), with the marker
+ * synced to it. `"no-repository"` when the project has no repository (so no
+ * main to read: never a v8 site). Throws when main couldn't be read, so a
+ * caller can tell "v7" from "unknown"; a failed marker write is only logged
+ * (the answer still stands: it is main's, not the marker's).
  */
-export async function refreshBlocksMajorMarker(deps: {
+export async function readMainBlocksMajor(deps: {
   projects: BlocksMajorStorage;
   project: BlocksMajorProject;
   by: string;
   /** The project repo's content client, or null when it has none. */
   client: () => Promise<RepoContentClient | null>;
-}): Promise<boolean | null> {
+}): Promise<{ isV8: boolean; stored: boolean } | "no-repository"> {
+  const client = await deps.client();
+  if (!client) return "no-repository";
+  const isV8 = await mainIsV8(
+    client,
+    projectPackagePath(deps.project.metadata),
+    await client.getDefaultBranch(),
+  );
+  const stored = await syncBlocksMajorMarker(
+    deps.projects,
+    deps.project,
+    isV8,
+    deps.by,
+  );
+  return { isV8, stored };
+}
+
+/**
+ * {@link readMainBlocksMajor} for the callers that act on the marker (project
+ * create, thread create). The answer, or null when the project has no
+ * repository, main couldn't be read (the marker is then left as it is) or
+ * the marker write failed (so a caller never acts on a marker the database
+ * doesn't have). Never throws.
+ */
+export async function refreshBlocksMajorMarker(
+  deps: Parameters<typeof readMainBlocksMajor>[0],
+): Promise<boolean | null> {
   try {
-    const client = await deps.client();
-    if (!client) return null;
-    const isV8 = await mainIsV8(
-      client,
-      projectPackagePath(deps.project.metadata),
-      await client.getDefaultBranch(),
-    );
-    const stored = await syncBlocksMajorMarker(
-      deps.projects,
-      deps.project,
-      isV8,
-      deps.by,
-    );
-    return stored ? isV8 : null;
+    const read = await readMainBlocksMajor(deps);
+    if (read === "no-repository") return null;
+    return read.stored ? read.isV8 : null;
   } catch (error) {
     console.warn("hosted: blocks v8 detection failed", {
       organizationId: deps.project.organizationId,
@@ -108,6 +127,36 @@ export async function refreshBlocksMajorMarker(deps: {
     });
     return null;
   }
+}
+
+/**
+ * The hosted gates' question: is this project's main a Blocks v8 one right
+ * now? Always `isV8Schema` on main's schema, never the marker alone, so a
+ * project whose marker is missing (seeded after create, never opened) or
+ * stale (main went back to v7) gets the right answer. The marker is only the
+ * hint `mainIsV8` reuses its last minute's answer under (`recentIf`): at most
+ * one head read per minute per repository while they agree, a fresh read as
+ * soon as they don't (the editor's open just wrote a new answer). The answer is written
+ * through to the marker when there is a user to attribute it to.
+ */
+export async function projectMainIsV8(deps: {
+  /** Where the marker is written through; no write without it. */
+  projects?: BlocksMajorStorage;
+  project: BlocksMajorProject;
+  by: string | null | undefined;
+  client: RepoContentClient;
+  mainBranch: string;
+}): Promise<boolean> {
+  const isV8 = await mainIsV8(
+    deps.client,
+    projectPackagePath(deps.project.metadata),
+    deps.mainBranch,
+    { recentIf: isBlocksV8Project(deps.project.metadata) },
+  );
+  if (deps.projects && deps.by) {
+    await syncBlocksMajorMarker(deps.projects, deps.project, isV8, deps.by);
+  }
+  return isV8;
 }
 
 /**

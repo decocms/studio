@@ -80,27 +80,54 @@ const v8ByCommit = createTtlLruCache<boolean>({
 });
 
 /**
+ * How long a hosted gate may reuse main's answer without reading main's head
+ * again ({@link mainIsV8} with `recentIf`). A gate runs on every decofile
+ * read and save, v7 sites included, so a v7 site pays one head read per
+ * minute at most. The editor's own read (`POST /blocks-major`) is always
+ * fresh and writes the marker, so opening a project picks up a push to main
+ * at once, on every pod (a marker that disagrees is never reused over).
+ */
+const MAIN_V8_RECENT_MS = 60_000;
+
+/** The last answer per (repository, main branch, site folder). */
+const v8ByBranch = createTtlLruCache<boolean>({
+  ttlMs: MAIN_V8_RECENT_MS,
+  maxSize: 5_000,
+});
+
+/**
  * Whether main's `.deco/schema.gen.json` is a Blocks v8 one (`isV8Schema`).
  * Cheap enough for every hosted request: main's head is an ETag-cached ref
  * read (an unchanged head is a free 304) and the answer is remembered per
  * head commit, so an unchanged main costs nothing else. A new head reads the
  * schema's entry from that commit's cached tree, and the answer is also
  * remembered per blob, so the schema itself is downloaded (through the blob
- * cache) only when it changes.
+ * cache) only when it changes. With `recentIf`, an answer from the last
+ * minute is reused without even the head read when it equals `recentIf`
+ * (the hosted gates pass the project's marker): an answer another pod just
+ * wrote to the marker disagrees with this pod's, so it is read again.
  */
 export async function mainIsV8(
   client: RepoContentClient,
   packagePath: string | null,
   mainBranch: string,
+  options: { recentIf?: boolean } = {},
 ): Promise<boolean> {
   const path = schemaGenPath(packagePath);
-  const head = await requireBranchHead(client, mainBranch);
   const repo = `${client.repo.provider}:${client.repo.host}/${client.repo.path}`;
+  const branchKey = `${repo}#${mainBranch}:${path}`;
+  if (options.recentIf !== undefined) {
+    const recent = v8ByBranch.get(branchKey);
+    if (recent === options.recentIf) return recent;
+  }
+  const head = await requireBranchHead(client, mainBranch);
   const commitKey = `${repo}@${head}:${path}`;
-  const known = v8ByCommit.get(commitKey);
-  if (known !== undefined) return known;
-  const isV8 = await schemaBlobIsV8(client, repo, head, path);
-  v8ByCommit.set(commitKey, isV8);
+  let isV8 = v8ByCommit.get(commitKey);
+  if (isV8 === undefined) {
+    isV8 = await schemaBlobIsV8(client, repo, head, path);
+    v8ByCommit.set(commitKey, isV8);
+  }
+  v8ByBranch.set(branchKey, isV8);
   return isV8;
 }
 

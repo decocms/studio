@@ -226,6 +226,27 @@ describe("POST /blocks-major/:id", () => {
     expect(orgSiteReads).toEqual([]);
   });
 
+  it("an unreadable main is an error the editor retries, never a v7 answer", async () => {
+    const w = world({
+      projects: [project("p1", { repository: REPOSITORY, blocksMajor: 8 })],
+    });
+    const app = mount(w.ctx, (a) =>
+      a.route(
+        "/blocks-major",
+        createBlocksMajorRoutes({
+          repoClientFor: async () => {
+            throw new Error("GitHub is down");
+          },
+        }),
+      ),
+    );
+    const res = await post(app, "p1");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: "main_unreadable" });
+    // The server's cached answer is left as it is.
+    expect(w.patches).toEqual([]);
+  });
+
   it("a repeat open on an unchanged main reads only its head", async () => {
     const { app, repo } = setup([project("p1", { repository: REPOSITORY })], {
       ".deco/schema.gen.json": V7_SCHEMA,
@@ -271,17 +292,67 @@ describe("hosted routes middleware", () => {
     ["POST", "/hosted/p1/site-tokens"],
   ] as const;
 
-  it("404s an unmarked (v7) project before any GitHub or org_sites read", async () => {
-    const { app, repo, orgSiteReads } = setup(
+  it("404s a v7 project (main's schema), reading main once and no org_sites", async () => {
+    const { app, repo, orgSiteReads, patches } = setup(
       { repository: REPOSITORY },
-      { ".deco/schema.gen.json": SCHEMA_TEXT },
+      { ".deco/schema.gen.json": V7_SCHEMA },
       { p1: ORG },
     );
     for (const [method, path] of PATHS) {
       expect((await app.request(path, { method })).status).toBe(404);
     }
-    expect(repo.opened()).toBe(0);
+    // One schema read for all four: the answer is reused for a minute.
+    expect(repo.schemaReads().length).toBe(1);
     expect(orgSiteReads).toEqual([]);
+    expect(patches).toEqual([]);
+  });
+
+  it("serves a v8 project whose marker is missing (main decides), writing it", async () => {
+    const { app, projects } = setup(
+      { repository: REPOSITORY },
+      { ".deco/schema.gen.json": SCHEMA_TEXT },
+      { p1: ORG },
+    );
+    const res = await app.request("/hosted/p1/site-tokens");
+    expect(res.status).toBe(200);
+    expect(projects.get("p1")?.metadata).toEqual({
+      repository: REPOSITORY,
+      [BLOCKS_MAJOR_METADATA_KEY]: 8,
+    });
+  });
+
+  it("reuses main's answer while the marker agrees, reads again once it doesn't", async () => {
+    const { app, projects, repo } = setup(
+      { repository: REPOSITORY },
+      { ".deco/schema.gen.json": V7_SCHEMA },
+      { p1: ORG },
+    );
+    expect((await app.request("/hosted/p1/site-tokens")).status).toBe(404);
+    // main upgrades to v8. Within the minute this pod reuses its answer...
+    await repo.git.client.commitFiles({
+      branch: "main",
+      message: "v8",
+      expectedHead: null,
+      changes: [{ path: ".deco/schema.gen.json", content: SCHEMA_TEXT }],
+    } as Parameters<RepoContentClient["commitFiles"]>[0]);
+    expect((await app.request("/hosted/p1/site-tokens")).status).toBe(404);
+    // ...until the editor's open (on any pod) writes the new answer to the
+    // marker: a marker that disagrees is never reused over.
+    projects.get("p1")!.metadata = {
+      repository: REPOSITORY,
+      [BLOCKS_MAJOR_METADATA_KEY]: 8,
+    };
+    expect((await app.request("/hosted/p1/site-tokens")).status).toBe(200);
+  });
+
+  it("404s a project whose stale marker says v8 while main is v7, clearing it", async () => {
+    const { app, projects } = setup(
+      { repository: REPOSITORY, blocksMajor: 8 },
+      { ".deco/schema.gen.json": V7_SCHEMA },
+      { p1: ORG },
+    );
+    expect((await app.request("/hosted/p1/releases")).status).toBe(404);
+    expect(projects.get("p1")?.metadata).toEqual({ repository: REPOSITORY });
   });
 
   it("answers site_not_owned to a marked project that doesn't own its site", async () => {
@@ -295,24 +366,29 @@ describe("hosted routes middleware", () => {
       expect(res.status).toBe(409);
       expect(await res.json()).toMatchObject({ code: "site_not_owned" });
     }
-    expect(repo.opened()).toBe(0);
+    // Main's schema is read (once) to know it is a v8 site.
+    expect(repo.schemaReads().length).toBe(1);
   });
 
   it("refuses a site token once main is back on v7, clearing the marker", async () => {
-    const { app, projects } = setup(
+    const { app, projects, repo } = setup(
       { repository: REPOSITORY, blocksMajor: 8 },
-      { ".deco/schema.gen.json": V7_SCHEMA },
+      { ".deco/schema.gen.json": SCHEMA_TEXT },
       { p1: ORG },
     );
+    expect((await app.request("/hosted/p1/site-tokens")).status).toBe(200);
+    // main goes back to v7; a token is issued only on a fresh read of main.
+    await repo.git.client.commitFiles({
+      branch: "main",
+      message: "back to v7",
+      expectedHead: null,
+      changes: [{ path: ".deco/schema.gen.json", content: V7_SCHEMA }],
+    } as Parameters<RepoContentClient["commitFiles"]>[0]);
     const res = await app.request("/hosted/p1/site-tokens", {
       method: "POST",
     });
     expect(res.status).toBe(409);
     expect(projects.get("p1")?.metadata).toEqual({ repository: REPOSITORY });
-    // The cleared marker closes the routes.
-    expect(
-      (await app.request("/hosted/p1/site-tokens", { method: "POST" })).status,
-    ).toBe(404);
   });
 });
 
@@ -349,8 +425,12 @@ describe("decofile routes", () => {
     ".deco/blocks/pages-home.json": '{"__resolveType":"page"}',
   };
 
-  it("an unmarked (v7) project never reads the schema: GET, PATCH, status, publish, rpc", async () => {
-    const { app, repo, patches } = setup({}, v8Files, { p1: ORG });
+  it("a v7 project reads main's schema once for every route, writes nothing, has no rpc", async () => {
+    const { app, repo, patches } = setup(
+      {},
+      { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+      { p1: ORG },
+    );
     // v7's own reads still happen (the decofile from the branch).
     expect((await app.request("/decofile/p1/main")).status).toBe(200);
     expect(repo.opened()).toBeGreaterThan(0);
@@ -366,8 +446,19 @@ describe("decofile routes", () => {
       body: "{}",
     });
     expect(rpc.status).toBe(404);
-    expect(repo.schemaReads()).toEqual([]);
+    expect(repo.schemaReads().length).toBe(1);
     expect(patches).toEqual([]);
+  });
+
+  it("an unmarked project whose main is v8 has the protocol (main decides)", async () => {
+    const { app, projects } = setup({}, v8Files, { p1: ORG });
+    const res = await app.request("/decofile/p1/main/rpc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "describe" }),
+    });
+    expect(res.status).not.toBe(404);
+    expect(projects.get("p1")?.metadata?.[BLOCKS_MAJOR_METADATA_KEY]).toBe(8);
   });
 
   it("rpc answers site_not_owned to a marked project that doesn't own its site", async () => {
@@ -380,7 +471,7 @@ describe("decofile routes", () => {
     });
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ code: "site_not_owned" });
-    expect(repo.opened()).toBe(0);
+    expect(repo.schemaReads().length).toBe(1);
   });
 
   it("GET answers site_not_owned instead of the v7 decofile", async () => {

@@ -82,7 +82,7 @@ describe("hosted draft publish status", () => {
   });
 });
 
-describe("loadHostedDraft: the v8 marker gate", () => {
+describe("loadHostedDraft: main's schema decides (the marker is only its cache)", () => {
   const SITE = "acme";
   const V7_SCHEMA = '{\n  "definitions": {},\n  "root": {}\n}\n';
 
@@ -128,14 +128,48 @@ describe("loadHostedDraft: the v8 marker gate", () => {
     return { req, calls, patches };
   }
 
-  it("an unmarked (v7) project reads nothing: no org_sites, no GitHub", async () => {
-    const { req, calls, patches } = request({
+  it("main decides, not the marker: an unmarked project whose main is v8 gets its draft, marked", async () => {
+    const { req, patches } = request({
       metadata: {},
       files: { ".deco/schema.gen.json": SCHEMA_TEXT },
     });
+    const hosted = await loadHostedDraft(req);
+    expect(hosted?.ref).toEqual({ ...REF, site: SITE });
+    expect(patches).toEqual([
+      { set: { [BLOCKS_MAJOR_METADATA_KEY]: 8 }, unset: [] },
+    ]);
+  });
+
+  it("an unmarked v7 project: null, nothing written", async () => {
+    const { req, patches } = request({
+      metadata: {},
+      files: { ".deco/schema.gen.json": V7_SCHEMA },
+    });
     expect(await loadHostedDraft(req)).toBeNull();
-    expect(calls).toEqual({ git: 0, orgSites: 0 });
     expect(patches).toEqual([]);
+  });
+
+  it("a v7 project's repeat reads within a minute cost no repository call", async () => {
+    const { req, calls } = request({
+      metadata: {},
+      files: { ".deco/schema.gen.json": V7_SCHEMA },
+    });
+    await loadHostedDraft(req);
+    const client = await req.gitClient();
+    const counted = new Proxy(client, {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver);
+        if (typeof value !== "function" || key === "getDefaultBranch") {
+          return value;
+        }
+        return () => {
+          throw new Error(`unexpected ${String(key)}`);
+        };
+      },
+    });
+    const again = { ...req, gitClient: async () => counted };
+    expect(await loadHostedDraft(again)).toBeNull();
+    expect(calls.git).toBe(2);
   });
 
   it("a marked project whose main is v8 gets its draft", async () => {
