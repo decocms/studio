@@ -7,7 +7,7 @@
  * tool result. All provider/DB coupling (streaming Perplexity path, durable
  * Gemini Deep Research lifecycle over `async_research_jobs`) lives in the
  * cluster's `researchJob` hook impl (studio-owned; see
- * `createClusterResearchJob` in `cluster-research-job.ts`).
+ * `createClusterResearchJob` in `tools/chat/research-job.ts`).
  *
  * Capability gating = hook absence: without a research job, `web_search` is
  * simply not in the tool set.
@@ -43,7 +43,7 @@ export type ResearchJob = (
   params: ResearchParams,
 ) => AsyncGenerator<{ progress: string }, ResearchResult>;
 
-const WebSearchInputSchema = z.object({
+export const WebSearchInputSchema = z.object({
   query: z
     .string()
     .max(10_000)
@@ -55,12 +55,18 @@ const WebSearchInputSchema = z.object({
 
 export type WebSearchInput = z.infer<typeof WebSearchInputSchema>;
 
-/** Default description for the quick `web_search` tool. */
-const DEFAULT_WEB_SEARCH_DESCRIPTION =
+export const WEB_SEARCH_DESCRIPTION =
   "Search the web for up-to-date information and synthesize a concise answer. " +
   "Use this for quick lookups, fact-checking, current events, or when the answer " +
   "requires knowledge beyond your training data and a fast response is enough. " +
   "For exhaustive, multi-source reports prefer `deep_research` when available.";
+
+export const DEEP_RESEARCH_DESCRIPTION =
+  "Run in-depth, multi-source research and synthesize a comprehensive, " +
+  "cited report. Use this when the user needs thorough analysis, a " +
+  "literature/market review, or a question that warrants exploring many " +
+  "sources — accuracy and depth matter more than latency. For quick " +
+  "lookups or fact-checks, use `web_search` instead.";
 
 export function createWebSearchTool(
   writer: UIMessageStreamWriter,
@@ -78,7 +84,7 @@ export function createWebSearchTool(
   const { researchJob, toolOutputMap, taskId } = params;
 
   return tool({
-    description: params.description ?? DEFAULT_WEB_SEARCH_DESCRIPTION,
+    description: params.description ?? WEB_SEARCH_DESCRIPTION,
     inputSchema: zodSchema(WebSearchInputSchema),
     execute: async (input, options) => {
       const startTime = performance.now();
@@ -112,7 +118,7 @@ export function createWebSearchTool(
         }
         const result = next.value;
         toolOutputMap.set(options.toolCallId, result.text);
-        return shapeToolResult({
+        return shapeResearchResult({
           query: input.query,
           text: result.text,
           citations: result.citations,
@@ -132,7 +138,7 @@ export function createWebSearchTool(
   });
 }
 
-function shapeToolResult(args: {
+export function shapeResearchResult(args: {
   query: string;
   text: string;
   citations: Array<{ url: string; title?: string }>;
