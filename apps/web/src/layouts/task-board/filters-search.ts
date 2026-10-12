@@ -56,6 +56,7 @@ type BoardSearch = {
    * `__no_repo__`); the key did not.
    */
   repo?: string;
+  sprint?: string;
 };
 
 const str = (v: unknown): string | null =>
@@ -82,17 +83,21 @@ export type BoardDefaults = {
   layout: Layout;
   assignee: string | null;
   groupBy: GroupBy | null;
+  /** The running sprint, so a board with sprints opens on the current one. */
+  sprint: string | null;
 };
 
 export const NO_DEFAULTS: BoardDefaults = {
   layout: "board",
   assignee: null,
   groupBy: null,
+  sprint: null,
 };
 
 /** URL values for "cleared" where the default is not empty, so a link or a
  *  reload without the filter or grouping does not bring the default back. */
 const ANY_ASSIGNEE = "any";
+const ANY_SPRINT = "any";
 const NO_GROUP = "none";
 
 /**
@@ -157,6 +162,12 @@ export function parseBoardSearch(
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
       project: str(search.repo),
+      sprint:
+        search.sprint === undefined
+          ? defaults.sprint
+          : search.sprint === ANY_SPRINT
+            ? null
+            : str(search.sprint),
     },
   };
 }
@@ -184,6 +195,10 @@ export function boardSearchParams(
     due: filters.due ?? undefined,
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
     repo: filters.project ?? undefined,
+    sprint:
+      filters.sprint === defaults.sprint
+        ? undefined
+        : (filters.sprint ?? ANY_SPRINT),
   };
 }
 
