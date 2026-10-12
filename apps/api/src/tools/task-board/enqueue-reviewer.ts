@@ -66,7 +66,7 @@ function isThreadRunLive(
  * The Super Agent is told to link the PR and set In Review *while still
  * running* (`claude-code-task-run.ts`), so the card is reviewable long before
  * the run that owns the branch is finished. Title is the discriminator the rest
- * of the board already uses (`resolveTaskRunToolNames`); liveness is
+ * of the board already uses (`resolveThreadToolNames`); liveness is
  * {@link isThreadRunLive}, so a dead author's stall window releases the card
  * rather than stranding it.
  */
@@ -692,7 +692,7 @@ async function enqueueReviewerForTask(
   const reviewToken = mintReviewToken(task.id, kind, cycleAt);
 
   // Same harness the Super Agent runs on: a review needs real `git`/`gh` on a
-  // checkout, and only a sandbox-hosted run is handed the task-run MCP surface
+  // checkout, and only a sandbox-hosted run is handed the thread MCP surface
   // that carries `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`.
   const choice = await resolveTaskRepoChoice(ctx, organizationId, {
     repositoryId: task.repositoryId,
