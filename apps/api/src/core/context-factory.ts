@@ -41,7 +41,6 @@ import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
-import { BrandContextStorage } from "../storage/brand-context";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
 import { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import { KyselyKVStorage } from "../storage/kv";
@@ -49,6 +48,7 @@ import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
+import { SprintStorage } from "../storage/sprints";
 import { ProjectSidebarStorage } from "../storage/project-sidebar";
 import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
@@ -1460,6 +1460,7 @@ export async function createStudioContextFactory(
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
+    sprints: new SprintStorage(config.db),
     projectSidebar: new ProjectSidebarStorage(config.db),
     experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
@@ -1495,7 +1496,6 @@ export async function createStudioContextFactory(
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
-    brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
     organizationJoinRequests: new OrganizationJoinRequestStorage(config.db),
     kv: kvStorage,
@@ -1683,7 +1683,6 @@ export async function createStudioContextFactory(
         : undefined,
       getOrCreateClient: clientPool,
       pendingRevalidations: [],
-      firecrawlApiKey: getSettings().firecrawlApiKey,
     };
 
     return ctx;

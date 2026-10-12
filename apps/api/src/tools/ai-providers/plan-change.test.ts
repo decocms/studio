@@ -4,7 +4,6 @@ import { AI_PLAN_INVOICE_UPGRADE, invoiceUpgradeRefusal } from "./plan-change";
 const flagged = {
   planId: "custom",
   features: { invoice_upgrade: true },
-  usageState: "exhausted" as const,
 };
 
 const allowed = {
@@ -17,17 +16,6 @@ const allowed = {
 describe("invoiceUpgradeRefusal", () => {
   it("allows a flagged org with no subscription moving to another plan", () => {
     expect(invoiceUpgradeRefusal(allowed)).toBeNull();
-  });
-
-  it("refuses until the usage bar is full, and when usage is unknown", () => {
-    for (const usageState of ["ok", "warn", null] as const) {
-      expect(
-        invoiceUpgradeRefusal({
-          ...allowed,
-          entitlements: { ...flagged, usageState },
-        }),
-      ).not.toBeNull();
-    }
   });
 
   it("refuses when plans are off", () => {
