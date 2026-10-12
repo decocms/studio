@@ -19,7 +19,6 @@ import {
 import { getDb } from "../../database";
 import { ensureUserOrganization } from "../../auth/ensure-user-organization";
 import { isAlreadyMemberError } from "../../auth/is-already-member-error";
-import { extractBrandFromDomain } from "../../auth/extract-brand";
 import { isDiscoverableDomainRecord } from "../../auth/org-assurance-policy";
 import {
   createEmailSender,
@@ -29,7 +28,6 @@ import { emailButton, emailTemplate } from "../../auth/email-template";
 import { ADMIN_ROLES, hasAdminRole } from "@decocms/shared/auth/roles";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { getBaseUrl } from "../../core/server-constants";
-import { BrandContextStorage } from "../../storage/brand-context";
 import { OrganizationDomainStorage } from "../../storage/organization-domains";
 import { OrganizationJoinRequestStorage } from "../../storage/organization-join-requests";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
@@ -496,13 +494,12 @@ app.post("/domain-join", async (c) => {
  * Domain Setup Endpoint (authenticated, verified email required)
  *
  * For first-time corporate email users: creates an org (using a custom name
- * and logo if provided, otherwise derived from the domain), optionally claims
- * the domain with auto-join enabled, and triggers brand extraction via
- * Firecrawl (best-effort — org is created even if extraction fails).
+ * if provided, otherwise derived from the domain) and optionally claims the
+ * domain with auto-join enabled.
  *
  * Body (all optional):
  *   - name: custom org name (else derived from domain)
- *   - logo: custom logo data URL or URL (else uses extracted favicon)
+ *   - logo: custom logo data URL or URL
  *   - claimDomain: defaults to true; set false to skip the domain claim
  *
  * Route: POST /api/auth/custom/domain-setup
@@ -638,49 +635,15 @@ app.post("/domain-setup", async (c) => {
       });
     }
 
-    // Brand extraction (best-effort — don't fail the setup if this errors).
-    // Captures values to apply after the try/catch so user-provided
-    // customizations still take effect even if extraction fails.
-    let brandExtracted = false;
-    let extractedName: string | null = null;
-    let extractedLogo: string | null = null;
-    try {
-      const firecrawlApiKey = getSettings().firecrawlApiKey;
-
-      if (firecrawlApiKey) {
-        const extracted = await extractBrandFromDomain(
-          emailDomain,
-          firecrawlApiKey,
-          baseOrgName,
-        );
-
-        if (extracted) {
-          const brandStorage = new BrandContextStorage(getDb().db);
-          const brand = await brandStorage.create(orgId, extracted);
-          await brandStorage.setDefault(brand.id, orgId);
-          brandExtracted = true;
-          if (extracted.name && extracted.name !== baseOrgName) {
-            extractedName = extracted.name;
-          }
-          extractedLogo = extracted.favicon ?? extracted.logo ?? null;
-        }
-      }
-    } catch (brandError) {
-      console.error("[Auth] Brand extraction failed (non-fatal):", brandError);
-    }
-
-    // Apply org name/logo. User-provided values always win over extraction.
-    const orgUpdate: Record<string, unknown> = {};
-    if (!customName && extractedName) orgUpdate.name = extractedName;
-    if (customLogo) orgUpdate.logo = customLogo;
-    else if (extractedLogo) orgUpdate.logo = extractedLogo;
-    if (Object.keys(orgUpdate).length > 0) {
+    // Set after create: the logo hoist (inline data URL → object storage)
+    // runs on organization updates only.
+    if (customLogo) {
       try {
         await auth.api.updateOrganization({
           headers: c.req.raw.headers,
           body: {
             organizationId: orgId,
-            data: orgUpdate,
+            data: { logo: customLogo },
           },
         });
       } catch (updateError) {
@@ -704,7 +667,6 @@ app.post("/domain-setup", async (c) => {
         name: orgResult.slug ?? baseSlug,
         slug: orgResult.slug ?? baseSlug,
         email_domain: emailDomain,
-        brand_extracted: brandExtracted,
         created_at: new Date().toISOString(),
       },
     });
@@ -717,14 +679,12 @@ app.post("/domain-setup", async (c) => {
         organization_id: orgId,
         organization_slug: orgResult.slug ?? baseSlug,
         email_domain: emailDomain,
-        brand_extracted: brandExtracted,
       },
     });
 
     return c.json({
       success: true,
       slug: orgResult.slug ?? baseSlug,
-      brandExtracted,
     });
   } catch (error) {
     posthog.captureException(error, session.user?.id);

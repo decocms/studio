@@ -25,7 +25,7 @@ import type { SideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
-import { createHtmlArtifactWatcher } from "./built-in-tools/vm-tools/html-artifact-watcher";
+import { createHtmlArtifactWatcher } from "@/harnesses/html-artifact-watcher";
 import { createToolOutputMap } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import type { PendingImage } from "./built-in-tools";
 import type {

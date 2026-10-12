@@ -74,6 +74,16 @@ function truncate(s: string, max: number): string {
   return `${s.slice(0, max - 1)}…`;
 }
 
+/** The `<available-agents>` CSV for `agents`, or "" when there are none. */
+export function agentsCatalog(agents: AgentsBlockEntry[]): string {
+  if (agents.length === 0) return "";
+  const rows = agents.map((a) => {
+    const desc = truncate(a.description ?? "", DESCRIPTION_MAX_LEN);
+    return `${csvField(a.id)},${csvField(a.name)},${csvField(desc)}`;
+  });
+  return `<available-agents>\nid,name,description\n${rows.join("\n")}\n</available-agents>`;
+}
+
 export function buildAgentsBlock(
   agents: AgentsBlockEntry[],
   currentVirtualMcpId: string,
@@ -103,17 +113,9 @@ export function buildAgentsBlock(
     return `\n\n${SELF_ONLY_USAGE}`;
   }
 
-  const rows = others.map((a) => {
-    const desc = truncate(a.description ?? "", DESCRIPTION_MAX_LEN);
-    return `${csvField(a.id)},${csvField(a.name)},${csvField(desc)}`;
-  });
+  const catalog = agentsCatalog(others);
 
-  const agentsCatalog =
-    rows.length > 0
-      ? `\n\n<available-agents>\nid,name,description\n${rows.join("\n")}\n</available-agents>`
-      : "";
-
-  return `${agentsCatalog}\n\n${buildDelegationUsage(
+  return `${catalog ? `\n\n${catalog}` : ""}\n\n${buildDelegationUsage(
     others.length > 0,
     concreteConnectionIds.length > 0,
   )}`;
