@@ -2,7 +2,7 @@
  * The site editor on a developer's machine, over the local content-protocol
  * server: at `/site-editor` (the link `deco serve` prints, ungated and always
  * in the New Layout), account-less or signed in, and signed in through the
- * draft selector's "Local" option. Edits land in its
+ * draft selector's "Localhost" (Blocks v8 projects). Edits land in its
  * working tree through `blocks.apply`.
  *
  * `deco serve` is played by fixtures/deco-serve-stub.ts (the protocol's own
@@ -10,14 +10,21 @@
  * localhost with no token).
  */
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import {
   type DecoServeStub,
   startDecoServeStub,
 } from "../fixtures/deco-serve-stub";
-import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
-import { expect, getE2EAppOrigin, test } from "../fixtures/test";
+import {
+  createFastPreviewProject,
+  seedStubRepo,
+  uniqueOwner,
+} from "../fixtures/fast-preview";
+import { callSelfMcpTool, findOrgId } from "../fixtures/mcp-tools";
+import { expect, test } from "../fixtures/test";
 
 /** A deco-meta@1 schema, as `deco schema` writes it, for one section type. */
 const schema = {
@@ -179,35 +186,45 @@ async function decryptSecret(privateKey: CryptoKey, ciphertext: string) {
   );
 }
 
-/** A site project: a repository, with the CMS layout on. */
-async function createProject(api: APIRequestContext, orgSlug: string) {
-  const title = `deco serve e2e ${Date.now()}`;
-  const connection = await createHttpConnection(api, orgSlug, {
-    title: "deco-serve-e2e-placeholder",
-    url: "http://127.0.0.1:1/unused",
+/**
+ * A Blocks v8 site project: its repository's main has a `"blocksMajor": 8`
+ * schema and the org has the content protocol. Opening its editor reads
+ * main's schema and writes the project's v8 marker; that read happens here
+ * first, so the page opens on v8 (a project without the marker is v7).
+ */
+async function createV8Project(api: APIRequestContext, orgSlug: string) {
+  const owner = uniqueOwner();
+  const project = await createFastPreviewProject(api, orgSlug, {
+    owner,
+    repo: "site",
+    // The header's PR lookup dials this; a closed port fails fast.
+    connectionUrl: "http://127.0.0.1:1/unused",
+    siteSlug: owner,
   });
-  const project = await callSelfMcpTool<{ item: { id: string } }>(
-    api,
-    orgSlug,
-    "COLLECTION_VIRTUAL_MCP_CREATE",
-    {
-      data: {
-        title,
-        status: "active",
-        connections: [{ connection_id: connection.id }],
-        metadata: {
-          repository: {
-            url: "https://github.com/example/site",
-            owner: "example",
-            name: "site",
-            connectionId: connection.id,
-          },
-          ui: { layout: { cms: "on" } },
+  await seedStubRepo(api, {
+    owner,
+    repo: "site",
+    defaultBranch: "main",
+    branches: {
+      main: {
+        files: {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...schema,
+            blocksMajor: 8,
+          }),
         },
       },
     },
+  });
+  await callSelfMcpTool(api, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+    organizationId: await findOrgId(api, orgSlug),
+    flags: { site_editor_content_protocol: true },
+  });
+  const opened = await api.get(
+    `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
   );
-  return { id: project.item.id, title };
+  expect(opened.status()).toBe(200);
+  return { id: project.vmcpId };
 }
 
 async function heroOf(stub: DecoServeStub): Promise<Record<string, unknown>> {
@@ -256,17 +273,43 @@ async function editHero(
   expect(stub.requestBodies.join("\n")).not.toContain(secret);
 }
 
+/**
+ * The dev app `deco serve --preview` names: any page. The preview waits until
+ * it answers, so it must listen.
+ */
+async function startPreviewApp(): Promise<{
+  url: string;
+  close: () => Promise<void>;
+}> {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<!doctype html><title>app</title><p>app</p>");
+  });
+  await new Promise<void>((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve()),
+  );
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections?.();
+        server.close(() => resolve());
+      }),
+  };
+}
+
 async function startStub(
   publicKey: string,
   port?: number,
   siteSchema: object = schema,
-) {
-  return startDecoServeStub({
+): Promise<DecoServeStub & { previewUrl: string }> {
+  const app = await startPreviewApp();
+  const stub = await startDecoServeStub({
     port,
     schema: siteSchema,
     secretsPublicKey: publicKey,
-    // The dev app; nothing listens, the preview just has nothing to show.
-    previewUrl: "http://127.0.0.1:9",
+    previewUrl: app.url,
     files: {
       [`${HERO}.json`]: heroFile({
         __resolveType: "hero",
@@ -275,6 +318,14 @@ async function startStub(
       }),
     },
   });
+  return {
+    ...stub,
+    previewUrl: app.url,
+    close: async () => {
+      await stub.close();
+      await app.close();
+    },
+  };
 }
 
 const linkOf = (stub: DecoServeStub, path = "/site-editor") =>
@@ -297,7 +348,7 @@ test.describe("site editor over deco serve", () => {
       await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
       // Preview loads the app `deco serve --preview` names.
       await expect(
-        page.locator('iframe[src^="http://127.0.0.1:9/"]'),
+        page.locator(`iframe[src^="${stub.previewUrl}/"]`),
       ).toBeAttached({ timeout: 30_000 });
 
       // The saved section, from blocks.list, on the Content tab.
@@ -328,36 +379,44 @@ test.describe("site editor over deco serve", () => {
     }
   });
 
-  test("signed in, the Local draft option connects a project to deco serve", async ({
+  test("signed in, Localhost in the drafts list connects a project to deco serve", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
-    // No org flag: the local path works for every org.
-    const project = await createProject(api, orgSlug);
+    // Only a Blocks v8 site connects to deco serve: a v7 one (no marker)
+    // keeps main's Local tunnel.
+    const project = await createV8Project(api, orgSlug);
     const { privateKey, publicKey } = await generateKeyPair();
     const stub = await startStub(publicKey);
+    const session = await api.get("/api/auth/get-session");
+    const { user } = (await session.json()) as { user: { id: string } };
+    await page.addInitScript(
+      ({ key, endpoint }) =>
+        localStorage.setItem(key, JSON.stringify(endpoint)),
+      {
+        key: `studio:deco-serve-endpoint:${user.id}:${project.id}`,
+        endpoint: stub.endpoint,
+      },
+    );
     try {
       await page.goto(`/${orgSlug}/projects/${project.id}/site-editor/content`);
       const branchPicker = page.locator(
         '[data-tour="tour-layout-branch-picker"]',
       );
       await expect(branchPicker).toBeVisible({ timeout: 30_000 });
-      // A v7 site shows no version badge: only v8 sites get one.
-      await expect(page.getByTestId("content-version-badge")).toHaveCount(0);
-
-      await branchPicker.click();
-      await page.getByRole("button", { name: "Advanced" }).click();
-      await page.getByRole("tab", { name: "Local" }).click();
-      await page
-        .getByLabel("Local tunnel URL")
-        .fill(`${getE2EAppOrigin()}${linkOf(stub)}`);
-      await page.getByRole("button", { name: "Save" }).click();
-
-      await expect(page.getByTestId("content-version-badge")).toBeVisible({
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
         timeout: 30_000,
       });
-      await expect(page.getByTestId("content-version-badge")).toHaveText("v8");
+
+      // Localhost, in the drafts list, connects to where this user last
+      // connected the project (the default port otherwise).
+      await branchPicker.click();
+      await page.getByRole("button", { name: "Localhost" }).click();
+      await expect(page.getByText("Connected", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
+      await page.keyboard.press("Escape");
 
       const content = page.getByTestId("main-panel");
       await content.getByRole("button", { name: "Advanced" }).click();
