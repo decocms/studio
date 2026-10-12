@@ -5,17 +5,26 @@
  * answer there) and read once per project per session here, again only when
  * the server says main changed since (`main-schema-changed.ts`).
  *
- * This is how the web app knows a project is a Blocks v8 site. It never
- * decides from the project's `metadata.blocksMajor` marker: that is only the
- * server's cache of this same answer (and when the answer differs from the
- * marker this page holds, the server just rewrote it, so the project is
- * re-read for the surfaces that still show the server's runtime default).
+ * This is how the web app knows a project is a Blocks v8 site. The
+ * project's `metadata.blocksMajor` marker is only the server's cache of this
+ * same answer, never a v8 answer on its own: it only tells an unreadable
+ * main on a site last found v8 (`"error"`, which waits) from any other one
+ * (`"v7"`). When the answer differs from the marker this page holds, the
+ * server just rewrote it, so the project is re-read for the surfaces that
+ * still show the server's runtime default.
  *
  * - `"loading"`: not known yet. The editor waits; it never shows the v7 path
  *   first and switches.
  * - `"v8"` / `"v7"`: main's schema is (not) a Blocks v8 one. A project
  *   without a repository has no main: `"v7"`, with no request.
- * - `"error"`: main couldn't be read. Re-polled until it can.
+ * - `"error"`: main couldn't be read, on a project the server last found to
+ *   be v8 (its marker). Re-polled until it can; the v8 editor waits.
+ *
+ * A failed read on any other project is `"v7"`: a site whose schema can't be
+ * confirmed v8 behaves as on main (the v7 editor, preview and Local tunnel,
+ * which read the running site, not main), never an indefinite wait. The read
+ * is still re-polled, so a v8 answer that arrives later takes over. The
+ * marker is only a hint here, never a v8 answer on its own.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,10 +71,14 @@ export function mainSchemaAnswer(input: {
   hasProject: boolean;
   data: boolean | undefined;
   isError: boolean;
+  /** The server's marker (`isBlocksV8Project`): main was last found v8. */
+  marked: boolean;
 }): MainSchemaAnswer {
   if (!input.hasProject || !input.asks) return "v7";
   if (input.data !== undefined) return input.data ? "v8" : "v7";
-  return input.isError ? "error" : "loading";
+  if (!input.isError) return "loading";
+  // Unreadable: only a site last known to be v8 waits; any other one is v7.
+  return input.marked ? "error" : "v7";
 }
 
 export function useMainSchemaV8(
@@ -102,6 +115,10 @@ export function useMainSchemaV8(
     asks,
     hasProject: !!project,
     data: query.data,
-    isError: query.isError,
+    // A re-poll of a failed read puts the query back to `pending` (no data
+    // yet): the answer stays the failure's until a read succeeds, so the
+    // editor and preview never flip back to loading every few seconds.
+    isError: query.isError || query.errorUpdateCount > 0,
+    marked,
   });
 }
