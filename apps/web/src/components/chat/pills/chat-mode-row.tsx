@@ -14,7 +14,7 @@ import {
   defaultThreadRuntime,
   readThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 
@@ -75,6 +75,9 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   // Production branch shown as "Produção"; one shared source with the gate.
   const baseBranch = useBaseBranch(virtualMcp, currentBranch);
+  // The Localhost item is for Blocks v8 sites (main's schema); v7 keeps
+  // main's Advanced → Local.
+  const mainSchema = useMainSchemaV8(virtualMcp?.id);
 
   // Locked chat's branch is fixed: open a new chat on the picked branch.
   const onChange = (next: string) => {
@@ -99,7 +102,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         key={`${repoTargetKey(repoTarget)}:${repository.owner}/${repository.name}`}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
-        isV8={isBlocksV8Project(virtualMcp?.metadata)}
+        isV8={mainSchema === "v8"}
         value={currentBranch}
         baseBranch={baseBranch}
         orgId={org.id}

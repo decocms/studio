@@ -251,9 +251,14 @@ describe("one v8 detector", () => {
     const KNOWN: Record<string, string> = {
       "apps/api/src/hosted/scope.ts#mainIsV8": "isV8SchemaText on main",
       "apps/api/src/hosted/scope.ts#schemaBlobIsV8": "isV8SchemaText on a blob",
-      "apps/api/src/api/routes/decofile.ts#scopeIsV8":
-        "isBlocksV8Project + mainIsV8",
+      "apps/api/src/hosted/blocks-major.ts#projectMainIsV8":
+        "mainIsV8 (recent), written through to the marker",
+      "apps/api/src/api/routes/decofile.ts#scopeIsV8": "projectMainIsV8",
       "apps/api/src/api/routes/decofile.ts#unownedV8": "scopeIsV8",
+      "apps/web/src/hooks/use-main-schema-v8.ts#useMainSchemaV8":
+        "the server's mainIsV8 answer (POST /blocks-major)",
+      "apps/web/src/hooks/use-main-schema-v8.ts#fetchMainSchemaV8":
+        "the server's mainIsV8 answer (POST /blocks-major)",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":
@@ -314,7 +319,7 @@ describe("one v8 detector", () => {
       "apps/api/src/api/routes/blocks-major.ts",
       "apps/web/src/components/sections-editor/content-backend.ts",
       "apps/web/src/components/sections-editor/use-content-backend.ts",
-      "apps/web/src/hooks/use-blocks-major-refresh.ts",
+      "apps/web/src/hooks/use-main-schema-v8.ts",
       "apps/web/src/hooks/use-deco-serve-connection.ts",
     ];
     const deciders = source.filter((f) => DECIDERS.includes(f.rel));
@@ -326,6 +331,21 @@ describe("one v8 detector", () => {
         /meta\.gen\.json.*\b(is)?v8|\b(is)?v8\w*\b.*meta\.gen\.json/i,
       ),
     ]).toEqual([]);
+  });
+
+  test("the web app never decides v8 from the marker", () => {
+    // The marker is the server's cache of main's answer. The web app asks
+    // the server for that answer (`useMainSchemaV8`), which only compares it
+    // with the marker it holds to re-read a project the server just rewrote.
+    const allowed = (rel: string) =>
+      rel === "apps/web/src/hooks/use-main-schema-v8.ts";
+    expect(
+      offending(
+        source.filter((f) => f.rel.startsWith("apps/web/")),
+        /\b(isBlocksV8Project|BLOCKS_MAJOR_METADATA_KEY)\b/,
+        (rel) => allowed(rel),
+      ),
+    ).toEqual([]);
   });
 
   test("no org flag gates v8", () => {

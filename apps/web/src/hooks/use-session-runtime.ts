@@ -4,7 +4,6 @@ import {
   readThreadRuntime,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useVirtualMCP } from "@/sdk";
@@ -26,8 +25,6 @@ export interface SessionRuntime {
   /** The URL a CMS session renders against, or `null`. Ungated: a project can
    *  have one without the Fast Preview switch being on. */
   previewServerUrl: string | null;
-  /** The project is a Blocks v8 site (the server's marker). */
-  isBlocksV8: boolean;
 }
 
 /**
@@ -56,6 +53,5 @@ export function useSessionRuntime(
     resolved: !!stamp || (threadLoaded && !!project),
     projectDefault: defaultThreadRuntime(metadata),
     previewServerUrl: resolvePreviewServerUrl(metadata),
-    isBlocksV8: isBlocksV8Project(metadata),
   };
 }

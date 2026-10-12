@@ -1,8 +1,7 @@
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { useVirtualMCP } from "@/sdk";
 
 export interface LocalPreviewUrl {
   /** The active override, or `null` when Local mode is off / no project. Always
@@ -26,10 +25,12 @@ export interface LocalPreviewUrl {
  * URL. Reading is reactive via `useLocalStorage` (same QueryClient cache), so
  * every surface flips together when it changes.
  *
- * v7 only, as on main. A Blocks v8 site (the server's marker) reads as off:
- * it previews the hosted draft, its sandbox or Localhost, so a tunnel saved
- * before (main's Advanced → Local, or before a v7 → v8 upgrade) never
- * replaces its preview or its editor.
+ * v7 only, as on main. A Blocks v8 site (main's schema, `useMainSchemaV8`)
+ * reads as off: it previews the hosted draft, its sandbox or Localhost, so a
+ * tunnel saved before (main's Advanced → Local, or before a v7 → v8 upgrade)
+ * never replaces its preview or its editor. Only a site known to be v8 drops
+ * it: while main's answer loads a saved tunnel stays in use, so a v7 site
+ * never boots a sandbox it didn't on main (tunnels are saved by v7 sites).
  */
 export function useLocalPreviewUrl(
   virtualMcpId: string | null | undefined,
@@ -37,11 +38,8 @@ export function useLocalPreviewUrl(
   // Keyed unconditionally (hooks can't be conditional); no project reads as off.
   const key = LOCALSTORAGE_KEYS.localPreviewUrl(virtualMcpId ?? "");
   const [stored, setStored] = useLocalStorage<string | null>(key, null);
-  const project = useVirtualMCP(virtualMcpId);
-  const url =
-    virtualMcpId && !isBlocksV8Project(project?.metadata)
-      ? sanitizeSiteUrl(stored)
-      : null;
+  const main = useMainSchemaV8(virtualMcpId);
+  const url = virtualMcpId && main !== "v8" ? sanitizeSiteUrl(stored) : null;
   return {
     url,
     setUrl: (next) => setStored(sanitizeSiteUrl(next)),
