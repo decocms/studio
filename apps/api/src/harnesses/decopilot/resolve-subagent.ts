@@ -49,11 +49,8 @@ export async function resolveSubagent(
       throw new Error("Agent is not active");
     }
 
-    const effectiveVirtualMcp = await resolveEffectiveStudioPackVirtualMcp({
-      virtualMcp,
-      organizationId,
-      ctx,
-    });
+    const effectiveVirtualMcp =
+      resolveEffectiveStudioPackVirtualMcp(virtualMcp);
     const mcpClient = await createVirtualClientFrom(
       effectiveVirtualMcp,
       ctx,

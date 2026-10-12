@@ -27,6 +27,16 @@ export function isHostedProviderId(value: string): value is HostedProviderId {
   return HOSTED_PROVIDER_ID_SET.has(value);
 }
 
+/** Hosted providers the sandbox claude-code harness can run on; the API's
+ *  `claudeCodeEnvFromCredential` owns how each one is wired. */
+const CLAUDE_CODE_PROVIDER_IDS: ReadonlySet<string> = new Set<HostedProviderId>(
+  ["anthropic", "openrouter", "deco"],
+);
+
+export function supportsClaudeCode(providerId: string): boolean {
+  return CLAUDE_CODE_PROVIDER_IDS.has(providerId);
+}
+
 /**
  * Every provider ID that may exist in persisted data.
  *

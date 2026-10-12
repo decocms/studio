@@ -12,7 +12,7 @@ import type { OrgSiteStoragePort } from "./ports";
 /**
  * The site id (slug) is public — CDN paths, site tokens, telemetry and asset
  * URLs carry it — and tokens can't be revoked. So once a slug is used
- * (`linked_at` set: a project linked it, or it predates migration 235) it is
+ * (`linked_at` set: a project linked it, or it predates migration 237) it is
  * tied to that org for good: it can't be released or moved to another org.
  * Once its project is deleted, the same org may link it to another of its
  * projects; another org never can (operators handle that by hand in the DB).
