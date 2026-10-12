@@ -364,7 +364,11 @@ test.describe("site editor over deco serve", () => {
       });
 
       await branchPicker.click();
-      await page.getByRole("button", { name: "Advanced" }).click();
+      // The draft selector's Advanced (a v8 Content panel has one too).
+      await page
+        .locator("[data-radix-popper-content-wrapper]")
+        .getByRole("button", { name: "Advanced" })
+        .click();
       await page.getByRole("tab", { name: "Local" }).click();
       await page
         .getByLabel("Local tunnel URL")
