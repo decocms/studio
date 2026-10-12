@@ -98,7 +98,7 @@ export function routeExistsInScope(
  * Under New Layout every destination exists on both sides of the scope, so
  * nothing above is consulted: Library was the last exception — the org's files
  * were one drive and a project had none — and a project owns its folder now
- * (`layouts/library/project-folder.ts`), so both readings are real pages.
+ * (`@decocms/shared/organization/project-folder`), so both readings are real pages.
  * Leaving a project un-narrows the page you are on rather than relocating you.
  */
 
