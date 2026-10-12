@@ -277,8 +277,13 @@ export function renderField(props: FieldProps) {
           ? variantValueSchema
           : (schema.plainSchema ??
             variantValueSchema?.plainSchema ?? { type: "string" });
+      // The prop's own @description lives on the outer union, not the widget branch.
+      const innerFieldSchema: SchemaProperty = {
+        ...innerSchema,
+        description: innerSchema.description ?? schema.description,
+      };
       const innerRenderer = (fieldProps: FieldProps) =>
-        renderField({ ...fieldProps, schema: innerSchema });
+        renderField({ ...fieldProps, schema: innerFieldSchema });
       return (
         <MultivariateFieldWrapper
           key={props.path}
