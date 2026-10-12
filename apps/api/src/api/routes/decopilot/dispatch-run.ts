@@ -53,10 +53,12 @@ import {
   isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
+import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
+import { markTurn } from "@/harnesses/turn-latency";
+import { withRunTitle } from "@/harnesses/sandbox-run-title";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
@@ -67,6 +69,7 @@ import type {
 } from "@/harnesses/lib/types";
 import { createSecretModelSource } from "@/harnesses/lib/types";
 import { streamDecopilot } from "@/harnesses/decopilot/stream";
+import { withHtmlArtifactPreviews } from "@/harnesses/html-artifact-watcher";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -87,6 +90,7 @@ import { type ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 export type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
+import { sandboxWireUserMessage } from "./wire-user-message";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
@@ -447,6 +451,9 @@ export interface FrozenRunSnapshot {
    * server-built base system prompt for this run only.
    */
   systemContext?: string;
+  /** Prior turns of a Decopilot thread on its first claude-code turn (see
+   *  `buildHistoryPrefix`). Prepended to the prompt; never persisted. */
+  historyPrefix?: string;
 }
 
 export interface DurableDispatchRunInput extends FrozenRunSnapshot {
@@ -502,6 +509,7 @@ export function buildDurableDispatchInput(
     messageId: string;
     runFenceToken?: string;
     branch?: string | null;
+    historyPrefix?: string;
   },
 ): DurableDispatchRunInput {
   if (!input.taskId) {
@@ -561,6 +569,7 @@ export function buildDurableDispatchInput(
       : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
     ...(systemContext ? { systemContext } : {}),
+    ...(options.historyPrefix ? { historyPrefix: options.historyPrefix } : {}),
   };
 }
 
@@ -642,6 +651,7 @@ export async function dispatchRunAndWait(
   return traced(
     "decopilot.dispatchRunAndWait",
     async (rootSpan) => {
+      if (input.taskId) markTurn(input.taskId, "gate-dispatch");
       const { taskId, uiStream, registrySignal } = await prepareRun(
         input,
         ctx,
@@ -828,25 +838,6 @@ export function resolveAgentInstructions(
   return [resolved, agent.appendInstructions].filter(Boolean).join("\n\n");
 }
 
-async function resolveEffectiveVirtualMcpForHarness({
-  virtualMcp,
-  agentId,
-  organizationId,
-  ctx,
-}: {
-  virtualMcp: VirtualMCPEntity;
-  agentId: string;
-  organizationId: string;
-  ctx: StudioContext;
-}): Promise<VirtualMCPEntity> {
-  return resolveEffectiveStudioPackVirtualMcp({
-    virtualMcp,
-    agentId,
-    organizationId,
-    ctx,
-  });
-}
-
 /**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, assembles the wire harness input, and constructs a
@@ -961,8 +952,10 @@ async function prepareRun(
       input.organizationId,
       ctx.metadata?.runMetadata,
     );
+    // The subscription is the user's, not an org key: `claudeSubscriptionToken`
+    // below carries it to the sandbox.
     const resolveSlot = (slot?: ModelSelection) =>
-      slot
+      slot && slot.credentialId !== CLAUDE_SUBSCRIPTION_PROVIDER_ID
         ? resolveSecretModelSource(
             ctx,
             input.organizationId,
@@ -1091,12 +1084,10 @@ async function prepareRun(
     if (!virtualMcp) {
       throw new PermanentRunError("agent_not_found", "Agent not found");
     }
-    const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
+    const effectiveVirtualMcp = resolveEffectiveStudioPackVirtualMcp(
       virtualMcp,
-      agentId: input.agent.id,
-      organizationId: input.organizationId,
-      ctx,
-    });
+      input.agent.id,
+    );
 
     // 3. Dispatch START or RESUME
     if (input.isResume) {
@@ -1315,9 +1306,20 @@ async function prepareRun(
 
     // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only.
-    const wireUserMessage = materializedRequestMessage
+    const resolvedUserMessage = materializedRequestMessage
       ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
       : undefined;
+    const historyPrefix =
+      sandboxHosted && isDurableDispatchRunInput(input)
+        ? input.historyPrefix
+        : undefined;
+    const wireUserMessage =
+      resolvedUserMessage && sandboxHosted
+        ? sandboxWireUserMessage(resolvedUserMessage, {
+            historyPrefix,
+            turnContext: systemMessages,
+          })
+        : resolvedUserMessage;
 
     if (!wireUserMessage || !materializedRequestMessage) {
       throw new PermanentRunError(
@@ -1426,7 +1428,21 @@ async function prepareRun(
       organizationId: input.organizationId,
       agent: {
         id: input.agent.id,
-        instructions: agentInstructions,
+        // Decopilot renders user context and mode from its run context instead.
+        instructions: sandboxHosted
+          ? [
+              agentInstructions,
+              sandboxRunPrompt({
+                mode: input.mode,
+                threadId: mem.thread.id,
+                agentId: input.agent.id,
+                userEmail: ctx.auth.user?.email,
+                userContext,
+              }),
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : agentInstructions,
         ...(input.agent.disallowedTools
           ? { disallowedTools: input.agent.disallowedTools }
           : {}),
@@ -1492,7 +1508,9 @@ async function prepareRun(
         const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
+              harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
+              fenceToken: runFenceToken,
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.
               streamBuffer,
@@ -1545,7 +1563,34 @@ async function prepareRun(
                   : null,
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
-        yield* rawHarnessChunks;
+        if (!sandboxHosted) {
+          yield* rawHarnessChunks;
+          return;
+        }
+        // Decopilot titles inside its own loop; a sandbox harness has no such step.
+        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+          currentThreadTitle: mem.thread.title,
+          isSubagent: input.isSubagent === true,
+          userText: materializedRequestMessage.parts
+            .flatMap((part) =>
+              part.type === "text" && typeof part.text === "string"
+                ? [part.text]
+                : [],
+            )
+            .join("\n"),
+          slots: [
+            fastSource && models.fast
+              ? { selection: models.fast, source: fastSource }
+              : undefined,
+            smartSource && models.smart
+              ? { selection: models.smart, source: smartSource }
+              : undefined,
+            thinkingSource
+              ? { selection: models.thinking, source: thinkingSource }
+              : undefined,
+          ],
+          signal: registrySignal,
+        });
       };
 
     // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream

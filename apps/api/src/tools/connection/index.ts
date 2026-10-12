@@ -13,5 +13,6 @@ export { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 
 // Connection test tool
 export { CONNECTION_TEST } from "./test";
+export { CONNECTION_TOOLS_SEARCH, CONNECTION_TOOL_CALL } from "./gateway";
 
 // Utility exports
