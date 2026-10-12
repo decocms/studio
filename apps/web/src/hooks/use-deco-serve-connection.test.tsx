@@ -17,7 +17,7 @@ const projectRef: { current: { metadata: Record<string, unknown> } | null } = {
 mock.module("@/lib/auth-client", () => ({
   authClient: { useSession: () => ({ data: sessionRef.current }) },
 }));
-mock.module("@/sdk", () => ({
+mock.module("@/sdk/hooks/use-virtual-mcp", () => ({
   useVirtualMCP: () => projectRef.current,
 }));
 
