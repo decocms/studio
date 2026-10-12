@@ -152,6 +152,7 @@ import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
 } from "../nats/connection";
+import pkg from "../../package.json" with { type: "json" };
 import {
   JetStreamKVMcpListCache,
   setMcpListCache,
@@ -162,6 +163,7 @@ import {
   setSkillCatalogCache,
   type SkillCatalogCache,
 } from "../file-storage/skill-catalog-cache";
+import { setOrgFsNotifyConnection } from "../file-storage/org-fs-notify";
 import {
   JetStreamKVPrCache,
   PR_CARDS_CACHE,
@@ -1079,6 +1081,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     const tlc = isMcpCacheEnabled()
       ? new JetStreamKVMcpListCache({
           getJetStream: () => natsProvider!.getJetStream(),
+          selfListVersion: pkg.version,
         })
       : null;
     tlc?.init().catch(() => {});
@@ -1158,6 +1161,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
   setSkillCatalogCache(skillCatalogCache);
+  setOrgFsNotifyConnection(() => natsProvider?.getConnection() ?? null);
   setPrCaches(prCaches);
   setConnectionCircuitStore(connectionCircuitStore);
 
@@ -1258,6 +1262,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setSkillCatalogCache(null);
+    setOrgFsNotifyConnection(null);
     setPrCaches(null);
     setConnectionCircuitStore(null);
   };
@@ -1650,7 +1655,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
-  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  // Every 5 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
