@@ -953,6 +953,39 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
     });
   }
 
+  test("a v7 site whose main can't be read still gets the v7 editor, as on main", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const preview = await startPreviewSite();
+    try {
+      const { url } = await openEditor(page.request, orgSlug, preview.url, {
+        ".deco/meta.gen.json": JSON.stringify(v7Meta),
+        ".deco/blocks/home.json": homePage,
+      });
+      // Main's schema can't be read (a GitHub outage, a revoked token): a
+      // site never found v8 behaves as on main, never an indefinite wait.
+      let mainReads = 0;
+      await page.route(/\/api\/[^/]+\/blocks-major\//, (route) => {
+        mainReads++;
+        return route.fulfill({
+          status: 502,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "main_unreadable" }),
+        });
+      });
+      await page.goto(url);
+      const blocks = page.getByTestId("blocks-panel");
+      await expect(
+        blocks.getByPlaceholder("Page name", { exact: true }),
+      ).toHaveValue("Home", { timeout: 60_000 });
+      await expect(page.getByTestId("content-version-badge")).toHaveCount(0);
+      await expect(page.getByText(/Trying again/)).toHaveCount(0);
+      expect(mainReads).toBeGreaterThan(0);
+    } finally {
+      await preview.close();
+    }
+  });
+
   test("a v8 site another project owns shows where it is edited", async ({
     authedPage: { page, orgSlug },
   }) => {

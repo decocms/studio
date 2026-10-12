@@ -202,10 +202,11 @@ export function contentMode(input: {
  *
  * A failed read of the schema that decides (main's, or the daemon's before
  * it ever answered) is `retrying-*`: still undecided, the editor waits and
- * retries, and shows neither editor. Only a site already known to be v8
- * whose content backend then fails is `unavailable-*` (the v8 editor's
- * retrying state). The project's `blocksMajor` marker plays no part: it is
- * only the server's cache of main's answer.
+ * retries, and shows neither editor. Main's answer is `error` only on a
+ * project the server last found v8 (`useMainSchemaV8`): any other
+ * unreadable main reads `v7`, so a v7 site gets its editor as on main. Only
+ * a site already known to be v8 whose content backend then fails is
+ * `unavailable-*` (the v8 editor's retrying state).
  *
  * Outside a project (forms with no project id, such as SEO and the blog
  * registry) there is no site to read: legacy.

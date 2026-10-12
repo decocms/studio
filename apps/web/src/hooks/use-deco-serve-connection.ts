@@ -85,8 +85,10 @@ export function useDecoServeConnection(
  * Whether a stored `deco serve` connection is used, from main's schema
  * answer. A v8 site uses it; a v7 one never does (main's Advanced → Local is
  * its local mode). While main's answer loads it is `undecided`. When main
- * can't be read the stored connection still applies: it only exists because
- * the site was v8, and the `deco serve`'s own schema decides from there.
+ * can't be read on a site last found v8 (`error`) the stored connection
+ * still applies: it only exists because the site was v8, and the `deco
+ * serve`'s own schema decides from there. (Any other unreadable main reads
+ * as `v7`.)
  */
 export function storedConnectionApplies(
   main: MainSchemaAnswer,

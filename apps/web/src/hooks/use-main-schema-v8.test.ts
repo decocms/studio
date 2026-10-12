@@ -48,7 +48,7 @@ describe("fetchMainSchemaV8 (the server's isV8Schema on main)", () => {
 });
 
 describe("mainSchemaAnswer", () => {
-  const base = { asks: true, hasProject: true, isError: false };
+  const base = { asks: true, hasProject: true, isError: false, marked: false };
 
   test("loading until the server answers; the editor waits", () => {
     expect(mainSchemaAnswer({ ...base, data: undefined })).toBe("loading");
@@ -60,10 +60,27 @@ describe("mainSchemaAnswer", () => {
     expect(mainSchemaAnswer({ ...base, data: true, isError: true })).toBe("v8");
   });
 
-  test("a failed first read is an error, not v7", () => {
+  test("a failed first read on a site last found v8 is an error (the v8 editor waits)", () => {
+    expect(
+      mainSchemaAnswer({
+        ...base,
+        data: undefined,
+        isError: true,
+        marked: true,
+      }),
+    ).toBe("error");
+  });
+
+  test("a failed first read on any other site is v7, as on main (no wait)", () => {
     expect(mainSchemaAnswer({ ...base, data: undefined, isError: true })).toBe(
-      "error",
+      "v7",
     );
+  });
+
+  test("a later answer wins over the fallback", () => {
+    expect(
+      mainSchemaAnswer({ ...base, data: true, isError: false, marked: false }),
+    ).toBe("v8");
   });
 
   test("no project, or one without a repository, has no main: v7, no wait", () => {

@@ -41,7 +41,7 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
         "legacy",
       ],
       [
-        "github, main unreadable (undecided, retried)",
+        "github, main last found v8, unreadable (undecided, retried)",
         { ...github, mainSchema: "error" },
         "retrying-github",
       ],
@@ -189,7 +189,7 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
       return decisions;
     }
 
-    test("GitHub, v7 main that can't be read at first: undecided, then legacy, never v8-looking", () => {
+    test("GitHub, a main last found v8 that can't be read, then turned v7: undecided, then legacy, never v8-looking", () => {
       const decisions = assertNoSwitch([
         { ...github, mainSchema: "loading", githubSite: "loading" },
         { ...github, mainSchema: "error", githubSite: "loading" },
