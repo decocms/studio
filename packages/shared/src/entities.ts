@@ -169,6 +169,8 @@ export interface TaskBoardItem {
    *  preferred over `repo` for binding a run's checkout. Mirrors
    *  `taskBoardItemSchema` in `apps/api/src/tools/task-board/schema.ts`. */
   repositoryId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -207,35 +209,6 @@ export interface TaskBoardItem {
   createdAt: string;
   updatedBy: string;
   updatedAt: string;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
 }
 
 /** Sanitized organization SSO configuration returned to browser clients. */

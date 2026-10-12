@@ -16,6 +16,7 @@ import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import { useDecoCredits } from "@/hooks/use-deco-credits";
+import { supportsClaudeCode } from "@decocms/shared/sdk/types/ai-providers";
 import { ChatVoiceBindings, VoiceModePanel, useVoiceMode } from "./voice";
 
 // ---------- Panel content ----------
@@ -35,6 +36,7 @@ function ChatSidePanelBody() {
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
+  const t = useT();
 
   // The structured chat side panel is web-only. Native uses the terminal
   // runtime adapter instead, so cloud provider setup is the only gate here.
@@ -44,14 +46,23 @@ function ChatSidePanelBody() {
   // provider nor the agent's icebreakers are ITS empty state. It has exactly
   // one: the "Start coding session" CTA the composer renders. Offering
   // "Create Agents" to a session that cannot run one is a dead end.
-  const showProviderEmptyState = needsRuntimeSetup && runtime !== "cms";
+  const showProviderEmptyState =
+    needsRuntimeSetup !== null && runtime !== "cms";
 
   if (showProviderEmptyState) {
     return (
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            <Chat.NoAiProviderEmptyState />
+            {needsRuntimeSetup === "claude-code-provider" ? (
+              <Chat.NoAiProviderEmptyState
+                title={t("chat.noAiProviderEmptyState.supportedHeading")}
+                description={t("chat.noAiProviderEmptyState.supportedSubtitle")}
+                providerFilter={supportsClaudeCode}
+              />
+            ) : (
+              <Chat.NoAiProviderEmptyState />
+            )}
           </Chat.EmptyState>
         </Chat.Main>
       </Chat>
