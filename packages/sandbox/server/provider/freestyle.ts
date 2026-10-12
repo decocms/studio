@@ -9,7 +9,7 @@
  * `autoDeleteSeconds` is deleted.
  */
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { Meter } from "@opentelemetry/api";
 import {
   type CreateVmOptions,
@@ -19,7 +19,11 @@ import {
 } from "freestyle";
 import { sleep } from "@decocms/shared/std";
 import pkg from "../../package.json" with { type: "json" };
-import { postConfig, postOrgFsConfig } from "../daemon-client";
+import {
+  ConfigRequestError,
+  postConfig,
+  postOrgFsConfig,
+} from "../daemon-client";
 import type { SandboxProvider } from "./agent-sandbox";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
 import {
@@ -75,6 +79,8 @@ const USER_KEY = "studio-user-id";
 /** The daemon answers within seconds of boot; this bounds a VM that never serves. */
 const DAEMON_BOOT_TIMEOUT_MS = 120_000;
 const HEALTH_POLL_MS = 500;
+/** A fork's daemon is already up; this only waits for its new domain to route. */
+const CLAIM_RETRY_MS = 100;
 /** Each probe crosses the public edge, not a cluster hop. */
 const HEALTH_PROBE_TIMEOUT_MS = 5_000;
 /** Pulling the image into a fresh VM took ~50s in testing. */
@@ -86,6 +92,8 @@ const LOOKUP_MAX = 5_000;
 const WATCH_TIMEOUT_MS = 5 * 60_000;
 /** Lookups sit on every uncached handle-only call, Kubernetes ones included. */
 const LOOKUP_TIMEOUT_MS = 3_000;
+const IDLE_SWEEP_MS = 60_000;
+const IDLE_SWEEP_PAGE = 100;
 
 export interface FreestyleSandboxProviderOptions {
   apiKey: string;
@@ -95,6 +103,13 @@ export interface FreestyleSandboxProviderOptions {
   orgFsSidecarImage?: string;
   /** Pause a VM after this long without network activity. Default 5 min. */
   idleTimeoutSeconds?: number;
+  /**
+   * Also pause a running VM once its daemon has gone this long unused. The
+   * idle timeout counts any traffic, so a dev server holding an outbound
+   * connection open keeps the VM awake without it. Checked every minute;
+   * 0 turns it off. Default 10 min.
+   */
+  idlePauseMs?: number;
   /**
    * Delete a VM after this long without running. Default 1 day. A plan
    * that caps it lower gets its cap.
@@ -114,17 +129,21 @@ interface Found {
 }
 
 export class FreestyleSandboxProvider implements SandboxProvider {
+  private readonly apiKey: string;
   private readonly freestyle: Freestyle;
   private readonly lookupClient: Freestyle;
   private readonly image: string;
   private readonly sidecarImage: string;
   private readonly idleTimeoutSeconds: number;
+  private readonly idlePauseMs: number;
   private readonly autoDeleteSeconds: number;
 
   private readonly domainSuffix: string;
   private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
   private readonly inflight = new Inflight<string, Sandbox>();
   private readonly snapshotInflight = new Inflight<string, string>();
+  /** Snapshots are immutable once built, so one positive lookup is enough. */
+  private readonly knownSnapshots = new Set<string>();
   private readonly lookups = new Map<
     string,
     { found: Found | null; at: number }
@@ -133,8 +152,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     string,
     ReturnType<typeof setTimeout>
   >();
+  private readonly idleSweep: ReturnType<typeof setInterval> | null = null;
+  private sweeping = false;
 
   constructor(opts: FreestyleSandboxProviderOptions) {
+    this.apiKey = opts.apiKey;
     this.freestyle = opts.client ?? new Freestyle({ apiKey: opts.apiKey });
     this.lookupClient =
       opts.client ??
@@ -158,9 +180,14 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
+    this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
+    if (this.idlePauseMs > 0) {
+      this.idleSweep = setInterval(() => void this.pauseIdle(), IDLE_SWEEP_MS);
+      this.idleSweep.unref?.();
+    }
   }
 
   /** Whether this handle is a Freestyle sandbox. Cached; see `MISS_TTL_MS`. */
@@ -216,14 +243,29 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   // ---- Base snapshot --------------------------------------------------------
 
   /**
-   * A snapshot of a VM with both images already pulled, so a sandbox boots in
-   * seconds instead of pulling ~2GB. One per image pair; built on first use.
+   * A snapshot of a VM with both containers RUNNING and the daemon healthy but
+   * unclaimed, so a fork resumes a live daemon (Freestyle snapshots memory) and
+   * is configured with one request instead of booted. One per image pair.
    */
+  /**
+   * Build this image's base snapshot now, so the first sandbox after an image
+   * bump boots from it instead of waiting on the pull. Never throws.
+   */
+  async warm(): Promise<void> {
+    await this.baseSnapshot().catch((err: unknown) =>
+      console.warn(`[${LOG_LABEL}] base snapshot warm failed: ${errMsg(err)}`),
+    );
+  }
+
   private baseSnapshot(): Promise<string> {
     const { image, sidecarImage } = this;
-    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}`).digest("hex").slice(0, 16)}`;
+    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning`).digest("hex").slice(0, 16)}`;
+    if (this.knownSnapshots.has(slug)) return Promise.resolve(slug);
     return this.snapshotInflight.run(slug, async () => {
-      if (await this.snapshotExists(slug)) return slug;
+      if (await this.snapshotExists(slug)) {
+        this.knownSnapshots.add(slug);
+        return slug;
+      }
       console.log(`[${LOG_LABEL}] building base snapshot ${slug} for ${image}`);
       const { vm } = await this.freestyle.vms.create({
         ttlSeconds: 1800,
@@ -239,7 +281,14 @@ export class FreestyleSandboxProvider implements SandboxProvider {
           `docker pull -q ${shellQuote(image)} && docker pull -q ${shellQuote(sidecarImage)}`,
           { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
         );
+        await this.startContainers(vm, this.sentinelToken(slug));
+        await this.run(
+          vm,
+          `for i in $(seq 1 240); do curl -sf -o /dev/null http://127.0.0.1:${DAEMON_PORT}/health && exit 0; sleep 0.5; done; exit 1`,
+          { timeoutMs: DAEMON_BOOT_TIMEOUT_MS + 10_000 },
+        );
         await vm.snapshot({ slug });
+        this.knownSnapshots.add(slug);
       } catch (err) {
         // Another replica took the slug first: theirs serves just as well.
         if (!(await this.snapshotExists(slug))) throw err;
@@ -248,6 +297,45 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       }
       return slug;
     });
+  }
+
+  /**
+   * The bearer the snapshot's daemon boots with. Every fork shares it until its
+   * first config rotates it, so it is derived (any replica can compute it) and
+   * never stored.
+   */
+  private sentinelToken(slug: string): string {
+    return createHmac("sha256", this.apiKey)
+      .update(`daemon-sentinel:${slug}`)
+      .digest("hex")
+      .slice(0, 48);
+  }
+
+  private async startContainers(vm: Vm, token: string): Promise<void> {
+    const env: Record<string, string> = {
+      DAEMON_TOKEN: token,
+      APP_ROOT: WORKDIR,
+      PROXY_PORT: String(DAEMON_PORT),
+      ORGFS_SIDECAR_CONFIG_PATH: `${CTL_DIR}/config.json`,
+      ORGFS_SIDECAR_STATUS_PATH: `${CTL_DIR}/status.json`,
+    };
+    // Bare `-e NAME` copies each value from the exec's env, keeping values out of the shell line.
+    const envFlags = Object.keys(env)
+      .map((k) => `-e ${shellQuote(k)}`)
+      .join(" ");
+    // The sidecar first: it only polls for the config the daemon relays.
+    // Its change-feed poll is network activity, which keeps a VM from
+    // pausing, so it stops once the daemon has been idle for a minute.
+    await this.run(
+      vm,
+      `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -e ORGFS_FEED_IDLE_MS=60000 -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
+      { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
+    );
+    await this.run(
+      vm,
+      `docker run -d --name ${CONTAINER} --restart=always -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
+      { env, timeoutMs: IMAGE_PULL_TIMEOUT_MS },
+    );
   }
 
   private async snapshotExists(slug: string): Promise<boolean> {
@@ -326,7 +414,20 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   private async create(handle: string, opts: EnsureOptions): Promise<void> {
+    if (opts.env && Object.keys(opts.env).length > 0) {
+      // The container runs inside the snapshot, before any sandbox exists.
+      throw new Error(
+        `${LOG_LABEL}: per-sandbox container env is not supported`,
+      );
+    }
+    const ms: Record<string, number> = {};
+    let last = Date.now();
+    const step = (name: string) => {
+      ms[name] = Date.now() - last;
+      last = Date.now();
+    };
     const snapshotId = await this.baseSnapshot();
+    step("snapshot");
     const token = randomBytes(24).toString("hex");
     const { vm } = await this.createVm({
       snapshotId,
@@ -352,47 +453,63 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         ],
       },
     });
+    step("vm-fork");
     const daemon = { url: this.daemonUrl(handle), token };
     try {
-      const env: Record<string, string> = {
-        ...opts.env,
-        DAEMON_TOKEN: token,
-        DAEMON_BOOT_ID: crypto.randomUUID(),
-        APP_ROOT: WORKDIR,
-        PROXY_PORT: String(DAEMON_PORT),
-        ORGFS_SIDECAR_CONFIG_PATH: `${CTL_DIR}/config.json`,
-        ORGFS_SIDECAR_STATUS_PATH: `${CTL_DIR}/status.json`,
-      };
-      // Bare `-e NAME` copies each value from the exec's env, keeping values out of the shell line.
-      const envFlags = Object.keys(env)
-        .map((k) => `-e ${shellQuote(k)}`)
-        .join(" ");
-      // The sidecar first: it only polls for the config the daemon relays.
-      // Its change-feed poll is network activity, which keeps a VM from
-      // pausing, so it stops once the daemon has been idle for a minute.
-      await this.run(
-        vm,
-        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -e ORGFS_FEED_IDLE_MS=60000 -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
-        { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
+      await this.claimDaemon(
+        daemon.url,
+        this.sentinelToken(snapshotId),
+        token,
+        this.configPayload(opts) ?? {},
       );
-      await this.run(
-        vm,
-        `docker run -d --name ${CONTAINER} --restart=always -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
-        { env, timeoutMs: IMAGE_PULL_TIMEOUT_MS },
-      );
-      await this.waitForDaemon(daemon.url);
-      await postConfig(daemon.url, token, this.configPayload(opts) ?? {});
+      step("claim");
       if (opts.orgFsConfigJson) {
         await postOrgFsConfig(daemon.url, token, opts.orgFsConfigJson).catch(
           (err) => console.warn(`[${LOG_LABEL}] org-fs relay failed`, err),
         );
       }
+      step("orgfs-config");
+      console.log(`[${LOG_LABEL}] create ${handle} ms=${JSON.stringify(ms)}`);
     } catch (err) {
       await vm.delete().catch(() => {});
       this.lookups.delete(handle);
       throw err;
     }
     this.remember(handle, { vm, daemon });
+  }
+
+  /**
+   * The fork's first config: swap the snapshot's sentinel bearer for this
+   * sandbox's own, retried until the new domain routes. A 401 means an earlier
+   * attempt already rotated (its response was lost), so finish with the new one.
+   */
+  private async claimDaemon(
+    url: string,
+    sentinel: string,
+    token: string,
+    payload: Parameters<typeof postConfig>[2],
+  ): Promise<void> {
+    const deadline = Date.now() + DAEMON_BOOT_TIMEOUT_MS;
+    for (;;) {
+      try {
+        await postConfig(url, sentinel, payload, { rotateToken: token });
+        return;
+      } catch (err) {
+        if (err instanceof ConfigRequestError && err.status === 401) {
+          await postConfig(url, token, payload);
+          return;
+        }
+        // The daemon's own verdicts; anything else is the edge not routing yet.
+        if (
+          err instanceof ConfigRequestError &&
+          (err.status === 400 || err.status === 409)
+        ) {
+          throw err;
+        }
+        if (Date.now() > deadline) throw err;
+        await sleep(CLAIM_RETRY_MS);
+      }
+    }
   }
 
   /** A plan that caps autoDelete lower answers 400; omitting it gets the cap. */
@@ -595,6 +712,59 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.cancelRelease(handle);
   }
 
+  /**
+   * Pause every running VM of ours whose daemon reports `idlePauseMs` without
+   * use. The daemon's clock counts requests and streaming runs, not the dev
+   * server's own traffic. Returns the handles paused; never throws.
+   */
+  async pauseIdle(): Promise<string[]> {
+    if (this.sweeping) return [];
+    this.sweeping = true;
+    try {
+      const running = [];
+      for (let offset = 0; ; offset += IDLE_SWEEP_PAGE) {
+        const { vms } = await this.freestyle.vms.list({
+          state: "running",
+          limit: IDLE_SWEEP_PAGE,
+          offset,
+        });
+        running.push(...vms);
+        if (vms.length < IDLE_SWEEP_PAGE) break;
+      }
+      const paused = await Promise.all(
+        running.map(async (data) => {
+          const handle = data.slug;
+          if (!handle || !data.metadata[TOKEN_KEY]) return null;
+          // A fork's daemon keeps the snapshot's clock until its first config.
+          if (Date.now() - Date.parse(data.createdAt) < this.idlePauseMs) {
+            return null;
+          }
+          const idleMs = await daemonIdleMs(this.daemonUrl(handle));
+          if (idleMs === null || idleMs < this.idlePauseMs) return null;
+          try {
+            await this.freestyle.vms.ref(data.id).pause();
+          } catch (err) {
+            console.warn(
+              `[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`,
+            );
+            return null;
+          }
+          this.cancelRelease(handle);
+          console.log(
+            `[${LOG_LABEL}] paused ${handle}, daemon idle ${Math.round(idleMs / 60_000)}m`,
+          );
+          return handle;
+        }),
+      );
+      return paused.filter((h) => h !== null);
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] idle sweep failed: ${errMsg(err)}`);
+      return [];
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
   private cancelRelease(handle: string): void {
     const timer = this.releaseTimers.get(handle);
     if (timer) clearTimeout(timer);
@@ -602,6 +772,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   close(): void {
+    if (this.idleSweep) clearInterval(this.idleSweep);
     for (const timer of this.releaseTimers.values()) clearTimeout(timer);
     this.releaseTimers.clear();
     this.lookups.clear();
@@ -617,6 +788,28 @@ async function daemonAnswers(url: string): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/** The daemon's `/idle` doesn't count as use; null when it won't say. */
+async function daemonIdleMs(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${url}/_sandbox/idle`, {
+      signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    const body: unknown = await res.json();
+    return typeof body === "object" &&
+      body !== null &&
+      "idleMs" in body &&
+      typeof body.idleMs === "number"
+      ? body.idleMs
+      : null;
+  } catch {
+    return null;
   }
 }
 

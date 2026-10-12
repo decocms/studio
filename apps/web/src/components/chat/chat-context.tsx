@@ -109,7 +109,10 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useOrgFlag,
+  useSandboxOnlyChats,
+} from "@/hooks/use-organization-settings";
 import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -694,6 +697,9 @@ export function ChatContextProvider({
   // Existing call sites still read `currentBranch` for create-task carry-over;
   // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
+  // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
+  const sandboxOnlyChats = useSandboxOnlyChats();
+  const carryOverBranch = sandboxOnlyChats ? null : currentBranch;
 
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
   // task's branch so the new thread lands on the same warm sandbox. The
@@ -705,7 +711,7 @@ export function ChatContextProvider({
   }): string => {
     const newId = crypto.randomUUID();
     // A caller-supplied branch wins over the active task's branch carry-over.
-    const branch = opts?.branch ?? currentBranch;
+    const branch = opts?.branch ?? carryOverBranch;
     // Parked for the route loader's create-on-404 fallback — see thread-intent.
     writeThreadIntent(sessionStorage, locator, newId, {
       ...(opts?.runtime ? { runtime: opts.runtime } : {}),
@@ -743,7 +749,7 @@ export function ChatContextProvider({
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
-    const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
+    const carryBranch = targetVmcp === virtualMcpId ? carryOverBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     if (carryBranch) {
       writeThreadIntent(sessionStorage, locator, newId, {
@@ -867,6 +873,7 @@ export function ActiveTaskProvider({
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const voiceEnabled = useOrgFlag("voice_mode");
+  const sandboxOnlyChats = useSandboxOnlyChats();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
@@ -1289,13 +1296,13 @@ export function ActiveTaskProvider({
     // into the store now so `findReusableNewChat` stops treating the
     // (now non-empty, often just-failed) thread as an empty "New chat" and
     // dropping the user back onto it. The hosted server always selects
-    // Decopilot for an unlocked thread.
+    // Decopilot for an unlocked thread (claude-code under sandbox-only chats).
     // LIST/GET is authoritative; this only keeps the live view correct while
     // its row refresh is still in flight.
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: "decopilot",
+        harness_id: sandboxOnlyChats ? "claude-code" : "decopilot",
         updated_at: new Date().toISOString(),
       });
     }
@@ -1591,6 +1598,44 @@ export function ActiveTaskProvider({
     submit: async (action, opts) => {
       if (hostedRuntimeBlocked) {
         reportHostedLegacyDispatchBlocked();
+        return;
+      }
+      // Claude Code cannot take an injected tool result; the server resolves the part.
+      if (
+        action.kind === "toolOutput" &&
+        activeTask?.harness_id === "claude-code"
+      ) {
+        const { response } = (action.output ?? {}) as { response?: unknown };
+        await conn.submit(
+          {
+            kind: "message",
+            message: {
+              id: crypto.randomUUID(),
+              role: "user",
+              parts: [
+                {
+                  type: "text",
+                  text:
+                    typeof response === "string"
+                      ? response
+                      : JSON.stringify(action.output),
+                },
+              ],
+              metadata: {
+                created_at: new Date().toISOString(),
+                user: {
+                  avatar: user?.image ?? undefined,
+                  name: user?.name ?? "you",
+                },
+                toolOutput: {
+                  toolCallId: action.toolCallId,
+                  output: action.output,
+                },
+              },
+            },
+          },
+          opts,
+        );
         return;
       }
       await conn.submit(action, opts);

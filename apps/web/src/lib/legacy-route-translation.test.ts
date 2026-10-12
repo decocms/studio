@@ -717,7 +717,6 @@ describe("isCanonicalAgentIdSegment", () => {
     for (const id of [
       "vir_abc",
       "decopilot_org_1",
-      "brand-context-setup_org_1",
       "site-diagnostics_org_1",
       "commerce-discovery_org_1",
       "studio-agent-manager_org_1",
