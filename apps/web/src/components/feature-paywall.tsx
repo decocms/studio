@@ -109,8 +109,8 @@ export function FeaturePaywall({
   const name = t(`settings.planUsage.feature.${feature}`);
   /** The rung to climb to. For a missing feature it is the cheapest one that
    *  has it; for a spent allowance nothing is missing, so it is simply the
-   *  next rung up from where the org already is. A contract plan is off the
-   *  ladder, so it is quoted no rung and no price. */
+   *  next rung up from where the org already is. deco's own plan is off
+   *  the ladder, so it is quoted no rung and no price. */
   const target = isStaffManagedPlan(entitlements?.plan.id)
     ? null
     : copy

@@ -80,7 +80,7 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
         connection.id === selfId
           ? async () => {
               const { listManagementTools } = await import("../../tools");
-              return listManagementTools(ctx) as Promise<unknown[]>;
+              return listManagementTools() as Promise<unknown[]>;
             }
           : () =>
               listToolsWithTimeout(connection, ctx, MCP_LIST_TOOLS_TIMEOUT_MS);

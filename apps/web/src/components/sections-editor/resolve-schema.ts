@@ -790,11 +790,17 @@ export function resolveSchema(
           return {
             type: "block-ref",
             title:
-              typeof resolved.title === "string" ? resolved.title : undefined,
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
             description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : undefined,
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
             anyOfRefs,
             plainSchema,
             hidden:
@@ -1030,11 +1036,17 @@ export function resolveSchema(
           return {
             type: "block-ref",
             title:
-              typeof resolved.title === "string" ? resolved.title : undefined,
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
             description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : undefined,
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
             anyOfRefs,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,

@@ -28,7 +28,7 @@ import {
 } from "@untitledui/icons";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { ChatTier } from "@decocms/shared/organization/schema";
-import { useChatPrefs } from "./context";
+import { useChatPrefs, useOptionalChatTask } from "./context";
 import {
   useEffectiveSimpleMode,
   useUpdateUserModelPreferences,
@@ -39,7 +39,10 @@ import {
   useHostedAiProviderKeys,
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
-import { TierModelOverridePicker } from "./tier-model-override-row";
+import {
+  isClaudeCodeChatModel,
+  TierModelOverridePicker,
+} from "./tier-model-override-row";
 import {
   useFeature,
   useFeaturesSettled,
@@ -334,6 +337,8 @@ export function TierTrigger() {
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
+  const claudeCodeThread =
+    useOptionalChatTask()?.lockedHarness === "claude-code";
   // TWO gates, because this component is both a control and a disclosure.
   //
   // Whether the picker EXISTS is access: below Ultra there is no picker at all,
@@ -383,6 +388,9 @@ export function TierTrigger() {
                     orgSlot={org.tiers[tierOption]}
                     userSlot={userSlot}
                     autoSlot={autoDefaults.chat[tierOption]}
+                    filterModels={
+                      claudeCodeThread ? isClaudeCodeChatModel : undefined
+                    }
                     onClose={closeOverride}
                     onPick={(slot) =>
                       updateUserModelPreferences.mutate({
