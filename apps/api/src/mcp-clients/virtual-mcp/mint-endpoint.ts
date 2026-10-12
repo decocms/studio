@@ -28,15 +28,15 @@ const MCP_KEY_TTL_SECONDS = 3600;
  * - `"management"` — `/api/<slug>/mcp/self`: Studio's own management tools
  *   (TASK_BOARD_*, connections, agents...). Needed by any out-of-process
  *   harness expected to act on Studio itself.
- * - `"task-run"` — `/api/<slug>/mcp/task-run/<threadId>`: the narrow surface for
- *   a sandbox-hosted task run (task board + `TASK_ADD_REPO`), scoped to the run
- *   in the path. `agentId` is unused; the run thread id identifies it.
+ * - `"thread"` — `/api/<slug>/mcp/thread/<threadId>`: the surface for a
+ *   sandbox-hosted run (`resolveThreadToolNames`), scoped to the thread in the
+ *   path. `agentId` is unused; the thread id identifies it.
  *
  * Explicit per caller rather than inferred from the agent: a run that silently
  * picks the wrong surface reports `connected` with an empty tool list, which
  * reads as "the agent ignored its instructions" instead of a misconfiguration.
  */
-export type McpEndpointTarget = "agent-tools" | "management" | "task-run";
+export type McpEndpointTarget = "agent-tools" | "management" | "thread";
 
 export class MissingOrganizationSlugError extends Error {
   constructor(organizationId: string, target: McpEndpointTarget) {
@@ -61,7 +61,7 @@ export function mcpEndpointUrl(args: {
   agentId: string;
   organization: { id: string; slug?: string };
   target: McpEndpointTarget;
-  /** Required by `target: "task-run"` — the run the surface is scoped to. */
+  /** Required by `target: "thread"` — the thread the surface is scoped to. */
   threadId?: string;
 }): string {
   const { publicUrl, agentId, organization, target, threadId } = args;
@@ -71,13 +71,13 @@ export function mcpEndpointUrl(args: {
   if (!organization.slug) {
     throw new MissingOrganizationSlugError(organization.id, target);
   }
-  if (target === "task-run") {
+  if (target === "thread") {
     if (!threadId) {
       throw new Error(
-        "a task-run MCP endpoint is scoped to a run: threadId is required",
+        "a thread MCP endpoint is scoped to a thread: threadId is required",
       );
     }
-    return `${publicUrl}/api/${organization.slug}/mcp/task-run/${encodeURIComponent(threadId)}`;
+    return `${publicUrl}/api/${organization.slug}/mcp/thread/${encodeURIComponent(threadId)}`;
   }
   return `${publicUrl}/api/${organization.slug}/mcp/self`;
 }
@@ -88,7 +88,7 @@ export async function mintMcpEndpoint(
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
   target: McpEndpointTarget = "agent-tools",
-  /** Required by `target: "task-run"`. */
+  /** Required by `target: "thread"`. */
   threadId?: string,
   /**
    * The key's allowlist. Defaults to full access, which is what a caller whose
