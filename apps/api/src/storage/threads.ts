@@ -53,6 +53,13 @@ export function escapeLikePattern(value: string): string {
  * contexts). Any method call without a valid org throws immediately so misuse
  * surfaces at the call site rather than silently operating on `organization_id = ""`.
  */
+/** What a file listing needs to name the chat a file came from. */
+export interface ThreadSummary {
+  id: string;
+  title: string;
+  virtual_mcp_id: string;
+}
+
 export class OrgScopedThreadStorage {
   constructor(
     private inner: SqlThreadStorage,
@@ -97,6 +104,10 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
+  summaries(ids: readonly string[]): Promise<ThreadSummary[]> {
+    return this.inner.summaries(ids, this.requireOrg());
+  }
+
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
@@ -117,6 +128,13 @@ export class OrgScopedThreadStorage {
     pin: ThreadRuntimePin,
   ): Promise<ThreadRuntimePinResult> {
     return this.inner.pinRuntimeIfUnset(id, this.requireOrg(), pin);
+  }
+
+  repinDecopilotToClaudeCode(
+    id: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult> {
+    return this.inner.repinDecopilotToClaudeCode(id, this.requireOrg(), branch);
   }
 
   stampRuntimeIfAbsent(id: string, runtime: ThreadRuntime): Promise<boolean> {
@@ -368,6 +386,20 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return { ...this.threadFromDbRow(existing), isNew: false };
   }
 
+  /** Title and agent of each listed thread in the org; unknown ids are skipped. */
+  async summaries(
+    ids: readonly string[],
+    organizationId: string,
+  ): Promise<ThreadSummary[]> {
+    if (ids.length === 0) return [];
+    return this.db
+      .selectFrom("threads")
+      .select(["id", "title", "virtual_mcp_id"])
+      .where("organization_id", "=", organizationId)
+      .where("id", "in", [...ids])
+      .execute();
+  }
+
   async get(id: string, organizationId: string): Promise<Thread | null> {
     const row = await this.db
       .selectFrom("threads")
@@ -572,6 +604,36 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("harness_id", "is", null)
+      .returningAll()
+      .executeTakeFirst();
+
+    if (row) {
+      return { thread: this.threadFromDbRow(row), claimed: true };
+    }
+
+    return {
+      thread: await this.get(id, organizationId),
+      claimed: false,
+    };
+  }
+
+  async repinDecopilotToClaudeCode(
+    id: string,
+    organizationId: string,
+    branch: string,
+  ): Promise<ThreadRuntimePinResult> {
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        harness_id: "claude-code",
+        branch: sql<string>`case when ${sql.ref("branch")} is null or ${sql.ref(
+          "branch",
+        )} = 'ephemeral' then ${branch} else ${sql.ref("branch")} end`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("harness_id", "=", "decopilot")
       .returningAll()
       .executeTakeFirst();
 

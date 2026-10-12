@@ -24,6 +24,43 @@ import {
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import type { StudioContext } from "../../core/studio-context";
+import type { Thread } from "../../storage/types";
+import { sandboxOnlyChatsEnabled } from "../../harnesses/sandbox-only-chats";
+import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { getSettings } from "../../settings";
+import { readSandboxMap, resolveVm } from "../sandbox/sandbox-map";
+import { threadIdFromBranch } from "../sandbox/thread-repo";
+
+/**
+ * Bring shutdown of an archived chat's own sandboxes forward. Not a delete: an
+ * archived chat can be reopened, and its work is pushed on shutdown. Never
+ * throws.
+ */
+async function releaseThreadSandboxes(
+  ctx: StudioContext,
+  thread: Thread,
+): Promise<void> {
+  const sandboxMap = readSandboxMap(thread.metadata);
+  const handles = Object.entries(sandboxMap).flatMap(([userId, branches]) =>
+    Object.keys(branches ?? {})
+      .filter((branch) => threadIdFromBranch(branch) === thread.id)
+      .flatMap(
+        (branch) => resolveVm(sandboxMap, userId, branch)?.sandboxHandle ?? [],
+      ),
+  );
+  if (handles.length === 0) return;
+  try {
+    const provider = await getAgentSandboxProvider(ctx);
+    await Promise.allSettled(
+      handles.map((handle) =>
+        provider.releaseAfter(handle, getSettings().sandboxReleaseGraceMs),
+      ),
+    );
+  } catch (err) {
+    console.warn("[threads:update] sandbox release on archive failed", err);
+  }
+}
 
 /**
  * Input schema for updating threads
@@ -154,6 +191,14 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     }
 
     const thread = await ctx.storage.threads.update(id, updateData);
+
+    if (
+      data.hidden === true &&
+      !existing.hidden &&
+      (await sandboxOnlyChatsEnabled(ctx, organization.id))
+    ) {
+      await releaseThreadSandboxes(ctx, existing);
+    }
 
     // Fire chat_archived / chat_unarchived when the hidden flag flips. Only
     // fires on the specific transition, not on title/description edits that

@@ -568,6 +568,7 @@ export class OrgFsEntryStorage {
   /**
    * Live files whose path matches `query` (case-insensitive substring, so
    * folder names in the path match too), newest first across every volume.
+   * An empty `query` matches every file.
    */
   async searchFiles(params: {
     organizationId: string;
@@ -578,6 +579,8 @@ export class OrgFsEntryStorage {
     /** Restrict to entries under this directory, recursively (unset = the
      *  whole volume). Normalized, no trailing slash. */
     pathPrefix?: string;
+    /** Only entries older than this `seq` — the next page's cursor. */
+    beforeSeq?: string;
   }): Promise<OrgFsEntry[]> {
     if (params.volumes && params.volumes.length === 0) return [];
     // Escape LIKE metacharacters so the query is a literal substring.
@@ -586,11 +589,18 @@ export class OrgFsEntryStorage {
       .selectFrom("org_fs_entry")
       .where("organization_id", "=", params.organizationId)
       .where("kind", "=", "file")
-      .where("deleted_at", "is", null)
-      .where("path", "ilike", `%${escaped}%`);
+      .where("deleted_at", "is", null);
+    if (escaped) qb = qb.where("path", "ilike", `%${escaped}%`);
     if (params.volumes) qb = qb.where("volume", "in", params.volumes);
     if (params.pathPrefix) {
       qb = qb.where("path", "like", `${escapeLike(params.pathPrefix)}/%`);
+    }
+    if (params.beforeSeq) {
+      qb = qb.where(
+        "seq",
+        "<",
+        sql<string>`cast(${params.beforeSeq} as bigint)`,
+      );
     }
     const rows = await qb
       .select(COLUMNS)
