@@ -39,6 +39,12 @@ export type ContentBackend =
       source: ContentSource;
       /** Why a `deco serve` can't be used (local only). */
       problem?: ServeProblem;
+      /**
+       * GitHub only: a v8 site this project doesn't own (another project
+       * created or imported it), so its content can't be edited from here.
+       * Not retried: the editor guides instead.
+       */
+      siteNotOwned?: true;
     };
 
 /**
@@ -87,6 +93,7 @@ export function hostedDraftSession(
 ): boolean {
   if (!isV8Project) return false;
   if (backend.kind === "pending") return true;
+  if (backend.kind === "unavailable" && backend.siteNotOwned) return false;
   return (
     (backend.kind === "protocol" || backend.kind === "unavailable") &&
     backend.source === "github"
@@ -111,7 +118,8 @@ export type BackendDecision =
   | "protocol-github"
   | "protocol-sandbox"
   | "unavailable-github"
-  | "unavailable-sandbox";
+  | "unavailable-sandbox"
+  | "site-not-owned-github";
 
 /**
  * Which backend a project's editor uses.
@@ -134,7 +142,8 @@ export type BackendDecision =
  *   once the working tree is there. A tunnel saved by the v7 Advanced → Local
  *   is ignored. Only a confirmed v7 answer (a daemon without the protocol, a
  *   v7 working tree or committed schema) falls back to legacy; a failed probe
- *   is `unavailable` while it keeps retrying.
+ *   is `unavailable` while it keeps retrying. A v8 site another project owns
+ *   is `site-not-owned-github`: a guided state, never retried.
  *
  * Outside a project (forms with no project id, such as SEO and the blog
  * registry) there is no site to probe: legacy.
@@ -146,8 +155,12 @@ export function selectContentBackend(input: {
   isV8Project: boolean;
   hasServeConnection: boolean;
   runtime: "cms" | "sandbox";
-  /** The GitHub probe: is the branch's committed schema a v8 one? */
-  githubSite: "v8" | "v7" | "loading" | "error";
+  /**
+   * The GitHub probe: is the branch's committed schema a v8 one?
+   * `not-owned` when the project doesn't own its site (Studio answers 409
+   * `site_not_owned`).
+   */
+  githubSite: "v8" | "v7" | "loading" | "error" | "not-owned";
   /**
    * The sandbox's daemon probe: is the working tree's schema a v8 one?
    * `unavailable` until the working tree is there (the sandbox is booting).
@@ -161,6 +174,7 @@ export function selectContentBackend(input: {
   const site = sandbox ? input.sandboxSite : input.githubSite;
   if (site === "v8") return sandbox ? "protocol-sandbox" : "protocol-github";
   if (site === "v7") return "legacy";
+  if (site === "not-owned") return "site-not-owned-github";
   if (site === "error") {
     return sandbox ? "unavailable-sandbox" : "unavailable-github";
   }

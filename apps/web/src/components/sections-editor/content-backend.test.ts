@@ -259,6 +259,15 @@ describe("hostedDraftSession", () => {
     ).toBe(false);
     expect(hostedDraftSession({ kind: "legacy" }, true)).toBe(false);
   });
+
+  test("not a v8 site another project owns (its draft lives there)", () => {
+    expect(
+      hostedDraftSession(
+        { kind: "unavailable", source: "github", siteNotOwned: true },
+        true,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("servePreviewUrl", () => {

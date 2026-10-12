@@ -80,7 +80,8 @@ export default defineConfig({
             find: /^@\/hooks\/use-new-blocks-editor$/,
             replacement: stub("use-new-blocks-editor.ts"),
           },
-          // The content backend reads the org flag and project via
+          // The content backend reads the project (its v8 marker, the cached
+          // isV8Schema answer) and its deco serve connection via
           // useProjectContext(); fields are tested as v7 (legacy) sites see them.
           // Matches the fields' relative `../use-content-backend` import too.
           {
