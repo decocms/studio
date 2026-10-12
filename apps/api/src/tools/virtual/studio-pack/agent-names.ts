@@ -8,7 +8,6 @@ export const STUDIO_PACK_AGENT_TITLES = {
   automationManager: "Automation Manager",
   connectionManager: "Connection Manager",
   storeManager: "Store Manager",
-  brandManager: "Brand Manager",
   usageManager: "Usage Manager",
 } as const;
 

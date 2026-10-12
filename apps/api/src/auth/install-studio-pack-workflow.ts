@@ -91,8 +91,9 @@ const installStudioPackWorkflow = DBOS.registerWorkflow(
  * v5: added Task Manager.
  * v6: retired Task Manager — its tools are Super Agent built-ins now, so the
  *     installed row is deleted.
+ * v7: retired Brand Manager along with the brand context it managed.
  */
-const INSTALL_VERSION = "v6";
+const INSTALL_VERSION = "v7";
 
 /**
  * Fire-and-forget enqueue from the Better Auth org.afterCreate callback.
