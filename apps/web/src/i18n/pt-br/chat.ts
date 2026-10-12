@@ -25,6 +25,9 @@ export const chat = {
     "A sessão de voz terminou. O chat e o trabalho do agente continuam disponíveis.",
   "chat.voice.sendFailed":
     "Não foi possível enviar ou concluir este pedido. Volte ao chat para conferir o estado dele.",
+  "chat.input.openFileContext":
+    "O agente vê {name}, o arquivo que você tem aberto",
+  "chat.input.openFileDismiss": "Deixar este arquivo de fora",
   "chat.input.taskMode": "Tarefa",
   "chat.input.startTask": "Iniciar tarefa",
   "chat.input.taskPlaceholder":
@@ -70,32 +73,6 @@ export const chat = {
     "Retomado — tarefa em segundo plano concluída",
   "chat.assistant.resumingTask": "Retomando tarefa...",
   "chat.assistant.toolCallPlural": "{count} chamada(s) de ferramenta",
-  "chat.brandContext.brand": "Marca",
-  "chat.brandContext.brandContextSet": "Contexto de marca definido",
-  "chat.brandContext.brandSet": "Marca definida: {name}",
-  "chat.brandContext.brandWithName": "Marca · {name}",
-  "chat.brandContext.colorAccent": "Destaque",
-  "chat.brandContext.colorBackground": "Fundo",
-  "chat.brandContext.colorForeground": "Primeiro Plano",
-  "chat.brandContext.colorPrimary": "Primário",
-  "chat.brandContext.colorSecondary": "Secundário",
-  "chat.brandContext.colorsSection": "Cores",
-  "chat.brandContext.couldNotLoadBrand": "Não foi possível carregar a marca",
-  "chat.brandContext.couldNotLoadBrands": "Não foi possível carregar as marcas",
-  "chat.brandContext.defaultBadge": "padrão",
-  "chat.brandContext.extractingBrand": "Extraindo marca",
-  "chat.brandContext.extractionFailed": "Falha ao extrair marca",
-  "chat.brandContext.fromDomain": "de {domain}",
-  "chat.brandContext.loadingBrand": "Carregando marca",
-  "chat.brandContext.loadingBrands": "Carregando marcas",
-  "chat.brandContext.multipleBrands": "{count} marca(s)",
-  "chat.brandContext.noBrandsContext":
-    "A organização ainda não configurou nenhum contexto de marca.",
-  "chat.brandContext.noBrandsYet": "Nenhuma marca ainda",
-  "chat.brandContext.oneBrand": "1 marca",
-  "chat.brandContext.typographySection": "Tipografia",
-  "chat.brandContext.unknownError": "Erro desconhecido",
-  "chat.brandContext.untitled": "Sem Título",
   "chat.chat.jumpToLatest": "Ir para o mais recente",
   "chat.chat.loadingOlderMessages": "Carregando mensagens mais antigas…",
   "chat.chatContext.activeTaskProviderMissingContext":
@@ -373,6 +350,10 @@ export const chat = {
     "{org} está pronto para projetos",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Conecte um provedor de IA para começar a conversar.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Conecte um provedor de IA compatível",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Os chats rodam no Claude. Conecte Anthropic, OpenRouter ou o deco AI Gateway, ou vincule sua assinatura do Claude nas Configurações.",
   "chat.outputFileRow.download": "Baixar",
   "chat.outputFileRow.downloadFile": "Baixar {filename}",
   "chat.outputFileRow.open": "Abrir",

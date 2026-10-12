@@ -71,43 +71,43 @@ describe("mcpEndpointUrl", () => {
   });
 });
 
-describe("mcpEndpointUrl task-run", () => {
-  // The task-run surface is scoped by PATH, not by a tool argument — the per-run
+describe("mcpEndpointUrl thread", () => {
+  // The thread surface is scoped by PATH, not by a tool argument — the per-run
   // key is minted with full access, so a threadId input would let one run act on
   // another run's sandbox.
-  it("a task-run endpoint carries the run thread id in the path", () => {
+  it("a thread endpoint carries the thread id in the path", () => {
     expect(
       mcpEndpointUrl({
         publicUrl,
         agentId: "vir_ignored",
         organization,
-        target: "task-run",
+        target: "thread",
         threadId: "thrd 1/2",
       }),
-    ).toBe("https://studio.example.com/api/acme/mcp/task-run/thrd%201%2F2");
+    ).toBe("https://studio.example.com/api/acme/mcp/thread/thrd%201%2F2");
   });
 
-  it("a task-run endpoint without a thread id throws before a key is minted", () => {
+  it("a thread endpoint without a thread id throws before a key is minted", () => {
     expect(() =>
       mcpEndpointUrl({
         publicUrl,
         agentId: "vir_1",
         organization,
-        target: "task-run",
+        target: "thread",
       }),
     ).toThrow(/threadId is required/);
   });
 
-  it("a task-run endpoint with no slug reports its own target, not 'management'", () => {
+  it("a thread endpoint with no slug reports its own target, not 'management'", () => {
     expect(() =>
       mcpEndpointUrl({
         publicUrl,
         agentId: "vir_1",
         organization: { id: "org_1" },
-        target: "task-run",
+        target: "thread",
         threadId: "thrd_1",
       }),
-    ).toThrow(/"task-run" MCP endpoint/);
+    ).toThrow(/"thread" MCP endpoint/);
   });
 });
 
