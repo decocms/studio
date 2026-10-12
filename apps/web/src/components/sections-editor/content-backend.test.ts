@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   blockKeysOfWrite,
   contentMode,
+  decisionKind,
   contentProbesEnabled,
   hostedDraftSession,
   isProtocolProject,
@@ -40,9 +41,9 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
         "legacy",
       ],
       [
-        "github, main unreadable",
+        "github, main unreadable (undecided, retried)",
         { ...github, mainSchema: "error" },
-        "unavailable-github",
+        "retrying-github",
       ],
       [
         "github, main v8, backend loading",
@@ -78,9 +79,9 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
         "legacy",
       ],
       [
-        "sandbox, daemon failing",
+        "sandbox, daemon failing before any answer (undecided, retried)",
         { ...sandbox, sandboxSite: "error" },
-        "unavailable-sandbox",
+        "retrying-sandbox",
       ],
       // Localhost: the deco serve's own schema decides (localServeBackend).
       [
@@ -148,13 +149,84 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
     // to everything known: the decision goes from `pending` (or an
     // `unavailable` retry) to its final answer, never from one editor to the
     // other.
-    const EDITORS = new Set(["legacy", "protocol-github", "protocol-sandbox"]);
+    // `unavailable-*` is the v8 editor's retrying state: a v8 editor.
+    const EDITORS: Record<string, "v7" | "v8"> = {
+      legacy: "v7",
+      "protocol-github": "v8",
+      "protocol-sandbox": "v8",
+      "unavailable-github": "v8",
+    };
+    /** What the editor shows for a decision, as the editor reads it. */
+    function shows(decision: ReturnType<typeof selectContentBackend>) {
+      const kind = decisionKind(decision);
+      const backend =
+        kind === "pending"
+          ? ({ kind } as const)
+          : kind === "legacy"
+            ? ({ kind } as const)
+            : ({ kind: "unavailable", source: "github" } as const);
+      return {
+        protocol: isProtocolProject(backend),
+        // The org flag off: v7 must never get the new editor.
+        newEditor: newBlocksEditorEnabled({
+          backend: kind,
+          hasOrg: true,
+          orgFlag: false,
+        }),
+      };
+    }
     function assertNoSwitch(steps: Input[]) {
       const decisions = steps.map((step) => selectContentBackend(step));
-      const editors = decisions.filter((d) => EDITORS.has(d));
+      const editors = decisions.flatMap((d) => EDITORS[d] ?? []);
       expect(new Set(editors).size).toBeLessThanOrEqual(1);
+      // What the editor shows: once it shows a generation (protocol or not,
+      // new editor or not), it never shows the other one.
+      const seen = decisions
+        .map(shows)
+        .filter((s) => s.newEditor !== undefined);
+      expect(new Set(seen.map((s) => s.protocol)).size).toBeLessThanOrEqual(1);
+      expect(new Set(seen.map((s) => s.newEditor)).size).toBeLessThanOrEqual(1);
       return decisions;
     }
+
+    test("GitHub, v7 main that can't be read at first: undecided, then legacy, never v8-looking", () => {
+      const decisions = assertNoSwitch([
+        { ...github, mainSchema: "loading", githubSite: "loading" },
+        { ...github, mainSchema: "error", githubSite: "loading" },
+        { ...github, mainSchema: "error", githubSite: "loading" },
+        { ...github, mainSchema: "v7", githubSite: "loading" },
+      ]);
+      expect(decisions).toEqual([
+        "pending",
+        "retrying-github",
+        "retrying-github",
+        "legacy",
+      ]);
+      for (const d of decisions.slice(0, 3)) {
+        expect(shows(d)).toEqual({ protocol: false, newEditor: undefined });
+      }
+    });
+
+    test("Sandbox, a daemon failing before it answered: undecided, then its answer", () => {
+      for (const final of ["v8", "v7"] as const) {
+        const decisions = assertNoSwitch([
+          { ...sandbox, sandboxSite: "loading" },
+          { ...sandbox, sandboxSite: "error" },
+          { ...sandbox, sandboxSite: final },
+        ]);
+        expect(decisions.slice(0, 2)).toEqual(["pending", "retrying-sandbox"]);
+        expect(shows(decisions[1]!).protocol).toBe(false);
+      }
+    });
+
+    test("an unreadable schema is never a protocol project nor the new editor (flag off)", () => {
+      for (const d of [
+        selectContentBackend({ ...github, mainSchema: "error" }),
+        selectContentBackend({ ...sandbox, sandboxSite: "error" }),
+      ]) {
+        expect(shows(d)).toEqual({ protocol: false, newEditor: undefined });
+      }
+    });
 
     test("GitHub, v8 main: pending until the backend answers, never legacy", () => {
       const decisions = assertNoSwitch([

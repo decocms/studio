@@ -1,4 +1,5 @@
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { AlertCircle, Box, LinkExternal01 } from "@untitledui/icons";
 import { Link } from "@tanstack/react-router";
 import { EmptyState } from "@/components/empty-state";
@@ -84,5 +85,36 @@ export function SiteNotOwnedState() {
         </Button>
       }
     />
+  );
+}
+
+/**
+ * The editor waiting for the schema that decides v7 or v8 (the content
+ * backend is `pending`). When that read failed and is retried, it says so,
+ * in neutral words: the site may be either, so neither editor shows.
+ */
+export function ContentBackendWaiting({
+  backend,
+}: {
+  backend: ContentBackend;
+}) {
+  const t = useT();
+  const retrying = backend.kind === "pending" ? backend.retrying : undefined;
+  return (
+    <div
+      data-testid="content-backend-waiting"
+      className="flex h-full w-full flex-col items-center justify-center gap-3"
+    >
+      <Spinner className="size-5 text-muted-foreground" />
+      {retrying && (
+        <p className="max-w-xs text-center text-sm text-muted-foreground">
+          {t(
+            retrying === "github"
+              ? "siteEditor.retrying.github"
+              : "siteEditor.retrying.sandbox",
+          )}
+        </p>
+      )}
+    </div>
   );
 }

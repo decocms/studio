@@ -14,7 +14,9 @@ mock.module("@/hooks/use-main-schema-v8", () => ({
   useMainSchemaV8: () => mainRef.current,
 }));
 
-const { useLocalPreviewUrl } = await import("./use-local-preview-url");
+const { localTunnelState, useLocalPreviewUrl } = await import(
+  "./use-local-preview-url"
+);
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -35,14 +37,20 @@ describe("useLocalPreviewUrl (the v7 Local tunnel)", () => {
   });
 
   it("v7: a saved tunnel is in use, as on main", () => {
-    // Also while main's answer loads or can't be read: never a sandbox boot
-    // a v7 site didn't have on main.
-    for (const main of ["v7", "loading", "error"] as const) {
+    mainRef.current = "v7";
+    const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
+      wrapper,
+    });
+    expect(result.current).toMatchObject({ url: TUNNEL, undecided: false });
+  });
+
+  it("while main's answer loads or is retried: undecided, the tunnel not in use yet", () => {
+    for (const main of ["loading", "error"] as const) {
       mainRef.current = main;
       const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
         wrapper,
       });
-      expect(result.current.url).toBe(TUNNEL);
+      expect(result.current).toMatchObject({ url: null, undecided: true });
     }
   });
 
@@ -51,6 +59,34 @@ describe("useLocalPreviewUrl (the v7 Local tunnel)", () => {
     const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
       wrapper,
     });
-    expect(result.current.url).toBeNull();
+    expect(result.current).toMatchObject({ url: null, undecided: false });
+  });
+
+  it("no saved tunnel: nothing to wait for", () => {
+    localStorage.clear();
+    mainRef.current = "loading";
+    const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
+      wrapper,
+    });
+    expect(result.current).toMatchObject({ url: null, undecided: false });
+  });
+});
+
+describe("localTunnelState: the tunnel never shows first and switches", () => {
+  const states = (mains: Array<"v8" | "v7" | "loading" | "error">) =>
+    mains.map((main) => localTunnelState({ saved: TUNNEL, main }));
+
+  it("loading, then v8: never shows the tunnel", () => {
+    const seen = states(["loading", "error", "v8"]);
+    expect(seen.every((s) => s.url === null)).toBe(true);
+    expect(seen.at(-1)).toEqual({ url: null, undecided: false });
+  });
+
+  it("loading, then v7: waits (nothing else in its place), then shows it", () => {
+    const seen = states(["loading", "v7"]);
+    expect(seen).toEqual([
+      { url: null, undecided: true },
+      { url: TUNNEL, undecided: false },
+    ]);
   });
 });

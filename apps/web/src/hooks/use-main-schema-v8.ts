@@ -2,7 +2,8 @@
  * Main's schema answer for a project: `isV8Schema` on main's
  * `.deco/schema.gen.json`, computed by the server (`POST
  * /api/:org/blocks-major/:id`, an ETag-cached head read and a per-commit
- * answer there) and read once per project per session here.
+ * answer there) and read once per project per session here, again only when
+ * the server says main changed since (`main-schema-changed.ts`).
  *
  * This is how the web app knows a project is a Blocks v8 site. It never
  * decides from the project's `metadata.blocksMajor` marker: that is only the

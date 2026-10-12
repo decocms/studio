@@ -30,6 +30,10 @@ export const siteEditor = {
     "Não foi salvo: alguns campos não estão preenchidos corretamente. Corrija e tente de novo.",
   "siteEditor.save.tooLarge":
     "Não foi salvo: este conteúdo é grande demais. Diminua o tamanho e tente de novo.",
+  "siteEditor.retrying.github":
+    "Não foi possível acessar o GitHub agora. Tentando de novo…",
+  "siteEditor.retrying.sandbox":
+    "Não foi possível acessar o sandbox agora. Tentando de novo…",
   "siteEditor.siteNotOwned.title": "Este site é editado em outro projeto",
   "siteEditor.siteNotOwned.body":
     "Outro projeto no Studio foi configurado com este site primeiro, então o conteúdo dele é editado e publicado lá. Abra esse projeto para mudar o conteúdo do site. Aqui você ainda pode conversar e trabalhar no código do site.",

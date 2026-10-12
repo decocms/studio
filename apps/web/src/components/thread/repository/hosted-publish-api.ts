@@ -7,6 +7,8 @@
  * {@link publishMainHead} retries the CDN steps ("Try again").
  */
 
+import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
+
 export type HostedPublishResult =
   | { result: "merged"; sha: string; release: "current" | "created" | "none" }
   | { result: "up-to-date" };
@@ -22,18 +24,23 @@ export class HostedPublishError extends Error {
   }
 }
 
-async function post<T>(url: string, body: unknown): Promise<T> {
+async function post<T>(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    code?: string;
+  };
   if (!res.ok) {
-    throw new HostedPublishError(
-      json.error ?? `HTTP ${res.status}`,
-      json.error ?? null,
-    );
+    const code = json.error ?? json.code ?? null;
+    throw new HostedPublishError(code ?? `HTTP ${res.status}`, code);
   }
   return json as T;
 }
@@ -45,6 +52,9 @@ export function publishHostedDraft(
   return post<HostedPublishResult>(
     `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/publish`,
     { note },
+    // Only a v8 main publishes a hosted draft: a main that changed since is
+    // refused (`main_schema_changed`), never merged as a v7 branch.
+    mainSchemaHeaders("v8"),
   );
 }
 

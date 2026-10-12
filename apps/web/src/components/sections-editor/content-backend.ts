@@ -29,8 +29,14 @@ export interface ProtocolBackend {
 }
 
 export type ContentBackend =
-  /** Not decided yet (v8 projects only): the probe is loading. */
-  | { kind: "pending" }
+  /**
+   * Not decided yet: the schema of the editor's mode is still being read.
+   * `retrying` when that read failed and is retried (GitHub couldn't be
+   * read, or the sandbox's daemon didn't answer): the site may be v7 or v8,
+   * so it is neither the v8 `unavailable` state nor the v7 editor; the
+   * editor waits with a "can't reach it, trying again" note.
+   */
+  | { kind: "pending"; retrying?: Exclude<ContentSource, "local"> }
   | { kind: "legacy" }
   | ProtocolBackend
   /** A protocol endpoint that can't be reached right now. */
@@ -53,7 +59,34 @@ export type ContentBackend =
  * no Run, no app install.
  */
 export function isProtocolProject(backend: ContentBackend): boolean {
+  // `unavailable` is only ever a site already known to be v8 (a `pending`
+  // read that failed stays `pending`, retrying).
   return backend.kind === "protocol" || backend.kind === "unavailable";
+}
+
+/**
+ * The backend kind a decision maps to (`useContentBackend` builds the
+ * backend itself). Pure, so the "no v7 flash" tests can check what the
+ * editor shows at each step, not only the decision.
+ */
+export function decisionKind(
+  decision: BackendDecision,
+): ContentBackend["kind"] {
+  switch (decision) {
+    case "pending":
+    case "retrying-github":
+    case "retrying-sandbox":
+      return "pending";
+    case "legacy":
+      return "legacy";
+    case "protocol-local":
+    case "protocol-github":
+    case "protocol-sandbox":
+      return "protocol";
+    case "unavailable-github":
+    case "site-not-owned-github":
+      return "unavailable";
+  }
 }
 
 /**
@@ -84,8 +117,8 @@ export function newBlocksEditorEnabled(input: {
  * site whose main schema is a Blocks v8 one, with the editor on Studio's
  * GitHub backend (or still waiting for it). Nothing boots for such a session,
  * and its draft exists only once the first edit creates it. Never a v7 site,
- * never while main's answer is still loading (the v7 Fast Preview surface,
- * as on main, holds until then); never Localhost (a connected `deco serve`)
+ * never while main's answer is still loading (the preview holds a neutral
+ * loader until then, `deciding`); never Localhost (a connected `deco serve`)
  * nor a sandbox's daemon, nor a v8 site this project doesn't own.
  */
 export function hostedDraftSession(
@@ -120,7 +153,8 @@ export type BackendDecision =
   | "protocol-github"
   | "protocol-sandbox"
   | "unavailable-github"
-  | "unavailable-sandbox"
+  | "retrying-github"
+  | "retrying-sandbox"
   | "site-not-owned-github";
 
 /**
@@ -166,9 +200,12 @@ export function contentMode(input: {
  *   hosted CMS), once Studio's GitHub backend answers; a v8 site another
  *   project owns is `site-not-owned-github` (guided, not retried).
  *
- * A read that failed is `unavailable-*` while it keeps retrying, never the
- * v7 editor. The project's `blocksMajor` marker plays no part: it is only the
- * server's cache of main's answer.
+ * A failed read of the schema that decides (main's, or the daemon's before
+ * it ever answered) is `retrying-*`: still undecided, the editor waits and
+ * retries, and shows neither editor. Only a site already known to be v8
+ * whose content backend then fails is `unavailable-*` (the v8 editor's
+ * retrying state). The project's `blocksMajor` marker plays no part: it is
+ * only the server's cache of main's answer.
  *
  * Outside a project (forms with no project id, such as SEO and the blog
  * registry) there is no site to read: legacy.
@@ -202,16 +239,19 @@ export function selectContentBackend(input: {
     const site = input.sandboxSite;
     if (site === "v8") return "protocol-sandbox";
     if (site === "v7") return "legacy";
-    if (site === "error") return "unavailable-sandbox";
+    // The daemon never answered (a v8 answer is kept through a failed
+    // refetch, so this is a site not known yet): still undecided.
+    if (site === "error") return "retrying-sandbox";
     // Loading, or the sandbox's working tree isn't there yet.
     return "pending";
   }
   if (input.mainSchema === "loading") return "pending";
-  if (input.mainSchema === "error") return "unavailable-github";
+  if (input.mainSchema === "error") return "retrying-github";
   if (input.mainSchema === "v7") return "legacy";
   const site = input.githubSite;
   if (site === "v8") return "protocol-github";
   if (site === "not-owned") return "site-not-owned-github";
+  // Main is v8: Studio's backend for it failed (retried).
   if (site === "error") return "unavailable-github";
   // main turned v7 between the two reads: main's answer is re-read on the
   // next open; the branch-backed v7 path meanwhile.

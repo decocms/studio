@@ -10,7 +10,7 @@ import { useContentBackend } from "./use-content-backend";
 /**
  * Marks a Blocks v8 site, as `isV8Schema` decided it: a backend serving a
  * `"blocksMajor": 8` schema (GitHub, the sandbox's daemon or a `deco serve`),
- * or a v8 project (its marker) whose backend is reconnecting. v7 sites, a
+ * or a site whose main is known to be v8 while its backend reconnects. v7 sites, a
  * `deco serve` with no v8 schema yet, and sites still being detected show
  * nothing: the editor looks as it did before next-major Blocks.
  */
@@ -44,7 +44,8 @@ export function ContentVersionBadge({
 /** Whether the backend's schema was found to be v8 (see the badge above). */
 function showsV8Badge(backend: ContentBackend): boolean {
   if (backend.kind === "protocol") return backend.hasSchema !== false;
-  // GitHub and the daemon are only probed on a v8 project; a `deco serve`
-  // that isn't answering hasn't said which schema it serves.
+  // `unavailable` from GitHub is only ever a site whose main is known to be
+  // v8 (an unknown schema stays `pending`, retrying, with no badge); a
+  // `deco serve` that isn't answering hasn't said which schema it serves.
   return backend.kind === "unavailable" && backend.source !== "local";
 }

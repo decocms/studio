@@ -129,6 +129,7 @@ import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
+  ContentBackendWaiting,
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
@@ -308,6 +309,10 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
 
   // A v8 site another project owns: say where it's edited, never an error.
   if (isSiteNotOwned(contentBackend)) return <SiteNotOwnedState />;
+  // v7 or v8 isn't decided yet: wait (and say so when its read is retried).
+  if (contentBackend.kind === "pending") {
+    return <ContentBackendWaiting backend={contentBackend} />;
+  }
 
   return (
     <ContentBrowserReady

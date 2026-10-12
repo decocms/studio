@@ -21,6 +21,7 @@ import {
 import {
   BlocksEmptyState,
   BlocksErrorState,
+  ContentBackendWaiting,
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
@@ -100,6 +101,10 @@ export function BlocksPanel({
   // A v8 site another project owns: say where it's edited, never an error.
   if (isSiteNotOwned(contentBackend)) {
     return panel(<SiteNotOwnedState />);
+  }
+  // v7 or v8 can't be decided yet (its read is retried): wait, and say so.
+  if (contentBackend.kind === "pending" && contentBackend.retrying) {
+    return panel(<ContentBackendWaiting backend={contentBackend} />);
   }
   if (state.kind === "loading" || editorUndecided) {
     return panel(<PanelLoading />);

@@ -28,6 +28,12 @@ import {
 } from "./content-backend";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import {
+  isMainSchemaChangedResponse,
+  MainSchemaChangedError,
+  mainSchemaHeaders,
+  resetMainSchemaAnswer,
+} from "@/hooks/main-schema-changed";
+import {
   classifyServeProbeError,
   NotDecoServeError,
   probeRetryDelay,
@@ -73,12 +79,27 @@ export async function probeGithub(
   endpoint: string,
   doFetch: (request: Request) => Promise<Response> = (request) =>
     fetch(request),
+  /**
+   * Studio answered 409 `main_schema_changed` (main is no longer v8): called
+   * before the call throws, so the editor re-reads main's answer.
+   */
+  onMainSchemaChanged?: () => void,
 ): Promise<Probe | null | typeof GITHUB_SITE_NOT_OWNED> {
   const client = createContentClient({
     endpoint,
     fetch: async (request) => {
-      const response = await doFetch(request);
+      // This backend exists only for a v8 main: say so, so a main that
+      // changed since is told apart from any other failure.
+      const sent = new Request(request);
+      for (const [name, value] of Object.entries(mainSchemaHeaders("v8"))) {
+        sent.headers.set(name, value);
+      }
+      const response = await doFetch(sent);
       if (await isSiteNotOwnedResponse(response)) throw new SiteNotOwnedError();
+      if (await isMainSchemaChangedResponse(response)) {
+        onMainSchemaChanged?.();
+        throw new MainSchemaChangedError();
+      }
       return response;
     },
   });
@@ -202,12 +223,14 @@ export function useContentBackend(
   const mainSchema = useMainSchemaV8(tabConnection ? null : virtualMcpId);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  // The daemon answers once the working tree is there; before that the
-  // sandbox is booting and the editor keeps today's (legacy) boot UX.
+  // The daemon answers once the working tree is there. Before its first
+  // answer the editor waits (pending); once it answered for this thread, a
+  // restart, hibernate or re-clone keeps that answer (see `sandboxSite`).
   const workingTreeReady = isWorkingTreeReadyPhase(
     useSandboxEvents().lifecycle.phase,
   );
 
+  const queryClient = useQueryClient();
   const probes = contentProbesEnabled({
     mode,
     mainSchema,
@@ -229,6 +252,8 @@ export function useContentBackend(
           virtualMcpId: virtualMcpId!,
           branch: branch!,
         }),
+        undefined,
+        () => resetMainSchemaAnswer(queryClient, org.slug, virtualMcpId!),
       ),
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
@@ -292,7 +317,6 @@ export function useContentBackend(
 
   // Once connected, `describe` is re-read on every poll, so a stopped
   // `deco serve` is noticed without waiting for a failed read or write.
-  const queryClient = useQueryClient();
   const localKey = KEYS.contentBackend(
     org.slug,
     virtualMcpId ?? "",
@@ -342,18 +366,21 @@ export function useContentBackend(
             : github.isError
               ? "error"
               : "loading",
-    sandboxSite: !workingTreeReady
-      ? "unavailable"
-      : sandbox.data
-        ? "v8"
-        : sandbox.data === null
-          ? "v7"
-          : sandbox.isError
-            ? "error"
-            : "loading",
+    sandboxSite: sandboxSiteAnswer({
+      data: sandbox.data,
+      isError: sandbox.isError,
+      workingTreeReady,
+    }),
   });
 
   if (decision === "pending") return { kind: "pending" };
+  // The schema that decides couldn't be read yet: undecided, retried.
+  if (decision === "retrying-github") {
+    return { kind: "pending", retrying: "github" };
+  }
+  if (decision === "retrying-sandbox") {
+    return { kind: "pending", retrying: "sandbox" };
+  }
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
     return toBackend("github", github.data as Probe, "");
@@ -365,13 +392,10 @@ export function useContentBackend(
   if (decision === "protocol-sandbox") {
     return toBackend("sandbox", sandbox.data!, ":sandbox");
   }
-  // A v8 probe failed (a GitHub hiccup, the sandbox restarting): retried
-  // every PROBE_RETRY_MS, never the v7 editor in the meantime.
+  // Main is v8 and Studio's backend for it failed (a GitHub hiccup):
+  // retried every PROBE_RETRY_MS, never the v7 editor in the meantime.
   if (decision === "unavailable-github") {
     return { kind: "unavailable", source: "github" };
-  }
-  if (decision === "unavailable-sandbox") {
-    return { kind: "unavailable", source: "sandbox" };
   }
   return localServeBackend({
     probed: local.data,
@@ -381,6 +405,24 @@ export function useContentBackend(
     describe,
     endpoint: connection?.endpoint ?? "",
   });
+}
+
+/**
+ * The sandbox daemon's answer for `selectContentBackend`. Once the daemon
+ * answered for this thread (the probe's key is per thread and branch), that
+ * answer holds while the working tree isn't ready: a restart, hibernate or
+ * re-clone keeps a v7 site on the legacy editor and a v8 one on the protocol,
+ * as on main. Before the first answer, a working tree that isn't there yet is
+ * `unavailable` (the editor waits).
+ */
+export function sandboxSiteAnswer(input: {
+  data: Probe | null | undefined;
+  isError: boolean;
+  workingTreeReady: boolean;
+}): "v8" | "v7" | "loading" | "error" | "unavailable" {
+  if (input.data !== undefined) return input.data ? "v8" : "v7";
+  if (!input.workingTreeReady) return "unavailable";
+  return input.isError ? "error" : "loading";
 }
 
 /**

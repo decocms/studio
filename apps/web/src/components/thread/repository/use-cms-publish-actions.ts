@@ -11,6 +11,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys.ts";
+import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
+import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {
   describePublishFailure,
@@ -22,6 +24,7 @@ import {
 } from "./publish-flow.ts";
 import { discardGitFiles } from "./sandbox-git-api.ts";
 import {
+  HostedPublishError,
   type HostedPublishResult,
   publishHostedDraft,
   publishMainHead,
@@ -158,6 +161,14 @@ export function useCmsPublishActions(
     try {
       await settleHosted(await publishHostedDraft(target, noteParts().message));
     } catch (error) {
+      // Main is no longer v8: the editor goes back to waiting and decides
+      // again on main's new answer.
+      if (
+        error instanceof HostedPublishError &&
+        error.code === MAIN_SCHEMA_CHANGED
+      ) {
+        resetMainSchemaAnswer(queryClient, target.orgSlug, target.virtualMcpId);
+      }
       const failure = hostedPublishFailure(t, error);
       setPublishError(failure.message);
       setPublishErrorDetail(failure.detail);

@@ -10,7 +10,17 @@
  * someone else wrote.
  */
 
-import { type QueryClient, useQuery } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  isMainSchemaChangedResponse,
+  MainSchemaChangedError,
+  mainSchemaHeaders,
+  resetMainSchemaAnswer,
+} from "@/hooks/main-schema-changed";
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
@@ -291,6 +301,7 @@ interface HostedDraftPointer {
 export function useProtocolDraft(
   params: DecofileScopeParams | null,
 ): string | null {
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: KEYS.protocolDraftRead(
       params?.orgSlug ?? "",
@@ -300,8 +311,17 @@ export function useProtocolDraft(
     queryFn: async (): Promise<HostedDraftPointer> => {
       const res = await fetch(
         `/api/${params!.orgSlug}/decofile/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}`,
-        { cache: "no-store" },
+        { cache: "no-store", headers: mainSchemaHeaders("v8") },
       );
+      // Main is no longer v8: the editor re-reads main's answer.
+      if (await isMainSchemaChangedResponse(res)) {
+        resetMainSchemaAnswer(
+          queryClient,
+          params!.orgSlug,
+          params!.virtualMcpId,
+        );
+        throw new MainSchemaChangedError();
+      }
       if (!res.ok) throw new Error(`draft pointer read failed: ${res.status}`);
       return (await res.json()) as HostedDraftPointer;
     },
