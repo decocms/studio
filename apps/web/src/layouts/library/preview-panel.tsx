@@ -19,14 +19,20 @@ export function LibraryPreviewPanel({
   previewPath,
   onClose,
   showSeeInLibrary = false,
-}: LibraryPreviewProps) {
+  expand,
+  variant = "panel",
+}: LibraryPreviewProps & {
+  /** `aside` when it is a surface of its own rather than a tab in one. */
+  variant?: "panel" | "aside";
+}) {
   return (
     <div className="flex h-full w-full flex-col bg-background">
       <LibraryFilePreview
         previewPath={previewPath}
         onClose={onClose}
         showSeeInLibrary={showSeeInLibrary}
-        variant="panel"
+        expand={expand}
+        variant={variant}
       />
     </div>
   );
