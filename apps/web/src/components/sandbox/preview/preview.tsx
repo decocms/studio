@@ -58,7 +58,10 @@ import {
   useDecofile,
   useDecofileCacheKey,
 } from "@/components/sections-editor/use-decofile";
-import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+import {
+  inlinePageOverrideParams,
+  withVariantMatcherOverride,
+} from "@/components/sections-editor/variant-matcher-override";
 import {
   buildServeDraftPointer,
   withForcedVariantsInDraftUrl,
@@ -1097,8 +1100,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       pathTemplate: currentPath,
     });
     if (!req) return;
-    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
-    const src = withVariantMatcherOverride(req.src, matcherOverride);
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the variant live right now.
+    const src = withVariantMatcherOverride(
+      req.src,
+      inlinePageOverrideParams(matcherOverride, currentPageKey),
+    );
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },
       origin,
