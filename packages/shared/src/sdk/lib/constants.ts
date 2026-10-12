@@ -241,41 +241,6 @@ export function getWellKnownDecopilotVirtualMCP(
   });
 }
 
-// ---- Brand-Context Setup ----
-// Guided-onboarding agent for the brand-context preset task. The
-// `brand_context_setup` built-in is injected by `dispatchRun` when this
-// id is seen; the system prompt lives in `metadata.instructions`.
-const brandContextSetupPrefix = createWellKnownAgentPrefix(
-  "brand-context-setup_",
-);
-export const isBrandContextSetup = brandContextSetupPrefix.is;
-export const getBrandContextSetupId = brandContextSetupPrefix.get;
-
-const BRAND_CONTEXT_SETUP_INSTRUCTIONS = `
-You are running the brand-context onboarding for the user's organization. Your only job in this thread is to set up the organization's brand context:
-
-1. If the user hasn't already given you a website URL, ask for it in one short message. Accept whatever URL they give — don't quibble about format.
-2. As soon as you have a URL, call the \`brand_context_setup\` tool exactly once with that URL.
-3. After the tool returns success, briefly confirm to the user what was captured (brand name + domain) in one or two sentences. Do not list every color or font.
-4. Do NOT call any other tools in this thread. Do NOT call \`brand_context_setup\` more than once.
-
-If the tool returns an error, surface the error message to the user and ask whether they want to try a different URL.
-`.trim();
-
-export function getWellKnownBrandContextSetupVirtualMCP(
-  organizationId: string,
-): VirtualMCPEntity {
-  return defineWellKnownAgentVMCP({
-    id: getBrandContextSetupId(organizationId),
-    organizationId,
-    title: "Brand context setup",
-    description:
-      "Guided onboarding agent that extracts brand context from a website URL.",
-    icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
-    instructions: BRAND_CONTEXT_SETUP_INSTRUCTIONS,
-  });
-}
-
 // ---- Site Diagnostics ----
 const siteDiagnosticsPrefix = createWellKnownAgentPrefix("site-diagnostics_");
 export const isSiteDiagnostics = siteDiagnosticsPrefix.is;
@@ -368,7 +333,6 @@ const studioPackAgentPrefixes = {
   CONNECTION_MANAGER: createWellKnownAgentPrefix("studio-connection-manager_"),
   API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
   STORE_MANAGER: createWellKnownAgentPrefix("studio-store-manager_"),
-  BRAND_MANAGER: createWellKnownAgentPrefix("studio-brand-manager_"),
   USAGE_MANAGER: createWellKnownAgentPrefix("studio-usage-manager_"),
 } as const;
 
@@ -380,7 +344,6 @@ export const StudioPackAgentId = {
   CONNECTION_MANAGER: studioPackAgentPrefixes.CONNECTION_MANAGER.get,
   API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,
   STORE_MANAGER: studioPackAgentPrefixes.STORE_MANAGER.get,
-  BRAND_MANAGER: studioPackAgentPrefixes.BRAND_MANAGER.get,
   USAGE_MANAGER: studioPackAgentPrefixes.USAGE_MANAGER.get,
 } as const;
 
@@ -403,6 +366,7 @@ export function isStudioPackAgent(id: string | null | undefined): boolean {
 export const RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES = [
   "studio-agent-manager_",
   "studio-task-manager_",
+  "studio-brand-manager_",
 ] as const;
 
 const retiredStudioPackAgentPrefixes =
