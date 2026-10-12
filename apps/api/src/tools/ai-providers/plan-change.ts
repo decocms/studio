@@ -119,8 +119,6 @@ export function invoiceUpgradeRefusal(input: {
   entitlements: {
     planId: string;
     features: Record<string, boolean>;
-    /** Null when the gateway could not read usage — which refuses. */
-    usageState: "ok" | "warn" | "exhausted" | null;
   } | null;
   subscriptionBound: boolean;
   targetPlanId: string;
@@ -129,11 +127,6 @@ export function invoiceUpgradeRefusal(input: {
   if (!input.entitlements) return "Could not read this organization's plan.";
   if (input.entitlements.features.invoice_upgrade !== true) {
     return "This organization cannot add a plan to its invoice.";
-  }
-  // The offer is for an org that has run out, not a standing self-serve
-  // upgrade path around Stripe.
-  if (input.entitlements.usageState !== "exhausted") {
-    return "Invoice upgrades open once this organization's AI usage limit is reached.";
   }
   // A Stripe subscription owns this org's plan; a second, invoiced one would
   // be overwritten by the next webhook or billed twice.
@@ -175,7 +168,6 @@ export const AI_PLAN_INVOICE_UPGRADE = defineTool({
     let entitlements: {
       planId: string;
       features: Record<string, boolean>;
-      usageState: "ok" | "warn" | "exhausted" | null;
     } | null = null;
     if (plansEnabled && adapter?.getEntitlements) {
       const read = await adapter.getEntitlements(
@@ -186,7 +178,6 @@ export const AI_PLAN_INVOICE_UPGRADE = defineTool({
         entitlements = {
           planId: read.plan.id,
           features: read.features,
-          usageState: read.usage?.state ?? null,
         };
       }
     }

@@ -219,7 +219,6 @@ export const routes = {
   "routes.onboarding.step.claimingDomain": "Claiming email domain",
   "routes.onboarding.step.creatingOrg": "Creating organization",
   "routes.onboarding.step.enablingAutoJoin": "Enabling auto-join for your team",
-  "routes.onboarding.step.extractingBrand": "Extracting brand context",
   "routes.onboarding.uploadOrgLogo": "Upload organization logo",
   "routes.onboarding.welcomeTitle": "Welcome to deco",
   "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the Deco Score",
