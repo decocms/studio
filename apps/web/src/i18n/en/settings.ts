@@ -677,7 +677,6 @@ export const settings = {
     "For large teams with their own contract",
   "settings.plans.custom.cta": "Talk to us",
   "settings.plans.managed": "Your plan: {plan}. Contact us to change it.",
-  "settings.plans.limitReached": "You've reached your AI usage limit",
   "settings.plans.invoice.cta": "Add to my invoice",
   "settings.plans.invoice.confirm":
     "{plan} will be added to your next invoice. Switch now?",
@@ -860,6 +859,11 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Discard",
   "settings.agentTools.orgMcpsPickSaved":
     "Saved which connections runs can reach",
+  "settings.agentTools.chatRuntimeSection": "Chats",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Run every chat with Claude Code in its own sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Every new chat runs Claude Code in a sandbox of its own instead of on Decopilot, and existing Decopilot chats switch over on their next message. The first message of a chat waits for its sandbox to start. Needs an Anthropic, OpenRouter or deco AI gateway key, or a Claude subscription.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
