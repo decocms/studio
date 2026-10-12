@@ -12,8 +12,13 @@
  * handlers to find their ctx.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ToolAnnotations } from "@/core/define-tool";
+import type { ToolAnnotations, ToolCallContext } from "@/core/define-tool";
 import type { StudioContext } from "@/core/studio-context";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type {
+  ServerNotification,
+  ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 export const managementContextStore = new AsyncLocalStorage<StudioContext>();
@@ -27,7 +32,38 @@ export interface RegistrableTool {
   annotations?: ToolAnnotations;
   _meta?: Record<string, unknown>;
   modelSummary?: (result: unknown) => string;
-  execute: (input: unknown, ctx: StudioContext) => Promise<unknown>;
+  execute: (
+    input: unknown,
+    ctx: StudioContext,
+    call?: ToolCallContext,
+  ) => Promise<unknown>;
+}
+
+/** Claude Code stamps its tool_use id here on every MCP tool call. */
+const CLIENT_CALL_ID_META_KEY = "claudecode/toolUseId";
+
+export function toolCallContext(
+  extra: Pick<
+    RequestHandlerExtra<ServerRequest, ServerNotification>,
+    "signal" | "_meta" | "sendNotification"
+  >,
+): ToolCallContext {
+  const progressToken = extra._meta?.progressToken;
+  const callId = extra._meta?.[CLIENT_CALL_ID_META_KEY];
+  let sent = 0;
+  return {
+    signal: extra.signal,
+    ...(typeof callId === "string" && callId ? { callId } : {}),
+    ...(progressToken !== undefined
+      ? {
+          progress: (message: string) =>
+            extra.sendNotification({
+              method: "notifications/progress",
+              params: { progressToken, progress: ++sent, message },
+            }),
+        }
+      : {}),
+  };
 }
 
 export function buildToolRegistration(tool: RegistrableTool) {
@@ -52,7 +88,10 @@ export function buildToolRegistration(tool: RegistrableTool) {
       annotations: tool.annotations,
       _meta: tool._meta,
     },
-    handler: async (args: unknown) => {
+    handler: async (
+      args: unknown,
+      extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+    ) => {
       const ctx = managementContextStore.getStore();
       if (!ctx) {
         throw new Error(
@@ -61,7 +100,7 @@ export function buildToolRegistration(tool: RegistrableTool) {
       }
       ctx.access.setToolName(tool.name);
       try {
-        const result = await tool.execute(args, ctx);
+        const result = await tool.execute(args, ctx, toolCallContext(extra));
         const modelText = tool.modelSummary
           ? tool.modelSummary(result)
           : JSON.stringify(result);

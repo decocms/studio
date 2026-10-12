@@ -22,6 +22,8 @@ export const chat = {
     "Voice session ended. Your chat and the agent's work are still available.",
   "chat.voice.sendFailed":
     "Could not send or complete this request. Return to the chat to check its status.",
+  "chat.input.openFileContext": "The agent sees {name}, the file you have open",
+  "chat.input.openFileDismiss": "Leave this file out",
   "chat.input.taskMode": "Task",
   "chat.input.startTask": "Start task",
   "chat.input.taskPlaceholder":
@@ -66,32 +68,6 @@ export const chat = {
   "chat.assistant.resumedBackgroundTask": "Resumed — background task completed",
   "chat.assistant.resumingTask": "Resuming task...",
   "chat.assistant.toolCallPlural": "{count} tool call(s)",
-  "chat.brandContext.brand": "Brand",
-  "chat.brandContext.brandContextSet": "Brand context set",
-  "chat.brandContext.brandSet": "Brand set: {name}",
-  "chat.brandContext.brandWithName": "Brand · {name}",
-  "chat.brandContext.colorAccent": "Accent",
-  "chat.brandContext.colorBackground": "Background",
-  "chat.brandContext.colorForeground": "Foreground",
-  "chat.brandContext.colorPrimary": "Primary",
-  "chat.brandContext.colorSecondary": "Secondary",
-  "chat.brandContext.colorsSection": "Colors",
-  "chat.brandContext.couldNotLoadBrand": "Couldn't load brand",
-  "chat.brandContext.couldNotLoadBrands": "Couldn't load brands",
-  "chat.brandContext.defaultBadge": "default",
-  "chat.brandContext.extractingBrand": "Extracting brand",
-  "chat.brandContext.extractionFailed": "Brand extraction failed",
-  "chat.brandContext.fromDomain": "from {domain}",
-  "chat.brandContext.loadingBrand": "Loading brand",
-  "chat.brandContext.loadingBrands": "Loading brands",
-  "chat.brandContext.multipleBrands": "{count} brands",
-  "chat.brandContext.noBrandsContext":
-    "The organization hasn't set up any brand context.",
-  "chat.brandContext.noBrandsYet": "No brands yet",
-  "chat.brandContext.oneBrand": "1 brand",
-  "chat.brandContext.typographySection": "Typography",
-  "chat.brandContext.unknownError": "Unknown error",
-  "chat.brandContext.untitled": "Untitled",
   "chat.chat.jumpToLatest": "Jump to latest",
   "chat.chat.loadingOlderMessages": "Loading older messages…",
   "chat.chatContext.activeTaskProviderMissingContext":
@@ -363,6 +339,10 @@ export const chat = {
   "chat.noAiProviderEmptyState.headingWithOrg": "{org} is ready for projects",
   "chat.noAiProviderEmptyState.subtitleDefault":
     "Connect an AI provider to start chatting.",
+  "chat.noAiProviderEmptyState.supportedHeading":
+    "Connect a supported AI provider",
+  "chat.noAiProviderEmptyState.supportedSubtitle":
+    "Chats run on Claude. Connect Anthropic, OpenRouter or the deco AI Gateway, or link your Claude subscription in Settings.",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
   "chat.outputFileRow.open": "Open",

@@ -15,6 +15,10 @@
  */
 
 import { hasAdminRole } from "@decocms/shared/auth/roles";
+import {
+  BASIC_USAGE_TOOLS,
+  USER_ROLE_TOOLS,
+} from "@decocms/shared/tools/registry-metadata";
 import type { Permission } from "@/storage/types";
 
 /**
@@ -63,6 +67,39 @@ export function connectionGrantsFor(args: {
     grants[id] = tools.has("*") ? ["*"] : [...tools];
   }
   return grants;
+}
+
+/**
+ * The Studio tools (checked under `self`) a run's key may carry: the run-scoped
+ * ones as they are, everything else only when the dispatcher could call it
+ * themselves — the same answer `AccessControl` gives that member in a session:
+ * admin/owner everything, every member the basic-usage set, the built-in
+ * `user` role its extra grants, a custom role its own `self` statement.
+ *
+ * Without this the key would be the escalation: an API key's allowlist is the
+ * whole decision for its caller, so a chat run would carry, say,
+ * `COLLECTION_VIRTUAL_MCP_DELETE` for a member whose role cannot delete an
+ * agent. Pure, so the unit test owns it.
+ */
+export function selfToolGrantsFor(args: {
+  role: string | null | undefined;
+  roleStatements: readonly Permission[];
+  toolNames: readonly string[];
+  /** Tools granted by what the run is, whatever the dispatcher's role. */
+  runScoped: ReadonlySet<string>;
+}): string[] {
+  const { role, roleStatements, toolNames, runScoped } = args;
+  if (hasAdminRole(role ?? undefined)) return [...toolNames];
+  const isUser = rolesOf(role).includes("user");
+  const granted = new Set(roleStatements.flatMap((s) => s.self ?? []));
+  return toolNames.filter(
+    (tool) =>
+      runScoped.has(tool) ||
+      BASIC_USAGE_TOOLS.has(tool) ||
+      (isUser && USER_ROLE_TOOLS.has(tool)) ||
+      granted.has("*") ||
+      granted.has(tool),
+  );
 }
 
 /**
