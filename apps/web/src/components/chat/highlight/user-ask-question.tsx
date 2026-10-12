@@ -12,6 +12,7 @@ import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
 import { useEffect, useRef } from "react";
 import { type Control, type FieldValues, useController } from "react-hook-form";
 import { useT } from "@/i18n/use-t.ts";
+import { isTypingTarget } from "@/lib/keyboard-shortcuts";
 import type { UserAskToolPart } from "../types";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import {
@@ -106,8 +107,7 @@ function useNumberKeyShortcut(
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (isTypingTarget(e.target)) return;
       // Skip if any modifier key is held (allow browser shortcuts like Cmd+1)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const num = Number.parseInt(e.key, 10);
