@@ -9,8 +9,11 @@
  *   a save or a new main commit is a new revision.
  * - A commit edits the draft, never git: put X sets `set[X]` and drops X from
  *   `delete`; deleting X that exists on main moves it to `delete`; deleting a
- *   draft-only X just drops it from `set`. The last writer wins (no stale
- *   check against the draft); the schema is still checked against main's.
+ *   draft-only X just drops it from `set`. Putting X back to exactly main's
+ *   content (a discard) drops X from the draft instead of keeping a copy,
+ *   which would hide a later change on main and never let the draft be
+ *   empty. The last writer wins (no stale check against the draft); the
+ *   schema is still checked against main's.
  */
 
 import {
@@ -36,6 +39,24 @@ import type { DraftBody, DraftStore, HostedDraftRef } from "./draft-store";
 /** The spelling group (fully decoded name) a saved-block file belongs to. */
 function groupOf(file: string): string {
   return fullyDecodeFileName(file).name;
+}
+
+/** Equal JSON values, whatever the key order. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every(
+    (k) =>
+      Object.hasOwn(b, k) &&
+      sameJson(
+        (a as Record<string, unknown>)[k],
+        (b as Record<string, unknown>)[k],
+      ),
+  );
 }
 
 function draftRevision(mainSha: string, etag: string | null): string {
@@ -67,12 +88,14 @@ function layerDraftFiles(
 
 /**
  * The draft after one commit attempt (see the module note). `mainGroups` are
- * the spelling groups that exist on main.
+ * the spelling groups that exist on main; `sameAsMain`, the put groups whose
+ * content is exactly main's.
  */
 export function applyAttemptToDraft(
   draft: DraftBody,
   attempt: { put: Record<string, string>; delete: string[] },
   mainGroups: ReadonlySet<string>,
+  sameAsMain: ReadonlySet<string> = new Set(),
 ): DraftBody {
   const set = { ...draft.set };
   const deleted = new Set(draft.delete);
@@ -89,6 +112,7 @@ export function applyAttemptToDraft(
     const group = groupOf(file);
     putGroups.add(group);
     dropGroup(group);
+    if (sameAsMain.has(group)) continue;
     set[blockNameFromFile(file)] = JSON.parse(content) as unknown;
   }
   for (const file of attempt.delete) {
@@ -133,6 +157,45 @@ export function createDraftContentStorage(options: {
     const revision = draftRevision(base.revision, draft?.etag ?? null);
     draftTexts.set(revision, texts);
     return { revision, resolvedRef: base.resolvedRef, files };
+  };
+
+  /**
+   * The put groups whose content equals main's one file for that name: byte
+   * for byte by blob sha (as the Publish compares them), else as JSON values
+   * (main's file may be formatted or ordered otherwise).
+   */
+  const groupsSameAsMain = async (
+    base: StorageSnapshot,
+    put: Record<string, string>,
+  ): Promise<Map<string, StorageFile>> => {
+    const same = new Map<string, StorageFile>();
+    const toRead: Array<{ group: string; main: StorageFile; value: unknown }> =
+      [];
+    for (const [file, content] of Object.entries(put)) {
+      const group = groupOf(file);
+      const onMain = base.files.filter((f) => groupOf(f.file) === group);
+      if (onMain.length !== 1) continue;
+      const value: unknown = JSON.parse(content);
+      const mainFile = onMain[0]!;
+      if (mainFile.version === gitBlobSha(serializeBlock(value))) {
+        same.set(group, mainFile);
+      } else toRead.push({ group, main: mainFile, value });
+    }
+    if (toRead.length === 0) return same;
+    const bodies = await main.readFiles(
+      base,
+      toRead.map((r) => r.main.file),
+    );
+    for (const { group, main: mainFile, value } of toRead) {
+      const body = bodies[mainFile.file]?.text;
+      if (body === undefined) continue;
+      try {
+        if (sameJson(JSON.parse(body), value)) same.set(group, mainFile);
+      } catch {
+        // Main's file isn't JSON: never equal to a block.
+      }
+    }
+    return same;
   };
 
   return {
@@ -191,8 +254,19 @@ export function createDraftContentStorage(options: {
           versions,
         };
       }
+      const sameAsMain = await groupsSameAsMain(base, attempt.put);
+      // What the layered read now serves for those names is main's file.
+      for (const file of Object.keys(attempt.put)) {
+        const mainFile = sameAsMain.get(groupOf(file));
+        if (mainFile?.file === file) versions[file] = mainFile.version;
+      }
       const saved = await drafts.update(ref, (body) =>
-        applyAttemptToDraft(body, attempt, mainGroups),
+        applyAttemptToDraft(
+          body,
+          attempt,
+          mainGroups,
+          new Set(sameAsMain.keys()),
+        ),
       );
       return {
         status: "committed",
