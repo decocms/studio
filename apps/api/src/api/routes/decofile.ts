@@ -75,6 +75,7 @@ import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
 import {
+  isBlocksV8Project,
   MAIN_SCHEMA_CHANGED,
   MAIN_SCHEMA_HEADER,
 } from "@decocms/shared/blocks-major";
@@ -365,8 +366,11 @@ function expectedMain(c: Context<DecofileEnv>): "v8" | "v7" | null {
  * Main's answer for a GET or publish, read only when it matters: a signed-in
  * owner of its site id (a v8 site's hosted draft could be served), or an
  * editor that said it acts on a v8 main. `null` when not read (any other v7
- * request: as cheap as on main). A failed read is v7 for an editor acting
- * on v7 (as on main, which never read main here), and an error otherwise.
+ * request: as cheap as on main). A failed read is v7 (as on main, which
+ * never read main here) unless a v8 answer could be at stake: an editor
+ * that said it acts on v8, or a request that didn't say on a project the
+ * server last found v8 (its `blocksMajor` marker). Those fail instead of
+ * serving or merging the v7 shape on a v8 site.
  */
 async function mainAnswerFor(
   c: Context<DecofileEnv>,
@@ -380,7 +384,8 @@ async function mainAnswerFor(
   try {
     return await scopeIsV8(c, client, await mainBranch());
   } catch (error) {
-    if (expected !== "v7") throw error;
+    if (expected === "v8") throw error;
+    if (expected === null && isBlocksV8Project(scope.metadata)) throw error;
     console.warn("decofile: main's schema unreadable, serving v7", {
       organizationId: scope.organizationId,
       virtualMcpId: scope.virtualMcpId,

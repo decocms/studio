@@ -201,10 +201,11 @@ export function contentMode(input: {
  *   project owns is `site-not-owned-github` (guided, not retried).
  *
  * A failed read of the schema that decides (main's, or the daemon's before
- * it ever answered) is `retrying-*`: still undecided, the editor waits and
- * retries, and shows neither editor. Main's answer is `error` only on a
- * project the server last found v8 (`useMainSchemaV8`): any other
- * unreadable main reads `v7`, so a v7 site gets its editor as on main. Only
+ * it ever answered) is `retrying-*` only on a project the server last found
+ * v8 (its marker): still undecided, the editor waits and retries, and shows
+ * neither editor. On any other project it is v7 (main's answer reads `v7`,
+ * `useMainSchemaV8`; a failing daemon is `legacy`), so a site whose schema
+ * can't be confirmed v8 gets the v7 editor as on main. Only
  * a site already known to be v8 whose content backend then fails is
  * `unavailable-*` (the v8 editor's retrying state).
  *
@@ -231,6 +232,13 @@ export function selectContentBackend(input: {
    * `unavailable` until the working tree is there (the sandbox is booting).
    */
   sandboxSite?: SchemaAnswer | "unavailable";
+  /**
+   * The project's `blocksMajor` marker (`isBlocksV8Project`): the server
+   * last found main v8. A hint only, never a v8 answer: it decides just
+   * whether a daemon that failed before it ever answered is waited on
+   * (marked) or treated as v7 (anything else, as on main).
+   */
+  markedV8?: boolean;
 }): BackendDecision {
   if (!input.hasProject) return "legacy";
   const mode = contentMode(input);
@@ -241,8 +249,13 @@ export function selectContentBackend(input: {
     if (site === "v8") return "protocol-sandbox";
     if (site === "v7") return "legacy";
     // The daemon never answered (a v8 answer is kept through a failed
-    // refetch, so this is a site not known yet): still undecided.
-    if (site === "error") return "retrying-sandbox";
+    // refetch, so this is a site not known yet). Only a project the server
+    // last found v8 (its marker) waits, undecided; any other one gets the v7
+    // sandbox editor, as on main (which never waited on the daemon), and a
+    // v8 answer that arrives later takes over.
+    if (site === "error") {
+      return input.markedV8 ? "retrying-sandbox" : "legacy";
+    }
     // Loading, or the sandbox's working tree isn't there yet.
     return "pending";
   }
@@ -276,6 +289,20 @@ export function contentProbesEnabled(input: {
     github: input.mode === "github" && input.mainSchema === "v8",
     sandbox: input.mode === "sandbox" && input.workingTreeReady,
   };
+}
+
+/**
+ * Whether a retried read (a probe or main's schema) has failed and not yet
+ * succeeded. A re-poll of a failed query with no data puts it back to
+ * `pending` (`isError` false) while it runs: `errorUpdateCount` keeps the
+ * failure, so an answer derived from it doesn't flip back to loading every
+ * poll (which would swap the v7 fallback for the loader and back).
+ */
+export function readFailed(query: {
+  isError: boolean;
+  errorUpdateCount: number;
+}): boolean {
+  return query.isError || query.errorUpdateCount > 0;
 }
 
 /**
