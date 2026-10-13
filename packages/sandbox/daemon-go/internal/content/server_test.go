@@ -20,7 +20,8 @@ import (
 )
 
 // Ported from server/handler.test.ts, server/methods.test.ts,
-// server/apply.test.ts, server/assets.test.ts and storage/fs/*.test.ts.
+// server/apply.test.ts and storage/fs/*.test.ts (the daemon takes no asset
+// uploads, so server/assets.test.ts has no port).
 
 type site struct {
 	t       *testing.T
@@ -290,7 +291,7 @@ func TestDescribe(t *testing.T) {
 		"protocol": "deco-content", "version": map[string]any{"major": 1.0, "minor": 0.0},
 		"server": map[string]any{"name": "deco-blocks", "version": "unknown"}, "kind": "working-tree",
 		"readOnly": false, "root": ".", "schemaFormat": "deco-meta@1", "pollIntervalMs": 2000.0, "preview": nil,
-		"assets":  map[string]any{"dir": "public/assets", "urlPrefix": "/assets/", "maxBytes": float64(25 * 1024 * 1024)},
+		"assets":  nil,
 		"secrets": map[string]any{"publicKey": pub},
 	}
 	if !reflect.DeepEqual(d, want) {
@@ -302,7 +303,7 @@ func TestDescribe(t *testing.T) {
 		t.Error("a file holding a private key is never served")
 	}
 	nested := NewHandler(Options{Store: NewFSStore(FSOptions{Root: filepath.Join(s.root, "apps", "site"), RepoRoot: s.root})})
-	if desc := nested.store.describe(); desc.Root != "apps/site" || desc.AssetsDir != "apps/site/public/assets" {
+	if desc := nested.store.describe(); desc.Root != "apps/site" {
 		t.Errorf("nested root: %+v", desc)
 	}
 }
@@ -600,95 +601,5 @@ func TestStorageRefusesNonBlockFiles(t *testing.T) {
 		if pe := toProtocolError(err); pe == nil || pe.Code != CodeInvalidBlock {
 			t.Errorf("%s: %v", file, err)
 		}
-	}
-}
-
-// ---------------------------------------------------------------- assets
-
-func (s *site) upload(name, contentType string, body []byte, method string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, "/assets/"+name, bytes.NewReader(body))
-	if contentType != "" {
-		r.Header.Set("Content-Type", contentType)
-	}
-	w := httptest.NewRecorder()
-	s.h.ServeAssets(w, r)
-	return w
-}
-
-func TestAssets(t *testing.T) {
-	s := newSite(t, false)
-	png := []byte{0x89, 'P', 'N', 'G'}
-	w := s.upload("banner.png", "image/png", png, "PUT")
-	if w.Code != 201 || w.Body.String() != `{"path":"/assets/banner.png"}` {
-		t.Fatalf("upload: %d %s", w.Code, w.Body)
-	}
-	if b, _ := os.ReadFile(filepath.Join(s.root, "public", "assets", "banner.png")); !bytes.Equal(b, png) {
-		t.Error("stored bytes")
-	}
-	w = s.upload("banner.png", "image/png", []byte{1}, "PUT")
-	var out struct{ Path string }
-	json.Unmarshal(w.Body.Bytes(), &out)
-	if w.Code != 201 || out.Path == "/assets/banner.png" || !strings.HasPrefix(out.Path, "/assets/banner-") || !strings.HasSuffix(out.Path, ".png") {
-		t.Errorf("a taken name gets a suffix: %s", out.Path)
-	}
-	if b, _ := os.ReadFile(filepath.Join(s.root, "public", "assets", "banner.png")); !bytes.Equal(b, png) {
-		t.Error("never overwrites")
-	}
-	for _, c := range []struct{ name, typ string }{
-		{"page.html", "text/html"}, {"evil.html", "image/png"}, {"evil.js", "image/jpeg"},
-		{"logo.svg", "image/svg+xml"}, {"data.json", "application/json"}, {"x.png", ""},
-	} {
-		if w := s.upload(c.name, c.typ, png, "PUT"); w.Code != 415 || !strings.Contains(w.Body.String(), `"code":-32600`) {
-			t.Errorf("%s as %s: %d", c.name, c.typ, w.Code)
-		}
-	}
-	if w := s.upload("Logo", "image/webp", png, "PUT"); w.Body.String() != `{"path":"/assets/Logo.webp"}` {
-		t.Errorf("extension added: %s", w.Body)
-	}
-	if w := s.upload("Photo.JPEG", "image/jpeg", png, "PUT"); w.Body.String() != `{"path":"/assets/Photo.jpeg"}` {
-		t.Errorf("extension lowercased: %s", w.Body)
-	}
-	if w := s.upload("x.png", "image/png", png, "POST"); w.Code != 405 || w.Header().Get("Allow") != "PUT" {
-		t.Errorf("POST: %d", w.Code)
-	}
-	if w := s.upload("empty.png", "image/png", nil, "PUT"); w.Code != 400 {
-		t.Errorf("empty: %d", w.Code)
-	}
-	if w := s.upload("", "image/png", png, "PUT"); w.Code != 400 {
-		t.Errorf("no name: %d", w.Code)
-	}
-	if w := s.upload("..%2F..%2Fescape.png", "image/png", png, "PUT"); w.Body.String() != `{"path":"/assets/escape.png"}` {
-		t.Errorf("stays inside the asset folder: %s", w.Body)
-	}
-	s.h.store.assetsMaxBytes = 3
-	if w := s.upload("big.png", "image/png", png, "PUT"); w.Code != 413 || !strings.Contains(w.Body.String(), "uploads are limited to 3 bytes") {
-		t.Errorf("too big: %d %s", w.Code, w.Body)
-	}
-}
-
-func TestSanitizeAssetName(t *testing.T) {
-	cases := map[string]string{
-		"Bänner (1).PNG":                        "Banner-1.PNG",
-		"a%20b.png":                             "a-b.png",
-		"dir/sub\\file.png":                     "file.png",
-		"...hidden.png":                         "hidden.png",
-		"--x--.png":                             "x.png",
-		"x-.png":                                "x.png",
-		"ｆｕｌｌｗｉｄｔｈ.png":                         "fullwidth.png",
-		"%E0%A4%A.png":                          "E0-A4-A.png",
-		"..":                                    "",
-		"日本語":                                   "",
-		"a" + strings.Repeat("b", 300) + ".png": "a" + strings.Repeat("b", 195) + ".png",
-	}
-	for in, want := range cases {
-		if got := sanitizeAssetName(in); got != want {
-			t.Errorf("sanitizeAssetName(%q) = %q, want %q", in, got, want)
-		}
-	}
-	if got := suffixedAssetName("banner.jpg"); len(got) != len("banner-abcdef.jpg") || !strings.HasPrefix(got, "banner-") || !strings.HasSuffix(got, ".jpg") {
-		t.Errorf("suffix: %s", got)
-	}
-	if got := suffixedAssetName("noext"); !strings.HasPrefix(got, "noext-") || len(got) != len("noext-abcdef") {
-		t.Errorf("suffix without extension: %s", got)
 	}
 }
