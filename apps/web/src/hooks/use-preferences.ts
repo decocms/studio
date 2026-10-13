@@ -19,6 +19,9 @@ interface Preferences {
    * renamed lane can't resurrect the wrong column.
    */
   shownTaskBoardLanes: string[];
+  /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
+   *  the same reason as `shownTaskBoardLanes`. */
+  collapsedTaskBoardLanes: string[];
   /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
   projectFirstNav: boolean;
 }
@@ -30,6 +33,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   language: detectLocale(),
   shownTaskBoardLanes: [],
+  collapsedTaskBoardLanes: [],
   projectFirstNav: false,
 };
 
@@ -107,6 +111,9 @@ export function usePreferences() {
       }
       if (!Array.isArray(merged.shownTaskBoardLanes)) {
         merged.shownTaskBoardLanes = [];
+      }
+      if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
+        merged.collapsedTaskBoardLanes = [];
       }
       merged.projectFirstNav = merged.projectFirstNav === true;
       return merged;

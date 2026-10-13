@@ -31,7 +31,7 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
     runtime: "sandbox",
     githubSite: "loading",
     sandboxSite: "v8",
-    // A project the server last found v8 (its marker): a failing daemon waits.
+    // A project the server last found v8 (its marker): a failing sandbox read waits.
     markedV8: true,
   };
 
@@ -65,30 +65,22 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
         { ...github, githubSite: "not-owned" },
         "site-not-owned-github",
       ],
-      // Sandbox mode: the daemon's working tree decides; main plays no part.
+      // Sandbox mode: the working tree decides; main plays no part.
       [
         "sandbox, booting",
         { ...sandbox, sandboxSite: "unavailable" },
         "pending",
       ],
-      [
-        "sandbox, daemon loading",
-        { ...sandbox, sandboxSite: "loading" },
-        "pending",
-      ],
+      ["sandbox, loading", { ...sandbox, sandboxSite: "loading" }, "pending"],
       ["sandbox, working tree v8", sandbox, "protocol-sandbox"],
+      ["sandbox, working tree v7", { ...sandbox, sandboxSite: "v7" }, "legacy"],
       [
-        "sandbox, working tree v7 (or an older daemon)",
-        { ...sandbox, sandboxSite: "v7" },
-        "legacy",
-      ],
-      [
-        "sandbox, daemon failing before any answer (undecided, retried)",
+        "sandbox, failing before any answer (undecided, retried)",
         { ...sandbox, sandboxSite: "error" },
         "retrying-sandbox",
       ],
       [
-        "sandbox, daemon failing before any answer, project not marked v8 (the v7 sandbox editor, as on main)",
+        "sandbox, failing before any answer, project not marked v8 (the v7 sandbox editor, as on main)",
         { ...sandbox, sandboxSite: "error", markedV8: false },
         "legacy",
       ],
@@ -221,7 +213,7 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
       }
     });
 
-    test("Sandbox, a daemon failing before it answered: undecided, then its answer", () => {
+    test("Sandbox, a working tree failing before it answered: undecided, then its answer", () => {
       for (const final of ["v8", "v7"] as const) {
         const decisions = assertNoSwitch([
           { ...sandbox, sandboxSite: "loading" },
@@ -233,7 +225,7 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
       }
     });
 
-    test("Sandbox, an unmarked project whose daemon fails before it answered: the v7 sandbox editor, as on main; a later v8 answer takes over", () => {
+    test("Sandbox, an unmarked project whose working tree fails before it answered: the v7 sandbox editor, as on main; a later v8 answer takes over", () => {
       const unmarked = { ...sandbox, markedV8: false };
       expect(
         [
@@ -320,7 +312,7 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
     });
   });
 
-  test("the probes: the daemon in Sandbox mode, the GitHub backend only for a v8 main", () => {
+  test("the probes: the working tree in Sandbox mode, the GitHub backend only for a v8 main", () => {
     const probes = (
       mode: "github" | "sandbox" | "local",
       mainSchema: Answer,
@@ -656,7 +648,7 @@ describe("serveAssetUploadOrigin", () => {
   });
 
   test("hosted and sandbox projects upload to Studio's file storage", () => {
-    // Even a daemon or storage that still advertised an upload folder.
+    // Even a storage that still advertised an upload folder.
     expect(serveAssetUploadOrigin(protocol("sandbox"), serve)).toBeNull();
     expect(serveAssetUploadOrigin(protocol("github"), serve)).toBeNull();
     expect(serveAssetUploadOrigin(protocol("sandbox", null), null)).toBeNull();

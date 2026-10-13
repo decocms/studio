@@ -7,7 +7,7 @@
  * - `protocol`: the Blocks content protocol, which needs only the committed
  *   schema and `.deco/blocks` and never runs the site's code. Served by a
  *   `deco serve` on the editor's machine (`local`), by Studio's GitHub backend
- *   (`github`), or by a sandbox's daemon over its working tree (`sandbox`).
+ *   (`github`), or by Studio over a sandbox's working tree (`sandbox`).
  *
  * Pure: the selection and the poll merge are unit-tested without mocks.
  */
@@ -32,7 +32,7 @@ export type ContentBackend =
   /**
    * Not decided yet: the schema of the editor's mode is still being read.
    * `retrying` when that read failed and is retried (GitHub couldn't be
-   * read, or the sandbox's daemon didn't answer): the site may be v7 or v8,
+   * read, or the sandbox didn't answer): the site may be v7 or v8,
    * so it is neither the v8 `unavailable` state nor the v7 editor; the
    * editor waits with a "can't reach it, trying again" note.
    */
@@ -119,7 +119,7 @@ export function newBlocksEditorEnabled(input: {
  * and its draft exists only once the first edit creates it. Never a v7 site,
  * never while main's answer is still loading (the preview holds a neutral
  * loader until then, `deciding`); never Localhost (a connected `deco serve`)
- * nor a sandbox's daemon, nor a v8 site this project doesn't own.
+ * nor a sandbox, nor a v8 site this project doesn't own.
  */
 export function hostedDraftSession(
   backend: ContentBackend,
@@ -213,21 +213,22 @@ export function contentMode(input: {
  *   (`localServeBackend`: a non-v8 one is a guided "not v8" state). A stored
  *   connection waits for main's answer (`serveConnectionUndecided`): only a
  *   v8 site uses one.
- * - **Sandbox** (the session has a sandbox): the Go daemon's working tree
- *   decides. Its schema v8 → `protocol-sandbox` (content protocol); not v8, or
- *   an older daemon without the protocol → `legacy` (the v7 sandbox path).
- *   Waits (`pending`) until the working tree is there and the daemon answers.
+ * - **Sandbox** (the session has a sandbox): the sandbox's working tree
+ *   decides (Studio reads it through the sandbox's file routes). Its schema v8
+ *   → `protocol-sandbox` (content protocol); not v8 → `legacy` (the v7
+ *   sandbox path). Waits (`pending`) until the working tree is there and
+ *   answers.
  * - **GitHub** (otherwise): main's schema decides, read by the server
  *   (`mainSchema`). Not v8 → `legacy`: content from the branch, exactly as on
  *   main. v8 → `protocol-github`: content is main plus the CDN draft (the
  *   hosted CMS), once Studio's GitHub backend answers; a v8 site another
  *   project owns is `site-not-owned-github` (guided, not retried).
  *
- * A failed read of the schema that decides (main's, or the daemon's before
- * it ever answered) is `retrying-*` only on a project the server last found
+ * A failed read of the schema that decides (main's, or the working tree's
+ * before it ever answered) is `retrying-*` only on a project the server last found
  * v8 (its marker): still undecided, the editor waits and retries, and shows
  * neither editor. On any other project it is v7 (main's answer reads `v7`,
- * `useMainSchemaV8`; a failing daemon is `legacy`), so a site whose schema
+ * `useMainSchemaV8`; a failing working-tree read is `legacy`), so a site whose schema
  * can't be confirmed v8 gets the v7 editor as on main. Only
  * a site already known to be v8 whose content backend then fails is
  * `unavailable-*` (the v8 editor's retrying state).
@@ -251,14 +252,14 @@ export function selectContentBackend(input: {
    */
   githubSite: SchemaAnswer | "not-owned";
   /**
-   * The sandbox's daemon probe: is the working tree's schema a v8 one?
+   * The sandbox probe: is the working tree's schema a v8 one?
    * `unavailable` until the working tree is there (the sandbox is booting).
    */
   sandboxSite?: SchemaAnswer | "unavailable";
   /**
    * The project's `blocksMajor` marker (`isBlocksV8Project`): the server
    * last found main v8. A hint only, never a v8 answer: it decides just
-   * whether a daemon that failed before it ever answered is waited on
+   * whether a sandbox that failed before it ever answered is waited on
    * (marked) or treated as v7 (anything else, as on main).
    */
   markedV8?: boolean;
@@ -271,10 +272,10 @@ export function selectContentBackend(input: {
     const site = input.sandboxSite;
     if (site === "v8") return "protocol-sandbox";
     if (site === "v7") return "legacy";
-    // The daemon never answered (a v8 answer is kept through a failed
+    // The sandbox never answered (a v8 answer is kept through a failed
     // refetch, so this is a site not known yet). Only a project the server
     // last found v8 (its marker) waits, undecided; any other one gets the v7
-    // sandbox editor, as on main (which never waited on the daemon), and a
+    // sandbox editor, as on main (which never waited on the sandbox), and a
     // v8 answer that arrives later takes over.
     if (site === "error") {
       return input.markedV8 ? "retrying-sandbox" : "legacy";
@@ -297,7 +298,7 @@ export function selectContentBackend(input: {
 }
 
 /**
- * Which background probes `useContentBackend` runs: the sandbox's daemon in
+ * Which background probes `useContentBackend` runs: the sandbox's protocol in
  * Sandbox mode once its working tree is there (v7 and v8 alike: its schema
  * decides), Studio's GitHub backend in GitHub mode once main is known to be
  * v8. A v7 site in GitHub mode makes no probe: only main's (cached) schema

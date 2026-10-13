@@ -1,45 +1,38 @@
 import { describe, expect, it } from "bun:test";
 import { Hono, type Context } from "hono";
-import { proxyContentRpc } from "./sandbox-proxy";
+import { serveSandboxContent } from "./sandbox-proxy";
 
-type Handler = typeof proxyContentRpc;
+type Handler = typeof serveSandboxContent;
 type VmContext = Parameters<Handler>[0];
 
-interface Sent {
-  claimName: string;
-  path: string;
-  method: string;
-  contentType: string | null;
-  body: Uint8Array;
-}
-
 /**
- * The two content-protocol routes behind a claim like `resolveVmClaim` sets,
- * with a runner that records what reached it.
+ * The content-protocol route behind a claim like `resolveVmClaim` sets, with a
+ * runner that records which daemon routes were called.
  */
-function app(runtime: "sandbox" | "cms", answer: Response) {
-  const sent: Sent[] = [];
+function app(runtime: "sandbox" | "cms") {
+  const sent: string[] = [];
   const runner = {
-    proxyDaemonRequest: async (
-      claimName: string,
-      path: string,
-      init: { method: string; headers: Headers; body: BodyInit | null },
-    ) => {
-      sent.push({
-        claimName,
-        path,
-        method: init.method,
-        contentType: init.headers.get("content-type"),
-        body: new Uint8Array(await new Response(init.body).arrayBuffer()),
-      });
-      return answer;
+    proxyDaemonRequest: async (_claimName: string, path: string) => {
+      sent.push(path);
+      if (path === "/_sandbox/bash") {
+        return Response.json({
+          stdout: "@meta schema.gen.json h\n",
+          exitCode: 0,
+        });
+      }
+      if (path === "/_sandbox/read") {
+        return Response.json({
+          kind: "text",
+          content: '1\t{"blocksMajor":8,"manifest":{"blocks":{}},"schema":{}}',
+        });
+      }
+      return Response.json({ error: `Not found: ${path}` }, { status: 404 });
     },
-    adoptLiveClaim: async () => false,
   };
   const hono = new Hono();
   hono.use("/:virtualMcpId/:branch/*", async (c, next) => {
     (c as unknown as Context).set("vmClaim", {
-      claimName: "claim-a",
+      claimName: `claim-${runtime}`,
       callerUserId: "u1",
       runner: runtime === "cms" ? null : runner,
       virtualMcpId: c.req.param("virtualMcpId"),
@@ -52,56 +45,37 @@ function app(runtime: "sandbox" | "cms", answer: Response) {
     });
     await next();
   });
-  const route = (h: Handler) => (c: Context) => h(c as unknown as VmContext);
-  hono.post("/:virtualMcpId/:branch/rpc", route(proxyContentRpc));
+  hono.all("/:virtualMcpId/:branch/rpc", (c) =>
+    serveSandboxContent(c as unknown as VmContext),
+  );
   return { hono, sent };
 }
 
-const rpcAnswer = () =>
-  new Response('{"jsonrpc":"2.0","id":1,"result":{}}', {
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-
-describe("content protocol proxy", () => {
-  it("forwards an rpc request's JSON body to the daemon's /_sandbox/rpc", async () => {
-    const { hono, sent } = app("sandbox", rpcAnswer());
-    const body = '{"jsonrpc":"2.0","id":1,"method":"describe"}';
+describe("sandbox content protocol route", () => {
+  it("runs the protocol in Studio over the daemon's file routes", async () => {
+    const { hono, sent } = app("sandbox");
     const res = await hono.request("/vm1/main/rpc", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body,
+      body: '{"jsonrpc":"2.0","id":1,"method":"schema.get"}',
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ jsonrpc: "2.0", id: 1, result: {} });
+    const body = (await res.json()) as { result: { schema: unknown } };
+    expect(body.result.schema).toMatchObject({ blocksMajor: 8 });
     expect(res.headers.get("cache-control")).toContain("no-store");
-    expect(sent).toHaveLength(1);
-    expect(sent[0]!.path).toBe("/_sandbox/rpc");
-    expect(sent[0]!.method).toBe("POST");
-    expect(sent[0]!.contentType).toBe("application/json");
-    expect(new TextDecoder().decode(sent[0]!.body)).toBe(body);
+    expect(sent).toEqual(["/_sandbox/bash", "/_sandbox/read"]);
+    expect(sent).not.toContain("/_sandbox/rpc");
   });
 
-  it("passes the daemon's protocol errors through unchanged", async () => {
-    const { hono } = app(
-      "sandbox",
-      new Response(
-        '{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"use POST"}}',
-        { status: 405, headers: { "content-type": "application/json" } },
-      ),
-    );
-    const res = await hono.request("/vm1/main/rpc", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
+  it("answers a non-POST itself (405), as the protocol requires", async () => {
+    const { hono, sent } = app("sandbox");
+    const res = await hono.request("/vm1/main/rpc", { method: "GET" });
     expect(res.status).toBe(405);
-    expect(((await res.json()) as { error: { code: number } }).error.code).toBe(
-      -32600,
-    );
+    expect(sent).toHaveLength(0);
   });
 
   it("answers 404 for a sandbox-less session, with no daemon call", async () => {
-    const { hono, sent } = app("cms", rpcAnswer());
+    const { hono, sent } = app("cms");
     const res = await hono.request("/vm1/main/rpc", {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -39,6 +39,9 @@ export const taskBoard = {
   "taskBoard.config.statusInReview": "Em Revisão",
   "taskBoard.config.statusPostDeployValidation": "Validação Pós Deploy",
   "taskBoard.config.statusTodo": "A Fazer",
+  "taskBoard.config.statusQa": "QA",
+  "taskBoard.config.statusCustomerApproval": "Aprovação do Cliente",
+  "taskBoard.config.statusReadyForDeployment": "Pronto para Deploy",
   "taskBoard.taskBoard.assignedToSuperAgent": "Atribuído ao Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Atribuído ao Super Agent por {name}",
@@ -79,6 +82,10 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
   "taskBoard.taskBoard.hideColumn": "Ocultar",
+  "taskBoard.taskBoard.collapseColumn": "Recolher",
+  "taskBoard.taskBoard.collapseColumnAriaLabel": "Recolher {lane}",
+  "taskBoard.taskBoard.expandColumn": "Expandir",
+  "taskBoard.taskBoard.expandColumnAriaLabel": "Expandir {lane}",
   "taskBoard.agenticSetup.button": "Configuração com agente",
   "taskBoard.agenticSetup.message":
     "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",
