@@ -12,12 +12,24 @@ type VmContext = Parameters<Handler>[0];
 function app(runtime: "sandbox" | "cms") {
   const sent: string[] = [];
   const runner = {
-    proxyDaemonRequest: async (_claimName: string, path: string) => {
+    proxyDaemonRequest: async (
+      _claimName: string,
+      path: string,
+      init: { body?: unknown },
+    ) => {
       sent.push(path);
       if (path === "/_sandbox/bash") {
         return Response.json({
-          stdout: "@meta schema.gen.json h\n",
+          stdout: "@file /tmp/studio-deco-scan.x/out\n",
           exitCode: 0,
+        });
+      }
+      const read = JSON.parse(String(init.body ?? "{}")) as { path?: string };
+      if (path === "/_sandbox/read" && read.path?.startsWith("/tmp/")) {
+        // The listing the scan wrote: the schema's hash, then its end.
+        return Response.json({
+          kind: "text",
+          content: `1\t${"a".repeat(40)} schema.gen.json\n2\t@end\n3\t`,
         });
       }
       if (path === "/_sandbox/read") {
@@ -63,7 +75,11 @@ describe("sandbox content protocol route", () => {
     const body = (await res.json()) as { result: { schema: unknown } };
     expect(body.result.schema).toMatchObject({ blocksMajor: 8 });
     expect(res.headers.get("cache-control")).toContain("no-store");
-    expect(sent).toEqual(["/_sandbox/bash", "/_sandbox/read"]);
+    expect(sent).toEqual([
+      "/_sandbox/bash",
+      "/_sandbox/read",
+      "/_sandbox/read",
+    ]);
     expect(sent).not.toContain("/_sandbox/rpc");
   });
 
