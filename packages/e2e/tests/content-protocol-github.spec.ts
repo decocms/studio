@@ -1185,12 +1185,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
           { timeout: 30_000 },
         )
         .toBe(true);
+      // `<draft>@<etag>`: the frame renders the draft (not `__draft=off`).
+      const showsDraft = (u: string) => /__draft=[^&]*(%40|@)/.test(u);
       await expect
-        .poll(() => frameUrls.some((u) => u.includes("__draft=")), {
-          timeout: 30_000,
-        })
+        .poll(() => frameUrls.some(showsDraft), { timeout: 30_000 })
         .toBe(true);
-      const editedFrame = frameUrls.at(-1)!;
+      const editedFrame = frameUrls.filter(showsDraft).at(-1)!;
 
       await page.getByRole("button", { name: "Review & Publish" }).click();
       const dialog = page.getByRole("dialog");
