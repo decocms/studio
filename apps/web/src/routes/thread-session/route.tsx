@@ -21,10 +21,7 @@ import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
+import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   useThreadActions,
@@ -47,13 +44,10 @@ import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-threa
 import { getActiveRepository } from "@/lib/repository-binding";
 import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
 import {
+  nextDraftName,
   nextReleaseColor,
   useReleases,
 } from "@/components/thread/repository/use-releases";
-import {
-  draftBaseName,
-  nextDraftName,
-} from "@/components/thread/repository/draft-name";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
@@ -269,12 +263,18 @@ function VmEventsBridge({
     if (!adoptBranchEligible || !activeTask) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't mint twice
     adoptedBranchForThreadRef.current = activeTask.id;
-    setCurrentTaskBranch(generateBranchName(branchUserLabel(session?.user)));
+    setCurrentTaskBranch(
+      generateBranchName(
+        // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
+        // would let Better Auth's empty display name through and slug to "user".
+        session?.user?.name || session?.user?.email?.split("@")[0],
+      ),
+    );
   }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
 
   const sessionState = useSessionRuntime(virtualMcpId);
 
-  // Auto-name a fresh draft after its creator ("Ana's draft", then "Ana's draft 2"); one write per branch per tab, like the guards above.
+  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
   const { releases: draftReleases, createRelease: createDraftRelease } =
@@ -296,7 +296,7 @@ function VmEventsBridge({
       branch: currentBranch,
       name: nextDraftName(
         draftReleases,
-        draftBaseName(t, branchUserLabel(session?.user)),
+        t("thread.branchPicker.defaultVersionName"),
       ),
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
@@ -308,7 +308,6 @@ function VmEventsBridge({
     draftReleases,
     createDraftRelease,
     userId,
-    session,
     t,
   ]);
 

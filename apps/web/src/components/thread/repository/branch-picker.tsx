@@ -61,8 +61,12 @@ import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useOpenPrs } from "./use-pr-data.ts";
-import { draftBaseName, nextDraftName } from "./draft-name.ts";
-import { nextReleaseColor, releaseDotClass, useReleases } from "./use-releases";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  releaseDotClass,
+  useReleases,
+} from "./use-releases";
 
 interface Props {
   virtualMcpId: string;
@@ -242,7 +246,10 @@ export function BranchPicker({
     const branch = generateBranchName(userLabel);
     createRelease({
       branch,
-      name: nextDraftName(releases, draftBaseName(t, userLabel)),
+      name: nextDraftName(
+        releases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
       color: nextReleaseColor(releases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
@@ -433,7 +440,10 @@ export function BranchPicker({
                     onRename={() => {
                       setEditing(value);
                       setEditName(
-                        nextDraftName(releases, draftBaseName(t, userLabel)),
+                        nextDraftName(
+                          releases,
+                          t("thread.branchPicker.defaultVersionName"),
+                        ),
                       );
                     }}
                   />
