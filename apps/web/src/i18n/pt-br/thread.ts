@@ -213,7 +213,7 @@ export const thread = {
   "thread.publishPopover.submitForReview": "Enviar para revisão",
   "thread.publishPopover.submitOneForReview": "Enviar 1 alteração para revisão",
   "thread.publishPopover.submitting": "Enviando…",
-  "thread.publishPopover.versionNote": "Nota da versão",
+  "thread.publishPopover.versionNote": "Nota da release",
   "thread.publishPopover.updatesPullRequest":
     "Atualiza o pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",

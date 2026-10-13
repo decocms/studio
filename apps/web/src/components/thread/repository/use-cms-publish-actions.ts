@@ -109,7 +109,7 @@ export function useCmsPublishActions(
   const noteParts = () =>
     publishNoteParts(
       note,
-      // A hosted site's notes are the Versions screen's titles: never a
+      // A hosted site's notes are the Releases screen's titles: never a
       // branch name there.
       hosted
         ? authorName
@@ -147,7 +147,7 @@ export function useCmsPublishActions(
   /** Saved on main is done: the popover closes with one toast. */
   const settleHosted = async (result: HostedPublishResult) => {
     notifyHostedPublish(t, result, () => void goLive());
-    // A mounted Versions screen shows the new version and what is live.
+    // A mounted Releases screen shows the new release and what is live.
     void invalidateVersions();
     onOpenChange(false);
     await quietly(onPublished);

@@ -95,7 +95,7 @@ describe("one toast per publish", () => {
     let retried = 0;
     const before = toast.getToasts().length;
     toastPublishFailed(t, {
-      headline: "Couldn't publish this version.",
+      headline: "Couldn't publish this release.",
       detail: "latest-update-failed",
       retry: () => {
         retried++;
@@ -109,9 +109,9 @@ describe("one toast per publish", () => {
     expect(action?.label).toBe("Try again");
     // The headline never carries the developer detail.
     expect((failed[0] as { title?: unknown }).title).toBe(
-      "Couldn't publish this version.",
+      "Couldn't publish this release.",
     );
-    toastPublished(t, "This version is live.");
+    toastPublished(t, "This release is live.");
     const shown = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
@@ -126,7 +126,7 @@ describe("one toast per publish", () => {
   test("Try again keeps the toast, as Publishing…, until the outcome", () => {
     let retried = 0;
     toastPublishFailed(t, {
-      headline: "Couldn't publish this version.",
+      headline: "Couldn't publish this release.",
       retry: () => {
         retried++;
       },
@@ -152,7 +152,7 @@ describe("one toast per publish", () => {
     expect(shown).toHaveLength(1);
     expect((shown[0] as { type?: string }).type).toBe("loading");
     expect((shown[0] as { action?: unknown }).action).toBeUndefined();
-    toastPublished(t, "This version is live.");
+    toastPublished(t, "This release is live.");
     const [done] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
