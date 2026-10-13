@@ -39,7 +39,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
-import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
+import { useContentSyncBusy } from "../../sections-editor/content-sync.ts";
 import {
   useDraftPointer,
   useFastPreviewDraftUrl,
@@ -299,8 +299,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     },
   });
 
-  /** Same in-flight signal the preview's autosave indicator reads. */
-  const saving = useDecofileWriting(org.slug, virtualMcpId, branch ?? "");
+  /**
+   * A content change is saving or its preview is reloading: the same state
+   * the preview's progress bar reads (content-sync.ts).
+   */
+  const saving = useContentSyncBusy(org.slug, virtualMcpId);
 
   /**
    * Only the tail of the publish — the branch switch that follows the merge.

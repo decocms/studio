@@ -29,7 +29,7 @@ import {
   type SchemaGetResult,
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
-import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
+import { externalContentChange, runContentChange } from "./content-sync";
 import {
   blockKeysOfWrite,
   mergePolledBlocks,
@@ -58,10 +58,6 @@ export interface ContentRevisions {
   /** The blocks revision (the branch head on GitHub). */
   revision?: string;
   schemaVersion?: string;
-}
-
-interface ProtocolParams extends DecofileScopeParams {
-  threadId?: string | null;
 }
 
 /** The cache entry of a protocol project's schema (a `useLiveMeta` key). */
@@ -234,66 +230,77 @@ async function readContent(
   if (!(meta instanceof ContentProtocolError)) {
     queryClient.setQueryData(metaKey, meta);
   }
+  // A revision this editor didn't write (its writes adopt theirs): someone
+  // else changed the content, so the rest of the editor catches up too.
+  if (
+    !list.notModified &&
+    currentBlocks &&
+    seen?.revision &&
+    list.revision !== seen.revision
+  ) {
+    externalContentChange({
+      queryClient,
+      orgSlug: params.orgSlug,
+      virtualMcpId: params.virtualMcpId,
+      branch: params.branch,
+      backend,
+      cacheKey,
+    });
+  }
   return { blocks, meta };
 }
 
 /**
- * One `blocks.apply`; adopts the returned revision. On GitHub the save
- * rewrote the project's CDN draft, so the publish status and the draft
- * pointer (`useProtocolDraft`, whose version is the draft's ETag) are
- * refreshed. In a sandbox the save is a working-tree change, so the header's
- * status is refreshed.
+ * One `blocks.apply`, run as a content change (content-sync.ts): it adopts
+ * the returned revision, and the shared refresh re-reads what the write
+ * moved: on GitHub the CDN draft (the draft pointer, `useProtocolDraft`, whose
+ * version is the draft's ETag, so the preview reloads) and the publish
+ * status; in a sandbox the header's status.
  * `ifMatch` guards entries by version (`null`: only if it doesn't exist yet);
  * a failed guard rejects the whole patch with a Conflict.
+ * `kind`: an `edit` (the form's own save, whose hook updates the blocks
+ * cache) or a `discard` (the blocks cache takes the patch, and the open form
+ * re-reads it).
  */
 export async function applyProtocolPatch(
   queryClient: QueryClient,
   backend: ProtocolBackend,
-  params: ProtocolParams,
+  params: DecofileScopeParams,
   cacheKey: string,
   patch: DecofilePatchBody,
   ifMatch?: Record<string, string | null>,
+  kind: "edit" | "discard" = "edit",
 ): Promise<{ revision: string }> {
-  const result = await guarded(queryClient, backend, params, () =>
-    backend.client.blocksApply({
-      set: patch.set as Record<string, Record<string, unknown>> | undefined,
-      delete: patch.delete,
-      ...(ifMatch ? { ifMatch } : {}),
-    }),
+  return runContentChange(
+    {
+      queryClient,
+      orgSlug: params.orgSlug,
+      virtualMcpId: params.virtualMcpId,
+      branch: params.branch,
+      backend,
+      cacheKey,
+    },
+    {
+      kind,
+      ...(kind === "edit" ? {} : { patch }),
+      write: async () => {
+        const result = await guarded(queryClient, backend, params, () =>
+          backend.client.blocksApply({
+            set: patch.set as
+              | Record<string, Record<string, unknown>>
+              | undefined,
+            delete: patch.delete,
+            ...(ifMatch ? { ifMatch } : {}),
+          }),
+        );
+        queryClient.setQueryData<ContentRevisions>(
+          KEYS.contentRevision(cacheKey),
+          (seen) => ({ ...seen, revision: result.revision }),
+        );
+        return { revision: result.revision };
+      },
+    },
   );
-  queryClient.setQueryData<ContentRevisions>(
-    KEYS.contentRevision(cacheKey),
-    (seen) => ({ ...seen, revision: result.revision }),
-  );
-  if (backend.source === "github") {
-    void queryClient.invalidateQueries({
-      queryKey: KEYS.protocolDraftRead(
-        params.orgSlug,
-        params.virtualMcpId,
-        params.branch,
-      ),
-    });
-    await queryClient.invalidateQueries({
-      queryKey: sandboxGitStatusQueryKey({
-        orgSlug: params.orgSlug,
-        virtualMcpId: params.virtualMcpId,
-        branch: params.branch,
-        threadId: params.threadId ?? null,
-      }),
-    });
-  }
-  if (backend.source === "sandbox") {
-    // The save changed the working tree: the header's changes count moves.
-    void queryClient.invalidateQueries({
-      queryKey: sandboxGitStatusQueryKey({
-        orgSlug: params.orgSlug,
-        virtualMcpId: params.virtualMcpId,
-        branch: params.branch,
-        threadId: params.threadId ?? null,
-      }),
-    });
-  }
-  return { revision: result.revision };
 }
 
 /** What the session read answers for a hosted v8 project. */
@@ -308,7 +315,7 @@ interface HostedDraftPointer {
  * The `?__draft=` pointer of a project on the GitHub backend: its draft on
  * the delivery CDN, `<draft>@<etag>`, which the site's SDK revalidates on
  * every render. Read from the session's decofile GET, on load and again
- * after each save (see `applyProtocolPatch`). `params` is `null` for any
+ * after each content change (content-sync.ts). `params` is `null` for any
  * other backend; the pointer is null while there is no draft.
  */
 export function useProtocolDraft(

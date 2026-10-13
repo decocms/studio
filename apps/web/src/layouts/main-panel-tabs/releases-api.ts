@@ -4,11 +4,10 @@
  * what latest.json names (Current), and "Make current".
  */
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { runContentChange } from "@/components/sections-editor/content-sync";
+import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync";
 import { KEYS } from "@/lib/query-keys";
 
 export interface ReleasePointer {
@@ -76,31 +75,30 @@ export function useReleases(orgSlug: string, virtualMcpId: string) {
   });
 }
 
-function useHostedWrite<TVars>(
-  orgSlug: string,
-  virtualMcpId: string,
-  request: (vars: TVars) => Promise<Response>,
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (vars: TVars) => readJson<unknown>(await request(vars)),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: KEYS.hostedReleases(orgSlug, virtualMcpId),
-      }),
-  });
-}
-
-/** "Make current": point latest.json at a commit's companion release. */
+/**
+ * "Make current": point latest.json at a commit's companion release. A
+ * content change (content-sync.ts): the releases list, the publish status
+ * and the preview refresh as after any other change, on a failure too.
+ */
 export function useMakeCurrent(orgSlug: string, virtualMcpId: string) {
-  return useHostedWrite(
+  const content = useContentSyncTarget({
     orgSlug,
     virtualMcpId,
-    (vars: { sha: string; confirm: boolean }) =>
-      fetch(hostedUrl(orgSlug, virtualMcpId, "releases/current"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(vars),
+    branch: useOptionalChatTask()?.currentBranch ?? null,
+  });
+  return useMutation({
+    mutationFn: (vars: { sha: string; confirm: boolean }) =>
+      runContentChange(content, {
+        kind: "rollback",
+        refreshOnError: true,
+        write: async () =>
+          readJson<unknown>(
+            await fetch(hostedUrl(orgSlug, virtualMcpId, "releases/current"), {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(vars),
+            }),
+          ),
       }),
-  );
+  });
 }

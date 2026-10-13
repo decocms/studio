@@ -16,6 +16,7 @@ import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
+import { runContentChange } from "./content-sync";
 import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
@@ -53,6 +54,47 @@ export function useDeleteBlock({
   const protocol = backend.kind === "protocol" ? backend : null;
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
 
+  /** A delete on any backend but the content protocol. */
+  const deleteLegacy = async (
+    blockKey: string,
+  ): Promise<{ ok: true; existed: boolean }> => {
+    // Local: no persistence — the optimistic cache removal is the delete.
+    if (localPreviewUrl) return { ok: true as const, existed: true };
+    if (fastPreviewActive) {
+      const draft = await patchDecofile(
+        { orgSlug, virtualMcpId, branch },
+        { delete: [blockKey] },
+      );
+      setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+      /**
+       * Same as use-save-block: the commit moved the head, refresh the
+       * header's branch meta in place of any interval polling — and await
+       * it, so observers of this mutation aren't released onto a status
+       * that is still the pre-delete one.
+       */
+      await queryClient.invalidateQueries({
+        queryKey: sandboxGitStatusQueryKey({
+          orgSlug,
+          virtualMcpId,
+          branch,
+          threadId,
+        }),
+      });
+      return { ok: true as const, existed: true };
+    }
+    const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
+    const res = await fetch(
+      buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "unlink"),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path }),
+      },
+    );
+    if (!res.ok) return throwResponseError(res, "Delete");
+    return res.json() as Promise<{ ok: true; existed: boolean }>;
+  };
+
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
@@ -61,47 +103,17 @@ export function useDeleteBlock({
         await applyProtocolPatch(
           queryClient,
           protocol,
-          { orgSlug, virtualMcpId, branch, threadId },
+          { orgSlug, virtualMcpId, branch },
           cacheKey,
           { delete: [blockKey] },
         );
         return { ok: true as const, existed: true };
       }
-      // Local: no persistence — the optimistic cache removal is the delete.
-      if (localPreviewUrl) return { ok: true as const, existed: true };
-      if (fastPreviewActive) {
-        const draft = await patchDecofile(
-          { orgSlug, virtualMcpId, branch },
-          { delete: [blockKey] },
-        );
-        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        /**
-         * Same as use-save-block: the commit moved the head, refresh the
-         * header's branch meta in place of any interval polling — and await
-         * it, so observers of this mutation aren't released onto a status
-         * that is still the pre-delete one.
-         */
-        await queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey({
-            orgSlug,
-            virtualMcpId,
-            branch,
-            threadId,
-          }),
-        });
-        return { ok: true as const, existed: true };
-      }
-      const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
-      const res = await fetch(
-        buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "unlink"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path }),
-        },
+      // Every other backend: the same pending state, with its own refresh.
+      return runContentChange(
+        { queryClient, orgSlug, virtualMcpId, branch, backend, cacheKey },
+        { kind: "edit", write: () => deleteLegacy(blockKey) },
       );
-      if (!res.ok) return throwResponseError(res, "Delete");
-      return res.json() as Promise<{ ok: true; existed: boolean }>;
     },
     onMutate: async ({ blockKey }) => {
       const queryKey = KEYS.decofile(cacheKey);

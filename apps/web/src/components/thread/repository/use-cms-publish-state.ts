@@ -72,6 +72,14 @@ export interface CmsPublishState {
   refresh: () => Promise<unknown>;
 }
 
+/** Every bodies entry of a project: what a content change makes stale. */
+export function cmsPublishBodiesQueryPrefix(
+  orgSlug: string,
+  virtualMcpId: string,
+) {
+  return ["cms-publish-bodies", orgSlug, virtualMcpId] as const;
+}
+
 function cmsPublishBodiesQueryKey(
   orgSlug: string,
   virtualMcpId: string,
@@ -81,9 +89,7 @@ function cmsPublishBodiesQueryKey(
   localWork: string | null,
 ) {
   return [
-    "cms-publish-bodies",
-    orgSlug,
-    virtualMcpId,
+    ...cmsPublishBodiesQueryPrefix(orgSlug, virtualMcpId),
     branch,
     baseBranch,
     headSha,

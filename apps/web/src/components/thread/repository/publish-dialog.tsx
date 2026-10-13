@@ -75,6 +75,7 @@ import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
+import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 
 export type { CmsPublishMode };
@@ -509,7 +510,6 @@ function CmsPublishContent({
 
   const {
     isPublishing,
-    isDiscarding,
     publishError,
     publishErrorDetail,
     submit,
@@ -520,6 +520,7 @@ function CmsPublishContent({
     target,
     note,
     allPaths,
+    diff: gitDiff,
     destinationHost,
     publishLockRef,
     onOpenChange,
@@ -529,6 +530,10 @@ function CmsPublishContent({
     hosted,
     authorName: session?.user?.name,
   });
+
+  // A content change is being written (a discard, or an edit still saving).
+  const isDiscarding =
+    useContentSyncState(orgSlug, virtualMcpId).phase === "saving";
 
   const canDiscard = (paths: readonly string[]) =>
     discardablePaths === null || paths.every((p) => discardablePaths.has(p));

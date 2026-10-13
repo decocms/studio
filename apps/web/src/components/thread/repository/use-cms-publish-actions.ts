@@ -1,8 +1,13 @@
 /**
  * The publish dialog's write side: one `submit` entry point that publishes or
  * submits for review depending on the mode, plus the two discard paths — and
- * the in-flight/error state they own. The sequence itself is shared with the
+ * the publish's in-flight/error state. The sequence itself is shared with the
  * sandbox runtime and lives in {@link ./publish-flow.ts}.
+ *
+ * On a hosted v8 site every write here is a content change (content-sync.ts):
+ * a discard writes main's version back through `blocks.apply`, and a publish
+ * or "Try again" refreshes the editor, the preview and the releases the same
+ * way an edit does. The other sites keep their git paths.
  */
 
 import type { MutableRefObject } from "react";
@@ -10,7 +15,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import { KEYS } from "@/lib/query-keys.ts";
+import { applyProtocolPatch } from "@/components/sections-editor/content-protocol-api.ts";
+import { runContentChange } from "@/components/sections-editor/content-sync.ts";
+import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync.ts";
+import { discardPatch } from "./discard-patch.ts";
 import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
 import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
 import type { PublishChange } from "./publish-change-summary.ts";
@@ -22,7 +30,7 @@ import {
   runSubmitForReviewFlow,
   type PublishTarget,
 } from "./publish-flow.ts";
-import { discardGitFiles } from "./sandbox-git-api.ts";
+import { discardGitFiles, type GitDiffResult } from "./sandbox-git-api.ts";
 import {
   HostedPublishError,
   type HostedPublishResult,
@@ -50,6 +58,8 @@ interface CmsPublishActionsArgs {
   note: string;
   /** Every changed path, from the manifest — what "discard all" reverts. */
   allPaths: string[];
+  /** The changes' bodies: a hosted discard writes their `from` side back. */
+  diff: GitDiffResult | null;
   /** Named in the success toast when publishing goes to a custom domain. */
   destinationHost: string | null;
   /** Held while a flow runs, so an outside click can't dismiss its progress. */
@@ -70,7 +80,6 @@ interface CmsPublishActionsArgs {
 
 interface CmsPublishActions {
   isPublishing: boolean;
-  isDiscarding: boolean;
   publishError: string | undefined;
   /** The developer detail behind `publishError`, for a Details disclosure. */
   publishErrorDetail: string | null;
@@ -88,6 +97,7 @@ export function useCmsPublishActions(
     target,
     note,
     allPaths,
+    diff,
     destinationHost,
     publishLockRef,
     onOpenChange,
@@ -100,7 +110,6 @@ export function useCmsPublishActions(
   const t = useT();
   const queryClient = useQueryClient();
   const [isPublishing, setIsPublishing] = useState(false);
-  const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
   const [publishErrorDetail, setPublishErrorDetail] = useState<string | null>(
     null,
@@ -127,28 +136,29 @@ export function useCmsPublishActions(
     }
   };
 
-  const invalidateVersions = () =>
-    queryClient.invalidateQueries({
-      queryKey: KEYS.hostedReleases(target.orgSlug, target.virtualMcpId),
-    });
+  const content = useContentSyncTarget({
+    orgSlug: target.orgSlug,
+    virtualMcpId: target.virtualMcpId,
+    branch: target.branch,
+  });
 
   /** "Try again": put the saved changes live (main's head), same toast. */
   const goLive = async () => {
     try {
-      await publishMainHead(target);
+      await runContentChange(content, {
+        kind: "publish",
+        refreshOnError: true,
+        write: () => publishMainHead(target),
+      });
       toastPublished(t, t("siteEditor.publish.changesLive"));
     } catch (error) {
       notifySavedNotPublished(t, error, () => void goLive());
-    } finally {
-      void invalidateVersions();
     }
   };
 
   /** Saved on main is done: the popover closes with one toast. */
   const settleHosted = async (result: HostedPublishResult) => {
     notifyHostedPublish(t, result, () => void goLive());
-    // A mounted Releases screen shows the new release and what is live.
-    void invalidateVersions();
     onOpenChange(false);
     await quietly(onPublished);
   };
@@ -159,7 +169,15 @@ export function useCmsPublishActions(
     setPublishError(undefined);
     setPublishErrorDetail(null);
     try {
-      await settleHosted(await publishHostedDraft(target, noteParts().message));
+      // A content change like any other: the editor, the preview and the
+      // releases catch up; on a failure too, since it may have saved.
+      const result = await runContentChange(content, {
+        kind: "publish",
+        reread: true,
+        refreshOnError: true,
+        write: () => publishHostedDraft(target, noteParts().message),
+      });
+      await settleHosted(result);
     } catch (error) {
       // Main is no longer v8: the editor goes back to waiting and decides
       // again on main's new answer.
@@ -172,7 +190,6 @@ export function useCmsPublishActions(
       const failure = hostedPublishFailure(t, error);
       setPublishError(failure.message);
       setPublishErrorDetail(failure.detail);
-      await refresh();
     } finally {
       publishLockRef.current = false;
       setIsPublishing(false);
@@ -248,33 +265,66 @@ export function useCmsPublishActions(
     }
   };
 
-  const discardFiles = async (filepaths: string[], success: string) => {
-    setIsDiscarding(true);
-    try {
-      await discardGitFiles(
-        {
-          orgSlug: target.orgSlug,
-          virtualMcpId: target.virtualMcpId,
-          branch: target.branch,
-          threadId: target.threadId,
-        },
-        filepaths,
-        target.fastPreview ? { fastPreview: true } : undefined,
+  /**
+   * A hosted v8 discard writes main's version back (`blocks.apply`); without
+   * the bodies to do that it asks the server to drop the draft's entries.
+   * Either way it is a content change: the editor, the preview and this list
+   * refresh as after an edit.
+   */
+  const discardHosted = async (filepaths: string[]) => {
+    const patch = discardPatch(filepaths, diff);
+    const backend = content.backend;
+    if (patch && backend?.kind === "protocol") {
+      await applyProtocolPatch(
+        queryClient,
+        backend,
+        target,
+        content.cacheKey ?? "",
+        patch,
+        undefined,
+        "discard",
       );
+      return;
+    }
+    await runContentChange(content, {
+      kind: "discard",
+      reread: true,
+      write: () => discardGitFiles(target, filepaths, { fastPreview: true }),
+    });
+  };
+
+  const discardFiles = async (filepaths: string[], success: string) => {
+    try {
+      if (hosted) {
+        await discardHosted(filepaths);
+      } else {
+        // Its git path, as before; only the pending state is shared.
+        await runContentChange(content, {
+          kind: "discard",
+          write: () =>
+            discardGitFiles(
+              {
+                orgSlug: target.orgSlug,
+                virtualMcpId: target.virtualMcpId,
+                branch: target.branch,
+                threadId: target.threadId,
+              },
+              filepaths,
+              target.fastPreview ? { fastPreview: true } : undefined,
+            ),
+        });
+      }
       toast.success(success);
-      await refresh();
+      if (!hosted) await refresh();
     } catch (error) {
       toast.error(t("siteEditor.discard.failed"), {
         description: errorDetailsDescription(t, errorDetail(error)),
       });
-    } finally {
-      setIsDiscarding(false);
     }
   };
 
   return {
     isPublishing,
-    isDiscarding,
     publishError,
     publishErrorDetail,
     // Hosted callers never pass review mode (no pull request to open).

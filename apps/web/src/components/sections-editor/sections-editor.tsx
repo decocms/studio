@@ -53,6 +53,7 @@ import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
 import { isProtocolProject } from "./content-backend";
+import { useContentSyncState } from "./content-sync";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -433,6 +434,9 @@ export function SectionsEditor({
   const [prevPageVariantSeedKey, setPrevPageVariantSeedKey] = useState<
     string | null
   >(null);
+  // Bumped by a content change this form didn't make (content-sync.ts).
+  const contentEpoch = useContentSyncState(orgSlug, virtualMcpId).epoch;
+  const [seenContentEpoch, setSeenContentEpoch] = useState(contentEpoch);
 
   if (!previewReady || decofileLoading || metaLoading) {
     return (
@@ -728,6 +732,49 @@ export function SectionsEditor({
           setSectionRuleFormValue(null);
         }
       }
+    }
+  }
+
+  // A discard, a publish or someone else's change rewrote the content: the
+  // open form re-reads its block, or its next autosave would send the old
+  // values back. Not while its own save is pending: that save is newer.
+  if (contentEpoch !== seenContentEpoch) {
+    setSeenContentEpoch(contentEpoch);
+    const ownSavePending =
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read once per content change: is an autosave timer armed
+      debounceRef.current !== null ||
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the section rule's timer
+      sectionRuleDebounceRef.current !== null ||
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the page rule's timer
+      ruleDebounceRef.current !== null ||
+      saveBlock.isPending ||
+      pageBlockSave.isPending;
+    if (!ownSavePending && selectedSectionIndex !== null) {
+      const rawSection = rawSections[selectedSectionIndex];
+      const parsed = parsedSections[selectedSectionIndex];
+      setFieldBreadcrumbs([]);
+      setFormResetKey((key) => key + 1);
+      if (!rawSection || !parsed) {
+        setSelectedSectionIndex(null);
+        setFormValue(null);
+        setActiveResolveType(null);
+      } else if (parsed.isMultivariate) {
+        applySectionVariant(
+          rawSection,
+          parsed,
+          activeSectionVariantIndex,
+          selectedSectionIndex,
+        );
+      } else {
+        const unwrapped = unwrapSection(rawSection, parsed, decofile);
+        setFormValue(unwrapped?.data ?? null);
+        setActiveResolveType(unwrapped?.resolveType ?? null);
+      }
+    }
+    if (!ownSavePending && editingSeo) {
+      setSeoFormValue(null);
+      setSeoRawOverride(undefined);
+      setSeoFormResetKey((key) => key + 1);
     }
   }
 
