@@ -128,6 +128,11 @@ export interface AutomationTrigger {
   api_key_id: string | null;
   /** For `board_column_transition`: the board column a card enters. */
   column_key: string | null;
+  /** For `board_column_transition`: which moves into the column count. */
+  from:
+    | { kind: "any" | "earlier" | "later" }
+    | { kind: "statuses"; statuses: string[] }
+    | null;
   created_at: string;
 }
 

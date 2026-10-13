@@ -219,6 +219,9 @@ export function TriggerCard({
                     ? t("automations.triggerCard.webhookPostToFire")
                     : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
             </span>
+            {isColumnTransition && trigger.from && (
+              <ColumnOrigin from={trigger.from} />
+            )}
             {!isCron &&
               !isWebhook &&
               !isColumnTransition &&
@@ -328,5 +331,30 @@ export function TriggerCard({
         description={t("automations.triggerCard.newWebhookTokenDescription")}
       />
     </>
+  );
+}
+
+/** Which moves into the column count; nothing for any column. */
+function ColumnOrigin({
+  from,
+}: {
+  from: NonNullable<AutomationTrigger["from"]>;
+}) {
+  const t = useT();
+  const text =
+    from.kind === "earlier"
+      ? t("automations.triggerCard.fromEarlier")
+      : from.kind === "later"
+        ? t("automations.triggerCard.fromLater")
+        : from.kind === "statuses"
+          ? t("automations.triggerCard.fromColumns", {
+              columns: from.statuses
+                .map((key) => laneHeader(key, t).label)
+                .join(", "),
+            })
+          : null;
+  if (!text) return null;
+  return (
+    <span className="text-xs text-muted-foreground/60 truncate">{text}</span>
   );
 }

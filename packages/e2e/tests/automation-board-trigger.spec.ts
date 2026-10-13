@@ -1,8 +1,9 @@
 /**
  * The `board_column_transition` trigger over the wire: an automation gets
  * one, reads it back with its column, and a trigger without a column is
- * refused; a card that settles in the column is fired on once, and a move
- * into a column nothing watches starts no settle wait.
+ * refused; the starter dialog adds one with its origin; a card that settles
+ * in the column is fired on once, and a move into a column nothing watches
+ * starts no settle wait.
  *
  * The run itself needs a model and a sandbox this tier does not have, so the
  * fire is asserted by its claim. Which moves fire is covered at the
@@ -162,5 +163,57 @@ test.describe("automation board column trigger", () => {
     } finally {
       await db.end();
     }
+  });
+
+  test("the starter dialog adds a trigger with its origin", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+    const agentId = `decopilot_${orgId}`;
+    const { id } = await callSelfMcpTool<{ id: string }>(
+      request,
+      orgSlug,
+      "AUTOMATION_CREATE",
+      {
+        name: "Fix what came back",
+        virtual_mcp_id: agentId,
+        messages: [
+          { role: "user", parts: [{ type: "text", text: "Fix it." }] },
+        ],
+      },
+    );
+
+    await page.goto(`/${orgSlug}/projects/${agentId}/automations/${id}`);
+    await page.getByRole("button", { name: /Add starter/i }).click();
+    await page
+      .getByRole("menuitem", { name: /When a card enters a column/i })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: "QA", exact: true }).click();
+    await dialog.getByRole("combobox").nth(1).click();
+    await page.getByRole("option", { name: "Specific columns" }).click();
+    const add = dialog.getByRole("button", { name: "Add starter" });
+    // A list with nothing in it would match no move.
+    await expect(add).toBeDisabled();
+    await dialog.getByRole("button", { name: /Pick columns/ }).click();
+    await page.getByRole("option", { name: "Customer Approval" }).click();
+    await page.keyboard.press("Escape");
+    await add.click();
+
+    await expect(page.getByText("When a card enters QA")).toBeVisible();
+    await expect(page.getByText("From Customer Approval")).toBeVisible();
+    const { automation } = await callSelfMcpTool<{
+      automation: { triggers: Trigger[] };
+    }>(request, orgSlug, "AUTOMATION_GET", { id });
+    expect(automation.triggers).toEqual([
+      expect.objectContaining({
+        type: "board_column_transition",
+        column_key: "qa",
+        from: { kind: "statuses", statuses: ["customer_approval"] },
+      }),
+    ]);
   });
 });
