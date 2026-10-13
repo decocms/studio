@@ -31,7 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Hono, type Context } from "hono";
 import { defineConformanceSuite } from "@decocms/blocks/protocol/conformance";
 import { blockFileName, serializeBlock } from "@decocms/blocks/protocol/keys";
@@ -234,17 +234,25 @@ const json = (status: number, body: unknown) =>
  */
 export function fakeDaemon(
   repoDir: string,
-  hooks: { beforeWrite?: (path: string) => void } = {},
+  hooks: {
+    beforeWrite?: (path: string) => void;
+    /** Runs once the file is written, as a call that fails after landing. */
+    afterWrite?: (path: string) => void;
+    /** Like the daemon's output ring: only the last bytes of stdout are kept. */
+    stdoutLimit?: number;
+  } = {},
 ): ProxyDaemonRequest {
   const inside = (path: string) => {
     const abs = resolve(repoDir, path);
     return relative(repoDir, abs).startsWith("..") ? null : abs;
   };
+  // `read` takes any absolute path, as the daemon's resolveReadPath does.
+  const readable = (path: string) => (isAbsolute(path) ? path : inside(path));
   return async (_claim, path, init) => {
     const body = JSON.parse(String(init.body ?? "{}"));
     switch (path) {
       case "/_sandbox/read": {
-        const abs = inside(body.path);
+        const abs = readable(body.path);
         if (!abs) return json(400, { error: "Path escapes project root" });
         if (!existsSync(abs)) {
           return json(400, { error: `File not found: ${body.path}` });
@@ -272,6 +280,7 @@ export function fakeDaemon(
         hooks.beforeWrite?.(body.path);
         mkdirSync(dirname(abs), { recursive: true });
         writeFileSync(abs, body.content);
+        hooks.afterWrite?.(body.path);
         return json(200, { ok: true, bytesWritten: body.content.length });
       }
       case "/_sandbox/unlink": {
@@ -286,12 +295,16 @@ export function fakeDaemon(
           cwd: repoDir,
           encoding: "utf8",
         });
+        const limit = hooks.stdoutLimit ?? Number.POSITIVE_INFINITY;
+        const truncated = Buffer.byteLength(run.stdout) > limit;
         return json(200, {
-          stdout: run.stdout,
+          stdout: truncated
+            ? Buffer.from(run.stdout).subarray(-limit).toString("utf8")
+            : run.stdout,
           stderr: run.stderr,
           exitCode: run.status ?? -1,
           timedOut: false,
-          truncated: false,
+          truncated,
         });
       }
       default:
@@ -555,6 +568,81 @@ export function defineSandboxContentSuites(
           "utf8",
         ),
       ).toBe(serializeBlock({ path: "/" }));
+    });
+  });
+
+  describe(`sandbox content protocol over a committed site (${label})`, () => {
+    let sandbox: SandboxUnderTest | null = null;
+    const route = sandboxRoute(() => sandbox!);
+    const git = (...args: string[]) => {
+      const run = spawnSync(
+        "git",
+        ["-c", "user.name=t", "-c", "user.email=t@t", ...args],
+        { cwd: sandbox!.repoDir, encoding: "utf8" },
+      );
+      if (run.status !== 0) throw new Error(run.stderr);
+    };
+    const blockFile = (name: string) =>
+      join(sandbox!.repoDir, ".deco", "blocks", `${name}.json`);
+    /** A poll after the listing reuse window, as the editor's next one is. */
+    const list = async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      const { result, error } = await rpc(route, "blocks.list");
+      expect(error).toBeUndefined();
+      return result;
+    };
+
+    beforeAll(async () => {
+      sandbox = await start();
+      seedSite(sandbox.repoDir, { schema: true });
+      for (const name of ["a", "b", "c"]) {
+        writeFileSync(blockFile(name), `{"v":"${name}0"}\n`);
+      }
+      git("init", "-q");
+      git("add", ".");
+      git("commit", "-qm", "site");
+    }, timeoutMs);
+    afterAll(async () => {
+      if (sandbox) await stop(sandbox);
+    }, timeoutMs);
+
+    test("versions committed, staged, edited and new files by their bytes", async () => {
+      const versions = () =>
+        Object.fromEntries(
+          ["a", "b", "c", "d"]
+            .filter((name) => existsSync(blockFile(name)))
+            .map((name) => [name, blob(readFileSync(blockFile(name)))]),
+        );
+      expect((await list()).versions).toEqual(versions());
+      // Same size, right after the commit: git's racy-entry check catches it.
+      writeFileSync(blockFile("a"), '{"v":"a1"}\n');
+      writeFileSync(blockFile("b"), '{"v":"b1"}\n');
+      git("add", ".deco/blocks/b.json");
+      writeFileSync(blockFile("d"), '{"v":"d0"}\n');
+      unlinkSync(blockFile("c"));
+      const listed = await list();
+      expect(listed.versions).toEqual(versions());
+      expect(listed.blocks.a).toEqual({ v: "a1" });
+      expect(listed.blocks.c).toBeUndefined();
+      // A protocol write over a committed file, then a listing of it.
+      const saved = await rpc(route, "blocks.apply", {
+        set: { b: { v: "b2" } },
+        ifMatch: { b: listed.versions.b },
+      });
+      expect(saved.error).toBeUndefined();
+      expect((await list()).versions).toEqual(versions());
+    });
+
+    test("hashes the bytes on disk when git converts them on checkout", async () => {
+      writeFileSync(
+        join(sandbox!.repoDir, ".gitattributes"),
+        "*.json eol=crlf\n",
+      );
+      writeFileSync(blockFile("crlf"), '{\r\n"v": 1\r\n}\r\n');
+      git("add", ".");
+      git("commit", "-qm", "crlf");
+      const listed = await list();
+      expect(listed.versions.crlf).toBe(blob(readFileSync(blockFile("crlf"))));
     });
   });
 
