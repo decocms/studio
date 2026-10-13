@@ -844,6 +844,53 @@ describe("JiraClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  // A site with more boards than the first pages hold reaches the rest by name.
+  it("lists boards page by page, filtered by name when searching", async () => {
+    const urls: URL[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string) => {
+      const parsed = new URL(url);
+      urls.push(parsed);
+      const startAt = Number(parsed.searchParams.get("startAt"));
+      return new Response(
+        JSON.stringify({
+          values: [
+            {
+              id: startAt + 1,
+              name: `Board ${startAt + 1}`,
+              type: "kanban",
+              location: { projectKey: "EX", projectName: "Example" },
+            },
+          ],
+          isLast: startAt > 0,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      const all = await client.listBoards();
+      expect(all.map((board) => board.id)).toEqual([1, 2]);
+      expect(urls.map((url) => url.searchParams.has("name"))).toEqual([
+        false,
+        false,
+      ]);
+
+      urls.length = 0;
+      await client.listBoards("Painel & Deco");
+      expect(urls[0]?.pathname).toBe("/rest/agile/1.0/board");
+      expect(urls[0]?.searchParams.get("name")).toBe("Painel & Deco");
+      expect(urls[0]?.searchParams.get("startAt")).toBe("0");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("JiraClient issue reads", () => {

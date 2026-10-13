@@ -574,7 +574,8 @@ export const KEYS = {
 
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
-  jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
+  jiraBoards: (orgId: string, query: string) =>
+    ["jira-boards", orgId, query] as const,
   jiraBoardColumns: (orgId: string, boardId: string | null) =>
     ["jira-board-columns", orgId, boardId] as const,
   jiraAutomations: (orgId: string) => ["jira-automations", orgId] as const,

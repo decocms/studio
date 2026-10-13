@@ -49,14 +49,16 @@ export function useDeleteJiraIntegration() {
   });
 }
 
-export function useJiraBoards(connected: boolean) {
+/** The first boards Jira lists, or with `query`, the boards whose name holds it. */
+export function useJiraBoards(connected: boolean, query = "") {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
-    queryKey: KEYS.jiraBoards(org.id),
+    queryKey: KEYS.jiraBoards(org.id, query),
     enabled: connected,
     staleTime: 60_000,
-    queryFn: async () => (await studio.call("JIRA_BOARDS_LIST", {})).boards,
+    queryFn: async () =>
+      (await studio.call("JIRA_BOARDS_LIST", query ? { query } : {})).boards,
   });
 }
 

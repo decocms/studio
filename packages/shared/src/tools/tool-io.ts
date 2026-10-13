@@ -6009,7 +6009,7 @@ export interface StudioToolIO {
     output: { deleted: boolean };
   };
   JIRA_BOARDS_LIST: {
-    input: { [x: string]: never };
+    input: { query?: string | undefined };
     output: {
       boards: {
         id: number;
