@@ -449,6 +449,27 @@ export function defineSandboxContentSuites(
       await rpc(withSchemaRoute, "blocks.apply", { delete: [name] });
     });
 
+    test("edits landing right after a poll never fail the next one", async () => {
+      // The agent writes while the editor polls and saves: every poll answers
+      // (never "kept changing"), and a save over the agent's edit conflicts.
+      const file = join(withSchema!.repoDir, ".deco", "blocks", "quick.json");
+      writeFileSync(file, '{"v":0}\n');
+      let version = (await rpc(withSchemaRoute, "blocks.list")).result.versions
+        .quick as string;
+      for (let v = 1; v <= 5; v++) {
+        writeFileSync(file, `{"v":${v}}\n`);
+        const listed = await rpc(withSchemaRoute, "blocks.list");
+        expect(listed.error).toBeUndefined();
+        const stale = await rpc(withSchemaRoute, "blocks.apply", {
+          set: { quick: { v: "editor" } },
+          ifMatch: { quick: version },
+        });
+        expect(stale.error?.data?.entries?.quick?.expected).toBe(version);
+        version = blob(readFileSync(file));
+      }
+      unlinkSync(file);
+    });
+
     test("sees edits made beside the editor (the agent, a terminal)", async () => {
       const file = join(withSchema!.repoDir, ".deco", "blocks", "beside.json");
       /** Polls as the editor does until `done` holds for the listing. */
