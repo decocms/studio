@@ -7,7 +7,6 @@ import {
   reviewCycleStart,
   reviewCycleVerdicts,
   type ReviewerKind,
-  shippedLane,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
@@ -15,17 +14,10 @@ import { recordTaskActivity } from "./activity";
 import {
   emitTaskBoardUpdated,
   handTaskToHuman,
-  parkReviewedCardForHuman,
+  moveApprovedCardToQa,
 } from "./run-reactions";
-import {
-  allEnabledReviewersVerifiedApproved,
-  conflictFromOutcome,
-  mergeLinkedPr,
-} from "./merge-pr";
-import { pickActivePr } from "./prs-get";
+import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
 import { verifyReviewToken } from "./review-token";
-import { reactToApprovedPrConflict } from "./conflict-reaction";
-import { TaskQuotaError } from "@/billing/task-quota";
 import { ensureReviewerCommented } from "./reviewer-comment";
 import { taskRunContextStore } from "./task-run-context";
 
@@ -91,17 +83,16 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
   name: "TASK_BOARD_REVIEW_DECISION",
   description:
     "Record a reviewer's decision for a task under review. `approve` marks the " +
-    "pull request approved by that reviewer (and, once EVERY enabled reviewer " +
-    "has approved, merges it when the org enabled auto-merge, advancing the " +
-    "task to Done); `request_changes` records your notes and hands the task to " +
-    "a human — review is single-pass, so it is not sent back to the Super Agent.",
+    "pull request approved by that reviewer and, once EVERY enabled reviewer " +
+    "has approved, moves the task to QA, where a person checks it; " +
+    "`request_changes` records your notes and hands the task to a person — " +
+    "review is single-pass, so it is not sent back to the Super Agent.",
   annotations: {
     title: "Review Decision",
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
-    // May merge a PR on GitHub.
-    openWorldHint: true,
+    openWorldHint: false,
   },
   inputSchema: z.object({
     taskBoardItemId: z.string(),
@@ -119,7 +110,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       .describe(
         "The reviewToken from your prompt — proves you are this reviewer. " +
           "Pass it through exactly; an approval without a valid token is " +
-          "recorded but does NOT count toward an automatic merge.",
+          "recorded but does NOT move the task on.",
       ),
     decision: z.enum(["approve", "request_changes"]),
     notes: z
@@ -134,11 +125,6 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
   }),
   outputSchema: z.object({
     status: TaskBoardItemStatusSchema,
-    merged: z
-      .boolean()
-      .describe(
-        "True when this approval completed the review and merged the PR.",
-      ),
   }),
   handler: async (
     {
@@ -175,8 +161,8 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     // Verify the caller is the reviewer it claims to be, against THIS task's
     // CURRENT cycle: the reviewToken must be the HMAC over (task, reviewer,
     // cycle). An unverified decision is still recorded (so a dropped token
-    // never stalls the flow) but won't count toward an automatic merge (see the
-    // verified gate below).
+    // never stalls the flow) but won't move the card on (see the verified gate
+    // below).
     //
     // ROLLOUT: runs dispatched before this deploy carry a random `rtok_<uuid>`
     // from `task_board_review_claims`, so fall back to the table lookup — also
@@ -242,7 +228,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       if (
         isDuplicateChangeRequest(history, reviewer, item.reviewCycleStartedAt)
       ) {
-        return { status: item.status, merged: false };
+        return { status: item.status };
       }
       await recordTaskActivity(ctx, {
         taskBoardItemId,
@@ -260,7 +246,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           taskBoardItemId,
           organizationId,
         )) ?? item;
-      return { status: handed.status, merged: false };
+      return { status: handed.status };
     }
 
     // approve — record first so the all-approved check below sees this verdict.
@@ -271,120 +257,20 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       data: { reviewer, notes, verified },
     });
 
-    // The reviewer is done with the card whatever happens next, so settle the
-    // lane before deciding about the merge: a verdict means it is a person's
-    // turn, and until this the card has been reading In Progress (migration
-    // 189). A merge moves it further along from here; a conflict bounce pulls
-    // it back — both are forward-only against In Review, so neither cares that
-    // it passed through.
-    await parkReviewedCardForHuman(ctx, item);
-
     // Only the LAST enabled reviewer to (verifiably) approve completes the
-    // review. Until then the task waits In Review for the other reviewer.
+    // review. Until then the task waits In Review; an approval that never
+    // verifies is handed to a person by the sweeper (`moveFinishedReviewToQa`).
     const complete = await allEnabledReviewersVerifiedApproved(
       ctx,
       organizationId,
       taskBoardItemId,
     );
-    if (!complete) {
-      const refreshed =
-        (await ctx.storage.taskBoard.getById(
-          taskBoardItemId,
-          organizationId,
-        )) ?? item;
-      emitTaskBoardUpdated(organizationId, refreshed);
-      return { status: refreshed.status, merged: false };
-    }
-
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    const autoMergeEnabled = settings?.flags?.auto_merge === true;
-    const humanRejectedDone = await ctx.storage.taskBoard.hasHumanRejectedDone(
-      taskBoardItemId,
-      organizationId,
-    );
-    const autoMerge = autoMergeEnabled && !humanRejectedDone;
-    const outcome = autoMerge
-      ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
-      : null;
-    const merged = outcome?.merged === true;
-
-    // A merge ships the task → Merged with the delivery lanes on, else Done.
-    if (merged) {
-      const shipped = shippedLane(settings?.flags);
-      // Re-read: `parkReviewedCardForHuman` above may have moved the card since
-      // `item` was loaded, and the timeline's `from` has to be where it
-      // actually came from.
-      const before =
-        (await ctx.storage.taskBoard.getById(
-          taskBoardItemId,
-          organizationId,
-        )) ?? item;
-      const done = await ctx.storage.taskBoard.update(
-        taskBoardItemId,
-        organizationId,
-        { status: shipped },
-        item.updatedBy,
-      );
-      await recordTaskActivity(ctx, {
-        taskBoardItemId,
-        action: "status_changed",
-        actorId: null,
-        data: { from: before.status, to: shipped },
-      });
-      emitTaskBoardUpdated(organizationId, done);
-      return { status: done.status, merged: true };
-    }
-
-    // No merge — the task is still In Review (we only move it on a merge). When
-    // auto-merge is on and the merge was blocked by a conflict specifically (not
-    // pending CI, not a transient failure), hand the PR back to the Super Agent
-    // to resolve it — the headless counterpart to the poll path in `prs-get`.
-    // The conflict fetch is a GitHub round-trip, so only pay it when auto-merge
-    // is on. Otherwise leave it In Review for a human.
-    const current =
+    const moved = complete ? await moveApprovedCardToQa(ctx, item) : null;
+    if (moved) return { status: moved.status };
+    const refreshed =
       (await ctx.storage.taskBoard.getById(taskBoardItemId, organizationId)) ??
       item;
-    if (autoMerge) {
-      const prs = await ctx.storage.taskBoard.listPrs(
-        taskBoardItemId,
-        organizationId,
-      );
-      // The same PR `mergeLinkedPr` just tried to merge — detect and act on it.
-      const pr = await pickActivePr(ctx, organizationId, prs);
-      // Best-effort, like the poll path in `prs-get` — a dispatch failure (no
-      // model configured, queue error) must never fail this decision: the
-      // approval + bounce-to-in_progress + activity write already committed,
-      // so surfacing an error here would report failure on an otherwise-
-      // successful reviewer decision while burning a conflict-resolution
-      // attempt with no run enqueued.
-      const resolving = pr
-        ? await reactToApprovedPrConflict(ctx, organizationId, current, {
-            pr: { number: pr.number, url: pr.url },
-            /**
-             * The merge attempt already classified its own refusal, so this
-             * costs no extra provider read — where it used to pay a
-             * mergeability call on every approval.
-             */
-            conflict: conflictFromOutcome(outcome),
-          }).catch((err) => {
-            // Same paywall exception as above — a TaskQuotaError must
-            // surface, not be swallowed as a routine auto-resolve failure.
-            if (err instanceof TaskQuotaError) throw err;
-            console.error("[task-board] conflict auto-resolve failed", err);
-            return false;
-          })
-        : false;
-      if (resolving) {
-        const bounced =
-          (await ctx.storage.taskBoard.getById(
-            taskBoardItemId,
-            organizationId,
-          )) ?? current;
-        // `reactToApprovedPrConflict` already emitted the update.
-        return { status: bounced.status, merged: false };
-      }
-    }
-    emitTaskBoardUpdated(organizationId, current);
-    return { status: current.status, merged: false };
+    emitTaskBoardUpdated(organizationId, refreshed);
+    return { status: refreshed.status };
   },
 });

@@ -20,7 +20,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { ProjectIcon } from "@/components/project-icon";
 import { useTaskBoardItemActions } from "@/hooks/use-task-board-items";
 import { useProjectScope } from "@/hooks/use-project-scope";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
 import {
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -103,7 +102,6 @@ export function NewTaskComposer() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<CanonicalColumnKey | null>(null);
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [priority, setPriority] = useState<TaskBoardItemPriority | null>(null);
   const [type, setType] = useState<TaskBoardItemType | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -218,7 +216,7 @@ export function NewTaskComposer() {
             ) : null
           }
         >
-          {moveTargets(deliveryEnabled).map((column) => {
+          {moveTargets().map((column) => {
             const header = laneHeader(column, t);
             return (
               <OptionRow

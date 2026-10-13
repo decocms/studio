@@ -1,49 +1,16 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import type { TaskBoardItem } from "@/storage/types";
-import {
-  allReviewersApproved,
-  enabledReviewerKinds,
-  type ReviewCycleActivity,
-  type ReviewerKind,
-  shippedLane,
-} from "@decocms/shared/task-board";
+import { LANES } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
-import { SHIP_ELIGIBLE_LANES } from "./lanes";
-import { recordTaskActivity } from "./activity";
-
-import { emitTaskBoardUpdated } from "./run-reactions";
-import { mergeLinkedPr } from "./merge-pr";
-
-/**
- * The board only shows "Ship to production" once the task is In Review or
- * Approved, with every enabled reviewer approved (`reviewsSatisfiedForPromotion` on the web
- * side) — but that's client-side gating only. Without this check here, any
- * caller of this tool (a decopilot agent, a stale client, a direct MCP call)
- * could merge ANY task's linked PR — todo, in_progress, unreviewed — bypassing
- * the Reviewer gate entirely.
- */
-export function isReadyToShip(
-  status: TaskBoardItem["status"],
-  activity: ReviewCycleActivity[],
-  enabled: ReviewerKind[],
-  cycleStartedAt: string | null,
-): boolean {
-  if (!SHIP_ELIGIBLE_LANES.has(status)) return false;
-  return (
-    enabled.length === 0 ||
-    allReviewersApproved(activity, enabled, { cycleStartedAt })
-  );
-}
+import { shipFromReadyForDeployment } from "./merge-pr";
 
 export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
   name: "TASK_BOARD_PROMOTE_TO_PRODUCTION",
   description:
-    "Ship a reviewed task: merge its open pull request and move the task to " +
-    "Merged (or Done, on a board without the delivery lanes). Used by the " +
-    "board's 'Ship to production' button after the enabled reviewers " +
-    "approved, when auto-merge is off (a human does the final merge).",
+    "Ship a task in Ready for Deployment: merge its open pull request and " +
+    "move the task to Post-deploy Validation. Used by the board's 'Ship to " +
+    "production' button.",
   annotations: {
     title: "Ship to Production",
     readOnlyHint: false,
@@ -76,52 +43,22 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
     }
 
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    const enabled = enabledReviewerKinds(settings?.flags);
-    const activity = await ctx.storage.taskBoard.listActivity(
-      taskBoardItemId,
-      organizationId,
-    );
-    if (
-      !isReadyToShip(item.status, activity, enabled, item.reviewCycleStartedAt)
-    ) {
+    // The lane is the gate: a card reaches Ready for Deployment past the
+    // reviewer, QA and the customer's approval, and an agent run can never
+    // move one there (`agentMoveRefusal`). The board only offers the button
+    // there too, but any caller of this tool reaches the merge.
+    if (item.status !== LANES.release) {
       throw new Error(
-        "Task is not ready to ship: it must be In Review or Approved with every enabled reviewer approved",
+        "Task is not ready to ship: move it to Ready for Deployment first.",
       );
     }
 
     // A refused merge is already on the card's timeline (`mergeLinkedPr` writes
     // the reason), so the button no longer looks like it did nothing.
-    const outcome = await mergeLinkedPr(ctx, organizationId, taskBoardItemId, {
+    const shipped = await shipFromReadyForDeployment(ctx, item, {
       // The human clicked Ship, so in-flight CI doesn't block — only red does.
       allowPendingChecks: true,
     });
-    if (!outcome.merged) {
-      const refreshed =
-        (await ctx.storage.taskBoard.getById(
-          taskBoardItemId,
-          organizationId,
-        )) ?? item;
-      emitTaskBoardUpdated(organizationId, refreshed);
-      return { status: item.status, merged: false };
-    }
-
-    const shipped = shippedLane(settings?.flags);
-    const updated = await ctx.storage.taskBoard.update(
-      taskBoardItemId,
-      organizationId,
-      { status: shipped },
-      item.updatedBy,
-    );
-    if (item.status !== shipped) {
-      await recordTaskActivity(ctx, {
-        taskBoardItemId,
-        action: "status_changed",
-        actorId: null,
-        data: { from: item.status, to: shipped },
-      });
-    }
-    emitTaskBoardUpdated(organizationId, updated);
-    return { status: updated.status, merged: true };
+    return { status: shipped.item.status, merged: shipped.merged };
   },
 });

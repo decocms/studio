@@ -67,7 +67,7 @@ export function isReportsTask(item: { createdBy: string }): boolean {
  * job, not a job.
  *
  * Review is SINGLE-PASS: the reviewer runs at most once per delegation. How it
- * reviews is the In Progress lane's editable rule; what it may never do —
+ * reviews is the In Review lane's editable rule; what it may never do —
  * approve a change it did not exercise — is fixed in its prompt. A
  * `request_changes` verdict hands the card to a human instead of bouncing it
  * back to the Super Agent: the reviewer → fix → re-review loop had no natural
@@ -212,18 +212,17 @@ export const CANONICAL_COLUMN_KEYS = [
 export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
 
 /**
- * Statuses this release can read but does not offer: nothing here moves a card
- * into one, and the board draws one only while a card sits in it.
+ * Statuses the board can read but does not offer: nothing moves a card into
+ * one, and the board draws one only while a card sits in it.
  *
- * These are the lanes of the next board (QA and Customer Approval as human
- * gates, Ready for Deployment as the release lane). The release that moves
- * cards into them can then be rolled back to this one without leaving a card
- * in a status that `laneRank` throws on or the board cannot draw.
+ * These are the previous board's lanes. A card the previous release wrote
+ * there during a rollout (or before a rollback) still reads, and the release
+ * after this one moves the stragglers and drops the statuses.
  */
 export const DORMANT_LANES: readonly CanonicalColumnKey[] = [
-  "qa",
-  "customer_approval",
-  "ready_for_deployment",
+  "todo",
+  "approved",
+  "merged",
 ];
 
 /** True for a status the board knows but does not offer. */
@@ -238,17 +237,39 @@ export function isDormantLane(status: string): boolean {
  * (`LANES.review`) rather than repeating the literal at each site.
  */
 export const LANES = {
-  /** Where a card is born. */
+  /** Where a card is born, and where a run that failed for good leaves it. */
   intake: "triage",
-  /** Queued for the agent to pick up — the claim's starting line. */
-  queue: "todo",
-  /** Being worked on. */
+  /** The implementing agent (or a person) is working on it. */
   progress: "in_progress",
-  /** Waiting on review. */
+  /** The reviewing agent owns it; with no assignee, a person was handed it. */
   review: "in_review",
+  /** A person checks the change. */
+  qa: "qa",
+  /** The customer approves the change. */
+  customer: "customer_approval",
+  /** Approved and waiting to merge. The only lane a merge starts from. */
+  release: "ready_for_deployment",
+  /** Merged; someone confirms it works in production. */
+  shipped: "post_deploy_validation",
+  /** Finished. */
+  done: "done",
   /** Retired. */
   archive: "archived",
 } as const satisfies Record<string, CanonicalColumnKey>;
+
+/**
+ * Lanes only a person moves a card out of, forward. An agent run may send a
+ * card back from one, never past it: QA and the customer's approval are the
+ * checks an agent's work has to pass.
+ */
+export const HUMAN_GATE_LANES: readonly CanonicalColumnKey[] = [
+  LANES.qa,
+  LANES.customer,
+];
+
+export function isHumanGateLane(status: string): boolean {
+  return (HUMAN_GATE_LANES as readonly string[]).includes(status);
+}
 
 /** A board column as every surface reads it. `key` is the value a card's
  *  `status` holds. */
@@ -263,40 +284,6 @@ export interface BoardColumn {
 export const CANONICAL_COLUMNS: BoardColumn[] = CANONICAL_COLUMN_KEYS.map(
   (key, position) => ({ key, title: key, position }),
 );
-
-/**
- * The lanes a release process needs AFTER the pull request merges, sitting
- * between In Review and Done. A subset of both sides' status unions, so each
- * assigns these names with no cast. The lane TYPE is unconditional — every
- * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
- * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
- */
-export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
-
-export const DELIVERY_LANES: DeliveryLane[] = [
-  "approved",
-  "merged",
-  "post_deploy_validation",
-];
-
-/** True when this org runs the delivery lanes. Off by default. */
-export function deliveryLanesEnabled(
-  flags: Record<string, unknown> | null | undefined,
-): boolean {
-  return orgFlagEnabled(flags, "delivery_lanes_enabled");
-}
-
-/**
- * The lane a merged/shipped pull request moves its task to. Every automatic
- * ship path reads this, so "flag off means no behaviour change" is one tested
- * function rather than five call sites agreeing by luck. Falsy flags of every
- * shape resolve to `done`; that default IS the safety property.
- */
-export function shippedLane(
-  flags: Record<string, unknown> | null | undefined,
-): "merged" | "done" {
-  return deliveryLanesEnabled(flags) ? "merged" : "done";
-}
 
 /** True when a thread title belongs to the given reviewer's run — including the
  *  two-reviewer era's titles, see {@link LEGACY_REVIEWER_LABELS}. */
@@ -530,7 +517,7 @@ export function outstandingReviewFeedback(
 
 /**
  * Org-scoped SSE event pushed on `sseHub` whenever a Super Agent run advances a
- * task board item's status (enqueued→todo, executing→in_progress, PR→in_review).
+ * task board item's status (delegated→in_progress, PR→in_review, approved→qa).
  * Its `data` is the full updated `TaskBoardItem`; the web board patches its
  * react-query cache from it, so the board is real-time with no polling.
  */

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
+import { LANES } from "@decocms/shared/task-board";
 import { OFFERED_COLUMN_KEYS } from "./lanes";
 import { emitTaskBoardRulesUpdated } from "./prompts";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "./schema";
@@ -69,6 +70,16 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
     if (!OFFERED_COLUMN_KEYS.some((key) => key === input.columnKey)) {
       throw new Error(
         `This board has no column "${input.columnKey}" — it has ${OFFERED_COLUMN_KEYS.join(", ")}`,
+      );
+    }
+
+    // The board already runs the reviewer on every card reaching In Review;
+    // a rule there would start the implementer on top of it. How the reviewer
+    // works is In Review's instructions (TASK_BOARD_PROMPT_UPSERT).
+    if (input.columnKey === LANES.review) {
+      throw new Error(
+        "In Review already runs the reviewer on every card that lands there. " +
+          "Set its instructions with TASK_BOARD_PROMPT_UPSERT instead.",
       );
     }
 

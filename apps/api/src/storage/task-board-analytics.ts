@@ -98,14 +98,15 @@ const taskCostCte = (orgIds: string[] | null) => sql`
   group by 1, 2, 3
 `;
 
-/** Cards that reached done/merged AND actually went through review. */
+/** Cards that shipped (Post-deploy Validation, Done, or the previous board's
+ *  Merged) AND actually went through review. */
 const reviewedCompletedCte = (orgIds: string[] | null) => sql`
   select i.organization_id as org_id, o.slug as org_slug, a.task_board_item_id as item_id,
          min(a.occurred_at) as done_at
   from task_board_activity a
   join task_board_items i on i.id = a.task_board_item_id
   join organization o     on o.id = i.organization_id
-  where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
+  where a.action = 'status_changed' and a.data->>'to' in ('done','merged','post_deploy_validation')
     and ${orgIn(orgIds, "i.organization_id")}
     and exists (select 1 from task_board_activity a2
                 where a2.task_board_item_id = a.task_board_item_id
@@ -172,7 +173,7 @@ export class TaskBoardAnalyticsStorage {
              round(100.0 * count(distinct item_id) filter (
                where exists (select 1 from task_board_item_prs p where p.task_board_item_id = m.item_id)
              ) / nullif(count(distinct item_id), 0), 1) as pr_rate
-      from moves m where lane in ('done','merged') and ${inRange("entered_at", q)}
+      from moves m where lane in ('done','merged','post_deploy_validation') and ${inRange("entered_at", q)}
     `);
 
     const [times] = await this.rows(sql`
@@ -180,7 +181,7 @@ export class TaskBoardAnalyticsStorage {
         select a.task_board_item_id as item_id, min(a.occurred_at) as done_at
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
-        where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
+        where a.action = 'status_changed' and a.data->>'to' in ('done','merged','post_deploy_validation')
           and ${orgIn(q.orgIds, "i.organization_id")}
         group by 1
       )
@@ -207,7 +208,7 @@ export class TaskBoardAnalyticsStorage {
              count(distinct item_id) filter (where board = 'studio')      as "Kanban",
              count(distinct item_id) filter (where board = 'jira')        as "Jira",
              count(distinct item_id) filter (where board = 'jira-anchor') as "Jira (trigger anchor)"
-      from moves where lane in ('done','merged') and ${inRange("entered_at", q)}
+      from moves where lane in ('done','merged','post_deploy_validation') and ${inRange("entered_at", q)}
       group by 1 order by 1
     `);
 
@@ -283,7 +284,7 @@ export class TaskBoardAnalyticsStorage {
              round(extract(epoch from (now() - entered_at))::numeric, 0) as "Age",
              case when actor_id is null then 'agent/system' else 'human' end as "Moved in by"
       from moves
-      where left_at is null and lane not in ('done','merged','archived')
+      where left_at is null and lane not in ('done','merged','post_deploy_validation','archived')
       order by entered_at asc limit 50
     `);
 
@@ -296,7 +297,7 @@ export class TaskBoardAnalyticsStorage {
                                 and now() - entered_at < interval '7 days') as "1-7d",
              count(*) filter (where now() - entered_at >= interval '7 days') as "> 7d",
              round(extract(epoch from (now() - min(entered_at)))::numeric / 86400, 1) as "Oldest (days)"
-      from moves where left_at is null and lane not in ('done','merged','archived')
+      from moves where left_at is null and lane not in ('done','merged','post_deploy_validation','archived')
       group by 1 order by 2 desc
     `);
 
@@ -333,7 +334,7 @@ export class TaskBoardAnalyticsStorage {
         select distinct a.task_board_item_id as item_id
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
-        where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
+        where a.action = 'status_changed' and a.data->>'to' in ('done','merged','post_deploy_validation')
           and ${inRange("a.occurred_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
       )
       select round(sum(c.usd) / nullif(count(*), 0), 2) as usd
@@ -346,7 +347,7 @@ export class TaskBoardAnalyticsStorage {
         select distinct a.task_board_item_id as item_id
         from task_board_activity a
         join task_board_items i on i.id = a.task_board_item_id
-        where a.action = 'status_changed' and a.data->>'to' in ('done','merged')
+        where a.action = 'status_changed' and a.data->>'to' in ('done','merged','post_deploy_validation')
           and ${inRange("a.occurred_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
           and exists (select 1 from task_board_item_prs pr where pr.task_board_item_id = a.task_board_item_id)
       )
@@ -467,7 +468,7 @@ export class TaskBoardAnalyticsStorage {
       with moves as (${moves})
       select round(100.0 * count(*) filter (where actor_id is null)
                    / nullif(count(*), 0), 1) as pct
-      from moves where lane in ('done','merged') and ${inRange("entered_at", q)}
+      from moves where lane in ('done','merged','post_deploy_validation') and ${inRange("entered_at", q)}
     `);
 
     const [abandonment] = await this.rows(sql`
@@ -720,7 +721,7 @@ export class TaskBoardAnalyticsStorage {
       with moves as (${moves}),
       completed as (
         select org_id, org_slug, item_id, min(entered_at) as done_at
-        from moves where lane in ('done','merged') and ${inRange("entered_at", q)}
+        from moves where lane in ('done','merged','post_deploy_validation') and ${inRange("entered_at", q)}
         group by 1, 2, 3
       ),
       review as (

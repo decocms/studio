@@ -15,7 +15,6 @@ import type { TaskBoardItemPrRef } from "@/storage/types";
 import {
   isCardNotReady,
   LANES,
-  shippedLane,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { repoIdentityKey } from "@decocms/shared/git-providers";
@@ -862,7 +861,6 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
      * review; `enqueueEnabledReviewers` is itself idempotent per reviewer per
      * review cycle, so re-polling won't spawn duplicate reviewer runs.
      */
-    const reviewLane = LANES.review;
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
     if (
       item &&
@@ -878,19 +876,18 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
     }
 
     /**
-     * Auto-resolve a merge conflict on an approved change request: once every
-     * enabled reviewer approved but it can't merge because it conflicts with
-     * its base branch, hand it back to the Super Agent to resolve (gated on
-     * the org's `auto_merge` flag, checked inside the reaction). This is the
-     * poll-driven safety net — a conflict often appears AFTER approval (the
-     * base branch moved on), which the merge attempt at approval time can't
-     * see. Only an explicit conflict triggers; null/unknown never does. The
-     * reaction is idempotent (it bounces the task to In Progress, so the next
-     * poll skips).
+     * Auto-resolve a merge conflict on a card waiting in Ready for Deployment:
+     * it can't merge because its PR conflicts with its base branch, so hand it
+     * back to the Super Agent to resolve (gated on `auto_resolve_conflicts`,
+     * checked inside the reaction). This is the poll-driven safety net — a
+     * conflict often appears while the card waits (the base branch moved on),
+     * before anyone tries to merge. Only an explicit conflict triggers;
+     * null/unknown never does. The reaction is idempotent (it bounces the task
+     * to In Progress, so the next poll skips).
      */
     if (
       item &&
-      item.status === reviewLane &&
+      item.status === LANES.release &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       openPr &&
       openPr.mergeable === false
@@ -916,10 +913,7 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
      */
     if (cardWorkLanded(prs)) {
       try {
-        // Inside the try: this block is best-effort and must not fail the read.
-        const settings =
-          await ctx.storage.organizationSettings.get(organizationId);
-        const shipped = shippedLane(settings?.flags);
+        const shipped = LANES.shipped;
         if (
           item &&
           movesForward(item.status, shipped) &&
@@ -934,11 +928,11 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
             { status: shipped },
             item.updatedBy,
           );
-          // Every other path that moves a card to Done (the review-decision
-          // auto-merge, "Ship to production") logs a `status_changed` timeline
-          // entry — this reconcile silently skipped it, so a task auto-completed
-          // by a human merging directly on the provider left no trace of the
-          // move in the Activity feed.
+          // Every other path that ships a card ("Ship to production",
+          // `auto_merge`) logs a `status_changed` timeline entry — this
+          // reconcile silently skipped it, so a task shipped by a person
+          // merging directly on the provider left no trace of the move in the
+          // Activity feed.
           await recordTaskActivity(ctx, {
             taskBoardItemId,
             action: "status_changed",

@@ -806,22 +806,19 @@ export const settings = {
   "settings.orgGeneral.organization": "Organization",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+    "The automated Reviewer runs on a task's pull request when the card reaches In Review (checks passing or none). It appears as a session on the task card.",
   "settings.review.reviewerTitle": "Enable Reviewer",
   "settings.review.reviewerDescription":
-    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
+    "When the card reaches In Review, reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview. An approval moves the card to QA; when it can't settle something itself, it hands the task to you.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+    "When a card reaches Ready for Deployment, merge its pull request automatically instead of waiting for someone to press Ship.",
   "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
   "settings.review.autoResolveConflictsDescription":
-    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
-  "settings.review.deliveryLanesTitle": "Show delivery lanes",
-  "settings.review.deliveryLanesDescription":
-    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
+    "When a pull request in Ready for Deployment conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":

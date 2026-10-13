@@ -7,7 +7,7 @@ const task = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
   ({
     id: "t-1",
     title: "A task",
-    status: "todo",
+    status: "triage",
     priority: "none",
     assigneeId: null,
     threads: [],
@@ -69,12 +69,29 @@ describe("feedEventKind", () => {
     ).toBe("review");
   });
 
-  it("names a delivery lane as its own event, not a plain edit", () => {
-    expect(
-      feedEventKind(
-        task({ status: "merged", updatedAt: "2026-09-25T09:00:00Z" }),
-      ),
-    ).toBe("delivered");
+  it("names a merged card as its own event, not a plain edit", () => {
+    for (const status of [
+      "post_deploy_validation",
+      "merged",
+      "approved",
+    ] as const) {
+      expect(
+        feedEventKind(task({ status, updatedAt: "2026-09-25T09:00:00Z" })),
+      ).toBe("delivered");
+    }
+  });
+
+  // Not merged yet: a card waiting on a person's check is an ordinary move.
+  it("does not call a card in a human gate delivered", () => {
+    for (const status of [
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
+    ] as const) {
+      expect(
+        feedEventKind(task({ status, updatedAt: "2026-09-25T09:00:00Z" })),
+      ).toBe("updated");
+    }
   });
 
   it("calls an unassigned card parked in review a hand-off", () => {

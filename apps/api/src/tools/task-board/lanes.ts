@@ -14,8 +14,8 @@
 import {
   CANONICAL_COLUMN_KEYS,
   type CanonicalColumnKey,
-  DELIVERY_LANES,
   isDormantLane,
+  isHumanGateLane,
   LANES,
 } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
@@ -41,18 +41,6 @@ export function laneRank(status: string): number {
   return rank;
 }
 
-/** The delivery lanes, as board statuses — the assertion that the shared
- *  literal union stays a subset of this side's lane vocabulary. */
-export const DELIVERY_LANE_STATUSES: string[] = DELIVERY_LANES;
-
-/** True for one of the post-merge delivery lanes (Approved, Merged, Post-deploy
- *  Validation) — the statuses that only exist for an org running
- *  `delivery_lanes_enabled`. Mirrors the web-side `isDeliveryLane` in
- *  `layouts/task-board/config.tsx`. */
-export function isDeliveryLane(status: string): boolean {
-  return DELIVERY_LANE_STATUSES.includes(status);
-}
-
 /** The statuses a card or a column rule may be given: every lane but the
  *  dormant ones. */
 export const OFFERED_COLUMN_KEYS: CanonicalColumnKey[] =
@@ -60,15 +48,42 @@ export const OFFERED_COLUMN_KEYS: CanonicalColumnKey[] =
 
 /**
  * Refuses a write that would put a card in a lane this release does not offer
- * (`DORMANT_LANES`). The schema accepts those statuses so a card a newer
+ * (`DORMANT_LANES`). The schema accepts those statuses so a card the previous
  * release left in one still reads; nothing here may move a card into one.
  */
 export function refuseDormantLane(status: string | undefined): void {
   if (status === undefined || !isDormantLane(status)) return;
   throw new Error(
-    `The "${status}" column is not available on this board yet; use a ` +
-      "column the board shows.",
+    `The "${status}" column is not on this board; use a column the board ` +
+      "shows.",
   );
+}
+
+/**
+ * Why an agent run may not make this move, or null when it may.
+ *
+ * QA and Customer Approval are people's checks on the agents' work, so a run
+ * cannot move a card past one or into one, nor into a lane beyond them (which
+ * would skip both). Moving back, and finishing a task that needed no change
+ * (Done), stay open: `closesOwnReview` already guards Done during a review.
+ */
+export function agentMoveRefusal(from: string, to: string): string | null {
+  if (from === to) return null;
+  if (isHumanGateLane(from) && movesForward(from, to)) {
+    return `A person moves a card out of "${from}"; a run can only send it back.`;
+  }
+  if (
+    to !== LANES.done &&
+    to !== LANES.archive &&
+    laneRank(to) >= LANE_RANK.qa &&
+    movesForward(from, to)
+  ) {
+    return (
+      `A run cannot move a card into "${to}": QA and Customer Approval are ` +
+      "for people. Finish your work and leave the card where the board puts it."
+    );
+  }
+  return null;
 }
 
 /**
@@ -93,39 +108,28 @@ export function atOrBefore(from: string, to: string): boolean {
 }
 
 /**
- * Lanes the "Ship to production" button may act from: In Review (auto-merge
- * off, reviewers approved) and Approved (a human parked it there deliberately).
- * Without Approved, moving a card into it would lock the ship button out — the
- * lane would be a dead end.
- */
-export const SHIP_ELIGIBLE_LANES: ReadonlySet<string> = new Set([
-  "in_review",
-  "approved",
-]);
-
-/**
  * True where a merged pull request can have left the card, which is what the
  * merged-tag sweep gates on. Mirrors `TAGGABLE_MERGED_STATUSES` in storage: the
  * candidate query and the re-read inside the org's context have to agree, or
- * the sweep picks cards it then refuses.
+ * the sweep picks cards it then refuses. `merged` is the previous board's.
  */
 export function isTaggableMergedStatus(status: string): boolean {
-  return status === "done" || DELIVERY_LANE_STATUSES.includes(status);
+  return (
+    status === LANES.shipped || status === LANES.done || status === "merged"
+  );
 }
 
 /**
- * True while a card is in its REVIEW PHASE: a reviewer owns it, or it is parked
- * In Review waiting on a person.
+ * True while a card is in its REVIEW PHASE: the agent reviewer owns it, or it
+ * was handed to a person in In Review.
  *
- * This is the gate every automatic review path takes, and it is deliberately
- * not `status === "in_review"`. Since migration 190 an agent reviewer runs
- * while the card still reads In Progress — the lane says whose turn it is, and
- * during a review it is nobody's — so the durable fact is the open cycle
- * (`reviewCycleStartedAt`), not the lane.
+ * Not `status === "in_review"` alone: an In Progress card with an open cycle
+ * is one whose cycle opened before the previous release moved reviews into
+ * In Review, and its verdict is still to come.
  *
- * Still bounded by rank: a card that has shipped (Approved and beyond) is out
- * of the phase whatever a stale cycle stamp says, so a missed `closeReviewCycle`
- * can never drag a merged card back into the sweeper's work.
+ * Still bounded by rank: a card past In Review (QA and beyond) is out of the
+ * phase whatever a stale cycle stamp says, so a missed `closeReviewCycle` can
+ * never drag it back into the sweeper's work.
  */
 export function inReviewPhase(item: {
   status: string;

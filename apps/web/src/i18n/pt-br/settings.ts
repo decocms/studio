@@ -826,24 +826,21 @@ export const settings = {
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+    "O Reviewer automático roda no pull request de uma tarefa quando o card chega na coluna Em Revisão (checks passando ou inexistentes). Ele aparece como uma sessão no card da tarefa.",
   "settings.review.reviewerTitle": "Ativar Reviewer",
   "settings.review.reviewerDescription":
-    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para você quando n\u00e3o consegue resolver algo.",
+    "Quando o card chega na coluna Em Revisão, revisa o código com as skills de review do próprio repositório, corrige o que encontra na branch do pull request e depois testa a mudança no preview do deploy. Uma aprovação move o card para QA; quando não consegue resolver algo, passa a tarefa para você.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
     "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+    "Quando um card chega em Pronto para Deploy, mescla o pull request automaticamente em vez de esperar alguém clicar em Subir para produção.",
   "settings.review.autoResolveConflictsTitle":
     "Resolver conflitos de merge automaticamente",
   "settings.review.autoResolveConflictsDescription":
-    "Quando um pull request aprovado conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
-  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
-  "settings.review.deliveryLanesDescription":
-    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
+    "Quando um pull request em Pronto para Deploy conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
   "settings.review.autoAssignReportTasksTitle":
     "Atribuir tarefas do Deco Score ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":

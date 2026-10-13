@@ -62,16 +62,19 @@ describe("conflictResolutionCapReached", () => {
 });
 
 describe("isConflictResolutionCandidate", () => {
-  const item = { status: "in_review", assigneeId: SUPER_AGENT_ASSIGNEE_ID };
+  const item = {
+    status: "ready_for_deployment",
+    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+  };
 
-  it("is true for an In Review Super Agent task with a detected conflict", () => {
+  it("is true for a Super Agent task in Ready for Deployment with a detected conflict", () => {
     expect(isConflictResolutionCandidate(item, true)).toBe(true);
   });
 
   it("is false for a human-owned task", () => {
     expect(
       isConflictResolutionCandidate(
-        { status: "in_review", assigneeId: "user-1" },
+        { status: "ready_for_deployment", assigneeId: "user-1" },
         true,
       ),
     ).toBe(false);
@@ -82,12 +85,14 @@ describe("isConflictResolutionCandidate", () => {
     expect(isConflictResolutionCandidate(item, false)).toBe(false);
   });
 
-  it("is false once the task moved on", () => {
-    expect(
-      isConflictResolutionCandidate(
-        { status: "in_progress", assigneeId: SUPER_AGENT_ASSIGNEE_ID },
-        true,
-      ),
-    ).toBe(false);
+  it("is false in any other lane", () => {
+    for (const status of ["in_progress", "in_review", "qa"]) {
+      expect(
+        isConflictResolutionCandidate(
+          { status, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+          true,
+        ),
+      ).toBe(false);
+    }
   });
 });

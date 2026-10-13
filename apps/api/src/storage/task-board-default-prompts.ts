@@ -1,15 +1,14 @@
 import type { TaskBoardPrompt } from "./task-board-prompts";
 
 /**
- * What a lane carries until the org edits it. To Do is what the Super Agent
- * follows when it picks a card up; In Progress is what the reviewer follows,
- * since it runs while the card is still In Progress. Only policy lives here —
- * the facts and tool contracts a run needs to finish stay in the prompt
- * builders, where a person's edit can't break them.
+ * What a lane carries until the org edits it. In Progress is what the Super
+ * Agent follows while it implements; In Review is what the reviewer follows.
+ * Only policy lives here — the facts and tool contracts a run needs to finish
+ * stay in the prompt builders, where a person's edit can't break them.
  */
 export const DEFAULT_BOARD_PROMPTS: TaskBoardPrompt[] = [
   {
-    columnKey: "todo",
+    columnKey: "in_progress",
     prompt: [
       "- Change only what the task needs. Don't refactor around it.",
       "- The change must be REACHABLE from the surface the task names: edit the component that route actually renders, not one that merely looks like the right place. A change nothing imports is the most common reason a task comes back rejected.",
@@ -19,7 +18,7 @@ export const DEFAULT_BOARD_PROMPTS: TaskBoardPrompt[] = [
     skills: ["core/qa-screenshot"],
   },
   {
-    columnKey: "in_progress",
+    columnKey: "in_review",
     prompt: [
       "Confirm the task ACTUALLY SOLVED THE PROBLEM, fix what is wrong with how it was solved, then ship or hand over. Nothing picks up findings you only describe, so an issue you write down and leave is an issue that ships. Work in THIS ORDER:",
       "1. REVIEW the code. First look for a review skill or command that fits this repository's stack (a `code-review` or `security-review` skill, or the repo's CONTRIBUTING/review guidelines) and use it. Read the diff for correctness, security and quality, and note concrete issues with file/line references.",

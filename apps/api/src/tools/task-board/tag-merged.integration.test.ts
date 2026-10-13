@@ -101,22 +101,24 @@ describe("merged-tag sweep", () => {
 
   // With the delivery lanes on a merge lands the card on `deployed`, so gating
   // the sweep on Done alone tagged nothing until a human finished dragging it.
-  it("picks up a card a merge left in a delivery lane", async () => {
-    const mergedLane = await seed("merged", true);
+  it("picks up a card a merge left in Post-deploy Validation", async () => {
     const postDeploy = await seed("post_deploy_validation", true);
-    const approved = await seed("approved", true);
+    const mergedLane = await seed("merged", true);
+    const release = await seed("ready_for_deployment", true);
     const archived = await seed("archived", true);
 
     const ids = await candidateIds();
-    expect(ids).toContain(mergedLane);
     expect(ids).toContain(postDeploy);
-    expect(ids).toContain(approved);
+    // The previous board's landing for a merge.
+    expect(ids).toContain(mergedLane);
+    // Not merged by Studio yet.
+    expect(ids).not.toContain(release);
     // Far enough along that a tag moves nothing.
     expect(ids).not.toContain(archived);
   });
 
-  it("tags a card that shipped into a delivery lane, not only a Done one", async () => {
-    const id = await seed("merged", true);
+  it("tags a card that shipped into Post-deploy Validation, not only a Done one", async () => {
+    const id = await seed("post_deploy_validation", true);
     await tagMergedForOrg(ctx, ORG, [id], async () => ({
       state: "closed" as const,
       merged: true,

@@ -44,7 +44,7 @@ function item(
     organizationId: "org-1",
     title: id,
     description: null,
-    status: "todo",
+    status: "triage",
     priority: "none",
     assigneeId: null,
     assignedBy: null,
@@ -73,18 +73,35 @@ describe("groupListItems", () => {
   test("status sections read from review down to done and keep item order", () => {
     const items = [
       item("1", { status: "done" }),
-      item("2", { status: "todo" }),
+      item("2", { status: "qa" }),
       item("3", { status: "done" }),
       item("4", { status: "triage" }),
       item("5", { status: "in_progress" }),
       item("6", { status: "in_review" }),
+      item("7", { status: "ready_for_deployment" }),
+      item("8", { status: "post_deploy_validation" }),
     ];
     expect(shape(groupListItems(items, ["status"], CONTEXT))).toEqual([
+      ["qa", ["2"]],
       ["in_review", ["6"]],
+      ["ready_for_deployment", ["7"]],
       ["in_progress", ["5"]],
-      ["todo", ["2"]],
       ["triage", ["4"]],
+      ["post_deploy_validation", ["8"]],
       ["done", ["1", "3"]],
+    ]);
+  });
+
+  test("a card left in one of the previous board's lanes sorts last", () => {
+    const items = [
+      item("1", { status: "merged" }),
+      item("2", { status: "archived" }),
+      item("3", { status: "todo" }),
+    ];
+    expect(shape(groupListItems(items, ["status"], CONTEXT))).toEqual([
+      ["archived", ["2"]],
+      ["todo", ["3"]],
+      ["merged", ["1"]],
     ]);
   });
 
@@ -167,8 +184,8 @@ describe("groupListItems", () => {
 describe("nested grouping", () => {
   const items = [
     item("1", { assigneeId: "user-a", status: "done" }),
-    item("2", { assigneeId: "user-b", status: "todo" }),
-    item("3", { assigneeId: "user-a", status: "todo" }),
+    item("2", { assigneeId: "user-b", status: "triage" }),
+    item("3", { assigneeId: "user-a", status: "triage" }),
     item("4", { assigneeId: "user-a", status: "done" }),
   ];
 
@@ -188,11 +205,11 @@ describe("nested grouping", () => {
         "user-a",
         3,
         [
-          ["todo", ["3"]],
+          ["triage", ["3"]],
           ["done", ["1", "4"]],
         ],
       ],
-      ["user-b", 1, [["todo", ["2"]]]],
+      ["user-b", 1, [["triage", ["2"]]]],
     ]);
   });
 
@@ -203,7 +220,9 @@ describe("nested grouping", () => {
       ...(group.children ?? []).map((child) => child.path),
     ]);
     expect(new Set(paths).size).toBe(paths.length);
-    expect(groups[0]?.children?.[0]?.path).toBe("/assignee:user-a/status:todo");
+    expect(groups[0]?.children?.[0]?.path).toBe(
+      "/assignee:user-a/status:triage",
+    );
   });
 
   test("a single level has no children", () => {
@@ -236,16 +255,16 @@ describe("isGroupBy", () => {
 
 describe("group open state", () => {
   const items = [
-    item("1", { status: "todo" }),
+    item("1", { status: "triage" }),
     item("2", { status: "archived" }),
     item("3", { status: "done" }),
   ];
   const groups = groupListItems(items, ["status"], CONTEXT);
-  const [todo, done, archived] = groups as [ListGroup, ListGroup, ListGroup];
+  const [triage, done, archived] = groups as [ListGroup, ListGroup, ListGroup];
 
   test("archived starts collapsed; every other lane starts open", () => {
     expect(groups.map((g) => [g.key, isGroupOpen(g, new Map())])).toEqual([
-      ["todo", true],
+      ["triage", true],
       ["done", true],
       ["archived", false],
     ]);
@@ -254,13 +273,13 @@ describe("group open state", () => {
   test("a click flips only the clicked group, from its default", () => {
     const opened = toggleGroupOpen(new Map(), archived, groups, false);
     expect(isGroupOpen(archived, opened)).toBe(true);
-    expect(isGroupOpen(todo, opened)).toBe(true);
+    expect(isGroupOpen(triage, opened)).toBe(true);
     const closed = toggleGroupOpen(opened, archived, groups, false);
     expect(isGroupOpen(archived, closed)).toBe(false);
   });
 
   test("Alt+click moves every sibling to the clicked group's new state", () => {
-    const allClosed = toggleGroupOpen(new Map(), todo, groups, true);
+    const allClosed = toggleGroupOpen(new Map(), triage, groups, true);
     expect(groups.map((g) => isGroupOpen(g, allClosed))).toEqual([
       false,
       false,

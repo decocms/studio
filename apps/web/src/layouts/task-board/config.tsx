@@ -31,7 +31,6 @@ import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-
 import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TAG_COLOR,
-  DELIVERY_LANES,
   isDormantLane,
 } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -58,7 +57,7 @@ export type TaskBoardItemPr =
  * `In Progress → In Progress` activity ("scheduled retry 1 of 1 — error"), so a
  * card that burned its budget read as a wall of retry chatter with the actual
  * story buried in it. The retry is still counted — the terminal
- * `activityRetriesExhausted` line ("moved to To Do after N failed retries") is
+ * `activityRetriesExhausted` line ("moved to Backlog after N failed retries") is
  * the part a person acts on, and it survives this filter.
  */
 export function isFeedWorthyActivity(a: {
@@ -373,36 +372,26 @@ export const TASK_TYPE_CONFIG: Record<
   },
 };
 
-/** True for one of the post-merge delivery lanes. */
-function isDeliveryLane(status: string): boolean {
-  return (DELIVERY_LANES as string[]).includes(status);
-}
-
 /**
- * Lanes a card may be MOVED to — "Move to", the status dropdown. With the
- * delivery lanes off they aren't offered, so nobody can put a card somewhere
- * the org's state machine doesn't ship to. Dormant lanes are never offered.
+ * Lanes a card may be MOVED to — "Move to", the status dropdown. Dormant lanes
+ * are never offered: they belong to the previous board, and nothing should put
+ * a card back there.
  */
-export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
-  return CANONICAL_COLUMN_KEYS.filter(
-    (key) => !isDormantLane(key) && (deliveryEnabled || !isDeliveryLane(key)),
-  );
+export function moveTargets(): CanonicalColumnKey[] {
+  return CANONICAL_COLUMN_KEYS.filter((key) => !isDormantLane(key));
 }
 
 /**
  * Which lanes the board draws as columns, and which collapse into the "Hidden
  * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
- * or is a delivery lane the board doesn't run; `shownLanes` overrides either.
- * `occupied` is what keeps a card from getting stuck: an unrun delivery lane is
- * absent while empty, but reappears in the drawer the moment a card sits in it.
- * A dormant lane is drawn as a column only while a card sits in it.
+ * unless `shownLanes` brings it back. A dormant lane is drawn as a column only
+ * while a card sits in it (`occupied`), so a card the previous release left
+ * there stays reachable without the lane cluttering every board.
  */
 export function laneVisibility({
-  deliveryEnabled,
   shownLanes,
   occupied,
 }: {
-  deliveryEnabled: boolean;
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
   occupied: readonly string[];
@@ -411,15 +400,10 @@ export function laneVisibility({
   hidden: CanonicalColumnKey[];
   hideable: CanonicalColumnKey[];
 } {
-  const known = CANONICAL_COLUMN_KEYS.filter((s) =>
-    isDormantLane(s)
-      ? occupied.includes(s)
-      : deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+  const known = CANONICAL_COLUMN_KEYS.filter(
+    (s) => !isDormantLane(s) || occupied.includes(s),
   );
-  const hideable = known.filter(
-    (s) =>
-      HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),
-  );
+  const hideable = known.filter((s) => HIDDEN_STATUSES.includes(s));
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
   return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
 }
