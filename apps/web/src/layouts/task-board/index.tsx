@@ -68,7 +68,7 @@ import {
   X,
   Zap,
 } from "@untitledui/icons";
-import { MoveHorizontal } from "lucide-react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -2756,7 +2756,7 @@ function Lane({
                 onClick={onToggleCollapsed}
                 className={LANE_ACTION}
               >
-                <MoveHorizontal size={15} />
+                <Maximize2 size={15} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -2895,7 +2895,7 @@ function Lane({
               onClick={onToggleCollapsed}
               className={LANE_ACTION}
             >
-              <MoveHorizontal size={15} />
+              <Minimize2 size={15} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top">
