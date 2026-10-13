@@ -63,6 +63,16 @@ describe("applyAttemptToDraft", () => {
     expect(next).toEqual({ set: {}, delete: ["Home"] });
   });
 
+  it("a put of main's own content drops the name from the draft", () => {
+    const next = applyAttemptToDraft(
+      { set: { Home: { a: 1 }, Footer: { b: 2 } }, delete: [] },
+      { put: { "Home.json": '{"a":0}' }, delete: [] },
+      main,
+      new Set(["Home"]),
+    );
+    expect(next).toEqual({ set: { Footer: { b: 2 } }, delete: [] });
+  });
+
   it("ignores the shadow-spelling deletes of a written name", () => {
     const next = applyAttemptToDraft(
       { set: {}, delete: [] },
@@ -74,6 +84,39 @@ describe("applyAttemptToDraft", () => {
 });
 
 describe("createDraftContentStorage", () => {
+  it("writing main's version back (a discard) leaves no draft entry", async () => {
+    const { storage, drafts } = setup();
+    const snap = await storage.snapshot();
+    await storage.commit({
+      base: snap,
+      put: {
+        "Home.json": serializeBlock({ path: "/", title: "draft" }),
+        "Footer.json": serializeBlock({ links: ["x"] }),
+      },
+      delete: [],
+      expected: {},
+    });
+    const edited = await storage.snapshot();
+    // Key order differs from main's file: still main's content.
+    await storage.commit({
+      base: edited,
+      put: { "Home.json": JSON.stringify({ title: "main", path: "/" }) },
+      delete: [],
+      expected: {},
+    });
+    expect((await drafts.load(REF))?.body).toEqual({
+      set: { Footer: { links: ["x"] } },
+      delete: [],
+    });
+    await storage.commit({
+      base: await storage.snapshot(),
+      put: { "Footer.json": serializeBlock({ links: [] }) },
+      delete: [],
+      expected: {},
+    });
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+  });
+
   it("reads main with no draft, at revision <head>~none", async () => {
     const { repo, storage } = setup();
     const snap = await storage.snapshot();
