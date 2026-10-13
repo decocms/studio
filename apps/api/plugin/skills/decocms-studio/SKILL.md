@@ -14,6 +14,11 @@ Run the CLI as `decocms` when it is on `PATH`, otherwise `bunx decocms@latest`.
 An `Unknown command: tools` error means a cached old version; rerun with
 `bunx decocms@latest`.
 
+The CLI runs on Bun, also when started with `npx`. If `bunx` is not found, ask
+the user before installing Bun with `curl -fsSL https://bun.com/install | bash`
+(Windows: `powershell -c "irm bun.com/install.ps1 | iex"`), then call
+`~/.bun/bin/bunx` until a new shell has it on `PATH`.
+
 ## 1. Session
 
 ```bash

@@ -577,8 +577,9 @@ export const settings = {
     "Instale a skill do Studio e faça login uma vez. Depois disso, seu agente trabalha com os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
   "settings.connectClients.skillInstallStep": "1. Instale a skill",
   "settings.connectClients.skillLoginHint":
-    "Precisa do Bun. Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
+    "Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
   "settings.connectClients.skillLoginStep": "2. Faça login",
+  "settings.connectClients.skillNeedsBun": "Precisa do Bun.",
   "settings.connectClients.skillOtherAgentsHint":
     "O instalador pergunta em quais agentes adicionar a skill.",
   "settings.connectClients.skillTab": "CLI + skill",

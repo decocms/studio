@@ -342,6 +342,14 @@ function SkillSetup({
         </div>
       </Card>
       <p className="text-xs leading-snug text-muted-foreground">
+        <a
+          href="https://bun.com"
+          target="_blank"
+          rel="noreferrer"
+          className="text-foreground underline underline-offset-2 hover:no-underline"
+        >
+          {t("settings.connectClients.skillNeedsBun")}
+        </a>{" "}
         {t("settings.connectClients.skillLoginHint")}
       </p>
     </div>
