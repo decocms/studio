@@ -1,13 +1,8 @@
-import {
-  appendCoAuthorTrailer,
-  type CoAuthorIdentity,
-} from "@decocms/sandbox/shared";
+import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
   blockKeyToFileStem,
   decoBlockFingerprint,
-  mergeBlocks,
 } from "@decocms/shared/decofile";
-import { repoIdentityKey } from "@decocms/shared/git-providers";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import {
   type FileChange,
@@ -22,6 +17,7 @@ import {
   resolveBlockContents,
   resolveOrCreateHead,
 } from "./read-decofile";
+import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 
 /**
  * Per-(virtualMcpId, branch) commit coalescer. Autosaves arrive every ~700ms
@@ -290,33 +286,24 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
 
     if (writes.length === 0) return { sha: headSha, accepted, conflicts };
 
-    // Repos that track the merged artifact get it regenerated in-commit;
-    // gitignored repos (the common case) never have the tree entry.
-    const genPath = packagePath
-      ? `${packagePath}/.deco/blocks.gen.json`
-      : ".deco/blocks.gen.json";
-    if (tree.some((e) => e.type === "blob" && e.path === genPath)) {
-      const files = await resolveBlockContents(
-        client,
-        nextBlocks.values(),
-        blobMemo,
-      );
-      const { decofile: genContent, skipped } = mergeBlocks(files);
-      if (skipped.length > 0) {
-        console.warn("decofile gen: dropped blocks that were not valid JSON", {
-          repo: repoIdentityKey(client.repo),
-          branch,
-          packagePath,
-          blocks: skipped.map((s) => s.key),
-        });
-      }
-      writes.push({ path: genPath, content: genContent });
-    }
+    const gen = await regenerateGenArtifact({
+      client,
+      tree,
+      packagePath,
+      branch,
+      nextBlocks: nextBlocks.values(),
+      memo: blobMemo,
+    });
+    if (gen) writes.push(gen);
 
     try {
       const { sha } = await client.commitFiles({
         branch,
-        message: commitMessage(set, del, batch.deps.coAuthor),
+        message: decofileCommitMessage(
+          [...set.keys()],
+          [...del],
+          batch.deps.coAuthor,
+        ),
         expectedHead: headSha,
         changes: writes,
       });
@@ -332,20 +319,4 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
       await sleep(exponentialBackoffWithJitter(2_000, 200, attempt, 2, 0.5));
     }
   }
-}
-
-function commitMessage(
-  set: Map<string, unknown>,
-  del: Set<string>,
-  coAuthor: CoAuthorIdentity | null | undefined,
-): string {
-  const summarize = (keys: string[]): string => {
-    const shown = keys.slice(0, 3).join(", ");
-    return keys.length > 3 ? `${shown} (+${keys.length - 3} more)` : shown;
-  };
-  const parts: string[] = [];
-  if (set.size > 0) parts.push(`update ${summarize([...set.keys()])}`);
-  if (del.size > 0) parts.push(`delete ${summarize([...del])}`);
-  const subject = `chore(decofile): ${parts.join("; ")}`;
-  return appendCoAuthorTrailer(subject, coAuthor);
 }
