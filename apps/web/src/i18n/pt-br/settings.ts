@@ -56,6 +56,8 @@ export const settings = {
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",
   "settings.jira.createTokenLink": "Criar um API token",
+  "settings.jira.tokenHint":
+    "Use “Create API token”, e não “Create API token with scopes”: tokens com escopos não funcionam aqui. A conta precisa poder ver, transicionar, comentar, anexar, criar e linkar issues no projeto do board.",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":
     "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 10 minutos; com ele, a run começa quando o card fica um minuto parado.",
