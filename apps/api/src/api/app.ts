@@ -206,6 +206,7 @@ import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reac
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
+import { BoardColumnTransitionSweeper } from "../automations/board-column-transition-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -1757,6 +1758,22 @@ export async function createApp(options: CreateAppOptions = {}) {
     currentDecopilotCleanup = async () => {
       await previousCleanup?.();
       taskBoardReviewSweeper.dispose();
+    };
+  }
+  // Fires `board_column_transition` automation triggers when a card settles
+  // in a column. A timer for the same reason as the review sweeper: moves are
+  // logged from inside DBOS steps. Off until BOARD_TRANSITION_SWEEPER_ENABLED.
+  if (getSettings().boardTransitionSweeperEnabled) {
+    const boardTransitionSweeper = new BoardColumnTransitionSweeper(
+      automationsStorage,
+      projectorTaskBoard,
+      automationContextFactory,
+    );
+    boardTransitionSweeper.start();
+    const previousCleanup = currentDecopilotCleanup;
+    currentDecopilotCleanup = async () => {
+      await previousCleanup?.();
+      boardTransitionSweeper.dispose();
     };
   }
   setProjectorWorkflowRuntime({

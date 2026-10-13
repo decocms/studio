@@ -5079,13 +5079,33 @@ export interface StudioToolIO {
         temperature: number;
         triggers: {
           id: string;
-          type: "cron" | "event" | "webhook";
+          type: "cron" | "event" | "webhook" | "board_column_transition";
           cron_expression: string | null;
           connection_id: string | null;
           event_type: string | null;
           params: unknown;
           last_run_at: string | null;
           api_key_id: string | null;
+          column_key: string | null;
+          from:
+            | { kind: "any" }
+            | { kind: "earlier" }
+            | { kind: "later" }
+            | {
+                kind: "statuses";
+                statuses: (
+                  | "done"
+                  | "triage"
+                  | "in_progress"
+                  | "in_review"
+                  | "qa"
+                  | "customer_approval"
+                  | "ready_for_deployment"
+                  | "post_deploy_validation"
+                  | "archived"
+                )[];
+              }
+            | null;
           created_at: string;
         }[];
       } | null;
@@ -5139,16 +5159,46 @@ export interface StudioToolIO {
   AUTOMATION_TRIGGER_ADD: {
     input: {
       automation_id: string;
-      type: "cron" | "event" | "webhook";
+      type: "cron" | "event" | "webhook" | "board_column_transition";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
       event_type?: string | undefined;
       params?: Record<string, string> | undefined;
+      column_key?:
+        | "done"
+        | "triage"
+        | "in_progress"
+        | "in_review"
+        | "qa"
+        | "customer_approval"
+        | "ready_for_deployment"
+        | "post_deploy_validation"
+        | "archived"
+        | undefined;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | {
+            kind: "statuses";
+            statuses: (
+              | "done"
+              | "triage"
+              | "in_progress"
+              | "in_review"
+              | "qa"
+              | "customer_approval"
+              | "ready_for_deployment"
+              | "post_deploy_validation"
+              | "archived"
+            )[];
+          }
+        | undefined;
     };
     output: {
       id: string;
       automation_id: string;
-      type: "cron" | "event" | "webhook";
+      type: "cron" | "event" | "webhook" | "board_column_transition";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;
     };

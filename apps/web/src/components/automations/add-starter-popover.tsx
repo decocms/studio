@@ -15,10 +15,13 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { Clock, Plus, Globe01, Zap } from "@untitledui/icons";
+import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import { Clock, Columns01, Plus, Globe01, Zap } from "@untitledui/icons";
+import { HIDDEN_STATUSES, laneHeader } from "@/layouts/task-board/config";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 export function AddStarterPopover({
   automationId,
@@ -65,6 +68,26 @@ export function AddStarterPopover({
     }
   };
 
+  const submitColumnTransition = async (
+    columnKey: (typeof CANONICAL_COLUMN_KEYS)[number],
+  ) => {
+    try {
+      await addTrigger.mutateAsync({
+        automation_id: automationId,
+        type: "board_column_transition",
+        column_key: columnKey,
+      });
+      toast.success(t("automations.addStarterPopover.starterAdded"));
+      handleOpenChange(false);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : t("automations.addStarterPopover.failedAddStarter");
+      toast.error(message);
+    }
+  };
+
   const submitWebhook = async () => {
     try {
       const result = await addTrigger.mutateAsync({
@@ -94,7 +117,7 @@ export function AddStarterPopover({
           {t("automations.addStarterPopover.addStarter")}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[200px]">
+      <DropdownMenuContent align="end" className="w-[240px]">
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2.5">
             <Clock size={14} className="text-muted-foreground shrink-0" />
@@ -138,6 +161,35 @@ export function AddStarterPopover({
           <Zap size={14} className="text-muted-foreground shrink-0" />
           {t("automations.addStarterPopover.event")}
         </DropdownMenuItem>
+
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="gap-2.5">
+            <Columns01 size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.cardEntersColumn")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-[220px]">
+            {CANONICAL_COLUMN_KEYS.filter(
+              (key) => !HIDDEN_STATUSES.includes(key),
+            ).map((key) => {
+              const { label, visual } = laneHeader(key, t);
+              const LaneIcon = visual.icon;
+              return (
+                <DropdownMenuItem
+                  key={key}
+                  className="gap-2.5"
+                  onSelect={() => submitColumnTransition(key)}
+                  disabled={addTrigger.isPending}
+                >
+                  <LaneIcon
+                    size={14}
+                    className={cn("shrink-0", visual.iconClassName)}
+                  />
+                  {label}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
 
         <DropdownMenuItem
           className="gap-2.5"

@@ -976,6 +976,80 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Lane changes that have settled: each card's newest move into another lane,
+   * made between `since` and `settledBefore`, with the card still sitting in
+   * that lane. The board transition sweep's work list, for `organizationIds`
+   * only (the orgs with a trigger that could fire).
+   *
+   * A same-lane entry (a retry is logged as `in_progress → in_progress`) is
+   * neither a move nor a reason to call an earlier move stale.
+   */
+  async listSettledTransitions(params: {
+    organizationIds: string[];
+    since: Date;
+    settledBefore: Date;
+    limit: number;
+  }): Promise<
+    {
+      activityId: string;
+      itemId: string;
+      organizationId: string;
+      from: string | null;
+      to: string;
+      occurredAt: string;
+    }[]
+  > {
+    if (params.organizationIds.length === 0) return [];
+    const moved = sql<boolean>`a.data->>'from' is distinct from a.data->>'to'`;
+    const rows = await this.db
+      .selectFrom("task_board_activity as a")
+      .innerJoin("task_board_items as i", "i.id", "a.task_board_item_id")
+      .select([
+        "a.id as activityId",
+        "a.task_board_item_id as itemId",
+        "i.organization_id as organizationId",
+        sql<string | null>`a.data->>'from'`.as("from"),
+        sql<string>`a.data->>'to'`.as("to"),
+        "a.occurred_at as occurredAt",
+      ])
+      .where("a.action", "=", "status_changed")
+      .where("a.occurred_at", ">", params.since)
+      .where("a.occurred_at", "<=", params.settledBefore)
+      .where(moved)
+      .where("i.organization_id", "in", params.organizationIds)
+      .where("i.dismissed_at", "is", null)
+      .where("i.source", "is", null)
+      .where(sql<boolean>`i.status = a.data->>'to'`)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_activity as b")
+              .select("b.id")
+              .whereRef("b.task_board_item_id", "=", "a.task_board_item_id")
+              .where("b.action", "=", "status_changed")
+              .where(
+                sql<boolean>`b.data->>'from' is distinct from b.data->>'to'`,
+              )
+              .where(
+                sql<boolean>`(b.occurred_at, b.id) > (a.occurred_at, a.id)`,
+              ),
+          ),
+        ),
+      )
+      .orderBy("a.occurred_at", "asc")
+      .limit(params.limit)
+      .execute();
+    return rows.map((row) => ({
+      ...row,
+      occurredAt:
+        row.occurredAt instanceof Date
+          ? row.occurredAt.toISOString()
+          : String(row.occurredAt),
+    }));
+  }
+
+  /**
    * The archive sweep's work list, across EVERY org: Done cards that have sat
    * untouched since `settledBefore` and have at least one linked PR.
    *

@@ -12,7 +12,13 @@
 
 import { type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import type { Database, Automation, AutomationTrigger } from "./types";
+import type {
+  Automation,
+  AutomationTrigger,
+  AutomationTriggerType,
+  BoardTransitionFromKind,
+  Database,
+} from "./types";
 import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 
 // ============================================================================
@@ -44,13 +50,16 @@ export interface UpdateAutomationInput {
 
 export interface CreateTriggerInput {
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression?: string | null;
   connection_id?: string | null;
   event_type?: string | null;
   params?: string | null;
   next_run_at?: string | null;
   api_key_id?: string | null;
+  column_key?: string | null;
+  from_kind?: BoardTransitionFromKind | null;
+  from_statuses?: string[];
 }
 
 // ============================================================================
@@ -99,6 +108,10 @@ export interface AutomationsStorage {
     connectionId: string,
   ): Promise<Pick<Automation, "id" | "name">[]>;
   // Includes inactive automations: reconciler pauses (not deletes) their schedules.
+  findActiveBoardColumnTriggers(): Promise<
+    (AutomationTrigger & { automation: Automation })[]
+  >;
+  claimTriggerFire(triggerId: string, eventKey: string): Promise<boolean>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
@@ -192,12 +205,15 @@ function triggerFromDbRow(row: {
   last_run_at: Date | string | null;
   next_run_at?: Date | string | null;
   api_key_id?: string | null;
+  column_key?: string | null;
+  from_kind?: string | null;
+  from_statuses?: string[] | null;
   created_at: Date | string;
 }): AutomationTrigger {
   return {
     id: row.id,
     automation_id: row.automation_id,
-    type: row.type as "cron" | "event" | "webhook",
+    type: row.type as AutomationTriggerType,
     cron_expression: row.cron_expression,
     connection_id: row.connection_id,
     event_type: row.event_type,
@@ -205,6 +221,9 @@ function triggerFromDbRow(row: {
     last_run_at: row.last_run_at ? toIsoString(row.last_run_at) : null,
     next_run_at: row.next_run_at ? toIsoString(row.next_run_at) : null,
     api_key_id: row.api_key_id ?? null,
+    column_key: row.column_key ?? null,
+    from_kind: (row.from_kind as BoardTransitionFromKind | null) ?? null,
+    from_statuses: row.from_statuses ?? [],
     created_at: toIsoString(row.created_at),
   };
 }
@@ -441,6 +460,9 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       last_run_at: null,
       next_run_at: input.next_run_at ?? null,
       api_key_id: input.api_key_id ?? null,
+      column_key: input.column_key ?? null,
+      from_kind: input.from_kind ?? null,
+      from_statuses: input.from_statuses ?? [],
       created_at: now,
     };
 
@@ -567,6 +589,61 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .execute();
 
     return rows;
+  }
+
+  /**
+   * Active `board_column_transition` triggers, with their automations, across
+   * every org — the board transition sweep's work list. An org with none is
+   * absent, which is what keeps the sweep cheap where nobody uses them.
+   */
+  async findActiveBoardColumnTriggers(): Promise<
+    (AutomationTrigger & { automation: Automation })[]
+  > {
+    const rows = await this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select([
+        "t.id",
+        "t.automation_id",
+        "t.type",
+        "t.cron_expression",
+        "t.connection_id",
+        "t.event_type",
+        "t.params",
+        "t.last_run_at",
+        "t.api_key_id",
+        "t.column_key",
+        "t.from_kind",
+        "t.from_statuses",
+        "t.created_at",
+        ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
+      ])
+      .where("t.type", "=", "board_column_transition")
+      .where("a.active", "=", true)
+      .execute();
+
+    return rows.map((row) => ({
+      ...triggerFromDbRow(row),
+      automation: automationFromAliasedRow(row),
+    }));
+  }
+
+  /**
+   * Claim a trigger's fire for one event. True only for the first caller:
+   * replicas sweeping the same move, or one sweep seeing it twice, all race
+   * here and one wins.
+   */
+  async claimTriggerFire(
+    triggerId: string,
+    eventKey: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .insertInto("automation_trigger_fires")
+      .values({ trigger_id: triggerId, event_key: eventKey })
+      .onConflict((oc) => oc.columns(["trigger_id", "event_key"]).doNothing())
+      .returning("trigger_id")
+      .executeTakeFirst();
+    return row !== undefined;
   }
 
   async findAllCronTriggers(): Promise<

@@ -118,7 +118,7 @@ export interface AutomationListItem {
 
 export interface AutomationTrigger {
   id: string;
-  type: "cron" | "event" | "webhook";
+  type: "cron" | "event" | "webhook" | "board_column_transition";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -126,6 +126,8 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  /** For `board_column_transition`: the board column a card enters. */
+  column_key: string | null;
   created_at: string;
 }
 

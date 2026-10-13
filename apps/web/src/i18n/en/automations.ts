@@ -9,6 +9,8 @@ export const automations = {
     "Failed to add webhook starter",
   "automations.addStarterPopover.starterAdded": "Starter added",
   "automations.addStarterPopover.webhook": "Webhook",
+  "automations.addStarterPopover.cardEntersColumn":
+    "When a card enters a column",
   "automations.addStarterPopover.webhookStarterAdded": "Webhook starter added",
   "automations.automationConfig.all": "All",
   "automations.automationConfig.allTools": "All tools",
@@ -179,6 +181,7 @@ export const automations = {
     "A new token will be generated and the current token will stop working. Any senders using the old token must be updated.",
   "automations.triggerCard.starterRemoved": "Starter removed",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST to fire",
+  "automations.triggerCard.cardEntersColumn": "When a card enters {lane}",
   "automations.webhookSecretDialog.copied": "Copied",
   "automations.webhookSecretDialog.copy": "Copy",
   "automations.webhookSecretDialog.done": "Done",

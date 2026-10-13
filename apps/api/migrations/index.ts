@@ -17,6 +17,7 @@ import * as migration237orgsitesprojectlink from "./237-org-sites-project-link";
 import * as migration238taskboarddefaultlanes from "./238-task-board-default-lanes";
 import * as migration239taskboardretireoldlanes from "./239-task-board-retire-old-lanes";
 import * as migration240taskboardrestoretodo from "./240-task-board-restore-todo";
+import * as migration241automationboardcolumntransition from "./241-automation-board-column-transition";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -518,6 +519,8 @@ const migrations: Record<string, Migration> = {
   "238-task-board-default-lanes": migration238taskboarddefaultlanes,
   "239-task-board-retire-old-lanes": migration239taskboardretireoldlanes,
   "240-task-board-restore-todo": migration240taskboardrestoretodo,
+  "241-automation-board-column-transition":
+    migration241automationboardcolumntransition,
 };
 
 export default migrations;

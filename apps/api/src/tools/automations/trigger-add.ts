@@ -1,13 +1,16 @@
 /**
  * AUTOMATION_TRIGGER_ADD Tool
  *
- * Adds a trigger (cron, event, or webhook) to an automation.
+ * Adds a trigger (cron, event, webhook, or board column transition) to an
+ * automation.
  * - Cron triggers: validated with croner, minimum interval enforced
  *   (`AUTOMATION_CRON_MIN_INTERVAL_MS`) to keep one tenant from flooding the
  *   DBOS scheduler and gate queues.
  * - Event triggers: fail-atomic — if TRIGGER_CONFIGURE call fails, trigger is not inserted
  * - Webhook triggers: mint a Better Auth API key scoped to the trigger and
  *   return the plaintext token + URL. Token is shown only here.
+ * - Board column transition triggers: fire when a card settles in a column
+ *   of this org's board (`automations/board-column-transition.ts`).
  */
 
 import { computeNextRunAt } from "../../automations/fire";
@@ -18,6 +21,12 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { webhookPermissionResource, webhookUrl } from "./webhook-trigger";
+import {
+  BoardColumnKeySchema,
+  BoardTransitionFromSchema,
+} from "../../automations/board-column-transition";
+import { normalizeFrom } from "../../jira/rule-from";
+import { AutomationTriggerTypeSchema } from "./trigger-schema";
 
 // Cluster-wide floor on cron firing frequency. Tighter than the 60s floor
 // the old NATS dispatcher allowed: each fire writes ~4 DBOS workflow rows
@@ -35,7 +44,11 @@ const CRON_PROBE_RUNS = 10;
 export const AUTOMATION_TRIGGER_ADD = defineTool({
   name: "AUTOMATION_TRIGGER_ADD",
   description:
-    "Add a cron, event, or webhook trigger to an automation. For webhook triggers the response includes a one-time URL + secret token.",
+    "Add a cron, event, webhook, or board column transition trigger to an " +
+    "automation. For webhook triggers the response includes a one-time URL + " +
+    "secret token. A board_column_transition trigger runs the automation on " +
+    "each card that enters `column_key` (after it stays there a few seconds), " +
+    "with the card as the run's task.",
   annotations: {
     title: "Add Trigger",
     readOnlyHint: false,
@@ -45,16 +58,23 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
   },
   inputSchema: z.object({
     automation_id: z.string(),
-    type: z.enum(["cron", "event", "webhook"]),
+    type: AutomationTriggerTypeSchema,
     cron_expression: z.string().optional(),
     connection_id: z.string().optional(),
     event_type: z.string().optional(),
     params: z.record(z.string(), z.string()).optional(),
+    column_key: BoardColumnKeySchema.optional().describe(
+      "For board_column_transition: the board column a card enters.",
+    ),
+    from: BoardTransitionFromSchema.optional().describe(
+      "For board_column_transition: which moves count, by where the card " +
+        "came from. Defaults to any column.",
+    ),
   }),
   outputSchema: z.object({
     id: z.string(),
     automation_id: z.string(),
-    type: z.enum(["cron", "event", "webhook"]),
+    type: AutomationTriggerTypeSchema,
     created_at: z.string(),
     // Only set for `type: "webhook"`. The token is plaintext and is
     // shown only here — rotate via AUTOMATION_TRIGGER_ROTATE_TOKEN.
@@ -142,6 +162,9 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
         last_run_at: null,
         next_run_at: null,
         api_key_id: null,
+        column_key: null,
+        from_kind: null,
+        from_statuses: [],
         created_at: "",
       };
 
@@ -159,6 +182,16 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       }
     }
 
+    if (input.type === "board_column_transition" && !input.column_key) {
+      throw new Error(
+        "column_key is required for board_column_transition triggers",
+      );
+    }
+    const from =
+      input.type === "board_column_transition"
+        ? normalizeFrom(input.from ?? { kind: "any" })
+        : null;
+
     const nextRunAt =
       input.type === "cron" && input.cron_expression
         ? computeNextRunAt(input.cron_expression, new Date())
@@ -172,6 +205,10 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       event_type: input.type === "event" ? input.event_type : null,
       params: input.params ? JSON.stringify(input.params) : null,
       next_run_at: nextRunAt?.toISOString() ?? null,
+      column_key:
+        input.type === "board_column_transition" ? input.column_key : null,
+      from_kind: from?.kind ?? null,
+      from_statuses: from?.kind === "statuses" ? from.statuses : [],
     });
 
     // For webhook triggers, mint a Better Auth API key now that we know
