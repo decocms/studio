@@ -15,20 +15,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  CANONICAL_COLUMN_KEYS,
-  type CanonicalColumnKey,
-} from "@decocms/shared/task-board";
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ProjectIcon } from "@/components/project-icon";
 import { useTaskBoardItemActions } from "@/hooks/use-task-board-items";
 import { useProjectScope } from "@/hooks/use-project-scope";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import {
   PRIORITIES,
   PRIORITY_CONFIG,
   TASK_TYPES,
   TASK_TYPE_CONFIG,
   laneHeader,
+  moveTargets,
   type TaskBoardItemPriority,
   type TaskBoardItemType,
 } from "@/layouts/task-board/config";
@@ -104,6 +103,7 @@ export function NewTaskComposer() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<CanonicalColumnKey | null>(null);
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [priority, setPriority] = useState<TaskBoardItemPriority | null>(null);
   const [type, setType] = useState<TaskBoardItemType | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -218,7 +218,7 @@ export function NewTaskComposer() {
             ) : null
           }
         >
-          {CANONICAL_COLUMN_KEYS.map((column) => {
+          {moveTargets(deliveryEnabled).map((column) => {
             const header = laneHeader(column, t);
             return (
               <OptionRow

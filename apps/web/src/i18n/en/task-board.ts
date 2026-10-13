@@ -36,6 +36,9 @@ export const taskBoard = {
   "taskBoard.config.statusInReview": "In Review",
   "taskBoard.config.statusPostDeployValidation": "Post-deploy Validation",
   "taskBoard.config.statusTodo": "To Do",
+  "taskBoard.config.statusQa": "QA",
+  "taskBoard.config.statusCustomerApproval": "Customer Approval",
+  "taskBoard.config.statusReadyForDeployment": "Ready for Deployment",
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Assigned to Super Agent by {name}",
@@ -76,6 +79,10 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
+  "taskBoard.taskBoard.collapseColumn": "Collapse",
+  "taskBoard.taskBoard.collapseColumnAriaLabel": "Collapse {lane}",
+  "taskBoard.taskBoard.expandColumn": "Expand",
+  "taskBoard.taskBoard.expandColumnAriaLabel": "Expand {lane}",
   "taskBoard.agenticSetup.button": "Agentic Setup",
   "taskBoard.agenticSetup.message":
     "Help me set up my board around the work I'm doing.",

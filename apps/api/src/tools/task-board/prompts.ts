@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
-import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import { OFFERED_COLUMN_KEYS } from "./lanes";
 import { buildSkillCatalog } from "@/file-storage/skill-catalog";
 import { sseHub } from "@/event-bus/sse-hub";
 import { TASK_BOARD_RULES_UPDATED_EVENT } from "@decocms/shared/task-board";
@@ -102,9 +102,9 @@ export const TASK_BOARD_PROMPT_UPSERT = defineTool({
     // Rejected rather than stored and ignored: a prompt on a column this board
     // does not have never applies, and looks configured to whoever set it.
     if (columnKey !== null) {
-      if (!CANONICAL_COLUMN_KEYS.some((key) => key === columnKey)) {
+      if (!OFFERED_COLUMN_KEYS.some((key) => key === columnKey)) {
         throw new Error(
-          `This board has no column "${columnKey}" — it has ${CANONICAL_COLUMN_KEYS.join(", ")}`,
+          `This board has no column "${columnKey}" — it has ${OFFERED_COLUMN_KEYS.join(", ")}`,
         );
       }
     }

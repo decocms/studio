@@ -12,16 +12,19 @@ import {
   ArrowNarrowUp,
   CheckCircle,
   Circle,
+  ClipboardCheck,
   Equal,
   Eye,
   Lightbulb02,
   Loading02,
+  PackageCheck,
   PlusCircle,
   Rocket01,
   Settings01,
   Shield01,
   ShieldTick,
   ThumbsUp,
+  UserCheck01,
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
@@ -29,6 +32,7 @@ import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TAG_COLOR,
   DELIVERY_LANES,
+  isDormantLane,
 } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { ComponentType } from "react";
@@ -232,9 +236,24 @@ export const STATUS_CONFIG: Record<
     icon: Eye,
     iconClassName: "text-warning",
   },
+  qa: {
+    labelKey: "taskBoard.config.statusQa",
+    icon: ClipboardCheck,
+    iconClassName: "text-warning",
+  },
+  customer_approval: {
+    labelKey: "taskBoard.config.statusCustomerApproval",
+    icon: UserCheck01,
+    iconClassName: "text-warning",
+  },
   approved: {
     labelKey: "taskBoard.config.statusApproved",
     icon: ThumbsUp,
+    iconClassName: "text-success",
+  },
+  ready_for_deployment: {
+    labelKey: "taskBoard.config.statusReadyForDeployment",
+    icon: PackageCheck,
     iconClassName: "text-success",
   },
   merged: {
@@ -362,11 +381,11 @@ function isDeliveryLane(status: string): boolean {
 /**
  * Lanes a card may be MOVED to — "Move to", the status dropdown. With the
  * delivery lanes off they aren't offered, so nobody can put a card somewhere
- * the org's state machine doesn't ship to.
+ * the org's state machine doesn't ship to. Dormant lanes are never offered.
  */
 export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
   return CANONICAL_COLUMN_KEYS.filter(
-    (key) => deliveryEnabled || !isDeliveryLane(key),
+    (key) => !isDormantLane(key) && (deliveryEnabled || !isDeliveryLane(key)),
   );
 }
 
@@ -376,6 +395,7 @@ export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
  * or is a delivery lane the board doesn't run; `shownLanes` overrides either.
  * `occupied` is what keeps a card from getting stuck: an unrun delivery lane is
  * absent while empty, but reappears in the drawer the moment a card sits in it.
+ * A dormant lane is drawn as a column only while a card sits in it.
  */
 export function laneVisibility({
   deliveryEnabled,
@@ -391,8 +411,10 @@ export function laneVisibility({
   hidden: CanonicalColumnKey[];
   hideable: CanonicalColumnKey[];
 } {
-  const known = CANONICAL_COLUMN_KEYS.filter(
-    (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+  const known = CANONICAL_COLUMN_KEYS.filter((s) =>
+    isDormantLane(s)
+      ? occupied.includes(s)
+      : deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
   );
   const hideable = known.filter(
     (s) =>
@@ -400,6 +422,37 @@ export function laneVisibility({
   );
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
   return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+}
+
+/** Width of a collapsed lane: room for its icon, vertical label and count. */
+const COLLAPSED_LANE_WIDTH = 44;
+
+/**
+ * The board grid's column tracks. Open lanes SHARE the width instead of each
+ * taking a fixed 300px: `minmax(280px, 1fr)` fills the panel when there is
+ * room and falls back to scrolling once every lane is at its minimum. 280px,
+ * not less — below it a card's footer runs out of room and its icons start
+ * overlapping instead of wrapping. A collapsed lane takes a fixed strip, and
+ * the hidden-lanes tail needs its own track or the grid wraps it onto a
+ * second row.
+ */
+export function boardGridColumns({
+  lanes,
+  collapsed,
+  hasHiddenTail,
+}: {
+  lanes: readonly string[];
+  /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
+  collapsed: readonly string[];
+  hasHiddenTail: boolean;
+}): string {
+  const tracks: string[] = lanes.map((lane) =>
+    collapsed.includes(lane)
+      ? `${COLLAPSED_LANE_WIDTH}px`
+      : "minmax(280px, 1fr)",
+  );
+  if (hasHiddenTail) tracks.push("280px");
+  return tracks.join(" ");
 }
 
 /** dnd-kit id prefix for a lane's own droppable — the empty space below the
