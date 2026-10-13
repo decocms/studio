@@ -14,20 +14,15 @@ import {
   LANE_RANK,
   laneRank,
   movesForward,
-  OFFERED_COLUMN_KEYS,
-  refuseDormantLane,
 } from "./lanes";
 
 const BOARD_ORDER: TaskBoardItemStatus[] = [
   "triage",
-  "todo",
   "in_progress",
   "in_review",
   "qa",
   "customer_approval",
-  "approved",
   "ready_for_deployment",
-  "merged",
   "post_deploy_validation",
   "done",
   "archived",
@@ -82,8 +77,8 @@ describe("movesForward", () => {
 });
 
 describe("isTaggableMergedStatus", () => {
-  it("covers the lanes a merged PR leaves a card in, the previous board's included", () => {
-    for (const lane of ["post_deploy_validation", "done", "merged"]) {
+  it("covers the lanes a merged PR leaves a card in", () => {
+    for (const lane of ["post_deploy_validation", "done"]) {
       expect(isTaggableMergedStatus(lane)).toBe(true);
     }
     for (const lane of ["ready_for_deployment", "qa", "archived"]) {
@@ -127,30 +122,5 @@ describe("inReviewPhase", () => {
 
   it("is false for a card that has not been worked yet", () => {
     expect(inReviewPhase(card("triage"))).toBe(false);
-    expect(inReviewPhase(card("todo"))).toBe(false);
-  });
-});
-
-describe("dormant lanes", () => {
-  it("are refused as a write target, and only they are", () => {
-    expect(() => refuseDormantLane("todo")).toThrow(/not on this board/);
-    expect(() => refuseDormantLane("approved")).toThrow();
-    expect(() => refuseDormantLane("merged")).toThrow();
-    expect(() => refuseDormantLane("qa")).not.toThrow();
-    expect(() => refuseDormantLane(undefined)).not.toThrow();
-  });
-
-  it("are not offered to column rules", () => {
-    expect(OFFERED_COLUMN_KEYS).toEqual([
-      "triage",
-      "in_progress",
-      "in_review",
-      "qa",
-      "customer_approval",
-      "ready_for_deployment",
-      "post_deploy_validation",
-      "done",
-      "archived",
-    ]);
   });
 });

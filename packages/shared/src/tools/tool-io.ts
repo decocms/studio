@@ -350,14 +350,11 @@ export interface StudioToolIO {
       status?:
         | "done"
         | "triage"
-        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
         | "customer_approval"
-        | "approved"
         | "ready_for_deployment"
-        | "merged"
         | "post_deploy_validation"
         | "archived"
         | undefined;
@@ -380,14 +377,11 @@ export interface StudioToolIO {
         status:
           | "done"
           | "triage"
-          | "todo"
           | "in_progress"
           | "in_review"
           | "qa"
           | "customer_approval"
-          | "approved"
           | "ready_for_deployment"
-          | "merged"
           | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
@@ -459,14 +453,11 @@ export interface StudioToolIO {
         status:
           | "done"
           | "triage"
-          | "todo"
           | "in_progress"
           | "in_review"
           | "qa"
           | "customer_approval"
-          | "approved"
           | "ready_for_deployment"
-          | "merged"
           | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
@@ -534,14 +525,11 @@ export interface StudioToolIO {
       status?:
         | "done"
         | "triage"
-        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
         | "customer_approval"
-        | "approved"
         | "ready_for_deployment"
-        | "merged"
         | "post_deploy_validation"
         | "archived"
         | undefined;
@@ -566,14 +554,11 @@ export interface StudioToolIO {
         status:
           | "done"
           | "triage"
-          | "todo"
           | "in_progress"
           | "in_review"
           | "qa"
           | "customer_approval"
-          | "approved"
           | "ready_for_deployment"
-          | "merged"
           | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
@@ -723,14 +708,11 @@ export interface StudioToolIO {
       status:
         | "done"
         | "triage"
-        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
         | "customer_approval"
-        | "approved"
         | "ready_for_deployment"
-        | "merged"
         | "post_deploy_validation"
         | "archived";
     };
@@ -741,14 +723,11 @@ export interface StudioToolIO {
       status:
         | "done"
         | "triage"
-        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
         | "customer_approval"
-        | "approved"
         | "ready_for_deployment"
-        | "merged"
         | "post_deploy_validation"
         | "archived";
       merged: boolean;
@@ -6109,7 +6088,10 @@ export interface StudioToolIO {
     };
   };
   JIRA_ISSUE_GET: {
-    input: { issueKey?: string | undefined };
+    input: {
+      issueKey?: string | undefined;
+      commentsBefore?: number | undefined;
+    };
     output: { key: string; url: string; status: string; markdown: string };
   };
   JIRA_COMMENT_ADD: {
@@ -7143,7 +7125,7 @@ export interface StudioToolIO {
         url: string;
         title: string;
         body: string;
-        state: "merged" | "open" | "closed";
+        state: "open" | "closed" | "merged";
         draft: boolean;
         mergedAt: string | null;
         base: string;
@@ -7197,7 +7179,7 @@ export interface StudioToolIO {
         url: string;
         title: string;
         body: string;
-        state: "merged" | "open" | "closed";
+        state: "open" | "closed" | "merged";
         draft: boolean;
         mergedAt: string | null;
         base: string;
@@ -7224,7 +7206,7 @@ export interface StudioToolIO {
         url: string;
         title: string;
         body: string;
-        state: "merged" | "open" | "closed";
+        state: "open" | "closed" | "merged";
         draft: boolean;
         mergedAt: string | null;
         base: string;
@@ -7263,7 +7245,7 @@ export interface StudioToolIO {
         url: string;
         title: string;
         body: string;
-        state: "merged" | "open" | "closed";
+        state: "open" | "closed" | "merged";
         draft: boolean;
         mergedAt: string | null;
         base: string;

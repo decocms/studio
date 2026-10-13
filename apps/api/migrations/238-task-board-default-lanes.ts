@@ -110,7 +110,7 @@ export async function down(): Promise<void> {}
 
 /** Move one column's rule rows to another column. The destination's own row,
  *  when the org has one, wins and the source row is dropped. */
-async function moveRules(
+export async function moveRules(
   db: Kysely<unknown>,
   table: "task_board_prompts" | "task_board_column_automations",
   idPrefix: string,
