@@ -2,6 +2,7 @@ import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import { requireBlogAi } from "./feature-flag";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogBrandSchema } from "./schema";
 import { researchBrand } from "./brand-research";
@@ -227,6 +228,7 @@ export const BLOG_BRAND_EXTRACT = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await requireBlogAi(ctx, organizationId);
 
     const tier = await resolveTier(ctx, "smart");
     const provider = await ctx.aiProviders.activate(

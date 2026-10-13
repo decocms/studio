@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import { requireBlogAi } from "./feature-flag";
 import {
   groundFromSite,
   renderGrounding,
@@ -110,6 +111,7 @@ export const BLOG_LINK_SUGGEST = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await requireBlogAi(ctx, organizationId);
 
     if (input.posts.length === 0 || !input.body.trim()) {
       return { suggestions: [] };

@@ -8,6 +8,7 @@ import {
 } from "@decocms/shared/blog-campaign";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import { requireBlogAi } from "./feature-flag";
 import {
   type Catalogue,
   extractCatalogue,
@@ -585,6 +586,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await requireBlogAi(ctx, organizationId);
 
     const brandName = input.brand.companyName ?? "this brand";
     const report = await groundSiteReport(ctx, organizationId, {

@@ -287,7 +287,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Show the blog's brand context tab and its agentic generation — campaigns, post drafting and link suggestions. Off by default; with it off the blog is written by hand and the tools stay reachable over MCP alone.",
+      "The blog's brand context tab and its agentic generation — campaigns, post drafting and link suggestions. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
     ),
   hide_default_blog_blocks: z
     .boolean()
