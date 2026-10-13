@@ -15,7 +15,6 @@ import {
   CANONICAL_COLUMN_KEYS,
   type CanonicalColumnKey,
   isDormantLane,
-  isHumanGateLane,
   LANES,
 } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
@@ -57,33 +56,6 @@ export function refuseDormantLane(status: string | undefined): void {
     `The "${status}" column is not on this board; use a column the board ` +
       "shows.",
   );
-}
-
-/**
- * Why an agent run may not make this move, or null when it may.
- *
- * QA and Customer Approval are people's checks on the agents' work, so a run
- * cannot move a card past one or into one, nor into a lane beyond them (which
- * would skip both). Moving back, and finishing a task that needed no change
- * (Done), stay open: `closesOwnReview` already guards Done during a review.
- */
-export function agentMoveRefusal(from: string, to: string): string | null {
-  if (from === to) return null;
-  if (isHumanGateLane(from) && movesForward(from, to)) {
-    return `A person moves a card out of "${from}"; a run can only send it back.`;
-  }
-  if (
-    to !== LANES.done &&
-    to !== LANES.archive &&
-    laneRank(to) >= LANE_RANK.qa &&
-    movesForward(from, to)
-  ) {
-    return (
-      `A run cannot move a card into "${to}": QA and Customer Approval are ` +
-      "for people. Finish your work and leave the card where the board puts it."
-    );
-  }
-  return null;
 }
 
 /**

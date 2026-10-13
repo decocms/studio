@@ -28,8 +28,7 @@ import {
 } from "./change-request-extract";
 import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
-import { agentMoveRefusal, refuseDormantLane } from "./lanes";
-import { taskRunContextStore } from "./task-run-context";
+import { refuseDormantLane } from "./lanes";
 import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -123,10 +122,6 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     refuseDormantLane(input.status);
-    if (input.status !== undefined && taskRunContextStore.getStore()) {
-      const refusal = agentMoveRefusal(LANES.intake, input.status);
-      if (refusal) throw new Error(refusal);
-    }
 
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);

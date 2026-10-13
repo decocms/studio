@@ -13,19 +13,13 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import {
-  agentMoveRefusal,
-  inReviewPhase,
-  LANE_RANK,
-  laneRank,
-  refuseDormantLane,
-} from "./lanes";
+import { inReviewPhase, LANE_RANK, laneRank, refuseDormantLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { assertPlannableSprint, sprintChangeEntry } from "./sprints";
-import { taskRunContextStore } from "./task-run-context";
+import { isBoardRunThread, taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { runColumnAutomation } from "./run-column-automation";
 import { shipOnArrivalIfAutoMerge } from "./merge-pr";
@@ -159,17 +153,19 @@ function closesReview(status: string): boolean {
 }
 
 /** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
- *  invariant; this tool sets `status` freely, so it needs the same guard. */
+ *  invariant; this tool sets `status` freely, so it needs the same guard.
+ *  `isBoardRun`: the caller is a run the board dispatched on a card
+ *  (`isBoardRunThread`), not a person's chat, which may move cards freely. */
 export function closesOwnReview(
   inputStatus: string | undefined,
   previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
-  isTaskRun: boolean,
+  isBoardRun: boolean,
 ): boolean {
   const completesTask = inputStatus !== undefined && closesReview(inputStatus);
   // The PHASE, not the lane: an In Progress card with an open cycle is still
   // under review (see `inReviewPhase`).
   const awaitingReview = previous !== undefined && inReviewPhase(previous);
-  return isTaskRun && completesTask && awaitingReview;
+  return isBoardRun && completesTask && awaitingReview;
 }
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -303,16 +299,18 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
 
     refuseDormantLane(input.status);
 
-    const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (isTaskRun && input.status !== undefined && previous) {
-      const refusal = agentMoveRefusal(previous.status, input.status);
-      if (refusal) throw new Error(refusal);
-    }
-    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
+    // Read only when the move could close a review, which is the one case
+    // the guard below cares who is asking.
+    const runThreadId = taskRunContextStore.getStore()?.threadId;
+    const isBoardRun =
+      runThreadId !== undefined &&
+      closesOwnReview(input.status, previous ?? undefined, true) &&
+      isBoardRunThread(await ctx.storage.threads.get(runThreadId));
+    if (closesOwnReview(input.status, previous ?? undefined, isBoardRun)) {
       throw new Error(
-        "This task is under review — a run can't move it to Done or Archived. " +
-          "Leave it for the reviewer; only a person, or " +
-          "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, closes out a " +
+        "This task is under review — the run working on it can't move it " +
+          "past In Review. Leave it for the reviewer; only a person, or " +
+          "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, moves on a " +
           "task under review.",
       );
     }

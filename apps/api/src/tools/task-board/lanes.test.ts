@@ -2,14 +2,13 @@
  * The lane order and the questions that ride on it.
  *
  * These are the assertions that make "automation never drags a card backward"
- * and "an agent never passes a person's check" checkable facts rather than a
- * property several call sites happen to agree on.
+ * a checkable fact rather than a property several call sites happen to agree
+ * on.
  */
 
 import { describe, expect, it } from "bun:test";
 import type { TaskBoardItemStatus } from "@/storage/types";
 import {
-  agentMoveRefusal,
   inReviewPhase,
   isTaggableMergedStatus,
   LANE_RANK,
@@ -153,43 +152,5 @@ describe("dormant lanes", () => {
       "done",
       "archived",
     ]);
-  });
-});
-
-describe("agentMoveRefusal", () => {
-  it("refuses a run moving a card forward out of a person's check", () => {
-    expect(agentMoveRefusal("qa", "customer_approval")).not.toBeNull();
-    expect(agentMoveRefusal("qa", "ready_for_deployment")).not.toBeNull();
-    expect(agentMoveRefusal("customer_approval", "done")).not.toBeNull();
-  });
-
-  it("refuses a run moving a card into a person's check, or past one", () => {
-    expect(agentMoveRefusal("in_review", "qa")).not.toBeNull();
-    expect(agentMoveRefusal("in_progress", "customer_approval")).not.toBeNull();
-    expect(
-      agentMoveRefusal("in_progress", "ready_for_deployment"),
-    ).not.toBeNull();
-    expect(
-      agentMoveRefusal("in_progress", "post_deploy_validation"),
-    ).not.toBeNull();
-  });
-
-  it("lets a run send a card back from a check, or leave it where it is", () => {
-    expect(agentMoveRefusal("qa", "in_progress")).toBeNull();
-    expect(agentMoveRefusal("customer_approval", "in_review")).toBeNull();
-    expect(agentMoveRefusal("qa", "qa")).toBeNull();
-  });
-
-  // A task that needed no change is finished by its own run.
-  it("lets a run finish or archive work before the checks", () => {
-    expect(agentMoveRefusal("in_progress", "done")).toBeNull();
-    expect(agentMoveRefusal("in_progress", "archived")).toBeNull();
-    expect(agentMoveRefusal("triage", "in_progress")).toBeNull();
-    expect(agentMoveRefusal("in_progress", "in_review")).toBeNull();
-  });
-
-  // Validating in production is agent work the user wants to automate.
-  it("lets a run finish a card in Post-deploy Validation", () => {
-    expect(agentMoveRefusal("post_deploy_validation", "done")).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 /**
- * Real-Postgres coverage for the board's lanes: the people's checks an agent
- * run cannot pass, an approval landing in QA, and the merge starting only from
- * Ready for Deployment.
+ * Real-Postgres coverage for the board's lanes: who may move a card under
+ * review, an approval landing in QA, and the merge starting only from Ready
+ * for Deployment.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -17,6 +17,11 @@ import {
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { TaskBoardStorage } from "../../storage/task-board";
 import { ColumnAutomationStorage } from "../../storage/task-board-column-automations";
+import {
+  OrgScopedThreadStorage,
+  SqlThreadStorage,
+} from "../../storage/threads";
+import { TASK_RUN_INSTRUCTIONS_KEY } from "../../harnesses/claude-code-env";
 import type { TaskBoardItemStatus } from "../../storage/types";
 import { TASK_BOARD_PROMOTE_TO_PRODUCTION } from "./promote-to-production";
 import { moveApprovedCardToQa } from "./run-reactions";
@@ -55,6 +60,10 @@ describe("board lanes (real Postgres)", () => {
         taskBoard,
         organizationSettings: new OrganizationSettingsStorage(database.db),
         columnAutomations: new ColumnAutomationStorage(database.db),
+        threads: new OrgScopedThreadStorage(
+          new SqlThreadStorage(database.db),
+          ORG,
+        ),
       },
       access: {
         granted: () => true,
@@ -92,46 +101,61 @@ describe("board lanes (real Postgres)", () => {
   const move = (id: string, status: TaskBoardItemStatus) =>
     TASK_BOARD_ITEM_UPDATE.handler({ id, status }, ctx);
 
-  const moveAsRun = (id: string, status: TaskBoardItemStatus) =>
-    taskRunContextStore.run({ threadId: "thrd_run" }, () => move(id, status));
+  /** A thread on the MCP endpoint every sandbox-hosted run shares: a chat,
+   *  or a run the board dispatched (which carries its task instructions). */
+  const thread = async (boardRun: boolean) =>
+    new SqlThreadStorage(database.db).create({
+      organization_id: ORG,
+      title: boardRun ? "Super Agent: a card" : "a chat",
+      status: "in_progress",
+      message_storage_version: 2,
+      created_by: USER,
+      ...(boardRun
+        ? { metadata: { [TASK_RUN_INSTRUCTIONS_KEY]: "work on the card" } }
+        : {}),
+    });
 
-  it("refuses a run moving a card out of QA or Customer Approval", async () => {
-    const qa = await card("qa");
-    await expect(moveAsRun(qa.id, "customer_approval")).rejects.toThrow(
-      /A person moves a card out of "qa"/,
-    );
-    const approval = await card("customer_approval");
-    await expect(
-      moveAsRun(approval.id, "ready_for_deployment"),
-    ).rejects.toThrow(/A person moves a card out of "customer_approval"/);
-    expect((await taskBoard.getById(qa.id, ORG))?.status).toBe("qa");
-  });
+  const moveFrom =
+    (threadId: string) => (id: string, status: TaskBoardItemStatus) =>
+      taskRunContextStore.run({ threadId }, () => move(id, status));
 
-  it("refuses a run moving a card into a person's check or past it", async () => {
-    const working = await card("in_progress");
+  /** A card the reviewer is working on. */
+  const underReview = async () => {
+    const created = await card("in_progress", "under review");
+    await taskBoard.openReviewCycleIfInProgress(created.id, ORG);
+    return created;
+  };
+
+  it("lets a chat move a card through review and the people's checks", async () => {
+    const asChat = moveFrom((await thread(false)).id);
+    const { id } = await underReview();
     for (const status of [
       "qa",
       "customer_approval",
       "ready_for_deployment",
     ] as const) {
-      await expect(moveAsRun(working.id, status)).rejects.toThrow(
-        /QA and Customer Approval are for people/,
-      );
+      expect((await asChat(id, status)).item.status).toBe(status);
     }
-    expect((await taskBoard.getById(working.id, ORG))?.status).toBe(
-      "in_progress",
-    );
   });
 
-  it("lets a run send a card back from QA, and a person move it on", async () => {
-    const back = await card("qa");
-    expect((await moveAsRun(back.id, "in_progress")).item.status).toBe(
-      "in_progress",
-    );
-    const forward = await card("qa");
-    expect((await move(forward.id, "customer_approval")).item.status).toBe(
-      "customer_approval",
-    );
+  it("refuses the board's own run moving its card past In Review", async () => {
+    const asRun = moveFrom((await thread(true)).id);
+    const { id } = await underReview();
+    for (const status of ["qa", "done"] as const) {
+      await expect(asRun(id, status)).rejects.toThrow(
+        /can't move it past In Review/,
+      );
+    }
+    expect((await taskBoard.getById(id, ORG))?.status).toBe("in_review");
+    // Sending it back to work stays open.
+    expect((await asRun(id, "in_progress")).item.status).toBe("in_progress");
+  });
+
+  // A task that needed no change is finished by its own run.
+  it("lets the board's run finish a card that is not under review", async () => {
+    const asRun = moveFrom((await thread(true)).id);
+    const working = await card("in_progress", "no change needed");
+    expect((await asRun(working.id, "done")).item.status).toBe("done");
   });
 
   it("refuses the previous board's lanes as a target", async () => {

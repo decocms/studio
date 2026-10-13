@@ -44,9 +44,8 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     }
 
     // The lane is the gate: a card reaches Ready for Deployment past the
-    // reviewer, QA and the customer's approval, and an agent run can never
-    // move one there (`agentMoveRefusal`). The board only offers the button
-    // there too, but any caller of this tool reaches the merge.
+    // reviewer, QA and the customer's approval. The board only offers the
+    // button there too, but any caller of this tool reaches the merge.
     if (item.status !== LANES.release) {
       throw new Error(
         "Task is not ready to ship: move it to Ready for Deployment first.",

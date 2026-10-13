@@ -257,20 +257,6 @@ export const LANES = {
   archive: "archived",
 } as const satisfies Record<string, CanonicalColumnKey>;
 
-/**
- * Lanes only a person moves a card out of, forward. An agent run may send a
- * card back from one, never past it: QA and the customer's approval are the
- * checks an agent's work has to pass.
- */
-export const HUMAN_GATE_LANES: readonly CanonicalColumnKey[] = [
-  LANES.qa,
-  LANES.customer,
-];
-
-export function isHumanGateLane(status: string): boolean {
-  return (HUMAN_GATE_LANES as readonly string[]).includes(status);
-}
-
 /** A board column as every surface reads it. `key` is the value a card's
  *  `status` holds. */
 export interface BoardColumn {
