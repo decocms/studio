@@ -202,3 +202,36 @@ export function createDraftContentStorage(options: {
     },
   };
 }
+
+/**
+ * The storage for a project whose main isn't a Blocks v8 site (a v7 site):
+ * read only, no schema, no saved blocks. It answers `describe` and
+ * `schema.get` (`schema: null`) so the editor reads main's answer from the
+ * same content-protocol route a v8 editor uses, deciding with `isV8Schema`,
+ * with no read beyond the server's own cached `projectMainIsV8`. Never
+ * writes: a v7 site is edited the v7 way.
+ */
+export function createV7MainStorage(options: {
+  packagePath?: string | null;
+  mainBranch: string;
+}): ContentStorage {
+  return {
+    describe: () => ({
+      kind: "git",
+      root: options.packagePath ?? ".",
+      readOnly: true,
+      assets: null,
+    }),
+    snapshot: async () => ({
+      revision: "not-v8",
+      resolvedRef: options.mainBranch,
+      files: [],
+    }),
+    readFiles: async () => ({}),
+    readSchema: async () => null,
+    readSecretsPublicKey: async () => null,
+    commit: async () => {
+      throw unsupported("not a Blocks v8 site");
+    },
+  };
+}

@@ -11,8 +11,9 @@
  * `metadata.blocksMajor` marker is only that predicate's cached answer for
  * main's schema, kept by the server: the server writes it right after running
  * the predicate, and nothing else writes it. The web app never decides from
- * it: it waits for the server's fresh answer for main (`POST /blocks-major`)
- * or reads the schema of its mode's backend. `blocks-major.test.ts` keeps
+ * it: it waits for main's schema, read over the content protocol
+ * (`schema.get` on the project's `/decofile/…/rpc`, which answers any site,
+ * `schema: null` for a v7 one), or reads the schema of its mode's backend. `blocks-major.test.ts` keeps
  * this the only detector.
  */
 
@@ -54,9 +55,9 @@ export const BLOCKS_MAJOR_METADATA_KEY = "blocksMajor";
 
 /**
  * The server's cached answer in `metadata.blocksMajor`: {@link isV8Schema} on
- * main's `.deco/schema.gen.json`, written by the server on create/import,
- * whenever it reads main's schema, and when the project is opened (cleared
- * when main is no longer v8). A cache, never the decision: the hosted gates
+ * main's `.deco/schema.gen.json`, written by the server on create/import and
+ * whenever it reads main's schema, which opening the project in the editor
+ * does (cleared when main is no longer v8). A cache, never the decision: the hosted gates
  * recompute main's answer (using this only to know when their last answer
  * may be reused), a new thread's default runtime reads it, and the web app
  * never decides from it.
@@ -82,3 +83,10 @@ export const MAIN_SCHEMA_HEADER = "x-deco-main-schema";
 
 /** The 409 code for a request made on a main answer that is out of date. */
 export const MAIN_SCHEMA_CHANGED = "main_schema_changed";
+
+/**
+ * The 503 code of the content-protocol route on a v8 main when Studio has no
+ * hosted delivery (draft) bucket configured: main is v8, but its editor
+ * can't open here.
+ */
+export const HOSTED_DELIVERY_UNCONFIGURED = "hosted_delivery_unconfigured";

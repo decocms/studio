@@ -1,9 +1,12 @@
 /**
- * Main's schema answer for a project: `isV8Schema` on main's
- * `.deco/schema.gen.json`, computed by the server (`POST
- * /api/:org/blocks-major/:id`, an ETag-cached head read and a per-commit
- * answer there) and read once per project per session here, again only when
- * the server says main changed since (`main-schema-changed.ts`).
+ * Main's schema answer for a project: `isV8Schema` on main's schema, run
+ * here on the schema read over the content protocol (`schema.get` on the
+ * project's `/api/:org/decofile/:id/:branch/rpc`, the endpoint the v8 editor
+ * reads its form schema from anyway). That route answers any site: a v7 one
+ * gets `schema: null` from the server's own cached answer (an ETag-cached
+ * head read and a per-commit answer), so v7 costs one cheap read. Read once
+ * per project per session, again only when the server says main changed
+ * since (`main-schema-changed.ts`).
  *
  * This is how the web app knows a project is a Blocks v8 site. The
  * project's `metadata.blocksMajor` marker is only the server's cache of this
@@ -28,7 +31,11 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { isBlocksV8Project } from "@decocms/shared/blocks-major";
+import {
+  HOSTED_DELIVERY_UNCONFIGURED,
+  isBlocksV8Project,
+  isV8Schema,
+} from "@decocms/shared/blocks-major";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
@@ -39,7 +46,28 @@ export type MainSchemaAnswer = "v8" | "v7" | "loading" | "error";
 /** How often a failed read of main's schema is retried. */
 const MAIN_SCHEMA_RETRY_MS = 5_000;
 
-/** The server's answer: `isV8: null` when the project has no repository. */
+/**
+ * The branch in the content-protocol URL of a project-level read: `describe`
+ * and `schema.get` always read main, whatever the branch says.
+ */
+const MAIN_SCHEMA_BRANCH = "main";
+
+/** Studio's answers that settle main's answer without a schema. */
+const ANSWER_BY_STATUS: Record<string, boolean> = {
+  // No repository: no main, not a v8 site.
+  "404 no_repository": false,
+  // No CMS in the org's plan: the v8 editor can't open; as on main.
+  "403 feature_not_in_plan": false,
+  // These gates run only once main is v8.
+  "409 site_not_owned": true,
+  [`503 ${HOSTED_DELIVERY_UNCONFIGURED}`]: true,
+};
+
+/**
+ * Whether main's schema is a Blocks v8 one: `schema.get` over the project's
+ * content protocol, then `isV8Schema` on it. Throws when main couldn't be
+ * read (retried), never a v7 answer the editor would act on.
+ */
 export async function fetchMainSchemaV8(
   orgSlug: string,
   virtualMcpId: string,
@@ -49,18 +77,27 @@ export async function fetchMainSchemaV8(
   ) => fetch(input, init),
 ): Promise<boolean> {
   const res = await doFetch(
-    `/api/${orgSlug}/blocks-major/${encodeURIComponent(virtualMcpId)}`,
-    { method: "POST", cache: "no-store" },
+    `/api/${orgSlug}/decofile/${encodeURIComponent(virtualMcpId)}/${MAIN_SCHEMA_BRANCH}/rpc`,
+    {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "schema.get" }),
+    },
   );
-  if (!res.ok) throw new Error(`main's schema: HTTP ${res.status}`);
   const body = (await res.json().catch(() => null)) as {
-    isV8?: unknown;
+    code?: unknown;
+    result?: { schema?: unknown };
   } | null;
-  if (body?.isV8 === null) return false;
-  if (typeof body?.isV8 !== "boolean") {
+  if (!res.ok) {
+    const settled = ANSWER_BY_STATUS[`${res.status} ${body?.code}`];
+    if (settled !== undefined) return settled;
+    throw new Error(`main's schema: HTTP ${res.status}`);
+  }
+  if (!body?.result || !("schema" in body.result)) {
     throw new Error("main's schema: unexpected answer");
   }
-  return body.isV8;
+  return isV8Schema(body.result.schema);
 }
 
 /** The answer from the query's state (pure, for tests). */

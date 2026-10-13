@@ -83,9 +83,10 @@ const v8ByCommit = createTtlLruCache<boolean>({
  * How long a hosted gate may reuse main's answer without reading main's head
  * again ({@link mainIsV8} with `recentIf`). A gate runs on every decofile
  * read and save, v7 sites included, so a v7 site pays one head read per
- * minute at most. The editor's own read (`POST /blocks-major`) is always
- * fresh and writes the marker, so opening a project picks up a push to main
- * at once, on every pod (a marker that disagrees is never reused over).
+ * minute at most, and the editor's read of main's schema on open (`rpc`
+ * `schema.get`) may be up to that stale; a main that changes mid-session is
+ * caught by the `main_schema_changed` 409. A marker that disagrees is never
+ * reused over.
  */
 const MAIN_V8_RECENT_MS = 60_000;
 
