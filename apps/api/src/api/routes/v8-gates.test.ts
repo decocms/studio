@@ -344,7 +344,10 @@ describe("main's schema for the editor (rpc schema.get, any site)", () => {
         params: { set: { x: {} } },
       }),
     });
-    expect(((await res.json()) as { error?: unknown }).error).toBeDefined();
+    // The protocol's ReadOnly error.
+    expect(
+      ((await res.json()) as { error?: { code: number } }).error?.code,
+    ).toBe(-32005);
     expect(repo.calls.some((c) => /^(commit|put|write)/i.test(c))).toBe(false);
   });
 
