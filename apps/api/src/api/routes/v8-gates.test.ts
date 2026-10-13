@@ -366,6 +366,27 @@ describe("main's schema for the editor (rpc schema.get, any site)", () => {
     expect(projects.get("p1")?.metadata?.[BLOCKS_MAJOR_METADATA_KEY]).toBe(8);
   });
 
+  it("opening reads main fresh: a push within the minute is picked up at once", async () => {
+    const { app, projects, repo } = setup(
+      v7,
+      { ".deco/schema.gen.json": SCHEMA_TEXT },
+      { sites: { p1: ORG } },
+    );
+    expect((await read(app)).status).toBe(503);
+    expect(projects.get("p1")?.metadata?.[BLOCKS_MAJOR_METADATA_KEY]).toBe(8);
+    // main goes back to v7; a gate within the minute would reuse "v8"...
+    await repo.git.client.commitFiles({
+      branch: "main",
+      message: "v7",
+      expectedHead: null,
+      changes: [{ path: ".deco/schema.gen.json", content: V7_SCHEMA }],
+    } as Parameters<RepoContentClient["commitFiles"]>[0]);
+    // ...but the editor's open reads main's head again.
+    const res = await read(app);
+    expect(res.status).toBe(200);
+    expect(projects.get("p1")?.metadata).toEqual(v7);
+  });
+
   it("a v8 main whose site another project owns answers site_not_owned", async () => {
     const { app } = setup(
       v7,
