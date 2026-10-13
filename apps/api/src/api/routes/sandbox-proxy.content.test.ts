@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Hono, type Context } from "hono";
-import { proxyContentAsset, proxyContentRpc } from "./sandbox-proxy";
+import { proxyContentRpc } from "./sandbox-proxy";
 
 type Handler = typeof proxyContentRpc;
 type VmContext = Parameters<Handler>[0];
@@ -54,7 +54,6 @@ function app(runtime: "sandbox" | "cms", answer: Response) {
   });
   const route = (h: Handler) => (c: Context) => h(c as unknown as VmContext);
   hono.post("/:virtualMcpId/:branch/rpc", route(proxyContentRpc));
-  hono.put("/:virtualMcpId/:branch/assets/:name", route(proxyContentAsset));
   return { hono, sent };
 }
 
@@ -99,31 +98,6 @@ describe("content protocol proxy", () => {
     expect(((await res.json()) as { error: { code: number } }).error.code).toBe(
       -32600,
     );
-  });
-
-  it("forwards an asset's bytes and type to /_sandbox/assets/<name>", async () => {
-    const { hono, sent } = app(
-      "sandbox",
-      new Response('{"path":"/assets/logo%20a.png"}', {
-        status: 201,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
-    const res = await hono.request(
-      `/vm1/main/assets/${encodeURIComponent("logo a.png")}`,
-      {
-        method: "PUT",
-        headers: { "content-type": "image/png" },
-        body: bytes,
-      },
-    );
-    expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ path: "/assets/logo%20a.png" });
-    expect(sent[0]!.path).toBe("/_sandbox/assets/logo%20a.png");
-    expect(sent[0]!.method).toBe("PUT");
-    expect(sent[0]!.contentType).toBe("image/png");
-    expect([...sent[0]!.body]).toEqual([...bytes]);
   });
 
   it("answers 404 for a sandbox-less session, with no daemon call", async () => {

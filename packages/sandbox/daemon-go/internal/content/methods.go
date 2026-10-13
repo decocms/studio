@@ -12,7 +12,6 @@ import (
 const (
 	maxOpsPerApply     = 500
 	maxPublicKeyBytes  = 16 * 1024
-	assetsURLPrefix    = "/assets/"
 	defaultPollMs      = 2000
 	defaultCommitTries = 3
 )
@@ -53,7 +52,8 @@ func (h *Handler) describe() (any, error) {
 		"schemaFormat", "deco-meta@1",
 		"pollIntervalMs", float64(h.pollIntervalMs),
 		"preview", nil,
-		"assets", NewObject("dir", desc.AssetsDir, "urlPrefix", assetsURLPrefix, "maxBytes", float64(desc.AssetsMaxBytes)),
+		// Uploads go to Studio's file storage, never the working tree.
+		"assets", nil,
 		"secrets", secrets,
 	), nil
 }
