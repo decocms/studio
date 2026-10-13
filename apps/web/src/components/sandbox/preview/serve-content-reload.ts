@@ -13,9 +13,9 @@
  */
 
 /** How long after a save the frame may take to reload itself. */
-export const SERVE_SELF_RELOAD_WAIT_MS = 1500;
+const SERVE_SELF_RELOAD_WAIT_MS = 1500;
 /** How long after the site's own reload the editor confirms it with one more. */
-export const SERVE_CONFIRM_RELOAD_DELAY_MS = 500;
+const SERVE_CONFIRM_RELOAD_DELAY_MS = 500;
 
 export function watchServeContentReload({
   iframe,
