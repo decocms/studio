@@ -56,7 +56,6 @@ import {
   CheckCircle,
   Clock,
   ChevronRight,
-  ChevronSelectorHorizontal,
   DotsHorizontal,
   HelpCircle,
   Inbox01,
@@ -69,6 +68,7 @@ import {
   X,
   Zap,
 } from "@untitledui/icons";
+import { MoveHorizontal } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -2756,7 +2756,7 @@ function Lane({
                 onClick={onToggleCollapsed}
                 className={LANE_ACTION}
               >
-                <ChevronSelectorHorizontal size={15} />
+                <MoveHorizontal size={15} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -2895,7 +2895,7 @@ function Lane({
               onClick={onToggleCollapsed}
               className={LANE_ACTION}
             >
-              <ChevronSelectorHorizontal size={15} />
+              <MoveHorizontal size={15} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top">
