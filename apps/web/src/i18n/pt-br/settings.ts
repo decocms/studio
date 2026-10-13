@@ -552,7 +552,6 @@ export const settings = {
   "settings.connectClients.anyOtherClientDescription":
     "Qualquer outro cliente MCP: cole este endpoint nele para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
   "settings.connectClients.apiKeyOption": "Chave API",
-  "settings.connectClients.connectAClient": "Conectar um cliente",
   "settings.connectClients.copy": "Copiar",
   "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
   "settings.connectClients.generateKey": "Gerar chave",
@@ -562,6 +561,9 @@ export const settings = {
     "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
   "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
+  "settings.connectClients.mcpDescription":
+    "Para clientes sem shell. Gravar arquivos na Library exige a skill acima.",
+  "settings.connectClients.mcpTitle": "Conectar por MCP",
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
@@ -571,6 +573,14 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.skillDescription":
+    "Instale a skill do Studio e faça login uma vez. Depois disso, seu agente trabalha com os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
+  "settings.connectClients.skillInstallStep": "1. Instale a skill",
+  "settings.connectClients.skillLoginHint":
+    "Precisa do Bun. Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
+  "settings.connectClients.skillLoginStep": "2. Faça login",
+  "settings.connectClients.skillOtherAgents": "Cursor, Codex e outros agentes",
+  "settings.connectClients.skillTitle": "Conectar seu agente",
   "settings.connectClients.snippetOneTimeWarning":
     "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",

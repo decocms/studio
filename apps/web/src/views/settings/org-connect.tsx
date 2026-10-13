@@ -1,10 +1,14 @@
 /**
  * Settings › Connect to clients — how a person points Claude, Cursor or Codex
- * at this org's MCP endpoint, and every API key that endpoint accepts.
+ * at this org: first the `decocms-studio` skill and its CLI login, then this
+ * org's MCP endpoint and every API key that endpoint accepts.
  *
- * Flat by design: client tabs, the selected client's snippet, then the API
- * keys section (`views/settings/api-keys.tsx`, also the whole of the
- * `/settings/api-keys` route). The last client tab, "Other", is the general
+ * The skill comes first because it covers everything the MCP endpoint does
+ * plus the REST-only features, Library files among them.
+ *
+ * Flat by design: the skill steps, then client tabs, the selected client's
+ * MCP snippet, then the API keys section (`views/settings/api-keys.tsx`, also
+ * the whole of the `/settings/api-keys` route). The last client tab, "Other", is the general
  * case — the bare endpoint URL for a client this page does not list — so the
  * URL appears in exactly one place instead of a card of its own.
  *
@@ -50,9 +54,15 @@ import { CursorIcon } from "@/components/connect/client-icons";
 import {
   type ConnectClient,
   type ConnectMode,
+  CopySnippet,
   InstallSnippet,
 } from "@/components/connect/install-snippet";
 import { mcpUrl } from "@/components/connect/mcp-url";
+import {
+  AGENTS_SKILL_INSTALL,
+  CLAUDE_CODE_SKILL_INSTALL,
+  cliLoginCommand,
+} from "@/components/connect/skill-install";
 import { useApiKeysList, useCreateApiKey } from "@/hooks/use-api-keys";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
@@ -263,6 +273,42 @@ function ClientPanel({
   );
 }
 
+/** Install the skill, then log the CLI in: the two things a local agent needs. */
+function SkillSetup() {
+  const t = useT();
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+
+  return (
+    <SettingsSection
+      headerClassName="px-0"
+      title={t("settings.connectClients.skillTitle")}
+      description={t("settings.connectClients.skillDescription")}
+    >
+      <Card className="gap-0 divide-y divide-border overflow-hidden p-0">
+        <div className="flex flex-col gap-1 p-2">
+          <h3 className="px-3 pt-2 text-sm font-medium">
+            {t("settings.connectClients.skillInstallStep")}
+          </h3>
+          <CopySnippet label="Claude Code" code={CLAUDE_CODE_SKILL_INSTALL} />
+          <CopySnippet
+            label={t("settings.connectClients.skillOtherAgents")}
+            code={AGENTS_SKILL_INSTALL}
+          />
+        </div>
+        <div className="flex flex-col gap-1 p-2">
+          <h3 className="px-3 pt-2 text-sm font-medium">
+            {t("settings.connectClients.skillLoginStep")}
+          </h3>
+          <CopySnippet label="bash" code={cliLoginCommand(origin)} />
+        </div>
+      </Card>
+      <p className="text-xs leading-snug text-muted-foreground">
+        {t("settings.connectClients.skillLoginHint")}
+      </p>
+    </SettingsSection>
+  );
+}
+
 function OrgConnectContent() {
   const t = useT();
   const { org } = useProjectContext();
@@ -316,9 +362,12 @@ function OrgConnectContent() {
 
   return (
     <>
+      <SkillSetup />
+
       <SettingsSection
         headerClassName="px-0"
-        title={t("settings.connectClients.connectAClient")}
+        title={t("settings.connectClients.mcpTitle")}
+        description={t("settings.connectClients.mcpDescription")}
       >
         <Card className="gap-0 overflow-hidden p-0">
           <Tabs

@@ -45,8 +45,20 @@ precondition, and `move` copies then deletes, so it is not atomic: `stat` the
 target first and get the user's go-ahead before replacing a file they did not
 ask to change. Limits: 500 MB per file, a 10 GB soft quota per volume (413).
 
-Write files through `fs`, not `object-storage`: raw object writes skip the file
-index, so the file never shows up in the Library or in sandboxes.
+### Sharing
+
+`<target>/api/<slug>/fs/<vol>/read?path=<path>` is the file's one link, with
+`<target>` from `decocms auth whoami`. The share mode decides who it opens for:
+`private` (org members, the default), `public` (anyone), or `password` (anyone
+who enters the password on the form it serves first). Setting a mode on a
+folder applies to everything under it.
+
+```bash
+decocms api "/api/<slug>/fs/home/public?path=pages/report.html" -d '{"mode":"password","password":"<password>"}'
+```
+
+`password` mode needs a non-empty `password`; changing it signs out everyone
+who unlocked the old one. Give the user the link and the password together.
 
 ## Send a message to an agent
 
