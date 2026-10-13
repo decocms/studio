@@ -92,19 +92,6 @@ describe("groupListItems", () => {
     ]);
   });
 
-  test("a card left in one of the previous board's lanes sorts last", () => {
-    const items = [
-      item("1", { status: "merged" }),
-      item("2", { status: "archived" }),
-      item("3", { status: "todo" }),
-    ];
-    expect(shape(groupListItems(items, ["status"], CONTEXT))).toEqual([
-      ["archived", ["2"]],
-      ["todo", ["3"]],
-      ["merged", ["1"]],
-    ]);
-  });
-
   test("every board lane has a place in the list order", () => {
     expect([...LIST_STATUS_ORDER].sort()).toEqual(
       [...CANONICAL_COLUMN_KEYS].sort(),

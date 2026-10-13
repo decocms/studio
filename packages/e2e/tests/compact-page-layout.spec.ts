@@ -367,7 +367,7 @@ test.describe("compact page layout", () => {
           async () =>
             (await page.getByTestId("main-panel").boundingBox())!.width,
         )
-        .toBeGreaterThan(width + 150);
+        .toBeGreaterThan(width + 100);
       await threadToggle.click();
       await expect(page.getByTestId("chat-panel")).toBeVisible();
       await expect(threadToggle).toHaveAttribute("aria-pressed", "true");

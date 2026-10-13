@@ -107,7 +107,6 @@ import {
   laneHeader,
   laneVisual,
   STATUS_CONFIG,
-  moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
   isFeedWorthyActivity,
@@ -701,11 +700,7 @@ function TaskBoardItemEditor({
   };
 
   const isSuperAgent = assigneeId === SUPER_AGENT_ASSIGNEE_ID;
-  const showAutoFix =
-    item &&
-    onAutoFix &&
-    (status === "triage" || status === "todo") &&
-    !isSuperAgent;
+  const showAutoFix = item && onAutoFix && status === "triage" && !isSuperAgent;
 
   /** Auto-fix's counterpart once the Super Agent owns the task: re-queue a run.
    *  Read against the SAVED assignee so it re-runs the task as it exists. */
@@ -1188,7 +1183,7 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets().map((s) => {
+                  {CANONICAL_COLUMN_KEYS.map((s) => {
                     const { label, visual } = laneHeader(s, t);
                     const Icon = visual.icon;
                     return (
