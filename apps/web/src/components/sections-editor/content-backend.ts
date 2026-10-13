@@ -118,6 +118,29 @@ export function servePreviewUrl(backend: ContentBackend): string | null {
 }
 
 /**
+ * Where an asset upload goes over the content protocol: the origin of a
+ * connected `deco serve` that takes uploads (`describe.assets`) — Localhost and
+ * the `/site-editor` play mode, the only places files land on a filesystem —
+ * else `null`, and the field uploads to Studio's file storage (S3). A hosted
+ * (`github`) or `sandbox` project never uploads to a filesystem, whatever its
+ * `describe` says.
+ */
+export function serveAssetUploadOrigin(
+  backend: ContentBackend,
+  connection: { endpoint: string } | null | undefined,
+): string | null {
+  if (
+    backend.kind !== "protocol" ||
+    backend.source !== "local" ||
+    !backend.describe.assets ||
+    !connection
+  ) {
+    return null;
+  }
+  return new URL(connection.endpoint).origin;
+}
+
+/**
  * The Blocks major a v8 schema declares: `deco schema` writes a top-level
  * `"blocksMajor": 8` into `.deco/schema.gen.json` (`BLOCKS_MAJOR` in
  * `@decocms/blocks/protocol`, which `deco check` requires). Kept here rather
