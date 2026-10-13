@@ -385,6 +385,7 @@ describe("laneVisibility", () => {
     });
     expect(lanes).toEqual([
       "triage",
+      "todo",
       "in_progress",
       "in_review",
       "qa",

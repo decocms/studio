@@ -1698,6 +1698,7 @@ export interface OrgRepoSync {
 
 export type TaskBoardItemStatus =
   | "triage"
+  | "todo"
   | "in_progress"
   | "in_review"
   | "qa"

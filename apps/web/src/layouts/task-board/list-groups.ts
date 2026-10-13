@@ -37,6 +37,7 @@ export const LIST_STATUS_ORDER: readonly CanonicalColumnKey[] = [
   "in_review",
   "ready_for_deployment",
   "in_progress",
+  "todo",
   "triage",
   "post_deploy_validation",
   "done",

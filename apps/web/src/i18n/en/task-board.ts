@@ -30,6 +30,7 @@ export const taskBoard = {
   "taskBoard.config.statusArchived": "Archived",
   "taskBoard.config.statusBacklog": "Backlog",
   "taskBoard.config.statusDone": "Done",
+  "taskBoard.config.statusTodo": "To Do",
   "taskBoard.config.statusInProgress": "In Progress",
   "taskBoard.config.statusInReview": "In Review",
   "taskBoard.config.statusPostDeployValidation": "Post-deploy Validation",

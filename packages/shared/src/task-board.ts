@@ -196,6 +196,7 @@ export function enabledReviewerKinds(
  */
 export const CANONICAL_COLUMN_KEYS = [
   "triage",
+  "todo",
   "in_progress",
   "in_review",
   "qa",

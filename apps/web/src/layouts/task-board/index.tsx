@@ -1891,7 +1891,7 @@ function TaskBoardBody({
               const item = items.find((i) => i.id === id);
               return (
                 item &&
-                item.status === "triage" &&
+                (item.status === "triage" || item.status === "todo") &&
                 item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
               );
             })
@@ -3061,7 +3061,7 @@ function TaskCard({
 
   const showAutoFix =
     onAutoFix &&
-    item.status === "triage" &&
+    (item.status === "triage" || item.status === "todo") &&
     item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
 
   // The counterpart for a card the Super Agent already owns. Auto-fix hides

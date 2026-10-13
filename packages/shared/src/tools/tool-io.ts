@@ -350,6 +350,7 @@ export interface StudioToolIO {
       status?:
         | "done"
         | "triage"
+        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
@@ -377,6 +378,7 @@ export interface StudioToolIO {
         status:
           | "done"
           | "triage"
+          | "todo"
           | "in_progress"
           | "in_review"
           | "qa"
@@ -453,6 +455,7 @@ export interface StudioToolIO {
         status:
           | "done"
           | "triage"
+          | "todo"
           | "in_progress"
           | "in_review"
           | "qa"
@@ -525,6 +528,7 @@ export interface StudioToolIO {
       status?:
         | "done"
         | "triage"
+        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
@@ -554,6 +558,7 @@ export interface StudioToolIO {
         status:
           | "done"
           | "triage"
+          | "todo"
           | "in_progress"
           | "in_review"
           | "qa"
@@ -708,6 +713,7 @@ export interface StudioToolIO {
       status:
         | "done"
         | "triage"
+        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
@@ -723,6 +729,7 @@ export interface StudioToolIO {
       status:
         | "done"
         | "triage"
+        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
