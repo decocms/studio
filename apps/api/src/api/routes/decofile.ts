@@ -313,6 +313,7 @@ function scopeIsV8(
   c: Context<DecofileEnv>,
   client: RepoContentClient,
   mainBranch: string,
+  options: { fresh?: boolean } = {},
 ): Promise<boolean> {
   const scope = c.get("decofileScope");
   return projectMainIsV8({
@@ -325,6 +326,7 @@ function scopeIsV8(
     by: scope.userId,
     client,
     mainBranch,
+    fresh: options.fresh,
   });
 }
 
@@ -776,7 +778,12 @@ export function createDecofileRoutes(
     try {
       client = await contentClientForScope(c);
       mainBranch = await client.getDefaultBranch();
-      mainV8 = await scopeIsV8(c, client, mainBranch);
+      // Without the main-answer header this is the editor reading main's
+      // schema as a project opens: read main's head fresh (a 304 when it is
+      // unchanged), so a push to main and the marker are picked up at once.
+      mainV8 = await scopeIsV8(c, client, mainBranch, {
+        fresh: expectedMain(c) === null,
+      });
     } catch (err) {
       return errorResponse(c, err);
     }

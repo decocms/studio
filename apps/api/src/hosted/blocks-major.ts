@@ -138,7 +138,7 @@ export async function refreshBlocksMajorMarker(
  * stale (main went back to v7) gets the right answer. The marker is only the
  * hint `mainIsV8` reuses its last minute's answer under (`recentIf`): at most
  * one head read per minute per repository while they agree, a fresh read as
- * soon as they don't (another pod or create just wrote a new answer). The answer is written
+ * soon as they don't (the editor's open just wrote a new answer). The answer is written
  * through to the marker when there is a user to attribute it to.
  */
 export async function projectMainIsV8(deps: {
@@ -148,12 +148,18 @@ export async function projectMainIsV8(deps: {
   by: string | null | undefined;
   client: RepoContentClient;
   mainBranch: string;
+  /**
+   * Read main's head even when the last minute's answer agrees with the
+   * marker (an ETag'd 304 on an unchanged main): the editor's read of main's
+   * schema when a project opens, so a push to main is picked up at once.
+   */
+  fresh?: boolean;
 }): Promise<boolean> {
   const isV8 = await mainIsV8(
     deps.client,
     projectPackagePath(deps.project.metadata),
     deps.mainBranch,
-    { recentIf: isBlocksV8Project(deps.project.metadata) },
+    deps.fresh ? {} : { recentIf: isBlocksV8Project(deps.project.metadata) },
   );
   if (deps.projects && deps.by) {
     await syncBlocksMajorMarker(deps.projects, deps.project, isV8, deps.by);
