@@ -187,6 +187,7 @@ test.describe("decofile API", () => {
       expect(legacyRes.status()).toBe(404);
       expect(await legacyRes.json()).toEqual({
         error: "Project has no repository",
+        code: "no_repository",
       });
 
       const flagOnlyRes = await ctx.get(
@@ -219,6 +220,7 @@ test.describe("decofile API", () => {
       expect(urlNoFlagRes.status()).toBe(404);
       expect(await urlNoFlagRes.json()).toEqual({
         error: "Project has no repository",
+        code: "no_repository",
       });
     } finally {
       await ctx.dispose();
