@@ -13,6 +13,7 @@ import * as migration233removejirachatagent from "./233-remove-jira-chat-agent";
 import * as migration234taskboardcommentaudience from "./234-task-board-comment-audience";
 import * as migration235pruneemptythreaddirs from "./235-prune-empty-thread-dirs";
 import * as migration236taskboardsprints from "./236-task-board-sprints";
+import * as migration237connectionurlslug from "./237-connection-url-slug";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -510,6 +511,7 @@ const migrations: Record<string, Migration> = {
   "234-task-board-comment-audience": migration234taskboardcommentaudience,
   "235-prune-empty-thread-dirs": migration235pruneemptythreaddirs,
   "236-task-board-sprints": migration236taskboardsprints,
+  "237-connection-url-slug": migration237connectionurlslug,
 };
 
 export default migrations;

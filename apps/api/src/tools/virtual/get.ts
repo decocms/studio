@@ -10,12 +10,17 @@ import { defineTool } from "../../core/define-tool";
 import { resolveCallerProjectScope } from "../../core/project-scope";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { VirtualMCPEntitySchema } from "./schema";
+import { findVirtualMcpByIdOrSlug } from "./find-by-id-or-slug";
 
 /**
  * Input schema for getting a virtual MCP
  */
 const GetInputSchema = z.object({
-  id: z.string().describe("ID of the virtual MCP to retrieve"),
+  id: z
+    .string()
+    .describe(
+      "ID or URL slug of the virtual MCP to retrieve. A slug the project used to have also resolves.",
+    ),
 });
 
 export type GetVirtualMCPInput = z.infer<typeof GetInputSchema>;
@@ -49,8 +54,11 @@ export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
 
     await ctx.access.check();
 
-    // Get the virtual MCP
-    const virtualMcp = await ctx.storage.virtualMcps.findById(input.id);
+    const virtualMcp = await findVirtualMcpByIdOrSlug(
+      ctx,
+      organization.id,
+      input.id,
+    );
 
     // Check organization ownership
     if (virtualMcp && virtualMcp.organization_id !== organization.id) {

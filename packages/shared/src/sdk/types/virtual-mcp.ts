@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { UrlSlugSchema } from "../../url-slug";
 
 /**
  * Virtual MCP connection schema - defines which connection and tools/resources/prompts are included
@@ -873,6 +874,11 @@ export const VirtualMCPEntitySchema = z.object({
   // Base collection entity fields
   id: z.string().describe("Unique identifier"),
   title: z.string().describe("Human-readable name"),
+  url_slug: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Name of the project in Studio URLs, unique in the organization"),
   description: z.string().nullable().describe("Description"),
   icon: z.string().nullable().describe("Icon URL"),
   created_at: z.string().describe("Creation timestamp"),
@@ -989,6 +995,9 @@ export type VirtualMCPCreateData = z.infer<typeof VirtualMCPCreateDataSchema>;
  */
 export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
+  url_slug: UrlSlugSchema.optional().describe(
+    "New URL slug. The old one keeps redirecting. Renaming does not change it.",
+  ),
   description: z
     .string()
     .max(500)
