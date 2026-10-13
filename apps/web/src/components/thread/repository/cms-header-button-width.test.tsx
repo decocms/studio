@@ -13,6 +13,7 @@ import { ptBR } from "@/i18n/pt-br/index.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
 import {
   cmsHeaderButtonLabels,
+  hostedCmsHeaderButton,
   selectCmsHeaderButton,
   type SelectCmsHeaderButtonInput,
 } from "./cms-panel-state";
@@ -183,6 +184,89 @@ describe.each([
       ).toBeInTheDocument();
     },
   );
+});
+
+/** Renders the header's split button the way `CmsHeaderActions` does. */
+function renderHeaderButton(
+  button: ReturnType<typeof selectCmsHeaderButton>,
+  labels: string[],
+  hosted: boolean,
+) {
+  return render(
+    <TooltipProvider>
+      <SplitButton
+        size="sm"
+        label={button.label}
+        variant={button.variant}
+        disabled={Boolean(button.disabled) || !button.action}
+        loading={Boolean(button.loading)}
+        {...(button.tooltip ? { tooltip: button.tooltip } : {})}
+        items={button.menu.map((item) => ({
+          key: item.key,
+          label: item.label,
+          onSelect: () => {},
+        }))}
+        menuAriaLabel="More actions"
+        stableLabels={labels}
+        reserveMenu={!hosted}
+      />
+    </TooltipProvider>,
+  );
+}
+
+/**
+ * A hosted v8 draft has no secondary actions (no pull request, nothing to
+ * sync), so its header button is a plain one: no chevron, in any state, while
+ * a v7 (branch) project keeps its split button.
+ */
+describe("hosted v8 header button", () => {
+  const t = tFor(en);
+  const labels = cmsHeaderButtonLabels(t);
+
+  test.each(Object.keys(STATES))("%s: no menu trigger", (state) => {
+    const button = hostedCmsHeaderButton(select(t, STATES[state] ?? {}));
+    expect(button.menu).toEqual([]);
+    const view = renderHeaderButton(button, labels, true);
+    expect(view.queryByRole("button", { name: "More actions" })).toBeNull();
+    // Still the stable-width primary, named by its active label.
+    expect(
+      document.querySelectorAll('[data-slot="split-button-label-reserve"]'),
+    ).toHaveLength(labels.length - 1);
+    expect(
+      view.getByRole("button", { name: button.label }),
+    ).toBeInTheDocument();
+  });
+
+  test("with unpublished work, Review & Publish has no chevron", () => {
+    const selected = select(t, STATES.reviewAndPublish ?? {});
+    // The item a hosted draft used to filter out by hand.
+    expect(selected.menu.map((item) => item.key)).toEqual(["request-approval"]);
+    const view = renderHeaderButton(
+      hostedCmsHeaderButton(selected),
+      labels,
+      true,
+    );
+    expect(
+      view.getByRole("button", {
+        name: en["thread.cmsActions.reviewAndPublish"],
+      }),
+    ).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+
+  test("v7 keeps the split button and its menu", () => {
+    const selected = select(t, STATES.reviewAndPublish ?? {});
+    const view = renderHeaderButton(selected, labels, false);
+    const trigger = view.getByRole("button", { name: "More actions" });
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).not.toBeDisabled();
+    // Empty-menu states keep the (disabled) chevron's place, as before.
+    view.unmount();
+    const upToDate = renderHeaderButton(select(t, {}), labels, false);
+    expect(
+      upToDate.getByRole("button", { name: "More actions" }),
+    ).toBeDisabled();
+  });
 });
 
 test("a label shared by two states renders once, with a single accessible name", () => {
