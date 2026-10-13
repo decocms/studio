@@ -53,7 +53,6 @@ import { useChatTask } from "../../chat/index";
 import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
 import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
-  cmsHeaderButtonLabels,
   hostedCmsHeaderButton,
   isCmsStateSettling,
   selectCmsHeaderButton,
@@ -457,8 +456,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       {...(button.tooltip ? { tooltip: button.tooltip } : {})}
       items={items}
       menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
-      stableLabels={cmsHeaderButtonLabels(t)}
-      reserveMenu={!hosted}
       onClick={action ? () => dispatch(action) : undefined}
     />
   );

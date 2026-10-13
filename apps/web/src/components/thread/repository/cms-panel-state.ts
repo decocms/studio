@@ -231,26 +231,6 @@ function hasUnpublishedWork(
 }
 
 /**
- * Every label {@link selectCmsHeaderButton} can put on the primary half, in the
- * active locale. The header reserves the widest of them so a state change
- * ("Review & Publish" → "Saving…") never resizes the button and shifts the
- * header on the x axis. Keep in sync with the selector — a test enforces it.
- */
-export function cmsHeaderButtonLabels(t: TFunction): string[] {
-  return [
-    t("thread.cmsActions.retry"),
-    t("thread.headerActions.loading"),
-    t("thread.cmsActions.publishing"),
-    t("thread.cmsActions.gettingLatest"),
-    t("thread.headerActions.saving"),
-    t("thread.cmsActions.getLatest"),
-    t("thread.cmsActions.waitingForReview"),
-    t("thread.cmsActions.reviewAndPublish"),
-    t("thread.headerActions.upToDate"),
-  ];
-}
-
-/**
  * The header button of a hosted v8 draft. A draft is not a branch: no pull
  * request to submit for review or open on the provider, and nothing to "Get
  * latest" (its status always reports `behindBase: 0`). So it never has
