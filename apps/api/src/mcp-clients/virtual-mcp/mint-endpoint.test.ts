@@ -1,8 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import type { StudioContext } from "@/core/studio-context";
 import {
+  MCP_KEY_TTL_SECONDS,
   MissingOrganizationSlugError,
   mcpEndpointUrl,
+  mintMcpEndpoint,
   orgMcpServers,
+  RUN_MCP_KEY_TTL_SECONDS,
   runKeyPermissions,
 } from "./mint-endpoint";
 
@@ -189,5 +193,56 @@ describe("runKeyPermissions", () => {
 
   it("is just the tool scope when the run mounts no connections", () => {
     expect(permissions({})).toEqual({ self: ["TASK_BOARD_ITEM_UPDATE"] });
+  });
+});
+
+describe("mintMcpEndpoint TTL", () => {
+  const mint = async (ttlSeconds?: number) => {
+    const created: Array<{ expiresIn?: number }> = [];
+    const ctx = {
+      boundAuth: {
+        apiKey: {
+          create: async (data: { expiresIn?: number }) => {
+            created.push(data);
+            return { key: "k_test" };
+          },
+        },
+      },
+    } as unknown as StudioContext;
+    const before = Date.now();
+    const args = [ctx, "vir_123", organization, "test", "agent-tools"] as const;
+    const endpoint =
+      ttlSeconds === undefined
+        ? await mintMcpEndpoint(...args)
+        : await mintMcpEndpoint(
+            ...args,
+            undefined,
+            { self: ["*"] },
+            ttlSeconds,
+          );
+    return { created, endpoint, before };
+  };
+
+  it("keeps the 1h default for callers that pass no TTL", async () => {
+    const { created, endpoint, before } = await mint();
+    expect(created[0]?.expiresIn).toBe(MCP_KEY_TTL_SECONDS);
+    expect(endpoint.expiresAt).toBeGreaterThanOrEqual(
+      before + MCP_KEY_TTL_SECONDS * 1000,
+    );
+  });
+
+  // The regression this pins: a sandbox run's key was minted with the 1h
+  // default and never re-minted, so a run past its first hour lost every
+  // Studio tool call to a 401.
+  it("mints the run key with the run TTL and reports the matching expiry", async () => {
+    const { created, endpoint, before } = await mint(RUN_MCP_KEY_TTL_SECONDS);
+    expect(RUN_MCP_KEY_TTL_SECONDS).toBeGreaterThan(MCP_KEY_TTL_SECONDS);
+    expect(created[0]?.expiresIn).toBe(RUN_MCP_KEY_TTL_SECONDS);
+    expect(endpoint.expiresAt).toBeGreaterThanOrEqual(
+      before + RUN_MCP_KEY_TTL_SECONDS * 1000,
+    );
+    expect(endpoint.expiresAt).toBeLessThanOrEqual(
+      Date.now() + RUN_MCP_KEY_TTL_SECONDS * 1000,
+    );
   });
 });
