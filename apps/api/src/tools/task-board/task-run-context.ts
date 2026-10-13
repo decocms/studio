@@ -9,6 +9,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { TASK_RUN_INSTRUCTIONS_KEY } from "@/harnesses/claude-code-env";
 import {
   MANAGEMENT_TOOLS,
   type ToolName,
@@ -25,6 +26,21 @@ export interface TaskRunContext {
 }
 
 export const taskRunContextStore = new AsyncLocalStorage<TaskRunContext>();
+
+/**
+ * True for a run the board dispatched on a card (the Super Agent, a reviewer,
+ * a Jira-triggered run), as opposed to a person's chat on the same endpoint.
+ * `enqueueAgentRunForTask` stamps every one of them with the instructions its
+ * later turns reuse; a chat never has them.
+ */
+export function isBoardRunThread(
+  thread: { metadata?: ThreadMetadata | null } | null | undefined,
+): boolean {
+  const instructions = (
+    thread?.metadata as Record<string, unknown> | null | undefined
+  )?.[TASK_RUN_INSTRUCTIONS_KEY];
+  return typeof instructions === "string" && instructions.length > 0;
+}
 
 export function requireTaskRunContext(): TaskRunContext {
   const ctx = taskRunContextStore.getStore();

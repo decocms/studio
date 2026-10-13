@@ -85,8 +85,20 @@ describe("hasHumanRejectedDone", () => {
     expect(await taskBoard.hasHumanRejectedDone(id, ORG)).toBe(true);
   });
 
-  // Past Merged, moving forward agrees with the ship rather than rejecting it.
-  it("is false for a member's move out of a later delivery lane", async () => {
+  // Post-deploy Validation is where a merged PR lands now.
+  it("is true once a member sends the card back from Post-deploy Validation", async () => {
+    const id = await seed();
+    await taskBoard.recordActivity({
+      taskBoardItemId: id,
+      action: "status_changed",
+      actorId: USER,
+      data: { from: "post_deploy_validation", to: "in_progress" },
+    });
+    expect(await taskBoard.hasHumanRejectedDone(id, ORG)).toBe(true);
+  });
+
+  // Moving on to Done agrees with the ship rather than rejecting it.
+  it("is false for a member's move from Post-deploy Validation to Done", async () => {
     const id = await seed();
     await taskBoard.recordActivity({
       taskBoardItemId: id,

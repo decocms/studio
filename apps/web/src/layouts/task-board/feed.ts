@@ -6,7 +6,6 @@
  * card's current state instead.
  */
 
-import { DELIVERY_LANES } from "@decocms/shared/task-board";
 import {
   agentRunState,
   isTaskBlocked,
@@ -31,6 +30,10 @@ export type FeedEventKind =
  *  created rather than updated — one statement, not one millisecond. */
 const CREATED_WINDOW_MS = 5_000;
 
+/** Merged and waiting on its production check, plus the previous board's
+ *  post-review lanes a straggler card can still sit in. */
+const DELIVERED_LANES = ["post_deploy_validation", "merged", "approved"];
+
 export function feedEventKind(item: TaskBoardItem): FeedEventKind {
   if (isTaskBlocked(item)) return "blocked";
   const run = agentRunState(item);
@@ -39,7 +42,7 @@ export function feedEventKind(item: TaskBoardItem): FeedEventKind {
   if (isTaskHandedToHuman(item)) return "handed";
   if (item.status === "done") return "done";
   /** The row names the event; the lane pill says which one. */
-  if ((DELIVERY_LANES as string[]).includes(item.status)) return "delivered";
+  if (DELIVERED_LANES.includes(item.status)) return "delivered";
   if (item.status === "in_review") return "review";
   const age = Date.parse(item.updatedAt) - Date.parse(item.createdAt);
   return Number.isFinite(age) && age < CREATED_WINDOW_MS

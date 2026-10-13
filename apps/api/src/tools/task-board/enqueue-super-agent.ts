@@ -76,8 +76,8 @@ export type SuperAgentPromptOpts = {
    *  opening instruction; the task's own title and description still follow,
    *  or the agent would not know which card it is on. */
   instruction?: string;
-  /** The lane whose rules the run follows. Defaults to To Do, where the Super
-   *  Agent picks work up; a column automation passes its own column. */
+  /** The lane whose rules the run follows. Defaults to In Progress, where the
+   *  Super Agent works; a column automation passes its own column. */
   column?: string | null;
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
@@ -285,7 +285,8 @@ export async function enqueueSuperAgentForTask(
     const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
       ? "conflict"
       : undefined;
-    const rulesColumn = opts?.column !== undefined ? opts.column : LANES.queue;
+    const rulesColumn =
+      opts?.column !== undefined ? opts.column : LANES.progress;
 
     if (!choice) {
       throw new Error(

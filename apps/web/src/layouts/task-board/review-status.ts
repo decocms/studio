@@ -1,10 +1,5 @@
-import type { TaskBoardActivity } from "@/hooks/use-task-board-activity";
 import type { TaskBoardItem } from "./config";
-import {
-  allReviewersApproved,
-  REVIEWER_KINDS,
-  type ReviewerKind,
-} from "@decocms/shared/task-board";
+import { REVIEWER_KINDS, type ReviewerKind } from "@decocms/shared/task-board";
 
 export type { ReviewerKind };
 
@@ -16,26 +11,6 @@ type TaskBoardItemReviewVerdict = TaskBoardItem["reviewVerdicts"][number];
  *  reviewers, which is what makes adding a second one back a one-line change. */
 export function enabledReviewers(enabled: boolean): ReviewerKind[] {
   return enabled ? REVIEWER_KINDS : [];
-}
-
-/**
- * Whether a task's PR is ready for a human to ship: every enabled reviewer
- * approved in the current review cycle, or no reviewers are enabled (nothing to
- * wait on → ready). Uses the shared cycle reducer — the SAME logic as the
- * server's auto-merge gate — but WITHOUT the token-verification requirement:
- * the human clicking "Ship to production" is the authority, so an unverified
- * approval still shows the button (only auto-merge insists on verification).
- */
-export function reviewsSatisfiedForPromotion(
-  activity: TaskBoardActivity[],
-  enabled: ReviewerKind[],
-  /** The card's `reviewCycleStartedAt` — the boundary the approvals have to sit
-   *  inside. Since migration 190 it is a column, not a lane transition, so the
-   *  activity timeline alone can no longer date the cycle. */
-  cycleStartedAt: string | null,
-): boolean {
-  if (enabled.length === 0) return true;
-  return allReviewersApproved(activity, enabled, { cycleStartedAt });
 }
 
 /** What a card's checks indicator shows: how many enabled reviewers have
@@ -93,10 +68,11 @@ export function checksSummary(
 }
 
 /**
- * Lanes the "Ship to production" button may act from. Must mirror the server's
- * `SHIP_ELIGIBLE_LANES`: offering more puts a control on screen that always
- * errors, offering fewer makes Approved a dead end.
+ * Whether the "Ship to production" button may act from this lane. Must mirror
+ * the server: a merge starts from Ready for Deployment and nowhere else. The
+ * reviewer's verdict is not part of it — a person already carried the card
+ * through QA and Customer Approval to get it there.
  */
 export function laneCanShip(status: string): boolean {
-  return status === "in_review" || status === "approved";
+  return status === "ready_for_deployment";
 }

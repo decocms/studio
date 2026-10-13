@@ -2,19 +2,19 @@ import type { TaskBoardItemPr } from "./config";
 
 /**
  * Which live actions a PR card offers, derived from the PR's GitHub state and
- * the task-level review readiness (In Review + every enabled reviewer
- * approved). Pure, so the "don't offer Ship on a conflicting PR" rule is
- * unit-tested rather than buried in the component.
+ * whether the task is ready to ship (its card sits in Ready for Deployment).
+ * Pure, so the "don't offer Ship on a conflicting PR" rule is unit-tested
+ * rather than buried in the component.
  *
  * `hasConflict` is an explicit `mergeable === false` — a `null` means GitHub
  * hasn't computed mergeability yet (it's async) and must never read as a
  * conflict. A conflicting PR can't merge (the merge 405s), so it swaps the
  * optimistic Ship button for a "Resolve conflict" one under the same
- * reviewed-and-ready gate.
+ * ready-to-ship gate.
  */
 export function prCardActions(
   pr: Pick<TaskBoardItemPr, "state" | "merged" | "mergeable" | "checksStatus">,
-  reviewsReady: boolean,
+  readyToShip: boolean,
 ): {
   isOpen: boolean;
   hasConflict: boolean;
@@ -28,8 +28,8 @@ export function prCardActions(
   return {
     isOpen,
     hasConflict,
-    showShip: reviewsReady && isOpen && checksOk && !hasConflict,
-    showResolveConflict: reviewsReady && isOpen && hasConflict,
+    showShip: readyToShip && isOpen && checksOk && !hasConflict,
+    showResolveConflict: readyToShip && isOpen && hasConflict,
   };
 }
 

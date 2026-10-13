@@ -14,7 +14,6 @@
  */
 import { decodeSandboxStartError } from "@decocms/shared/sandbox-start-errors";
 import type { SandboxStartErrorCode } from "@decocms/shared/sandbox-start-errors";
-import { LANES } from "@decocms/shared/task-board";
 
 /**
  * The human-readable text for a single activity entry's raw `reason` string,
@@ -26,6 +25,17 @@ import { LANES } from "@decocms/shared/task-board";
 export function decodeRunFailureReason(reason: unknown): string {
   if (typeof reason !== "string") return "";
   return decodeSandboxStartError(reason.replace(/^Error:\s*/, "")).message;
+}
+
+/**
+ * A dead run lands in Backlog and says how many retries it spent: Backlog is
+ * also where people put cards, so the lane alone is not a failure. The previous
+ * board parked them in To Do, a lane nothing else moved a card to with a reason,
+ * so a legacy entry needs no more than that.
+ */
+function isFailureLanding(data: Record<string, unknown> | null): boolean {
+  if (data?.to === "todo") return true;
+  return data?.to === "triage" && typeof data.retriesSpent === "number";
 }
 
 export function lastRunFailure(
@@ -40,8 +50,8 @@ export function lastRunFailure(
     // The newest move decides: no reason means the card got somewhere.
     if (typeof reason !== "string") return null;
     // Benign moves stamp a reason too ("pr_merged", "rerun"); only a dead run
-    // lands back in the queue lane.
-    if (entry.data?.to !== LANES.queue) return null;
+    // lands back in the starting lane.
+    if (!isFailureLanding(entry.data)) return null;
     // The reason is a stringified Error, so the code sits behind "Error: ".
     return decodeSandboxStartError(reason.replace(/^Error:\s*/, ""));
   }

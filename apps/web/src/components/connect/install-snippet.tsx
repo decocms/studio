@@ -91,8 +91,17 @@ export function InstallSnippet({
   url: string;
   apiKey?: string;
 }) {
-  const t = useT();
   const snippet = buildSnippet({ client, mode, url, apiKey });
+  return (
+    <CopySnippet
+      label={snippet.pathHint ?? snippet.language}
+      code={snippet.code}
+    />
+  );
+}
+
+export function CopySnippet({ label, code }: { label: string; code: string }) {
+  const t = useT();
   const { handleCopy, copied } = useCopy();
   const labelId = useId();
   const codeId = useId();
@@ -105,7 +114,7 @@ export function InstallSnippet({
      *  command it is about to copy. */
     <button
       type="button"
-      onClick={() => handleCopy(snippet.code)}
+      onClick={() => handleCopy(code)}
       aria-labelledby={`${labelId} ${codeId}`}
       className="group relative grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
@@ -113,7 +122,7 @@ export function InstallSnippet({
         {t("settings.connectClients.copy")}
       </span>
       <span className="min-w-0 truncate font-mono text-[11px] leading-none text-muted-foreground">
-        {snippet.pathHint ?? snippet.language}
+        {label}
       </span>
       <span
         aria-hidden="true"
@@ -127,7 +136,7 @@ export function InstallSnippet({
         {copied ? <Check size={13} /> : <Copy01 size={13} />}
       </span>
       <pre className="overflow-x-auto pt-2 font-mono text-xs leading-relaxed">
-        <code id={codeId}>{snippet.code}</code>
+        <code id={codeId}>{code}</code>
       </pre>
     </button>
   );
