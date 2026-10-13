@@ -133,7 +133,7 @@ type sandboxHandlers struct {
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
-	contentRPC, contentAssets             http.HandlerFunc
+	contentRPC                            http.HandlerFunc
 	fs, git, setup                        map[string]http.HandlerFunc
 }
 
@@ -681,11 +681,11 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 
 	// The content protocol over the working tree (v8 sites). Every method but
 	// OPTIONS (the CORS preflight) reaches the handler, which answers anything
-	// but POST (PUT for uploads) with the protocol's own 405. Commits and
-	// uploads take the tree lock themselves; reads never do.
+	// but POST with the protocol's own 405. Commits take the tree lock
+	// themselves; reads never do. No asset uploads: project assets live in
+	// Studio's file storage.
 	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
 		mux.HandleFunc(method+" "+pre+"/rpc", d.authed(h.contentRPC))
-		mux.HandleFunc(method+" "+pre+"/assets/{name...}", d.authed(h.contentAssets))
 	}
 	for _, step := range []string{"clone", "install", "start"} {
 		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
@@ -1345,9 +1345,7 @@ func main() {
 			GetDecofileVersion:       d.getDecofileVersion,
 			OnDecofileVersionUnknown: func() { go d.announceDecofileVersion() },
 		}),
-		decofile:      routes.Decofile(d.decofileDeps),
-		contentRPC:    contentRoutes.RPC,
-		contentAssets: contentRoutes.Assets,
+		decofile: routes.Decofile(d.decofileDeps),
 		configRead: routes.ConfigRead(routes.ConfigDeps{
 			DaemonBootId:    bootId,
 			Store:           d.store,
@@ -1356,6 +1354,7 @@ func main() {
 			GetTasks:        func() []proc.Phase { return d.phases.Recent(20) },
 			RepoDir:         repoDir,
 		}),
+		contentRPC: contentRoutes.RPC,
 		configUpdate: routes.ConfigUpdate(routes.ConfigDeps{
 			DaemonBootId:   bootId,
 			Store:          d.store,
