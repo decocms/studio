@@ -579,7 +579,8 @@ export const settings = {
   "settings.connectClients.skillLoginHint":
     "Precisa do Bun. Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
   "settings.connectClients.skillLoginStep": "2. Faça login",
-  "settings.connectClients.skillOtherAgents": "Cursor, Codex e outros agentes",
+  "settings.connectClients.skillOtherAgentsHint":
+    "O instalador pergunta em quais agentes adicionar a skill.",
   "settings.connectClients.skillTab": "CLI + skill",
   "settings.connectClients.skillTitle": "Conectar seu agente",
   "settings.connectClients.snippetOneTimeWarning":

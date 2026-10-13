@@ -1,5 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { cliLoginCommand } from "./skill-install";
+import { cliLoginCommand, skillInstallCommand } from "./skill-install";
+
+describe("skillInstallCommand", () => {
+  test("installs the plugin from the marketplace in Claude Code", () => {
+    expect(skillInstallCommand("claude-code")).toBe(
+      "claude plugin marketplace add decocms/studio\nclaude plugin install decocms-studio@decocms",
+    );
+  });
+
+  test("targets the picked agent through the skills CLI", () => {
+    expect(skillInstallCommand("cursor")).toEndWith(" -g -a cursor");
+    expect(skillInstallCommand("codex")).toEndWith(" -g -a codex");
+  });
+
+  test("lets the skills CLI ask for any other agent", () => {
+    expect(skillInstallCommand("raw")).toBe(
+      "npx skills add decocms/studio --skill decocms-studio -g",
+    );
+  });
+});
 
 describe("cliLoginCommand", () => {
   test("omits --target on the CLI's default studio", () => {

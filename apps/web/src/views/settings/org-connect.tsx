@@ -61,9 +61,8 @@ import {
 } from "@/components/connect/install-snippet";
 import { mcpUrl } from "@/components/connect/mcp-url";
 import {
-  AGENTS_SKILL_INSTALL,
-  CLAUDE_CODE_SKILL_INSTALL,
   cliLoginCommand,
+  skillInstallCommand,
 } from "@/components/connect/skill-install";
 import { useApiKeysList, useCreateApiKey } from "@/hooks/use-api-keys";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
@@ -277,8 +276,32 @@ function ClientPanel({
   );
 }
 
+/** One picker for both tabs, so a client chosen in one is kept in the other. */
+function ClientTabsList() {
+  const t = useT();
+  return (
+    <TabsList
+      variant="underline"
+      className="h-10 min-w-0 flex-1 gap-1 overflow-x-auto border-b-0"
+    >
+      {CLIENTS.map(({ id, label, labelKey, Icon }) => (
+        <TabsTrigger key={id} value={id} variant="underline" className="gap-2">
+          <Icon size={16} />
+          {labelKey ? t(labelKey) : label}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  );
+}
+
 /** Install the skill, then log the CLI in: the two things a local agent needs. */
-function SkillSetup() {
+function SkillSetup({
+  client,
+  onClientChange,
+}: {
+  client: ConnectClient;
+  onClientChange: (value: string) => void;
+}) {
   const t = useT();
   const origin = typeof window === "undefined" ? "" : window.location.origin;
 
@@ -288,16 +311,29 @@ function SkillSetup() {
         {t("settings.connectClients.skillDescription")}
       </p>
       <Card className="gap-0 divide-y divide-border overflow-hidden p-0">
-        <div className="flex flex-col gap-1 p-2">
-          <h3 className="px-3 pt-2 text-sm font-medium">
+        <Tabs
+          value={client}
+          onValueChange={onClientChange}
+          variant="underline"
+          className="gap-0"
+        >
+          <h3 className="px-5 pt-4 text-sm font-medium">
             {t("settings.connectClients.skillInstallStep")}
           </h3>
-          <CopySnippet label="Claude Code" code={CLAUDE_CODE_SKILL_INSTALL} />
-          <CopySnippet
-            label={t("settings.connectClients.skillOtherAgents")}
-            code={AGENTS_SKILL_INSTALL}
-          />
-        </div>
+          <div className="flex px-3 py-1">
+            <ClientTabsList />
+          </div>
+          {CLIENTS.map(({ id }) => (
+            <TabsContent key={id} value={id} className="flex flex-col p-2">
+              <CopySnippet label="bash" code={skillInstallCommand(id)} />
+              {id === "raw" && (
+                <p className="px-3 pb-2 text-xs leading-snug text-muted-foreground">
+                  {t("settings.connectClients.skillOtherAgentsHint")}
+                </p>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
         <div className="flex flex-col gap-1 p-2">
           <h3 className="px-3 pt-2 text-sm font-medium">
             {t("settings.connectClients.skillLoginStep")}
@@ -387,7 +423,7 @@ function OrgConnectContent() {
             <TabsTrigger value="mcp">MCP</TabsTrigger>
           </TabsList>
           <TabsContent value="skill">
-            <SkillSetup />
+            <SkillSetup client={client} onClientChange={selectClient} />
           </TabsContent>
           <TabsContent value="mcp" className="flex flex-col gap-3">
             <p className="text-sm leading-snug text-muted-foreground">
@@ -401,22 +437,7 @@ function OrgConnectContent() {
                 className="gap-0"
               >
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1">
-                  <TabsList
-                    variant="underline"
-                    className="h-10 min-w-0 flex-1 gap-1 overflow-x-auto border-b-0"
-                  >
-                    {CLIENTS.map(({ id, label, labelKey, Icon }) => (
-                      <TabsTrigger
-                        key={id}
-                        value={id}
-                        variant="underline"
-                        className="gap-2"
-                      >
-                        <Icon size={16} />
-                        {labelKey ? t(labelKey) : label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
+                  <ClientTabsList />
                   <ModeSelect mode={mode} onModeChange={setMode} />
                 </div>
 
