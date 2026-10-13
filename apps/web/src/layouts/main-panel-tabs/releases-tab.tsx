@@ -1,5 +1,5 @@
 /**
- * Versions tab (the `releases` route) — a hosted v8 site's timeline: main's
+ * Releases tab (the `releases` route) — a hosted v8 site's timeline: main's
  * commits, newest first. A commit with a companion release on the CDN can be
  * published ("Make current" on the API); the one latest.json names is
  * Published (read, never inferred). A commit without a companion (a

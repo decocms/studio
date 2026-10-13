@@ -54,6 +54,7 @@ import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
 import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
   cmsHeaderButtonLabels,
+  hostedCmsHeaderButton,
   isCmsStateSettling,
   selectCmsHeaderButton,
   type CmsAction,
@@ -314,8 +315,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    */
   const publishing = publishCompletion.isPending;
 
-  // A hosted v8 draft is not a branch: there is no pull request to submit
-  // for review, so its header offers Publish only.
+  // A hosted v8 draft is not a branch: no pull request and nothing to sync,
+  // so its header offers Publish only, with no chevron.
   const backend = useContentBackend(virtualMcpId, branch);
   const hosted = backend.kind === "protocol" && backend.source === "github";
   const selected = selectCmsHeaderButton({
@@ -337,12 +338,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     publishableChangeCount,
     t,
   });
-  const button = hosted
-    ? {
-        ...selected,
-        menu: selected.menu.filter((item) => item.key !== "request-approval"),
-      }
-    : selected;
+  const button = hosted ? hostedCmsHeaderButton(selected) : selected;
 
   /** Keyed by head so a failed sync isn't retried until the branch moves. */
   const autoGetLatestKey =
@@ -462,6 +458,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       items={items}
       menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
       stableLabels={cmsHeaderButtonLabels(t)}
+      reserveMenu={!hosted}
       onClick={action ? () => dispatch(action) : undefined}
     />
   );

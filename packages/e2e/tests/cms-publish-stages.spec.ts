@@ -38,7 +38,7 @@ const SHELL_TIMEOUT_MS = 60_000;
 
 /** UI copy — the header's split button and the popover's chrome. */
 const REVIEW_AND_PUBLISH = "Review & Publish";
-const VERSION_NOTE = "Version note";
+const RELEASE_NOTE = "Release note";
 
 /** The CTA carries its final count from the manifest beat onward. */
 const PUBLISH_ONE = "Publish 1 change";
@@ -149,7 +149,7 @@ test.describe("fast preview publish stages", () => {
     // The real card, named — not a ghost. Scoped to the surface: the name is
     // generic enough to collide with the page behind the popover.
     await expect(surface.getByText("Hero", { exact: true })).toBeVisible();
-    await expect(page.getByText(VERSION_NOTE, { exact: true })).toBeVisible();
+    await expect(page.getByText(RELEASE_NOTE, { exact: true })).toBeVisible();
 
     // The whole point: actionable before the bodies land.
     await expect(publishCta).toBeVisible();

@@ -250,6 +250,18 @@ export function cmsHeaderButtonLabels(t: TFunction): string[] {
   ];
 }
 
+/**
+ * The header button of a hosted v8 draft. A draft is not a branch: no pull
+ * request to submit for review or open on the provider, and nothing to "Get
+ * latest" (its status always reports `behindBase: 0`). So it never has
+ * secondary actions, and the header renders it without the chevron half.
+ */
+export function hostedCmsHeaderButton(
+  button: CmsHeaderButton,
+): CmsHeaderButton {
+  return { ...button, menu: [] };
+}
+
 /** Picks the Fast Preview header button; first match wins, so order is behavior. */
 export function selectCmsHeaderButton(
   input: SelectCmsHeaderButtonInput,

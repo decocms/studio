@@ -202,7 +202,7 @@ export const thread = {
   "thread.publishPopover.submitForReview": "Submit for review",
   "thread.publishPopover.submitOneForReview": "Submit 1 change for review",
   "thread.publishPopover.submitting": "Submitting…",
-  "thread.publishPopover.versionNote": "Version note",
+  "thread.publishPopover.versionNote": "Release note",
   "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
   "thread.publishCompare.sideBySide": "Side by side",

@@ -1,7 +1,7 @@
 /**
  * What a hosted Publish tells the user, in business words: one toast per
  * Publish (sonner id `site-editor-publish`, shared with its "Try again" and
- * with the Versions screen), and the dialog's inline error when nothing was
+ * with the Releases screen), and the dialog's inline error when nothing was
  * published. "Published" means live; the API's codes and texts only ever
  * reach the Details disclosure.
  */

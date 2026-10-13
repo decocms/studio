@@ -13,7 +13,7 @@ import { saveErrorDetail, saveErrorMessage } from "./serve-save-error";
 
 /** Every save failure in the site editor shares this toast. */
 export const SITE_EDITOR_SAVE_TOAST = "site-editor-save";
-/** Publishing (from the editor or the Versions screen), its outcome and a
+/** Publishing (from the editor or the Releases screen), its outcome and a
  *  retry of it share this toast. */
 export const SITE_EDITOR_PUBLISH_TOAST = "site-editor-publish";
 

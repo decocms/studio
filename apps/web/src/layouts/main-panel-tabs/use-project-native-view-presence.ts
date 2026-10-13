@@ -33,7 +33,7 @@ export function useProjectNativeViewPresence(
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
   // The hosted Deco CMS: Blocks v8 sites (main's schema, `isV8Schema`). A v7
-  // site never gets Versions.
+  // site never gets Releases.
   const hostedCms = useMainSchemaV8(project?.id) === "v8";
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;

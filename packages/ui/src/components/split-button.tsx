@@ -60,6 +60,12 @@ export interface SplitButtonProps {
    * Measured by layout, not by a magic number, so it holds in every locale.
    */
   stableLabels?: string[];
+  /**
+   * With {@link stableLabels}: whether the empty chevron half keeps its place.
+   * Pass `false` for a control that never has secondary actions, so it renders
+   * as a plain (still stable-width) button with no chevron. Default `true`.
+   */
+  reserveMenu?: boolean;
   className?: string;
 }
 
@@ -165,10 +171,12 @@ export function SplitButton({
   items,
   menuAriaLabel,
   stableLabels,
+  reserveMenu = true,
   className,
 }: SplitButtonProps) {
   const hasMenu = (items?.length ?? 0) > 0;
   const stable = stableLabels !== undefined;
+  const reserved = stable && reserveMenu;
   const leading = loading ? <Spinner size="xs" /> : icon;
   /**
    * The shared inset ring is the `ring` token, which is picked to contrast with
@@ -193,7 +201,7 @@ export function SplitButton({
       onClick={loading ? undefined : onClick}
       className={cn(
         focusRing,
-        (hasMenu || stable) && "rounded-r-none border-r border-current/20",
+        (hasMenu || reserved) && "rounded-r-none border-r border-current/20",
         stable && STABLE_PADDING[size ?? "default"],
       )}
     >
@@ -259,7 +267,7 @@ export function SplitButton({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-      ) : stable ? (
+      ) : reserved ? (
         // No actions right now, but the half keeps its place so the control
         // doesn't narrow (and the header shift) as the state changes.
         <Button
