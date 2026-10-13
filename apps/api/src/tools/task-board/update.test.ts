@@ -56,21 +56,21 @@ describe("diffTaskActivityEntries", () => {
   });
 
   it("logs a single changed field", () => {
-    const previous = item({ status: "todo" });
+    const previous = item({ status: "triage" });
     const next = item({ status: "in_progress" });
     expect(diffTaskActivityEntries(previous, next)).toEqual([
       {
         action: "status_changed",
-        data: { from: "todo", to: "in_progress" },
+        data: { from: "triage", to: "in_progress" },
       },
     ]);
   });
 
   it("logs every field that changed in one update, in LOGGED_FIELDS order", () => {
-    const previous = item({ status: "todo", priority: "medium" });
+    const previous = item({ status: "triage", priority: "medium" });
     const next = item({ status: "in_progress", priority: "high" });
     expect(diffTaskActivityEntries(previous, next)).toEqual([
-      { action: "status_changed", data: { from: "todo", to: "in_progress" } },
+      { action: "status_changed", data: { from: "triage", to: "in_progress" } },
       { action: "priority_changed", data: { from: "medium", to: "high" } },
     ]);
   });

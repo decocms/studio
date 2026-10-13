@@ -30,8 +30,7 @@ export function isGroupBy(value: unknown): value is GroupBy {
 }
 
 /** Status sections read from what needs attention now down to what is
- *  settled, unlike the board, whose lanes run left to right through the flow.
- *  The previous board's lanes come last: only a straggler card sits in one. */
+ *  settled, unlike the board, whose lanes run left to right through the flow. */
 export const LIST_STATUS_ORDER: readonly CanonicalColumnKey[] = [
   "customer_approval",
   "qa",
@@ -42,9 +41,6 @@ export const LIST_STATUS_ORDER: readonly CanonicalColumnKey[] = [
   "post_deploy_validation",
   "done",
   "archived",
-  "todo",
-  "approved",
-  "merged",
 ];
 
 /** Section key for tasks without any tag. */

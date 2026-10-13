@@ -70,15 +70,14 @@ describe("feedEventKind", () => {
   });
 
   it("names a merged card as its own event, not a plain edit", () => {
-    for (const status of [
-      "post_deploy_validation",
-      "merged",
-      "approved",
-    ] as const) {
-      expect(
-        feedEventKind(task({ status, updatedAt: "2026-09-25T09:00:00Z" })),
-      ).toBe("delivered");
-    }
+    expect(
+      feedEventKind(
+        task({
+          status: "post_deploy_validation",
+          updatedAt: "2026-09-25T09:00:00Z",
+        }),
+      ),
+    ).toBe("delivered");
   });
 
   // Not merged yet: a card waiting on a person's check is an ordinary move.

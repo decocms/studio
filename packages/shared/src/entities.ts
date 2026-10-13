@@ -1,3 +1,4 @@
+import type { CanonicalColumnKey } from "./task-board";
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
 import type { ReviewerKind } from "./task-board.ts";
@@ -94,12 +95,7 @@ export interface StudioThreadMessage {
   updated_at: string;
 }
 
-export type TaskBoardItemStatus =
-  | "triage"
-  | "todo"
-  | "in_progress"
-  | "in_review"
-  | "done";
+export type TaskBoardItemStatus = CanonicalColumnKey;
 
 /** What KIND of work a card is — its shape, not its area (that's tags). */
 export type TaskBoardItemType =

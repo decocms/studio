@@ -158,15 +158,6 @@ describe("board lanes (real Postgres)", () => {
     expect((await asRun(working.id, "done")).item.status).toBe("done");
   });
 
-  it("refuses the previous board's lanes as a target", async () => {
-    const triage = await card("triage");
-    for (const status of ["todo", "approved", "merged"] as const) {
-      await expect(move(triage.id, status)).rejects.toThrow(
-        /not on this board/,
-      );
-    }
-  });
-
   it("moves an approved card to QA and closes its review cycle", async () => {
     const reviewed = await card("in_progress", "approved by the reviewer");
     await taskBoard.update(

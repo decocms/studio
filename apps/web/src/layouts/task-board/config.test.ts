@@ -20,7 +20,6 @@ import {
   laneHeader,
   laneVisibility,
   laneVisual,
-  moveTargets,
   runSortOrders,
   statusIconClassName,
 } from "./config";
@@ -268,22 +267,6 @@ describe("cardNeedsAttention", () => {
   });
 });
 
-describe("moveTargets", () => {
-  test("offers every lane but the previous board's", () => {
-    expect(moveTargets()).toEqual([
-      "triage",
-      "in_progress",
-      "in_review",
-      "qa",
-      "customer_approval",
-      "ready_for_deployment",
-      "post_deploy_validation",
-      "done",
-      "archived",
-    ]);
-  });
-});
-
 describe("dropLane", () => {
   const statusOf = (id: string) =>
     ({ card_in_column: "in_progress", card_in_dead_lane: "not_a_lane" })[id];
@@ -396,10 +379,9 @@ describe("laneHeader", () => {
 describe("laneVisibility", () => {
   const shown: string[] = [];
 
-  test("draws every offered lane but the hidden-by-default ones", () => {
+  test("draws every lane but the hidden-by-default ones", () => {
     const { lanes, hidden, hideable } = laneVisibility({
       shownLanes: shown,
-      occupied: [],
     });
     expect(lanes).toEqual([
       "triage",
@@ -418,48 +400,14 @@ describe("laneVisibility", () => {
   test("showing a hidden lane puts its column back", () => {
     const { lanes, hidden } = laneVisibility({
       shownLanes: ["archived"],
-      occupied: [],
     });
     expect(lanes).toContain("archived");
     expect(hidden).toEqual([]);
   });
 
-  test("a dormant lane is absent while empty", () => {
-    const { lanes, hidden } = laneVisibility({
-      shownLanes: ["todo"],
-      occupied: [],
-    });
-    for (const dormant of ["todo", "approved", "merged"]) {
-      expect(lanes).not.toContain(dormant);
-      expect(hidden).not.toContain(dormant);
-    }
-  });
-
-  // The previous release left a card there: draw the column so the card shows.
-  test("a card in a dormant lane draws that lane as a column", () => {
-    const { lanes, hidden } = laneVisibility({
-      shownLanes: shown,
-      occupied: ["merged", "todo"],
-    });
-    expect(lanes).toEqual([
-      "triage",
-      "todo",
-      "in_progress",
-      "in_review",
-      "qa",
-      "customer_approval",
-      "ready_for_deployment",
-      "merged",
-      "post_deploy_validation",
-      "done",
-    ]);
-    expect(hidden).toEqual(["archived"]);
-  });
-
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
       shownLanes: ["a_lane_that_no_longer_exists"],
-      occupied: [],
     });
     expect(lanes).not.toContain("a_lane_that_no_longer_exists");
   });
