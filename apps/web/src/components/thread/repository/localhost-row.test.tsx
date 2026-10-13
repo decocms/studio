@@ -4,7 +4,7 @@ setupComponentTest();
 import { fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { describe, expect, it, mock } from "bun:test";
-import { LocalhostRow } from "./localhost-row";
+import { chooseLocalhost, LocalhostRow } from "./localhost-row";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -68,5 +68,36 @@ describe("LocalhostRow", () => {
       );
       view.unmount();
     }
+  });
+});
+
+describe("chooseLocalhost", () => {
+  it("closes the menu and connects to the last endpoint", () => {
+    const set = mock(() => {});
+    const onPicked = mock(() => {});
+    chooseLocalhost(
+      { connection: null, lastEndpoint: "http://localhost:4100", set },
+      onPicked,
+    );
+    expect(onPicked).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith({ endpoint: "http://localhost:4100" });
+  });
+
+  it("falls back to the default port when never connected", () => {
+    const set = mock((_: { endpoint: string }) => {});
+    chooseLocalhost({ connection: null, lastEndpoint: null, set });
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set.mock.calls[0]?.[0].endpoint).toMatch(/^http:\/\/localhost:/);
+  });
+
+  it("already chosen: still closes the menu, keeps the connection", () => {
+    const set = mock(() => {});
+    const onPicked = mock(() => {});
+    chooseLocalhost(
+      { connection: { endpoint: "http://localhost:4100" }, set },
+      onPicked,
+    );
+    expect(onPicked).toHaveBeenCalledTimes(1);
+    expect(set).not.toHaveBeenCalled();
   });
 });
