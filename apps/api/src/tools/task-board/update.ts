@@ -13,7 +13,7 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { inReviewPhase, LANE_RANK, laneRank, refuseDormantLane } from "./lanes";
+import { inReviewPhase, LANE_RANK, laneRank } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
@@ -296,8 +296,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (input.sprintId && input.sprintId !== previous?.sprintId) {
       await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
-
-    refuseDormantLane(input.status);
 
     // Read only when the move could close a review, which is the one case
     // the guard below cares who is asking.

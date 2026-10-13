@@ -14,19 +14,17 @@ import { projectsForTask, type ProjectIndex } from "@/lib/project-index";
 const PULSE_WINDOW_DAYS = 7;
 
 /** Lanes that mean the work left the board on its own feet: merged and in
- *  production, whether or not someone has confirmed it there yet (`merged` is
- *  the previous board's name for that). `archived` is not one of them: a
- *  cancelled card did not ship. */
+ *  production, whether or not someone has confirmed it there yet. `archived`
+ *  is not one of them: a cancelled card did not ship. */
 const SHIPPED = new Set<TaskBoardItem["status"]>([
   "post_deploy_validation",
   "done",
-  "merged",
 ]);
 
 /** Lanes where nothing more will happen, so the card is not "open".
  *  `post_deploy_validation` shipped but is still open: someone has to confirm
  *  it works in production. */
-const CLOSED = new Set<TaskBoardItem["status"]>(["done", "merged", "archived"]);
+const CLOSED = new Set<TaskBoardItem["status"]>(["done", "archived"]);
 
 const WINDOW_MS = PULSE_WINDOW_DAYS * 86_400_000;
 

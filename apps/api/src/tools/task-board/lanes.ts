@@ -14,7 +14,6 @@
 import {
   CANONICAL_COLUMN_KEYS,
   type CanonicalColumnKey,
-  isDormantLane,
   LANES,
 } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
@@ -38,24 +37,6 @@ export function laneRank(status: string): number {
   const rank = RANK_LOOKUP[status];
   if (rank === undefined) throw new Error(`Unknown board column "${status}"`);
   return rank;
-}
-
-/** The statuses a card or a column rule may be given: every lane but the
- *  dormant ones. */
-export const OFFERED_COLUMN_KEYS: CanonicalColumnKey[] =
-  CANONICAL_COLUMN_KEYS.filter((key) => !isDormantLane(key));
-
-/**
- * Refuses a write that would put a card in a lane this release does not offer
- * (`DORMANT_LANES`). The schema accepts those statuses so a card the previous
- * release left in one still reads; nothing here may move a card into one.
- */
-export function refuseDormantLane(status: string | undefined): void {
-  if (status === undefined || !isDormantLane(status)) return;
-  throw new Error(
-    `The "${status}" column is not on this board; use a column the board ` +
-      "shows.",
-  );
 }
 
 /**
@@ -83,12 +64,10 @@ export function atOrBefore(from: string, to: string): boolean {
  * True where a merged pull request can have left the card, which is what the
  * merged-tag sweep gates on. Mirrors `TAGGABLE_MERGED_STATUSES` in storage: the
  * candidate query and the re-read inside the org's context have to agree, or
- * the sweep picks cards it then refuses. `merged` is the previous board's.
+ * the sweep picks cards it then refuses.
  */
 export function isTaggableMergedStatus(status: string): boolean {
-  return (
-    status === LANES.shipped || status === LANES.done || status === "merged"
-  );
+  return status === LANES.shipped || status === LANES.done;
 }
 
 /**

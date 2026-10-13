@@ -15,7 +15,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import type { CanonicalColumnKey } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  type CanonicalColumnKey,
+} from "@decocms/shared/task-board";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ProjectIcon } from "@/components/project-icon";
 import { useTaskBoardItemActions } from "@/hooks/use-task-board-items";
@@ -26,7 +29,6 @@ import {
   TASK_TYPES,
   TASK_TYPE_CONFIG,
   laneHeader,
-  moveTargets,
   type TaskBoardItemPriority,
   type TaskBoardItemType,
 } from "@/layouts/task-board/config";
@@ -216,7 +218,7 @@ export function NewTaskComposer() {
             ) : null
           }
         >
-          {moveTargets().map((column) => {
+          {CANONICAL_COLUMN_KEYS.map((column) => {
             const header = laneHeader(column, t);
             return (
               <OptionRow

@@ -243,11 +243,7 @@ function newestIso(
 /** Lanes a merged PR can leave a card on, and therefore where the merged-tag
  *  sweep has to look. `archived` is deliberately absent: a card that far along
  *  is history, and tagging it moves nothing. */
-const TAGGABLE_MERGED_STATUSES: string[] = [
-  LANES.shipped,
-  LANES.done,
-  "merged",
-];
+const TAGGABLE_MERGED_STATUSES: string[] = [LANES.shipped, LANES.done];
 
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
