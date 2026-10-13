@@ -218,8 +218,18 @@ async function readContent(
       : read.notModified
         ? currentMeta!
         : (read.schema as LiveMeta);
+  // This editor wrote while the poll ran (a write adopts its revision): the
+  // poll may have listed before that write, so it neither moves the revision
+  // back nor reads the write as someone else's change.
+  const adopted =
+    queryClient.getQueryData<ContentRevisions>(revisionsKey)?.revision;
+  const raced = adopted !== undefined && adopted !== seen?.revision;
   queryClient.setQueryData<ContentRevisions>(revisionsKey, {
-    revision: list.notModified ? seen?.revision : list.revision,
+    revision: raced
+      ? adopted
+      : list.notModified
+        ? seen?.revision
+        : list.revision,
     schemaVersion: !read
       ? undefined
       : read.notModified
@@ -233,6 +243,7 @@ async function readContent(
   // A revision this editor didn't write (its writes adopt theirs): someone
   // else changed the content, so the rest of the editor catches up too.
   if (
+    !raced &&
     !list.notModified &&
     currentBlocks &&
     seen?.revision &&

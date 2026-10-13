@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import {
+  notifyManager,
+  QueryClient,
+  QueryObserver,
+} from "@tanstack/react-query";
 import type {
   BatchCall,
   BatchOutcome,
@@ -171,6 +175,42 @@ describe("content-sync pending state", () => {
     expect(getContentSyncState(SCOPE).phase).toBe("idle");
     // The form made this change: it doesn't re-read its block.
     expect(getContentSyncState(SCOPE).epoch).toBe(0);
+  });
+
+  it("asks the preview to reload only after its observers saw the moved pointer", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = fakeBackend();
+    // The pointer read is the refresh's last to land.
+    let version = "e1";
+    let seen = "e1";
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.protocolDraftRead(ORG, VM, BRANCH),
+      queryFn: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { draft: "d", version };
+      },
+      staleTime: Number.POSITIVE_INFINITY,
+      // What the preview renders its frame URL from: the pointer's observer,
+      // subscribed the way `useQuery` subscribes (batched, deferred).
+    }).subscribe(
+      notifyManager.batchCalls((result) => {
+        seen =
+          (result.data as { version?: string } | undefined)?.version ?? seen;
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    registerContentPreview(SCOPE);
+    version = "e2";
+    await applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
+      set: { Home: { title: "edited" } },
+    });
+    // `reloading` was just set: the frame URL must already be the new one, or
+    // the preview takes its old, loaded frame for the moved pointer's.
+    expect(getContentSyncState(SCOPE)).toMatchObject({
+      phase: "reloading",
+      reload: { navigates: true },
+    });
+    expect(seen).toBe("e2");
   });
 
   it("counts overlapping writes and hands over to the preview after the last", async () => {
@@ -391,5 +431,46 @@ describe("content-sync refresh (contentChanged)", () => {
     expect(getContentSyncState(SCOPE).epoch).toBe(0);
     gate.resolve();
     await write;
+  });
+
+  it("a poll that listed before this editor's write and lands after it is not someone else's change", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = fakeBackend();
+    const { reads } = editorQueries(queryClient);
+    await settle();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    // The next poll lists now (before the write) but lands after it.
+    const client = backend.client as { batch: ContentClient["batch"] };
+    const listBatch = client.batch;
+    const landed = deferred<void>();
+    client.batch = async (calls) => {
+      const outcome = await listBatch(calls);
+      await landed.promise;
+      return outcome;
+    };
+    const stalePoll = pollProtocolContent(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+    );
+    client.batch = listBatch;
+    await applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
+      set: { Home: { title: "edited" } },
+    });
+    const afterWrite = { ...reads };
+    landed.resolve();
+    await stalePoll;
+    // It kept the write's revision, so the next poll finds nothing new.
+    expect(
+      queryClient.getQueryData<{ revision?: string }>(
+        KEYS.contentRevision(CACHE_KEY),
+      )?.revision,
+    ).toBe("r2");
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await settle();
+    await settle();
+    expect(reads).toEqual(afterWrite);
+    expect(getContentSyncState(SCOPE).epoch).toBe(0);
   });
 });

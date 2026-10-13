@@ -298,9 +298,12 @@ export function useCmsPublishActions(
       if (hosted) {
         await discardHosted(filepaths);
       } else {
-        // Its git path, as before; only the pending state is shared.
+        // Its git path, as before; only the pending state is shared. A v8
+        // sandbox also re-reads its blocks before the open form re-reads its
+        // block (v7 refreshes the way it always has: `reread` is ignored).
         await runContentChange(content, {
           kind: "discard",
+          reread: true,
           write: () =>
             discardGitFiles(
               {

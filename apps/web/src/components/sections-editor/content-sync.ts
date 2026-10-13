@@ -20,7 +20,7 @@
  * new draft, and its reload is still the publish's.
  */
 
-import type { QueryClient } from "@tanstack/react-query";
+import { notifyManager, type QueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useMinimumDuration } from "@/hooks/use-minimum-duration";
 import { KEYS } from "@/lib/query-keys";
@@ -278,7 +278,13 @@ async function contentChanged(
   const pointerAfter = pointerKey
     ? JSON.stringify(queryClient.getQueryData(pointerKey) ?? null)
     : null;
-  return { navigates: pointerBefore !== pointerAfter };
+  const navigates = pointerBefore !== pointerAfter;
+  // The moved pointer is in the cache, but react-query tells its observers on
+  // its own (deferred) schedule: wait for that, so the preview has rendered
+  // the new frame URL before `reloading` asks it whether a load is under way.
+  // Otherwise it would see the old, loaded URL and end the change at once.
+  if (navigates) await new Promise<void>((r) => notifyManager.schedule(r));
+  return { navigates };
 }
 
 /**
