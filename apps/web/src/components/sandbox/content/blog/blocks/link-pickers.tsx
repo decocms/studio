@@ -206,7 +206,12 @@ function ProductLinkPicker({
             key={option.id}
             label={option.label}
             image={option.image ?? ""}
-            onPick={() => option.url && onPick(reHome(option.url, storeUrl))}
+            onPick={() => {
+              /** Empty when the brand has no store address to put it on —
+               *  writing that over an existing link would lose it. */
+              const href = reHome(option.url, storeUrl);
+              if (href) onPick(href);
+            }}
           />
         ))
       )}

@@ -275,7 +275,9 @@ export function hydrate<
     }
     return {
       ...item,
-      url: found.url || item.url,
+      // The entry's address, or none: `item.url` is the model's own, and the
+      // model reads raw output from third-party systems.
+      url: found.url,
       ...(item.images === undefined
         ? {}
         : {

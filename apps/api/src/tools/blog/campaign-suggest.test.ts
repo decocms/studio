@@ -283,10 +283,24 @@ describe("hydrate", () => {
     expect(product?.images).toEqual(["a", "b", "c"]);
   });
 
-  test("a catalogued entry with no url keeps the one proposed", () => {
+  /**
+   * The proposed url is the model's own, and the model reads raw output from
+   * third-party systems. A catalogued entry with no address means the store
+   * reported none — which the prompt already says is a fine answer, since a
+   * product without a link is still a product and the editor fills it in.
+   */
+  test("a catalogued entry with no url does not fall back to the proposed one", () => {
     const [target] = hydrate(
-      [{ id: "38", url: "https://loja.com.br/escolar" }],
+      [{ id: "38", url: "https://invented.example/escolar" }],
       [{ id: "38", url: "" }],
+    );
+    expect(target?.url).toBe("");
+  });
+
+  test("the catalogued address wins over the proposed one", () => {
+    const [target] = hydrate(
+      [{ id: "38", url: "https://invented.example/escolar" }],
+      [{ id: "38", url: "https://loja.com.br/escolar" }],
     );
     expect(target?.url).toBe("https://loja.com.br/escolar");
   });

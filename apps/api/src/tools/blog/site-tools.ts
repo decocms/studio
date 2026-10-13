@@ -678,7 +678,7 @@ export async function extractCatalogue(
         );
       }
     }
-    const home = (slug: string) => (storeUrl ? reHome(slug, storeUrl) : "");
+    const home = (slug: string) => reHome(slug, storeUrl);
     const catalogue: Catalogue = {
       products: mergeById(
         done.map((pass) => pass.products),

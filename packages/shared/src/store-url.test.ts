@@ -28,16 +28,27 @@ describe("reHome", () => {
     );
   });
 
-  test("leaves a URL alone when no store is configured", () => {
+  /**
+   * The forgiving answer here is to hand the input back, and it publishes the
+   * platform host — the one outcome this module exists to prevent. A blank link
+   * is visibly unfinished; a working link to the platform is nobody's bug until
+   * a customer opens it.
+   */
+  test("gives nothing rather than the platform host when no store is configured", () => {
     const url = "https://acme.vtexcommercestable.com.br/x/p";
-    expect(reHome(url, "")).toBe(url);
-    expect(reHome(url, "   ")).toBe(url);
+    expect(reHome(url, "")).toBe("");
+    expect(reHome(url, "   ")).toBe("");
   });
 
-  test("leaves a URL alone when the store address is unusable", () => {
+  test("gives nothing when the store address is unusable", () => {
     const url = "https://acme.vtexcommercestable.com.br/x/p";
-    expect(reHome(url, "loja")).toBe(url);
-    expect(reHome(url, "javascript:alert(1)")).toBe(url);
+    expect(reHome(url, "loja")).toBe("");
+    expect(reHome(url, "javascript:alert(1)")).toBe("");
+  });
+
+  test("a store address that is a script URI never becomes the link", () => {
+    expect(reHome("/mochila/p", "javascript:alert(1)")).toBe("");
+    expect(reHome("/mochila/p", "data:text/html,<script>")).toBe("");
   });
 
   test("an empty input stays empty rather than becoming the store root", () => {
