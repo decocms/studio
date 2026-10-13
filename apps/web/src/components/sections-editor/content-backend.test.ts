@@ -10,6 +10,7 @@ import {
   newBlocksEditorEnabled,
   readFailed,
   selectContentBackend,
+  serveAssetUploadOrigin,
   servePreviewUrl,
 } from "./content-backend";
 
@@ -630,5 +631,40 @@ describe("readFailed", () => {
     expect(readFailed({ isError: true, errorUpdateCount: 1 })).toBe(true);
     // Re-polling: the query is back to `pending` with no data.
     expect(readFailed({ isError: false, errorUpdateCount: 1 })).toBe(true);
+  });
+});
+
+describe("serveAssetUploadOrigin", () => {
+  const assets = { dir: "public/assets", urlPrefix: "/assets/", maxBytes: 1 };
+  const protocol = (
+    source: "github" | "local" | "sandbox",
+    describeAssets: typeof assets | null = assets,
+  ) =>
+    ({
+      kind: "protocol",
+      source,
+      client: {},
+      describe: { assets: describeAssets },
+      cacheKeySuffix: "",
+    }) as unknown as Parameters<typeof serveAssetUploadOrigin>[0];
+  const serve = { endpoint: "http://localhost:4000/rpc" };
+
+  test("Localhost and /site-editor (a connected deco serve) upload to it", () => {
+    expect(serveAssetUploadOrigin(protocol("local"), serve)).toBe(
+      "http://localhost:4000",
+    );
+  });
+
+  test("hosted and sandbox projects upload to Studio's file storage", () => {
+    // Even a daemon or storage that still advertised an upload folder.
+    expect(serveAssetUploadOrigin(protocol("sandbox"), serve)).toBeNull();
+    expect(serveAssetUploadOrigin(protocol("github"), serve)).toBeNull();
+    expect(serveAssetUploadOrigin(protocol("sandbox", null), null)).toBeNull();
+    expect(serveAssetUploadOrigin({ kind: "legacy" }, serve)).toBeNull();
+  });
+
+  test("a deco serve that is gone or read-only for uploads takes none", () => {
+    expect(serveAssetUploadOrigin(protocol("local"), null)).toBeNull();
+    expect(serveAssetUploadOrigin(protocol("local", null), serve)).toBeNull();
   });
 });
