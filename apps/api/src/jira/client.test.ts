@@ -883,9 +883,9 @@ describe("JiraClient", () => {
       ]);
 
       urls.length = 0;
-      await client.listBoards("Painel & Deco");
+      await client.listBoards("Team & Ops");
       expect(urls[0]?.pathname).toBe("/rest/agile/1.0/board");
-      expect(urls[0]?.searchParams.get("name")).toBe("Painel & Deco");
+      expect(urls[0]?.searchParams.get("name")).toBe("Team & Ops");
       expect(urls[0]?.searchParams.get("startAt")).toBe("0");
     } finally {
       globalThis.fetch = originalFetch;
