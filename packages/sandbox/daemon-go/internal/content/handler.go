@@ -1,6 +1,7 @@
 // Package content serves the Deco content protocol (`deco-content` v1:
-// JSON-RPC 2.0 with describe, schema.get, blocks.list and blocks.apply, plus
-// `PUT …/assets/<name>` uploads) over the sandbox's working tree.
+// JSON-RPC 2.0 with describe, schema.get, blocks.list and blocks.apply) over
+// the sandbox's working tree. It takes no asset uploads (describe reports
+// `assets: null`): project assets live in Studio's file storage.
 //
 // It is a port of the TypeScript reference in `@decocms/blocks/protocol`
 // (server/, storage/fs, keys, secrets), behaviour-identical by design: same
@@ -32,13 +33,11 @@ type Options struct {
 	// OnCommit is called after blocks.apply lands, with the block files
 	// (inside .deco/blocks) it wrote or deleted.
 	OnCommit func(files []string)
-	// OnAsset is called after an upload, with the stored file name.
-	OnAsset func(name string)
 	// Logf receives errors that become Internal errors.
 	Logf func(format string, args ...any)
 }
 
-// Handler serves the protocol and uploads for one app root.
+// Handler serves the protocol for one app root.
 type Handler struct {
 	store                  *FSStore
 	serverName             string
@@ -48,7 +47,6 @@ type Handler struct {
 	retryMinMs, retryMaxMs int
 	cache                  *bodyCache
 	onCommit               func([]string)
-	onAsset                func(string)
 	logFn                  func(string, ...any)
 	schemaMu               sync.Mutex
 	schemaVersion          string
@@ -67,7 +65,6 @@ func NewHandler(o Options) *Handler {
 		retryMaxMs:        200,
 		cache:             newBodyCache(defaultCacheBytes),
 		onCommit:          o.OnCommit,
-		onAsset:           o.OnAsset,
 		logFn:             o.Logf,
 	}
 	if h.serverName == "" {
