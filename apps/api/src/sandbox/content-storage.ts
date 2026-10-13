@@ -370,10 +370,21 @@ function createSandboxContentStorage(
       files.forEach(assertBlockFile);
       // A working tree has no past snapshots: current bytes, with their version.
       const out: Record<string, StoredFileBody> = Object.create(null);
+      const listed = lastScan;
+      let moved = false;
       await mapLimit(files, READ_CONCURRENCY, async (file) => {
         const text = await readText(repoPath(`blocks/${file}`));
         if (text !== null) out[file] = { text, version: gitBlobHash(text) };
+        if (
+          (out[file]?.version ?? null) !== (listed?.blocks.get(file) ?? null)
+        ) {
+          moved = true;
+        }
       });
+      // A file changed since the listing (the agent wrote it in the last
+      // SCAN_REUSE_MS): drop the reused listing, so the core's next snapshot
+      // sees the change instead of the same stale versions until it gives up.
+      if (moved) invalidate();
       return out;
     },
 
