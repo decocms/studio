@@ -53,7 +53,7 @@ describe("transitionMatches", () => {
 describe("triggerFrom", () => {
   it("drops a stored column the board no longer has", () => {
     expect(
-      triggerFrom({ from_kind: "statuses", from_statuses: ["todo", "qa"] }),
+      triggerFrom({ from_kind: "statuses", from_statuses: ["merged", "qa"] }),
     ).toEqual({ kind: "statuses", statuses: ["qa"] });
   });
 

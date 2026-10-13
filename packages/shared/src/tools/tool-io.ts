@@ -5096,6 +5096,7 @@ export interface StudioToolIO {
                 statuses: (
                   | "done"
                   | "triage"
+                  | "todo"
                   | "in_progress"
                   | "in_review"
                   | "qa"
@@ -5167,6 +5168,7 @@ export interface StudioToolIO {
       column_key?:
         | "done"
         | "triage"
+        | "todo"
         | "in_progress"
         | "in_review"
         | "qa"
@@ -5184,6 +5186,7 @@ export interface StudioToolIO {
             statuses: (
               | "done"
               | "triage"
+              | "todo"
               | "in_progress"
               | "in_review"
               | "qa"
