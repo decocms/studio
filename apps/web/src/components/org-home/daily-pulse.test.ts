@@ -52,7 +52,7 @@ describe("shippedSince", () => {
         [
           task({ status: "done", updatedAt: daysAgo(0.5) }),
           task({ status: "post_deploy_validation", updatedAt: daysAgo(0.5) }),
-          task({ status: "merged", updatedAt: new Date(since).toISOString() }),
+          task({ status: "done", updatedAt: new Date(since).toISOString() }),
         ],
         since,
       ),
@@ -131,7 +131,6 @@ describe("tasksNeedingMe", () => {
     const list = tasksNeedingMe(
       [
         task({ id: "done", status: "done", assigneeId: "user_1" }),
-        task({ id: "merged", status: "merged", assigneeId: "user_1" }),
         task({ id: "archived", status: "archived", assigneeId: "user_1" }),
       ],
       "user_1",
@@ -199,7 +198,7 @@ describe("projectSummaries", () => {
         task({ status: "triage", repo: "deco/farm" }),
         task({ status: "in_progress", repo: "deco/farm" }),
         task({ status: "post_deploy_validation", repo: "deco/farm" }),
-        task({ status: "merged", repo: "deco/farm" }),
+        task({ status: "done", repo: "deco/farm" }),
         task({ status: "done", repo: "deco/farm" }),
       ],
       undefined,
@@ -338,7 +337,7 @@ describe("shippedSeries", () => {
       index,
       [
         task({ status: "done", updatedAt: daysAgo(0), repo: "deco/farm" }),
-        task({ status: "merged", updatedAt: daysAgo(0), repo: "deco/farm" }),
+        task({ status: "done", updatedAt: daysAgo(0), repo: "deco/farm" }),
         task({ status: "done", updatedAt: daysAgo(3), repo: "deco/farm" }),
       ],
       "p1",
@@ -541,7 +540,7 @@ describe("monthlyCost", () => {
           threads: [thread("completed", onDay(5), { costUsd: 6 })],
         }),
         task({
-          status: "merged",
+          status: "done",
           repo: "deco/farm",
           updatedAt: onDay(6),
           threads: [thread("completed", onDay(6), { costUsd: 4 })],

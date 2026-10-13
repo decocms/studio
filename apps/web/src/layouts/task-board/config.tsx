@@ -19,11 +19,9 @@ import {
   Loading02,
   PackageCheck,
   PlusCircle,
-  Rocket01,
   Settings01,
   Shield01,
   ShieldTick,
-  ThumbsUp,
   UserCheck01,
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
@@ -31,7 +29,6 @@ import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-
 import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TAG_COLOR,
-  isDormantLane,
 } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { ComponentType } from "react";
@@ -220,11 +217,6 @@ export const STATUS_CONFIG: Record<
     icon: AlertCircle,
     iconClassName: "text-muted-foreground",
   },
-  todo: {
-    labelKey: "taskBoard.config.statusTodo",
-    icon: Circle,
-    iconClassName: "text-muted-foreground",
-  },
   in_progress: {
     labelKey: "taskBoard.config.statusInProgress",
     icon: Loading02,
@@ -245,20 +237,10 @@ export const STATUS_CONFIG: Record<
     icon: UserCheck01,
     iconClassName: "text-warning",
   },
-  approved: {
-    labelKey: "taskBoard.config.statusApproved",
-    icon: ThumbsUp,
-    iconClassName: "text-success",
-  },
   ready_for_deployment: {
     labelKey: "taskBoard.config.statusReadyForDeployment",
     icon: PackageCheck,
     iconClassName: "text-success",
-  },
-  merged: {
-    labelKey: "taskBoard.config.statusMerged",
-    icon: Rocket01,
-    iconClassName: "text-primary",
   },
   post_deploy_validation: {
     labelKey: "taskBoard.config.statusPostDeployValidation",
@@ -373,39 +355,29 @@ export const TASK_TYPE_CONFIG: Record<
 };
 
 /**
- * Lanes a card may be MOVED to — "Move to", the status dropdown. Dormant lanes
- * are never offered: they belong to the previous board, and nothing should put
- * a card back there.
- */
-export function moveTargets(): CanonicalColumnKey[] {
-  return CANONICAL_COLUMN_KEYS.filter((key) => !isDormantLane(key));
-}
-
-/**
  * Which lanes the board draws as columns, and which collapse into the "Hidden
  * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
- * unless `shownLanes` brings it back. A dormant lane is drawn as a column only
- * while a card sits in it (`occupied`), so a card the previous release left
- * there stays reachable without the lane cluttering every board.
+ * unless `shownLanes` brings it back.
  */
 export function laneVisibility({
   shownLanes,
-  occupied,
 }: {
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
-  occupied: readonly string[];
 }): {
   lanes: CanonicalColumnKey[];
   hidden: CanonicalColumnKey[];
   hideable: CanonicalColumnKey[];
 } {
-  const known = CANONICAL_COLUMN_KEYS.filter(
-    (s) => !isDormantLane(s) || occupied.includes(s),
+  const hideable = CANONICAL_COLUMN_KEYS.filter((s) =>
+    HIDDEN_STATUSES.includes(s),
   );
-  const hideable = known.filter((s) => HIDDEN_STATUSES.includes(s));
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
-  return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+  return {
+    lanes: CANONICAL_COLUMN_KEYS.filter((s) => !hidden.includes(s)),
+    hidden,
+    hideable,
+  };
 }
 
 /** Width of a collapsed lane: room for its icon, vertical label and count. */

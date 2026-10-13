@@ -196,39 +196,17 @@ export function enabledReviewerKinds(
  */
 export const CANONICAL_COLUMN_KEYS = [
   "triage",
-  "todo",
   "in_progress",
   "in_review",
   "qa",
   "customer_approval",
-  "approved",
   "ready_for_deployment",
-  "merged",
   "post_deploy_validation",
   "done",
   "archived",
 ] as const;
 
 export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
-
-/**
- * Statuses the board can read but does not offer: nothing moves a card into
- * one, and the board draws one only while a card sits in it.
- *
- * These are the previous board's lanes. A card the previous release wrote
- * there during a rollout (or before a rollback) still reads, and the release
- * after this one moves the stragglers and drops the statuses.
- */
-export const DORMANT_LANES: readonly CanonicalColumnKey[] = [
-  "todo",
-  "approved",
-  "merged",
-];
-
-/** True for a status the board knows but does not offer. */
-export function isDormantLane(status: string): boolean {
-  return (DORMANT_LANES as readonly string[]).includes(status);
-}
 
 /**
  * The columns Studio's lifecycle gives meanings to, by meaning.

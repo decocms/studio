@@ -35,7 +35,7 @@ function card(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     organizationId: "org_1",
     title: `Card ${seq}`,
     description: null,
-    status: "todo",
+    status: "triage",
     priority: "none",
     type: "chore",
     assigneeId: null,
@@ -86,11 +86,10 @@ describe("isOpenForDuplicateCheck", () => {
     expect(isOpenForDuplicateCheck(card({ status: "archived" }))).toBe(false);
     for (const status of [
       "triage",
-      "todo",
       "in_progress",
       "in_review",
-      "approved",
-      "merged",
+      "qa",
+      "ready_for_deployment",
       "post_deploy_validation",
     ] as const) {
       expect(isOpenForDuplicateCheck(card({ status }))).toBe(true);
@@ -101,7 +100,7 @@ describe("isOpenForDuplicateCheck", () => {
 describe("selectDuplicateCandidates", () => {
   it("drops finished cards even when they match word for word", () => {
     const done = card({ title: "Add dark mode toggle", status: "done" });
-    const open = card({ title: "Add dark mode toggle", status: "todo" });
+    const open = card({ title: "Add dark mode toggle", status: "triage" });
     const picked = selectDuplicateCandidates([done, open], {
       title: "Add dark mode toggle",
     });
@@ -429,7 +428,7 @@ describe("acceptBatchDuplicates", () => {
 
 describe("buildBatchDuplicatePrompt", () => {
   it("lists drafts by index and cards by id", () => {
-    const c = card({ title: "Fix login", status: "todo" });
+    const c = card({ title: "Fix login", status: "triage" });
     const prompt = buildBatchDuplicatePrompt(
       [
         {
@@ -442,7 +441,7 @@ describe("buildBatchDuplicatePrompt", () => {
       [c],
     );
     expect(prompt).toContain("- draft 3 (acme/web): Login broken — on Safari");
-    expect(prompt).toContain(`- [${c.id}] (todo) Fix login`);
+    expect(prompt).toContain(`- [${c.id}] (triage) Fix login`);
   });
 
   it("says so when the board has no open cards", () => {

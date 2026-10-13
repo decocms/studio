@@ -121,10 +121,14 @@ describe("auto-archive sweep", () => {
     ]);
   });
 
-  // The delivery lanes sit BEFORE Done, so a card parked in one is still in flight.
-  it("never sweeps a card resting in a delivery lane", async () => {
+  // These lanes sit BEFORE Done, so a card parked in one is still in flight.
+  it("never sweeps a card resting in a lane before Done", async () => {
     const settled = new Date(Date.now() - 3 * DAY_MS);
-    const lanes = ["approved", "merged", "post_deploy_validation"] as const;
+    const lanes = [
+      "qa",
+      "ready_for_deployment",
+      "post_deploy_validation",
+    ] as const;
     const parked = await Promise.all(
       lanes.map((lane) => seed(lane, settled, true)),
     );

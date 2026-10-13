@@ -28,7 +28,6 @@ import {
 } from "./change-request-extract";
 import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
-import { refuseDormantLane } from "./lanes";
 import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -120,8 +119,6 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
           "https://bitbucket.org/<workspace>/<repo>/pull-requests/<id>)",
       );
     }
-
-    refuseDormantLane(input.status);
 
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);

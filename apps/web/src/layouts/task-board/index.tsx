@@ -116,7 +116,6 @@ import {
   HIDDEN_STATUSES,
   boardGridColumns,
   laneVisibility,
-  moveTargets,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -1892,7 +1891,7 @@ function TaskBoardBody({
               const item = items.find((i) => i.id === id);
               return (
                 item &&
-                (item.status === "triage" || item.status === "todo") &&
+                item.status === "triage" &&
                 item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
               );
             })
@@ -2014,7 +2013,7 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {moveTargets().map((status) => (
+                {CANONICAL_COLUMN_KEYS.map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
@@ -2330,7 +2329,6 @@ function Lanes({
     hideable: hideableLanes,
   } = laneVisibility({
     shownLanes: preferences.shownTaskBoardLanes,
-    occupied: placed.map((item) => item.status),
   });
   const setLaneShown = (status: string, shown: boolean) =>
     setPreferences((prev) => ({
@@ -3063,7 +3061,7 @@ function TaskCard({
 
   const showAutoFix =
     onAutoFix &&
-    (item.status === "triage" || item.status === "todo") &&
+    item.status === "triage" &&
     item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
 
   // The counterpart for a card the Super Agent already owns. Auto-fix hides
@@ -3440,7 +3438,7 @@ function FeedComposer({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              {moveTargets().map((s) => {
+              {CANONICAL_COLUMN_KEYS.map((s) => {
                 const { label, visual } = laneHeader(s, t);
                 const Icon = visual.icon;
                 return (
@@ -3920,7 +3918,7 @@ function ListRowStatusMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
-        {moveTargets().map((status) => {
+        {CANONICAL_COLUMN_KEYS.map((status) => {
           const { label, visual } = laneHeader(status, t);
           const Icon = visual.icon;
           return (

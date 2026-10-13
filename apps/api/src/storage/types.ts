@@ -1698,14 +1698,11 @@ export interface OrgRepoSync {
 
 export type TaskBoardItemStatus =
   | "triage"
-  | "todo"
   | "in_progress"
   | "in_review"
   | "qa"
   | "customer_approval"
-  | "approved"
   | "ready_for_deployment"
-  | "merged"
   | "post_deploy_validation"
   | "done"
   | "archived";

@@ -132,8 +132,7 @@ describe("TaskBoardStorage.resolveFinding", () => {
     expect(entries).toHaveLength(2);
   });
 
-  // To Do counts as started, since it is the queue the Super Agent claims from.
-  it.each(["todo", "in_progress", "in_review", "done", "archived"])(
+  it.each(["in_progress", "in_review", "qa", "done", "archived"])(
     "only notes a reports card in %s",
     async (status) => {
       const card = await reportsCard(status);

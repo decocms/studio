@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { LANES } from "@decocms/shared/task-board";
-import { OFFERED_COLUMN_KEYS } from "./lanes";
+import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
 import { emitTaskBoardRulesUpdated } from "./prompts";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "./schema";
 
@@ -67,9 +67,9 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
 
     // Rejected here rather than stored and ignored: a rule on a column this
     // board does not have never fires, and looks configured to whoever set it.
-    if (!OFFERED_COLUMN_KEYS.some((key) => key === input.columnKey)) {
+    if (!CANONICAL_COLUMN_KEYS.some((key) => key === input.columnKey)) {
       throw new Error(
-        `This board has no column "${input.columnKey}" — it has ${OFFERED_COLUMN_KEYS.join(", ")}`,
+        `This board has no column "${input.columnKey}" — it has ${CANONICAL_COLUMN_KEYS.join(", ")}`,
       );
     }
 
