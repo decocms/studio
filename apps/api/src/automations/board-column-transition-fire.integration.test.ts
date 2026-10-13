@@ -1,6 +1,7 @@
 /**
- * Real-Postgres coverage for the board transition sweep: which moves fire a
- * `board_column_transition` trigger, and that each fires once.
+ * Real-Postgres coverage for the `board_column_transition` trigger: which
+ * moves fire it, that each fires once across the settle wait and the sweep,
+ * and which lane moves start a settle wait at all.
  *
  * The run itself is the board's (`enqueueSuperAgentForTask`), which needs a
  * model and a sandbox this tier does not have, so a fire here is visible by
@@ -27,19 +28,27 @@ import {
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
 import { createAutomationsStorage } from "../storage/automations";
-import { TaskBoardStorage } from "../storage/task-board";
+import {
+  type BoardMove,
+  setBoardMoveListener,
+  TaskBoardStorage,
+} from "../storage/task-board";
 import type { TaskBoardItemStatus } from "../storage/types";
-import { BoardColumnTransitionSweeper } from "./board-column-transition-sweeper";
+import {
+  type BoardTransitionDeps,
+  settleBoardMove,
+  sweepSettledMoves,
+} from "./board-column-transition-fire";
 
 const ORG = "org_test";
 const USER = "user_test";
 const SETTLE_MS = 20_000;
 
-describe("board transition sweep (real Postgres)", () => {
+describe("board column transition trigger (real Postgres)", () => {
   let database: StudioDatabase;
   let taskBoard: TaskBoardStorage;
   let automations: ReturnType<typeof createAutomationsStorage>;
-  let sweeper: BoardColumnTransitionSweeper;
+  let deps: BoardTransitionDeps;
   /** The sweep's clock: every move below is placed relative to it. */
   const NOW = Date.now();
 
@@ -57,12 +66,7 @@ describe("board transition sweep (real Postgres)", () => {
       auth: { user: { id: USER } },
       storage: { taskBoard, automations },
     } as unknown as StudioContext;
-    sweeper = new BoardColumnTransitionSweeper(
-      automations,
-      taskBoard,
-      async () => ctx,
-      { settleMs: SETTLE_MS },
-    );
+    deps = { automations, taskBoard, contextFactory: async () => ctx };
   });
 
   afterAll(async () => {
@@ -144,14 +148,19 @@ describe("board transition sweep (real Postgres)", () => {
       (a) => a.action === "assignee_changed",
     );
 
+  const activityIds = async (itemId: string) =>
+    (await taskBoard.listActivity(itemId, ORG))
+      .filter((a) => a.action === "status_changed")
+      .map((a) => a.id);
+
   it("fires a settled move once, however many sweeps see it", async () => {
     await triggerOn("in_progress");
     const moved = await card([
       { from: "triage", to: "in_progress", secondsAgo: 30 },
     ]);
 
-    await sweeper.runOnce(NOW);
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await fires()).toBe(1);
     // Claimed for the agent, then handed back when the dispatch was refused.
@@ -163,7 +172,7 @@ describe("board transition sweep (real Postgres)", () => {
     await triggerOn("in_progress");
     await card([{ from: "triage", to: "in_progress", secondsAgo: 5 }]);
 
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await fires()).toBe(0);
   });
@@ -175,7 +184,7 @@ describe("board transition sweep (real Postgres)", () => {
       { from: "qa", to: "customer_approval", secondsAgo: 35 },
     ]);
 
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await fires()).toBe(0);
   });
@@ -187,7 +196,7 @@ describe("board transition sweep (real Postgres)", () => {
       { assigneeId: USER },
     );
 
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     // The fire is spent on the move; the card keeps its owner.
     expect(await fires()).toBe(1);
@@ -199,7 +208,7 @@ describe("board transition sweep (real Postgres)", () => {
     await triggerOn("qa", { fromKind: "earlier" });
     await card([{ from: "customer_approval", to: "qa", secondsAgo: 30 }]);
 
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await fires()).toBe(0);
   });
@@ -208,7 +217,7 @@ describe("board transition sweep (real Postgres)", () => {
     await triggerOn("in_progress", { createdAt: new Date(NOW - 10_000) });
     await card([{ from: "triage", to: "in_progress", secondsAgo: 30 }]);
 
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await fires()).toBe(0);
   });
@@ -220,8 +229,99 @@ describe("board transition sweep (real Postgres)", () => {
     );
     await card([{ from: "triage", to: "in_progress", secondsAgo: 30 }]);
 
-    await sweeper.runOnce(NOW);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await fires()).toBe(0);
+  });
+
+  it("fires one move when its settle wait ends, once with the sweep", async () => {
+    await triggerOn("in_progress");
+    const moved = await card([
+      { from: "triage", to: "in_progress", secondsAgo: 30 },
+    ]);
+    const [move] = await activityIds(moved.id);
+
+    await settleBoardMove(deps, move!, NOW, SETTLE_MS);
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
+
+    expect(await fires()).toBe(1);
+    expect(await claimedForAgent(moved.id)).toBe(true);
+  });
+
+  it("does not fire a move the card has since left", async () => {
+    await triggerOn("in_progress");
+    const moved = await card([
+      { from: "triage", to: "in_progress", secondsAgo: 60 },
+      { from: "in_progress", to: "in_review", secondsAgo: 30 },
+    ]);
+    const [first] = await activityIds(moved.id);
+
+    await settleBoardMove(deps, first!, NOW, SETTLE_MS);
+
+    expect(await fires()).toBe(0);
+  });
+
+  it("starts a settle wait only for a column an active trigger watches", async () => {
+    const trigger = await triggerOn("qa");
+    const item = await card([]);
+    const watched = () =>
+      automations.hasActiveBoardColumnTrigger(item.id, "qa");
+
+    expect(await watched()).toBe(true);
+    expect(
+      await automations.hasActiveBoardColumnTrigger(item.id, "in_review"),
+    ).toBe(false);
+    await sql`update automations set active = false where id = ${trigger.automation_id}`.execute(
+      database.db,
+    );
+    expect(await watched()).toBe(false);
+  });
+
+  it("announces each logged lane move, and nothing else", async () => {
+    const heard: BoardMove[] = [];
+    setBoardMoveListener(async (move) => {
+      heard.push(move);
+    });
+    try {
+      const item = await card([]);
+      await taskBoard.recordActivity({
+        taskBoardItemId: item.id,
+        action: "status_changed",
+        actorId: USER,
+        data: { from: "triage", to: "in_progress" },
+      });
+      await taskBoard.recordActivities([
+        {
+          taskBoardItemId: item.id,
+          action: "status_changed",
+          actorId: null,
+          data: { from: "in_progress", to: "in_progress" },
+        },
+        {
+          taskBoardItemId: item.id,
+          action: "assignee_changed",
+          actorId: USER,
+          data: { from: null, to: USER },
+        },
+        {
+          taskBoardItemId: item.id,
+          action: "status_changed",
+          actorId: USER,
+          data: { from: "in_progress", to: "in_review" },
+        },
+      ]);
+
+      expect(heard.map((m) => m.to)).toEqual(["in_progress", "in_review"]);
+      const logged = await taskBoard.listActivity(item.id, ORG);
+      for (const move of heard) {
+        expect(move.taskBoardItemId).toBe(item.id);
+        expect(logged.find((a) => a.id === move.activityId)?.data).toEqual({
+          from: expect.any(String),
+          to: move.to,
+        });
+      }
+    } finally {
+      setBoardMoveListener(null);
+    }
   });
 });

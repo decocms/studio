@@ -111,6 +111,10 @@ export interface AutomationsStorage {
   findActiveBoardColumnTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
+  hasActiveBoardColumnTrigger(
+    taskBoardItemId: string,
+    columnKey: string,
+  ): Promise<boolean>;
   claimTriggerFire(triggerId: string, eventKey: string): Promise<boolean>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
@@ -593,7 +597,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
 
   /**
    * Active `board_column_transition` triggers, with their automations, across
-   * every org — the board transition sweep's work list. An org with none is
+   * every org — the board transition triggers' work list. An org with none is
    * absent, which is what keeps the sweep cheap where nobody uses them.
    */
   async findActiveBoardColumnTriggers(): Promise<
@@ -626,6 +630,29 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ...triggerFromDbRow(row),
       automation: automationFromAliasedRow(row),
     }));
+  }
+
+  /**
+   * Whether an active `board_column_transition` trigger in the card's org
+   * watches `columnKey`. What a lane move checks before it starts a settle
+   * wait, so a board nobody automates never enqueues anything.
+   */
+  async hasActiveBoardColumnTrigger(
+    taskBoardItemId: string,
+    columnKey: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("task_board_items as i")
+      .innerJoin("automations as a", "a.organization_id", "i.organization_id")
+      .innerJoin("automation_triggers as t", "t.automation_id", "a.id")
+      .select("t.id")
+      .where("i.id", "=", taskBoardItemId)
+      .where("a.active", "=", true)
+      .where("t.type", "=", "board_column_transition")
+      .where("t.column_key", "=", columnKey)
+      .limit(1)
+      .executeTakeFirst();
+    return row !== undefined;
   }
 
   /**
