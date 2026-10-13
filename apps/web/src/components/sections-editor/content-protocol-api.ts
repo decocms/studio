@@ -19,6 +19,7 @@ import {
   isMainSchemaChangedResponse,
   MainSchemaChangedError,
   mainSchemaHeaders,
+  mainSchemaRead,
   resetMainSchemaAnswer,
 } from "@/hooks/main-schema-changed";
 import { ServeLostError } from "./serve-save-error";
@@ -160,9 +161,21 @@ async function readContent(
   const revisionsKey = KEYS.contentRevision(cacheKey);
   const currentBlocks =
     queryClient.getQueryData<Record<string, unknown>>(blocksKey);
-  const currentMeta = queryClient.getQueryData<LiveMeta>(metaKey);
-  const seen =
+  const cachedMeta = queryClient.getQueryData<LiveMeta>(metaKey);
+  const cachedRevisions =
     queryClient.getQueryData<ContentRevisions>(revisionsKey) ?? undefined;
+  // Studio's GitHub backend serves main's schema, which the page already read
+  // to decide v8 (`mainSchemaRead`): the first poll starts from it and asks
+  // only whether it changed.
+  const main =
+    backend.source === "github" && !cachedMeta
+      ? mainSchemaRead(queryClient, params.orgSlug, params.virtualMcpId)
+      : undefined;
+  const seeded = main?.isV8 && main.schema && main.version ? main : undefined;
+  const currentMeta = cachedMeta ?? (seeded?.schema as LiveMeta | undefined);
+  const seen: ContentRevisions | undefined = seeded
+    ? { ...cachedRevisions, schemaVersion: seeded.version! }
+    : cachedRevisions;
   const blocksIfNoneMatch =
     conditional && currentBlocks ? seen?.revision : undefined;
   const schemaIfNoneMatch =

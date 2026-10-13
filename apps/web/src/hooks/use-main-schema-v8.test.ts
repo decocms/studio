@@ -15,22 +15,42 @@ describe("fetchMainSchemaV8 (isV8Schema on main's schema, read here)", () => {
 
   test("decides v8 from the schema it fetched (no route of its own)", async () => {
     expect(
-      await fetchMainSchemaV8("o", "p", schema({ blocksMajor: 8, root: {} })),
+      (await fetchMainSchemaV8("o", "p", schema({ blocksMajor: 8, root: {} })))
+        .isV8,
     ).toBe(true);
     // A v7 site: the route answers no v8 schema (`null`), or a schema
     // without the field.
-    expect(await fetchMainSchemaV8("o", "p", schema(null))).toBe(false);
-    expect(await fetchMainSchemaV8("o", "p", schema({ root: {} }))).toBe(false);
-    expect(await fetchMainSchemaV8("o", "p", schema({ blocksMajor: 9 }))).toBe(
+    expect((await fetchMainSchemaV8("o", "p", schema(null))).isV8).toBe(false);
+    expect((await fetchMainSchemaV8("o", "p", schema({ root: {} }))).isV8).toBe(
       false,
     );
+    expect(
+      (await fetchMainSchemaV8("o", "p", schema({ blocksMajor: 9 }))).isV8,
+    ).toBe(false);
+  });
+
+  test("keeps main's schema and version for the editor's form", async () => {
+    const main = { blocksMajor: 8, root: {} };
+    expect(
+      await fetchMainSchemaV8(
+        "o",
+        "p",
+        answering(200, {
+          jsonrpc: "2.0",
+          id: 1,
+          result: { notModified: false, version: "s1", schema: main },
+        }),
+      ),
+    ).toEqual({ isV8: true, schema: main, version: "s1" });
   });
 
   test("Studio's gates settle it without a schema", async () => {
-    const status = (code: number, body: unknown) =>
-      fetchMainSchemaV8("o", "p", answering(code, body));
+    const status = async (code: number, body: unknown) =>
+      (await fetchMainSchemaV8("o", "p", answering(code, body))).isV8;
     // No repository: no main, as on main (v7).
     expect(await status(404, { code: "no_repository" })).toBe(false);
+    // No CMS in the plan: the gate answers before main is read, so even a v8
+    // site there is deliberately v7 (every plan includes `cms` today).
     expect(await status(403, { code: "feature_not_in_plan" })).toBe(false);
     // Gates that only a v8 main reaches.
     expect(await status(409, { code: "site_not_owned" })).toBe(true);

@@ -9,6 +9,25 @@ import {
   type SiteClaimDeps,
 } from "./claim-site";
 
+type SiteClaimBackfillDeps = Parameters<typeof backfillSiteClaims>[0];
+
+/** A recording org file-config store (`ensureManagedSiteFileConfig`). */
+function assetConfigs(fail = false) {
+  const calls: string[] = [];
+  const fileConfigs = {
+    list: async () => {
+      if (fail) throw new Error("db down");
+      return [];
+    },
+    create: async (p: { name: string; siteSlug?: string | null }) => {
+      calls.push(`create ${p.name} ${p.siteSlug}`);
+      return {} as never;
+    },
+    update: async () => ({}) as never,
+  } as unknown as SiteClaimBackfillDeps["fileConfigs"];
+  return { fileConfigs, calls };
+}
+
 interface Row {
   /** null: a tombstone (its org was deleted). */
   organizationId: string | null;
@@ -413,6 +432,7 @@ describe("backfillSiteClaims", () => {
     ];
     const report = await backfillSiteClaims({
       orgSites: sites.orgSites,
+      fileConfigs: assetConfigs().fileConfigs,
       isDecoSite: async (slug) => slug === "legacy",
       candidates,
       by: "admin",
@@ -462,6 +482,7 @@ describe("backfillSiteClaims", () => {
     });
     const report = await backfillSiteClaims({
       orgSites: sites.orgSites,
+      fileConfigs: assetConfigs().fileConfigs,
       isDecoSite: noDecoSites,
       candidates: [
         candidate("org-a", "p1", "shop"),
@@ -482,6 +503,7 @@ describe("backfillSiteClaims", () => {
     const sites = memorySites();
     const run = {
       orgSites: sites.orgSites,
+      fileConfigs: assetConfigs().fileConfigs,
       isDecoSite: noDecoSites,
       candidates: [candidate("org-a", "p1", "shop")],
       by: "admin",
@@ -504,6 +526,7 @@ describe("backfillSiteClaims", () => {
     const sites = memorySites({ shop: "org-a" });
     const report = await backfillSiteClaims({
       orgSites: sites.orgSites,
+      fileConfigs: assetConfigs().fileConfigs,
       isDecoSite: noDecoSites,
       candidates: [
         candidate("org-a", "p1", "shop"),
@@ -521,6 +544,54 @@ describe("backfillSiteClaims", () => {
         reason: "other-org",
         owner: "org-a",
       },
+    ]);
+  });
+
+  it("gives a linked project its managed asset config; refused and dry runs get none", async () => {
+    const sites = memorySites({
+      linked: { organizationId: "org-a", projectId: "p2" },
+      taken: "org-z",
+    });
+    const assets = assetConfigs();
+    const run = {
+      orgSites: sites.orgSites,
+      isDecoSite: noDecoSites,
+      fileConfigs: assets.fileConfigs,
+      candidates: [
+        candidate("org-a", "p1", "shop"),
+        candidate("org-a", "p2", "linked"),
+        candidate("org-a", "p3", "taken"),
+      ],
+      by: "admin",
+      isV8: async () => true,
+    };
+    await backfillSiteClaims({ ...run, dryRun: true });
+    expect(assets.calls).toEqual([]);
+
+    const report = await backfillSiteClaims({ ...run, dryRun: false });
+    expect(report.refused.map((c) => c.projectId)).toEqual(["p3"]);
+    expect(assets.calls.sort()).toEqual([
+      "create deco-assets-linked linked",
+      "create deco-assets-shop shop",
+    ]);
+    expect(report.assetConfigErrors).toEqual([]);
+  });
+
+  it("a failed asset config is reported, the link stands", async () => {
+    const sites = memorySites();
+    const report = await backfillSiteClaims({
+      orgSites: sites.orgSites,
+      isDecoSite: noDecoSites,
+      fileConfigs: assetConfigs(true).fileConfigs,
+      candidates: [candidate("org-a", "p1", "shop")],
+      by: "admin",
+      dryRun: false,
+      isV8: async () => true,
+    });
+    expect(report.linked.map((c) => c.projectId)).toEqual(["p1"]);
+    expect(report.errors).toEqual([]);
+    expect(report.assetConfigErrors).toEqual([
+      { ...candidate("org-a", "p1", "shop"), error: "db down" },
     ]);
   });
 });

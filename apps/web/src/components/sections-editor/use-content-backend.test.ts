@@ -20,6 +20,10 @@ import {
   V8_PROBE_RETRY,
 } from "./use-content-backend";
 import { MainSchemaChangedError } from "@/hooks/main-schema-changed";
+import { fetchMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { KEYS } from "@/lib/query-keys";
+import { QueryClient } from "@tanstack/react-query";
+import { pollProtocolContent } from "./content-protocol-api";
 import { MAIN_SCHEMA_HEADER } from "@decocms/shared/blocks-major";
 
 const deco1 = {
@@ -391,5 +395,98 @@ describe("Localhost (localServeBackend)", () => {
       ),
     ).toBe("unavailable:not-answering");
     expect(kind(localServeBackend({ ...base, probed }))).toBe("protocol");
+  });
+});
+
+describe("a v8 GitHub open reads main's schema once", () => {
+  test("the answer, the probe and the first poll share one schema.get body", async () => {
+    const main = { major: 1, blocksMajor: 8, ...deco1 };
+    let fullSchemaBodies = 0;
+    let schemaCalls = 0;
+    // Studio's `/decofile/:id/:branch/rpc` for a v8 main: `schema.get` reads
+    // main whatever the branch, and honors `ifNoneMatch`.
+    const answer = (call: {
+      id: number;
+      method: string;
+      params?: { ifNoneMatch?: string };
+    }) => {
+      if (call.method === "describe") {
+        return {
+          jsonrpc: "2.0",
+          id: call.id,
+          result: { protocol: PROTOCOL_NAME, version: PROTOCOL_VERSION },
+        };
+      }
+      if (call.method === "blocks.list") {
+        return {
+          jsonrpc: "2.0",
+          id: call.id,
+          result: { notModified: false, revision: "r1", blocks: {} },
+        };
+      }
+      schemaCalls++;
+      if (call.params?.ifNoneMatch === "s1") {
+        return {
+          jsonrpc: "2.0",
+          id: call.id,
+          result: { notModified: true, version: "s1" },
+        };
+      }
+      fullSchemaBodies++;
+      return {
+        jsonrpc: "2.0",
+        id: call.id,
+        result: {
+          notModified: false,
+          version: "s1",
+          resolvedRef: "main",
+          schema: main,
+        },
+      };
+    };
+    const studio = async (request: Request) => {
+      const body = await request.json();
+      return Response.json(
+        Array.isArray(body) ? body.map(answer) : answer(body),
+      );
+    };
+
+    // 1. Main's answer (`useMainSchemaV8`), kept in its query.
+    const queryClient = new QueryClient();
+    const read = await fetchMainSchemaV8("acme", "p1", (input, init) =>
+      studio(new Request(new URL(input, "http://studio.test"), init)),
+    );
+    expect(read.isV8).toBe(true);
+    queryClient.setQueryData(KEYS.mainSchemaV8("acme", "p1"), read);
+
+    // 2. The GitHub probe reuses it: `describe` only.
+    const probed = await probeGithub(
+      "http://studio.test/api/acme/decofile/p1/feat/rpc",
+      studio,
+      undefined,
+      read.schema,
+    );
+    expect(probed).not.toBeNull();
+    expect(probed).not.toBe(GITHUB_SITE_NOT_OWNED);
+    const { client, describe: described } = probed as Probe;
+
+    // 3. The first poll asks only whether main's schema changed.
+    const params = { orgSlug: "acme", virtualMcpId: "p1", branch: "feat" };
+    const content = await pollProtocolContent(
+      queryClient,
+      {
+        kind: "protocol",
+        source: "github",
+        client,
+        describe: described,
+        cacheKeySuffix: "",
+        hasSchema: true,
+      },
+      params,
+      "acme/p1/feat",
+    );
+    expect(content.meta).toEqual(main as never);
+    expect(fullSchemaBodies).toBe(1);
+    expect(schemaCalls).toBe(2);
   });
 });

@@ -969,7 +969,8 @@ export function createAdminRoutes(): Hono<Env> {
    * unless the body says `{"dryRun": false}`. A route rather than a
    * migration: telling a v8 project needs a GitHub read. A real run also
    * syncs every project's Blocks v8 marker (`metadata.blocksMajor`, the
-   * cached `isV8Schema` answer for main), in every org.
+   * cached `isV8Schema` answer for main), in every org, and gives each
+   * linked project its site's managed asset config (Studio's S3).
    */
   app.post("/hosted/site-claims/backfill", async (c) => {
     const raw = (await c.req.json().catch(() => ({}))) as {
@@ -1031,6 +1032,8 @@ export function createAdminRoutes(): Hono<Env> {
       orgSites: new OrgSiteStorage(db),
       isDecoSite: decoSiteExists,
       candidates,
+      // A linked project's managed asset config (Studio's S3), as at create.
+      fileConfigs: ctx.storage.orgFileConfigs,
       by: actorId,
       dryRun,
       isV8: async ({ organizationId, projectId }) => {
@@ -1076,6 +1079,7 @@ export function createAdminRoutes(): Hono<Env> {
       refused: report.refused.length,
       ambiguous: report.ambiguous.length,
       errors: report.errors.length,
+      asset_config_errors: report.assetConfigErrors.length,
     });
     return c.json(report);
   });
