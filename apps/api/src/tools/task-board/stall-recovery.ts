@@ -7,8 +7,9 @@
  * card sits In Progress forever with nothing running behind it. Opening the
  * board re-runs the same decision over the list it just loaded:
  *
- *   every used thread terminal, newest `completed` → advance to In Review. This
- *     is the finish hook's own job, done late; costs two queries, no model call.
+ *   every used thread terminal, newest `completed` → advance (In Review with a
+ *     PR, QA without). This is the finish hook's own job, done late; costs two
+ *     queries, no model call.
  *   every used thread terminal, newest `failed`    → nudge the thread once: one
  *     user turn asking the agent to finish what it started. Advancing here would
  *     mark unfinished work as reviewable.

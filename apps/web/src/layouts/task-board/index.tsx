@@ -137,10 +137,7 @@ import {
   type OrgTag,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
@@ -805,13 +802,12 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
 
 /**
  * The card's checks indicator, or null when there is nothing to say: this org
- * runs no reviewers, or the task has not reached review yet (a To Do card with
- * `0/1` would be reporting a failure that hasn't had a chance to happen).
+ * runs no reviewers, or the task has not reached review yet (a Backlog card
+ * with `0/1` would be reporting a failure that hasn't had a chance to happen).
  *
- * "Reached review" is the open cycle, not the In Review lane. Since migration
- * 189 a card whose reviewer is working reads In Progress, and that is exactly
- * when the pending chip earns its place — the lane alone would hide the checks
- * for the whole time they are actually being decided.
+ * "Reached review" is the open cycle as well as the In Review lane: a cycle
+ * opened by the previous release can sit on an In Progress card, and the lane
+ * alone would hide the checks for the whole time they are being decided.
  */
 function useCardChecks(item: TaskBoardItem): {
   summary: ChecksSummary;
@@ -1996,7 +1992,6 @@ function SelectionBar({
   const openSprints = useTaskBoardSprints().filter(
     (sprint) => sprint.state !== "closed",
   );
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
@@ -2019,7 +2014,7 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {moveTargets(deliveryEnabled).map((status) => (
+                {moveTargets().map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
@@ -2238,7 +2233,6 @@ function Lanes({
   /** See `TaskBoardPage`'s own doc comment. */
   inlineTabs?: boolean;
 }) {
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
   // on drag start so dropping the same card twice replays it (a CSS animation
@@ -2335,7 +2329,6 @@ function Lanes({
     hidden: hiddenLanes,
     hideable: hideableLanes,
   } = laneVisibility({
-    deliveryEnabled,
     shownLanes: preferences.shownTaskBoardLanes,
     occupied: placed.map((item) => item.status),
   });
@@ -3372,7 +3365,6 @@ function FeedComposer({
   onCreated: (input: FeedComposeInput) => void;
 }) {
   const t = useT();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
@@ -3448,7 +3440,7 @@ function FeedComposer({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              {moveTargets(deliveryEnabled).map((s) => {
+              {moveTargets().map((s) => {
                 const { label, visual } = laneHeader(s, t);
                 const Icon = visual.icon;
                 return (
@@ -3913,7 +3905,6 @@ function ListRowStatusMenu({
   onStatusChange: (status: TaskBoardItemStatus) => void;
 }) {
   const t = useT();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const StatusIcon = laneVisual(item.status).icon;
   return (
     <DropdownMenu>
@@ -3929,7 +3920,7 @@ function ListRowStatusMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
-        {moveTargets(deliveryEnabled).map((status) => {
+        {moveTargets().map((status) => {
           const { label, visual } = laneHeader(status, t);
           const Icon = visual.icon;
           return (

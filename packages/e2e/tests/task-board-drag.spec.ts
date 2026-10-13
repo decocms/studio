@@ -72,17 +72,19 @@ test("a card dragged to another lane moves and stays fully visible", async ({
   await pointerDrag(
     page,
     page.locator('button:has-text("Card 3")'),
-    page.locator('[data-lane="todo"]'),
+    page.locator('[data-lane="in_progress"]'),
   );
 
-  const moved = page.locator('[data-lane="todo"] button:has-text("Card 3")');
+  const moved = page.locator(
+    '[data-lane="in_progress"] button:has-text("Card 3")',
+  );
   await expect(moved).toBeVisible();
   // The regression: the dropped card was left at opacity 0.5 forever.
   await expect(moved).toHaveCSS("opacity", "1");
 
   await expect
     .poll(() => statusByTitle(request, orgSlug))
-    .toMatchObject({ "Card 3": "todo", "Card 0": "triage" });
+    .toMatchObject({ "Card 3": "in_progress", "Card 0": "triage" });
 });
 
 test("every card in a multi-selection moves together and none are hidden", async ({
@@ -149,12 +151,12 @@ test("a card drops into an empty lane beside a lane taller than the screen", asy
 
   // The regression: the drop resolved to a card in the long lane, so it went
   // nowhere.
-  await pointerDrag(page, source, page.locator('[data-lane="todo"]'));
+  await pointerDrag(page, source, page.locator('[data-lane="in_progress"]'));
 
   await expect(
-    page.locator(`[data-lane="todo"] button:has-text("${title}")`),
+    page.locator(`[data-lane="in_progress"] button:has-text("${title}")`),
   ).toBeVisible();
   await expect
     .poll(() => statusByTitle(request, orgSlug))
-    .toMatchObject({ [title]: "todo" });
+    .toMatchObject({ [title]: "in_progress" });
 });

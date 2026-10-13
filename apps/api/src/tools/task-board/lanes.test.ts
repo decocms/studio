@@ -1,19 +1,17 @@
 /**
- * The lane order and the two questions that ride on it.
+ * The lane order and the questions that ride on it.
  *
- * These are the assertions that make "flag off means nothing changed" and
- * "automation never drags a card backward" checkable facts rather than a
- * property five call sites happen to agree on.
+ * These are the assertions that make "automation never drags a card backward"
+ * a checkable fact rather than a property several call sites happen to agree
+ * on.
  */
 
 import { describe, expect, it } from "bun:test";
-import { DELIVERY_LANES, shippedLane } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
 import {
-  DELIVERY_LANE_STATUSES,
-  LANE_RANK,
-  SHIP_ELIGIBLE_LANES,
   inReviewPhase,
+  isTaggableMergedStatus,
+  LANE_RANK,
   laneRank,
   movesForward,
   OFFERED_COLUMN_KEYS,
@@ -42,8 +40,13 @@ describe("LANE_RANK", () => {
     expect(new Set(ranks).size).toBe(ranks.length);
   });
 
-  it("puts every delivery lane between In Review and Done", () => {
-    for (const lane of DELIVERY_LANE_STATUSES) {
+  it("puts the people's checks and the release between In Review and Done", () => {
+    for (const lane of [
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
+      "post_deploy_validation",
+    ]) {
       expect(laneRank(lane)).toBeGreaterThan(LANE_RANK.in_review);
       expect(laneRank(lane)).toBeLessThan(LANE_RANK.done);
     }
@@ -52,25 +55,22 @@ describe("LANE_RANK", () => {
   it("covers every lane the board knows", () => {
     expect(Object.keys(LANE_RANK).sort()).toEqual([...BOARD_ORDER].sort());
   });
-
-  // The shared union must stay assignable to this side's lane type.
-  it("agrees with the shared delivery-lane names", () => {
-    expect(DELIVERY_LANE_STATUSES).toEqual(DELIVERY_LANES);
-  });
 });
 
 describe("movesForward", () => {
   it("advances along the board", () => {
-    expect(movesForward("in_review", "merged")).toBe(true);
+    expect(movesForward("in_review", "qa")).toBe(true);
     expect(movesForward("in_review", "done")).toBe(true);
-    expect(movesForward("merged", "post_deploy_validation")).toBe(true);
+    expect(movesForward("ready_for_deployment", "post_deploy_validation")).toBe(
+      true,
+    );
   });
 
-  // `prs-get`'s old enumerated guard dragged a card resting past Merged back.
+  // `prs-get`'s old enumerated guard dragged a card resting past a merge back.
   it("refuses to drag a card back to an earlier lane", () => {
-    expect(movesForward("post_deploy_validation", "merged")).toBe(false);
-    expect(movesForward("done", "merged")).toBe(false);
-    expect(movesForward("archived", "merged")).toBe(false);
+    expect(movesForward("done", "post_deploy_validation")).toBe(false);
+    expect(movesForward("archived", "post_deploy_validation")).toBe(false);
+    expect(movesForward("qa", "in_review")).toBe(false);
     expect(movesForward("in_review", "in_progress")).toBe(false);
   });
 
@@ -81,36 +81,13 @@ describe("movesForward", () => {
   });
 });
 
-describe("shippedLane", () => {
-  // Every falsy shape of the flags bag must resolve to `done` — that IS the guarantee.
-  it("ships to Done by default", () => {
-    expect(shippedLane(undefined)).toBe("done");
-    expect(shippedLane(null)).toBe("done");
-    expect(shippedLane({})).toBe("done");
-    expect(shippedLane({ delivery_lanes_enabled: false })).toBe("done");
-    expect(shippedLane({ auto_merge: true })).toBe("done");
-  });
-
-  it("ships to Merged once the org runs the delivery lanes", () => {
-    expect(shippedLane({ delivery_lanes_enabled: true })).toBe("merged");
-  });
-
-  it("always names a lane a merged PR may actually move to", () => {
-    for (const flags of [{}, { delivery_lanes_enabled: true }]) {
-      expect(movesForward("in_review", shippedLane(flags))).toBe(true);
+describe("isTaggableMergedStatus", () => {
+  it("covers the lanes a merged PR leaves a card in, the previous board's included", () => {
+    for (const lane of ["post_deploy_validation", "done", "merged"]) {
+      expect(isTaggableMergedStatus(lane)).toBe(true);
     }
-  });
-});
-
-describe("SHIP_ELIGIBLE_LANES", () => {
-  it("is exactly In Review and Approved", () => {
-    expect([...SHIP_ELIGIBLE_LANES].sort()).toEqual(["approved", "in_review"]);
-  });
-
-  // Reachable from every reviewed-but-unshipped lane, and from none that shipped.
-  it("excludes the lanes a shipped card rests in", () => {
-    for (const lane of ["merged", "post_deploy_validation", "done"] as const) {
-      expect(SHIP_ELIGIBLE_LANES.has(lane)).toBe(false);
+    for (const lane of ["ready_for_deployment", "qa", "archived"]) {
+      expect(isTaggableMergedStatus(lane)).toBe(false);
     }
   });
 });
@@ -122,8 +99,7 @@ describe("inReviewPhase", () => {
   ) => ({ status, reviewCycleStartedAt });
   const CYCLE = "2026-01-01T10:00:00.000Z";
 
-  // The whole point of migration 190: a card whose reviewer is working reads
-  // In Progress, and only the open cycle says it is under review.
+  // A cycle the previous release opened while the card read In Progress.
   it("covers an In Progress card with an open cycle", () => {
     expect(inReviewPhase(card("in_progress", CYCLE))).toBe(true);
     expect(inReviewPhase(card("in_progress"))).toBe(false);
@@ -138,8 +114,9 @@ describe("inReviewPhase", () => {
   // A stale stamp must never drag a shipped card back into the sweeper's work.
   it("is false past In Review however stale the stamp", () => {
     for (const lane of [
-      "approved",
-      "merged",
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
       "post_deploy_validation",
       "done",
       "archived",
@@ -155,31 +132,25 @@ describe("inReviewPhase", () => {
 });
 
 describe("dormant lanes", () => {
-  it("sit between In Review and Done", () => {
-    for (const lane of ["qa", "customer_approval", "ready_for_deployment"]) {
-      expect(laneRank(lane)).toBeGreaterThan(LANE_RANK.in_review);
-      expect(laneRank(lane)).toBeLessThan(LANE_RANK.done);
-    }
-  });
-
-  // A card a newer release parked there must read as out of review.
-  it("are past the review phase", () => {
-    expect(inReviewPhase({ status: "qa", reviewCycleStartedAt: "x" })).toBe(
-      false,
-    );
-  });
-
   it("are refused as a write target, and only they are", () => {
-    expect(() => refuseDormantLane("qa")).toThrow(/not available/);
-    expect(() => refuseDormantLane("customer_approval")).toThrow();
-    expect(() => refuseDormantLane("ready_for_deployment")).toThrow();
-    expect(() => refuseDormantLane("in_review")).not.toThrow();
+    expect(() => refuseDormantLane("todo")).toThrow(/not on this board/);
+    expect(() => refuseDormantLane("approved")).toThrow();
+    expect(() => refuseDormantLane("merged")).toThrow();
+    expect(() => refuseDormantLane("qa")).not.toThrow();
     expect(() => refuseDormantLane(undefined)).not.toThrow();
   });
 
   it("are not offered to column rules", () => {
-    expect(OFFERED_COLUMN_KEYS).not.toContain("qa");
-    expect(OFFERED_COLUMN_KEYS).toContain("todo");
-    expect(OFFERED_COLUMN_KEYS).toHaveLength(9);
+    expect(OFFERED_COLUMN_KEYS).toEqual([
+      "triage",
+      "in_progress",
+      "in_review",
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
+      "post_deploy_validation",
+      "done",
+      "archived",
+    ]);
   });
 });

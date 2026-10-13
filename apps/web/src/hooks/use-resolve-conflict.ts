@@ -6,7 +6,8 @@ import { useStudioTools } from "@/lib/studio-tools";
 /**
  * Hand a conflicting PR back to the Super Agent to resolve, via
  * `TASK_BOARD_RESOLVE_CONFLICT`. On success, refetch the task's PRs and
- * activity; the board's status flip (In Review → In Progress) arrives over SSE.
+ * activity; the board's status flip (Ready for Deployment → In Progress)
+ * arrives over SSE.
  */
 export function useResolveConflict(itemId: string) {
   const { locator } = useProjectContext();

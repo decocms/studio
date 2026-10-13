@@ -1,11 +1,13 @@
 /**
- * Real-Postgres coverage for the atomic In Review advance.
+ * Real-Postgres coverage for the atomic advance out of In Progress.
  *
  * The bug this encodes: the advance was a non-atomic read-then-write, and
  * `recoverStalledTasks` runs fire-and-forget on EVERY `TASK_BOARD_ITEM_LIST`
  * over the snapshot that read already loaded. N overlapping board reads each saw
  * `in_progress` and each wrote — one prod item collected 42 duplicate
- * `status_changed→in_review` rows, another 27 inside 112 ms.
+ * `status_changed→in_review` rows, another 27 inside 112 ms. (A repo-less
+ * card now advances to QA, a card with a PR opens its review cycle; both are
+ * the same guarded flip.)
  *
  * The duplicate row was not the damage; the duplicate ACTIVITY was.
  * `reviewCycleStart` treats the newest `→in_review` stamp as the start of the
@@ -34,7 +36,7 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 const ORG = "org_advance_review";
 const USER = "user_advance_review";
 
-describe("advanceToReviewIfInProgress (real Postgres)", () => {
+describe("advanceFromProgress (real Postgres)", () => {
   let database: StudioDatabase;
   let taskBoard: TaskBoardStorage;
   let threads: SqlThreadStorage;
@@ -76,13 +78,13 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     return { task, thread };
   };
 
-  const inReviewStamps = async (taskId: string) => {
+  const stampsInto = async (taskId: string, lane: string) => {
     const rows = await database.db
       .selectFrom("task_board_activity")
       .select(["id"])
       .where("task_board_item_id", "=", taskId)
       .where("action", "=", "status_changed")
-      .where(sql`data->>'to'`, "=", "in_review")
+      .where(sql`data->>'to'`, "=", lane)
       .execute();
     return rows.length;
   };
@@ -115,22 +117,23 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   it("advances an in_progress card and returns it", async () => {
     const { task } = await cardWithFinishedRun("advance me");
 
-    const advanced = await taskBoard.advanceToReviewIfInProgress(
+    const advanced = await taskBoard.advanceFromProgress(
       task.id,
       ORG,
+      "qa",
       USER,
     );
 
-    expect(advanced?.status).toBe("in_review");
+    expect(advanced?.status).toBe("qa");
   });
 
   it("returns null for a card that already left in_progress", async () => {
     const { task } = await cardWithFinishedRun("already moved");
-    await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
+    await taskBoard.advanceFromProgress(task.id, ORG, "qa", USER);
 
     // Second caller loses — this is the guard that stops the duplicate stamp.
     expect(
-      await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER),
+      await taskBoard.advanceFromProgress(task.id, ORG, "qa", USER),
     ).toBeNull();
   });
 
@@ -138,7 +141,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     const { task } = await cardWithFinishedRun("cross-org");
 
     expect(
-      await taskBoard.advanceToReviewIfInProgress(task.id, "org_other", USER),
+      await taskBoard.advanceFromProgress(task.id, "org_other", "qa", USER),
     ).toBeNull();
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
   });
@@ -149,7 +152,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   // guarded primitive and to one activity row per won flip. The deterministic
   // proof that the guard works is the two tests above — both fail if the
   // `where status = 'in_progress'` predicate is removed.
-  it("records exactly ONE in_review stamp across 10 advance passes", async () => {
+  it("records exactly ONE qa stamp across 10 advance passes", async () => {
     const { task, thread } = await cardWithFinishedRun("stampede");
 
     await Promise.all(
@@ -158,10 +161,10 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       ),
     );
 
-    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("qa");
     // In prod this reached 42 on one card — and every approval older than the
     // last stamp was invalidated by it.
-    expect(await inReviewStamps(task.id)).toBe(1);
+    expect(await stampsInto(task.id, "qa")).toBe(1);
   });
 
   it("only one of N concurrent callers is told it won the flip", async () => {
@@ -169,7 +172,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
     const results = await Promise.all(
       Array.from({ length: 8 }, () =>
-        taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER),
+        taskBoard.advanceFromProgress(task.id, ORG, "qa", USER),
       ),
     );
 
@@ -178,8 +181,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
   // A repo-backed task can't dead-end with no PR — on finish it stays In
   // Progress with no review cycle until a PR is linked, and then the finish
-  // backstop OPENS the cycle. It does not move the card: a reviewer is about to
-  // work on it, and In Review is what the board says once it is a person's turn.
+  // backstop OPENS the cycle, which moves the card to In Review.
   it("opens the review cycle on finish only once a PR is linked", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
@@ -218,7 +220,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     expect(before?.status).toBe("in_progress");
     expect(before?.reviewCycleStartedAt).toBeNull();
 
-    // Link a PR → the finish backstop opens the cycle, and the lane holds.
+    // Link a PR → the finish backstop opens the cycle and the card moves on.
     await taskBoard.linkPr({
       taskBoardItemId: task.id,
       organizationId: ORG,
@@ -232,8 +234,9 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     });
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
     const after = await taskBoard.getById(task.id, ORG);
-    expect(after?.status).toBe("in_progress");
+    expect(after?.status).toBe("in_review");
     expect(after?.reviewCycleStartedAt).not.toBeNull();
+    expect(await stampsInto(task.id, "in_review")).toBe(1);
   });
 
   /**
@@ -270,30 +273,23 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       firstAt as string,
     );
 
+    // Every path that closes a cycle sends the card back to work (a rerun, a
+    // conflict claim, a person re-engaging the run).
     await taskBoard.closeReviewCycle(task.id, ORG);
+    await taskBoard.update(task.id, ORG, { status: "in_progress" }, USER);
     const second = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
     expect(second).not.toBeNull();
     expect(second?.reviewCycleStartedAt).not.toBe(firstAt as string);
   });
 
   /**
-   * The PR link can LOSE THE RACE to the thread-finish backstop: the backstop
-   * reads `listPrs` to decide repo-backed vs repo-less, and a run that links
-   * its PR moments after its thread goes terminal is read as repo-less and
-   * parked In Review. Observed at 52 seconds between the two on a real board.
-   *
-   * The old rule matched only In Progress, so the late link was a no-op, the
-   * cycle never opened, and the card sat In Review for the whole reviewer run
-   * with its verdicts falling back to the legacy activity scan. Inverted.
-   */
-  /**
    * `hasPr` used to be `item.repo != null && listPrs().length > 0`. `repo` is
    * only stamped on a card CREATED against a repository, so a run that finds
    * its own with `TASK_ADD_REPO` links a pull request and leaves it null — the
-   * card then read as repo-less and the backstop parked it In Review, on top of
-   * an already-open cycle, for the whole reviewer run.
+   * card then read as repo-less and the backstop parked it for a person, on
+   * top of an already-open cycle, for the whole reviewer run.
    */
-  it("keeps a card with a PR In Progress even when repo was never stamped", async () => {
+  it("opens the review of a card with a PR even when repo was never stamped", async () => {
     const { task, thread } = await cardWithFinishedRun("no repo column");
     expect(task.repo).toBeNull();
     await taskBoard.linkPr({
@@ -311,7 +307,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
 
     const after = await taskBoard.getById(task.id, ORG);
-    expect(after?.status).toBe("in_progress");
+    expect(after?.status).toBe("in_review");
     expect(after?.reviewCycleStartedAt).not.toBeNull();
   });
 
@@ -362,13 +358,20 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   it("leaves a card with an open cycle where it is", async () => {
     const { task, thread } = await cardWithFinishedRun("already reviewing");
     await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+    await taskBoard.update(task.id, ORG, { status: "in_progress" }, USER);
 
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
 
     expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
   });
 
-  it("rescues a card the backstop parked In Review before the PR landed", async () => {
+  /**
+   * The PR link can LOSE THE RACE to the thread-finish backstop: the backstop
+   * reads `listPrs` to decide repo-backed vs repo-less, and a run that links
+   * its PR moments after its thread goes terminal is read as repo-less and
+   * sent to QA. Observed at 52 seconds between the two on a real board.
+   */
+  it("rescues a card the backstop sent to QA before the PR landed", async () => {
     const { task } = await cardWithFinishedRun("late pr link");
     await taskBoard.update(
       task.id,
@@ -376,18 +379,33 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       { assigneeId: SUPER_AGENT_ASSIGNEE_ID },
       USER,
     );
-    await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
-    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+    await taskBoard.advanceFromProgress(task.id, ORG, "qa", USER);
 
     const opened = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
 
-    expect(opened?.status).toBe("in_progress");
+    expect(opened?.status).toBe("in_review");
+    expect(opened?.reviewCycleStartedAt).not.toBeNull();
+    expect(await stampsInto(task.id, "in_review")).toBe(1);
+  });
+
+  // The previous release parked a repo-less card In Review instead.
+  it("rescues a card the previous release parked In Review", async () => {
+    const { task } = await cardWithFinishedRun("late pr link, old board");
+    await taskBoard.update(
+      task.id,
+      ORG,
+      { assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "in_review" },
+      USER,
+    );
+
+    const opened = await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+
+    expect(opened?.status).toBe("in_review");
     expect(opened?.reviewCycleStartedAt).not.toBeNull();
   });
 
-  // Only while the cycle is null. Once one is open the card is mid-review, and
-  // `parkReviewedCardForHuman` put it In Review on a verdict — dragging it back
-  // would undo that and re-stamp a boundary verdicts already stand on.
+  // Only while the cycle is null: re-stamping an open one would move a
+  // boundary verdicts already stand on.
   it("leaves an In Review card with a cycle already open alone", async () => {
     const { task } = await cardWithFinishedRun("mid review");
     await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
@@ -409,13 +427,13 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       { assigneeId: SUPER_AGENT_ASSIGNEE_ID },
       USER,
     );
-    await taskBoard.advanceToReviewIfInProgress(task.id, ORG, USER);
+    await taskBoard.advanceFromProgress(task.id, ORG, "qa", USER);
     await taskBoard.unassignSuperAgent(task.id, ORG, USER);
 
     expect(
       await taskBoard.openReviewCycleIfInProgress(task.id, ORG),
     ).toBeNull();
-    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("qa");
   });
 
   it("never opens a cycle on a card past the review phase", async () => {
@@ -438,11 +456,12 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     ).toBeNull();
   });
 
-  // The sweeper's work list is the open cycle, not the lane — a card whose
-  // reviewer is working reads In Progress and still has to be swept.
+  // The sweeper's work list is the open cycle, not the lane — a cycle the
+  // previous release opened left the card In Progress.
   it("lists an In Progress card with an open cycle as pending review", async () => {
     const { task } = await cardWithFinishedRun("pending while in progress");
     await taskBoard.openReviewCycleIfInProgress(task.id, ORG);
+    await taskBoard.update(task.id, ORG, { status: "in_progress" }, USER);
 
     const pending = await taskBoard.listItemsPendingReview(100);
 
@@ -471,9 +490,9 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
  * sandboxes never came up ("Sandbox did not become ready within 180 seconds")
  * landed in the reviewers' lane with no PR and nothing done. In Review means
  * there is something to review, so a failed run must never put a card there —
- * it is retried, or it goes back to To Do.
+ * it is retried, or it goes back to Backlog.
  *
- * Needs a real database: the retry schedule and the return-to-To-Do are both
+ * Needs a real database: the retry schedule and the return-to-Backlog are both
  * conditional UPDATEs, and the advance rule is read back through the same
  * `threads`/`thread_message_parts` join the hook uses.
  */
@@ -802,21 +821,21 @@ describe("failed runs never reach In Review (real Postgres)", () => {
     expect(reaped.map((r) => r.threadId)).not.toContain(thread.id);
   });
 
-  it("sends an exhausted card back to To Do and clears its retry state", async () => {
+  it("sends an exhausted card back to Backlog and clears its retry state", async () => {
     const { task } = await cardWithRun("out of retries", "failed");
     await taskBoard.scheduleRunRetry(task.id, ORG2, 3, new Date());
 
-    const returned = await taskBoard.returnToTodoAfterFailure(
+    const returned = await taskBoard.returnToBacklogAfterFailure(
       task.id,
       ORG2,
       USER2,
     );
 
-    expect(returned?.status).toBe("todo");
+    expect(returned?.status).toBe("triage");
     expect(returned?.retryAttempts).toBe(0);
     // A card that already left In Progress is not dragged backwards.
     expect(
-      await taskBoard.returnToTodoAfterFailure(task.id, ORG2, USER2),
+      await taskBoard.returnToBacklogAfterFailure(task.id, ORG2, USER2),
     ).toBeNull();
   });
 });

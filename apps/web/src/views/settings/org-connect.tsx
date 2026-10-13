@@ -1,10 +1,15 @@
 /**
  * Settings › Connect to clients — how a person points Claude, Cursor or Codex
- * at this org's MCP endpoint, and every API key that endpoint accepts.
+ * at this org, and every API key the MCP endpoint accepts.
  *
- * Flat by design: client tabs, the selected client's snippet, then the API
- * keys section (`views/settings/api-keys.tsx`, also the whole of the
- * `/settings/api-keys` route). The last client tab, "Other", is the general
+ * Two tabs: the `decocms-studio` skill with its CLI login, and this org's MCP
+ * endpoint. The skill opens first and is marked recommended because it covers
+ * everything the MCP endpoint does plus the REST-only features: sharing
+ * Library files, messaging agents, the event stream.
+ *
+ * Flat by design: the skill steps or the MCP client tabs with the selected
+ * client's snippet, then the API keys section (`views/settings/api-keys.tsx`, also
+ * the whole of the `/settings/api-keys` route). The last client tab, "Other", is the general
  * case — the bare endpoint URL for a client this page does not list — so the
  * URL appears in exactly one place instead of a card of its own.
  *
@@ -20,6 +25,7 @@
 import { type ComponentType, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import {
@@ -50,9 +56,14 @@ import { CursorIcon } from "@/components/connect/client-icons";
 import {
   type ConnectClient,
   type ConnectMode,
+  CopySnippet,
   InstallSnippet,
 } from "@/components/connect/install-snippet";
 import { mcpUrl } from "@/components/connect/mcp-url";
+import {
+  cliLoginCommand,
+  skillInstallCommand,
+} from "@/components/connect/skill-install";
 import { useApiKeysList, useCreateApiKey } from "@/hooks/use-api-keys";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
@@ -62,6 +73,8 @@ import { useCapability } from "@/hooks/use-capability";
 import { ApiKeysSection } from "@/views/settings/api-keys";
 
 const KEY_NAME_PREFIX = "Connect: ";
+
+type ConnectVia = "skill" | "mcp";
 
 /** A key minted on this page: `at` is when, so a stale list can't hide it. */
 interface Minted {
@@ -263,6 +276,86 @@ function ClientPanel({
   );
 }
 
+/** One picker for both tabs, so a client chosen in one is kept in the other. */
+function ClientTabsList() {
+  const t = useT();
+  return (
+    <TabsList
+      variant="underline"
+      className="h-10 min-w-0 flex-1 gap-1 overflow-x-auto border-b-0"
+    >
+      {CLIENTS.map(({ id, label, labelKey, Icon }) => (
+        <TabsTrigger key={id} value={id} variant="underline" className="gap-2">
+          <Icon size={16} />
+          {labelKey ? t(labelKey) : label}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  );
+}
+
+/** Install the skill, then log the CLI in: the two things a local agent needs. */
+function SkillSetup({
+  client,
+  onClientChange,
+}: {
+  client: ConnectClient;
+  onClientChange: (value: string) => void;
+}) {
+  const t = useT();
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm leading-snug text-muted-foreground">
+        {t("settings.connectClients.skillDescription")}
+      </p>
+      <Card className="gap-0 divide-y divide-border overflow-hidden p-0">
+        <Tabs
+          value={client}
+          onValueChange={onClientChange}
+          variant="underline"
+          className="gap-0"
+        >
+          <h3 className="px-5 pt-4 text-sm font-medium">
+            {t("settings.connectClients.skillInstallStep")}
+          </h3>
+          <div className="flex px-3 py-1">
+            <ClientTabsList />
+          </div>
+          {CLIENTS.map(({ id }) => (
+            <TabsContent key={id} value={id} className="flex flex-col p-2">
+              <CopySnippet label="bash" code={skillInstallCommand(id)} />
+              {id === "raw" && (
+                <p className="px-3 pb-2 text-xs leading-snug text-muted-foreground">
+                  {t("settings.connectClients.skillOtherAgentsHint")}
+                </p>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
+        <div className="flex flex-col gap-1 p-2">
+          <h3 className="px-3 pt-2 text-sm font-medium">
+            {t("settings.connectClients.skillLoginStep")}
+          </h3>
+          <CopySnippet label="bash" code={cliLoginCommand(origin)} />
+        </div>
+      </Card>
+      <p className="text-xs leading-snug text-muted-foreground">
+        <a
+          href="https://bun.com"
+          target="_blank"
+          rel="noreferrer"
+          className="text-foreground underline underline-offset-2 hover:no-underline"
+        >
+          {t("settings.connectClients.skillNeedsBun")}
+        </a>{" "}
+        {t("settings.connectClients.skillLoginHint")}
+      </p>
+    </div>
+  );
+}
+
 function OrgConnectContent() {
   const t = useT();
   const { org } = useProjectContext();
@@ -290,6 +383,7 @@ function OrgConnectContent() {
     return orgKeys.some((k) => k.id === minted.id) ? minted.key : null;
   };
 
+  const [via, setVia] = useState<ConnectVia>("skill");
   const [client, setClient] = useState<ConnectClient>("claude-code");
   /** Narrow rather than cast: Tabs hands back a bare string. */
   const selectClient = (value: string) => {
@@ -318,74 +412,84 @@ function OrgConnectContent() {
     <>
       <SettingsSection
         headerClassName="px-0"
-        title={t("settings.connectClients.connectAClient")}
+        title={t("settings.connectClients.skillTitle")}
       >
-        <Card className="gap-0 overflow-hidden p-0">
-          <Tabs
-            value={client}
-            onValueChange={selectClient}
-            variant="underline"
-            className="gap-0"
-          >
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1">
-              <TabsList
+        <Tabs
+          value={via}
+          onValueChange={(value) => {
+            if (value === "skill" || value === "mcp") setVia(value);
+          }}
+          className="gap-3"
+        >
+          <TabsList>
+            <TabsTrigger value="skill" className="gap-2">
+              {t("settings.connectClients.skillTab")}
+              <Badge variant="muted">
+                {t("settings.connectClients.recommended")}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="mcp">MCP</TabsTrigger>
+          </TabsList>
+          <TabsContent value="skill">
+            <SkillSetup client={client} onClientChange={selectClient} />
+          </TabsContent>
+          <TabsContent value="mcp" className="flex flex-col gap-3">
+            <p className="text-sm leading-snug text-muted-foreground">
+              {t("settings.connectClients.mcpDescription")}
+            </p>
+            <Card className="gap-0 overflow-hidden p-0">
+              <Tabs
+                value={client}
+                onValueChange={selectClient}
                 variant="underline"
-                className="h-10 min-w-0 flex-1 gap-1 overflow-x-auto border-b-0"
+                className="gap-0"
               >
-                {CLIENTS.map(({ id, label, labelKey, Icon }) => (
-                  <TabsTrigger
-                    key={id}
-                    value={id}
-                    variant="underline"
-                    className="gap-2"
-                  >
-                    <Icon size={16} />
-                    {labelKey ? t(labelKey) : label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              <ModeSelect mode={mode} onModeChange={setMode} />
-            </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1">
+                  <ClientTabsList />
+                  <ModeSelect mode={mode} onModeChange={setMode} />
+                </div>
 
-            {CLIENTS.map(({ id, label }) => (
-              <TabsContent key={id} value={id} className="p-2">
-                <ClientPanel
-                  client={id}
-                  url={url}
-                  mode={mode}
-                  newKey={liveKey(id)}
-                  canManageKeys={canManageKeys}
-                  onGenerate={() => handleGenerate(id)}
-                  isGenerating={
-                    createKey.isPending &&
-                    createKey.variables?.name?.startsWith(
-                      `${KEY_NAME_PREFIX}${label}`,
-                    ) === true
-                  }
-                  onClearNewKey={() =>
-                    setNewKeys((prev) => {
-                      const next = { ...prev };
-                      delete next[id];
-                      return next;
-                    })
-                  }
-                />
-              </TabsContent>
-            ))}
-          </Tabs>
-        </Card>
-        {/* Outside the card: these describe the CHOICES above (method, and the
+                {CLIENTS.map(({ id, label }) => (
+                  <TabsContent key={id} value={id} className="p-2">
+                    <ClientPanel
+                      client={id}
+                      url={url}
+                      mode={mode}
+                      newKey={liveKey(id)}
+                      canManageKeys={canManageKeys}
+                      onGenerate={() => handleGenerate(id)}
+                      isGenerating={
+                        createKey.isPending &&
+                        createKey.variables?.name?.startsWith(
+                          `${KEY_NAME_PREFIX}${label}`,
+                        ) === true
+                      }
+                      onClearNewKey={() =>
+                        setNewKeys((prev) => {
+                          const next = { ...prev };
+                          delete next[id];
+                          return next;
+                        })
+                      }
+                    />
+                  </TabsContent>
+                ))}
+              </Tabs>
+            </Card>
+            {/* Outside the card: these describe the CHOICES above (method, and the
             Other client), not the snippet the card is showing. */}
-        <p className="text-xs leading-snug text-muted-foreground">
-          {mode === "oauth"
-            ? t("settings.connectClients.oauthKeyHint")
-            : t("settings.connectClients.headlessKeyHint")}
-        </p>
-        {client === "raw" && (
-          <p className="text-xs leading-snug text-muted-foreground">
-            {t("settings.connectClients.anyOtherClientDescription")}
-          </p>
-        )}
+            <p className="text-xs leading-snug text-muted-foreground">
+              {mode === "oauth"
+                ? t("settings.connectClients.oauthKeyHint")
+                : t("settings.connectClients.headlessKeyHint")}
+            </p>
+            {client === "raw" && (
+              <p className="text-xs leading-snug text-muted-foreground">
+                {t("settings.connectClients.anyOtherClientDescription")}
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
       </SettingsSection>
 
       <RequireCapability capability="api-keys:manage" area="api-keys">

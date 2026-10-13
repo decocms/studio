@@ -24,8 +24,9 @@ import { taskRouteSegment } from "@/layouts/task-board/task-route";
 import { track } from "@/lib/posthog-client";
 import { HomeCard, HomeCardRow } from "./section";
 
-/** Lanes that mean the work left the board on its own feet. */
-const SHIPPED = new Set(["done", "merged"]);
+/** Lanes that mean the work left the board on its own feet: merged, confirmed
+ *  in production or not (`merged` is the previous board's name for it). */
+const SHIPPED = new Set(["post_deploy_validation", "done", "merged"]);
 
 /** Structured rather than pre-composed into a sentence, so a title and a
  *  status stay set the way the rest of the product sets them. */
