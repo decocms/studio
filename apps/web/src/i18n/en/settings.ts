@@ -546,8 +546,7 @@ export const settings = {
   "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
   "settings.connectClients.mcpDescription":
-    "For clients without a shell. Writing Library files needs the skill above.",
-  "settings.connectClients.mcpTitle": "Connect over MCP",
+    "For clients without a shell. Writing Library files needs the CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
@@ -556,6 +555,7 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
+  "settings.connectClients.recommended": "Recommended",
   "settings.connectClients.skillDescription":
     "Install the Studio skill and log in once. Your agent then works with this org's chats, agents, tasks and Library files through the decocms CLI.",
   "settings.connectClients.skillInstallStep": "1. Install the skill",
@@ -563,6 +563,7 @@ export const settings = {
     "Needs Bun. A browser opens for you to approve the login. The session renews itself, so log in again only when your agent asks.",
   "settings.connectClients.skillLoginStep": "2. Log in",
   "settings.connectClients.skillOtherAgents": "Cursor, Codex and other agents",
+  "settings.connectClients.skillTab": "CLI + skill",
   "settings.connectClients.skillTitle": "Connect your agent",
   "settings.connectClients.snippetOneTimeWarning":
     "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",

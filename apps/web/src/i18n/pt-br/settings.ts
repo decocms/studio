@@ -562,8 +562,7 @@ export const settings = {
   "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
   "settings.connectClients.mcpDescription":
-    "Para clientes sem shell. Gravar arquivos na Library exige a skill acima.",
-  "settings.connectClients.mcpTitle": "Conectar por MCP",
+    "Para clientes sem shell. Gravar arquivos na Library exige a CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
@@ -573,6 +572,7 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.recommended": "Recomendado",
   "settings.connectClients.skillDescription":
     "Instale a skill do Studio e faça login uma vez. Depois disso, seu agente trabalha com os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
   "settings.connectClients.skillInstallStep": "1. Instale a skill",
@@ -580,6 +580,7 @@ export const settings = {
     "Precisa do Bun. Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
   "settings.connectClients.skillLoginStep": "2. Faça login",
   "settings.connectClients.skillOtherAgents": "Cursor, Codex e outros agentes",
+  "settings.connectClients.skillTab": "CLI + skill",
   "settings.connectClients.skillTitle": "Conectar seu agente",
   "settings.connectClients.snippetOneTimeWarning":
     "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
