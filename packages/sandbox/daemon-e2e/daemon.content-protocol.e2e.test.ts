@@ -1,6 +1,7 @@
 /**
  * Black-box e2e for the content protocol the daemon serves over its working
- * tree: `POST /_sandbox/rpc` and `PUT /_sandbox/assets/<name>`.
+ * tree: `POST /_sandbox/rpc`. It takes no asset uploads (describe reports
+ * `assets: null`): project assets live in Studio's file storage.
  *
  * The daemon's implementation is a Go port of the TypeScript reference in
  * `@decocms/blocks/protocol`. Two things keep the two from drifting:
@@ -169,7 +170,6 @@ defineConformanceSuite(
   runner,
   () => ({
     endpoint: url(withSchema!, "/_sandbox/rpc"),
-    assetsEndpoint: url(withSchema!, "/_sandbox/assets/"),
     headers: authHeaders(),
     secretField: { blockType: "newsletter", field: "apiKey" },
     secretsPublicKey: publicKeyPem,
@@ -181,7 +181,6 @@ defineConformanceSuite(
   runner,
   () => ({
     endpoint: url(withoutSchema!, "/_sandbox/rpc"),
-    assetsEndpoint: url(withoutSchema!, "/_sandbox/assets/"),
     headers: authHeaders(),
     hasSchema: false,
     secretsPublicKey: publicKeyPem,
@@ -214,15 +213,9 @@ describe("daemon content protocol", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "describe" }),
     });
     expect(res.status).toBe(401);
-    const upload = await fetch(url(withSchema!, "/_sandbox/assets/x.png"), {
-      method: "PUT",
-      headers: { "content-type": "image/png" },
-      body: new Uint8Array([1, 2, 3]),
-    });
-    expect(upload.status).toBe(401);
   });
 
-  test("describe reports the working tree and its upload folder", async () => {
+  test("describe reports the working tree and no upload folder", async () => {
     const { result } = await rpc(withSchema!, "describe");
     expect(result).toMatchObject({
       protocol: "deco-content",
@@ -231,11 +224,7 @@ describe("daemon content protocol", () => {
       readOnly: false,
       root: ".",
       preview: null,
-      assets: {
-        dir: "public/assets",
-        urlPrefix: "/assets/",
-        maxBytes: 25 * 1024 * 1024,
-      },
+      assets: null,
       secrets: { publicKey: publicKeyPem },
     });
   });
@@ -360,14 +349,12 @@ describe("daemon content protocol", () => {
 // Parity with the reference server
 // ---------------------------------------------------------------------------
 
-type Call =
-  | {
-      kind: "rpc";
-      body: string;
-      headers?: Record<string, string>;
-      method?: string;
-    }
-  | { kind: "asset"; name: string; type: string; body: Uint8Array };
+type Call = {
+  kind: "rpc";
+  body: string;
+  headers?: Record<string, string>;
+  method?: string;
+};
 
 const req = (method: string, params?: unknown, id: unknown = 1) =>
   JSON.stringify({
@@ -632,38 +619,6 @@ const parityCalls: Call[] = [
     body: req("blocks.list"),
     headers: { "accept-encoding": "gzip" },
   },
-  // Uploads.
-  {
-    kind: "asset",
-    name: "Bänner (1).PNG",
-    type: "image/png",
-    body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-  },
-  {
-    kind: "asset",
-    name: "logo",
-    type: "image/webp; charset=x",
-    body: new Uint8Array([1]),
-  },
-  {
-    kind: "asset",
-    name: "evil.html",
-    type: "image/png",
-    body: new Uint8Array([1]),
-  },
-  {
-    kind: "asset",
-    name: "logo.svg",
-    type: "image/svg+xml",
-    body: new Uint8Array([1]),
-  },
-  {
-    kind: "asset",
-    name: "empty.png",
-    type: "image/png",
-    body: new Uint8Array([]),
-  },
-  { kind: "asset", name: "...", type: "image/png", body: new Uint8Array([1]) },
 ];
 
 /**
@@ -716,55 +671,36 @@ describe("parity with the reference server (@decocms/blocks/protocol)", () => {
   }, HOOK_TIMEOUT_MS);
 
   test("answers and writes byte for byte what the reference does", async () => {
-    const storage = createFsStorage({ root: refRoot, repoRoot: refRoot });
+    const fsStorage = createFsStorage({ root: refRoot, repoRoot: refRoot });
+    // The daemon takes no uploads (assets live in Studio's file storage), the
+    // way a hosted storage reports it.
+    const storage = {
+      ...fsStorage,
+      describe: async () => ({ ...(await fsStorage.describe()), assets: null }),
+    };
     const reference = createContentHandler(storage, { server: SERVER });
-    // Not a public export: the module `deco serve` mounts for uploads.
-    const { createAssetHandler } = await import(
-      new URL(
-        "./assets.js",
-        import.meta.resolve("@decocms/blocks/protocol/server"),
-      ).href
-    );
-    const referenceAssets = createAssetHandler(storage);
 
     for (const [index, call] of parityCalls.entries()) {
-      let ours: Response;
-      let theirs: Response;
-      if (call.kind === "rpc") {
-        const method = call.method ?? "POST";
-        const init = (base: Record<string, string>) => ({
-          method,
-          // fetch asks for gzip unless told otherwise; both sides get the same header.
-          headers: {
-            "content-type": "application/json",
-            "accept-encoding": "identity",
-            ...base,
-            ...call.headers,
-          },
-          body: method === "GET" ? undefined : call.body,
-        });
-        ours = await fetch(url(daemon!, "/_sandbox/rpc"), init(authHeaders()));
-        theirs = await reference(new Request("http://reference/rpc", init({})));
-      } else {
-        const path = `/assets/${encodeURIComponent(call.name)}`;
-        const init = (base: Record<string, string>) => ({
-          method: "PUT",
-          headers: {
-            ...base,
-            "accept-encoding": "identity",
-            "content-type": call.type,
-          },
-          body: call.body,
-        });
-        ours = await fetch(
-          url(daemon!, `/_sandbox${path}`),
-          init(authHeaders()),
-        );
-        theirs = await referenceAssets(
-          new Request(`http://reference${path}`, init({})),
-        );
-      }
-      const label = `call #${index}: ${call.kind === "rpc" ? call.body.slice(0, 120) : call.name}`;
+      const method = call.method ?? "POST";
+      const init = (base: Record<string, string>) => ({
+        method,
+        // fetch asks for gzip unless told otherwise; both sides get the same header.
+        headers: {
+          "content-type": "application/json",
+          "accept-encoding": "identity",
+          ...base,
+          ...call.headers,
+        },
+        body: method === "GET" ? undefined : call.body,
+      });
+      const ours = await fetch(
+        url(daemon!, "/_sandbox/rpc"),
+        init(authHeaders()),
+      );
+      const theirs = await reference(
+        new Request("http://reference/rpc", init({})),
+      );
+      const label = `call #${index}: ${call.body.slice(0, 120)}`;
       expect({ label, ...(await snapshotResponse(ours, false)) }).toEqual({
         label,
         ...(await snapshotResponse(theirs, true)),
@@ -778,8 +714,6 @@ describe("parity with the reference server (@decocms/blocks/protocol)", () => {
         ".deco/blocks/pages-Home.json",
         ".deco/blocks/lone.json",
         ".deco/blocks/legacy.json",
-        "public/assets/Banner-1.png",
-        "public/assets/logo.webp",
       ]),
     );
   }, 120_000);
