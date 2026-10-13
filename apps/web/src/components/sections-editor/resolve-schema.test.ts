@@ -1352,16 +1352,12 @@ describe("resolveSchema – recursive data types (hang guard)", () => {
     return {
       manifest: {
         blocks: {
-          sections: {
-            "site/sections/Shelf.tsx": {
-              type: "object",
-              properties: { product: ref("Product") },
-            },
-          },
+          sections: { "site/sections/Shelf.tsx": ref("Shelf") },
         },
       },
       schema: {
         definitions: {
+          Shelf: { type: "object", properties: { product: ref("Product") } },
           Product: {
             type: "object",
             properties: {
