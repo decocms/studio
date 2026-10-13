@@ -253,3 +253,58 @@ describe("asStored", () => {
     });
   });
 });
+
+/**
+ * Newline-joining is one encoding, not the encoding. A block that parses its
+ * string as JSON gets an empty render out of a joined one, and the joined one
+ * validates, so the section is kept and the page ships blank.
+ */
+describe("asStored — the string a site encodes rather than joins", () => {
+  const ENCODED = {
+    type: "object",
+    properties: {
+      items: { anyOf: [{ type: "string" }, { type: "array" }] },
+      rows: { anyOf: [{ type: "string" }, { type: "array" }] },
+      left: { anyOf: [{ type: "string" }, { type: "object" }] },
+    },
+  };
+
+  test("encodes a list the site keeps as JSON in a string", () => {
+    expect(
+      readProps('{"items":["Alças","Rodinhas"]}', ENCODED, {
+        items: '["Capacidade","Peso"]',
+      }).props,
+    ).toEqual({ items: '["Alças","Rodinhas"]' });
+  });
+
+  test("encodes rows of rows the same way", () => {
+    expect(
+      readProps('{"rows":[["Bordo","38L"]]}', ENCODED, {
+        rows: '[["Média","68L"]]',
+      }).props,
+    ).toEqual({ rows: '[["Bordo","38L"]]' });
+  });
+
+  test("encodes an object, not only a list", () => {
+    expect(
+      readProps('{"left":{"title":"Com rodinhas"}}', ENCODED, {
+        left: '{"title":"De costas"}',
+      }).props,
+    ).toEqual({ left: '{"title":"Com rodinhas"}' });
+  });
+
+  test("decodes for a site that keeps the real list", () => {
+    expect(
+      readProps('{"items":"[\\"a\\",\\"b\\"]"}', ENCODED, {
+        items: ["x", "y"],
+      }).props,
+    ).toEqual({ items: ["a", "b"] });
+  });
+
+  test("a string that only looks like a bracket is still joined", () => {
+    expect(
+      readProps('{"items":["a","b"]}', ENCODED, { items: "[rascunho\nx" })
+        .props,
+    ).toEqual({ items: "a\nb" });
+  });
+});

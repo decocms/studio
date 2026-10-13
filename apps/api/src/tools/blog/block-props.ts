@@ -117,30 +117,62 @@ export function readProps(
 const ITEM_SEPARATOR = "\n";
 
 /**
- * The props in the shape this site stores, where the two forms are the same list.
+ * The props in the shape this site stores, where both shapes hold the same thing.
  *
  * A prop declared `string | string[]` is valid either way, so a schema cannot
  * settle it and the writer picks one — and it picks the one the schema lists
  * first as often as not. The site has already settled it: whatever a block it
  * renders holds is what its section reads back.
  *
- * Only a list of strings is converted, and only where the two disagree. A
- * string that is not a list and an array of objects are both left alone.
+ * Which string, though, is the site's call too. A `List` joins its items with
+ * newlines; `Checklist`, `Table`, `Steps` and the rest carry JSON inside the
+ * string, and newline-joining one of those is worse than leaving it an array —
+ * it validates as a string and then renders empty, because the block parses it
+ * and gets nothing. So the stored value says which encoding it is.
+ *
+ * Only where the two disagree, and only where the stored form is unambiguous.
  */
 function asStored(props: Schema, example: Schema | undefined): Schema {
   if (!example) return props;
   const out: Schema = { ...props };
   for (const [key, stored] of Object.entries(example)) {
     const value = out[key];
-    if (typeof stored === "string" && isStringList(value)) {
-      out[key] = value.join(ITEM_SEPARATOR);
+    if (typeof stored === "string" && isComposite(value)) {
+      if (isJsonText(stored)) out[key] = JSON.stringify(value);
+      else if (isStringList(value)) out[key] = value.join(ITEM_SEPARATOR);
       continue;
     }
     if (isStringList(stored) && typeof value === "string") {
-      out[key] = value.split(ITEM_SEPARATOR).filter((entry) => entry.trim());
+      const decoded = jsonValue(value);
+      out[key] = Array.isArray(decoded)
+        ? decoded
+        : value.split(ITEM_SEPARATOR).filter((entry) => entry.trim());
     }
   }
   return out;
+}
+
+/** An array or an object — the two a site may keep encoded in a string. */
+function isComposite(value: unknown): boolean {
+  return !!value && typeof value === "object";
+}
+
+/** True when the stored string is itself JSON, so the site encodes rather than joins. */
+function isJsonText(text: string): boolean {
+  return jsonValue(text) !== null;
+}
+
+/** What this text decodes to, or null when it is not JSON at all. */
+function jsonValue(text: string): unknown[] | Schema | null {
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+    return asSchema(parsed);
+  } catch {
+    return null;
+  }
 }
 
 function isStringList(value: unknown): value is string[] {
