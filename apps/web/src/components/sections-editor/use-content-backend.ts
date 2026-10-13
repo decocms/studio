@@ -8,7 +8,7 @@ import {
   type DescribeResult,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -27,7 +27,7 @@ import {
   readFailed,
   selectContentBackend,
 } from "./content-backend";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import {
   isMainSchemaChangedResponse,
   MainSchemaChangedError,
@@ -40,7 +40,7 @@ import {
   probeRetryDelay,
 } from "./deco-serve-connection";
 import { isSchemaAbsent } from "./schemaless";
-import { isBlocksV8Project, isV8Schema } from "@decocms/shared/blocks-major";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 
 export interface Probe {
   client: ContentClient;
@@ -226,7 +226,7 @@ export function useContentBackend(
   const mainSchema = useMainSchemaV8(tabConnection ? null : virtualMcpId);
   // The server's last answer for main: only whether a daemon that never
   // answered is waited on (see `selectContentBackend`), never v8 itself.
-  const markedV8 = isBlocksV8Project(useVirtualMCP(virtualMcpId)?.metadata);
+  const markedV8 = useLastFoundV8(virtualMcpId);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The daemon answers once the working tree is there. Before its first

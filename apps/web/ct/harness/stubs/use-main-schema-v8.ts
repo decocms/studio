@@ -12,3 +12,9 @@ export function useMainSchemaV8(
 ): MainSchemaAnswer {
   return "v7";
 }
+
+export function useLastFoundV8(
+  _virtualMcpId: string | null | undefined,
+): boolean {
+  return false;
+}
