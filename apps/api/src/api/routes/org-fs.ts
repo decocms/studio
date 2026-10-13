@@ -64,6 +64,8 @@ import {
   orgFsChangeSubjects,
 } from "@/file-storage/org-fs-notify";
 import { isValidVolume } from "@/file-storage/org-fs-path";
+import { orgFsWriteDenial } from "@/file-storage/org-fs-write-guard";
+import { verifyOrgFsUploadToken } from "@/file-storage/upload-grant";
 import {
   buildPublicOrgFs,
   getPublicSets,
@@ -936,6 +938,54 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           getConnection(),
           r.ctx.organization!.id,
           volume,
+        );
+        return c.json({ entry });
+      } catch (err) {
+        return fsErrorResponse(c, err);
+      }
+    },
+  );
+
+  // Upload through a `PUT_PRESIGNED_URL` grant. No session: the signed token
+  // is the authentication, so it reaches this route the way a public-share
+  // read does. The write rules are checked again here because a volume can
+  // become a repo-sync mirror between minting and upload.
+  app.put(
+    "/:volume/upload/:token",
+    bodyLimit({
+      maxSize: MAX_UPLOAD_BYTES,
+      onError: (c) =>
+        c.json({ error: "File exceeds the per-file size limit" }, 413),
+    }),
+    async (c) => {
+      const ctx = c.get("studioContext");
+      const grant = verifyOrgFsUploadToken(c.req.param("token"));
+      if (
+        !grant ||
+        grant.organizationId !== ctx.organization?.id ||
+        grant.volume !== c.req.param("volume")
+      ) {
+        return c.json({ error: "Invalid or expired upload link" }, 404);
+      }
+      if (!ctx.orgFs) {
+        return c.json({ error: "Object storage not configured" }, 503);
+      }
+      const denial = await orgFsWriteDenial(ctx.storage, grant);
+      if (denial) return c.json({ error: denial }, 403);
+      const contentType = c.req.header("content-type");
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      try {
+        const entry = await ctx.orgFs.write(grant.volume, grant.path, bytes, {
+          actor: grant.userId,
+          contentType:
+            contentType && contentType !== "application/octet-stream"
+              ? contentType
+              : undefined,
+        });
+        await notifyOrgFsChange(
+          getConnection(),
+          grant.organizationId,
+          grant.volume,
         );
         return c.json({ entry });
       } catch (err) {

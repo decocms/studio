@@ -32,6 +32,10 @@ import {
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
 import { ForbiddenError } from "../../core/access-control";
+import {
+  mintOrgFsUploadToken,
+  type OrgFsUploadGrant,
+} from "../../file-storage/upload-grant";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
 import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
 import {
@@ -397,6 +401,55 @@ describe("org-fs HTTP routes (integration)", () => {
     expect(ok.status).toBe(200);
     const read = await app.request(`${BASE}/skills/read?path=c.md`);
     expect(await read.text()).toBe("v2");
+  });
+
+  describe("uploads through a PUT_PRESIGNED_URL grant", () => {
+    const grantFor = (overrides: Partial<OrgFsUploadGrant> = {}) =>
+      mintOrgFsUploadToken({
+        organizationId: ORG,
+        volume: "home",
+        path: "pages/a.html",
+        userId: USER,
+        expiresAt: Date.now() + 60_000,
+        ...overrides,
+      });
+    const upload = (volume: string, token: string) =>
+      buildApp(db, false).request(`${BASE}/${volume}/upload/${token}`, {
+        method: "PUT",
+        headers: { "content-type": "text/html" },
+        body: "<h1>hi</h1>",
+      });
+
+    it("writes the granted file without a session and indexes it", async () => {
+      const res = await upload("home", grantFor());
+      expect(res.status).toBe(200);
+      const { entry } = await res.json();
+      expect(entry.path).toBe("pages/a.html");
+      expect(entry.updatedBy).toBe(USER);
+
+      const stat = await app.request(`${BASE}/home/stat?path=pages/a.html`);
+      expect(stat.status).toBe(200);
+    });
+
+    it("404s a grant that is expired, for another org, or for another volume", async () => {
+      const refused = [
+        upload("home", grantFor({ expiresAt: Date.now() - 1 })),
+        upload("home", grantFor({ organizationId: "org_other" })),
+        upload("outputs", grantFor()),
+        upload("home", `${grantFor()}x`),
+      ];
+      for (const res of await Promise.all(refused)) {
+        expect(res.status).toBe(404);
+      }
+    });
+
+    it("403s a grant for another member's personal folder", async () => {
+      const res = await upload(
+        "home",
+        grantFor({ path: "users/someone_else/notes.md" }),
+      );
+      expect(res.status).toBe(403);
+    });
   });
 
   it("rejects writing to the volume root with 400", async () => {

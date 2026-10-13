@@ -45,8 +45,20 @@ precondition, and `move` copies then deletes, so it is not atomic: `stat` the
 target first and get the user's go-ahead before replacing a file they did not
 ask to change. Limits: 500 MB per file, a 10 GB soft quota per volume (413).
 
-Write files through `fs`, not `object-storage`: raw object writes skip the file
-index, so the file never shows up in the Library or in sandboxes.
+### Sharing
+
+`<target>/api/<slug>/fs/<vol>/read?path=<path>` is the file's one link, with
+`<target>` from `decocms auth whoami`. The share mode decides who it opens for:
+`private` (org members, the default), `public` (anyone), or `password` (anyone
+who enters the password on the form it serves first). Setting a mode on a
+folder applies to everything under it.
+
+```bash
+decocms api "/api/<slug>/fs/home/public?path=pages/report.html" -d '{"mode":"password","password":"<password>"}'
+```
+
+`password` mode needs a non-empty `password`; changing it signs out everyone
+who unlocked the old one. Give the user the link and the password together.
 
 ## Send a message to an agent
 
@@ -94,9 +106,14 @@ thread id. The stream never ends on its own: run it under `timeout`.
 
 ## Object storage and files
 
-Prefer the tools (`LIST_OBJECTS`, `GET_PRESIGNED_URL`, `PUT_PRESIGNED_URL`,
-`DELETE_OBJECT`). For bytes: `GET /api/<slug>/object-storage/<key>` and
-`GET /api/<slug>/files/<key>` (the stable URL chat history stores for uploads).
+Prefer `fs` above for org files (the Library, `home`, `outputs`, `uploads`).
+The tools (`LIST_OBJECTS`, `GET_PRESIGNED_URL`, `PUT_PRESIGNED_URL`,
+`DELETE_OBJECT`) work on raw keys, and a key `_fs/<vol>/<path>` is that org
+file. `PUT_PRESIGNED_URL` and `DELETE_OBJECT` on such a key apply the same
+rules as `fs` and keep the Library in step; the upload URL lasts at most an
+hour. For bytes:
+`GET /api/<slug>/object-storage/<key>` and `GET /api/<slug>/files/<key>` (the
+stable URL chat history stores for uploads).
 
 ## User scope: `/api/_me`
 

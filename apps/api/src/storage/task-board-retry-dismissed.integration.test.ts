@@ -1,5 +1,5 @@
 /**
- * Real-Postgres coverage for `scheduleRunRetry`/`returnToTodoAfterFailure`
+ * Real-Postgres coverage for `scheduleRunRetry`/`returnToBacklogAfterFailure`
  * excluding dismissed cards.
  *
  * Same bug class as `task-board-advance-dismissed.integration.test.ts`: a
@@ -8,7 +8,7 @@
  * whether to react off that stale `status` (read via `getById`, which doesn't
  * expose `dismissedAt`) — without a `dismissed_at IS NULL` guard here, a card
  * dismissed while its run was still in flight gets a fresh retry armed, or
- * gets resurrected back onto To Do, once that run finally fails.
+ * gets resurrected back onto the Backlog, once that run finally fails.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -25,7 +25,7 @@ import { TaskBoardStorage } from "./task-board";
 const ORG = "org_retry_dismissed";
 const USER = "user_retry_dismissed";
 
-describe("scheduleRunRetry / returnToTodoAfterFailure (real Postgres)", () => {
+describe("scheduleRunRetry / returnToBacklogAfterFailure (real Postgres)", () => {
   let database: StudioDatabase;
   let taskBoard: TaskBoardStorage;
 
@@ -92,34 +92,34 @@ describe("scheduleRunRetry / returnToTodoAfterFailure (real Postgres)", () => {
     expect(scheduled).toBe(false);
   });
 
-  it("returns a normal in-progress card to todo after failure", async () => {
+  it("returns a normal in-progress card to backlog after failure", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
-      title: "normal return to todo",
+      title: "normal return to backlog",
       status: "in_progress",
       by: USER,
     });
 
-    const returned = await taskBoard.returnToTodoAfterFailure(
+    const returned = await taskBoard.returnToBacklogAfterFailure(
       task.id,
       ORG,
       USER,
     );
 
-    expect(returned?.status).toBe("todo");
+    expect(returned?.status).toBe("triage");
   });
 
-  it("does not resurrect a card dismissed while still in_progress onto todo", async () => {
+  it("does not resurrect a card dismissed while still in_progress onto the backlog", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
-      title: "dismissed before return to todo",
+      title: "dismissed before return to backlog",
       status: "in_progress",
       by: "system",
     });
 
     await taskBoard.delete(task.id, ORG, USER);
 
-    const returned = await taskBoard.returnToTodoAfterFailure(
+    const returned = await taskBoard.returnToBacklogAfterFailure(
       task.id,
       ORG,
       USER,

@@ -21,14 +21,15 @@ import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
  */
 const MAX_AUTO_CONFLICT_RESOLUTIONS = 3;
 
-/** True when this task is a candidate for auto conflict-resolution: an In
- *  Review task delegated to the Super Agent with a detected conflict. */
+/** True when this task is a candidate for auto conflict-resolution: a task in
+ *  Ready for Deployment, delegated to the Super Agent, with a detected
+ *  conflict. */
 export function isConflictResolutionCandidate(
   item: { status: string; assigneeId: string | null },
   conflict: boolean | null,
 ): boolean {
   return (
-    item.status === LANES.review &&
+    item.status === LANES.release &&
     item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
     conflict === true
   );
@@ -37,7 +38,7 @@ export function isConflictResolutionCandidate(
 /** True once a task has hit its all-time cap of auto conflict-resolution
  *  dispatches — counted from the `merge_conflict_resolution` activity entries,
  *  which persist across review cycles (so the cap doesn't reset when the task
- *  bounces back to In Review). Pure, so the off-by-one is unit-tested. */
+ *  comes back through review). Pure, so the off-by-one is unit-tested. */
 export function conflictResolutionCapReached(
   activity: ReviewCycleActivity[],
 ): boolean {
@@ -48,22 +49,18 @@ export function conflictResolutionCapReached(
 }
 
 /**
- * When a task's PR is approved by every enabled reviewer but can't merge because
- * it conflicts with its base branch, hand it back to the Super Agent to resolve
- * the conflict — the automatic version of what a human would otherwise do
- * (check out the branch, merge the base, push). Reuses the same machinery as a
- * reviewer's change request: bounce the task to In Progress and re-enqueue the
- * Super Agent on the EXISTING PR, so when it finishes the task returns to In
- * Review, reviewers re-run on the merged result, and (with auto-merge on) it
- * ships. Keeping it In Review instead would fight `reopenTasksOnThreadRun`,
- * which pulls a task back to In Progress the moment a run starts on it.
+ * When a task in Ready for Deployment can't merge because its PR conflicts with
+ * its base branch, hand it back to the Super Agent to resolve the conflict —
+ * the automatic version of what a person would otherwise do (check out the
+ * branch, merge the base, push). Reuses the same machinery as a re-run: bounce
+ * the task to In Progress and re-enqueue the Super Agent on the EXISTING PR.
+ * The merged result is new code, so it goes back through review and QA; a
+ * person moves it to Ready for Deployment again.
  *
- * Gated on the org's `auto_merge` flag — conflict resolution is an extension of
- * auto-merge (the only thing standing between an approved PR and an automatic
- * merge is the conflict), so it rides the same opt-in rather than its own knob.
- * Also gated on the SAME verified all-approved check the auto-merge uses (a
- * self-asserted approval must not trigger it) and a per-task cap so a conflict
- * the agent can't resolve doesn't loop forever.
+ * Gated on `auto_resolve_conflicts` (which follows `auto_merge` unless set),
+ * on the SAME verified approval the review required (a self-asserted approval
+ * must not trigger it), and on a per-task cap so a conflict the agent can't
+ * resolve doesn't loop forever.
  *
  * `opts.pr` is the PR the caller detected the conflict on — the reaction acts on
  * THAT PR, not a re-derived "newest linked PR", so a task with more than one
@@ -90,8 +87,8 @@ export async function reactToApprovedPrConflict(
   const flags = settings?.flags ?? {};
   if (!autoResolveConflictsEnabled(flags)) return false;
 
-  // Same gate as the auto-merge: EVERY enabled reviewer must have a
-  // token-verified approval in the current cycle. With no reviewer enabled
+  // Same gate as leaving review: EVERY enabled reviewer must have a
+  // token-verified approval in the last cycle. With no reviewer enabled
   // `allReviewersApproved` is false, so a conflict never auto-resolves without
   // an approval standing behind it.
   const enabled = enabledReviewerKinds(flags);
@@ -116,11 +113,11 @@ export async function reactToApprovedPrConflict(
   const pr = opts.pr;
 
   // Atomically bounce to In Progress — this is the dispatch fence. If it returns
-  // null we lost the race to a coinciding trigger (approval + poll), so skip:
+  // null we lost the race to a coinciding trigger (merge + poll), so skip:
   // the winner already enqueued the resolution run. Everything past here runs
   // for the single winner only, so the activity log (which feeds the cap count)
   // stays accurate. No `status_changed` entry — mirrors the request_changes
-  // bounce; the review cycle resets only when the run advances back to In Review.
+  // bounce; the review cycle resets only when the run opens its next one.
   const claimed = await ctx.storage.taskBoard.claimConflictResolution(
     item.id,
     orgId,
@@ -140,10 +137,10 @@ export async function reactToApprovedPrConflict(
     await parkOnRunsExhausted(ctx, claimed, err).catch(() => false);
     // Nothing was dispatched. Unlike a fresh delegation, this bounced the
     // task's STATUS to In Progress as the dispatch fence — leaving it there
-    // strands the task forever: the guard above only fires on `in_review`,
-    // so no future poll or approval retries it. Bounce back so it does.
+    // strands the task forever: the guard above only fires on Ready for Deployment,
+    // so no future poll or merge retries it. Bounce back so it does.
     await ctx.storage.taskBoard
-      .update(claimed.id, orgId, { status: LANES.review }, "system")
+      .update(claimed.id, orgId, { status: LANES.release }, "system")
       .then((reverted) => emitTaskBoardUpdated(orgId, reverted))
       .catch((revertErr) =>
         console.error(

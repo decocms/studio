@@ -110,8 +110,20 @@ export const JIRA_ISSUE_GET = defineTool({
   description:
     "Read a Jira issue — this run's, or another on the board: summary, " +
     "status, description, comments, and attachments with the ids " +
-    "JIRA_ATTACHMENT_DOWNLOAD takes.",
-  inputSchema: z.object({ issueKey: issueKeyInput }),
+    "JIRA_ATTACHMENT_DOWNLOAD takes. A long comment thread shows its newest " +
+    "comments; pass the `commentsBefore` the result names to read older ones.",
+  inputSchema: z.object({
+    issueKey: issueKeyInput,
+    commentsBefore: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe(
+        "Show only the comments older than this one (the first N of the " +
+          "thread). Use the value the previous result names.",
+      ),
+  }),
   outputSchema: z.object({
     key: z.string(),
     url: z.string(),
@@ -133,7 +145,9 @@ export const JIRA_ISSUE_GET = defineTool({
       key: issue.key,
       url: issue.url,
       status: issue.status,
-      markdown: renderIssueForPrompt(issue),
+      markdown: renderIssueForPrompt(issue, undefined, {
+        commentsBefore: input.commentsBefore,
+      }),
     };
   },
 });

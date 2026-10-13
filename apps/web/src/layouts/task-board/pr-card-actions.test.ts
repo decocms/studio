@@ -1,6 +1,6 @@
 /**
  * Regression coverage for `prCardActions`: the PR card used to offer "Ship to
- * production" whenever the task was reviewed-and-ready, ignoring mergeability —
+ * production" whenever the task was ready to ship, ignoring mergeability —
  * so a PR that conflicts with its base branch got an optimistic green Ship
  * button whose merge would 405. The card must offer "Resolve conflict" there
  * instead.
@@ -35,7 +35,7 @@ function pr(overrides: Partial<TaskBoardItemPr> = {}): TaskBoardItemPr {
 }
 
 describe("prCardActions", () => {
-  it("offers Ship for a reviewed, open, clean, green PR", () => {
+  it("offers Ship for a ready, open, clean, green PR", () => {
     const a = prCardActions(pr(), true);
     expect(a.showShip).toBe(true);
     expect(a.showResolveConflict).toBe(false);
@@ -56,7 +56,7 @@ describe("prCardActions", () => {
     expect(a.showShip).toBe(true);
   });
 
-  it("offers neither action until the task is reviewed-and-ready", () => {
+  it("offers neither action until the task is ready to ship", () => {
     expect(
       prCardActions(pr({ mergeable: false }), false).showResolveConflict,
     ).toBe(false);

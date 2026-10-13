@@ -13,7 +13,6 @@ import {
   Microphone01,
   LayoutAlt01,
   Pilcrow01,
-  Rocket01,
   SearchLg,
   Terminal,
   UserSquare,
@@ -43,7 +42,8 @@ import type { ReactNode } from "react";
 
 /**
  * Org-level review settings: which automated reviewers run on a task's PR once
- * it's In Review, and whether an all-approved PR is merged automatically.
+ * it's In Review, and whether a card that reaches Ready for Deployment is
+ * merged automatically.
  */
 export function ReviewSettings() {
   const t = useT();
@@ -72,12 +72,6 @@ export function ReviewSettings() {
           descriptionKey="settings.review.autoMergeDescription"
         />
         <AutoResolveConflictsToggle />
-        <FlagToggle
-          flag="delivery_lanes_enabled"
-          icon={<Rocket01 size={16} />}
-          titleKey="settings.review.deliveryLanesTitle"
-          descriptionKey="settings.review.deliveryLanesDescription"
-        />
         <FlagToggle
           flag="auto_assign_report_tasks_to_super_agent"
           icon={<UserSquare size={16} />}

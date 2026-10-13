@@ -87,8 +87,8 @@ export async function enqueueAgentRunForTask(
     temperature: number;
     /**
      * The lane whose rules this run follows, beside the org-wide ones. By role,
-     * not by where the card sits: a re-run happens on an In Progress card and
-     * must still follow To Do's. Null for the org-wide rules alone.
+     * not by where the card sits: the implementer follows In Progress's and
+     * the reviewer In Review's. Null for the org-wide rules alone.
      */
     rulesColumn: string | null;
     /**

@@ -63,9 +63,9 @@ function isThreadRunLive(
  * True while the task's author — the Super Agent, i.e. any run thread that
  * isn't a reviewer's — is still going.
  *
- * The Super Agent is told to link the PR and set In Review *while still
- * running* (`claude-code-task-run.ts`), so the card is reviewable long before
- * the run that owns the branch is finished. Title is the discriminator the rest
+ * Opening the PR moves the card to In Review *while the Super Agent is still
+ * running*, so the card is reviewable long before the run that owns the
+ * branch is finished. Title is the discriminator the rest
  * of the board already uses (`resolveThreadToolNames`); liveness is
  * {@link isThreadRunLive}, so a dead author's stall window releases the card
  * rather than stranding it.
@@ -79,14 +79,15 @@ export function authorRunLive(task: TaskBoardItem, now: number): boolean {
 }
 
 /** Who the reviewer is and what the board needs from it. How to review is the
- *  In Progress lane's editable rule (`task-board-default-prompts.ts`). No
+ *  In Review lane's editable rule (`task-board-default-prompts.ts`). No
  *  `disallowedTools`: the reviewer is the last run on the task, so it has to be
  *  able to fix what it finds. */
 const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
   // prompt-region:start reviewer
   reviewer:
     "You are the Reviewer, the LAST automated run on this task: you judge the " +
-    "pull request another run opened for it, and record the verdict.\n" +
+    "pull request another run opened for it, and record the verdict. An " +
+    "approval sends the task to QA, where a person checks it.\n" +
     "Before deciding, RECORD your pass as a task comment — REQUIRED: a " +
     "verdict with no comment is an incomplete run and you will be asked for " +
     "one. The record is internal: written for the agents on this task, so be " +
@@ -721,8 +722,8 @@ async function enqueueReviewerForTask(
       "truly cannot judge the outcome) — that should be rare. When in doubt " +
       "between asking and deciding, DECIDE.",
     "",
-    "Do NOT merge the pull request — the board does that itself once your " +
-      "approval is in. Pushing fixes to the PR's own branch is expected of " +
+    "Do NOT merge the pull request — it merges once people have checked the " +
+      "task in QA and cleared it for release. Pushing fixes to the PR's own branch is expected of " +
       "you; opening a second pull request, force-pushing, or touching any " +
       "other ref is not.",
   ].join("\n");
@@ -766,7 +767,7 @@ async function enqueueReviewerForTask(
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
     "  - NEVER approve on inspection alone: approve only a change you exercised at the PR's latest commit. If you could not exercise it at all, `request_changes` saying which paths you tried and what blocked them — whatever the board's rules say.",
     "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes, written for that person: if you posted no comment for them, these notes are shown to them as they are.",
-    "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
+    "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't move the task to QA.",
     "- `mcp__studio__TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
     "",
     `(task id: ${task.id})`,
@@ -777,11 +778,11 @@ async function enqueueReviewerForTask(
   const fenceKey = reviewFenceKey(task.id, kind, cycleAt, attempt);
   const fenceThreadId = reviewerThreadId(fenceKey);
   const { isNew } = await enqueueAgentRunForTask(ctx, task, {
-    // A verdict is the last thing between this card and Done — it outranks
-    // starting a new task for the next slot.
+    // A verdict is what hands this card to a person — it outranks starting a
+    // new task for the next slot.
     runClass: "reviewer",
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
-    rulesColumn: LANES.progress,
+    rulesColumn: LANES.review,
     prompt,
     system,
     temperature: 0.3,

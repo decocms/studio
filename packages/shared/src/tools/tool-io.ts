@@ -132,7 +132,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
-            delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
@@ -212,7 +211,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
-            delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
@@ -288,7 +286,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
-            delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
@@ -736,7 +733,6 @@ export interface StudioToolIO {
         | "merged"
         | "post_deploy_validation"
         | "archived";
-      merged: boolean;
     };
   };
   TASK_BOARD_PROMOTE_TO_PRODUCTION: {

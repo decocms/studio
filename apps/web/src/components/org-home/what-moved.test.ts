@@ -8,7 +8,7 @@ const task = (
 ): TaskBoardItem =>
   ({
     title: "t",
-    status: "todo",
+    status: "triage",
     threads: [],
     ...over,
   }) as unknown as TaskBoardItem;
@@ -37,9 +37,22 @@ describe("derivedMove", () => {
   test("reports the newest delivery when nothing broke", () => {
     const moved = derivedMove([
       task({ updatedAt: "2026-01-01", title: "older", status: "done" }),
-      task({ updatedAt: "2026-03-01", title: "newest", status: "merged" }),
+      task({ updatedAt: "2026-02-01", title: "legacy", status: "merged" }),
+      task({
+        updatedAt: "2026-03-01",
+        title: "newest",
+        status: "post_deploy_validation",
+      }),
     ]);
-    expect(moved).toMatchObject({ kind: "shipped", title: "newest", more: 1 });
+    expect(moved).toMatchObject({ kind: "shipped", title: "newest", more: 2 });
+  });
+
+  test("a card still waiting on its release has not shipped", () => {
+    expect(
+      derivedMove([
+        task({ updatedAt: "2026-01-01", status: "ready_for_deployment" }),
+      ]),
+    ).toBeNull();
   });
 
   test("a single delivery has nothing behind it", () => {
