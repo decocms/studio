@@ -33,7 +33,8 @@ import { generateText, stepCountIs, type ToolSet } from "ai";
 import { z } from "zod";
 import { reHome } from "@decocms/shared/store-url";
 import { resolveTier } from "../../core/resolve-tier";
-import { retryGenerateObject } from "./generate-object";
+import { generationFailure, retryGenerateObject } from "./generate-object";
+import { boundedText } from "./schema";
 import type { StudioContext } from "../../core/studio-context";
 import { toolsFromMCP } from "../../harnesses/lib/decopilot/mcp-tools";
 
@@ -69,6 +70,18 @@ const MAX_EXTRACT_CHUNKS = 5;
 
 /** What a merged catalogue is trimmed to, after the model has had its say. */
 const MAX_CATALOGUE_ENTRIES = 200;
+
+/**
+ * How much prose one catalogue entry is worth carrying.
+ *
+ * These clamp, they do not reject — see {@link boundedText}. A storefront
+ * description runs to several thousand characters of marketing HTML and only
+ * the opening is of any use to a campaign, so the limit is a budget rather
+ * than a rule the model can break.
+ */
+const MAX_NAME_CHARS = 512;
+const MAX_PRICE_CHARS = 128;
+const MAX_DESCRIPTION_CHARS = 2_048;
 
 /** A whole pass is abandoned at this point, so a click cannot hang on an MCP. */
 const GROUNDING_TIMEOUT_MS = 75_000;
@@ -433,54 +446,54 @@ export async function groundSiteReport(
 /**
  * A product the store actually reported, with the parts a summary loses.
  *
- * No array here carries a `.max()`. On a model's output a length cap is not a
+ * Nothing here rejects on length. On a model's output a length cap is not a
  * cap, it is a rejection: zod throws the whole object away, the retries throw
  * it away again, and a store with more images than a number someone guessed
- * loses its entire catalogue. Caps on how much is KEPT belong after the parse.
- * Caps that reject belong on `inputSchema`, where the sender can be told.
+ * loses its entire catalogue. Prose is clamped by {@link boundedText}, which
+ * bounds without rejecting; ids, slugs and image URLs carry no bound at all,
+ * because those are copied character for character and a truncated one is
+ * broken rather than shortened. Caps on how much is KEPT belong after the
+ * parse; caps that reject belong on `inputSchema`, where the sender can be told.
  *
  * `images` and `slug` are the reason this exists: a model writing an 8k-char
  * markdown summary has no budget for three 150-char CDN URLs per product, so
  * they never survive the prose. Copied here instead, and never composed.
  */
-const CatalogueProductSchema = z.object({
+export const CatalogueProductSchema = z.object({
   id: z
     .string()
-    .max(512)
     .describe(
       "The id the storefront indexes this product by — a SKU id in VTEX, verbatim. This is the handle a product block on the site points at, so it must be the one a product search or listing returns as the product's own id. NOT a reference code, EAN, part number or stock code: those identify the item in the warehouse and resolve to nothing on the storefront.",
     ),
-  name: z.string().max(512),
-  category: z
-    .string()
-    .max(512)
-    .describe("Its main category. '' if unreported."),
-  price: z
-    .string()
-    .max(128)
-    .describe("As returned, with currency. '' if none."),
+  name: boundedText(MAX_NAME_CHARS),
+  category: boundedText(MAX_NAME_CHARS).describe(
+    "Its main category. '' if unreported.",
+  ),
+  price: boundedText(MAX_PRICE_CHARS).describe(
+    "As returned, with currency. '' if none.",
+  ),
   slug: z
     .string()
-    .max(1024)
     .describe(
       "Its address exactly as returned, whatever form that took — a `linkText`, a path, or a whole URL on an internal host. Copy it; the origin is corrected afterwards. '' when no tool reported one.",
     ),
   images: z
-    .array(z.string().max(1024))
+    .array(z.string())
     .describe(
       "Image URLs character for character. These sit on a CDN whose host is not the store's; rebuilding one produces a link that silently fails.",
     ),
-  description: z.string().max(2048).describe("What it is. '' if unreported."),
+  description: boundedText(MAX_DESCRIPTION_CHARS).describe(
+    "What it is, in a couple of sentences. '' if unreported.",
+  ),
 });
 
 /** A category or collection the store reported, as a campaign could target it. */
-const CatalogueTargetSchema = z.object({
+export const CatalogueTargetSchema = z.object({
   kind: z.enum(["category", "collection"]),
-  id: z.string().max(512),
-  name: z.string().max(512),
+  id: z.string(),
+  name: boundedText(MAX_NAME_CHARS),
   slug: z
     .string()
-    .max(1024)
     .describe(
       "Its address verbatim, path or whole URL alike. '' for a collection, which has no page.",
     ),
@@ -660,7 +673,9 @@ export async function extractCatalogue(
     );
     for (const pass of passes) {
       if (pass.status === "rejected") {
-        console.warn(`[${label}] one catalogue chunk failed`, pass.reason);
+        console.warn(
+          `[${label}] one catalogue chunk failed: ${generationFailure(pass.reason)}`,
+        );
       }
     }
     const home = (slug: string) => (storeUrl ? reHome(slug, storeUrl) : "");

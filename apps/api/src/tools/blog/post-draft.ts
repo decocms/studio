@@ -1,4 +1,4 @@
-import { retryGenerateObject } from "./generate-object";
+import { generationFailure, retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import {
   CAMPAIGN_OBJECTIVES,
@@ -145,15 +145,14 @@ const SectionSchema = z.object({
       "A JSON object matching that block's schema. Only props the schema declares; anything else is dropped, and a value the schema rejects loses the whole section. Leave the product slot out — it is filled from `productIds`.",
     ),
   productIds: z
-    .array(z.string().max(MAX_NAME_CHARS))
-    .max(MAX_PRODUCTS)
+    .array(z.string())
     .default([])
     .describe(
       "For a product block only: the `id` of each campaign product this block shows, in order. Empty for every other block.",
     ),
 });
 
-const PostSchema = z.object({
+export const PostSchema = z.object({
   title: z
     .string()
     .describe("The post's headline, in the brand's voice and language"),
@@ -180,8 +179,9 @@ const PostSchema = z.object({
     .describe("Emails chosen from the given authors — usually one"),
   sections: z
     .array(SectionSchema)
-    .max(MAX_SECTIONS)
-    .describe("The post body, in reading order"),
+    .describe(
+      `The post body, in reading order. At most ${MAX_SECTIONS}; anything past that is dropped.`,
+    ),
 });
 
 const GAP_CODES = [
@@ -537,7 +537,9 @@ export const BLOG_POST_DRAFT = defineTool({
     );
     for (const draft of written) {
       if (draft.status === "rejected") {
-        console.warn("[BLOG_POST_DRAFT] one draft failed", draft.reason);
+        console.warn(
+          `[BLOG_POST_DRAFT] one draft failed: ${generationFailure(draft.reason)}`,
+        );
       }
     }
 

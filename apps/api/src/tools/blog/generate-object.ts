@@ -27,3 +27,24 @@ export function retryGenerateObject<OBJECT>(options: {
     },
   );
 }
+
+/**
+ * Why a generation failed, in one line a reader can act on.
+ *
+ * The reason is buried two levels down — `RetryError.cause` is the
+ * `NoObjectGeneratedError`, whose own `cause` holds the validation issues — so
+ * logging the error itself prints "Retrying exceeded the maxAttempts (3)" and
+ * nothing about which field refused. Callers here are enrichment: they log and
+ * carry on, and a log that names no cause has cost whole afternoons.
+ */
+export function generationFailure(err: unknown): string {
+  const seen = new Set<unknown>();
+  let current = err;
+  let reason = "";
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    reason = current.message;
+    current = current.cause;
+  }
+  return reason || String(err);
+}

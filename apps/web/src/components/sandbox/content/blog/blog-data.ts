@@ -1349,6 +1349,31 @@ export function pickBlogFields(
   return picked;
 }
 
+/**
+ * What the brand block must hold after a save.
+ *
+ * It sheds the writing rules once `blog-manager-context` exists to hold them —
+ * and not one save before. Every site written before the split keeps its tone,
+ * dos and guardrails inside the brand block, and the context block is created
+ * only when someone edits a field on the Context tab; narrowing unconditionally
+ * means a single character typed into Company name deletes a brand's voice
+ * seven hundred milliseconds later, with the generation it gated going with it.
+ *
+ * Carrying the strays costs a few duplicated fields until the context block
+ * appears, which {@link splitBlogContext} already ignores. That is the same
+ * bargain the rest of this file takes: a read that copes beats a migration.
+ */
+export function brandBlockToSave(
+  next: Record<string, unknown>,
+  storedBrand: unknown,
+  contextBlock: unknown,
+): Record<string, unknown> {
+  const brand = pickBlogFields(next, BRAND_FIELDS);
+  if (asRecord(contextBlock)) return brand;
+  const stored = asRecord(storedBrand) ?? {};
+  return { ...pickBlogFields(stored, CONTEXT_FIELDS), ...brand };
+}
+
 export interface BlogContextBlocks {
   brand: Record<string, unknown>;
   context: Record<string, unknown>;

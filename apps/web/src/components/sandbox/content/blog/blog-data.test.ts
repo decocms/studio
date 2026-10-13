@@ -62,6 +62,7 @@ import {
   normalizeVoiceExamples,
   filledVoiceExamples,
   asBlock,
+  brandBlockToSave,
   pickBlogFields,
   BRAND_FIELDS,
   CONTEXT_FIELDS,
@@ -2644,7 +2645,7 @@ describe("asBlock", () => {
 });
 
 describe("pickBlogFields", () => {
-  test("a legacy block saved as brand sheds the writing rules", () => {
+  test("narrowing to the brand half leaves the writing rules behind", () => {
     const legacy = {
       companyName: "Marca",
       tone: "Seco",
@@ -2670,6 +2671,66 @@ describe("pickBlogFields", () => {
   test("a field the block never had stays absent, rather than becoming undefined", () => {
     expect(pickBlogFields({ tone: "Seco" }, CONTEXT_FIELDS)).toEqual({
       tone: "Seco",
+    });
+  });
+});
+
+/**
+ * Narrowing is right, but only once there is somewhere else for the rules to
+ * go. Every site written before the split keeps them in the brand block, and a
+ * brand block written without them is a brand that lost its voice to one
+ * keystroke in an unrelated field.
+ */
+describe("brandBlockToSave", () => {
+  const legacy = {
+    companyName: "Marca",
+    tone: "Seco",
+    dos: [{ name: "Abertura", value: "Pelo leitor" }],
+  };
+
+  test("carries the rules while no context block exists to hold them", () => {
+    expect(
+      brandBlockToSave(
+        { ...legacy, companyName: "Marca B" },
+        legacy,
+        undefined,
+      ),
+    ).toEqual({
+      companyName: "Marca B",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    });
+  });
+
+  test("sheds them once the context block holds them", () => {
+    expect(brandBlockToSave(legacy, legacy, { tone: "Seco" })).toEqual({
+      companyName: "Marca",
+    });
+  });
+
+  test("an empty context block is still a context block", () => {
+    expect(brandBlockToSave(legacy, legacy, {})).toEqual({
+      companyName: "Marca",
+    });
+  });
+
+  test("reads the rules from storage, not from a draft already narrowed", () => {
+    expect(brandBlockToSave({ companyName: "Marca B" }, legacy, null)).toEqual({
+      companyName: "Marca B",
+      tone: "Seco",
+      dos: [{ name: "Abertura", value: "Pelo leitor" }],
+    });
+  });
+
+  test("an edited brand field wins over the stored copy", () => {
+    expect(
+      brandBlockToSave({ companyName: "Novo" }, { companyName: "Velho" }, null),
+    ).toEqual({ companyName: "Novo" });
+  });
+
+  test("a site with no rules to carry saves just the brand half", () => {
+    expect(brandBlockToSave({ companyName: "Marca" }, {}, null)).toEqual({
+      companyName: "Marca",
     });
   });
 });

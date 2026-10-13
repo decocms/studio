@@ -17,7 +17,7 @@ import {
   VirtualMcpIdSchema,
 } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
-import { BlogContextSchema, BrandRuleSchema } from "./schema";
+import { BlogContextSchema, boundedText, BrandRuleSchema } from "./schema";
 import type { StudioContext } from "../../core/studio-context";
 
 /**
@@ -50,46 +50,51 @@ const MAX_CATALOGUE_IN_PROMPT = 80;
 const GROUNDING_MAX_STEPS = 14;
 const GROUNDING_TIMEOUT_MS = 120_000;
 
+/**
+ * What the model writes here is clamped, never rejected.
+ *
+ * {@link boundedText} explains why at length. The short of it: these fields
+ * carry values copied out of a tool result, a `.max()` on them throws away the
+ * whole campaign rather than the overlong field, and every retry throws it away
+ * again for the same reason. Ids and URLs carry no bound at all — truncating one
+ * breaks it.
+ */
 const TargetSchema = z.object({
   kind: z.enum(CAMPAIGN_TARGET_KINDS),
   id: z
     .string()
-    .max(MAX_TEXT_CHARS)
     .describe(
       "The store's own id, exactly as a tool reported it. For a collection this IS the identifier, so it is required; for a category it is optional.",
     ),
-  name: z.string().max(MAX_TEXT_CHARS),
+  name: boundedText(MAX_TEXT_CHARS),
   url: z
     .string()
-    .max(MAX_TEXT_CHARS)
     .describe(
       "The address a reader can open. Never invented. Always '' for a collection: a collection is a cluster the store filters by, not a page, so it has no address of its own.",
     ),
-  description: z
-    .string()
-    .max(MAX_TEXT_CHARS)
-    .describe("What falls inside this slice, and who it is for."),
+  description: boundedText(MAX_TEXT_CHARS).describe(
+    "What falls inside this slice, and who it is for.",
+  ),
 });
 
 const ProductSchema = z.object({
-  id: z.string().max(MAX_TEXT_CHARS),
-  name: z.string().max(MAX_TEXT_CHARS),
-  url: z.string().max(MAX_TEXT_CHARS),
+  id: z.string(),
+  name: boundedText(MAX_TEXT_CHARS),
+  url: z.string(),
   images: z
-    .array(z.string().max(MAX_TEXT_CHARS))
+    .array(z.string())
     .describe(
       "Left to the catalogue when the product is in it. Fill this only for a product no catalogue entry covers, copying the URLs a tool reported verbatim — they sit on a CDN whose host is NOT the store's.",
     ),
-  category: z.string().max(MAX_TEXT_CHARS),
-  description: z.string().max(MAX_TEXT_CHARS),
+  category: boundedText(MAX_TEXT_CHARS),
+  description: boundedText(MAX_TEXT_CHARS),
 });
 
 /** A campaign as proposed — no key, no audit dates; the caller stamps those. */
-const CampaignDraftSchema = z.object({
-  name: z
-    .string()
-    .max(MAX_TEXT_CHARS)
-    .describe("What someone would call this campaign. 'Black Friday 2026'."),
+export const CampaignDraftSchema = z.object({
+  name: boundedText(MAX_TEXT_CHARS).describe(
+    "What someone would call this campaign. 'Black Friday 2026'.",
+  ),
   period: z.object({
     start: z
       .string()
@@ -99,39 +104,34 @@ const CampaignDraftSchema = z.object({
   }),
   trigger: z.object({
     type: z.enum(CAMPAIGN_TRIGGERS),
-    note: z
-      .string()
-      .max(MAX_TEXT_CHARS)
-      .describe("Why this campaign exists now — what a writer reads first."),
+    note: boundedText(MAX_TEXT_CHARS).describe(
+      "Why this campaign exists now — what a writer reads first.",
+    ),
   }),
   intent: z.object({
     objective: z.enum(CAMPAIGN_OBJECTIVES),
     targets: z.array(TargetSchema),
     products: z.array(ProductSchema),
-    keywords: z.array(z.string().max(MAX_TEXT_CHARS)),
+    keywords: z.array(boundedText(MAX_TEXT_CHARS)),
   }),
   guardrails: z.object({
     avoidComplements: z
       .array(BrandRuleSchema)
       .describe("Added to the brand's guardrails for this campaign only."),
-    toneOverrides: z
-      .string()
-      .max(MAX_TEXT_CHARS)
-      .describe("Replaces the brand's tone while this runs. '' to keep it."),
+    toneOverrides: boundedText(MAX_TEXT_CHARS).describe(
+      "Replaces the brand's tone while this runs. '' to keep it.",
+    ),
   }),
 });
 
-const ReviewSchema = z.object({
+export const ReviewSchema = z.object({
   index: z.number().int().describe("Which candidate, 1-based, in order given."),
   verdict: z.enum(["strong", "workable", "weak"]),
-  rationale: z
-    .string()
-    .max(MAX_TEXT_CHARS)
-    .describe(
-      "Why, in the brand's language — the person reads this to choose.",
-    ),
+  rationale: boundedText(MAX_TEXT_CHARS).describe(
+    "Why, in the brand's language — the person reads this to choose.",
+  ),
   risks: z
-    .array(z.string().max(MAX_TEXT_CHARS))
+    .array(boundedText(MAX_TEXT_CHARS))
     .describe("What could go wrong, or what is unverified. Empty if none."),
 });
 

@@ -41,6 +41,7 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import {
   BRAND_BLOCK_KEY,
+  brandBlockToSave,
   type BrandRule,
   CONTEXT_BLOCK_KEY,
   defaultFormatSections,
@@ -169,7 +170,7 @@ export function BlogContext({
   const [brand, setBrand] = useAutosave(storedBrand, (next) => {
     save.mutate({
       blockKey: BRAND_BLOCK_KEY,
-      data: pickBlogFields(next, BRAND_FIELDS),
+      data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
     });
   });
 

@@ -1,4 +1,30 @@
 import { z } from "zod";
+import { clampText } from "@decocms/shared/report-seo";
+
+/**
+ * A model-authored string that is bounded rather than rejected.
+ *
+ * On a model's output a `.max()` is not a cap, it is a rejection: zod throws the
+ * whole object away, and since the overflowing value is usually something copied
+ * verbatim from a tool result, every retry throws it away again for the same
+ * reason. One product description longer than a number someone guessed has cost
+ * this folder an entire catalogue chunk more than once.
+ *
+ * So the limit guides the writer through its description and clamps on the way
+ * in. The emitted JSON Schema is a plain string carrying no `maxLength`, which
+ * is what leaves nothing to reject against.
+ *
+ * `overwrite` and not `transform`: several of these schemas are also a tool's
+ * declared `outputSchema`, which an MCP client lists in output mode, where a
+ * transform is unrepresentable and throws. `overwrite` keeps the type it was
+ * given, so it survives being serialized either way.
+ *
+ * For an id, a slug or a URL, use a plain `z.string()`: those are copied
+ * character for character, and a truncated one is broken rather than shortened.
+ */
+export function boundedText(max: number) {
+  return z.string().overwrite((value) => clampText(value, max));
+}
 
 /**
  * One editorial rule: a short name plus a markdown body. Flat strings could not

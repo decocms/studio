@@ -115,13 +115,6 @@ export function useGeneratePost({
     const keys = Array.from({ length: briefing.count }, () =>
       planningPostKey(newPostId()),
     );
-    for (const key of keys) {
-      await save.mutateAsync({
-        blockKey: key,
-        data: buildPlanningPostBlock(key, placeholder),
-      });
-    }
-    onStarted?.(keys);
 
     const { merged } = readBlogContext(decofile);
     const brand = contextForTools(merged);
@@ -141,19 +134,56 @@ export function useGeneratePost({
       blocks.map((block) => [block.name, block.example]),
     );
 
-    /** A card left in Generating for a draft that never arrived would lie. */
-    const abandon = async (from: number) => {
-      for (const key of keys.slice(from)) {
-        await save.mutateAsync({
-          blockKey: key,
-          data: buildPlanningPostBlock(
-            key,
-            setPostStatus(placeholder, "draft", new Date()),
-          ),
-        });
+    /**
+     * A card left in Generating for a draft that never arrived would lie.
+     *
+     * Bounded on both sides: `from` skips the drafts that were written, which
+     * are finished posts and not ours to overwrite, and `to` stops at the cards
+     * that exist — resetting a key that was never created would conjure an
+     * empty card instead of clearing one.
+     *
+     * Best effort by construction. This runs on the failure path, where the
+     * save it would make is the one that just failed, and the caller fires this
+     * whole routine with `void` — a throw here would surface as an unhandled
+     * rejection rather than as anything the operator can read.
+     */
+    const abandon = async (from: number, to = keys.length) => {
+      for (const key of keys.slice(from, to)) {
+        try {
+          await save.mutateAsync({
+            blockKey: key,
+            data: buildPlanningPostBlock(
+              key,
+              setPostStatus(placeholder, "draft", new Date()),
+            ),
+          });
+        } catch (err) {
+          console.warn("[generatePost] could not reset a card", err);
+        }
       }
     };
 
+    /** Cards land first so the board shows the work, not a frozen dialog. */
+    let created = 0;
+    try {
+      for (const key of keys) {
+        await save.mutateAsync({
+          blockKey: key,
+          data: buildPlanningPostBlock(key, placeholder),
+        });
+        created += 1;
+      }
+    } catch (err) {
+      await abandon(0, created);
+      toast.error(
+        err instanceof Error ? err.message : t("sandbox.generatePost.failed"),
+      );
+      return;
+    }
+    onStarted?.(keys);
+
+    /** How many keys hold a real draft, so a later failure cannot erase them. */
+    let written = 0;
     try {
       const result = await studio.call("BLOG_POST_DRAFT", {
         virtualMcpId,
@@ -211,8 +241,9 @@ export function useGeneratePost({
           blockKey: key,
           data: buildPlanningPostBlock(key, payload),
         });
+        written = i + 1;
       }
-      await abandon(result.posts.length);
+      await abandon(written);
 
       if (result.posts.length > 0) {
         toast.success(
@@ -225,7 +256,8 @@ export function useGeneratePost({
         toast.warning(t(GAP_KEYS[gap.code], { count: gap.count ?? 0 }));
       }
     } catch (err) {
-      await abandon(0);
+      // From `written`: a draft already saved is a finished post, not a casualty.
+      await abandon(written);
       toast.error(
         err instanceof Error ? err.message : t("sandbox.generatePost.failed"),
       );
