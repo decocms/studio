@@ -24,6 +24,7 @@ const nativePresence = (
   present: Array<keyof ProjectNativeViewPresence>,
 ): ProjectNativeViewPresence => ({
   assets: present.includes("assets"),
+  releases: present.includes("releases"),
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
   analytics: present.includes("analytics"),

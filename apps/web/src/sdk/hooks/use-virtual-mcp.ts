@@ -23,6 +23,7 @@ import {
   mcpClientQueryOptions,
   useMCPClient,
   useMCPClientNonBlocking,
+  useMCPClientOptional,
 } from "./use-mcp-client";
 import { SELF_MCP_ALIAS_ID } from "@decocms/shared/sdk/lib/constants";
 import { KEYS } from "@/lib/query-keys";
@@ -111,10 +112,14 @@ export function useVirtualMCPNonBlocking(
   virtualMcpId: string | null | undefined,
 ): VirtualMCPEntity | null {
   const { org } = useProjectContext();
-  const client = useMCPClientNonBlocking({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
+  // No org (`/site-editor`): nothing to connect to.
+  const { data: client = null } = useQuery({
+    ...mcpClientQueryOptions({
+      connectionId: SELF_MCP_ALIAS_ID,
+      orgId: org.id,
+      orgSlug: org.slug,
+    }),
+    enabled: !!org.id,
   });
 
   const { data } = useQuery({
@@ -208,8 +213,10 @@ export function useVirtualMCP(
   virtualMcpId: string | null | undefined,
 ): VirtualMCPEntity | null {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
+  // Outside an org (the account-less `/site-editor`) there's no project to
+  // read: skip the client, and the item reads as null without a request.
+  const client = useMCPClientOptional({
+    connectionId: org.id ? SELF_MCP_ALIAS_ID : undefined,
     orgId: org.id,
     orgSlug: org.slug,
   });
@@ -262,9 +269,10 @@ export function useVirtualMCPsLastUsed(ids: string[]) {
 /**
  * Hook to get virtual MCP mutation actions (create, update, delete)
  *
+ * @param options.silent - No toasts: the caller owns the feedback.
  * @returns Object with create, update, and delete mutation hooks
  */
-export function useVirtualMCPActions() {
+export function useVirtualMCPActions(options: { silent?: boolean } = {}) {
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -272,5 +280,10 @@ export function useVirtualMCPActions() {
     orgSlug: org.slug,
   });
 
-  return useCollectionActions<VirtualMCPEntity>(org.id, "VIRTUAL_MCP", client);
+  return useCollectionActions<VirtualMCPEntity>(
+    org.id,
+    "VIRTUAL_MCP",
+    client,
+    options,
+  );
 }

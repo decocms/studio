@@ -137,6 +137,14 @@ export const sandbox = {
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) nesta categoria",
   "sandbox.categoryEditor.previewTooltip":
     "Abra a visualização da categoria em uma nova aba",
+  "sandbox.cmsSettingsBlock.conflictDescription":
+    'Já existe um bloco chamado CMS com o tipo "{type}". Renomeie-o para editar as configurações do CMS aqui.',
+  "sandbox.cmsSettingsBlock.conflictTitle":
+    "Configurações do CMS indisponíveis",
+  "sandbox.cmsSettingsBlock.defaultsNotice":
+    "Ainda não salvo: estes são os valores padrão. Sua primeira alteração cria o bloco CMS.",
+  "sandbox.cmsSettingsBlock.description":
+    "Hosts de preview, telemetria e analytics. O site os lê da versão publicada: as alterações valem após publicar, nunca no preview de um rascunho.",
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
@@ -181,6 +189,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.redirects": "Redirecionamentos",
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
+  "sandbox.collectionsSidebar.settings": "Configurações",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
@@ -840,6 +849,10 @@ export const sandbox = {
     "O caminho de origem a corresponder. Suporta sintaxe URLPattern (ex. /produto/:slug).",
   "sandbox.redirectEditor.fromLabel": "De",
   "sandbox.redirectEditor.fromPlaceholder": "/caminho-antigo",
+  "sandbox.redirectEditor.statusDescription":
+    "Um código de status explícito prevalece sobre o tipo.",
+  "sandbox.redirectEditor.statusFromType": "Seguir o tipo ({status})",
+  "sandbox.redirectEditor.statusLabel": "Código de status",
   "sandbox.redirectEditor.title": "Redirecionamento",
   "sandbox.redirectEditor.toDescription":
     "O destino — um caminho relativo ou uma URL absoluta.",
@@ -858,6 +871,8 @@ export const sandbox = {
     "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
+  "sandbox.cmsSettings.blocksV8.needsPreviewServerUrl":
+    "Adicione o endereço do seu site acima para visualizar rascunhos. Até lá, novos chats começam uma sessão de código.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Preview instantâneo (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
@@ -873,6 +888,8 @@ export const sandbox = {
     "Continuar esta branch em uma sessão de código",
   "sandbox.previewServerUrlField.description":
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
+  "sandbox.previewServerUrlField.descriptionBlocksV8":
+    "O endereço do seu site no ar. O Studio mostra seus rascunhos nele antes de você publicar.",
   "sandbox.previewServerUrlField.label": "Servidor de preview",
   "sandbox.previewServerUrlField.placeholder": "https://exemplo.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
@@ -952,6 +969,24 @@ export const sandbox = {
     "JSON inválido — as alterações não serão salvas até que seja processado.",
   "sandbox.savedSectionEditor.noEditableFields":
     "Nenhum campo editável para esta seção.",
+  "sandbox.schemaless.back": "Todos os blocos",
+  "sandbox.schemaless.bannerBody":
+    "Até lá, cada bloco abre com campos simples criados a partir dos valores salvos, e salvar mantém todos os outros valores como estão. Gere o schema na pasta do seu site; esta página o detecta sozinha.",
+  "sandbox.schemaless.bannerTitle":
+    "Os formulários ganham os campos certos assim que o schema existir",
+  "sandbox.schemaless.docsLink": "Sobre o deco schema",
+  "sandbox.schemaless.empty": "Vazio",
+  "sandbox.schemaless.item": "Item {n}",
+  "sandbox.schemaless.itemCount": "{count} itens",
+  "sandbox.schemaless.listLabel": "Blocos salvos",
+  "sandbox.schemaless.noBlocks": "Nenhum bloco salvo ainda.",
+  "sandbox.schemaless.noMatches": "Nenhum bloco corresponde à busca.",
+  "sandbox.schemaless.noType": "Sem tipo",
+  "sandbox.schemaless.notANumber":
+    "Digite um número. O valor salvo continua até você digitar.",
+  "sandbox.schemaless.notSet": "Sem valor",
+  "sandbox.schemaless.pickBlock": "Escolha um bloco para ver o conteúdo.",
+  "sandbox.schemaless.searchPlaceholder": "Buscar blocos",
   "sandbox.sectionRenameDialog.cancel": "Cancelar",
   "sandbox.sectionRenameDialog.description":
     "Atualiza o nome de exibição. A chave interna permanece a mesma para que as páginas que referem esta seção continuem funcionando.",

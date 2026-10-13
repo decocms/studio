@@ -26,6 +26,7 @@ import {
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useChatTask } from "@/components/chat/index";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -127,6 +128,8 @@ export function useMainPanelTabs(ctx: {
     entity,
   );
   const nativeViews = useProjectNativeViewPresence(mainViewContext.project);
+  // Read main's schema as soon as a project opens: the editor waits on it.
+  useMainSchemaV8(mainViewContext.project?.id);
   const mainViewPresence = projectMainViewPresence(
     mainViewContext.resolvedScopeId,
     agentHasClonableSource(mainViewContext.project?.metadata),

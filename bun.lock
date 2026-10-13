@@ -112,6 +112,7 @@
         "@better-auth/sso": "1.6.11",
         "@daveyplate/better-auth-ui": "^3.2.7",
         "@decocms/bindings": "workspace:*",
+        "@decocms/blocks": "8.1.0",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/shared": "workspace:*",
@@ -231,6 +232,7 @@
       "name": "@decocms/e2e",
       "version": "1.93.4",
       "dependencies": {
+        "@decocms/blocks": "8.1.0",
         "@decocms/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@playwright/test": "^1.58.2",

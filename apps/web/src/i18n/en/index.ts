@@ -30,10 +30,14 @@ import { discover } from "./discover.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { experiments } from "./experiments.ts";
+import { releases } from "./releases.ts";
+import { siteTokens } from "./site-tokens.ts";
 import { common } from "./common.ts";
 import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
+import { decoServe } from "./deco-serve.ts";
+import { siteEditor } from "./site-editor.ts";
 import { chat } from "./chat.ts";
 import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
@@ -64,6 +68,8 @@ export const en = {
   ...monitoring,
   ...mainPanelTabs,
   ...experiments,
+  ...releases,
+  ...siteTokens,
   ...markdownEditor,
   ...library,
   ...layouts,
@@ -83,6 +89,8 @@ export const en = {
   ...reportsOnboarding,
   ...collections,
   ...chooseEditor,
+  ...decoServe,
+  ...siteEditor,
   ...chat,
   ...credits,
   ...automations,

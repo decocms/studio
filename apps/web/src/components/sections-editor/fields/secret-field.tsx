@@ -26,7 +26,7 @@ export function isSecretField(schema: SchemaProperty, value: unknown): boolean {
   );
 }
 
-type EncryptSecret = (value: string) => Promise<string>;
+export type EncryptSecret = (value: string) => Promise<string>;
 
 /**
  * Deco API secrets are `website/loaders/secret.ts` blocks (`name` + `encrypted`).
@@ -110,7 +110,7 @@ export function SecretField({
   );
 }
 
-type StoredSecretState = "none" | "encrypted" | "plaintext";
+export type StoredSecretState = "none" | "encrypted" | "plaintext";
 
 function storedSecretState(encrypted: unknown): StoredSecretState {
   if (encrypted === undefined || encrypted === null || encrypted === "") {
@@ -124,7 +124,7 @@ function storedSecretState(encrypted: unknown): StoredSecretState {
  * button, and emits nothing but the site's hex. A failed encryption emits
  * nothing, so the pending secret can't reach the autosave.
  */
-function EncryptedSecretInput({
+export function EncryptedSecretInput({
   id,
   stored,
   encrypt,

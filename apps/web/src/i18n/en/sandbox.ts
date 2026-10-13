@@ -134,6 +134,13 @@ export const sandbox = {
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) in this category",
   "sandbox.categoryEditor.previewTooltip":
     "Open the category preview in a new tab",
+  "sandbox.cmsSettingsBlock.conflictDescription":
+    'A block named CMS already exists with type "{type}". Rename it to edit the CMS settings here.',
+  "sandbox.cmsSettingsBlock.conflictTitle": "CMS settings unavailable",
+  "sandbox.cmsSettingsBlock.defaultsNotice":
+    "Not saved yet: these are the defaults. Your first change creates the CMS block.",
+  "sandbox.cmsSettingsBlock.description":
+    "Preview hosts, telemetry and analytics. The site reads them from its published release: changes take effect once published, never in a draft preview.",
   "sandbox.categoryEditor.renameActionButton": "Rename & update posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Changing the slug from "{oldSlug}" to "{newSlug}" will update {count} post(s) that reference this category.',
@@ -178,6 +185,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.redirects": "Redirects",
   "sandbox.collectionsSidebar.sections": "Sections",
   "sandbox.collectionsSidebar.seo": "SEO",
+  "sandbox.collectionsSidebar.settings": "Settings",
   "sandbox.collectionsSidebar.site": "Site",
   "sandbox.contentBrowser.createdSection": 'Created section "{name}"',
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
@@ -816,6 +824,10 @@ export const sandbox = {
     "The source path to match. Supports URLPattern syntax (e.g. /product/:slug).",
   "sandbox.redirectEditor.fromLabel": "From",
   "sandbox.redirectEditor.fromPlaceholder": "/old-path",
+  "sandbox.redirectEditor.statusDescription":
+    "An explicit status code wins over the type.",
+  "sandbox.redirectEditor.statusFromType": "Follow the type ({status})",
+  "sandbox.redirectEditor.statusLabel": "Status code",
   "sandbox.redirectEditor.title": "Redirect",
   "sandbox.redirectEditor.toDescription":
     "The destination — a relative path or an absolute URL.",
@@ -834,6 +846,8 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.blocksV8.needsPreviewServerUrl":
+    "Add your site's address above to preview drafts. Until then, new chats start a coding session.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
@@ -849,6 +863,8 @@ export const sandbox = {
     "Continue this branch in a coding session",
   "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
+  "sandbox.previewServerUrlField.descriptionBlocksV8":
+    "Your live site's address. Studio shows your drafts on it before you publish.",
   "sandbox.previewServerUrlField.label": "Preview server",
   "sandbox.previewServerUrlField.placeholder": "https://example.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
@@ -926,6 +942,24 @@ export const sandbox = {
     "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
+  "sandbox.schemaless.back": "All blocks",
+  "sandbox.schemaless.bannerBody":
+    "Until then, each block opens with plain fields built from its saved values, and saving keeps every other value as it is. Generate the schema in your site's folder; this page picks it up on its own.",
+  "sandbox.schemaless.bannerTitle":
+    "Forms get proper fields once the schema exists",
+  "sandbox.schemaless.docsLink": "About deco schema",
+  "sandbox.schemaless.empty": "Empty",
+  "sandbox.schemaless.item": "Item {n}",
+  "sandbox.schemaless.itemCount": "{count} items",
+  "sandbox.schemaless.listLabel": "Saved blocks",
+  "sandbox.schemaless.noBlocks": "No saved blocks yet.",
+  "sandbox.schemaless.noMatches": "No blocks match your search.",
+  "sandbox.schemaless.noType": "Without a type",
+  "sandbox.schemaless.notANumber":
+    "Enter a number. The saved value stays until you do.",
+  "sandbox.schemaless.notSet": "Not set",
+  "sandbox.schemaless.pickBlock": "Pick a block to see its content.",
+  "sandbox.schemaless.searchPlaceholder": "Search blocks",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
   "sandbox.sectionRenameDialog.description":
     "Updates the display name. The internal key stays the same so pages referencing this section keep working.",

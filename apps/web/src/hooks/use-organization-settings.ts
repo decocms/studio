@@ -111,6 +111,8 @@ function useOrganizationSettings<T = OrganizationSettings>(
   return useQuery({
     ...organizationSettingsQueryOptions(org.slug, org.id),
     select: select as (data: OrganizationSettings) => T,
+    // No org (the account-less `/site-editor`): flags keep their defaults.
+    enabled: !!org.id,
   });
 }
 
@@ -231,6 +233,19 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
     orgFlagEnabled(s.flags, flag),
   );
   return data ?? DEFAULT_ON_FLAGS.has(flag);
+}
+
+/**
+ * {@link useOrgFlag}, but `undefined` while the org settings load — for
+ * gates that must not act on the pre-load default (routing reads to one
+ * backend, then switching them to another).
+ */
+export function useOrgFlagState(flag: keyof OrgFlags): boolean | undefined {
+  const { data, isError } = useOrganizationSettings((s) =>
+    orgFlagEnabled(s.flags, flag),
+  );
+  // A failed read falls back to the default rather than waiting forever.
+  return data ?? (isError ? DEFAULT_ON_FLAGS.has(flag) : undefined);
 }
 
 /**
