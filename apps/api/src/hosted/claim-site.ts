@@ -22,6 +22,7 @@ import {
   type OrgSiteLinkErrorCode,
 } from "@/storage/org-sites";
 import { getDecoSupabaseConfig, supabaseGet } from "@/deco-legacy/supabase";
+import { ensureManagedSiteFileConfig } from "@/file-storage/managed-site-config";
 import { projectSite } from "./scope";
 
 /** Why a project was not linked to the site it names. */
@@ -299,6 +300,12 @@ export interface SiteClaimBackfillReport {
   }[];
   notV8: SiteClaimCandidate[];
   errors: (SiteClaimCandidate & { error: string })[];
+  /**
+   * Linked (or already linked) projects whose managed asset config (Studio's
+   * S3, `deco-assets-<slug>`) couldn't be set up. The link itself stands; a
+   * re-run sets it up.
+   */
+  assetConfigErrors: (SiteClaimCandidate & { error: string })[];
 }
 
 /**
@@ -312,6 +319,14 @@ export async function backfillSiteClaims(
     candidates: SiteClaimCandidate[];
     /** Whether the project's main branch is a Blocks v8 site. */
     isV8: (candidate: SiteClaimCandidate) => Promise<boolean>;
+    /**
+     * The org file configs: a linked project gets its site's managed asset
+     * config, as at project create and the deco.cx import, so its uploads
+     * (hosted and sandbox) go to Studio's S3 instead of the bucket picker.
+     */
+    fileConfigs: Parameters<
+      typeof ensureManagedSiteFileConfig
+    >[0]["fileConfigs"];
     by: string;
     dryRun: boolean;
   },
@@ -324,6 +339,7 @@ export async function backfillSiteClaims(
     ambiguous: [],
     notV8: [],
     errors: [],
+    assetConfigErrors: [],
   };
   const fail = (candidate: SiteClaimCandidate, error: unknown) =>
     report.errors.push({
@@ -395,9 +411,33 @@ export async function backfillSiteClaims(
             source: "backfill",
             dryRun: deps.dryRun,
           });
-          if (outcome.status === "linked") report.linked.push(candidate);
-          else if (outcome.status === "already-linked") {
-            report.alreadyLinked.push(candidate);
+          if (
+            outcome.status === "linked" ||
+            outcome.status === "already-linked"
+          ) {
+            (outcome.status === "linked"
+              ? report.linked
+              : report.alreadyLinked
+            ).push(candidate);
+            if (!deps.dryRun) {
+              // Best-effort: the link stands; the report says what to re-run.
+              await ensureManagedSiteFileConfig({
+                fileConfigs: deps.fileConfigs,
+                organizationId,
+                slug,
+                by: deps.by,
+              }).catch((error) => {
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                console.error("hosted: managed asset config not provisioned", {
+                  organizationId,
+                  projectId: candidate.projectId,
+                  slug,
+                  error: message,
+                });
+                report.assetConfigErrors.push({ ...candidate, error: message });
+              });
+            }
           } else {
             report.refused.push({
               ...candidate,

@@ -69,3 +69,27 @@ export function resetMainSchemaAnswer(
     },
   });
 }
+
+/** Main's schema as read for the answer (kept for the editor's form). */
+export interface MainSchemaRead {
+  /** `isV8Schema` on main's schema (or Studio's gate that settled it). */
+  isV8: boolean;
+  /** Main's schema; null when there is none or a gate settled the answer. */
+  schema: unknown;
+  /** Its version (`schema.get`'s, for `ifNoneMatch`); null without one. */
+  version: string | null;
+}
+
+/**
+ * Main's schema read for this project, if the page has it (see
+ * `useMainSchemaV8`).
+ */
+export function mainSchemaRead(
+  queryClient: QueryClient,
+  orgSlug: string,
+  virtualMcpId: string,
+): MainSchemaRead | undefined {
+  return queryClient.getQueryData<MainSchemaRead>(
+    KEYS.mainSchemaV8(orgSlug, virtualMcpId),
+  );
+}

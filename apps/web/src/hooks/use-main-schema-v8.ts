@@ -8,6 +8,11 @@
  * per project per session, again only when the server says main changed
  * since (`main-schema-changed.ts`).
  *
+ * The read keeps main's schema and its version, not just the answer: on a
+ * v8 site it is the form schema the editor opens with (`schema.get` on that
+ * route reads main whatever the branch), so the GitHub probe and the first
+ * content poll reuse it (`mainSchemaRead` in `main-schema-changed.ts`) instead of downloading it again.
+ *
  * This is how the web app knows a project is a Blocks v8 site. The
  * project's `metadata.blocksMajor` marker is only the server's cache of this
  * same answer, never a v8 answer on its own: it only tells an unreadable
@@ -37,6 +42,7 @@ import {
   isV8Schema,
 } from "@decocms/shared/blocks-major";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import type { MainSchemaRead } from "@/hooks/main-schema-changed";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { invalidateCollectionQueries } from "@/sdk/hooks/use-collections";
@@ -56,7 +62,10 @@ const MAIN_SCHEMA_BRANCH = "main";
 const ANSWER_BY_STATUS: Record<string, boolean> = {
   // No repository: no main, not a v8 site.
   "404 no_repository": false,
-  // No CMS in the org's plan: the v8 editor can't open; as on main.
+  // No CMS in the org's plan: the decofile routes' plan gate answers before
+  // main's schema is read, so a v8 site there is deliberately treated as v7
+  // by every caller (editor, preview, Localhost tunnel), as on main. Every
+  // plan includes `cms` today; revisit this if a plan without it is added.
   "403 feature_not_in_plan": false,
   // These gates run only once main is v8.
   "409 site_not_owned": true,
@@ -64,9 +73,9 @@ const ANSWER_BY_STATUS: Record<string, boolean> = {
 };
 
 /**
- * Whether main's schema is a Blocks v8 one: `schema.get` over the project's
- * content protocol, then `isV8Schema` on it. Throws when main couldn't be
- * read (retried), never a v7 answer the editor would act on.
+ * Main's schema and whether it is a Blocks v8 one: `schema.get` over the
+ * project's content protocol, then `isV8Schema` on it. Throws when main
+ * couldn't be read (retried), never a v7 answer the editor would act on.
  */
 export async function fetchMainSchemaV8(
   orgSlug: string,
@@ -75,7 +84,7 @@ export async function fetchMainSchemaV8(
     input,
     init,
   ) => fetch(input, init),
-): Promise<boolean> {
+): Promise<MainSchemaRead> {
   const res = await doFetch(
     `/api/${orgSlug}/decofile/${encodeURIComponent(virtualMcpId)}/${MAIN_SCHEMA_BRANCH}/rpc`,
     {
@@ -87,17 +96,24 @@ export async function fetchMainSchemaV8(
   );
   const body = (await res.json().catch(() => null)) as {
     code?: unknown;
-    result?: { schema?: unknown };
+    result?: { schema?: unknown; version?: unknown };
   } | null;
   if (!res.ok) {
     const settled = ANSWER_BY_STATUS[`${res.status} ${body?.code}`];
-    if (settled !== undefined) return settled;
+    if (settled !== undefined) {
+      return { isV8: settled, schema: null, version: null };
+    }
     throw new Error(`main's schema: HTTP ${res.status}`);
   }
   if (!body?.result || !("schema" in body.result)) {
     throw new Error("main's schema: unexpected answer");
   }
-  return isV8Schema(body.result.schema);
+  const { schema, version } = body.result;
+  return {
+    isV8: isV8Schema(schema),
+    schema: schema ?? null,
+    version: typeof version === "string" ? version : null,
+  };
 }
 
 /** The answer from the query's state (pure, for tests). */
@@ -134,12 +150,12 @@ export function useMainSchemaV8(
   const query = useQuery({
     queryKey: KEYS.mainSchemaV8(org.slug, projectId),
     queryFn: async () => {
-      const isV8 = await fetchMainSchemaV8(org.slug, projectId);
+      const read = await fetchMainSchemaV8(org.slug, projectId);
       // The server just rewrote its cached answer: re-read the project.
-      if (isV8 !== marked) {
+      if (read.isV8 !== marked) {
         invalidateCollectionQueries(queryClient, org.id, "VIRTUAL_MCP");
       }
-      return isV8;
+      return read;
     },
     enabled: asks,
     staleTime: Number.POSITIVE_INFINITY,
@@ -151,7 +167,7 @@ export function useMainSchemaV8(
   return mainSchemaAnswer({
     asks,
     hasProject: !!project,
-    data: query.data,
+    data: query.data?.isV8,
     // A re-poll of a failed read puts the query back to `pending` (no data
     // yet): the answer stays the failure's until a read succeeds, so the
     // editor and preview never flip back to loading every few seconds.

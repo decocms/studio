@@ -32,6 +32,7 @@ import {
   isMainSchemaChangedResponse,
   MainSchemaChangedError,
   mainSchemaHeaders,
+  mainSchemaRead,
   resetMainSchemaAnswer,
 } from "@/hooks/main-schema-changed";
 import {
@@ -85,6 +86,12 @@ export async function probeGithub(
    * before the call throws, so the editor re-reads main's answer.
    */
   onMainSchemaChanged?: () => void,
+  /**
+   * Main's schema as the page already read it (`mainSchemaRead`): this
+   * route's `schema.get` reads main whatever the branch, so a v8 one is
+   * reused and only `describe` is sent.
+   */
+  knownMainSchema?: unknown,
 ): Promise<Probe | null | typeof GITHUB_SITE_NOT_OWNED> {
   const client = createContentClient({
     endpoint,
@@ -105,7 +112,10 @@ export async function probeGithub(
     },
   });
   try {
-    const result = await probe(client);
+    const result = await probe(
+      client,
+      isV8Schema(knownMainSchema) ? { schema: knownMainSchema } : undefined,
+    );
     // Only a committed schema with `"blocksMajor": 8` is a v8 site; no
     // schema, or one without the field (a v7 `meta.gen.json`), is legacy.
     return result.v8Schema ? result : null;
@@ -145,17 +155,30 @@ function sandboxContentEndpoint(params: {
 
 /**
  * `describe` plus the schema, in one request. Throws `NotDecoServeError` when
- * something else answered (see `classifyServeProbeError`).
+ * something else answered (see `classifyServeProbeError`). With `known`, the
+ * schema the caller already read for this endpoint, only `describe` is sent.
  */
-export async function probe(client: ContentClient): Promise<Probe> {
-  const [described, schema] = await client.batch([
-    { method: "describe" },
-    { method: "schema.get" },
-  ]);
+export async function probe(
+  client: ContentClient,
+  known?: { schema: unknown },
+): Promise<Probe> {
+  const [described, schema] = await client.batch(
+    known
+      ? [{ method: "describe" }]
+      : [{ method: "describe" }, { method: "schema.get" }],
+  );
   if (!described?.ok) throw described?.error ?? new Error("no describe");
   const result = described.result as Partial<DescribeResult> | null;
   if (result?.protocol !== PROTOCOL_NAME) throw new NotDecoServeError();
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
+  if (known) {
+    return {
+      client,
+      describe,
+      hasSchema: known.schema != null,
+      v8Schema: isV8Schema(known.schema),
+    };
+  }
   if (!schema) throw new Error("no schema.get");
   // `schema: null`, or NotFound from an older deco serve: no schema yet.
   if (isSchemaAbsent(schema)) {
@@ -260,6 +283,7 @@ export function useContentBackend(
         }),
         undefined,
         () => resetMainSchemaAnswer(queryClient, org.slug, virtualMcpId!),
+        mainSchemaRead(queryClient, org.slug, virtualMcpId!)?.schema,
       ),
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
