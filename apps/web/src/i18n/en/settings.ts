@@ -546,7 +546,7 @@ export const settings = {
   "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
   "settings.connectClients.mcpDescription":
-    "For clients without a shell. Writing Library files needs the CLI + skill.",
+    "For clients without a shell. Sharing Library files and messaging agents need the CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",

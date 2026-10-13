@@ -4,8 +4,8 @@
  *
  * Two tabs: the `decocms-studio` skill with its CLI login, and this org's MCP
  * endpoint. The skill opens first and is marked recommended because it covers
- * everything the MCP endpoint does plus the REST-only features, Library files
- * among them.
+ * everything the MCP endpoint does plus the REST-only features: sharing
+ * Library files, messaging agents, the event stream.
  *
  * Flat by design: the skill steps or the MCP client tabs with the selected
  * client's snippet, then the API keys section (`views/settings/api-keys.tsx`, also

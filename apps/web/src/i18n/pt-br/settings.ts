@@ -562,7 +562,7 @@ export const settings = {
   "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
   "settings.connectClients.mcpDescription":
-    "Para clientes sem shell. Gravar arquivos na Library exige a CLI + skill.",
+    "Para clientes sem shell. Compartilhar arquivos da Library e mandar mensagem para agentes exige a CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
