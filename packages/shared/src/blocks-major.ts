@@ -7,7 +7,7 @@
  *
  * Every v8 decision, on the server and in the web app, goes through
  * {@link isV8Schema}: the hosted routes, the content backends (GitHub,
- * sandbox daemon, `deco serve`), Releases and site tokens. The project's
+ * sandbox working tree, `deco serve`), Releases and site tokens. The project's
  * `metadata.blocksMajor` marker is only that predicate's cached answer for
  * main's schema, kept by the server: the server writes it right after running
  * the predicate, and nothing else writes it. The web app never decides from

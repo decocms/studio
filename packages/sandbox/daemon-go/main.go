@@ -133,7 +133,6 @@ type sandboxHandlers struct {
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
-	contentRPC                            http.HandlerFunc
 	fs, git, setup                        map[string]http.HandlerFunc
 }
 
@@ -678,15 +677,6 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("POST "+pre+"/tasks/{id}/kill", d.authed(h.tasksKill))
 
 	mux.HandleFunc("POST "+pre+"/tools/sync", d.authed(h.toolsSync))
-
-	// The content protocol over the working tree (v8 sites). Every method but
-	// OPTIONS (the CORS preflight) reaches the handler, which answers anything
-	// but POST with the protocol's own 405. Commits take the tree lock
-	// themselves; reads never do. No asset uploads: project assets live in
-	// Studio's file storage.
-	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
-		mux.HandleFunc(method+" "+pre+"/rpc", d.authed(h.contentRPC))
-	}
 	for _, step := range []string{"clone", "install", "start"} {
 		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
 	}
@@ -1311,13 +1301,6 @@ func main() {
 		GetConfigured:   func() bool { return d.store.Read() != nil },
 	})
 
-	contentRoutes := routes.NewContent(routes.ContentDeps{
-		RepoDir:  repoDir,
-		Store:    d.store,
-		TreeLock: &d.treeLock,
-		OnWrite:  fsDeps.OnWorkingTreeWrite,
-	})
-
 	h := sandboxHandlers{
 		scripts: routes.Scripts(func() []string {
 			if cached, ok := d.orchestrator.DiscoveredScripts(); ok {
@@ -1354,7 +1337,6 @@ func main() {
 			GetTasks:        func() []proc.Phase { return d.phases.Recent(20) },
 			RepoDir:         repoDir,
 		}),
-		contentRPC: contentRoutes.RPC,
 		configUpdate: routes.ConfigUpdate(routes.ConfigDeps{
 			DaemonBootId:   bootId,
 			Store:          d.store,

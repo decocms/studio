@@ -7,10 +7,7 @@
 // publish or discard that runs mid-write commits or destroys a half-written file.
 package worktree
 
-import (
-	"sync"
-	"time"
-)
+import "sync"
 
 // Lock guards the working tree. Held by the mutating fs routes and by every git
 // operation that reads or rewrites the whole checkout.
@@ -29,20 +26,4 @@ type Lock struct {
 func (l *Lock) Acquire() func() {
 	l.mu.Lock()
 	return l.mu.Unlock
-}
-
-// AcquireWithin is Acquire bounded by d: ok is false (and nothing is held)
-// when the tree stayed busy that long. For callers whose client gives up
-// after a while, so a write never lands after its request was abandoned.
-func (l *Lock) AcquireWithin(d time.Duration) (release func(), ok bool) {
-	deadline := time.Now().Add(d)
-	for {
-		if l.mu.TryLock() {
-			return l.mu.Unlock, true
-		}
-		if !time.Now().Before(deadline) {
-			return nil, false
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 }

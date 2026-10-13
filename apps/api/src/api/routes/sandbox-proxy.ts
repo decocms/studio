@@ -77,6 +77,8 @@ import {
   hostedDraftPublishStatus,
   loadHostedDraft,
 } from "../../hosted/draft-publish-status";
+import { sandboxContentHandler } from "../../sandbox/content-storage";
+import { projectPackagePath } from "../../hosted/blocks-major";
 import {
   GitPushAuthError,
   parseRepositoryBinding,
@@ -138,11 +140,13 @@ function assertSandboxBranchParam(branch: string): void {
 const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
 /**
  * The content protocol's own cap (`@decocms/blocks/protocol` limits): 8 MiB per
- * request, plus slack so the daemon, not this proxy, answers a body right at
+ * request, plus slack so the protocol, not this route, answers a body right at
  * the limit. No asset uploads go through a sandbox: project assets go to
  * Studio's file storage (`/file-configs/:id/upload`).
  */
 const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
+/** One daemon file call made for the content protocol. */
+const DAEMON_FILE_CALL_TIMEOUT_MS = 30_000;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -704,12 +708,40 @@ async function proxyDaemon(
   }
 }
 
-/** `POST …/rpc`: one content-protocol request to the daemon's `/_sandbox/rpc`. */
-export function proxyContentRpc(c: Context<VmEnv>) {
-  return proxyDaemon(c, "/_sandbox/rpc", {
-    forwardJsonBody: true,
-    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30_000)]),
+/**
+ * `POST …/rpc`: the content protocol over the sandbox's working tree. Studio
+ * runs it (sandbox/content-storage.ts) over the daemon's file routes; the
+ * daemon itself only does files and git. A sandbox-less session has no working
+ * tree: 404, which the editor reads as "no sandbox".
+ */
+export function serveSandboxContent(c: Context<VmEnv>) {
+  const claim = c.get("vmClaim");
+  if (claim.runtime === "cms") {
+    return c.json(
+      { error: "sandbox not found: this session is sandbox-less" },
+      404,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
+  const runner = requireRunner(c);
+  if (runner instanceof Response) return runner;
+  const handler = sandboxContentHandler({
+    key: claim.claimName,
+    packagePath: projectPackagePath(claim.virtualMcpMetadata),
+    daemon: (path, body) =>
+      runner.proxyDaemonRequest(claim.claimName, path, {
+        method: "POST",
+        headers: new Headers({ "content-type": "application/json" }),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(DAEMON_FILE_CALL_TIMEOUT_MS),
+      }),
+    onError: (error) =>
+      console.error("content protocol (sandbox): internal error", {
+        virtualMcpId: claim.virtualMcpId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
   });
+  return handler(c.req.raw);
 }
 
 /**
@@ -865,10 +897,11 @@ export const createSandboxRoutes = () => {
   });
 
   // -- Content protocol (Blocks v8) -----------------------------------------
-  // The daemon serves the working tree's `.deco/blocks` over the content
-  // protocol, as a `deco serve` would on a developer's machine. A sandbox-less
-  // session has no daemon: 404, which the editor reads as "no protocol".
-  app.post(
+  // The working tree's `.deco/blocks` over the content protocol, as a
+  // `deco serve` would serve it on a developer's machine; Studio runs the
+  // protocol over the daemon's file routes (see serveSandboxContent).
+  // Every method: the protocol answers a non-POST with 405 itself.
+  app.all(
     "/:virtualMcpId/:branch/rpc",
     bodyLimit({
       maxSize: CONTENT_RPC_MAX_BODY_BYTES,
@@ -879,7 +912,7 @@ export const createSandboxRoutes = () => {
           SANDBOX_PROXY_CACHE_HEADERS,
         ),
     }),
-    proxyContentRpc,
+    serveSandboxContent,
   );
 
   // -- Tenant config --------------------------------------------------------

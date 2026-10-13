@@ -37,7 +37,6 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@decocms/blocks": "8.1.0",
     "@types/bun": "latest",
     "postgres": "^3.4.5",
     "typescript": "^7.0.2"
