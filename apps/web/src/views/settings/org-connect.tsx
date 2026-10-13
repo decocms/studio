@@ -52,7 +52,7 @@ import {
   type ConnectMode,
   InstallSnippet,
 } from "@/components/connect/install-snippet";
-import { mcpUrl } from "@/components/connect/mcp-url";
+import { connectServerName, mcpUrl } from "@/components/connect/mcp-url";
 import { useApiKeysList, useCreateApiKey } from "@/hooks/use-api-keys";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
@@ -191,6 +191,7 @@ function ModeSelect({
 function ClientPanel({
   client,
   url,
+  serverName,
   mode,
   newKey,
   canManageKeys,
@@ -200,6 +201,7 @@ function ClientPanel({
 }: {
   client: ConnectClient;
   url: string;
+  serverName: string;
   mode: ConnectMode;
   newKey: string | null;
   /** Minting a key is `api-keys:manage`; the snippet itself is not. */
@@ -226,6 +228,7 @@ function ClientPanel({
         client={client}
         mode={mode}
         url={url}
+        serverName={serverName}
         apiKey={showsKey && newKey ? newKey : undefined}
       />
       {isOther && <OAuthDiscovery url={url} />}
@@ -267,6 +270,7 @@ function OrgConnectContent() {
   const t = useT();
   const { org } = useProjectContext();
   const url = mcpUrl(org.slug);
+  const serverName = connectServerName(org.slug);
   const createKey = useCreateApiKey();
   const { granted: canManageKeys } = useCapability("api-keys:manage");
   const { data: orgKeys, dataUpdatedAt: keysUpdatedAt } = useApiKeysList({
@@ -352,6 +356,7 @@ function OrgConnectContent() {
                 <ClientPanel
                   client={id}
                   url={url}
+                  serverName={serverName}
                   mode={mode}
                   newKey={liveKey(id)}
                   canManageKeys={canManageKeys}

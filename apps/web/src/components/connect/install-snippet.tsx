@@ -2,7 +2,6 @@ import { useId } from "react";
 import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Check, Copy01 } from "@untitledui/icons";
-import { connectServerName } from "@/components/connect/mcp-url";
 import { useT } from "@/i18n/use-t.ts";
 
 export type ConnectClient = "claude-code" | "cursor" | "codex" | "raw";
@@ -20,15 +19,16 @@ function buildSnippet({
   client,
   mode,
   url,
+  serverName,
   apiKey,
 }: {
   client: ConnectClient;
   mode: ConnectMode;
   url: string;
+  serverName: string;
   apiKey?: string;
 }): SnippetBlock {
   const key = apiKey ?? "<paste-your-api-key>";
-  const serverName = connectServerName();
 
   if (client === "claude-code") {
     if (mode === "oauth") {
@@ -84,15 +84,17 @@ export function InstallSnippet({
   client,
   mode,
   url,
+  serverName,
   apiKey,
 }: {
   client: ConnectClient;
   mode: ConnectMode;
   url: string;
+  serverName: string;
   apiKey?: string;
 }) {
   const t = useT();
-  const snippet = buildSnippet({ client, mode, url, apiKey });
+  const snippet = buildSnippet({ client, mode, url, serverName, apiKey });
   const { handleCopy, copied } = useCopy();
   const labelId = useId();
   const codeId = useId();

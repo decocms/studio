@@ -5,21 +5,19 @@
  */
 
 /**
- * MCP server name registered in the client's config — derived from the current
- * host so each Studio deployment gets a distinct entry and adding two never
- * collides. `claude mcp add <name>` only accepts letters, numbers, hyphens and
- * underscores, so the host's dots are sanitized to hyphens:
- * `studio.decocms.com` → `studio-decocms-com`, `belo-horizonte.localhost` →
- * `belo-horizonte-localhost`. Falls back to `studio` during SSR (no `window`).
+ * Per-deployment, per-org MCP server name (`studio-decocms-com-acme`), limited
+ * to the characters `claude mcp add` accepts.
  */
-export function connectServerName(): string {
+export function connectServerName(orgSlug: string): string {
   const host =
     typeof window === "undefined" ? "" : window.location.hostname || "";
-  const sanitized = host
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return sanitized || "studio";
+  return (
+    [host, orgSlug]
+      .join("-")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "studio"
+  );
 }
 
 /**
