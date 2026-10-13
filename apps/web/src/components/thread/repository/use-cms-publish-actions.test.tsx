@@ -317,3 +317,32 @@ describe("useCmsPublishActions on a v7 site", () => {
     });
   });
 });
+
+describe("useCmsPublishActions on a v8 sandbox", () => {
+  it("discard keeps its git path, re-reads the blocks, then has the open form re-read", async () => {
+    const { backend: github } = hostedBackend();
+    const backend: ProtocolBackend = { ...github, source: "sandbox" };
+    let blockReads = 0;
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => {
+        blockReads++;
+        return { Home: { title: "main" } };
+      },
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
+    const before = blockReads;
+    const refresh = mock(async () => {});
+    const { result } = render(backend, { hosted: false, refresh });
+    await act(() => result.current.discardChange(homeChange));
+    expect(discardGitFiles).toHaveBeenCalledTimes(1);
+    expect(blockReads).toBe(before + 1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(getContentSyncState(SCOPE)).toMatchObject({
+      phase: "idle",
+      inFlight: 0,
+      epoch: 1,
+    });
+  });
+});
