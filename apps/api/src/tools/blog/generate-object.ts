@@ -39,12 +39,43 @@ export function retryGenerateObject<OBJECT>(options: {
  */
 export function generationFailure(err: unknown): string {
   const seen = new Set<unknown>();
-  let current = err;
+  let current: unknown = err;
   let reason = "";
-  while (current instanceof Error && !seen.has(current)) {
+  while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    reason = current.message;
-    current = current.cause;
+    const node = current as { message?: unknown; cause?: unknown };
+    const issues = zodIssues(current);
+    if (issues) return issues;
+    if (typeof node.message === "string") reason = withoutValue(node.message);
+    current = node.cause;
   }
-  return reason || String(err);
+  return reason || "unknown cause";
+}
+
+/** `path: code`, and nothing else — an issue list names fields, not contents. */
+function zodIssues(node: unknown): string | null {
+  const issues = (node as { issues?: unknown }).issues;
+  if (!Array.isArray(issues) || issues.length === 0) return null;
+  return issues
+    .map((issue) => {
+      const { path, code } = issue as { path?: unknown[]; code?: unknown };
+      return `${(path ?? []).join(".") || "<root>"}: ${String(code)}`;
+    })
+    .join("; ");
+}
+
+/**
+ * The offending value, cut out of a message that quotes it.
+ *
+ * `AI_TypeValidationError` renders as `Type validation failed: Value: {…}.
+ * Error message: […]` — the whole generated object, which for these tools is a
+ * customer's catalogue. A log line is a shared artifact, so it gets the shape
+ * of the failure and never the payload.
+ */
+function withoutValue(message: string): string {
+  const start = message.indexOf("Value: ");
+  if (start === -1) return message;
+  const rest = message.indexOf("Error message: ", start);
+  const tail = rest === -1 ? "" : ` ${message.slice(rest)}`;
+  return `${message.slice(0, start)}<value omitted>.${tail}`;
 }

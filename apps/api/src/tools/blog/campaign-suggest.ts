@@ -515,7 +515,8 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: false,
+    /** The grounding pass calls whatever connections the virtual MCP carries. */
+    openWorldHint: true,
   },
   inputSchema: z.object({
     seed: z.object({

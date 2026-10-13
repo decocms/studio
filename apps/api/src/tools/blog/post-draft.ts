@@ -341,10 +341,13 @@ export const BLOG_POST_DRAFT = defineTool({
     "Write blog posts for a campaign, shaped by one of the brand's formats and built only from blocks the site actually renders, each validated against its own schema. Generates a cover image and uploads it to the organization's bucket. Returns up to `count` drafts; does not persist — the caller builds the blocks and schedules them.",
   annotations: {
     title: "Draft a Blog Post",
-    readOnlyHint: true,
+    /** Not read-only: a generated cover is uploaded to the org's bucket, and
+     *  the address it returns is public. Open world: the grounding pass calls
+     *  whatever connections the virtual MCP carries. */
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: false,
+    openWorldHint: true,
   },
   inputSchema: z.object({
     brand: ReducedContextSchema.partial().describe(
