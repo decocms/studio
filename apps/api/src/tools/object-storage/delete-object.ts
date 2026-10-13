@@ -1,17 +1,18 @@
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
-  assertNotOrgFsKey,
   DeleteObjectInputSchema,
   DeleteObjectOutputSchema,
+  deleteOrgFsKey,
   requireObjectStorage,
 } from "./schema";
+import { parseOrgFsKey } from "../../file-storage/org-fs-path";
 
 export const DELETE_OBJECT = defineTool({
   name: "DELETE_OBJECT",
   description:
-    "Delete a single object from the organization's storage. Keys under `_fs/` are rejected; " +
-    "delete Library files with `DELETE /api/<org>/fs/<volume>/file`.",
+    "Delete a single object from the organization's storage. A `_fs/<volume>/<path>` key deletes " +
+    "that Library file, or the folder and everything under it.",
   annotations: {
     title: "Delete Object",
     readOnlyHint: false,
@@ -26,7 +27,11 @@ export const DELETE_OBJECT = defineTool({
     requireAuth(ctx);
     requireOrganization(ctx);
     await ctx.access.check();
-    assertNotOrgFsKey(input.key);
+    const fsTarget = parseOrgFsKey(input.key);
+    if (fsTarget) {
+      await deleteOrgFsKey(ctx, fsTarget);
+      return { success: true, key: input.key };
+    }
     const storage = requireObjectStorage(ctx);
 
     try {

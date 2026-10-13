@@ -54,10 +54,8 @@ When the user names a project instead of an org, search across their orgs:
 Tools are the main surface: the web app calls the same ones. Each tool's input
 schema is the documentation, so look it up instead of guessing fields.
 
-Org files are the exception: read, write, move and delete them with the `fs`
-routes in section 4, not the object-storage tools (`PUT_PRESIGNED_URL`,
-`DELETE_OBJECT`). Those write raw bytes without updating the file index, so a
-file written that way never shows up in the Library.
+Org files are the exception: use the `fs` routes in section 4. They cover
+listing, moving and sharing, which no tool does.
 
 ```bash
 decocms tools list --org <slug> thread            # NAME<TAB>summary, filtered

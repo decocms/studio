@@ -60,12 +60,15 @@ export function fsObjectKey(volume: string, path: string): string {
 }
 
 /**
- * True when an object-storage key lands in the org filesystem's namespace.
- * Normalizes like `buildS3Key`, so `x/../_fs/a` and `/_fs/a` count too.
+ * The volume and path an object-storage key addresses in the org filesystem,
+ * or null for a key outside it. Normalizes like `buildS3Key`, so `x/../_fs/a`
+ * and `/_fs/a` count too; `volume` and `path` may be empty for `_fs` itself.
  */
-export function isOrgFsKey(key: string): boolean {
-  const [first] = sanitizeKey(key).split("/");
-  return first === FS_KEY_NAMESPACE;
+export function parseOrgFsKey(
+  key: string,
+): { volume: string; path: string } | null {
+  const [first, volume = "", ...rest] = sanitizeKey(key).split("/");
+  return first === FS_KEY_NAMESPACE ? { volume, path: rest.join("/") } : null;
 }
 
 /** Storage-key prefix for an entire volume (trailing slash). */

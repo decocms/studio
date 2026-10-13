@@ -106,13 +106,12 @@ thread id. The stream never ends on its own: run it under `timeout`.
 
 ## Object storage and files
 
-Org files (the Library, `home`, `outputs`, `uploads`) go through `fs` above, never
-through these tools: their bytes sit under the `_fs/` key prefix and the file
-index only the `fs` routes maintain. `PUT_PRESIGNED_URL`, `DELETE_OBJECT` and
-`DELETE_OBJECTS` reject `_fs/` keys for that reason.
-
-For everything else, the tools (`LIST_OBJECTS`, `GET_PRESIGNED_URL`,
-`PUT_PRESIGNED_URL`, `DELETE_OBJECT`) work on raw keys. For bytes:
+Prefer `fs` above for org files (the Library, `home`, `outputs`, `uploads`).
+The tools (`LIST_OBJECTS`, `GET_PRESIGNED_URL`, `PUT_PRESIGNED_URL`,
+`DELETE_OBJECT`) work on raw keys, and a key `_fs/<vol>/<path>` is that org
+file. `PUT_PRESIGNED_URL` and `DELETE_OBJECT` on such a key apply the same
+rules as `fs` and keep the Library in step; the upload URL lasts at most an
+hour. For bytes:
 `GET /api/<slug>/object-storage/<key>` and `GET /api/<slug>/files/<key>` (the
 stable URL chat history stores for uploads).
 

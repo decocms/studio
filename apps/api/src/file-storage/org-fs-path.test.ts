@@ -3,9 +3,9 @@ import {
   ancestorsOf,
   fsObjectKey,
   fsVolumePrefix,
-  isOrgFsKey,
   isValidVolume,
   normalizeFsPath,
+  parseOrgFsKey,
   parentOf,
 } from "./org-fs-path";
 
@@ -74,20 +74,25 @@ describe("isValidVolume", () => {
   });
 });
 
-describe("isOrgFsKey", () => {
-  test("matches keys in the _fs namespace, however they are spelled", () => {
-    expect(isOrgFsKey("_fs/home/a.html")).toBe(true);
-    expect(isOrgFsKey("/_fs/home/a.html")).toBe(true);
-    expect(isOrgFsKey("uploads/../_fs/home/a.html")).toBe(true);
-    expect(isOrgFsKey("%5Ffs/home/a.html")).toBe(true);
-    expect(isOrgFsKey("_fs\\home\\a.html")).toBe(true);
-    expect(isOrgFsKey("_fs")).toBe(true);
+describe("parseOrgFsKey", () => {
+  test("reads the volume and path however the key is spelled", () => {
+    const target = { volume: "home", path: "pages/a.html" };
+    expect(parseOrgFsKey("_fs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("/_fs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("uploads/../_fs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("%5Ffs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("_fs\\home\\pages\\a.html")).toEqual(target);
+  });
+
+  test("keeps the namespace itself, with an empty volume and path", () => {
+    expect(parseOrgFsKey("_fs")).toEqual({ volume: "", path: "" });
+    expect(parseOrgFsKey("_fs/home")).toEqual({ volume: "home", path: "" });
   });
 
   test("leaves every other key alone", () => {
-    expect(isOrgFsKey("pages/a.html")).toBe(false);
-    expect(isOrgFsKey("chat-uploads/_fs/a")).toBe(false);
-    expect(isOrgFsKey("_fsx/a")).toBe(false);
-    expect(isOrgFsKey("")).toBe(false);
+    expect(parseOrgFsKey("pages/a.html")).toBeNull();
+    expect(parseOrgFsKey("chat-uploads/_fs/a")).toBeNull();
+    expect(parseOrgFsKey("_fsx/a")).toBeNull();
+    expect(parseOrgFsKey("")).toBeNull();
   });
 });
