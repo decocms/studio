@@ -468,11 +468,23 @@ test.describe("content protocol on GitHub", () => {
       const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
 
-      // The storage checks main's schema itself: nothing is saved or committed.
-      const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
-        set: { "hero-home": { __resolveType: "hero", title: "x" } },
+      // An open editor (acting on v8) saves within the gate's minute: the
+      // storage checks main's schema itself, so nothing is saved or committed.
+      const saved = await ctx.post(path, {
+        headers: { "x-deco-main-schema": "v8" },
+        data: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "blocks.apply",
+          params: {
+            set: { "hero-home": { __resolveType: "hero", title: "x" } },
+          },
+        },
       });
-      expect(applied.error?.code).toBe(-32006);
+      expect(saved.status()).toBe(200);
+      expect(
+        ((await saved.json()) as { error?: { code: number } }).error?.code,
+      ).toBe(-32006);
       expect((await inspectStubRepo(ctx, project.owner, "site")).refs).toEqual(
         headBefore,
       );
