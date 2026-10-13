@@ -386,7 +386,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("a v7 site has no /rpc and never gets the v8 marker", async ({
+  test("a v7 site's /rpc only answers main's schema (none) and never gets the v8 marker", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -404,17 +404,25 @@ test.describe("content protocol on GitHub", () => {
       const headBefore = (await inspectStubRepo(ctx, project.owner, "site"))
         .refs;
 
-      // main isn't v8, so no protocol: the editor stays on the classic one.
-      // (409 `main_schema_changed`: only an editor that read main as v8
-      // calls it, and it re-reads main's answer.)
-      expect((await rpc(ctx, path, "describe")).status).toBe(409);
-      expect(
-        (
-          await rpc(ctx, path, "blocks.apply", {
-            set: { "hero-home": { __resolveType: "hero", title: "x" } },
-          })
-        ).status,
-      ).toBe(409);
+      // main isn't v8: the route only answers main's schema (none, read
+      // only), which is how the editor tells; it never takes a write.
+      const described = await rpc<{ readOnly: boolean; assets: unknown }>(
+        ctx,
+        path,
+        "describe",
+      );
+      expect(described.result).toMatchObject({ readOnly: true, assets: null });
+      const applied = await rpc(ctx, path, "blocks.apply", {
+        set: { "hero-home": { __resolveType: "hero", title: "x" } },
+      });
+      expect(applied.error?.code).toBe(-32005);
+      // An editor that read main as v8 is told main changed (and re-reads).
+      const asV8 = await ctx.post(path, {
+        headers: { "x-deco-main-schema": "v8" },
+        data: { jsonrpc: "2.0", id: 1, method: "describe", params: {} },
+      });
+      expect(asV8.status()).toBe(409);
+      expect(await asV8.json()).toMatchObject({ code: "main_schema_changed" });
       expect(
         (
           await ctx.get(`/api/${project.org}/hosted/${project.vmcpId}/releases`)
@@ -469,9 +477,12 @@ test.describe("content protocol on GitHub", () => {
         headBefore,
       );
 
-      // Opening the project again clears the marker: no protocol, no hosted.
+      // Opening the project again clears the marker: no protocol (main's
+      // schema only, read only), no hosted.
       expect(await refreshV8(ctx, project)).toBe(false);
-      expect((await rpc(ctx, path, "describe")).status).toBe(409);
+      expect(
+        (await rpc<{ readOnly: boolean }>(ctx, path, "describe")).result,
+      ).toMatchObject({ readOnly: true });
       expect(
         (
           await ctx.get(`/api/${project.org}/hosted/${project.vmcpId}/releases`)
