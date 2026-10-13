@@ -12,16 +12,19 @@ import {
   ArrowNarrowUp,
   CheckCircle,
   Circle,
+  ClipboardCheck,
   Equal,
   Eye,
   Lightbulb02,
   Loading02,
+  PackageCheck,
   PlusCircle,
   Rocket01,
   Settings01,
   Shield01,
   ShieldTick,
   ThumbsUp,
+  UserCheck01,
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
@@ -29,6 +32,7 @@ import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TAG_COLOR,
   DELIVERY_LANES,
+  isDormantLane,
 } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { ComponentType } from "react";
@@ -232,9 +236,24 @@ export const STATUS_CONFIG: Record<
     icon: Eye,
     iconClassName: "text-warning",
   },
+  qa: {
+    labelKey: "taskBoard.config.statusQa",
+    icon: ClipboardCheck,
+    iconClassName: "text-warning",
+  },
+  customer_approval: {
+    labelKey: "taskBoard.config.statusCustomerApproval",
+    icon: UserCheck01,
+    iconClassName: "text-warning",
+  },
   approved: {
     labelKey: "taskBoard.config.statusApproved",
     icon: ThumbsUp,
+    iconClassName: "text-success",
+  },
+  ready_for_deployment: {
+    labelKey: "taskBoard.config.statusReadyForDeployment",
+    icon: PackageCheck,
     iconClassName: "text-success",
   },
   merged: {
@@ -362,11 +381,11 @@ function isDeliveryLane(status: string): boolean {
 /**
  * Lanes a card may be MOVED to — "Move to", the status dropdown. With the
  * delivery lanes off they aren't offered, so nobody can put a card somewhere
- * the org's state machine doesn't ship to.
+ * the org's state machine doesn't ship to. Dormant lanes are never offered.
  */
 export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
   return CANONICAL_COLUMN_KEYS.filter(
-    (key) => deliveryEnabled || !isDeliveryLane(key),
+    (key) => !isDormantLane(key) && (deliveryEnabled || !isDeliveryLane(key)),
   );
 }
 
@@ -376,6 +395,7 @@ export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
  * or is a delivery lane the board doesn't run; `shownLanes` overrides either.
  * `occupied` is what keeps a card from getting stuck: an unrun delivery lane is
  * absent while empty, but reappears in the drawer the moment a card sits in it.
+ * A dormant lane is drawn as a column only while a card sits in it.
  */
 export function laneVisibility({
   deliveryEnabled,
@@ -391,8 +411,10 @@ export function laneVisibility({
   hidden: CanonicalColumnKey[];
   hideable: CanonicalColumnKey[];
 } {
-  const known = CANONICAL_COLUMN_KEYS.filter(
-    (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+  const known = CANONICAL_COLUMN_KEYS.filter((s) =>
+    isDormantLane(s)
+      ? occupied.includes(s)
+      : deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
   );
   const hideable = known.filter(
     (s) =>

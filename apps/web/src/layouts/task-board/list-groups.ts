@@ -32,7 +32,10 @@ export function isGroupBy(value: unknown): value is GroupBy {
 /** Status sections read from what needs attention now down to what is
  *  settled, unlike the board, whose lanes run left to right through the flow. */
 export const LIST_STATUS_ORDER: readonly CanonicalColumnKey[] = [
+  "customer_approval",
+  "qa",
   "in_review",
+  "ready_for_deployment",
   "approved",
   "in_progress",
   "todo",

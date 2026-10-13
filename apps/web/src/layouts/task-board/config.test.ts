@@ -278,8 +278,15 @@ describe("moveTargets", () => {
     ]);
   });
 
-  test("offers every lane once they're on", () => {
-    expect(moveTargets(true)).toEqual(STATUSES);
+  test("offers every lane but the dormant ones once they're on", () => {
+    expect(moveTargets(true)).toEqual(
+      STATUSES.filter(
+        (s) =>
+          s !== "qa" &&
+          s !== "customer_approval" &&
+          s !== "ready_for_deployment",
+      ),
+    );
   });
 });
 
@@ -450,6 +457,36 @@ describe("laneVisibility", () => {
       occupied: ["merged"],
     });
     expect(lanes).toContain("merged");
+    expect(hidden).toEqual(["archived"]);
+  });
+
+  test("a dormant lane is absent while empty, whatever the delivery flag", () => {
+    for (const deliveryEnabled of [true, false]) {
+      const { lanes, hidden } = laneVisibility({
+        deliveryEnabled,
+        shownLanes: shown,
+        occupied: [],
+      });
+      expect(lanes).not.toContain("qa");
+      expect(hidden).not.toContain("qa");
+    }
+  });
+
+  // A newer release left a card there: draw the column so the card shows.
+  test("a card in a dormant lane draws that lane as a column", () => {
+    const { lanes, hidden } = laneVisibility({
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: ["qa"],
+    });
+    expect(lanes).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "qa",
+      "done",
+    ]);
     expect(hidden).toEqual(["archived"]);
   });
 

@@ -16,6 +16,8 @@ import {
   inReviewPhase,
   laneRank,
   movesForward,
+  OFFERED_COLUMN_KEYS,
+  refuseDormantLane,
 } from "./lanes";
 
 const BOARD_ORDER: TaskBoardItemStatus[] = [
@@ -23,7 +25,10 @@ const BOARD_ORDER: TaskBoardItemStatus[] = [
   "todo",
   "in_progress",
   "in_review",
+  "qa",
+  "customer_approval",
   "approved",
+  "ready_for_deployment",
   "merged",
   "post_deploy_validation",
   "done",
@@ -146,5 +151,35 @@ describe("inReviewPhase", () => {
   it("is false for a card that has not been worked yet", () => {
     expect(inReviewPhase(card("triage"))).toBe(false);
     expect(inReviewPhase(card("todo"))).toBe(false);
+  });
+});
+
+describe("dormant lanes", () => {
+  it("sit between In Review and Done", () => {
+    for (const lane of ["qa", "customer_approval", "ready_for_deployment"]) {
+      expect(laneRank(lane)).toBeGreaterThan(LANE_RANK.in_review);
+      expect(laneRank(lane)).toBeLessThan(LANE_RANK.done);
+    }
+  });
+
+  // A card a newer release parked there must read as out of review.
+  it("are past the review phase", () => {
+    expect(inReviewPhase({ status: "qa", reviewCycleStartedAt: "x" })).toBe(
+      false,
+    );
+  });
+
+  it("are refused as a write target, and only they are", () => {
+    expect(() => refuseDormantLane("qa")).toThrow(/not available/);
+    expect(() => refuseDormantLane("customer_approval")).toThrow();
+    expect(() => refuseDormantLane("ready_for_deployment")).toThrow();
+    expect(() => refuseDormantLane("in_review")).not.toThrow();
+    expect(() => refuseDormantLane(undefined)).not.toThrow();
+  });
+
+  it("are not offered to column rules", () => {
+    expect(OFFERED_COLUMN_KEYS).not.toContain("qa");
+    expect(OFFERED_COLUMN_KEYS).toContain("todo");
+    expect(OFFERED_COLUMN_KEYS).toHaveLength(9);
   });
 });

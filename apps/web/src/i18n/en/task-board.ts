@@ -36,6 +36,9 @@ export const taskBoard = {
   "taskBoard.config.statusInReview": "In Review",
   "taskBoard.config.statusPostDeployValidation": "Post-deploy Validation",
   "taskBoard.config.statusTodo": "To Do",
+  "taskBoard.config.statusQa": "QA",
+  "taskBoard.config.statusCustomerApproval": "Customer Approval",
+  "taskBoard.config.statusReadyForDeployment": "Ready for Deployment",
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Assigned to Super Agent by {name}",
