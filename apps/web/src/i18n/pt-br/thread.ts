@@ -13,6 +13,7 @@ export const thread = {
   "thread.branchPicker.advancedBack": "Voltar",
   "thread.branchPicker.cancel": "Cancelar",
   "thread.branchPicker.defaultVersionName": "Draft",
+  "thread.branchPicker.userDraftName": "Draft de {name}",
   "thread.branchPicker.delete": "Descartar",
   "thread.branchPicker.deleteConfirm":
     'Descartar "{name}"? Isso não pode ser desfeito.',
