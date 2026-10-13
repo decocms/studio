@@ -13,18 +13,21 @@
  *
  * Versions are git blob hashes of the working-tree bytes, as a `deco serve`
  * reports them. The working tree has uncommitted changes, so nothing here can
- * read "at a commit": a listing hashes every block file in the sandbox
- * (`git hash-object`, one daemon call), and only bodies whose hash the
- * protocol core hasn't cached are read, in parallel. The daemon has no stat
- * route; hashing in the pod is exact where mtime and size could miss an edit.
+ * read "at a commit": a listing (one `/_sandbox/bash` command, see
+ * `scanCommand`) takes each file's hash from git's index when git's own
+ * path + mtime + size check says it is unchanged, and hashes the rest, and
+ * only bodies whose hash the protocol core hasn't cached are read, in
+ * parallel. The listing goes through a file, not stdout, so its size has no
+ * limit and a cut one is refused.
  *
  * Writes (`commit`) are ordered single-file writes through the daemon, each
  * under the daemon's tree lock, preceded by a fresh listing that checks every
  * expected version (and the schema's), so a stale attempt is refused and the
- * protocol answers its usual Conflict / retry. A failed write rolls back the
- * files already written. Commits are serialized per sandbox in this process;
- * a write by someone else between the check and the write (the agent, another
- * API pod) is the one window left, the same as on the daemon's own fs routes.
+ * protocol answers its usual Conflict / retry. A failed write rolls back every
+ * file it touched, the one in flight included. Commits are serialized per
+ * sandbox in this process; a write by someone else between the check and the
+ * write (the agent, another API pod) is the one window left, the same as on
+ * the daemon's own fs routes.
  */
 
 import { createHash } from "node:crypto";
@@ -105,54 +108,90 @@ function appRoot(packagePath: string | null): string {
   return root;
 }
 
+/** The prefix of the folders listings are written to, in the sandbox's tmp. */
+const SCAN_DIR_PREFIX = "studio-deco-scan.";
+
 /**
- * One listing of `.deco`: `@none` without a `.deco` folder; else a `@meta`
- * line per schema/secrets file, then every block file and, in the same order,
- * its blob hash. A name with a control character is left out (a block file
- * the protocol writes never has one: `encodeURIComponent` escapes them).
+ * One listing of `.deco`, written to a file in the sandbox's tmp, never to
+ * stdout: the daemon keeps only the tail of a task's output, and a big site's
+ * listing can outgrow it. Stdout is one line: `@none` without a `.deco`
+ * folder, else `@file <absolute path>`, read back through `/_sandbox/read`.
+ *
+ * The file has one `<blob hash> <path under .deco>` line per schema/secrets
+ * file and per block file (`blocks/<name>`), then `@end`, so a cut listing
+ * is never taken for a short one and a hash never pairs with another file.
+ *
+ * Hashes come from git's index where git says the file is unchanged
+ * (`git diff-files`, git's own path + mtime + size check, with its racy-entry
+ * content check), and from `git hash-object` for the rest: changed,
+ * untracked, or every file outside a repository or under a checkout filter.
+ * A name with a control character is left out (a block file the protocol
+ * writes never has one: `encodeURIComponent` escapes them).
+ *
+ * `previous` is the folder of this storage's last listing, removed here so
+ * reading it back needs no second command; folders other listings left
+ * behind (a pod that went away) go after a few minutes.
  */
-function scanCommand(root: string): string {
+function scanCommand(root: string, previous: string | null): string {
+  const files = [...SCHEMA_FILES, SECRETS_FILE].join(" ");
   return [
+    "export LC_ALL=C",
+    `d=\${TMPDIR:-/tmp}`,
+    ...(previous ? [`rm -rf -- ${shellQuote(previous)}`] : []),
+    `find "$d" -maxdepth 1 -name '${SCAN_DIR_PREFIX}*' -mmin +5 -exec rm -rf -- {} + 2>/dev/null`,
     `cd -- ${shellQuote(root || ".")} 2>/dev/null && [ -d .deco ] || { echo '@none'; exit 0; }`,
     "cd .deco",
-    `for f in ${[...SCHEMA_FILES, SECRETS_FILE].join(" ")}; do`,
-    `  if [ -f "$f" ]; then h=$(git hash-object --no-filters -- "$f") || exit 3; echo "@meta $f $h"; fi`,
-    "done",
-    "[ -d blocks ] || exit 0",
-    "cd blocks",
-    "names=$(find . -maxdepth 1 -type f -name '*.json' ! -name '*[[:cntrl:]]*' | sed 's|^\\./||' | LC_ALL=C sort)",
-    `[ -n "$names" ] || exit 0`,
-    `echo '@files'; printf '%s\\n' "$names"`,
-    // Absolute paths: inside a repository git reads stdin paths from its top.
-    `echo '@hashes'; printf '%s\\n' "$names" | while IFS= read -r n; do printf '%s/%s\\n' "$PWD" "$n"; done | git hash-object --no-filters --stdin-paths || exit 3`,
+    `w=$(mktemp -d "$d/${SCAN_DIR_PREFIX}XXXXXX") || exit 3`,
+    "T=$(printf '\\t')",
+    // Every file to version, by path under .deco.
+    `{ for f in ${files}; do [ -f "$f" ] && printf '%s\\n' "$f"; done`,
+    "  [ -d blocks ] && find blocks -maxdepth 1 -type f -name '*.json' ! -name '*[[:cntrl:]]*'; } | sort > \"$w/c\"",
+    // Index hashes of the files git sees unchanged since they were staged.
+    ': > "$w/k"',
+    "if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \\",
+    "  && ! git config --get core.autocrlf | grep -qiE '^(true|input)$' \\",
+    "  && ! git check-attr --stdin filter eol working-tree-encoding < \"$w/c\" | grep -qv ': unspecified$'; then",
+    '  git -c core.quotePath=false ls-files -s -- . | sed -n "s/^[0-7]* \\([0-9a-f]*\\) 0$T\\(.*\\)\\$/\\2$T\\1/p" | sort > "$w/i" || exit 3',
+    '  git -c core.quotePath=false diff-files --name-only --relative -- . | sort > "$w/x" || exit 3',
+    '  join -t "$T" -v1 "$w/i" "$w/x" > "$w/u" && join -t "$T" "$w/c" "$w/u" > "$w/k" || exit 3',
+    "fi",
+    // The rest, hashed now (absolute paths: inside a repository git reads
+    // stdin paths from its top).
+    'join -t "$T" -v1 "$w/c" "$w/k" > "$w/h" || exit 3',
+    `while IFS= read -r n; do printf '%s/%s\\n' "$PWD" "$n"; done < "$w/h" | git hash-object --no-filters --stdin-paths > "$w/v" || exit 3`,
+    '[ "$(wc -l < "$w/h")" = "$(wc -l < "$w/v")" ] || exit 3',
+    '{ sed "s/^\\([^$T]*\\)$T\\(.*\\)$/\\2 \\1/" "$w/k"; paste -d " " "$w/v" "$w/h"; echo "@end"; } > "$w/out" || exit 3',
+    'echo "@file $w/out"',
   ].join("\n");
 }
 
-/** Parses `scanCommand`'s output; null when there is no `.deco` folder. */
-export function parseScan(stdout: string): Omit<Scan, "at"> | null {
-  const lines = stdout.split("\n");
-  if (lines[0] === "@none") return null;
-  const meta = new Map<string, string>();
-  const files: string[] = [];
-  const hashes: string[] = [];
-  let section: "meta" | "files" | "hashes" = "meta";
-  for (const line of lines) {
-    if (line === "@files") section = "files";
-    else if (line === "@hashes") section = "hashes";
-    else if (section === "meta" && line.startsWith("@meta ")) {
-      const [, name, hash] = line.split(" ");
-      if (name && hash) meta.set(name, hash);
-    } else if (section === "files" && line) files.push(line);
-    else if (section === "hashes" && line) hashes.push(line);
-  }
-  if (files.length !== hashes.length) {
+/** Parses a listing file (see `scanCommand`); throws when it was cut short. */
+export function parseScan(text: string): Omit<Scan, "at"> {
+  const lines = text.split("\n");
+  while (lines.at(-1) === "") lines.pop();
+  if (lines.at(-1) !== "@end") {
     throw new StorageUnavailableError("the sandbox listing was cut short");
   }
+  const meta = new Map<string, string>();
   const blocks = new Map<string, string>();
-  files.forEach((file, i) => {
-    if (isBlockFileName(file)) blocks.set(file, hashes[i]!);
-  });
-  return { meta, blocks };
+  const metaFiles = new Set<string>([...SCHEMA_FILES, SECRETS_FILE]);
+  for (const line of lines.slice(0, -1)) {
+    const space = line.indexOf(" ");
+    const hash = line.slice(0, space);
+    const path = line.slice(space + 1);
+    if (space < 0 || !/^[0-9a-f]{40,64}$/.test(hash)) {
+      throw new StorageUnavailableError("the sandbox listing is malformed");
+    }
+    if (metaFiles.has(path)) meta.set(path, hash);
+    else if (path.startsWith("blocks/")) {
+      const file = path.slice("blocks/".length);
+      if (isBlockFileName(file)) blocks.set(file, hash);
+    }
+  }
+  return {
+    meta,
+    blocks: new Map([...blocks].sort(([a], [b]) => (a < b ? -1 : 1))),
+  };
 }
 
 /**
@@ -252,10 +291,13 @@ function createSandboxContentStorage(
     await res.body?.cancel();
   };
 
+  /** The folder of the last listing read back, removed by the next one. */
+  let lastScanDir: string | null = null;
+
   const takeScan = async (): Promise<Scan> => {
     for (let attempt = 1; ; attempt++) {
       const res = await call("/_sandbox/bash", {
-        command: scanCommand(root),
+        command: scanCommand(root, lastScanDir),
         timeout: 20_000,
       });
       if (!res.ok) await failed("bash", res);
@@ -263,7 +305,16 @@ function createSandboxContentStorage(
         stdout?: string;
         stderr?: string;
         exitCode?: number;
+        truncated?: boolean;
       };
+      // The daemon kept only the tail of the output: never parse a part.
+      if (out.truncated === true) {
+        throw new StorageUnavailableError(
+          "the sandbox listing was cut short",
+          250,
+        );
+      }
+      const stdout = (out.stdout ?? "").trim();
       // A file deleted between `find` and `git hash-object`: list again.
       if (out.exitCode !== 0) {
         if (attempt < SCAN_ATTEMPTS) continue;
@@ -272,13 +323,25 @@ function createSandboxContentStorage(
           250,
         );
       }
-      const parsed = parseScan(out.stdout ?? "");
-      if (!parsed) {
+      if (stdout === "@none") {
         throw new StorageNotFoundError(
           `no .deco folder in ${root || "the repository root"}`,
         );
       }
-      return { ...parsed, at: Date.now() };
+      const file = /^@file (\/.+\/out)$/.exec(stdout)?.[1];
+      if (!file) {
+        throw new StorageUnavailableError(
+          `the sandbox listing answered: ${stdout.slice(0, 200)}`,
+        );
+      }
+      const text = await readText(file);
+      // Removed by a listing from another pod: list again.
+      if (text === null) {
+        if (attempt < SCAN_ATTEMPTS) continue;
+        throw new StorageUnavailableError("the sandbox listing went away", 250);
+      }
+      lastScanDir = file.slice(0, -"/out".length);
+      return { ...parseScan(text), at: Date.now() };
     }
   };
 
@@ -442,18 +505,22 @@ function createSandboxContentStorage(
         // A file changed since the listing: the attempt is stale.
         if (before.size !== touched.length) return stale;
 
-        const done: string[] = [];
+        // Each file counts as touched before its call: a call that timed out
+        // or lost its connection may still have landed (the daemon finishes
+        // it anyway), so the rollback puts that one back too. Putting back a
+        // file the daemon never wrote is harmless: `before` holds its bytes.
+        const attempted: string[] = [];
         try {
           for (const file of puts) {
+            attempted.push(file);
             await writeText(repoPath(`blocks/${file}`), attempt.put[file]!);
-            done.push(file);
           }
           for (const file of deletes) {
+            attempted.push(file);
             await unlink(repoPath(`blocks/${file}`));
-            done.push(file);
           }
         } catch (error) {
-          for (const file of done.reverse()) {
+          for (const file of attempted.reverse()) {
             const prior = before.get(file);
             await (prior === undefined
               ? unlink(repoPath(`blocks/${file}`))
