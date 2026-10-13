@@ -512,6 +512,7 @@ export function BranchPicker({
                   branch={value}
                   serve={serve}
                   rowRef={localhostActive ? selectedRowRef : undefined}
+                  onPicked={() => setOpen(false)}
                 />
               )}
             </div>

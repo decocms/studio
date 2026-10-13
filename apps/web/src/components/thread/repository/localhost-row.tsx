@@ -16,11 +16,15 @@ export function V8LocalhostRow({
   branch,
   serve,
   rowRef,
+  onPicked,
 }: {
   virtualMcpId: string;
   branch: string | null | undefined;
   serve: DecoServeConnectionState;
   rowRef?: Ref<HTMLDivElement>;
+  /** Called on every pick, chosen already or not, so the drafts menu
+   *  closes the way it does for a draft row. */
+  onPicked?: () => void;
 }) {
   const backend = useContentBackend(virtualMcpId, branch);
   const selected = !!serve.connection;
@@ -31,17 +35,24 @@ export function V8LocalhostRow({
       connected={
         selected && backend.kind === "protocol" && backend.source === "local"
       }
-      onSelect={() => {
-        if (selected) return;
-        // Where this user last connected the project, else the default
-        // port. Nothing answering yet is fine: the editor connects as soon
-        // as `deco serve` starts.
-        serve.set({
-          endpoint: serve.lastEndpoint ?? DEFAULT_SERVE_ENDPOINT,
-        });
-      }}
+      onSelect={() => chooseLocalhost(serve, onPicked)}
     />
   );
+}
+
+/**
+ * Choosing Localhost: closes the drafts menu like a draft row does (even
+ * when it is chosen already), then connects to where this user last
+ * connected the project, else the default port. Nothing answering yet is
+ * fine: the editor connects as soon as `deco serve` starts.
+ */
+export function chooseLocalhost(
+  serve: Pick<DecoServeConnectionState, "connection" | "lastEndpoint" | "set">,
+  onPicked?: () => void,
+) {
+  onPicked?.();
+  if (serve.connection) return;
+  serve.set({ endpoint: serve.lastEndpoint ?? DEFAULT_SERVE_ENDPOINT });
 }
 
 /**

@@ -27,6 +27,7 @@ import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycl
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
+import { watchServeContentReload } from "./serve-content-reload";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -356,11 +357,6 @@ function reloadIframeOrFallback(
     if (fallbackSrc) iframe.src = fallbackSrc;
   }
 }
-
-/** How long after a `deco serve` save the frame may take to reload itself
- *  before the editor reloads it: a dev server that reloads pages on content
- *  changes does so within a few hundred ms of the save. */
-const SERVE_SELF_RELOAD_WAIT_MS = 1500;
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
@@ -1387,7 +1383,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // swap it without reloading the page in the frame. A new content revision
   // (a save here, or a read that found the files changed) waits for the
   // frame to reload itself, as a dev server that reloads on content changes
-  // does, and reloads it otherwise.
+  // does, and reloads it otherwise; a reload by the site is confirmed by one
+  // more, since it may have come before its server had the content
+  // (serve-content-reload.ts).
   const contentCacheKey = useDecofileCacheKey(createPageParams);
   const contentRevision = useContentRevision(
     servePreviewUrl(contentBackend) ? contentCacheKey : "",
@@ -1400,16 +1398,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     if (!shown || !contentRevision || shown === contentRevision) return;
     const iframe = previewIframeRef.current;
     if (!iframe) return;
-    const reloadedItself = () => clearTimeout(timer);
-    iframe.addEventListener("load", reloadedItself, { once: true });
-    const timer = setTimeout(() => {
-      iframe.removeEventListener("load", reloadedItself);
-      reloadPreviewPreservingScroll();
-    }, SERVE_SELF_RELOAD_WAIT_MS);
-    return () => {
-      clearTimeout(timer);
-      iframe.removeEventListener("load", reloadedItself);
-    };
+    return watchServeContentReload({
+      iframe,
+      reload: reloadPreviewPreservingScroll,
+    });
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload on a revision change only; the reload reads refs
   }, [contentRevision]);
 
