@@ -8,7 +8,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
- *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session, v8)
+ *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session; main's schema for any site)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -18,8 +18,10 @@
  *
  * The content-protocol routes serve Blocks v8 sites on the hosted Deco CMS
  * (see `hosted/`): projects whose main schema passes `isV8Schema`
- * (`@decocms/shared/blocks-major`), in any org. A v7 project never reaches
- * them and keeps every answer it has on main. The editor's draft is an object on the delivery CDN
+ * (`@decocms/shared/blocks-major`), in any org. A v7 project keeps every
+ * answer it has on main; its `rpc` only answers main's schema (`schema.get`
+ * → `schema: null`, read only), which is how the editor learns, for any
+ * site, whether main is v8 (no route of its own). The editor's draft is an object on the delivery CDN
  * (`hosted/draft-content-storage.ts`), never a git branch: `rpc` reads main
  * with the draft layered on and saves into the draft; the session GET answers
  * a v8 project's `?__draft=` pointer (`{ draft, version }`) instead of the
@@ -69,13 +71,17 @@ import {
   draftPointerTarget,
 } from "@/hosted/delivery-store";
 import { deliveryPurge } from "@/hosted/delivery-purge";
-import { createDraftContentStorage } from "@/hosted/draft-content-storage";
+import {
+  createDraftContentStorage,
+  createV7MainStorage,
+} from "@/hosted/draft-content-storage";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
 import {
   isBlocksV8Project,
+  HOSTED_DELIVERY_UNCONFIGURED,
   MAIN_SCHEMA_CHANGED,
   MAIN_SCHEMA_HEADER,
 } from "@decocms/shared/blocks-major";
@@ -244,7 +250,10 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     virtualMcp.connections?.map((conn) => conn.connection_id) ?? [];
   const repository = parseRepositoryBinding(metadata, connectionIds);
   if (!repository) {
-    return c.json({ error: "Project has no repository" }, 404);
+    return c.json(
+      { error: "Project has no repository", code: "no_repository" },
+      404,
+    );
   }
 
   c.set("decofileScope", {
@@ -763,25 +772,37 @@ export function createDecofileRoutes(
     const scope = c.get("decofileScope");
     let client: RepoContentClient;
     let mainBranch: string;
+    let mainV8: boolean;
     try {
       client = await contentClientForScope(c);
       mainBranch = await client.getDefaultBranch();
-      // Only a Blocks v8 site (main's schema, `isV8Schema`) has the protocol;
-      // the storage below still checks main's schema itself on every read
-      // and refuses to commit to a v7 main.
-      // A main that isn't v8 answers `main_schema_changed`: only an editor
-      // that read main as v8 calls this, so main changed since (its editor
-      // re-reads main's answer instead of failing as unavailable).
-      if (!(await scopeIsV8(c, client, mainBranch))) {
-        return c.json(MAIN_CHANGED_BODY, 409);
-      }
+      mainV8 = await scopeIsV8(c, client, mainBranch);
     } catch (err) {
       return errorResponse(c, err);
     }
+    if (!mainV8) {
+      // An editor that acts on a v8 main: main changed since, and it
+      // re-reads main's answer instead of failing as unavailable.
+      if (expectedMain(c) === "v8") return c.json(MAIN_CHANGED_BODY, 409);
+      // Anyone else is reading main's answer (the editor's first read, any
+      // site, v7 included): a read-only "no v8 schema" (`schema.get` →
+      // `schema: null`), from the cached answer above alone.
+      return createContentHandler(
+        createV7MainStorage({ packagePath: scope.packagePath, mainBranch }),
+        { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
+      )(c.req.raw);
+    }
+    // Main is v8 past this point: the editor reads these answers as "v8".
     if (scope.userId && !scope.site) return c.json(SITE_NOT_OWNED, 409);
     const hosted = hostedScope(c);
     if (!hosted) {
-      return c.json({ error: "hosted delivery not configured" }, 503);
+      return c.json(
+        {
+          error: "hosted delivery not configured",
+          code: HOSTED_DELIVERY_UNCONFIGURED,
+        },
+        503,
+      );
     }
     // Per request: the storage carries this caller's repository credential.
     // The body cache is off for the same reason, and the blob cache under

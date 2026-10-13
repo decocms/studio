@@ -25,6 +25,7 @@ import type {
   DescribeResult,
 } from "@decocms/blocks/protocol";
 import { runConformance } from "@decocms/blocks/protocol/conformance";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import { signUpViaApi } from "../fixtures/auth-api";
 import {
@@ -161,19 +162,31 @@ async function draftPointer(
 }
 
 /**
- * What opening the project does: the server reads main's schema and refreshes
- * the project's v8 marker (`isV8Schema`). The repository is seeded after the
- * project is created, so create's own check found nothing yet.
+ * What opening the project does: the editor reads main's schema over the
+ * content protocol (`schema.get`, any site; `schema: null` for a v7 one) and
+ * decides with `isV8Schema`; the server's read refreshes the project's v8
+ * marker on the way. The repository is seeded after the project is created,
+ * so create's own check found nothing yet.
  */
 async function refreshV8(
   ctx: APIRequestContext,
-  project: { org: string; vmcpId: string },
-): Promise<boolean | null> {
-  const res = await ctx.post(
-    `/api/${project.org}/blocks-major/${project.vmcpId}`,
-  );
+  project: FastPreviewProject,
+): Promise<boolean> {
+  const res = await ctx.post(rpcPath(project, "main"), {
+    data: { jsonrpc: "2.0", id: 1, method: "schema.get" },
+  });
+  const body = (await res.json()) as {
+    code?: string;
+    result?: { schema: unknown };
+  };
+  // A v8 main whose site another project owns (the gate runs after main's
+  // check), as the editor reads it.
+  if (res.status() === 409) {
+    expect(body.code).toBe("site_not_owned");
+    return true;
+  }
   expect(res.status()).toBe(200);
-  return ((await res.json()) as { isV8: boolean | null }).isV8;
+  return isV8Schema(body.result?.schema);
 }
 
 async function setUp(
@@ -539,10 +552,13 @@ test.describe("content protocol on GitHub", () => {
           main: { files: { ".deco/schema.gen.json": JSON.stringify(schema) } },
         },
       });
-      const refreshed = await ctx.post(
-        `/api/${project.org}/blocks-major/${project.vmcpId}`,
-      );
-      expect(await refreshed.json()).toEqual({ isV8: true, hostedSite: false });
+      // Main is v8 (the gate runs after main's check), but the site is
+      // another project's: the editor reads it as v8 and shows why.
+      const read = await ctx.post(rpcPath(project, "main"), {
+        data: { jsonrpc: "2.0", id: 1, method: "schema.get" },
+      });
+      expect(read.status()).toBe(409);
+      expect(await read.json()).toMatchObject({ code: "site_not_owned" });
 
       const described = await ctx.post(rpcPath(project, "main"), {
         data: { jsonrpc: "2.0", id: 1, method: "describe", params: {} },
@@ -926,16 +942,22 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
           [file]: JSON.stringify(meta),
           ".deco/blocks/home.json": homePage,
         });
-        // The editor decides from main's schema (read by the server), never
-        // from the project's marker; a v7 main never reaches the protocol.
+        // The editor decides from main's schema (its one `schema.get`),
+        // never from the project's marker; a v7 main gets no v8 schema and
+        // never reaches the rest of the protocol.
         const mainReads: number[] = [];
         const rpcCalls: string[] = [];
-        page.on("response", (response) => {
+        page.on("response", async (response) => {
           const path = new URL(response.url()).pathname;
-          if (path.includes("/blocks-major/")) {
+          if (!/\/decofile\/.+\/rpc$/.test(path)) return;
+          const method = (
+            response.request().postDataJSON() as { method?: string } | null
+          )?.method;
+          if (method === "schema.get" && path.endsWith("/main/rpc")) {
             mainReads.push(response.status());
+          } else {
+            rpcCalls.push(`${path} ${method}`);
           }
-          if (/\/decofile\/.+\/rpc$/.test(path)) rpcCalls.push(path);
         });
         await page.goto(url);
         // The classic editor (the org's `new_blocks_editor` is off): v8
@@ -965,12 +987,13 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
       // Main's schema can't be read (a GitHub outage, a revoked token): a
       // site never found v8 behaves as on main, never an indefinite wait.
       let mainReads = 0;
-      await page.route(/\/api\/[^/]+\/blocks-major\//, (route) => {
+      // (The editor's read of main's schema: `schema.get` on main's rpc.)
+      await page.route(/\/api\/[^/]+\/decofile\/[^/]+\/main\/rpc$/, (route) => {
         mainReads++;
         return route.fulfill({
           status: 502,
           contentType: "application/json",
-          body: JSON.stringify({ code: "main_unreadable" }),
+          body: JSON.stringify({ error: "GitHub is down" }),
         });
       });
       await page.goto(url);

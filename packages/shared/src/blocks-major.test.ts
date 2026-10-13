@@ -256,9 +256,9 @@ describe("one v8 detector", () => {
       "apps/api/src/api/routes/decofile.ts#scopeIsV8": "projectMainIsV8",
       "apps/api/src/api/routes/decofile.ts#unownedV8": "scopeIsV8",
       "apps/web/src/hooks/use-main-schema-v8.ts#useMainSchemaV8":
-        "the server's mainIsV8 answer (POST /blocks-major)",
+        "fetchMainSchemaV8",
       "apps/web/src/hooks/use-main-schema-v8.ts#fetchMainSchemaV8":
-        "the server's mainIsV8 answer (POST /blocks-major)",
+        "isV8Schema on main's schema (rpc schema.get)",
       "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":
         "the marker (the server's cached mainIsV8): a hint for a failed read, never v8",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
@@ -318,7 +318,6 @@ describe("one v8 detector", () => {
     const DECIDERS = [
       "apps/api/src/hosted/scope.ts",
       "apps/api/src/hosted/blocks-major.ts",
-      "apps/api/src/api/routes/blocks-major.ts",
       "apps/web/src/components/sections-editor/content-backend.ts",
       "apps/web/src/components/sections-editor/use-content-backend.ts",
       "apps/web/src/hooks/use-main-schema-v8.ts",
@@ -336,8 +335,8 @@ describe("one v8 detector", () => {
   });
 
   test("the web app never decides v8 from the marker", () => {
-    // The marker is the server's cache of main's answer. The web app asks
-    // the server for that answer (`useMainSchemaV8`), which only compares it
+    // The marker is the server's cache of main's answer. The web app reads
+    // main's schema itself (`useMainSchemaV8`), which only compares it
     // with the marker it holds to re-read a project the server just rewrote,
     // and to tell a failed read on a site last found v8 (waits) from any
     // other (v7, as on main): `useLastFoundV8`, never a v8 answer.

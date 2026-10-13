@@ -13,6 +13,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { APIRequestContext, Page } from "@playwright/test";
+import { isV8Schema } from "@decocms/shared/blocks-major";
 import { publicKeyPemFromDer } from "@decocms/shared/secret-ciphertext";
 import {
   type DecoServeStub,
@@ -217,11 +218,15 @@ async function createV8Project(api: APIRequestContext, orgSlug: string) {
       },
     },
   });
+  // What opening it does: main's schema over the content protocol, which
+  // the server's read turns into the project's v8 marker on the way.
   const opened = await api.post(
-    `/api/${orgSlug}/blocks-major/${project.vmcpId}`,
+    `/api/${orgSlug}/decofile/${project.vmcpId}/main/rpc`,
+    { data: { jsonrpc: "2.0", id: 1, method: "schema.get" } },
   );
   expect(opened.status()).toBe(200);
-  expect(await opened.json()).toEqual({ isV8: true, hostedSite: true });
+  const body = (await opened.json()) as { result: { schema: unknown } };
+  expect(isV8Schema(body.result.schema)).toBe(true);
   return { id: project.vmcpId };
 }
 

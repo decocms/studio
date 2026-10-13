@@ -3,14 +3,16 @@
  * of `isV8Schema` (`@decocms/shared/blocks-major`) on main's
  * `.deco/schema.gen.json`. Only the server reads it, as a cache: a new
  * thread's default runtime (`defaultThreadRuntime`) and the admin backfill.
- * The web app never decides from it: it asks for main's answer
- * (`POST /blocks-major`), and every hosted gate recomputes it
+ * The web app never decides from it: it reads main's schema over the content
+ * protocol (`schema.get` on `/decofile/…/rpc`, which answers any site) and
+ * runs `isV8Schema` itself, and every hosted gate recomputes it
  * ({@link projectMainIsV8}).
  *
  * Only code that just ran the predicate on main (`mainIsV8`) writes it: project
- * create/import (in the background), the refresh when a project is opened,
- * thread create when the answer decides the runtime stamp, the admin backfill,
- * and the hosted routes that read main's schema anyway. Every org gets it: v8 is
+ * create/import (in the background), thread create when the answer decides
+ * the runtime stamp, the admin backfill, and the hosted routes that read
+ * main's schema anyway (the editor's own read of main's schema on open is
+ * one of them, so opening a project refreshes it; no route of its own). Every org gets it: v8 is
  * per site, on as soon as main's schema says so. Cleared when main is no
  * longer v8, so a v7 site never has it. Best-effort everywhere: a failed write
  * is logged and never fails the request.
@@ -82,7 +84,7 @@ export async function syncBlocksMajorMarker(
  * caller can tell "v7" from "unknown"; a failed marker write is only logged
  * (the answer still stands: it is main's, not the marker's).
  */
-export async function readMainBlocksMajor(deps: {
+async function readMainBlocksMajor(deps: {
   projects: BlocksMajorStorage;
   project: BlocksMajorProject;
   by: string;
@@ -136,7 +138,7 @@ export async function refreshBlocksMajorMarker(
  * stale (main went back to v7) gets the right answer. The marker is only the
  * hint `mainIsV8` reuses its last minute's answer under (`recentIf`): at most
  * one head read per minute per repository while they agree, a fresh read as
- * soon as they don't (the editor's open just wrote a new answer). The answer is written
+ * soon as they don't (another pod or create just wrote a new answer). The answer is written
  * through to the marker when there is a user to attribute it to.
  */
 export async function projectMainIsV8(deps: {

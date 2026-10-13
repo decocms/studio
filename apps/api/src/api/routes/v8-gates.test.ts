@@ -1,6 +1,7 @@
 /**
- * Route-level tests of the Blocks v8 gates: the refresh route
- * (`/blocks-major`), the hosted routes' middleware and the decofile routes.
+ * Route-level tests of the Blocks v8 gates: the hosted routes' middleware and
+ * the decofile routes, including the editor's read of main's schema (`rpc`
+ * `schema.get`, which answers any site: there is no route of its own).
  * Storage is in memory and the repository is a fake that records every call,
  * so "a v7 project costs nothing" is asserted, not assumed.
  */
@@ -14,7 +15,6 @@ import type { RepoContentClient } from "@/git-providers";
 import { fakeRepo, memoryKv, SCHEMA_TEXT } from "@/hosted/hosted-test-helpers";
 import { getSettings, setGlobalSettings } from "@/settings";
 import type { Env } from "../hono-env";
-import { createBlocksMajorRoutes } from "./blocks-major";
 import { createDecofileRoutes } from "./decofile";
 import { createHostedRoutes } from "./hosted";
 
@@ -135,131 +135,6 @@ function mount(ctx: StudioContext, route: (app: Hono<Env>) => void): Hono<Env> {
   route(app);
   return app;
 }
-
-describe("POST /blocks-major/:id", () => {
-  const post = (app: Hono<Env>, id: string) =>
-    app.request(`/blocks-major/${id}`, { method: "POST" });
-
-  function setup(
-    projects: Project[],
-    files: Record<string, string>,
-    extra: { sites?: Record<string, string>; projectScope?: string[] } = {},
-  ) {
-    const w = world({ projects, ...extra });
-    const repo = recordedRepo(files);
-    const app = mount(w.ctx, (a) =>
-      a.route(
-        "/blocks-major",
-        createBlocksMajorRoutes({ repoClientFor: repo.repoClientFor }),
-      ),
-    );
-    return { ...w, repo, app };
-  }
-
-  it("404s another org's project without reading anything", async () => {
-    const { app, repo, patches } = setup(
-      [project("p1", { repository: REPOSITORY }, "other-org")],
-      { ".deco/schema.gen.json": SCHEMA_TEXT },
-    );
-    expect((await post(app, "p1")).status).toBe(404);
-    expect(repo.opened()).toBe(0);
-    expect(patches).toEqual([]);
-  });
-
-  it("404s a project outside a project-scoped role's allowlist", async () => {
-    const { app, repo } = setup(
-      [project("p1", { repository: REPOSITORY })],
-      { ".deco/schema.gen.json": SCHEMA_TEXT },
-      { projectScope: ["p2"] },
-    );
-    expect((await post(app, "p1")).status).toBe(404);
-    expect(repo.opened()).toBe(0);
-  });
-
-  it("answers null for a project without a repository, writing nothing", async () => {
-    const { app, repo, patches, orgSiteReads } = setup([project("p1", {})], {});
-    const res = await post(app, "p1");
-    expect(await res.json()).toEqual({ isV8: null, hostedSite: null });
-    expect(repo.opened()).toBe(0);
-    expect(patches).toEqual([]);
-    expect(orgSiteReads).toEqual([]);
-  });
-
-  it("marks a v8 project and says whether it owns its site", async () => {
-    const owned = setup(
-      [project("p1", { repository: REPOSITORY })],
-      { ".deco/schema.gen.json": SCHEMA_TEXT },
-      { sites: { p1: ORG } },
-    );
-    expect(await (await post(owned.app, "p1")).json()).toEqual({
-      isV8: true,
-      hostedSite: true,
-    });
-    expect(owned.projects.get("p1")?.metadata).toEqual({
-      repository: REPOSITORY,
-      [BLOCKS_MAJOR_METADATA_KEY]: 8,
-    });
-
-    const unowned = setup(
-      [project("p1", { repository: REPOSITORY })],
-      { ".deco/schema.gen.json": SCHEMA_TEXT },
-      { sites: { p1: "other-org" } },
-    );
-    expect(await (await post(unowned.app, "p1")).json()).toEqual({
-      isV8: true,
-      hostedSite: false,
-    });
-  });
-
-  it("clears the marker of a project whose main is back on v7", async () => {
-    const { app, projects, orgSiteReads } = setup(
-      [project("p1", { repository: REPOSITORY, blocksMajor: 8 })],
-      { ".deco/schema.gen.json": V7_SCHEMA },
-      { sites: { p1: ORG } },
-    );
-    expect(await (await post(app, "p1")).json()).toEqual({
-      isV8: false,
-      hostedSite: null,
-    });
-    expect(projects.get("p1")?.metadata).toEqual({ repository: REPOSITORY });
-    // v7: no ownership read either.
-    expect(orgSiteReads).toEqual([]);
-  });
-
-  it("an unreadable main is an error the editor retries, never a v7 answer", async () => {
-    const w = world({
-      projects: [project("p1", { repository: REPOSITORY, blocksMajor: 8 })],
-    });
-    const app = mount(w.ctx, (a) =>
-      a.route(
-        "/blocks-major",
-        createBlocksMajorRoutes({
-          repoClientFor: async () => {
-            throw new Error("GitHub is down");
-          },
-        }),
-      ),
-    );
-    const res = await post(app, "p1");
-    expect(res.status).toBe(502);
-    expect(await res.json()).toMatchObject({ code: "main_unreadable" });
-    // The server's cached answer is left as it is.
-    expect(w.patches).toEqual([]);
-  });
-
-  it("a repeat open on an unchanged main reads only its head", async () => {
-    const { app, repo } = setup([project("p1", { repository: REPOSITORY })], {
-      ".deco/schema.gen.json": V7_SCHEMA,
-    });
-    await post(app, "p1");
-    const first = repo.calls.length;
-    await post(app, "p1");
-    const second = repo.calls.slice(first);
-    expect(second.every((c) => /^(getDefaultBranch|getBranch) /.test(c))).toBe(
-      true,
-    );
-  });
-});
 
 describe("hosted routes middleware", () => {
   let settings: ReturnType<typeof getSettings>;
@@ -392,6 +267,149 @@ describe("hosted routes middleware", () => {
   });
 });
 
+describe("main's schema for the editor (rpc schema.get, any site)", () => {
+  const PREVIEW = "https://acme.example.com";
+  const READ = JSON.stringify([
+    { jsonrpc: "2.0", id: 1, method: "describe" },
+    { jsonrpc: "2.0", id: 2, method: "schema.get" },
+  ]);
+  const read = (app: Hono<Env>, init: RequestInit = {}) =>
+    app.request("/decofile/p1/main/rpc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: READ,
+      ...init,
+    });
+
+  function setup(
+    metadata: Record<string, unknown> | null,
+    files: Record<string, string>,
+    options: {
+      sites?: Record<string, string>;
+      repoClientFor?: () => Promise<RepoContentClient>;
+    } = {},
+  ) {
+    const w = world({
+      projects: [project("p1", metadata)],
+      sites: options.sites,
+    });
+    const repo = recordedRepo(files);
+    const app = mount(w.ctx, (a) =>
+      a.route(
+        "/decofile",
+        createDecofileRoutes({
+          repoClientFor: options.repoClientFor ?? repo.repoClientFor,
+        }),
+      ),
+    );
+    return { ...w, repo, app };
+  }
+
+  const v7 = { repository: REPOSITORY, previewServerUrl: PREVIEW };
+
+  it("a v7 site answers `schema: null`, read only, from one cached read of main", async () => {
+    const { app, repo, patches } = setup(v7, {
+      ".deco/schema.gen.json": V7_SCHEMA,
+    });
+    const res = await read(app);
+    expect(res.status).toBe(200);
+    const [describe, schema] = (await res.json()) as Array<{
+      result: Record<string, unknown>;
+    }>;
+    expect(describe!.result).toMatchObject({
+      readOnly: true,
+      assets: null,
+      kind: "git",
+    });
+    expect(schema!.result).toMatchObject({ schema: null });
+    expect(repo.schemaReads().length).toBe(1);
+    expect(patches).toEqual([]);
+    // Opening it again on an unchanged main reads only its head.
+    const before = repo.calls.length;
+    await read(app);
+    expect(
+      repo.calls
+        .slice(before)
+        .every((c) => /^(getDefaultBranch|getBranch) /.test(c)),
+    ).toBe(true);
+  });
+
+  it("a v7 site never takes a write through it", async () => {
+    const { app, repo } = setup(v7, { ".deco/schema.gen.json": V7_SCHEMA });
+    const res = await read(app, {
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "blocks.apply",
+        params: { set: { x: {} } },
+      }),
+    });
+    expect(((await res.json()) as { error?: unknown }).error).toBeDefined();
+    expect(repo.calls.some((c) => /^(commit|put|write)/i.test(c))).toBe(false);
+  });
+
+  it("a v8 main writes the server's marker and is told apart by its status", async () => {
+    const { app, projects } = setup(
+      v7,
+      { ".deco/schema.gen.json": SCHEMA_TEXT },
+      { sites: { p1: ORG } },
+    );
+    const res = await read(app);
+    // No delivery bucket in tests: main is v8 but its editor can't open here.
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      code: "hosted_delivery_unconfigured",
+    });
+    expect(projects.get("p1")?.metadata?.[BLOCKS_MAJOR_METADATA_KEY]).toBe(8);
+  });
+
+  it("a v8 main whose site another project owns answers site_not_owned", async () => {
+    const { app } = setup(
+      v7,
+      { ".deco/schema.gen.json": SCHEMA_TEXT },
+      { sites: { p1: "other-org" } },
+    );
+    const res = await read(app);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "site_not_owned" });
+  });
+
+  it("clears the marker of a project whose main is back on v7", async () => {
+    const { app, projects } = setup(
+      { ...v7, blocksMajor: 8 },
+      { ".deco/schema.gen.json": V7_SCHEMA },
+    );
+    const res = await read(app);
+    expect(res.status).toBe(200);
+    expect(projects.get("p1")?.metadata).toEqual(v7);
+  });
+
+  it("a project without a repository says so, reading nothing", async () => {
+    const { app, repo, patches } = setup({}, {});
+    const res = await read(app);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "no_repository" });
+    expect(repo.opened()).toBe(0);
+    expect(patches).toEqual([]);
+  });
+
+  it("an unreadable main is an error the editor retries, never a v7 answer", async () => {
+    const { app, patches } = setup(
+      { ...v7, blocksMajor: 8 },
+      {},
+      {
+        repoClientFor: async () => {
+          throw new Error("GitHub is down");
+        },
+      },
+    );
+    const res = await read(app);
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    // The server's cached answer is left as it is.
+    expect(patches).toEqual([]);
+  });
+});
+
 describe("decofile routes", () => {
   const PREVIEW = "https://acme.example.com";
 
@@ -425,7 +443,7 @@ describe("decofile routes", () => {
     ".deco/blocks/pages-home.json": '{"__resolveType":"page"}',
   };
 
-  it("a v7 project reads main's schema once for every route, writes nothing, has no rpc", async () => {
+  it("a v7 project reads main's schema once for every route, writes nothing, has no v8 rpc", async () => {
     const { app, repo, patches } = setup(
       {},
       { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
@@ -443,9 +461,10 @@ describe("decofile routes", () => {
     await app.request("/decofile/p1/main/publish", { method: "POST" });
     const rpc = await app.request("/decofile/p1/main/rpc", {
       method: "POST",
+      headers: { "x-deco-main-schema": "v8" },
       body: "{}",
     });
-    // Only an editor that read main as v8 calls rpc: main changed since.
+    // An editor that read main as v8: main changed since.
     expect(rpc.status).toBe(409);
     expect(await rpc.json()).toMatchObject({ code: "main_schema_changed" });
     expect(repo.schemaReads().length).toBe(1);

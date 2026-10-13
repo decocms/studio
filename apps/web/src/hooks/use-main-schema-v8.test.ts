@@ -9,41 +9,68 @@ function answering(status: number, body: unknown) {
     });
 }
 
-describe("fetchMainSchemaV8 (the server's isV8Schema on main)", () => {
-  test("reads the server's answer", async () => {
+describe("fetchMainSchemaV8 (isV8Schema on main's schema, read here)", () => {
+  const schema = (value: unknown) =>
+    answering(200, { jsonrpc: "2.0", id: 1, result: { schema: value } });
+
+  test("decides v8 from the schema it fetched (no route of its own)", async () => {
     expect(
-      await fetchMainSchemaV8("o", "p", answering(200, { isV8: true })),
+      await fetchMainSchemaV8("o", "p", schema({ blocksMajor: 8, root: {} })),
     ).toBe(true);
-    expect(
-      await fetchMainSchemaV8("o", "p", answering(200, { isV8: false })),
-    ).toBe(false);
+    // A v7 site: the route answers no v8 schema (`null`), or a schema
+    // without the field.
+    expect(await fetchMainSchemaV8("o", "p", schema(null))).toBe(false);
+    expect(await fetchMainSchemaV8("o", "p", schema({ root: {} }))).toBe(false);
+    expect(await fetchMainSchemaV8("o", "p", schema({ blocksMajor: 9 }))).toBe(
+      false,
+    );
   });
 
-  test("no repository (isV8: null) has no main: not a v8 site", async () => {
-    expect(
-      await fetchMainSchemaV8("o", "p", answering(200, { isV8: null })),
-    ).toBe(false);
+  test("Studio's gates settle it without a schema", async () => {
+    const status = (code: number, body: unknown) =>
+      fetchMainSchemaV8("o", "p", answering(code, body));
+    // No repository: no main, as on main (v7).
+    expect(await status(404, { code: "no_repository" })).toBe(false);
+    expect(await status(403, { code: "feature_not_in_plan" })).toBe(false);
+    // Gates that only a v8 main reaches.
+    expect(await status(409, { code: "site_not_owned" })).toBe(true);
+    expect(await status(503, { code: "hosted_delivery_unconfigured" })).toBe(
+      true,
+    );
   });
 
   test("an unreadable main is an error (retried), never a v7 answer", async () => {
-    await expect(
-      fetchMainSchemaV8("o", "p", answering(502, { code: "main_unreadable" })),
-    ).rejects.toThrow();
-    await expect(
-      fetchMainSchemaV8("o", "p", answering(200, { nope: 1 })),
-    ).rejects.toThrow();
+    for (const [code, body] of [
+      [502, { error: "GitHub is down" }],
+      [500, null],
+      [404, { error: "Virtual MCP not found" }],
+      [409, { code: "main_schema_changed" }],
+      [200, { jsonrpc: "2.0", id: 1, error: { code: -32001 } }],
+      [200, { nope: 1 }],
+    ] as const) {
+      await expect(
+        fetchMainSchemaV8("o", "p", answering(code, body)),
+      ).rejects.toThrow();
+    }
   });
 
-  test("asks the project's own endpoint, uncached", async () => {
+  test("asks the project's content protocol for schema.get, uncached", async () => {
     let seen: { url: string; init?: RequestInit } | null = null;
     const doFetch = async (url: string, init?: RequestInit) => {
       seen = { url, init };
-      return new Response('{"isV8":false}', { status: 200 });
+      return new Response('{"jsonrpc":"2.0","id":1,"result":{"schema":null}}');
     };
     await fetchMainSchemaV8("acme", "vm/1", doFetch);
-    expect(seen!.url).toBe("/api/acme/blocks-major/vm%2F1");
+    expect(seen!.url).toBe("/api/acme/decofile/vm%2F1/main/rpc");
     expect(seen!.init?.method).toBe("POST");
     expect(seen!.init?.cache).toBe("no-store");
+    expect(JSON.parse(String(seen!.init?.body))).toMatchObject({
+      method: "schema.get",
+    });
+    // Not an editor acting on a main answer: no main-schema header.
+    expect(new Headers(seen!.init?.headers).has("x-deco-main-schema")).toBe(
+      false,
+    );
   });
 });
 
