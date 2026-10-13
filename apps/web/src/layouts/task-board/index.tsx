@@ -68,6 +68,7 @@ import {
   X,
   Zap,
 } from "@untitledui/icons";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -113,6 +114,7 @@ import {
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
+  boardGridColumns,
   laneVisibility,
   moveTargets,
   PRIORITIES,
@@ -2344,6 +2346,14 @@ function Lanes({
         ? [...prev.shownTaskBoardLanes, status]
         : prev.shownTaskBoardLanes.filter((s) => s !== status),
     }));
+  const collapsedLanes = preferences.collapsedTaskBoardLanes;
+  const toggleLaneCollapsed = (status: string) =>
+    setPreferences((prev) => ({
+      ...prev,
+      collapsedTaskBoardLanes: prev.collapsedTaskBoardLanes.includes(status)
+        ? prev.collapsedTaskBoardLanes.filter((s) => s !== status)
+        : [...prev.collapsedTaskBoardLanes, status],
+    }));
 
   /** Resolved against `placed` rather than dnd-kit's `over.data`, which is a
    *  ref and can't be read during render. */
@@ -2477,25 +2487,19 @@ function Lanes({
             room is handled per-lane by each column's own scrollable div — a pb
             here would eat into this row's h-full and cut every column short,
             since it no longer wraps a single page-level scroll. */}
-        {/* The lanes SHARE the width instead of each taking a fixed 300px:
-            `minmax(280px, 1fr)` fills the panel when there is room and falls
-            back to scrolling once every lane is at its minimum. Fixed columns
-            left a dead margin on a wide screen and made the board scroll
-            sideways at widths where it did not have to. Inline, because the
-            track count is the lane count. 280px, not less — below it a card's
-            footer (type + key, due date, priority, checks, assignee) runs out
-            of room and its icons start overlapping instead of wrapping. */}
+        {/* Inline tracks, because their count is the lane count — see
+            `boardGridColumns`. */}
         <div
           className={cn(
             "mx-auto grid h-full w-full max-w-[1680px] gap-3",
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
           style={{
-            // The hidden-lanes tail needs its own track, or the grid wraps it
-            // onto a second row below the lanes.
-            gridTemplateColumns: `repeat(${boardLanes.length}, minmax(280px, 1fr))${
-              hiddenLanes.length > 0 ? " 280px" : ""
-            }`,
+            gridTemplateColumns: boardGridColumns({
+              lanes: boardLanes,
+              collapsed: collapsedLanes,
+              hasHiddenTail: hiddenLanes.length > 0,
+            }),
           }}
         >
           {boardLanes.map((status) => (
@@ -2528,6 +2532,8 @@ function Lanes({
                   ? () => setLaneShown(status, false)
                   : undefined
               }
+              collapsed={collapsedLanes.includes(status)}
+              onToggleCollapsed={() => toggleLaneCollapsed(status)}
             />
           ))}
           {hiddenLanes.length > 0 && (
@@ -2671,6 +2677,8 @@ function Lane({
   onTypeChange,
   onDueDateChange,
   onHide,
+  collapsed,
+  onToggleCollapsed,
 }: {
   status: TaskBoardItemStatus;
   items: TaskBoardItem[];
@@ -2694,6 +2702,9 @@ function Lane({
   onDueDateChange?: (id: string, iso: string) => void;
   /** Present only for a hidden-by-default lane, which can be put back away. */
   onHide?: () => void;
+  /** Drawn as a narrow strip with its label and count, cards out of view. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const t = useT();
   const { label, visual } = laneHeader(status, t);
@@ -2705,6 +2716,57 @@ function Lane({
   const { setNodeRef } = useDroppable({
     id: `${LANE_DROPPABLE_PREFIX}${status}`,
   });
+
+  if (collapsed) {
+    return (
+      // The whole strip stays a drop target, so a card can still be dragged
+      // into a collapsed lane.
+      <div
+        ref={setNodeRef}
+        data-lane={status}
+        data-lane-collapsed=""
+        className="group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1"
+      >
+        <div
+          className={cn(
+            "flex w-full flex-col items-center gap-2 rounded-xl px-1 py-3 transition-colors",
+            isTarget ? "bg-muted" : "bg-muted/50",
+          )}
+        >
+          <LaneIcon
+            size={15}
+            className={cn(
+              "shrink-0",
+              visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            )}
+          />
+          <span className="text-sm font-medium text-foreground [writing-mode:vertical-rl]">
+            {label}
+          </span>
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {items.length}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.expandColumnAriaLabel", {
+                  lane: label,
+                })}
+                onClick={onToggleCollapsed}
+                className={LANE_ACTION}
+              >
+                <Maximize2 size={15} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {t("taskBoard.taskBoard.expandColumn")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -2821,6 +2883,23 @@ function Lane({
                 ? rules.summary
                 : t("taskBoard.columnRules.add")}
             </span>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
+                lane: label,
+              })}
+              onClick={onToggleCollapsed}
+              className={LANE_ACTION}
+            >
+              <Minimize2 size={15} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {t("taskBoard.taskBoard.collapseColumn")}
           </TooltipContent>
         </Tooltip>
       </div>

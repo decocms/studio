@@ -30,6 +30,7 @@ import {
 import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
+import { refuseDormantLane } from "./lanes";
 import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -122,6 +123,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       );
     }
 
+    refuseDormantLane(input.status);
     if (input.status !== undefined) {
       const settings =
         await ctx.storage.organizationSettings.get(organizationId);

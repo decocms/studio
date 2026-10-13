@@ -13,6 +13,7 @@ import {
   agentRunState,
   boardCollisions,
   cardNeedsAttention,
+  boardGridColumns,
   dropLane,
   dueDateUrgency,
   insertSortOrder,
@@ -278,8 +279,15 @@ describe("moveTargets", () => {
     ]);
   });
 
-  test("offers every lane once they're on", () => {
-    expect(moveTargets(true)).toEqual(STATUSES);
+  test("offers every lane but the dormant ones once they're on", () => {
+    expect(moveTargets(true)).toEqual(
+      STATUSES.filter(
+        (s) =>
+          s !== "qa" &&
+          s !== "customer_approval" &&
+          s !== "ready_for_deployment",
+      ),
+    );
   });
 });
 
@@ -453,6 +461,36 @@ describe("laneVisibility", () => {
     expect(hidden).toEqual(["archived"]);
   });
 
+  test("a dormant lane is absent while empty, whatever the delivery flag", () => {
+    for (const deliveryEnabled of [true, false]) {
+      const { lanes, hidden } = laneVisibility({
+        deliveryEnabled,
+        shownLanes: shown,
+        occupied: [],
+      });
+      expect(lanes).not.toContain("qa");
+      expect(hidden).not.toContain("qa");
+    }
+  });
+
+  // A newer release left a card there: draw the column so the card shows.
+  test("a card in a dormant lane draws that lane as a column", () => {
+    const { lanes, hidden } = laneVisibility({
+      deliveryEnabled: false,
+      shownLanes: shown,
+      occupied: ["qa"],
+    });
+    expect(lanes).toEqual([
+      "triage",
+      "todo",
+      "in_progress",
+      "in_review",
+      "qa",
+      "done",
+    ]);
+    expect(hidden).toEqual(["archived"]);
+  });
+
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
       deliveryEnabled: false,
@@ -521,5 +559,48 @@ describe("daysSince", () => {
   test("the same day, or a timestamp ahead of the clock, is 0", () => {
     expect(daysSince("2026-09-28T01:00:00Z", now)).toBe(0);
     expect(daysSince("2026-09-29T00:00:00Z", now)).toBe(0);
+  });
+});
+
+describe("boardGridColumns", () => {
+  test("gives every open lane a shared, flexible track", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage", "in_progress"],
+        collapsed: [],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr) minmax(280px, 1fr)");
+  });
+
+  test("narrows a collapsed lane to a fixed strip, in place", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage", "in_progress", "done"],
+        collapsed: ["in_progress"],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr) 44px minmax(280px, 1fr)");
+  });
+
+  test("keeps a track for the hidden-lanes tail", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage"],
+        collapsed: ["triage"],
+        hasHiddenTail: true,
+      }),
+    ).toBe("44px 280px");
+  });
+
+  // localStorage can name a lane the board no longer has.
+  test("ignores a collapsed lane the board does not draw", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage"],
+        collapsed: ["a_lane_that_no_longer_exists"],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr)");
   });
 });

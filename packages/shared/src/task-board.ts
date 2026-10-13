@@ -189,14 +189,7 @@ export function enabledReviewerKinds(
 }
 
 /**
- * The lanes a release process needs AFTER the pull request merges, sitting
- * between In Review and Done. A subset of both sides' status unions, so each
- * assigns these names with no cast. The lane TYPE is unconditional — every
- * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
- * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
- */
-/**
- * The board Studio ships with, in board order.
+ * Every status a card can hold, in board order.
  *
  * One ordering, read by both the rank guard (`LANE_RANK`) and the static
  * column set, so "left of" cannot come to mean two different things.
@@ -206,7 +199,10 @@ export const CANONICAL_COLUMN_KEYS = [
   "todo",
   "in_progress",
   "in_review",
+  "qa",
+  "customer_approval",
   "approved",
+  "ready_for_deployment",
   "merged",
   "post_deploy_validation",
   "done",
@@ -214,6 +210,26 @@ export const CANONICAL_COLUMN_KEYS = [
 ] as const;
 
 export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
+
+/**
+ * Statuses this release can read but does not offer: nothing here moves a card
+ * into one, and the board draws one only while a card sits in it.
+ *
+ * These are the lanes of the next board (QA and Customer Approval as human
+ * gates, Ready for Deployment as the release lane). The release that moves
+ * cards into them can then be rolled back to this one without leaving a card
+ * in a status that `laneRank` throws on or the board cannot draw.
+ */
+export const DORMANT_LANES: readonly CanonicalColumnKey[] = [
+  "qa",
+  "customer_approval",
+  "ready_for_deployment",
+];
+
+/** True for a status the board knows but does not offer. */
+export function isDormantLane(status: string): boolean {
+  return (DORMANT_LANES as readonly string[]).includes(status);
+}
 
 /**
  * The columns Studio's lifecycle gives meanings to, by meaning.
@@ -248,6 +264,13 @@ export const CANONICAL_COLUMNS: BoardColumn[] = CANONICAL_COLUMN_KEYS.map(
   (key, position) => ({ key, title: key, position }),
 );
 
+/**
+ * The lanes a release process needs AFTER the pull request merges, sitting
+ * between In Review and Done. A subset of both sides' status unions, so each
+ * assigns these names with no cast. The lane TYPE is unconditional — every
+ * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
+ * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
+ */
 export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
 
 export const DELIVERY_LANES: DeliveryLane[] = [

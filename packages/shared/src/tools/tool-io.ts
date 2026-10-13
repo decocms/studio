@@ -356,7 +356,10 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "qa"
+        | "customer_approval"
         | "approved"
+        | "ready_for_deployment"
         | "merged"
         | "post_deploy_validation"
         | "archived"
@@ -383,7 +386,10 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "qa"
+          | "customer_approval"
           | "approved"
+          | "ready_for_deployment"
           | "merged"
           | "post_deploy_validation"
           | "archived";
@@ -459,7 +465,10 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "qa"
+          | "customer_approval"
           | "approved"
+          | "ready_for_deployment"
           | "merged"
           | "post_deploy_validation"
           | "archived";
@@ -531,7 +540,10 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "qa"
+        | "customer_approval"
         | "approved"
+        | "ready_for_deployment"
         | "merged"
         | "post_deploy_validation"
         | "archived"
@@ -560,7 +572,10 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "qa"
+          | "customer_approval"
           | "approved"
+          | "ready_for_deployment"
           | "merged"
           | "post_deploy_validation"
           | "archived";
@@ -702,7 +717,7 @@ export interface StudioToolIO {
   TASK_BOARD_REVIEW_DECISION: {
     input: {
       taskBoardItemId: string;
-      reviewer: "reviewer" | "qa" | "code_review";
+      reviewer: "qa" | "reviewer" | "code_review";
       decision: "approve" | "request_changes";
       notes: string;
       reviewToken?: string | undefined;
@@ -714,7 +729,10 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "qa"
+        | "customer_approval"
         | "approved"
+        | "ready_for_deployment"
         | "merged"
         | "post_deploy_validation"
         | "archived";
@@ -730,7 +748,10 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "qa"
+        | "customer_approval"
         | "approved"
+        | "ready_for_deployment"
         | "merged"
         | "post_deploy_validation"
         | "archived";

@@ -15,6 +15,7 @@ import {
   CANONICAL_COLUMN_KEYS,
   type CanonicalColumnKey,
   DELIVERY_LANES,
+  isDormantLane,
   LANES,
 } from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
@@ -50,6 +51,24 @@ export const DELIVERY_LANE_STATUSES: string[] = DELIVERY_LANES;
  *  `layouts/task-board/config.tsx`. */
 export function isDeliveryLane(status: string): boolean {
   return DELIVERY_LANE_STATUSES.includes(status);
+}
+
+/** The statuses a card or a column rule may be given: every lane but the
+ *  dormant ones. */
+export const OFFERED_COLUMN_KEYS: CanonicalColumnKey[] =
+  CANONICAL_COLUMN_KEYS.filter((key) => !isDormantLane(key));
+
+/**
+ * Refuses a write that would put a card in a lane this release does not offer
+ * (`DORMANT_LANES`). The schema accepts those statuses so a card a newer
+ * release left in one still reads; nothing here may move a card into one.
+ */
+export function refuseDormantLane(status: string | undefined): void {
+  if (status === undefined || !isDormantLane(status)) return;
+  throw new Error(
+    `The "${status}" column is not available on this board yet; use a ` +
+      "column the board shows.",
+  );
 }
 
 /**

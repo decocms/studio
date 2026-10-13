@@ -14,7 +14,7 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { inReviewPhase, isDeliveryLane } from "./lanes";
+import { inReviewPhase, isDeliveryLane, refuseDormantLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
@@ -324,6 +324,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
 
+    refuseDormantLane(input.status);
     if (input.status !== undefined && isDeliveryLane(input.status)) {
       const settings =
         await ctx.storage.organizationSettings.get(organizationId);
