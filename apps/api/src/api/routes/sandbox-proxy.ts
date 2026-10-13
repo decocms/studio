@@ -137,12 +137,12 @@ function assertSandboxBranchParam(branch: string): void {
 
 const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
 /**
- * The content protocol's own caps (`@decocms/blocks/protocol` limits): 8 MiB
- * per request and 25 MiB per asset (`describe.assets.maxBytes`), plus slack so
- * the daemon, not this proxy, answers a body right at the limit.
+ * The content protocol's own cap (`@decocms/blocks/protocol` limits): 8 MiB per
+ * request, plus slack so the daemon, not this proxy, answers a body right at
+ * the limit. No asset uploads go through a sandbox: project assets go to
+ * Studio's file storage (`/file-configs/:id/upload`).
  */
 const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
-const CONTENT_ASSET_MAX_BODY_BYTES = 25 * 1024 * 1024 + 64 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -563,12 +563,6 @@ async function proxyDaemon(
     forwardJsonBody?: boolean;
     /** When set, sent instead of reading the request body. */
     jsonBody?: string;
-    /**
-     * A binary body (an asset upload), sent with `contentType`. Buffered, not
-     * streamed, so the runner can resend it when it retries a 401.
-     */
-    rawBody?: ArrayBuffer;
-    contentType?: string;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -596,13 +590,10 @@ async function proxyDaemon(
 
   const { claimName, userId, projectRef } = c.get("vmClaim");
   const method = opts?.method ?? "POST";
-  let body: string | ArrayBuffer | null = null;
+  let body: string | null = null;
   const headers = new Headers();
 
-  if (opts?.rawBody !== undefined) {
-    body = opts.rawBody;
-    headers.set("content-type", opts.contentType ?? "application/octet-stream");
-  } else if (opts?.jsonBody !== undefined) {
+  if (opts?.jsonBody !== undefined) {
     body = opts.jsonBody;
     headers.set("content-type", "application/json");
   } else if (opts?.forwardJsonBody) {
@@ -718,17 +709,6 @@ export function proxyContentRpc(c: Context<VmEnv>) {
   return proxyDaemon(c, "/_sandbox/rpc", {
     forwardJsonBody: true,
     signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30_000)]),
-  });
-}
-
-/** `PUT …/assets/:name`: an asset upload to the daemon's `/_sandbox/assets/`. */
-export async function proxyContentAsset(c: Context<VmEnv>) {
-  const name = c.req.param("name") ?? "";
-  return proxyDaemon(c, `/_sandbox/assets/${encodeURIComponent(name)}`, {
-    method: "PUT",
-    rawBody: await c.req.arrayBuffer(),
-    contentType: c.req.header("content-type"),
-    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(60_000)]),
   });
 }
 
@@ -900,19 +880,6 @@ export const createSandboxRoutes = () => {
         ),
     }),
     proxyContentRpc,
-  );
-  app.put(
-    "/:virtualMcpId/:branch/assets/:name",
-    bodyLimit({
-      maxSize: CONTENT_ASSET_MAX_BODY_BYTES,
-      onError: (c) =>
-        c.json(
-          { error: "Payload too large" },
-          413,
-          SANDBOX_PROXY_CACHE_HEADERS,
-        ),
-    }),
-    proxyContentAsset,
   );
 
   // -- Tenant config --------------------------------------------------------

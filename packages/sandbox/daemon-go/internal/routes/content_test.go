@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,7 +50,7 @@ func TestContentFollowsThePackagePathAndReportsWrites(t *testing.T) {
 	})
 
 	w := rpcPost(t, c, `{"jsonrpc":"2.0","id":1,"method":"describe"}`)
-	if !strings.Contains(w.Body.String(), `"root":"apps/web"`) || !strings.Contains(w.Body.String(), `"dir":"apps/web/public/assets"`) {
+	if !strings.Contains(w.Body.String(), `"root":"apps/web"`) || !strings.Contains(w.Body.String(), `"assets":null`) {
 		t.Fatalf("describe: %s", w.Body)
 	}
 	w = rpcPost(t, c, `{"jsonrpc":"2.0","id":1,"method":"blocks.apply","params":{"set":{"pages-Home Page":{"path":"/"},"Header":{}}}}`)
@@ -62,14 +61,6 @@ func TestContentFollowsThePackagePathAndReportsWrites(t *testing.T) {
 	want := []string{"apps/web/.deco/blocks/Header.json", "apps/web/.deco/blocks/pages-Home%20Page.json"}
 	if !reflect.DeepEqual(written, want) {
 		t.Errorf("OnWrite: %v, want %v", written, want)
-	}
-
-	r := httptest.NewRequest(http.MethodPut, "/_sandbox/assets/logo.png", bytes.NewReader([]byte{1, 2}))
-	r.Header.Set("Content-Type", "image/png")
-	aw := httptest.NewRecorder()
-	c.Assets(aw, r)
-	if aw.Code != 201 || written[len(written)-1] != "apps/web/public/assets/logo.png" {
-		t.Errorf("upload: %d %s %v", aw.Code, aw.Body, written)
 	}
 
 	exclude, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
@@ -124,18 +115,9 @@ func TestContentWritesGiveUpOnABusyTree(t *testing.T) {
 	if !strings.Contains(body, `"message":"the working tree is busy"`) || !strings.Contains(body, `"retryAfterMs":500`) {
 		t.Errorf("busy tree: %s", body)
 	}
-	r := httptest.NewRequest(http.MethodPut, "/_sandbox/assets/logo.png", bytes.NewReader([]byte{1}))
-	r.Header.Set("Content-Type", "image/png")
-	aw := httptest.NewRecorder()
-	c.Assets(aw, r)
-	if aw.Code < 500 {
-		t.Errorf("upload on a busy tree: %d %s", aw.Code, aw.Body)
-	}
 	release()
-	for _, p := range []string{".deco/blocks/x.json", "public/assets/logo.png"} {
-		if _, err := os.Stat(filepath.Join(repo, p)); err == nil {
-			t.Errorf("%s landed after the request was refused", p)
-		}
+	if _, err := os.Stat(filepath.Join(repo, ".deco/blocks/x.json")); err == nil {
+		t.Error("the write landed after the request was refused")
 	}
 }
 
@@ -148,8 +130,6 @@ func TestContentStaysInsideTheWorkingTree(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(repo, ".deco")); err != nil {
 		t.Skipf("symlink: %v", err)
 	}
-	os.MkdirAll(filepath.Join(outside, "pub"), 0o755)
-	os.Symlink(filepath.Join(outside, "pub"), filepath.Join(repo, "public"))
 	c := NewContent(ContentDeps{RepoDir: repo, Store: config.NewStore(), TreeLock: &worktree.Lock{}})
 
 	if w := rpcPost(t, c, `{"jsonrpc":"2.0","id":1,"method":"describe"}`); strings.Contains(w.Body.String(), `"error"`) {
@@ -162,16 +142,6 @@ func TestContentStaysInsideTheWorkingTree(t *testing.T) {
 		if w := rpcPost(t, c, body); !strings.Contains(w.Body.String(), "resolves outside") {
 			t.Errorf("%s: %s", body, w.Body)
 		}
-	}
-	r := httptest.NewRequest(http.MethodPut, "/_sandbox/assets/logo.png", bytes.NewReader([]byte{1}))
-	r.Header.Set("Content-Type", "image/png")
-	aw := httptest.NewRecorder()
-	c.Assets(aw, r)
-	if aw.Code < 400 {
-		t.Errorf("upload: %d %s", aw.Code, aw.Body)
-	}
-	if entries, _ := os.ReadDir(filepath.Join(outside, "pub")); len(entries) != 0 {
-		t.Errorf("wrote outside the tree: %v", entries)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "blocks", "x.json")); err == nil {
 		t.Error("committed outside the tree")
