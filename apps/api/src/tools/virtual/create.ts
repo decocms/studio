@@ -23,6 +23,7 @@ import {
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 import { refreshBlocksMajorMarker } from "../../hosted/blocks-major";
+import { ensureManagedSiteFileConfig } from "../../file-storage/managed-site-config";
 import { contentClientForProjectRepo } from "../../git-providers";
 import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 import {
@@ -163,7 +164,7 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     // stays unlinked (see hosted/claim-site.ts). Best-effort: never fails the
     // creation.
     if (virtualMcp.id) {
-      await claimProjectSite(
+      const site = await claimProjectSite(
         {
           orgSites: ctx.storage.orgSites,
           isDecoSite: (slug) => decoSiteExists(slug),
@@ -176,6 +177,24 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
           by: userId,
         },
       );
+      // A linked site's assets go to Studio's storage (S3) from every mode
+      // but a local `deco serve`: give it the managed config the image and
+      // file fields lock onto, as the deco.cx import does. Best-effort.
+      if (site && site.status !== "refused") {
+        await ensureManagedSiteFileConfig({
+          fileConfigs: ctx.storage.orgFileConfigs,
+          organizationId: organization.id,
+          slug: site.slug,
+          by: userId,
+        }).catch((error) =>
+          console.error("hosted: managed asset config not provisioned", {
+            organizationId: organization.id,
+            projectId: virtualMcp.id,
+            slug: site.slug,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
     }
 
     // A Blocks v8 site (main's schema passes `isV8Schema`) gets the
