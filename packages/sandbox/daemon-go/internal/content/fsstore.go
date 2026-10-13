@@ -5,8 +5,10 @@ package content
 //
 //   - .deco/blocks/*.json — the saved blocks; the only thing a commit writes;
 //   - .deco/schema.gen.json, else .deco/meta.gen.json — read only;
-//   - .deco/secrets.pub — read only;
-//   - public/assets — uploads, never overwriting a file.
+//   - .deco/secrets.pub — read only.
+//
+// It takes no uploads: hosted and sandbox projects keep assets in Studio's
+// file storage, so describe reports `assets: null`.
 //
 // A file's version is its git blob hash. Commits are serialized in process and
 // across processes (.deco/.blocks.lock), applied with staged files and atomic
@@ -15,7 +17,6 @@ package content
 // 30 s) and .deco/.tx-* folders (swept by the next commit) behind.
 
 import (
-	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
@@ -32,10 +33,8 @@ import (
 )
 
 const (
-	defaultAssetsDir      = "public/assets"
-	DefaultAssetsMaxBytes = 25 * 1024 * 1024
-	lockFileName          = ".blocks.lock"
-	transactionPrefix     = ".tx-"
+	lockFileName      = ".blocks.lock"
+	transactionPrefix = ".tx-"
 )
 
 // storageNotFound: there's no .deco folder at all.
@@ -104,16 +103,13 @@ type FSOptions struct {
 	Root string
 	// RepoRoot is what describe reports paths relative to.
 	RepoRoot string
-	// AssetsMaxBytes is the largest upload (default 25 MiB).
-	AssetsMaxBytes int64
 	// LockTimeout bounds the wait for another process's lock (default 10 s).
 	LockTimeout time.Duration
 	// ContainWithin, when set, refuses (as NotFound) to read or write when
-	// .deco, .deco/blocks or the assets folder resolve, through symlinks,
-	// outside it.
+	// .deco or .deco/blocks resolve, through symlinks, outside it.
 	// OPEN: stricter than the TS FS storage, which follows symlinks.
 	ContainWithin string
-	// Exclusive, when set, is held around every commit and upload (the daemon's
+	// Exclusive, when set, is held around every commit (the daemon's
 	// working-tree lock), before the in-process and file locks. ok false means
 	// it couldn't be had in time: the write is refused as Unavailable (retry),
 	// never left to land after the client gave up.
@@ -127,11 +123,10 @@ type fingerprinted struct {
 
 // FSStore is the filesystem storage of one app root.
 type FSStore struct {
-	root, repoRoot, decoDir, blocksDir, assetsDir string
-	assetsMaxBytes                                int64
-	lockTimeout, lockStale                        time.Duration
-	exclusive                                     func() (func(), bool)
-	containWithin                                 string
+	root, repoRoot, decoDir, blocksDir string
+	lockTimeout, lockStale             time.Duration
+	exclusive                          func() (func(), bool)
+	containWithin                      string
 
 	hashMu    sync.Mutex
 	hashCache map[string]fingerprinted
@@ -149,20 +144,15 @@ func NewFSStore(o FSOptions) *FSStore {
 	}
 	repoRoot, _ = filepath.Abs(repoRoot)
 	s := &FSStore{
-		root:           root,
-		repoRoot:       repoRoot,
-		decoDir:        filepath.Join(root, ".deco"),
-		blocksDir:      filepath.Join(root, ".deco", "blocks"),
-		assetsDir:      filepath.Join(root, filepath.FromSlash(defaultAssetsDir)),
-		assetsMaxBytes: o.AssetsMaxBytes,
-		lockTimeout:    o.LockTimeout,
-		lockStale:      30 * time.Second,
-		exclusive:      o.Exclusive,
-		containWithin:  o.ContainWithin,
-		hashCache:      map[string]fingerprinted{},
-	}
-	if s.assetsMaxBytes <= 0 {
-		s.assetsMaxBytes = DefaultAssetsMaxBytes
+		root:          root,
+		repoRoot:      repoRoot,
+		decoDir:       filepath.Join(root, ".deco"),
+		blocksDir:     filepath.Join(root, ".deco", "blocks"),
+		lockTimeout:   o.LockTimeout,
+		lockStale:     30 * time.Second,
+		exclusive:     o.Exclusive,
+		containWithin: o.ContainWithin,
+		hashCache:     map[string]fingerprinted{},
 	}
 	if s.lockTimeout <= 0 {
 		s.lockTimeout = 10 * time.Second
@@ -180,7 +170,7 @@ func (s *FSStore) checkContained() error {
 	if err != nil {
 		return wrapIOError(err)
 	}
-	for _, dir := range []string{s.decoDir, s.blocksDir, s.assetsDir} {
+	for _, dir := range []string{s.decoDir, s.blocksDir} {
 		real, err := resolveExisting(dir)
 		if err != nil {
 			return wrapIOError(err)
@@ -271,16 +261,12 @@ func toPosixRel(base, target string) string {
 }
 
 type storageDescription struct {
-	Root           string
-	AssetsDir      string
-	AssetsMaxBytes int64
+	Root string
 }
 
 func (s *FSStore) describe() storageDescription {
 	return storageDescription{
-		Root:           toPosixRel(s.repoRoot, s.root),
-		AssetsDir:      toPosixRel(s.repoRoot, s.assetsDir),
-		AssetsMaxBytes: s.assetsMaxBytes,
+		Root: toPosixRel(s.repoRoot, s.root),
 	}
 }
 
@@ -817,58 +803,4 @@ func sweepStaleTransactions(scratch string) error {
 		}
 	}
 	return nil
-}
-
-// ---------------------------------------------------------------- assets
-
-// suffixedAssetName is the name to try when name is taken: a short random
-// suffix before the extension.
-func suffixedAssetName(name string) string {
-	var b [3]byte
-	rand.Read(b[:])
-	suffix := hex.EncodeToString(b[:])
-	if dot := strings.LastIndex(name, "."); dot > 0 {
-		return name[:dot] + "-" + suffix + name[dot:]
-	}
-	return name + "-" + suffix
-}
-
-// putAsset stores an upload, never overwriting a file; it returns the stored name.
-func (s *FSStore) putAsset(name string, body []byte) (string, error) {
-	if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
-		return "", errors.New("not an asset file name: " + name)
-	}
-	if err := s.checkContained(); err != nil {
-		return "", err
-	}
-	releaseTree, err := s.holdExclusive()
-	if err != nil {
-		return "", err
-	}
-	defer releaseTree()
-	if err := os.MkdirAll(s.assetsDir, 0o755); err != nil {
-		return "", err
-	}
-	candidate := name
-	for attempt := 0; ; attempt++ {
-		path := filepath.Join(s.assetsDir, candidate)
-		if filepath.Dir(path) != s.assetsDir {
-			return "", errors.New("invalid asset path")
-		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-		if err != nil {
-			if !errors.Is(err, fs.ErrExist) || attempt > 20 {
-				return "", err
-			}
-			candidate = suffixedAssetName(name)
-			continue
-		}
-		_, werr := f.Write(body)
-		serr := f.Sync()
-		cerr := f.Close()
-		if err := errors.Join(werr, serr, cerr); err != nil {
-			return "", err
-		}
-		return candidate, nil
-	}
 }
