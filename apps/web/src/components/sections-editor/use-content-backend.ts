@@ -52,8 +52,8 @@ export interface Probe {
   v8Schema: boolean;
 }
 
-/** The sandbox answered 404 on `/_sandbox/rpc`: its daemon predates it. */
-class NoSandboxProtocolError extends Error {}
+/** Studio answered 404 on the sandbox's `/rpc`: the session has no sandbox. */
+class NoSandboxError extends Error {}
 
 /** Studio answered 409 `site_not_owned`: another project owns this site. */
 class SiteNotOwnedError extends Error {}
@@ -141,8 +141,8 @@ function githubContentEndpoint(params: {
 }
 
 /**
- * A sandbox daemon's content protocol, through Studio's sandbox proxy (the
- * same session auth and claim as the sandbox's other routes).
+ * A sandbox's content protocol: Studio serves it over the sandbox's working
+ * tree, with the same session auth and claim as the sandbox's other routes.
  */
 function sandboxContentEndpoint(params: {
   orgSlug: string;
@@ -197,10 +197,10 @@ export async function probe(
 }
 
 /**
- * Probes a sandbox daemon's content protocol: the probe when its working
- * tree's schema is a v8 one, else null. As on GitHub, only a
- * `"blocksMajor": 8` schema is a v8 site. A daemon without the protocol (an
- * older image) answers 404: v7 (null), not an error to poll.
+ * Probes a sandbox's content protocol: the probe when its working tree's
+ * schema is a v8 one, else null. As on GitHub, only a `"blocksMajor": 8`
+ * schema is a v8 site. A session without a sandbox answers 404: v7 (null),
+ * not an error to poll.
  */
 export async function probeSandbox(
   endpoint: string,
@@ -211,7 +211,7 @@ export async function probeSandbox(
     endpoint,
     fetch: async (request) => {
       const response = await doFetch(request);
-      if (response.status === 404) throw new NoSandboxProtocolError();
+      if (response.status === 404) throw new NoSandboxError();
       return response;
     },
   });
@@ -219,7 +219,7 @@ export async function probeSandbox(
     const result = await probe(client);
     return result.v8Schema ? result : null;
   } catch (error) {
-    if (error instanceof NoSandboxProtocolError) return null;
+    if (error instanceof NoSandboxError) return null;
     throw error;
   }
 }
@@ -227,11 +227,11 @@ export async function probeSandbox(
 /**
  * The content backend of a project's editor (see `selectContentBackend`).
  * It is `pending` until the editor has a schema for its mode (Localhost: the
- * `deco serve`'s; Sandbox: the daemon's working tree; GitHub: main's, from
+ * `deco serve`'s; Sandbox: its working tree's; GitHub: main's, from
  * the server) and, for a v8 site, its content backend: callers hold their
  * reads until then, so it never reads from the v7 backend and then switches.
  * The project's `blocksMajor` marker is never a v8 answer here: it only
- * tells a failing daemon on a site last found v8 (waits) from any other one
+ * tells a failing sandbox on a site last found v8 (waits) from any other one
  * (the v7 sandbox editor, as on main).
  */
 export function useContentBackend(
@@ -247,12 +247,12 @@ export function useContentBackend(
   const tabConnection = useContext(TabDecoServeConnectionContext);
   // `isV8Schema` on main's schema, from the server (GitHub mode decides on it).
   const mainSchema = useMainSchemaV8(tabConnection ? null : virtualMcpId);
-  // The server's last answer for main: only whether a daemon that never
+  // The server's last answer for main: only whether a sandbox that never
   // answered is waited on (see `selectContentBackend`), never v8 itself.
   const markedV8 = useLastFoundV8(virtualMcpId);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  // The daemon answers once the working tree is there. Before its first
+  // The sandbox answers once its working tree is there. Before its first
   // answer the editor waits (pending); once it answered for this thread, a
   // restart, hibernate or re-clone keeps that answer (see `sandboxSite`).
   const workingTreeReady = isWorkingTreeReadyPhase(
@@ -440,7 +440,7 @@ export function useContentBackend(
 }
 
 /**
- * The sandbox daemon's answer for `selectContentBackend`. Once the daemon
+ * The sandbox's answer for `selectContentBackend`. Once the sandbox
  * answered for this thread (the probe's key is per thread and branch), that
  * answer holds while the working tree isn't ready: a restart, hibernate or
  * re-clone keeps a v7 site on the legacy editor and a v8 one on the protocol,

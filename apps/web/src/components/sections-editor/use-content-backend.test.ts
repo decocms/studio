@@ -98,7 +98,7 @@ describe("v7/v8 detection over the GitHub backend", () => {
   });
 });
 
-describe("v7/v8 detection over a sandbox's daemon", () => {
+describe("v7/v8 detection over a sandbox's working tree", () => {
   async function decide(schema: unknown) {
     const probed = await probe(githubServing(schema));
     return selectContentBackend({
@@ -127,11 +127,10 @@ describe("v7/v8 detection over a sandbox's daemon", () => {
 describe("sandbox probe", () => {
   const endpoint = "http://studio.test/rpc";
 
-  test("an older daemon answering 404 is v7, not an error", async () => {
+  test("a session without a sandbox (404) is v7, not an error", async () => {
     expect(
-      await probeSandbox(
-        endpoint,
-        async () => new Response("404 page not found", { status: 404 }),
+      await probeSandbox(endpoint, async () =>
+        Response.json({ error: "sandbox not found" }, { status: 404 }),
       ),
     ).toBe(null);
   });
@@ -210,7 +209,7 @@ describe("main changed mid-session (the GitHub backend)", () => {
   });
 });
 
-describe("the sandbox daemon's answer (sandboxSiteAnswer)", () => {
+describe("the sandbox's answer (sandboxSiteAnswer)", () => {
   const v8Probe = { v8Schema: true } as unknown as Probe;
 
   test("before its first answer it waits for the working tree", () => {
