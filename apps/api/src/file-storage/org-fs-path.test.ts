@@ -3,6 +3,7 @@ import {
   ancestorsOf,
   fsObjectKey,
   fsVolumePrefix,
+  isOrgFsKey,
   isValidVolume,
   normalizeFsPath,
   parentOf,
@@ -70,5 +71,23 @@ describe("isValidVolume", () => {
   test("rejects '.' and '..' — the regex alone would accept them and let fsObjectKey escape the _fs/ namespace once sanitizeKey collapses the dot segments", () => {
     expect(isValidVolume(".")).toBe(false);
     expect(isValidVolume("..")).toBe(false);
+  });
+});
+
+describe("isOrgFsKey", () => {
+  test("matches keys in the _fs namespace, however they are spelled", () => {
+    expect(isOrgFsKey("_fs/home/a.html")).toBe(true);
+    expect(isOrgFsKey("/_fs/home/a.html")).toBe(true);
+    expect(isOrgFsKey("uploads/../_fs/home/a.html")).toBe(true);
+    expect(isOrgFsKey("%5Ffs/home/a.html")).toBe(true);
+    expect(isOrgFsKey("_fs\\home\\a.html")).toBe(true);
+    expect(isOrgFsKey("_fs")).toBe(true);
+  });
+
+  test("leaves every other key alone", () => {
+    expect(isOrgFsKey("pages/a.html")).toBe(false);
+    expect(isOrgFsKey("chat-uploads/_fs/a")).toBe(false);
+    expect(isOrgFsKey("_fsx/a")).toBe(false);
+    expect(isOrgFsKey("")).toBe(false);
   });
 });

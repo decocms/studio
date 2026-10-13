@@ -94,9 +94,15 @@ thread id. The stream never ends on its own: run it under `timeout`.
 
 ## Object storage and files
 
-Prefer the tools (`LIST_OBJECTS`, `GET_PRESIGNED_URL`, `PUT_PRESIGNED_URL`,
-`DELETE_OBJECT`). For bytes: `GET /api/<slug>/object-storage/<key>` and
-`GET /api/<slug>/files/<key>` (the stable URL chat history stores for uploads).
+Org files (the Library, `home`, `outputs`, `uploads`) go through `fs` above, never
+through these tools: their bytes sit under the `_fs/` key prefix and the file
+index only the `fs` routes maintain. `PUT_PRESIGNED_URL`, `DELETE_OBJECT` and
+`DELETE_OBJECTS` reject `_fs/` keys for that reason.
+
+For everything else, the tools (`LIST_OBJECTS`, `GET_PRESIGNED_URL`,
+`PUT_PRESIGNED_URL`, `DELETE_OBJECT`) work on raw keys. For bytes:
+`GET /api/<slug>/object-storage/<key>` and `GET /api/<slug>/files/<key>` (the
+stable URL chat history stores for uploads).
 
 ## User scope: `/api/_me`
 

@@ -1,6 +1,7 @@
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
 import type { StudioContext } from "../../core/studio-context";
 import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
+import { isOrgFsKey } from "../../file-storage/org-fs-path";
 
 export function requireObjectStorage(ctx: StudioContext): BoundObjectStorage {
   if (!ctx.objectStorage) {
@@ -23,6 +24,20 @@ export function clampExpiresIn(
   const requested =
     typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return Math.min(Math.max(requested, MIN_EXPIRES_IN), MAX_EXPIRES_IN);
+}
+
+/**
+ * Org filesystem bytes live under `_fs/`, and the Library lists them from the
+ * `org_fs_entry` index that only the `/api/:org/fs` routes maintain. A raw write
+ * leaves the file invisible; a raw delete leaves an index row with no bytes.
+ */
+export function assertNotOrgFsKey(key: string): void {
+  if (isOrgFsKey(key)) {
+    throw new Error(
+      `"${key}" is in the org filesystem (\`_fs/\`); changing it here would skip the file index. ` +
+        "Use PUT/DELETE /api/<org>/fs/<volume>/file instead (`decocms api`).",
+    );
+  }
 }
 
 // Re-export schemas from the canonical OBJECT_STORAGE_BINDING definition

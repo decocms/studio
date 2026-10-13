@@ -44,6 +44,11 @@ When the user names a project instead of an org, search across their orgs:
 Tools are the main surface: the web app calls the same ones. Each tool's input
 schema is the documentation, so look it up instead of guessing fields.
 
+Org files are the exception: read, write, move and delete them with the `fs`
+routes in section 4, not the object-storage tools (`PUT_PRESIGNED_URL`,
+`DELETE_OBJECT`). Those write raw bytes without updating the file index, so a
+file written that way never shows up in the Library.
+
 ```bash
 decocms tools list --org <slug> thread            # NAME<TAB>summary, filtered
 decocms tools describe COLLECTION_THREADS_LIST --org <slug>   # full JSON schema
@@ -64,9 +69,9 @@ remove, overwrite) needs the user's explicit go-ahead for that specific call.
 
 ## 4. REST routes
 
-Some features have no tool: the org filesystem, sending a message to an agent
-and streaming its reply, object storage bytes, thread outputs, and the event
-stream. Reach them with `decocms api`, which works like `gh api`:
+Some features have no tool: the org filesystem (the Library), sending a message
+to an agent and streaming its reply, object storage bytes, thread outputs, and
+the event stream. Reach them with `decocms api`, which works like `gh api`:
 
 ```bash
 decocms api "/api/<slug>/fs/home/list?path="

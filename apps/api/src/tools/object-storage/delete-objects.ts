@@ -1,6 +1,7 @@
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
+  assertNotOrgFsKey,
   DeleteObjectsInputSchema,
   DeleteObjectsOutputSchema,
   requireObjectStorage,
@@ -9,7 +10,8 @@ import {
 export const DELETE_OBJECTS = defineTool({
   name: "DELETE_OBJECTS",
   description:
-    "Delete multiple objects from the organization's storage in batch.",
+    "Delete multiple objects from the organization's storage in batch. Keys under `_fs/` are rejected; " +
+    "delete Library files with `DELETE /api/<org>/fs/<volume>/file`.",
   annotations: {
     title: "Delete Objects",
     readOnlyHint: false,
@@ -24,6 +26,7 @@ export const DELETE_OBJECTS = defineTool({
     requireAuth(ctx);
     requireOrganization(ctx);
     await ctx.access.check();
+    input.keys.forEach(assertNotOrgFsKey);
     const storage = requireObjectStorage(ctx);
 
     const deleted: string[] = [];
