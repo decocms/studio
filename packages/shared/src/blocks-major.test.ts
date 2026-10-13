@@ -259,6 +259,8 @@ describe("one v8 detector", () => {
         "the server's mainIsV8 answer (POST /blocks-major)",
       "apps/web/src/hooks/use-main-schema-v8.ts#fetchMainSchemaV8":
         "the server's mainIsV8 answer (POST /blocks-major)",
+      "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":
+        "the marker (the server's cached mainIsV8): a hint for a failed read, never v8",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":
@@ -336,7 +338,9 @@ describe("one v8 detector", () => {
   test("the web app never decides v8 from the marker", () => {
     // The marker is the server's cache of main's answer. The web app asks
     // the server for that answer (`useMainSchemaV8`), which only compares it
-    // with the marker it holds to re-read a project the server just rewrote.
+    // with the marker it holds to re-read a project the server just rewrote,
+    // and to tell a failed read on a site last found v8 (waits) from any
+    // other (v7, as on main): `useLastFoundV8`, never a v8 answer.
     const allowed = (rel: string) =>
       rel === "apps/web/src/hooks/use-main-schema-v8.ts";
     expect(

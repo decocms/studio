@@ -122,3 +122,15 @@ export function useMainSchemaV8(
     marked,
   });
 }
+
+/**
+ * Whether the server last found this project's main v8 (its marker). A hint
+ * only, never a v8 answer: it tells a schema read that failed on a site last
+ * found v8 (wait and retry) from any other one (v7, as on main). Used by the
+ * sandbox decision, whose daemon decides once it answers.
+ */
+export function useLastFoundV8(
+  virtualMcpId: string | null | undefined,
+): boolean {
+  return isBlocksV8Project(useVirtualMCP(virtualMcpId)?.metadata);
+}
