@@ -239,8 +239,9 @@ contract.
 For v8 (Blocks) sites the daemon also serves the Deco content protocol over the
 working tree, so the site editor edits a sandbox the way it edits a local
 `deco serve`: `POST /_sandbox/rpc` (JSON-RPC: `describe`, `schema.get`,
-`blocks.list`, `blocks.apply`) and `PUT /_sandbox/assets/<name>` (uploads into
-`public/assets`). Both need the daemon token. Content lives in
+`blocks.list`, `blocks.apply`). It needs the daemon token. It takes no asset
+uploads (describe reports `assets: null`): project assets go to Studio's file
+storage. Content lives in
 `<app root>/.deco/blocks/*.json` and is committed and pushed like code; there is
 no CDN draft in a sandbox. Commits take the worktree lock, so they serialize
 with fs writes, publish, discard and autosave. The `.deco/.blocks.lock` and
