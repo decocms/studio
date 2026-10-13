@@ -58,6 +58,9 @@ import {
   sandboxOnlyChatsEnabled,
 } from "../../harnesses/sandbox-only-chats";
 import { getSettings } from "../../settings";
+import { metadataForThreadRuntime } from "../../hosted/blocks-major";
+import { contentClientForProjectRepo } from "../../git-providers";
+import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -130,7 +133,34 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       organization.id,
     );
 
-    const metadata = vmcp.metadata as
+    // A v8 site whose marker isn't written yet (repo seeded after create, an
+    // older project) must still get a `cms` stamp, and a stamp is for life:
+    // when the v8 check's answer decides the default (repo + preview server,
+    // unmarked, Fast Preview off), run it first, bounded. Any other create,
+    // an explicit runtime included, makes no extra reads.
+    const stored = (vmcp.metadata ?? null) as Record<string, unknown> | null;
+    const metadata = (
+      data.runtime
+        ? stored
+        : await metadataForThreadRuntime({
+            projects: ctx.storage.virtualMcps,
+            project: {
+              id: vmcp.id,
+              organizationId: organization.id,
+              metadata: stored,
+            },
+            by: userId,
+            client: async () => {
+              const binding = parseRepositoryBinding(
+                stored,
+                vmcp.connections?.map((c) => c.connection_id) ?? [],
+              );
+              return binding
+                ? contentClientForProjectRepo(ctx, organization.id, binding)
+                : null;
+            },
+          })
+    ) as
       | (RepositoryMetadata & SandboxMapMeta & VmcpRuntimeMetadata)
       | null
       | undefined;
