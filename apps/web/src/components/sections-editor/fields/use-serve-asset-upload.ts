@@ -1,16 +1,15 @@
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
-import { buildSandboxUrl } from "@/sdk/sandbox-url";
-import { servePreviewUrl } from "../content-backend";
+import { serveAssetUploadOrigin, servePreviewUrl } from "../content-backend";
 import { useContentBackend } from "../use-content-backend";
 import type { SandboxConfig } from "./field-props";
 
 /**
- * Uploads to a connected `deco serve`, when it takes them (`describe.assets`):
- * `PUT <server>/assets/<name>`, answered with the path the
- * field stores (`/assets/<name>`). A sandbox's daemon takes them the same way,
- * through Studio's sandbox proxy, into its working tree. `null` otherwise —
- * on GitHub uploads keep going to Studio's file storage.
+ * Uploads to a connected `deco serve` (Localhost, `/site-editor` play mode),
+ * when it takes them (`describe.assets`): `PUT <server>/assets/<name>`,
+ * answered with the path the field stores (`/assets/<name>`). `null` otherwise
+ * — hosted and sandbox projects upload to Studio's file storage (S3), never a
+ * filesystem (see `serveAssetUploadOrigin`).
  */
 export function useServeAssetUpload(
   sandbox: SandboxConfig | null | undefined,
@@ -18,19 +17,18 @@ export function useServeAssetUpload(
   const t = useT();
   const backend = useContentBackend(sandbox?.virtualMcpId, sandbox?.branch);
   const { connection } = useDecoServeConnection(sandbox?.virtualMcpId);
+  const origin = serveAssetUploadOrigin(backend, connection);
   if (
-    backend.kind !== "protocol" ||
-    !backend.describe.assets ||
+    !origin ||
     !sandbox ||
-    (backend.source === "local" ? !connection : backend.source !== "sandbox")
+    backend.kind !== "protocol" ||
+    !backend.describe.assets
   ) {
     return null;
   }
   const { maxBytes } = backend.describe.assets;
   const uploadUrl = (name: string) =>
-    backend.source === "sandbox"
-      ? buildSandboxUrl(sandbox, `assets/${encodeURIComponent(name)}`)
-      : `${new URL(connection!.endpoint).origin}/assets/${encodeURIComponent(name)}`;
+    `${origin}/assets/${encodeURIComponent(name)}`;
   return async (file) => {
     if (file.size > maxBytes) {
       throw new Error(
