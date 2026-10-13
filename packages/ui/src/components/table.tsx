@@ -4,15 +4,32 @@ import type * as React from "react";
 
 import { cn } from "../lib/utils.ts";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  variant = "card",
+  ...props
+}: React.ComponentProps<"table"> & {
+  /** `card` is a table standing on its own; `flush` sits inside a surface that
+   *  already draws the edge, so a second rounded frame would show as a seam,
+   *  and its quieter headers and hairlines defer to that surface's title. */
+  variant?: "card" | "flush";
+}) {
   return (
     <div
       data-slot="table-container"
-      className="w-full min-w-0 bg-card rounded-xl card-shadow overflow-hidden"
+      className={cn(
+        "w-full min-w-0",
+        variant === "card" && "bg-card rounded-xl card-shadow overflow-hidden",
+      )}
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-sm min-w-0", className)}
+        className={cn(
+          "w-full caption-bottom text-sm min-w-0",
+          variant === "flush" &&
+            "[&_th]:text-muted-foreground [&_th]:font-normal [&_tr]:border-border/50",
+          className,
+        )}
         {...props}
       />
     </div>

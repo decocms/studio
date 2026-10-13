@@ -1,7 +1,5 @@
 /**
- * The board's cross-org controls — everything an admin-org member sees while
- * standing IN an admin org: a picker for whose board to show, a banner naming
- * it, and the link to the analytics route.
+ * The board's cross-org controls for admin-org members, plus its analytics link.
  *
  * Server-gated, not just hidden: `TASK_BOARD_ADMIN_ORG_LIST` answers
  * `isTaskBoardAdmin: false` outside an admin org and for non-members, and every
@@ -47,32 +45,56 @@ export function TaskBoardAdminControls() {
   ];
 
   return (
-    <>
-      <Combobox
-        options={options}
-        value={viewing ?? pathOrg}
-        onChange={(slug) =>
-          navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              // Own org drops out of the URL rather than pinning a no-op.
-              boardOrg: slug === pathOrg ? undefined : slug,
-            }),
-            replace: true,
-          })
-        }
-        width="w-[200px]"
-        placeholder={t("taskBoard.analytics.orgPickerPlaceholder")}
-        searchPlaceholder={t("taskBoard.analytics.orgSearch")}
-        emptyMessage={t("taskBoard.analytics.orgEmpty")}
-      />
-      <Button size="sm" variant="outline" asChild>
-        <Link to="/$org/taskboard-analytics" params={{ org: pathOrg }}>
+    <Combobox
+      options={options}
+      value={viewing ?? pathOrg}
+      onChange={(slug) =>
+        navigate({
+          to: ".",
+          search: (prev: Record<string, unknown>) => ({
+            ...prev,
+            // Own org drops out of the URL rather than pinning a no-op.
+            boardOrg: slug === pathOrg ? undefined : slug,
+          }),
+          replace: true,
+        })
+      }
+      width="w-[200px]"
+      placeholder={t("taskBoard.analytics.orgPickerPlaceholder")}
+      searchPlaceholder={t("taskBoard.analytics.orgSearch")}
+      emptyMessage={t("taskBoard.analytics.orgEmpty")}
+    />
+  );
+}
+
+/** Every board's way into its analytics — a project's board into that
+ *  project's, the org board into the org's. */
+export function TaskBoardAnalyticsButton({
+  project,
+}: {
+  project: string | null;
+}) {
+  const t = useT();
+  const params = useParams({ strict: false });
+  const org = params.org ?? "";
+  // `/projects?project=` carries Analytics in its own Project/Files toggle.
+  if (project && !params.agentId) return null;
+  return (
+    <Button size="sm" variant="secondary" asChild>
+      {project ? (
+        <Link
+          to="/$org/projects/$agentId/taskboard-analytics"
+          params={{ org, agentId: project }}
+        >
           <BarChartSquare02 size={16} />
           {t("taskBoard.analytics.openAnalytics")}
         </Link>
-      </Button>
-    </>
+      ) : (
+        <Link to="/$org/taskboard-analytics" params={{ org }}>
+          <BarChartSquare02 size={16} />
+          {t("taskBoard.analytics.openAnalytics")}
+        </Link>
+      )}
+    </Button>
   );
 }
