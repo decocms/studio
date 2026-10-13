@@ -38,9 +38,8 @@ export interface BoardTransitionRuntime extends BoardTransitionDeps {
 
 let runtime: BoardTransitionRuntime | null = null;
 
-/** Set at boot when BOARD_TRANSITION_TRIGGERS_ENABLED is on. Unset, both
- *  workflows do nothing, so a wait enqueued before the flag was turned off
- *  ends quietly. */
+/** Set at boot. Unset (scripts and tests that never boot the app), both
+ *  workflows do nothing. */
 export function setBoardTransitionRuntime(rt: BoardTransitionRuntime): void {
   runtime = rt;
 }

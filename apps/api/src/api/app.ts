@@ -1769,21 +1769,18 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
   // Fires `board_column_transition` automation triggers when a card settles
   // in a column: every logged lane move is offered to the settle wait, and a
-  // 5-minute sweep catches what it missed. Off until
-  // BOARD_TRANSITION_TRIGGERS_ENABLED.
-  if (getSettings().boardTransitionTriggersEnabled) {
-    setBoardTransitionRuntime({
-      automations: automationsStorage,
-      taskBoard: projectorTaskBoard,
-      contextFactory: automationContextFactory,
-      systemDatabaseUrl: withSslmode(
-        getSettings().databaseUrl,
-        getSettings().databasePgSsl,
-      ),
-      settleMs: getSettings().boardTransitionSettleSeconds * 1000,
-    });
-    setBoardMoveListener(onBoardMove);
-  }
+  // 5-minute sweep catches what it missed.
+  setBoardTransitionRuntime({
+    automations: automationsStorage,
+    taskBoard: projectorTaskBoard,
+    contextFactory: automationContextFactory,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+    settleMs: getSettings().boardTransitionSettleSeconds * 1000,
+  });
+  setBoardMoveListener(onBoardMove);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {

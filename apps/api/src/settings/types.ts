@@ -203,10 +203,6 @@ export interface Settings {
    *  reviewer runs for every org on a timer, so it needs one way to stop it that
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
-  /** Fires `board_column_transition` automation triggers when a card settles
-   *  in a column (BOARD_TRANSITION_TRIGGERS_ENABLED, default off until it is
-   *  rolled out) — see `automations/board-column-transition-workflows.ts`. */
-  boardTransitionTriggersEnabled: boolean;
   /** How long a card must stay in a column before a `board_column_transition`
    *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
    *  Shortened only by e2e. */

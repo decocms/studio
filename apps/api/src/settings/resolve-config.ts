@@ -373,10 +373,6 @@ export function resolveConfig(
       envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
       true,
     ),
-    boardTransitionTriggersEnabled: toBoolWithDefault(
-      envVars.BOARD_TRANSITION_TRIGGERS_ENABLED,
-      false,
-    ),
     boardTransitionSettleSeconds: toPositiveIntegerOrDefault(
       "BOARD_TRANSITION_SETTLE_SECONDS",
       envVars.BOARD_TRANSITION_SETTLE_SECONDS,
