@@ -5,6 +5,7 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
+import { runContentChange } from "./content-sync";
 import { usePackagePath } from "./use-package-path";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -72,6 +73,50 @@ export function useSaveBlock({
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const t = useT();
 
+  /** A save on any backend but the content protocol. */
+  const writeLegacy = async (blockKey: string, data: unknown) => {
+    // Local: no persistence — the optimistic cache write is the save.
+    if (localPreviewUrl) return { blockKey, data };
+    if (fastPreviewActive) {
+      const draft = await patchDecofile(
+        { orgSlug, virtualMcpId, branch },
+        { set: { [blockKey]: data } },
+      );
+      setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+      /**
+       * The landed commit moved the branch head — refresh the header's
+       * branch meta now. This write is the ONLY in-app head mutation, which
+       * is what lets the status query drop interval polling entirely.
+       *
+       * Awaited, not fired and forgotten: observers key "is a save in
+       * flight" off this mutation, and releasing them before the re-read
+       * lands renders the PREVIOUS status as if it were current — a clean
+       * "Up to date" over an edit that already exists.
+       */
+      await queryClient.invalidateQueries({
+        queryKey: sandboxGitStatusQueryKey({
+          orgSlug,
+          virtualMcpId,
+          branch,
+          threadId,
+        }),
+      });
+      return draft;
+    }
+    const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
+    const content = JSON.stringify(data, null, 2);
+    const res = await fetch(
+      buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "write"),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path, content }),
+      },
+    );
+    if (!res.ok) return throwResponseError(res, "Write");
+    return res.json();
+  };
+
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
@@ -93,7 +138,7 @@ export function useSaveBlock({
           const result = await applyProtocolPatch(
             queryClient,
             protocol,
-            { orgSlug, virtualMcpId, branch, threadId },
+            { orgSlug, virtualMcpId, branch },
             cacheKey,
             { set: { [blockKey]: data } },
             ifMatch,
@@ -105,46 +150,11 @@ export function useSaveBlock({
           throw error;
         }
       }
-      // Local: no persistence — the optimistic cache write is the save.
-      if (localPreviewUrl) return { blockKey, data };
-      if (fastPreviewActive) {
-        const draft = await patchDecofile(
-          { orgSlug, virtualMcpId, branch },
-          { set: { [blockKey]: data } },
-        );
-        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        /**
-         * The landed commit moved the branch head — refresh the header's
-         * branch meta now. This write is the ONLY in-app head mutation, which
-         * is what lets the status query drop interval polling entirely.
-         *
-         * Awaited, not fired and forgotten: observers key "is a save in
-         * flight" off this mutation, and releasing them before the re-read
-         * lands renders the PREVIOUS status as if it were current — a clean
-         * "Up to date" over an edit that already exists.
-         */
-        await queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey({
-            orgSlug,
-            virtualMcpId,
-            branch,
-            threadId,
-          }),
-        });
-        return draft;
-      }
-      const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
-      const content = JSON.stringify(data, null, 2);
-      const res = await fetch(
-        buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "write"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path, content }),
-        },
+      // Every other backend: the same pending state, with its own refresh.
+      return runContentChange(
+        { queryClient, orgSlug, virtualMcpId, branch, backend, cacheKey },
+        { kind: "edit", write: () => writeLegacy(blockKey, data) },
       );
-      if (!res.ok) return throwResponseError(res, "Write");
-      return res.json();
     },
     onMutate: async ({ blockKey, data }) => {
       const queryKey = KEYS.decofile(cacheKey);

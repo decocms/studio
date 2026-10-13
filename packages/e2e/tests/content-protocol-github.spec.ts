@@ -1124,3 +1124,119 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
     }
   });
 });
+
+test.describe("v8 editor: every content change refreshes the editor and the preview", () => {
+  test.setTimeout(180_000);
+
+  test("a change discarded in Review & Publish puts main's value back in the form and reloads the preview", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const preview = await startPreviewSite();
+    try {
+      const { url, project } = await openEditor(
+        page.request,
+        orgSlug,
+        preview.url,
+        {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...v7Meta,
+            blocksMajor: 8,
+          }),
+          ".deco/blocks/home.json": homePage,
+        },
+      );
+      const rpcMethods: string[] = [];
+      const gitDiscards: string[] = [];
+      page.on("request", (request) => {
+        const path = new URL(request.url()).pathname;
+        if (path.endsWith("/git/discard")) gitDiscards.push(path);
+        if (!/\/decofile\/.+\/rpc$/.test(path)) return;
+        const body = request.postDataJSON() as
+          | { method?: string }
+          | Array<{ method?: string }>
+          | null;
+        for (const call of Array.isArray(body) ? body : [body]) {
+          if (call?.method) rpcMethods.push(call.method);
+        }
+      });
+      const frameUrls: string[] = [];
+      page.on("framenavigated", (frame) => {
+        if (frame.url().startsWith(preview.url)) frameUrls.push(frame.url());
+      });
+
+      await page.goto(url);
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 60_000,
+      });
+      const blocks = page.getByTestId("blocks-panel");
+      await blocks.getByText("Hero", { exact: true }).first().click();
+      const title = page.getByLabel("Title", { exact: true });
+      await expect(title).toHaveValue("Hello", { timeout: 30_000 });
+
+      // The edit lands in the CDN draft and the preview shows that draft.
+      await title.fill("Discard me");
+      const drafts = `sites/${project.owner}/drafts/`;
+      await expect
+        .poll(
+          async () =>
+            Object.values(await deliveryObjects(page.request, drafts)).some(
+              (o) => o.text.includes("Discard me"),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+      await expect
+        .poll(() => frameUrls.some((u) => u.includes("__draft=")), {
+          timeout: 30_000,
+        })
+        .toBe(true);
+      const editedFrame = frameUrls.at(-1)!;
+
+      await page.getByRole("button", { name: "Review & Publish" }).click();
+      const dialog = page.getByRole("dialog");
+      // The change's bodies are in: the discard writes main's version back.
+      await expect(dialog.locator('[data-publish-state="ready"]')).toBeVisible({
+        timeout: 60_000,
+      });
+      const shown = frameUrls.length;
+      const appliesBefore = rpcMethods.filter(
+        (m) => m === "blocks.apply",
+      ).length;
+      await dialog.getByRole("button", { name: "Discard" }).first().click();
+      await dialog
+        .getByRole("button", { name: "Discard", exact: true })
+        .click();
+      // The preview shows the change being written and reloaded.
+      await expect(page.locator(".animate-preview-ramp")).toBeAttached({
+        timeout: 5_000,
+      });
+      await expect(dialog.getByText("Everything is published")).toBeVisible({
+        timeout: 30_000,
+      });
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+
+      // One write path: the discard went through blocks.apply.
+      expect(
+        rpcMethods.filter((m) => m === "blocks.apply").length,
+      ).toBeGreaterThan(appliesBefore);
+      expect(gitDiscards).toEqual([]);
+      // The open form shows main's value again, with no wait for a poll.
+      await expect(title).toHaveValue("Hello", { timeout: 10_000 });
+      // The preview left the discarded draft, and its indicator cleared.
+      await expect
+        .poll(() => frameUrls.slice(shown).length, { timeout: 15_000 })
+        .toBeGreaterThan(0);
+      expect(frameUrls.at(-1)).not.toBe(editedFrame);
+      await expect(page.locator(".animate-preview-ramp")).toHaveCount(0, {
+        timeout: 20_000,
+      });
+      await expect(page.getByRole("button", { name: /Saving/ })).toHaveCount(0);
+      // Nothing is left to publish, and the draft holds no copy of main.
+      const left = Object.values(await deliveryObjects(page.request, drafts));
+      expect(left.some((o) => o.text.includes("Discard me"))).toBe(false);
+    } finally {
+      await preview.close();
+    }
+  });
+});

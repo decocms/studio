@@ -90,7 +90,13 @@ import {
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
-import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
+import {
+  confirmPreviewReloaded,
+  contentSyncScope,
+  registerContentPreview,
+  useContentSyncBusy,
+  useContentSyncState,
+} from "@/components/sections-editor/content-sync";
 import { toast } from "sonner";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import {
@@ -737,12 +743,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // bumped by every save). No sandbox, no SSE — a new version after a save is
   // still what re-navigates the frame.
   //
-  // Autosave indicator: an in-flight block write shares navigation's top bar.
-  const decofileWriting = useDecofileWriting(
-    org.slug,
-    virtualMcpId ?? "",
-    branch ?? "",
-  );
+  // Content changes (content-sync.ts) share navigation's top bar: saving,
+  // then (hosted v8) until this frame has loaded the change.
+  const contentSyncBusy = useContentSyncBusy(org.slug, virtualMcpId ?? "");
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
   const { url: draftPreviewUrl } = useFastPreviewDraftUrl(
@@ -1409,6 +1412,43 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Only a moved or restarted dev server; file edits reload the page themselves.
   useSandboxReloadHandler(reloadPreviewPreservingScroll);
 
+  /**
+   * A hosted v8 frame shows every content change (content-sync.ts): when a
+   * change's refresh is done it loads the new content, by navigating to a
+   * moved draft pointer or by reloading the page it shows, and its load ends
+   * the shared pending state (the bar above and the header's "Saving…").
+   */
+  const contentScope = contentSyncScope(org.slug, virtualMcpId ?? "");
+  const confirmsContentReloads =
+    hostedDraft && previewSurfaceActive && !!virtualMcpId;
+  /** The `iframeSrc` the frame last finished loading. */
+  const loadedSrcRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- registers this frame with the content-sync store for its lifetime
+  useEffect(() => {
+    if (!confirmsContentReloads) return;
+    return registerContentPreview(contentScope);
+  }, [confirmsContentReloads, contentScope]);
+  const { reload: contentReload } = useContentSyncState(
+    org.slug,
+    virtualMcpId ?? "",
+  );
+  const handledReloadRef = useRef(contentReload.seq);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative iframe reload when a content change asks for one
+  useEffect(() => {
+    if (handledReloadRef.current === contentReload.seq) return;
+    handledReloadRef.current = contentReload.seq;
+    if (!confirmsContentReloads) return;
+    // A load of the new URL is under way: its onLoad confirms.
+    if (loadedSrcRef.current !== iframeSrcRef.current) return;
+    // The frame already shows the moved pointer.
+    if (contentReload.navigates) {
+      confirmPreviewReloaded(contentScope);
+      return;
+    }
+    reloadPreviewPreservingScroll();
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- runs once per reload request; the reload reads refs
+  }, [contentReload.seq]);
+
   // A connected `deco serve` is the exception: a save rewrites the site's
   // content module, which only the server imports, so the dev server may
   // swap it without reloading the page in the frame. A new content revision
@@ -2049,7 +2089,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     transparent track — no strip across the site, just the
                     moving edge itself, with a soft same-color glow for
                     presence on busy content. */}
-                    {(navigating || decofileWriting) &&
+                    {(navigating || contentSyncBusy) &&
                       previewSurfaceActive && (
                         <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
                           <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
@@ -2161,6 +2201,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // The page finished loading — always clear the navigation
                             // indicator first, before any of the early returns below.
                             endNavigation();
+                            loadedSrcRef.current = iframeSrcRef.current;
+                            if (confirmsContentReloads) {
+                              confirmPreviewReloaded(contentScope);
+                            }
                             // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
                             if (display.mode !== "sandbox" || localPreviewUrl) {
                               if (

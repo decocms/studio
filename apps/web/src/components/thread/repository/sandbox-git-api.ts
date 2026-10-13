@@ -431,6 +431,15 @@ export function readGitHeadBranch(
   return status?.[GIT_HEAD_BRANCH_KEY] ?? null;
 }
 
+/** Every session's status entry of one branch (the key minus `threadId`). */
+export function sandboxGitStatusQueryPrefix(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+) {
+  return ["sandbox-git-status", orgSlug, virtualMcpId, branch] as const;
+}
+
 export function sandboxGitStatusQueryKey(ref: SandboxProxyRef) {
   return [
     "sandbox-git-status",
