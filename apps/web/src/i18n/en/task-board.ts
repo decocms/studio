@@ -79,6 +79,10 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
+  "taskBoard.taskBoard.collapseColumn": "Collapse",
+  "taskBoard.taskBoard.collapseColumnAriaLabel": "Collapse {lane}",
+  "taskBoard.taskBoard.expandColumn": "Expand",
+  "taskBoard.taskBoard.expandColumnAriaLabel": "Expand {lane}",
   "taskBoard.agenticSetup.button": "Agentic Setup",
   "taskBoard.agenticSetup.message":
     "Help me set up my board around the work I'm doing.",

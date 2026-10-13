@@ -82,6 +82,10 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
   "taskBoard.taskBoard.hideColumn": "Ocultar",
+  "taskBoard.taskBoard.collapseColumn": "Recolher",
+  "taskBoard.taskBoard.collapseColumnAriaLabel": "Recolher {lane}",
+  "taskBoard.taskBoard.expandColumn": "Expandir",
+  "taskBoard.taskBoard.expandColumnAriaLabel": "Expandir {lane}",
   "taskBoard.agenticSetup.button": "Configuração com agente",
   "taskBoard.agenticSetup.message":
     "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",

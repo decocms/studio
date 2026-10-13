@@ -13,6 +13,7 @@ import {
   agentRunState,
   boardCollisions,
   cardNeedsAttention,
+  boardGridColumns,
   dropLane,
   dueDateUrgency,
   insertSortOrder,
@@ -558,5 +559,48 @@ describe("daysSince", () => {
   test("the same day, or a timestamp ahead of the clock, is 0", () => {
     expect(daysSince("2026-09-28T01:00:00Z", now)).toBe(0);
     expect(daysSince("2026-09-29T00:00:00Z", now)).toBe(0);
+  });
+});
+
+describe("boardGridColumns", () => {
+  test("gives every open lane a shared, flexible track", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage", "in_progress"],
+        collapsed: [],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr) minmax(280px, 1fr)");
+  });
+
+  test("narrows a collapsed lane to a fixed strip, in place", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage", "in_progress", "done"],
+        collapsed: ["in_progress"],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr) 44px minmax(280px, 1fr)");
+  });
+
+  test("keeps a track for the hidden-lanes tail", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage"],
+        collapsed: ["triage"],
+        hasHiddenTail: true,
+      }),
+    ).toBe("44px 280px");
+  });
+
+  // localStorage can name a lane the board no longer has.
+  test("ignores a collapsed lane the board does not draw", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage"],
+        collapsed: ["a_lane_that_no_longer_exists"],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr)");
   });
 });

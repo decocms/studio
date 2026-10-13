@@ -424,6 +424,37 @@ export function laneVisibility({
   return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
 }
 
+/** Width of a collapsed lane: room for its icon, vertical label and count. */
+const COLLAPSED_LANE_WIDTH = 44;
+
+/**
+ * The board grid's column tracks. Open lanes SHARE the width instead of each
+ * taking a fixed 300px: `minmax(280px, 1fr)` fills the panel when there is
+ * room and falls back to scrolling once every lane is at its minimum. 280px,
+ * not less — below it a card's footer runs out of room and its icons start
+ * overlapping instead of wrapping. A collapsed lane takes a fixed strip, and
+ * the hidden-lanes tail needs its own track or the grid wraps it onto a
+ * second row.
+ */
+export function boardGridColumns({
+  lanes,
+  collapsed,
+  hasHiddenTail,
+}: {
+  lanes: readonly string[];
+  /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
+  collapsed: readonly string[];
+  hasHiddenTail: boolean;
+}): string {
+  const tracks: string[] = lanes.map((lane) =>
+    collapsed.includes(lane)
+      ? `${COLLAPSED_LANE_WIDTH}px`
+      : "minmax(280px, 1fr)",
+  );
+  if (hasHiddenTail) tracks.push("280px");
+  return tracks.join(" ");
+}
+
 /** dnd-kit id prefix for a lane's own droppable — the empty space below the
  *  last card. Anything else `over` reports is a card id. */
 export const LANE_DROPPABLE_PREFIX = "lane:";
