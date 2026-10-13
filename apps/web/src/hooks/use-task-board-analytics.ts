@@ -1,4 +1,4 @@
-/** Task board analytics: the six tools, plus who may read across orgs. */
+/** Task board analytics: the tools, the cards behind a figure, and who may read across orgs. */
 
 import { useProjectContext } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
@@ -10,11 +10,14 @@ import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-
 export type AnalyticsPayload = ToolOutput<"TASK_BOARD_DELIVERY">;
 export type AnalyticsSection = AnalyticsPayload["sections"][number];
 
+/** The page's tabs, in order. Tenants is cross-org, so only admins see it. */
 export const ANALYTICS_TOOLS = [
+  "TASK_BOARD_OPERATION",
+  "TASK_BOARD_REWORK",
   "TASK_BOARD_DELIVERY",
+  "TASK_BOARD_SPRINTS",
   "TASK_BOARD_STUCK",
   "TASK_BOARD_COST",
-  "TASK_BOARD_QUALITY",
   "TASK_BOARD_ERRORS",
   "TASK_BOARD_TENANTS",
 ] as const;
@@ -42,7 +45,7 @@ export function useTaskBoardAdminOrgs() {
 
 export function useTaskBoardAnalytics(
   tool: AnalyticsTool,
-  params: { org: string; from: string; to: string },
+  params: { org?: string; project?: string; from: string; to: string },
 ) {
   const { locator } = useProjectContext();
   const studio = useStudioTools();
@@ -50,10 +53,36 @@ export function useTaskBoardAnalytics(
     queryKey: KEYS.taskBoardAnalytics(
       locator,
       tool,
-      params.org,
+      params.org ?? "",
+      params.project ?? "",
       params.from,
       params.to,
     ),
     queryFn: () => studio.call(tool, params),
+  });
+}
+
+/** The cards behind one figure; `drill` comes from that figure. */
+export function useTaskBoardOperationTasks(
+  params: { org?: string; project?: string; from: string; to: string },
+  drill: string | null,
+) {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery({
+    queryKey: KEYS.taskBoardOperationTasks(
+      locator,
+      params.org ?? "",
+      params.project ?? "",
+      params.from,
+      params.to,
+      drill ?? "",
+    ),
+    enabled: drill !== null,
+    queryFn: () =>
+      studio.call("TASK_BOARD_OPERATION_TASKS", {
+        ...params,
+        drill: drill ?? "",
+      }),
   });
 }

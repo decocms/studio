@@ -67,6 +67,7 @@ export const projects = {
     "The live storefront. Reports run against this address.",
   "projects.flat.viewProject": "Project",
   "projects.flat.viewFiles": "Files",
+  "projects.flat.viewAnalytics": "Analytics",
   "projects.apps.heading": "Apps",
   "projects.apps.seeAll": "See all",
   "projects.apps.showLess": "Show less",
