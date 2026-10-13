@@ -13,15 +13,16 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/worktree"
 )
 
-// ContentDeps wires the content protocol (`POST /_sandbox/rpc`, `PUT
-// /_sandbox/assets/<name>`) to the working tree.
+// ContentDeps wires the content protocol (`POST /_sandbox/rpc`) to the working
+// tree. It takes no asset uploads: project assets live in Studio's file
+// storage.
 type ContentDeps struct {
 	RepoDir string
 	Store   *config.Store
-	// TreeLock serializes commits and uploads with every other tree mutation
+	// TreeLock serializes commits with every other tree mutation
 	// (fs writes, publish, discard, rebase, autosave). Reads never take it.
 	TreeLock *worktree.Lock
-	// OnWrite gets the repo-relative path of every file a commit or upload
+	// OnWrite gets the repo-relative path of every file a commit
 	// touched: the same hook the fs routes call, so `file-changed`, the
 	// `decofile` version and the branch status follow protocol writes too.
 	OnWrite func(relPath string)
@@ -92,7 +93,6 @@ func (c *Content) current() *content.Handler {
 		},
 	})
 	blocksDir := filepath.Join(root, ".deco", "blocks")
-	assetsDir := filepath.Join(root, "public", "assets")
 	notify := func(path string) {
 		if c.deps.OnWrite != nil {
 			c.deps.OnWrite(c.repoRel(path))
@@ -108,7 +108,6 @@ func (c *Content) current() *content.Handler {
 				notify(filepath.Join(blocksDir, f))
 			}
 		},
-		OnAsset: func(name string) { notify(filepath.Join(assetsDir, name)) },
 	})
 	return c.handler
 }
@@ -117,9 +116,4 @@ func (c *Content) current() *content.Handler {
 // protocol requires).
 func (c *Content) RPC(w http.ResponseWriter, r *http.Request) {
 	c.current().ServeRPC(w, r)
-}
-
-// Assets serves `/_sandbox/assets/<name>`.
-func (c *Content) Assets(w http.ResponseWriter, r *http.Request) {
-	c.current().ServeAssets(w, r)
 }
