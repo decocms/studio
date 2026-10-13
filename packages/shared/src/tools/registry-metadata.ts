@@ -310,6 +310,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_SPRINT_DELETE",
   "TASK_BOARD_ADMIN_ORG_LIST",
   "TASK_BOARD_DELIVERY",
+  "TASK_BOARD_OPERATION",
+  "TASK_BOARD_OPERATION_TASKS",
+  "TASK_BOARD_REWORK",
+  "TASK_BOARD_SPRINTS",
   "TASK_BOARD_STUCK",
   "TASK_BOARD_COST",
   "TASK_BOARD_QUALITY",
@@ -1525,6 +1529,29 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_OPERATION",
+    description:
+      "How autonomously the agent delivers — run to production funnel, no-human rate, failed-QA rate, and where people stepped in",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_OPERATION_TASKS",
+    description: "The cards behind one task board operation figure",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_REWORK",
+    description:
+      "Why tasks come back — failed-QA and needed-a-person rates by type, priority, tag, sprint and author",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINTS",
+    description:
+      "Sprint velocity — committed, completed, and completed with no human",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_STUCK",
     description: "Task board work that is stuck right now, and WIP by age",
     category: "Task Board",
@@ -1764,6 +1791,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_SPRINT_DELETE",
       "TASK_BOARD_ADMIN_ORG_LIST",
       "TASK_BOARD_DELIVERY",
+      "TASK_BOARD_OPERATION",
+      "TASK_BOARD_OPERATION_TASKS",
+      "TASK_BOARD_REWORK",
+      "TASK_BOARD_SPRINTS",
       "TASK_BOARD_STUCK",
       "TASK_BOARD_COST",
       "TASK_BOARD_QUALITY",
