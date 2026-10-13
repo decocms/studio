@@ -22,11 +22,15 @@ import {
   persistProjectFolderName,
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
-import { isValidSiteSlug } from "@decocms/shared/site-slug";
-import { OrgSiteLinkError } from "../../storage/org-sites";
-
-const normalizeSiteSlug = (value: unknown) =>
-  typeof value === "string" ? value.trim().toLowerCase() : "";
+import { refreshBlocksMajorMarker } from "../../hosted/blocks-major";
+import { ensureManagedSiteFileConfig } from "../../file-storage/managed-site-config";
+import { contentClientForProjectRepo } from "../../git-providers";
+import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
+import {
+  claimProjectSite,
+  decoSiteExists,
+  otherOrgNamingSlugFromDb,
+} from "../../hosted/claim-site";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -153,26 +157,71 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       dataWithIcon,
     );
 
-    // The site slug is set once, here (the import flow passes it). Link it to
-    // the org's `org_sites` row so the database knows this project's site.
-    // When the org doesn't own a free row — the slug is another org's, another
-    // project's here, or unclaimed — the project keeps the stored value
-    // unlinked (the same storefront may be imported into several orgs).
-    const siteSlug = normalizeSiteSlug(metadata?.siteSlug);
-    if (siteSlug && isValidSiteSlug(siteSlug) && virtualMcp.id) {
-      try {
-        await ctx.storage.orgSites.link({
-          slug: siteSlug,
+    // The site slug is set once, here (the import flow passes it): link it to
+    // the project in `org_sites`. A slug no org owns is claimed for this org
+    // first, unless another org's project already names it or deco.cx has it;
+    // a reserved (deleted org's) slug, another org's, or another project's
+    // stays unlinked (see hosted/claim-site.ts). Best-effort: never fails the
+    // creation.
+    if (virtualMcp.id) {
+      const site = await claimProjectSite(
+        {
+          orgSites: ctx.storage.orgSites,
+          isDecoSite: (slug) => decoSiteExists(slug),
+          otherOrgNamingSlug: otherOrgNamingSlugFromDb(ctx.db),
+        },
+        {
           organizationId: organization.id,
           projectId: virtualMcp.id,
+          metadata,
           by: userId,
-        });
-      } catch (error) {
-        if (!(error instanceof OrgSiteLinkError)) throw error;
-        console.warn(
-          `[virtual-mcp] project ${virtualMcp.id} keeps site "${siteSlug}" unlinked: ${error.code}`,
+        },
+      );
+      // A linked site's assets go to Studio's storage (S3) from every mode
+      // but a local `deco serve`: give it the managed config the image and
+      // file fields lock onto, as the deco.cx import does. Best-effort.
+      if (site && site.status !== "refused") {
+        await ensureManagedSiteFileConfig({
+          fileConfigs: ctx.storage.orgFileConfigs,
+          organizationId: organization.id,
+          slug: site.slug,
+          by: userId,
+        }).catch((error) =>
+          console.error("hosted: managed asset config not provisioned", {
+            organizationId: organization.id,
+            projectId: virtualMcp.id,
+            slug: site.slug,
+            error: error instanceof Error ? error.message : String(error),
+          }),
         );
       }
+    }
+
+    // A Blocks v8 site (main's schema passes `isV8Schema`) gets the
+    // server-managed `blocksMajor` marker (hosted/blocks-major.ts). Off the
+    // request path (it never throws): creating a project never waits on
+    // GitHub, v7 included. A miss is covered by the refresh when the project
+    // is opened and by the check when its first thread is created.
+    if (virtualMcp.id) {
+      const project = {
+        id: virtualMcp.id,
+        organizationId: organization.id,
+        metadata: metadata ?? null,
+      };
+      void refreshBlocksMajorMarker({
+        projects: ctx.storage.virtualMcps,
+        project,
+        by: userId,
+        client: async () => {
+          const repository = parseRepositoryBinding(
+            project.metadata,
+            createData.connections.map((c) => c.connection_id),
+          );
+          return repository
+            ? contentClientForProjectRepo(ctx, organization.id, repository)
+            : null;
+        },
+      });
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
