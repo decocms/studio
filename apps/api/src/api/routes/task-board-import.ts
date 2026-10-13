@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import {
   isReportsTask,
+  LANES,
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
@@ -95,8 +96,8 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * point a card at another tenant's repository.
  *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
- * sentinel to queue the task for an agent run (status forced to To Do, same as
- * the create tool). A delegated run must execute as a REAL org member
+ * sentinel to queue the task for an agent run (status forced to In Progress,
+ * same as the create tool). A delegated run must execute as a REAL org member
  * (`threads.created_by` is FK'd to `user.id`, and the harness's context
  * factory rejects non-members), so the org's owner stands in as `assigned_by`
  * until the Deco service user exists.
@@ -594,8 +595,9 @@ export const createTaskBoardImportRoutes = () => {
           organizationId,
           title: item.title,
           description: item.description ?? null,
-          // A task handed to the Super Agent is queued to run — land it in To Do.
-          status: toSuperAgent ? "todo" : undefined,
+          // A task handed to the Super Agent is about to run — land it where
+          // the Super Agent works.
+          status: toSuperAgent ? LANES.progress : undefined,
           priority: item.priority,
           assigneeId: item.assigneeId ?? null,
           // The delegation principal: the run executes as this user, so the

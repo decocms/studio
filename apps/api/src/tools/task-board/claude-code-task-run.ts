@@ -356,7 +356,7 @@ export function buildClaudeCodeTaskPrompt(
       (opts?.pr
         ? " — or push to the existing one, per the instruction above."
         : "."),
-    // Work policy (scope, verification, screenshots) is the To Do lane's editable rule.
+    // Work policy (scope, verification, screenshots) is the In Progress lane's editable rule.
     // How the board finds the PR now: it looks GitHub up by the branch this
     // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do
     // is open the PR from some other branch. Replaces asking the run to report
@@ -369,9 +369,8 @@ export function buildClaudeCodeTaskPrompt(
     // the body back, and one hand-edited body lost the routes silently.
     `- If your change adds or edits pages a person can open, report their paths with \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` (id "${task.id}", \`previewRoutes: ["/some-page"]\`) — paths only, no host. The card joins them onto the deploy preview so a reviewer opens the page directly. Skip it when the change has no visible route.`,
     // Deliberately NOT "then move it to In Review". Linking the PR is what
-    // starts the review (`openReviewCycleIfInProgress`), and the card stays In
-    // Progress until the reviewer decides — an agent is still working on it.
-    // `parkReviewedCardForHuman` makes that move, on a verdict, not the model.
+    // starts the review and moves the card (`openReviewCycleIfInProgress`),
+    // so the model never has to.
     // NOT "leave it for a reviewer anyway": reviewers are only enqueued for a
     // task that has a PR (`enqueueReviewersOnThreadFinish`). A no-PR task left
     // waiting had no reviewer to pick it up and no signal that a human should —

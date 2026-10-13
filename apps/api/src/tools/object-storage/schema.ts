@@ -1,6 +1,12 @@
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
 import type { StudioContext } from "../../core/studio-context";
 import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
+import { ForbiddenError } from "../../core/access-control";
+import { getUserId } from "../../core/studio-context";
+import type { OrgFs } from "../../file-storage/org-fs";
+import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
+import { fsObjectKey, normalizeFsPath } from "../../file-storage/org-fs-path";
+import { orgFsWriteDenial } from "../../file-storage/org-fs-write-guard";
 
 export function requireObjectStorage(ctx: StudioContext): BoundObjectStorage {
   if (!ctx.objectStorage) {
@@ -23,6 +29,66 @@ export function clampExpiresIn(
   const requested =
     typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return Math.min(Math.max(requested, MIN_EXPIRES_IN), MAX_EXPIRES_IN);
+}
+
+/**
+ * A Library file addressed by an object-storage key (`_fs/<volume>/<path>`),
+ * checked against the rules the `/api/:org/fs` routes apply. Writes to these
+ * keys go through `OrgFs`, which keeps the `org_fs_entry` index the Library
+ * lists from in step with the bytes.
+ */
+export async function requireOrgFsWrite(
+  ctx: StudioContext,
+  target: { volume: string; path: string },
+): Promise<{
+  orgFs: OrgFs;
+  organizationId: string;
+  userId: string;
+  volume: string;
+  path: string;
+}> {
+  const organizationId = ctx.organization?.id;
+  const userId = getUserId(ctx);
+  if (!organizationId || !userId) {
+    throw new Error(
+      "Library files need a signed-in member of the organization",
+    );
+  }
+  if (!ctx.orgFs) {
+    throw new Error(
+      "Object storage is not configured. Ensure S3 credentials are set.",
+    );
+  }
+  const path = normalizeFsPath(target.path);
+  const denial = await orgFsWriteDenial(ctx.storage, {
+    organizationId,
+    volume: target.volume,
+    path,
+    userId,
+  });
+  if (denial) throw new ForbiddenError(denial);
+  return {
+    orgFs: ctx.orgFs,
+    organizationId,
+    userId,
+    volume: target.volume,
+    path,
+  };
+}
+
+/** Deletes a Library file or folder, and stray bytes a raw write left unindexed. */
+export async function deleteOrgFsKey(
+  ctx: StudioContext,
+  target: { volume: string; path: string },
+): Promise<void> {
+  const { orgFs, organizationId, userId, volume, path } =
+    await requireOrgFsWrite(ctx, target);
+  if (await orgFs.stat(volume, path)) {
+    await orgFs.delete(volume, path, { actor: userId });
+  } else {
+    await requireObjectStorage(ctx).delete(fsObjectKey(volume, path));
+  }
+  await notifyOrgFsChangeFromServer(organizationId, volume);
 }
 
 // Re-export schemas from the canonical OBJECT_STORAGE_BINDING definition

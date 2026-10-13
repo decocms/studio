@@ -63,15 +63,17 @@ describe("TaskBoardPromptStorage defaults", () => {
 
   it("fills unset lanes with their defaults and lets a cleared lane stay clear", async () => {
     const s = storage([]);
-    expect(await s.promptFor("o", "todo")).toContain("core/qa-screenshot");
-    expect(await s.promptFor("o", "in_progress")).toContain("REVIEW the code");
+    expect(await s.promptFor("o", "in_progress")).toContain(
+      "core/qa-screenshot",
+    );
+    expect(await s.promptFor("o", "in_review")).toContain("REVIEW the code");
     expect(await s.promptFor("o", null)).toBeUndefined();
 
-    expect(await s.remove("o", "todo")).toBe(true);
-    expect(await s.promptFor("o", "todo")).toBeUndefined();
-    expect((await s.listByOrg("o")).some((p) => p.columnKey === "todo")).toBe(
-      false,
-    );
-    expect(await s.remove("o", "todo")).toBe(false);
+    expect(await s.remove("o", "in_progress")).toBe(true);
+    expect(await s.promptFor("o", "in_progress")).toBeUndefined();
+    expect(
+      (await s.listByOrg("o")).some((p) => p.columnKey === "in_progress"),
+    ).toBe(false);
+    expect(await s.remove("o", "in_progress")).toBe(false);
   });
 });

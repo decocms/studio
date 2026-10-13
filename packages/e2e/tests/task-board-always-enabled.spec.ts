@@ -57,9 +57,9 @@ test.describe("always-available task board", () => {
       request,
       orgSlug,
       "TASK_BOARD_ITEM_UPDATE",
-      { id: created.item.id, status: "todo" },
+      { id: created.item.id, status: "in_progress" },
     );
-    expect(updated.item.status).toBe("todo");
+    expect(updated.item.status).toBe("in_progress");
 
     const prs = await callSelfMcpTool<{ prs: unknown[] }>(
       request,

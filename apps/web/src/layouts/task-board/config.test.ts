@@ -4,10 +4,7 @@ import {
   type ClientRect,
   type DroppableContainer,
 } from "@dnd-kit/core";
-import {
-  CANONICAL_COLUMN_KEYS,
-  SUPER_AGENT_ASSIGNEE_ID,
-} from "@decocms/shared/task-board";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
   daysSince,
   agentRunState,
@@ -35,7 +32,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     organizationId: "org-1",
     title: id,
     description: null,
-    status: "todo",
+    status: "triage",
     priority: "none",
     type: "chore",
     assigneeId: null,
@@ -61,8 +58,6 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     updatedAt: new Date().toISOString(),
   } as TaskBoardItem;
 }
-
-const STATUSES = [...CANONICAL_COLUMN_KEYS];
 
 describe("insertSortOrder", () => {
   const lane = [item("a", 0), item("b", 10), item("c", 20)];
@@ -155,7 +150,13 @@ describe("isTaskHandedToHuman", () => {
   // Unassigned is the norm everywhere else on the board — only In Review means
   // automation stopped.
   test("an unassigned card in any other lane is not", () => {
-    for (const status of ["triage", "todo", "in_progress", "done"] as const) {
+    for (const status of [
+      "triage",
+      "in_progress",
+      "qa",
+      "ready_for_deployment",
+      "done",
+    ] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
   });
@@ -268,26 +269,18 @@ describe("cardNeedsAttention", () => {
 });
 
 describe("moveTargets", () => {
-  test("offers no delivery lane to a board that doesn't run them", () => {
-    expect(moveTargets(false)).toEqual([
+  test("offers every lane but the previous board's", () => {
+    expect(moveTargets()).toEqual([
       "triage",
-      "todo",
       "in_progress",
       "in_review",
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
+      "post_deploy_validation",
       "done",
       "archived",
     ]);
-  });
-
-  test("offers every lane but the dormant ones once they're on", () => {
-    expect(moveTargets(true)).toEqual(
-      STATUSES.filter(
-        (s) =>
-          s !== "qa" &&
-          s !== "customer_approval" &&
-          s !== "ready_for_deployment",
-      ),
-    );
   });
 });
 
@@ -403,82 +396,50 @@ describe("laneHeader", () => {
 describe("laneVisibility", () => {
   const shown: string[] = [];
 
-  test("draws the delivery lanes as columns when they're on", () => {
-    const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: true,
+  test("draws every offered lane but the hidden-by-default ones", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
       shownLanes: shown,
       occupied: [],
     });
     expect(lanes).toEqual([
       "triage",
-      "todo",
       "in_progress",
       "in_review",
-      "approved",
-      "merged",
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
       "post_deploy_validation",
       "done",
-      // archived is hidden by default
     ]);
     expect(hidden).toEqual(["archived"]);
+    expect(hideable).toEqual(["archived"]);
   });
 
-  test("an empty delivery lane is absent, not hidden, when they're off", () => {
+  test("showing a hidden lane puts its column back", () => {
     const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: false,
-      shownLanes: shown,
+      shownLanes: ["archived"],
       occupied: [],
     });
-    expect(lanes).toEqual([
-      "triage",
-      "todo",
-      "in_progress",
-      "in_review",
-      "done",
-    ]);
-    expect(hidden).toEqual(["archived"]);
+    expect(lanes).toContain("archived");
+    expect(hidden).toEqual([]);
   });
 
-  // Lanes off with work still in one: the card must stay reachable.
-  test("a card left in a delivery lane keeps the lane in the drawer", () => {
-    const { lanes, hidden, hideable } = laneVisibility({
-      deliveryEnabled: false,
-      shownLanes: shown,
-      occupied: ["merged"],
-    });
-    expect(lanes).not.toContain("merged");
-    expect(hidden).toEqual(["merged", "archived"]);
-    expect(hideable).toContain("merged");
-  });
-
-  test("and showing it puts the column back", () => {
+  test("a dormant lane is absent while empty", () => {
     const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: false,
-      shownLanes: ["merged"],
-      occupied: ["merged"],
+      shownLanes: ["todo"],
+      occupied: [],
     });
-    expect(lanes).toContain("merged");
-    expect(hidden).toEqual(["archived"]);
-  });
-
-  test("a dormant lane is absent while empty, whatever the delivery flag", () => {
-    for (const deliveryEnabled of [true, false]) {
-      const { lanes, hidden } = laneVisibility({
-        deliveryEnabled,
-        shownLanes: shown,
-        occupied: [],
-      });
-      expect(lanes).not.toContain("qa");
-      expect(hidden).not.toContain("qa");
+    for (const dormant of ["todo", "approved", "merged"]) {
+      expect(lanes).not.toContain(dormant);
+      expect(hidden).not.toContain(dormant);
     }
   });
 
-  // A newer release left a card there: draw the column so the card shows.
+  // The previous release left a card there: draw the column so the card shows.
   test("a card in a dormant lane draws that lane as a column", () => {
     const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: false,
       shownLanes: shown,
-      occupied: ["qa"],
+      occupied: ["merged", "todo"],
     });
     expect(lanes).toEqual([
       "triage",
@@ -486,6 +447,10 @@ describe("laneVisibility", () => {
       "in_progress",
       "in_review",
       "qa",
+      "customer_approval",
+      "ready_for_deployment",
+      "merged",
+      "post_deploy_validation",
       "done",
     ]);
     expect(hidden).toEqual(["archived"]);
@@ -493,7 +458,6 @@ describe("laneVisibility", () => {
 
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
-      deliveryEnabled: false,
       shownLanes: ["a_lane_that_no_longer_exists"],
       occupied: [],
     });
@@ -515,7 +479,7 @@ describe("isFeedWorthyActivity", () => {
     expect(
       isFeedWorthyActivity({
         action: "status_changed",
-        data: { from: "in_progress", to: "todo", retriesSpent: 1 },
+        data: { from: "in_progress", to: "triage", retriesSpent: 1 },
       }),
     ).toBe(true);
   });
@@ -524,7 +488,7 @@ describe("isFeedWorthyActivity", () => {
     expect(
       isFeedWorthyActivity({
         action: "status_changed",
-        data: { from: "todo", to: "in_progress" },
+        data: { from: "triage", to: "in_progress" },
       }),
     ).toBe(true);
     expect(isFeedWorthyActivity({ action: "created", data: null })).toBe(true);

@@ -178,7 +178,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Run the Reviewer on a task's pull request once it's In Review — it reviews the code with the repo's stack-appropriate skills, fixes what it finds on the PR's own branch, then exercises the change on the deploy preview and approves or hands the card to a human.",
+      "Run the Reviewer on a task's pull request when the card reaches In Review — it reviews the code with the repo's stack-appropriate skills, fixes what it finds on the PR's own branch, then exercises the change on the deploy preview and approves or hands the card to a human.",
     ),
   /** @deprecated Superseded by `reviewer_enabled` — the QA Agent and Code
    *  Reviewer are one run now. Kept readable (a `z.object` strips unknown keys)
@@ -197,13 +197,13 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+      "When a card reaches Ready for Deployment, merge its pull request automatically instead of waiting for someone to press Ship.",
     ),
   auto_resolve_conflicts: z
     .boolean()
     .optional()
     .describe(
-      "When an approved pull request can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
+      "When a pull request in Ready for Deployment can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
     ),
   cheap_reviewer_model: z
     .boolean()
@@ -270,12 +270,6 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       'The "Create a new site" option under New project: generates a GitHub repository from a site template in an account the org connected, and opens it as a project. Off by default, for every org — deco.cx staff included.',
-    ),
-  delivery_lanes_enabled: z
-    .boolean()
-    .optional()
-    .describe(
-      "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
     ),
   new_blocks_editor: z
     .boolean()

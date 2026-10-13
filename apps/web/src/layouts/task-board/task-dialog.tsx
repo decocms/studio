@@ -130,18 +130,11 @@ import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import { usePreviewProbe } from "@/hooks/use-preview-probe";
 import { useTaskBoardActivity } from "@/hooks/use-task-board-activity";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import { useRunReviewer } from "@/hooks/use-run-reviewer";
-import {
-  enabledReviewers,
-  laneCanShip,
-  reviewsSatisfiedForPromotion,
-} from "./review-status";
+import { laneCanShip } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import {
@@ -502,7 +495,6 @@ function TaskBoardItemEditor({
   const { agentId } = useParams({ strict: false });
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -1196,7 +1188,7 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets(deliveryEnabled).map((s) => {
+                  {moveTargets().map((s) => {
                     const { label, visual } = laneHeader(s, t);
                     const Icon = visual.icon;
                     return (
@@ -2106,7 +2098,7 @@ function PrCard({
   routes,
   revalidating,
   previewThread,
-  reviewsReady,
+  readyToShip,
   shipPending,
   resolvePending,
   onShip,
@@ -2119,8 +2111,8 @@ function PrCard({
   /** A live GitHub read is in flight behind the values shown. */
   revalidating: boolean;
   previewThread?: TaskBoardItemThread;
-  /** Task-level: In Review + every enabled reviewer approved. */
-  reviewsReady: boolean;
+  /** Task-level: the card sits in Ready for Deployment. */
+  readyToShip: boolean;
   shipPending: boolean;
   resolvePending: boolean;
   onShip: () => void;
@@ -2135,7 +2127,7 @@ function PrCard({
   const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
     pr,
-    reviewsReady,
+    readyToShip,
   );
   const hasActions =
     !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
@@ -2361,8 +2353,6 @@ function LinksSection({
     isLoading: prsLoading,
     isFetching: prsFetching,
   } = useTaskBoardItemPrs(item.id);
-  const { data: activity } = useTaskBoardActivity(item.id);
-  const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const comments = useTaskBoardComments(item.id);
@@ -2383,17 +2373,11 @@ function LinksSection({
     return null;
   }
 
-  // Task-level readiness for the manual ship button: a shippable lane + every
-  // enabled reviewer approved. Shown regardless of auto-merge — it's a manual
-  // escape hatch (a human can ship even while auto-merge is pending/blocked on
-  // token verification). The per-card PrCard adds the PR-open + green-checks gate.
-  const reviewsReady =
-    laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(
-      activity ?? [],
-      enabledReviewers(reviewerOn),
-      item.reviewCycleStartedAt,
-    );
+  // Task-level readiness for the manual ship button: the card reached Ready
+  // for Deployment. Shown regardless of auto-merge, so a person can ship while
+  // auto-merge is pending or blocked. The per-card PrCard adds the PR-open +
+  // green-checks gate.
+  const readyToShip = laneCanShip(item.status);
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>
@@ -2433,7 +2417,7 @@ function LinksSection({
               routes={item.previewRoutes ?? []}
               revalidating={prsFetching}
               previewThread={previewThread}
-              reviewsReady={reviewsReady}
+              readyToShip={readyToShip}
               shipPending={promote.isPending}
               resolvePending={resolveConflict.isPending}
               onShip={onShip}

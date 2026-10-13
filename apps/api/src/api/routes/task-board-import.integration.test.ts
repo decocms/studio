@@ -253,7 +253,7 @@ describe("Task Board Import Route", () => {
     );
   });
 
-  it("delegates a super-agent item: To Do, owner as the run principal", async () => {
+  it("delegates a super-agent item: In Progress, owner as the run principal", async () => {
     const res = await app.fetch(
       post("org_board", "svc-secret", {
         items: [
@@ -282,7 +282,7 @@ describe("Task Board Import Route", () => {
       .execute();
     const byTitle = new Map(rows.map((r) => [r.title, r]));
     const delegated = byTitle.get("Adicionar sinônimos à busca");
-    expect(delegated?.status).toBe("todo");
+    expect(delegated?.status).toBe("in_progress");
     expect(delegated?.assignee_id).toBe("super-agent");
     expect(delegated?.assigned_by).toBe("user_1"); // the org owner
     expect(delegated?.created_by).toBe("system");

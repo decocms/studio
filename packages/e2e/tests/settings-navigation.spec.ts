@@ -80,8 +80,12 @@ test.describe("settings tabs", () => {
     await expect(page.locator(HEADING)).toContainText("Connect to clients");
     await expect(page.locator(SUBNAV)).toHaveCount(0);
     await expect(
-      page.getByRole("heading", { name: "Connect a client" }),
+      page.getByRole("heading", { name: "Connect your agent" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: /CLI \+ skill/ }),
+      "the skill opens first",
+    ).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
 
     const row = page

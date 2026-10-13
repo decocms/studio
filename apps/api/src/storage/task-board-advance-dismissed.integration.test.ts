@@ -1,5 +1,5 @@
 /**
- * Real-Postgres coverage for `advanceToReviewIfInProgress` excluding
+ * Real-Postgres coverage for `advanceFromProgress` excluding
  * dismissed cards.
  *
  * Same bug class as `task-board-due-retry.integration.test.ts`: a
@@ -23,7 +23,7 @@ import { TaskBoardStorage } from "./task-board";
 const ORG = "org_advance_dismissed";
 const USER = "user_advance_dismissed";
 
-describe("advanceToReviewIfInProgress (real Postgres)", () => {
+describe("advanceFromProgress (real Postgres)", () => {
   let database: StudioDatabase;
   let taskBoard: TaskBoardStorage;
 
@@ -51,7 +51,7 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     await closeTestPgDatabase(database);
   });
 
-  it("advances a normal in-progress card to in_review", async () => {
+  it("advances a normal in-progress card", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
       title: "normal advance",
@@ -59,13 +59,14 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       by: USER,
     });
 
-    const advanced = await taskBoard.advanceToReviewIfInProgress(
+    const advanced = await taskBoard.advanceFromProgress(
       task.id,
       ORG,
+      "qa",
       USER,
     );
 
-    expect(advanced?.status).toBe("in_review");
+    expect(advanced?.status).toBe("qa");
   });
 
   it("does not advance a reports card dismissed while still in_progress", async () => {
@@ -85,9 +86,10 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
       .executeTakeFirst();
     expect(row?.dismissed_at).toBeTruthy();
 
-    const advanced = await taskBoard.advanceToReviewIfInProgress(
+    const advanced = await taskBoard.advanceFromProgress(
       task.id,
       ORG,
+      "qa",
       USER,
     );
 
