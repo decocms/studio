@@ -506,6 +506,49 @@ describe("decofile routes", () => {
     expect(rpc.status).toBeGreaterThanOrEqual(500);
   });
 
+  describe("main unreadable on a site the project owns (no main-answer header)", () => {
+    function unreadable(metadata: Record<string, unknown>) {
+      const w = setup(
+        metadata,
+        { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA },
+        { p1: ORG },
+      );
+      const getEntriesAtPaths = w.repo.git.client.getEntriesAtPaths;
+      w.repo.git.client.getEntriesAtPaths = async (ref, paths) => {
+        if (paths.some((path) => path.endsWith("schema.gen.json"))) {
+          throw new Error("GitHub is down");
+        }
+        return getEntriesAtPaths.call(w.repo.git.client, ref, paths);
+      };
+      return w;
+    }
+
+    it("a v7 project's read and Publish go on as on main (which never read main)", async () => {
+      const { app, repo } = unreadable({});
+      const read = await app.request("/decofile/p1/main");
+      expect(read.status).toBe(200);
+      expect(await read.json()).toHaveProperty("decofile");
+      const publish = await app.request("/decofile/p1/feature/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(publish.status).toBeLessThan(500);
+      expect(repo.calls.some((c) => c.startsWith("mergeBranches"))).toBe(true);
+    });
+
+    it("a project last found v8 fails instead of merging the v7 way", async () => {
+      const { app, repo } = unreadable({ blocksMajor: 8 });
+      const publish = await app.request("/decofile/p1/feature/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(publish.status).toBeGreaterThanOrEqual(500);
+      expect(repo.calls.some((c) => c.startsWith("mergeBranches"))).toBe(false);
+    });
+  });
+
   describe("main changed mid-session (the editor says which main it acts on)", () => {
     const asV7 = { "x-deco-main-schema": "v7" };
     const asV8 = { "x-deco-main-schema": "v8" };

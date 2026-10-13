@@ -8,7 +8,7 @@ import {
   type DescribeResult,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -24,6 +24,7 @@ import {
   contentMode,
   contentProbesEnabled,
   type ProtocolBackend,
+  readFailed,
   selectContentBackend,
 } from "./content-backend";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
@@ -39,7 +40,7 @@ import {
   probeRetryDelay,
 } from "./deco-serve-connection";
 import { isSchemaAbsent } from "./schemaless";
-import { isV8Schema } from "@decocms/shared/blocks-major";
+import { isBlocksV8Project, isV8Schema } from "@decocms/shared/blocks-major";
 
 export interface Probe {
   client: ContentClient;
@@ -206,7 +207,9 @@ export async function probeSandbox(
  * `deco serve`'s; Sandbox: the daemon's working tree; GitHub: main's, from
  * the server) and, for a v8 site, its content backend: callers hold their
  * reads until then, so it never reads from the v7 backend and then switches.
- * The project's `blocksMajor` marker is never read here.
+ * The project's `blocksMajor` marker is never a v8 answer here: it only
+ * tells a failing daemon on a site last found v8 (waits) from any other one
+ * (the v7 sandbox editor, as on main).
  */
 export function useContentBackend(
   virtualMcpId: string | null | undefined,
@@ -221,6 +224,9 @@ export function useContentBackend(
   const tabConnection = useContext(TabDecoServeConnectionContext);
   // `isV8Schema` on main's schema, from the server (GitHub mode decides on it).
   const mainSchema = useMainSchemaV8(tabConnection ? null : virtualMcpId);
+  // The server's last answer for main: only whether a daemon that never
+  // answered is waited on (see `selectContentBackend`), never v8 itself.
+  const markedV8 = isBlocksV8Project(useVirtualMCP(virtualMcpId)?.metadata);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The daemon answers once the working tree is there. Before its first
@@ -363,14 +369,16 @@ export function useContentBackend(
           ? "v8"
           : github.data === null
             ? "v7"
-            : github.isError
+            : readFailed(github)
               ? "error"
               : "loading",
     sandboxSite: sandboxSiteAnswer({
       data: sandbox.data,
-      isError: sandbox.isError,
+      // The failure holds through a re-poll until a probe succeeds.
+      isError: readFailed(sandbox),
       workingTreeReady,
     }),
+    markedV8,
   });
 
   if (decision === "pending") return { kind: "pending" };

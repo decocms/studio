@@ -8,6 +8,7 @@ import {
   isProtocolProject,
   mergePolledBlocks,
   newBlocksEditorEnabled,
+  readFailed,
   selectContentBackend,
   servePreviewUrl,
 } from "./content-backend";
@@ -29,6 +30,8 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
     runtime: "sandbox",
     githubSite: "loading",
     sandboxSite: "v8",
+    // A project the server last found v8 (its marker): a failing daemon waits.
+    markedV8: true,
   };
 
   describe("the decision table (mode × schema)", () => {
@@ -82,6 +85,16 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
         "sandbox, daemon failing before any answer (undecided, retried)",
         { ...sandbox, sandboxSite: "error" },
         "retrying-sandbox",
+      ],
+      [
+        "sandbox, daemon failing before any answer, project not marked v8 (the v7 sandbox editor, as on main)",
+        { ...sandbox, sandboxSite: "error", markedV8: false },
+        "legacy",
+      ],
+      [
+        "sandbox, booting, project not marked v8 (waits for the working tree, as main's reads did)",
+        { ...sandbox, sandboxSite: "unavailable", markedV8: false },
+        "pending",
       ],
       // Localhost: the deco serve's own schema decides (localServeBackend).
       [
@@ -216,6 +229,35 @@ describe("selectContentBackend: the editor waits for a schema, then reads it", (
         ]);
         expect(decisions.slice(0, 2)).toEqual(["pending", "retrying-sandbox"]);
         expect(shows(decisions[1]!).protocol).toBe(false);
+      }
+    });
+
+    test("Sandbox, an unmarked project whose daemon fails before it answered: the v7 sandbox editor, as on main; a later v8 answer takes over", () => {
+      const unmarked = { ...sandbox, markedV8: false };
+      expect(
+        [
+          { ...unmarked, sandboxSite: "unavailable" as const },
+          { ...unmarked, sandboxSite: "loading" as const },
+          { ...unmarked, sandboxSite: "error" as const },
+          { ...unmarked, sandboxSite: "error" as const },
+          { ...unmarked, sandboxSite: "v7" as const },
+        ].map(selectContentBackend),
+      ).toEqual(["pending", "pending", "legacy", "legacy", "legacy"]);
+      expect(selectContentBackend({ ...unmarked, sandboxSite: "v8" })).toBe(
+        "protocol-sandbox",
+      );
+    });
+
+    test("the marker never makes a project v8 on its own", () => {
+      for (const sandboxSite of ["v7", "loading", "unavailable"] as const) {
+        expect(
+          selectContentBackend({ ...sandbox, sandboxSite, markedV8: true }),
+        ).not.toBe("protocol-sandbox");
+      }
+      for (const mainSchema of ["v7", "loading", "error"] as const) {
+        expect(
+          selectContentBackend({ ...github, mainSchema, markedV8: true }),
+        ).not.toBe("protocol-github");
       }
     });
 
@@ -579,5 +621,14 @@ describe("newBlocksEditorEnabled", () => {
       });
       if (backend !== "legacy") expect(decided).not.toBe(false);
     }
+  });
+});
+
+describe("readFailed", () => {
+  test("a failed read stays failed while it is re-polled, until it succeeds", () => {
+    expect(readFailed({ isError: false, errorUpdateCount: 0 })).toBe(false);
+    expect(readFailed({ isError: true, errorUpdateCount: 1 })).toBe(true);
+    // Re-polling: the query is back to `pending` with no data.
+    expect(readFailed({ isError: false, errorUpdateCount: 1 })).toBe(true);
   });
 });
