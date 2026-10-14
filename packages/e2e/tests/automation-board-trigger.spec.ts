@@ -315,6 +315,28 @@ test.describe("automation board column trigger", () => {
           { timeout: SETTLED_MS },
         )
         .toBe(1);
+
+      // Through the same fire workflow as any automation, not a path of its own.
+      const { activity } = await call<{ activity: Activity[] }>(
+        "TASK_BOARD_ACTIVITY_LIST",
+        { taskBoardItemId: item.id },
+      );
+      const move = activity.find(
+        (a) => a.action === "status_changed" && a.data.to === "in_progress",
+      );
+      expect(move).toBeDefined();
+      const fireOf = async () =>
+        (
+          await db.query<{ name: string; status: string }>(
+            "select name, status from dbos.workflow_status where workflow_uuid = $1",
+            [
+              `auto:${implementer.id}:board:${automation.triggers[0]!.id}:${move!.id}`,
+            ],
+          )
+        ).rows;
+      await expect
+        .poll(fireOf, { timeout: SETTLED_MS })
+        .toEqual([{ name: "fireAutomationWorkflow", status: "SUCCESS" }]);
     } finally {
       await db.end();
     }

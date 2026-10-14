@@ -2,9 +2,23 @@
  * Built-in automations: the ones Studio seeds in every org, told apart from
  * the ones people create by `automations.system_key`.
  *
- * A built-in can be switched off, not edited or deleted (the automation tools
- * refuse). Its board run takes its instructions from the board's column
- * prompts, which is where an org customizes it.
+ * A built-in fires like any automation: its starter is an ordinary trigger
+ * row, its fires go through `fireAutomationWorkflow`, and nothing calls a
+ * built-in directly. What still treats a built-in differently, all of it:
+ *
+ * - Every built-in:
+ *   - runs with the org's context, not its creator's, and is never
+ *     deactivated for a creator who left (`fireContext`, `dbos-workflow.ts`);
+ *   - claims the card for whoever moved it, not for the member standing in
+ *     as its creator (`card-run.ts`);
+ *   - can only be turned on or off; the automation tools refuse edits,
+ *     deletes, starter changes and manual runs (`tools/automations/*`).
+ * - The implementer: skips a card already delegated to the Super Agent,
+ *   whose run started when it was delegated (`card-run.ts`).
+ *
+ * A new built-in adds its special case to this list. Its board run takes its
+ * instructions from the board's column prompts, which is where an org
+ * customizes it.
  *
  * Seeding is idempotent: an org gets each built-in once, and one it switched
  * off stays off.
@@ -16,8 +30,7 @@ import { sql, type Kysely } from "kysely";
 import type { Database } from "@/storage/types";
 
 /** The board's implementer: picks up an unassigned card that lands in In
- *  Progress. A card delegated to the agent is already running, so it skips
- *  that one (see `board-column-transition-fire.ts`). */
+ *  Progress. */
 export const IMPLEMENTER_SYSTEM_KEY = "implementer";
 
 const BUILTINS = [
