@@ -7,11 +7,9 @@ import {
   SCHEMA_HASH,
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
-import { computeContentRevision } from "@decocms/blocks/protocol";
 import { type HostedRepo, readLatest, writeLatest } from "./publish";
 import { buildRevision } from "./release-objects";
-import { listReleases, makeHeadCurrent } from "./releases";
-import type { ServedLabel } from "./serving";
+import { listReleases, releaseMainHead } from "./releases";
 
 beforeAll(() => {
   process.env.FAST_PREVIEW_CACHE_DIR = "";
@@ -121,126 +119,31 @@ describe("listReleases", () => {
   });
 });
 
-describe("listReleases: republishes", () => {
-  it("links a republish to the release it republished (its trailer)", async () => {
+describe("listReleases: reapplied versions", () => {
+  it("links a reapplied version to the one it reapplied (its trailer)", async () => {
     const { git, repo, insights, release } = setup();
     const first = await release();
     git.pushDirect(
       { ".deco/blocks/Home.json": '{"a":1}\n' },
-      `Republish: Summer\n\nRepublished-From: ${first}\nCo-authored-by: Ana <ana@x.com>`,
+      `Reapply: Summer\n\nReapplied-From: ${first}\nCo-authored-by: Ana <ana@x.com>`,
     );
     const page = await listReleases(repo, insights.client, null);
     expect(page.commits[0]).toMatchObject({
-      message: "Republish: Summer",
-      republishOf: { sha: first },
+      message: "Reapply: Summer",
+      reapplyOf: { sha: first },
     });
-    expect(page.commits[1]?.republishOf).toBeNull();
+    expect(page.commits[1]?.reapplyOf).toBeNull();
   });
 });
 
-describe("listReleases: what the site serves", () => {
-  const reader =
-    (labels: ServedLabel[] | null | Error) =>
-    async (): Promise<ServedLabel[] | null> => {
-      if (labels instanceof Error) throw labels;
-      return labels;
-    };
-  const at = (minutesAgo: number) =>
-    new Date(Date.now() - minutesAgo * 60_000).toISOString();
-
-  it("has no signal without a reader, or when the site reported nothing", async () => {
-    const { repo, insights, release } = setup();
-    await release();
-    expect((await listReleases(repo, insights.client, null)).serving).toEqual({
-      source: "none",
-    });
-    const empty = await listReleases(repo, insights.client, null, reader([]));
-    expect(empty.serving).toEqual({ source: "none" });
-    const failed = await listReleases(
-      repo,
-      insights.client,
-      null,
-      reader(new Error("ACCESS_DENIED")),
-    );
-    expect(failed.serving).toEqual({ source: "none" });
-  });
-
-  it("names the newest release the site reported (a CDN release is its commit)", async () => {
-    const { git, repo, insights, release } = setup();
-    const first = await release();
-    git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' });
-    const second = await release();
-    // An isolate still on the first one reported last: the site moves forward.
-    const now = at(0);
-    const page = await listReleases(
-      repo,
-      insights.client,
-      null,
-      reader([
-        { label: first, lastSeen: now },
-        { label: second, lastSeen: at(1) },
-      ]),
-    );
-    expect(page.serving).toEqual({
-      source: "site",
-      revision: second,
-      lastSeen: now,
-    });
-  });
-
-  it("matches a bundled snapshot's content revision to the newest release with that content", async () => {
-    const { git, repo, insights, release } = setup();
-    const first = await release();
-    git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' });
-    await release();
-    // A republish of `first`: same content, newer commit.
-    git.pushDirect({ ".deco/blocks/Home.json": "{}\n" }, "Republish: initial");
-    const again = await release();
-    const label = await computeContentRevision(
-      (await buildRevision(git.client, null, first)).blocks,
-    );
-    const page = await listReleases(
-      repo,
-      insights.client,
-      null,
-      reader([{ label, lastSeen: at(0) }]),
-    );
-    expect(page.serving).toMatchObject({ source: "site", revision: again });
-  });
-
-  it("says the site reports something Studio can't match", async () => {
-    const { repo, insights, release } = setup();
-    await release();
-    const page = await listReleases(
-      repo,
-      insights.client,
-      null,
-      reader([{ label: "f".repeat(64), lastSeen: at(0) }]),
-    );
-    expect(page.serving).toMatchObject({ source: "site", revision: null });
-  });
-
-  it("reads it on the first page only", async () => {
-    const { repo, insights, release } = setup();
-    const first = await release();
-    const page = await listReleases(
-      repo,
-      insights.client,
-      "0",
-      reader([{ label: first, lastSeen: at(0) }]),
-    );
-    expect(page.serving).toBeNull();
-  });
-});
-
-describe("makeHeadCurrent (Publish's Try again)", () => {
-  it("writes main head's missing companion release, then makes it current", async () => {
+describe("releaseMainHead (Publish's Try again)", () => {
+  it("writes main head's missing companion release, then makes it latest", async () => {
     const { git, delivery, repo } = setup();
     // A Publish committed but its release write failed: no companion.
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' }, "published");
     const head = git.head();
     delivery.log.length = 0;
-    const pointer = await makeHeadCurrent(repo);
+    const pointer = await releaseMainHead(repo);
     expect(pointer).toMatchObject({ revision: head, schemaHash: SCHEMA_HASH });
     expect(delivery.log).toEqual([
       `put ${deliveryKeys.revision("acme", head)}`,
@@ -254,18 +157,18 @@ describe("makeHeadCurrent (Publish's Try again)", () => {
     const { delivery, repo, release } = setup();
     const head = await release();
     delivery.log.length = 0;
-    await makeHeadCurrent(repo);
+    await releaseMainHead(repo);
     expect(delivery.log).toEqual([`put ${LATEST}`, `purge ${LATEST}`]);
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(head);
   });
 
-  it("makes main's newest commit live, never an older one", async () => {
+  it("releases main's newest commit, never an older one", async () => {
     const { git, delivery, repo, release } = setup();
     await release();
     // Another Publish landed after the one being retried.
     git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' }, "newer");
     const newer = git.head();
-    await makeHeadCurrent(repo);
+    await releaseMainHead(repo);
     expect((await readLatest(delivery.store, "acme"))?.revision).toBe(newer);
   });
 });
