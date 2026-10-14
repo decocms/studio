@@ -76,23 +76,28 @@ describe("releaseTitle", () => {
       "Reaplicação: Summer sale",
     );
   });
-  test("reapplying a version without a note names its date", () => {
-    const reapplied = commit(NEW, {
-      message: "Reapply: version from 2026-10-01 09:30 UTC",
-    });
-    expect(releaseTitle(t, reapplied, "en")).toMatch(
-      /^Reapply: version from Oct 1, 2026/,
-    );
-    expect(releaseTitle(tPt, reapplied, "pt-BR")).toMatch(
-      /^Reaplicação da versão de 1 de out\. de 2026/,
-    );
-    expect(
-      releaseTitle(
-        t,
-        commit(NEW, { message: "Reapply: earlier version" }),
-        "en",
-      ),
-    ).toBe("Reapply: Published changes");
+  test("reapplying a release without a note names its date", () => {
+    for (const message of [
+      "Reapply: release from 2026-10-01 09:30 UTC",
+      // A note the server wrote before it said "release".
+      "Reapply: version from 2026-10-01 09:30 UTC",
+    ]) {
+      const reapplied = commit(NEW, { message });
+      expect(releaseTitle(t, reapplied, "en")).toMatch(
+        /^Reapply: release from Oct 1, 2026/,
+      );
+      expect(releaseTitle(tPt, reapplied, "pt-BR")).toMatch(
+        /^Reaplicação da release de 1 de out\. de 2026/,
+      );
+    }
+    for (const message of [
+      "Reapply: earlier release",
+      "Reapply: earlier version",
+    ]) {
+      expect(releaseTitle(t, commit(NEW, { message }), "en")).toBe(
+        "Reapply: Published changes",
+      );
+    }
   });
   test("developer words never show: a release without a note, a developer push", () => {
     expect(

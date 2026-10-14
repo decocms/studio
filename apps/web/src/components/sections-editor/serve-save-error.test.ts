@@ -111,12 +111,14 @@ describe("one toast per publish", () => {
     expect((failed[0] as { title?: unknown }).title).toBe(
       "Couldn't publish your changes.",
     );
-    toastPublished(t, "Your changes are live.");
+    toastPublished(t);
     const shown = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect(shown).toHaveLength(1);
-    expect((shown[0] as { title?: unknown }).title).toBe("Published");
+    expect((shown[0] as { title?: unknown }).title).toBe(
+      "Published. Your site will show it shortly.",
+    );
     // The success doesn't keep the failure's "Try again".
     expect((shown[0] as { action?: unknown }).action).toBeUndefined();
     expect(toast.getToasts().length - before).toBeLessThanOrEqual(1);
@@ -152,11 +154,13 @@ describe("one toast per publish", () => {
     expect(shown).toHaveLength(1);
     expect((shown[0] as { type?: string }).type).toBe("loading");
     expect((shown[0] as { action?: unknown }).action).toBeUndefined();
-    toastPublished(t, "Your changes are live.");
+    toastPublished(t);
     const [done] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
-    expect((done as { title?: unknown }).title).toBe("Published");
+    expect((done as { title?: unknown }).title).toBe(
+      "Published. Your site will show it shortly.",
+    );
   });
   test("Releases: a failed reapply says so, and its retry says Reapplying…", () => {
     toastPublishFailed(t, {
@@ -168,7 +172,7 @@ describe("one toast per publish", () => {
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect((failed as { title?: unknown }).title).toBe(
-      "Couldn't reapply this version.",
+      "Couldn't reapply this release.",
     );
     (
       failed as { action?: { onClick: (event: unknown) => void } }

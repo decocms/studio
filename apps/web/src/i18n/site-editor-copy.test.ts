@@ -1,6 +1,8 @@
 /**
  * The site editor speaks to business users: its copy never names the
- * machinery behind a save or a publish. "Published" means live.
+ * machinery behind a save or a publish. A publish toast says the site will
+ * show it shortly, never "live"; the Releases screen says "release", never
+ * "version".
  */
 
 import { describe, expect, test } from "bun:test";
@@ -36,17 +38,25 @@ const BANNED: RegExp[] = [
 ];
 
 /**
- * The Releases screen says "Latest" for the newest version, never what a
- * visitor sees right now; its action is "Reapply version"; and it stays
- * calm (it says how to go back, it doesn't warn twice).
+ * The Releases screen says "Latest" for the newest release, never what a
+ * visitor sees right now; its action is "Reapply release" (always
+ * "release", never "version"); and it stays calm (it says how to go back,
+ * it doesn't warn twice).
  */
 const RELEASES_BANNED: RegExp[] = [
-  /live/i,
-  /no ar/i,
+  /\blive\b/i,
+  /version/i,
+  /vers[ãa]o/i,
+  /vers[õo]es/i,
+  /\bno ar\b/i,
   /republi/i,
-  /anyway/i,
+  /\banyway\b/i,
   /mesmo assim/i,
 ];
+
+/** Publish toasts: "Published. Your site will show it shortly." Never "live". */
+const PUBLISH_TOAST_PREFIX = "siteEditor.publish.";
+const PUBLISH_TOAST_BANNED: RegExp[] = [/live/i, /no ar\b/i];
 
 const siteEditorEntries = (dict: Record<string, string>) =>
   Object.entries(dict).filter(([key]) =>
@@ -89,4 +99,40 @@ describe("site editor copy", () => {
       }
     });
   }
+
+  for (const [name, dict] of [
+    ["en", en],
+    ["pt-br", ptBR],
+  ] as const) {
+    test(`${name}: publish toasts say the site will show it shortly, never live`, () => {
+      const entries = Object.entries(dict as Record<string, string>).filter(
+        ([key]) => key.startsWith(PUBLISH_TOAST_PREFIX),
+      );
+      expect(entries.length).toBeGreaterThan(0);
+      for (const [key, value] of entries) {
+        for (const banned of PUBLISH_TOAST_BANNED) {
+          if (banned.test(value)) {
+            throw new Error(`${key} says ${banned}: "${value}"`);
+          }
+        }
+      }
+    });
+  }
+
+  test("the exact Published and Reapply words", () => {
+    expect(en["siteEditor.publish.published"]).toBe(
+      "Published. Your site will show it shortly.",
+    );
+    expect(ptBR["siteEditor.publish.published"]).toBe(
+      "Publicado. Seu site vai mostrar em instantes.",
+    );
+    expect(en["releases.reapply"]).toBe("Reapply release");
+    expect(ptBR["releases.reapply"]).toBe("Reaplicar release");
+    expect(en["releases.reapplyTitle"]).toBe("Reapply this release?");
+    expect(ptBR["releases.reapplyTitle"]).toBe("Reaplicar esta release?");
+    expect(en["releases.reapplied"]).toBe(
+      "Reapplied. Your site will show it shortly.",
+    );
+    expect(en["releases.reapplyFailed"]).toBe("Couldn't reapply this release.");
+  });
 });

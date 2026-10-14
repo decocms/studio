@@ -19,6 +19,7 @@ const t: TFunction = (key, vars) => interpolate(en[key], vars);
 type Shown = {
   id?: string | number;
   title?: unknown;
+  description?: unknown;
   type?: string;
   action?: { label: string; onClick: (event: unknown) => void };
 };
@@ -36,7 +37,7 @@ describe("hosted Publish: one toast per Publish", () => {
   const cases: [HostedPublishResult, string, boolean][] = [
     [
       { result: "merged", sha: "a".repeat(40), release: "current" },
-      "Published",
+      "Published. Your site will show it shortly.",
       false,
     ],
     [
@@ -66,6 +67,9 @@ describe("hosted Publish: one toast per Publish", () => {
       expect(toasts[0]!.title).toBe(title);
       for (const word of JARGON)
         expect(String(toasts[0]!.title)).not.toMatch(word);
+      // A publish toast never says "live": the site shows it shortly.
+      expect(String(toasts[0]!.title)).not.toMatch(/live/i);
+      expect(String(toasts[0]!.description ?? "")).not.toMatch(/live/i);
       if (offersRetry) {
         expect(toasts[0]!.action?.label).toBe("Try again");
         toasts[0]!.action!.onClick({ preventDefault: () => {} });

@@ -3,14 +3,15 @@ import type { siteEditor as siteEditorEn } from "../en/site-editor.ts";
 export const siteEditor = {
   "siteEditor.details": "Detalhes",
   "siteEditor.tryAgain": "Tentar de novo",
-  "siteEditor.publish.published": "Publicado",
-  "siteEditor.publish.changesLive": "Suas alterações estão no ar.",
-  "siteEditor.publish.liveOn": "Suas alterações estão no ar em {host}.",
+  "siteEditor.publish.published":
+    "Publicado. Seu site vai mostrar em instantes.",
+  "siteEditor.publish.publishedOn":
+    "Publicado. {host} vai mostrar em instantes.",
   "siteEditor.publish.nothingToPublish": "Nada para publicar",
-  "siteEditor.publish.everythingLive": "Tudo já está no ar.",
+  "siteEditor.publish.everythingPublished": "Tudo já está publicado.",
   "siteEditor.publish.savedNotPublished": "Salvo, mas ainda não publicado",
   "siteEditor.publish.savedNotPublishedBody":
-    "Suas alterações estão salvas. Tente de novo para colocá-las no ar.",
+    "Suas alterações estão salvas. Tente de novo para publicá-las.",
   "siteEditor.publish.publishedMeanwhile":
     "Outra pessoa publicou enquanto você publicava, então nada mudou. Revise suas alterações e publique de novo.",
   "siteEditor.publish.changedMeanwhile":

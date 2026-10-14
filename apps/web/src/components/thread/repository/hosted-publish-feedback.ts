@@ -2,7 +2,7 @@
  * What a hosted Publish tells the user, in business words: one toast per
  * Publish (sonner id `site-editor-publish`, shared with its "Try again" and
  * with the Releases screen), and the dialog's inline error when nothing was
- * published. "Published" means live; the API's codes and texts only ever
+ * published. "Published" says your site will show it shortly; the API's codes and texts only ever
  * reach the Details disclosure.
  */
 
@@ -36,12 +36,12 @@ export function notifyHostedPublish(
     toast.message(t("siteEditor.publish.nothingToPublish"), {
       ...FRESH_TOAST,
       id: SITE_EDITOR_PUBLISH_TOAST,
-      description: t("siteEditor.publish.everythingLive"),
+      description: t("siteEditor.publish.everythingPublished"),
     });
     return;
   }
   if (result.release === "current") {
-    toastPublished(t, t("siteEditor.publish.changesLive"));
+    toastPublished(t);
     return;
   }
   notifySavedNotPublished(t, null, retry);

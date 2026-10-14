@@ -228,7 +228,7 @@ export function useCmsPublishActions(
         refreshOnError: true,
         write: () => retryRelease(target),
       });
-      toastPublished(t, t("siteEditor.publish.changesLive"));
+      toastPublished(t);
     } catch (error) {
       notifySavedNotPublished(t, error, () => void retryPublish());
     }
@@ -282,12 +282,7 @@ export function useCmsPublishActions(
     try {
       await runPublishFlow(target, noteParts(), t);
 
-      toastPublished(
-        t,
-        destinationHost
-          ? t("siteEditor.publish.liveOn", { host: destinationHost })
-          : t("siteEditor.publish.changesLive"),
-      );
+      toastPublished(t, destinationHost);
       onOpenChange(false);
       // Together: awaiting the PR re-read first let the stale open PR render.
       await Promise.all([quietly(onPullRequestChanged), quietly(onPublished)]);
