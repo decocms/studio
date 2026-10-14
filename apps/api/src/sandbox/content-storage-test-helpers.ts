@@ -191,7 +191,7 @@ export function commitAll(dir: string, message = "site"): void {
 }
 
 /** The block the conformance suite's `baseEntry` cases modify and restore. */
-export const BASE_ENTRY = "hero-home";
+const BASE_ENTRY = "hero-home";
 
 // ---------------------------------------------------------------------------
 // The route under test
