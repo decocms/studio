@@ -22,7 +22,10 @@ import {
   type RepoContentClient,
   type TreeEntry,
 } from "@/git-providers";
-import { mergeBlockJson } from "@decocms/shared/decofile";
+import {
+  decoBlockKeyFromFileStem,
+  mergeBlockJson,
+} from "@decocms/shared/decofile";
 import { mapBounded } from "@decocms/shared/std";
 import { resolveOrCreateHead } from "./read-decofile";
 
@@ -340,15 +343,22 @@ const BLOCK_FILE_RE = /(?:^|\/)\.deco\/blocks\/[^/]+\.json$/i;
 
 const BLOCK_MERGE_READ_CONCURRENCY = 6;
 
+/** One block both sides modified since their merge base, parsed on each side. */
+interface BlockEditedOnBothSides {
+  path: string;
+  ancestor: unknown;
+  ours: unknown;
+  theirs: unknown;
+}
+
 /**
- * Swap the branch-wins replay of every block both sides modified for a value
- * level merge against their merge base. Anything that cannot be merged that
- * way (not a block, added or removed on a side, not valid JSON) keeps the
- * branch's file.
+ * Every block file the branch and the base both modified since their merge
+ * base, read at the merge base, the branch head, and the base head. Blocks
+ * added or removed on a side, and files that are not valid JSON on every side,
+ * are left out.
  */
-async function mergeBlocksEditedOnBothSides(
+async function blocksEditedOnBothSides(
   client: RepoContentClient,
-  plan: FileChange[],
   refs: {
     branch: string;
     base: string;
@@ -356,7 +366,7 @@ async function mergeBlocksEditedOnBothSides(
     baseHead: string;
     branchModified: ComparedFile[];
   },
-): Promise<FileChange[]> {
+): Promise<BlockEditedOnBothSides[]> {
   const modified = (files: ComparedFile[]) =>
     new Set(
       files
@@ -368,14 +378,13 @@ async function mergeBlocksEditedOnBothSides(
         .map((f) => f.filename),
     );
   const onBranch = modified(refs.branchModified);
-  if (onBranch.size === 0) return plan;
+  if (onBranch.size === 0) return [];
   // What the base changed since the merge base: the reverse three-dot compare.
   const baseSide = await client.compareDetailed(refs.branch, refs.base);
   const onBase = modified(baseSide.files);
   const paths = [...onBranch].filter((path) => onBase.has(path));
-  if (paths.length === 0) return plan;
 
-  const merged = new Map<string, string>();
+  const out: BlockEditedOnBothSides[] = [];
   await mapBounded(paths, BLOCK_MERGE_READ_CONCURRENCY, async (path) => {
     const [ancestor, ours, theirs] = await Promise.all([
       client.readFileAtRef(baseSide.mergeBaseSha, path),
@@ -384,20 +393,130 @@ async function mergeBlocksEditedOnBothSides(
     ]);
     if (ancestor === null || ours === null || theirs === null) return;
     try {
-      const value = mergeBlockJson(
-        JSON.parse(ancestor),
-        JSON.parse(ours),
-        JSON.parse(theirs),
-      );
-      merged.set(path, `${JSON.stringify(value, null, 2)}\n`);
+      out.push({
+        path,
+        ancestor: JSON.parse(ancestor),
+        ours: JSON.parse(ours),
+        theirs: JSON.parse(theirs),
+      });
     } catch {
-      // Not JSON on some side: the branch's file stands.
+      // Not JSON on some side: nothing to merge value by value.
     }
   });
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/**
+ * Swap the branch-wins replay of every block both sides modified for a value
+ * level merge against their merge base. Anything that cannot be merged that
+ * way (not a block, added or removed on a side, not valid JSON) keeps the
+ * branch's file.
+ */
+async function mergeBlocksEditedOnBothSides(
+  client: RepoContentClient,
+  plan: FileChange[],
+  refs: Parameters<typeof blocksEditedOnBothSides>[1],
+): Promise<FileChange[]> {
+  const merged = new Map<string, string>();
+  for (const block of await blocksEditedOnBothSides(client, refs)) {
+    const value = mergeBlockJson(block.ancestor, block.ours, block.theirs);
+    merged.set(block.path, `${JSON.stringify(value, null, 2)}\n`);
+  }
   return plan.map((change) => {
     const content = merged.get(change.path);
     return content === undefined ? change : { path: change.path, content };
   });
+}
+
+/** One value both sides changed, with short previews of each version. */
+export interface FieldOverwrite {
+  /** JSON pointer of the value inside the block. */
+  path: string;
+  /** What the base has now, which the publish replaces. */
+  live: string;
+  /** What the branch has, which the publish keeps. */
+  draft: string;
+}
+
+/** Values a publish of the branch would replace in a block the base also changed. */
+export interface BlockOverwrite {
+  /** Block key, as the decofile names it. */
+  block: string;
+  /** Values both sides changed; the branch's version wins. */
+  fields: FieldOverwrite[];
+}
+
+const PREVIEW_MAX = 60;
+
+/** The value at a JSON pointer, or `undefined` when the path is absent. */
+function valueAt(doc: unknown, pointer: string): unknown {
+  let node = doc;
+  for (const raw of pointer.split("/").slice(1)) {
+    const key = raw.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (!node || typeof node !== "object") return undefined;
+    node = (node as Record<string, unknown>)[key];
+  }
+  return node;
+}
+
+/** A one-line, bounded rendering of a value for the publish warning. */
+export function previewValue(value: unknown): string {
+  if (value === undefined) return "—";
+  if (Array.isArray(value)) return `[${value.length}]`;
+  if (value && typeof value === "object") return "{…}";
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > PREVIEW_MAX
+    ? `${text.slice(0, PREVIEW_MAX - 1)}…`
+    : text;
+}
+
+/**
+ * What publishing `branch` would overwrite: for every block the base changed
+ * since the branch started and the branch changed too, the values both
+ * changed. A sync keeps the branch's version of those (see
+ * {@link repoGitRebase}), so this is exactly what the base loses.
+ */
+export async function repoBlockOverwrites(
+  client: RepoContentClient,
+  branch: string,
+): Promise<{ base: string; overwrites: BlockOverwrite[] }> {
+  const base = await client.getDefaultBranch();
+  if (base === branch) return { base, overwrites: [] };
+  const [branchHead, baseHead] = await Promise.all([
+    client.getBranch(branch),
+    requireBranchHead(client, base),
+  ]);
+  // A thread-minted branch not materialized yet has nothing to publish.
+  if (!branchHead) return { base, overwrites: [] };
+  const compared = await client.compareDetailed(base, branch);
+  const both = await blocksEditedOnBothSides(client, {
+    branch,
+    base,
+    branchHead: branchHead.sha,
+    baseHead,
+    branchModified: compared.files,
+  });
+  const overwrites: BlockOverwrite[] = [];
+  for (const block of both) {
+    const fields: string[] = [];
+    mergeBlockJson(block.ancestor, block.ours, block.theirs, {
+      conflicts: fields,
+    });
+    if (fields.length === 0) continue;
+    const name = block.path.slice(
+      block.path.lastIndexOf("/") + 1,
+      -".json".length,
+    );
+    overwrites.push({
+      block: decoBlockKeyFromFileStem(name),
+      fields: fields.map((path) => ({
+        path,
+        live: previewValue(valueAt(block.theirs, path)),
+        draft: previewValue(valueAt(block.ours, path)),
+      })),
+    });
+  }
+  return { base, overwrites };
 }
 
 /**

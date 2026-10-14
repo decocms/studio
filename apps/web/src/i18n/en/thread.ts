@@ -167,6 +167,12 @@ export const thread = {
   "thread.publishPopover.globalSection": "Global section",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
+  "thread.publishPopover.overwritesTitle":
+    "Publishing replaces values that changed on the live site after this draft started:",
+  "thread.publishPopover.overwritesMore": "and {count} more blocks",
+  "thread.publishPopover.overwritesMoreFields": "and {count} more values",
+  "thread.publishPopover.overwritesHint":
+    "To keep a live value, copy it into this draft before publishing.",
   "thread.publishPopover.needsReviewGeneric":
     "These changes need a teammate's review before going live",
   "thread.publishPopover.newPageSections": "New page with {count} sections",

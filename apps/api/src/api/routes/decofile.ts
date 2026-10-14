@@ -8,6 +8,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session; 409 block-conflict on a stale `expect`)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/overwrites  values a publish would replace on default (session)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -46,7 +47,7 @@ import {
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
-import { repoGitRebase } from "@/decofile/git-compat";
+import { repoBlockOverwrites, repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
@@ -169,7 +170,8 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
+      c.req.method === "GET" &&
+      !c.req.path.match(/\/(publish|status|overwrites)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -488,6 +490,17 @@ export function createDecofileRoutes() {
         }
         throw err;
       }
+    } catch (err) {
+      return errorResponse(c, err);
+    }
+  });
+
+  app.get("/:virtualMcpId/:branch/overwrites", async (c) => {
+    try {
+      const client = await contentClientForScope(c);
+      return c.json(
+        await repoBlockOverwrites(client, c.get("decofileScope").branch),
+      );
     } catch (err) {
       return errorResponse(c, err);
     }
