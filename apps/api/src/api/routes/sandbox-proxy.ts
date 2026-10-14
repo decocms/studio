@@ -71,12 +71,6 @@ import {
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import {
-  draftGitDiscard,
-  hostedDraftPublishDiff,
-  hostedDraftPublishStatus,
-  loadHostedDraft,
-} from "../../hosted/draft-publish-status";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
 import {
@@ -410,45 +404,6 @@ async function fastPreviewGitClient(c: Context<VmEnv>) {
   return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
-/** The hosted v8 project's draft (see hosted/draft-publish-status.ts), or null. */
-function loadHostedDraftFor(c: Context<VmEnv>) {
-  const claim = c.get("vmClaim");
-  const ctx = c.var.studioContext;
-  return loadHostedDraft({
-    storage: ctx.storage,
-    organizationId: requireOrganization(ctx).id,
-    virtualMcpId: claim.virtualMcpId,
-    branch: claim.branch,
-    metadata: claim.virtualMcpMetadata,
-    userId: claim.callerUserId,
-    gitClient: () => fastPreviewGitClient(c),
-  });
-}
-
-/** `/git/status` without a sandbox: the branch's drift, or a hosted draft's. */
-async function fastPreviewStatus(c: Context<VmEnv>) {
-  const hosted = await loadHostedDraftFor(c);
-  if (hosted) {
-    return hostedDraftPublishStatus(
-      hosted.repo,
-      hosted.ref.branch,
-      hosted.draft,
-    );
-  }
-  return repoGitStatus(await fastPreviewGitClient(c), c.get("vmClaim").branch);
-}
-
-/** `/git/diff` without a sandbox: the branch's bodies, or a hosted draft's. */
-async function fastPreviewDiff(c: Context<VmEnv>, base?: string) {
-  const hosted = await loadHostedDraftFor(c);
-  if (hosted) return hostedDraftPublishDiff(hosted.repo, hosted.draft);
-  return repoGitDiff(
-    await fastPreviewGitClient(c),
-    c.get("vmClaim").branch,
-    base,
-  );
-}
-
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
   const message = err instanceof Error ? err.message : String(err);
   /** 429 with the provider's own wait, so the client backs off instead of
@@ -514,7 +469,8 @@ async function proxyPreviewUpstream(
 
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
-    const status = await fastPreviewStatus(c);
+    const client = await fastPreviewGitClient(c);
+    const status = await repoGitStatus(client, c.get("vmClaim").branch);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -1065,7 +1021,8 @@ export const createSandboxRoutes = () => {
         const body = (await c.req.json().catch(() => ({}))) as {
           base?: string;
         };
-        const diff = await fastPreviewDiff(c, body.base);
+        const client = await fastPreviewGitClient(c);
+        const diff = await repoGitDiff(client, claim.branch, body.base);
         return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         return fastPreviewGitError(c, err);
@@ -1149,11 +1106,6 @@ export const createSandboxRoutes = () => {
           );
         }
         try {
-          const hosted = await loadHostedDraftFor(c);
-          if (hosted) {
-            await draftGitDiscard(hosted.drafts, hosted.ref, filepaths);
-            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-          }
           const client = await fastPreviewGitClient(c);
           await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
@@ -1281,7 +1233,13 @@ export const createSandboxRoutes = () => {
                 ])
               : // Sandbox-less backfill: same GitHub-backed shapes the /git
                 // routes serve (no daemon exists to ask).
-                await Promise.all([fastPreviewStatus(c), fastPreviewDiff(c)]);
+                await (async () => {
+                  const client = await fastPreviewGitClient(c);
+                  return Promise.all([
+                    repoGitStatus(client, claim.branch),
+                    repoGitDiff(client, claim.branch),
+                  ]);
+                })();
         // The only route under /sandbox that spends real money: one model call
         // on the org's gateway credential, with a prompt the caller sizes (up
         // to the body limit above). It is a plain BFF route, so `defineTool`'s

@@ -32,7 +32,12 @@ import {
 export type RepoContentReader = Pick<
   ContentStorage,
   "snapshot" | "readFiles" | "readSchema" | "readSecretsPublicKey"
->;
+> & {
+  /** The branch head (`snapshot`'s revision) and the branch actually read. */
+  head(): Promise<{ sha: string; ref: string }>;
+  /** The saved-block files at one commit; `readFiles` reads them as usual. */
+  snapshotAt(sha: string, ref: string): Promise<StorageSnapshot>;
+};
 
 interface RepoContentStorageOptions {
   client: RepoContentClient;
@@ -103,25 +108,36 @@ export function createRepoContentReader(
     return file!.content;
   };
 
+  /** The saved-block files of one commit's tree. */
+  const filesAt = async (sha: string) => {
+    const tree = await client.listDecofileEntries(sha, packagePath);
+    const files = blockEntriesInTree(tree, packagePath).map((entry) => ({
+      file: entry.path.slice(blocksPrefix.length),
+      version: entry.sha,
+      size: entry.size,
+    }));
+    return { tree, files };
+  };
+
   return {
+    head: () => guarded(readHead),
+
     snapshot: () =>
       guarded(async (): Promise<StorageSnapshot> => {
         const head = await readHead();
-        const tree = await client.listDecofileEntries(head.sha, packagePath);
+        const { tree, files } = await filesAt(head.sha);
         if (tree.length === 0 && (await schemaEntryAt(head.sha)) === null) {
           throw new StorageNotFoundError(
             `no .deco folder in ${packagePath ?? "the repository root"}`,
           );
         }
-        return {
-          revision: head.sha,
-          resolvedRef: head.ref,
-          files: blockEntriesInTree(tree, packagePath).map((entry) => ({
-            file: entry.path.slice(blocksPrefix.length),
-            version: entry.sha,
-            size: entry.size,
-          })),
-        };
+        return { revision: head.sha, resolvedRef: head.ref, files };
+      }),
+
+    snapshotAt: (sha, ref) =>
+      guarded(async (): Promise<StorageSnapshot> => {
+        const { files } = await filesAt(sha);
+        return { revision: sha, resolvedRef: ref, files };
       }),
 
     readFiles: (snapshot, files) =>
