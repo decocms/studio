@@ -35,6 +35,19 @@ const BANNED: RegExp[] = [
   /revers/i,
 ];
 
+/**
+ * The Releases screen says "Latest" for the newest version, never what a
+ * visitor sees right now; its action is "Reapply version"; and it stays
+ * calm (it says how to go back, it doesn't warn twice).
+ */
+const RELEASES_BANNED: RegExp[] = [
+  /live/i,
+  /no ar/i,
+  /republi/i,
+  /anyway/i,
+  /mesmo assim/i,
+];
+
 const siteEditorEntries = (dict: Record<string, string>) =>
   Object.entries(dict).filter(([key]) =>
     SITE_EDITOR_PREFIXES.some((prefix) => key.startsWith(prefix)),
@@ -50,6 +63,25 @@ describe("site editor copy", () => {
       expect(entries.length).toBeGreaterThan(0);
       for (const [key, value] of entries) {
         for (const banned of BANNED) {
+          if (banned.test(value)) {
+            throw new Error(`${key} says ${banned}: "${value}"`);
+          }
+        }
+      }
+    });
+  }
+
+  for (const [name, dict] of [
+    ["en", en],
+    ["pt-br", ptBR],
+  ] as const) {
+    test(`${name}: Releases say Latest and Reapply, calmly`, () => {
+      const entries = Object.entries(dict as Record<string, string>).filter(
+        ([key]) => key.startsWith("releases."),
+      );
+      expect(entries.length).toBeGreaterThan(0);
+      for (const [key, value] of entries) {
+        for (const banned of RELEASES_BANNED) {
           if (banned.test(value)) {
             throw new Error(`${key} says ${banned}: "${value}"`);
           }

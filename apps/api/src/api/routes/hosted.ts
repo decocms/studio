@@ -3,12 +3,15 @@
  * passes `isV8Schema`):
  *
  *   GET    /api/:org/hosted/:virtualMcpId/releases?cursor=   Releases screen
- *   POST   /api/:org/hosted/:virtualMcpId/releases/:sha/republish
- *                                                            Republish { confirm? }: a new
- *                                                            release with that one's content
- *   POST   /api/:org/hosted/:virtualMcpId/releases/current   { head: true }: Publish's "Try
- *                                                            again", main's head made current,
- *                                                            its release written if missing
+ *   GET    /api/:org/hosted/:virtualMcpId/releases/:sha/reapply
+ *                                                            { schemaChanged }: whether that
+ *                                                            version was made for another schema
+ *   POST   /api/:org/hosted/:virtualMcpId/releases/:sha/reapply
+ *                                                            Reapply version: a new version
+ *                                                            with that one's content
+ *   POST   /api/:org/hosted/:virtualMcpId/releases/retry     Publish's "Try again": main's head
+ *                                                            released, its release written if
+ *                                                            missing
  *   GET    /api/:org/hosted/:virtualMcpId/site-tokens        list
  *   POST   /api/:org/hosted/:virtualMcpId/site-tokens        issue (shown once)
  *
@@ -16,7 +19,7 @@
  * Studio-internal routes; nothing outside Studio calls them.
  */
 
-// OPEN: O-S4 — Releases and Republish have no existing route to reuse, so
+// OPEN: O-S4 — Releases and Reapply version have no existing route to reuse, so
 // they are these Studio-internal routes (with site tokens beside them).
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
@@ -38,16 +41,12 @@ import {
   MainMovedError,
 } from "@/hosted/publish";
 import { NotV8Site } from "@/hosted/release-objects";
-import { listReleases, makeHeadCurrent } from "@/hosted/releases";
+import { listReleases, releaseMainHead } from "@/hosted/releases";
 import {
   NotPublishedError,
-  republishRelease,
-  SchemaMismatchError,
-} from "@/hosted/republish";
-import {
-  defaultServedLabelsReader,
-  type ServedLabelsReader,
-} from "@/hosted/serving";
+  reapplySchemaChanged,
+  reapplyVersion,
+} from "@/hosted/reapply";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
 import {
   projectMainIsV8,
@@ -117,7 +116,7 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
   }
   // Only a Blocks v8 site has these screens: `isV8Schema` on main's schema
   // (`projectMainIsV8`, at most one head read per minute), never the marker
-  // alone. Republish also compares the release's schema with main's.
+  // alone.
   try {
     const client = await c.var.repoClientFor(ctx, organization.id, repository);
     const isV8 = await projectMainIsV8({
@@ -208,8 +207,6 @@ function hostedError(c: Context<HostedEnv>, err: unknown) {
 export function createHostedRoutes(
   options: {
     repoClientFor?: RepoClientFor;
-    /** What the site reports serving (tests pass a fake). */
-    servedLabels?: () => ServedLabelsReader | null;
     /** The delivery bucket and edge purge (tests pass in-memory ones). */
     delivery?: () => Delivery | null;
     /** The project repository's history (tests pass a fake). */
@@ -218,7 +215,6 @@ export function createHostedRoutes(
 ) {
   const app = new Hono<HostedEnv>();
   const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
-  const servedLabels = options.servedLabels ?? defaultServedLabelsReader;
   const insightsFor = options.insightsFor ?? insightsClientForProjectRepo;
   const delivery = options.delivery ?? defaultDelivery;
   app.use("*", async (c, next) => {
@@ -239,12 +235,7 @@ export function createHostedRoutes(
         project.repository,
       );
       return c.json(
-        await listReleases(
-          repo,
-          insights,
-          c.req.query("cursor") ?? null,
-          servedLabels(),
-        ),
+        await listReleases(repo, insights, c.req.query("cursor") ?? null),
         200,
         { "Cache-Control": "no-store" },
       );
@@ -253,45 +244,49 @@ export function createHostedRoutes(
     }
   });
 
-  // Publish's "Try again" when its changes were committed but didn't go
-  // live (no companion release, or latest.json not written): main's head.
-  app.post("/:virtualMcpId/releases/current", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { head?: unknown };
-    if (body.head !== true) {
-      return c.json({ error: "head: true is required" }, 400);
-    }
+  // Publish's "Try again" when its changes were committed but weren't
+  // released (no companion release, or latest.json not written): main's head.
+  app.post("/:virtualMcpId/releases/retry", async (c) => {
     try {
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
-      return c.json({ current: await makeHeadCurrent(repo) });
+      return c.json({ current: await releaseMainHead(repo) });
     } catch (err) {
       return hostedError(c, err);
     }
   });
 
-  // Republish: a new release (a commit on main) with that release's
-  // content, then Publish's release path. Answers like Publish.
-  app.post("/:virtualMcpId/releases/:sha/republish", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      confirm?: unknown;
-    };
+  // Before Reapply version: whether that version was made for another schema
+  // (the dialog then says how to go back). Information only.
+  app.get("/:virtualMcpId/releases/:sha/reapply", async (c) => {
     try {
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
-      const result = await republishRelease(repo, c.req.param("sha"), {
-        confirm: body.confirm === true,
+      return c.json({
+        schemaChanged: await reapplySchemaChanged(repo, c.req.param("sha")),
+      });
+    } catch (err) {
+      if (err instanceof NotPublishedError) {
+        return c.json({ error: err.message }, 404);
+      }
+      return hostedError(c, err);
+    }
+  });
+
+  // Reapply version: a new version (a commit on main) with that version's
+  // content, then Publish's release path. Answers like Publish, plus
+  // `schemaChanged`; a schema change never refuses it.
+  app.post("/:virtualMcpId/releases/:sha/reapply", async (c) => {
+    try {
+      const repo = await hostedRepo(c);
+      if (!repo) return c.json(NOT_CONFIGURED, 503);
+      const result = await reapplyVersion(repo, c.req.param("sha"), {
         coAuthor: coAuthorFromStudioContext(c.var.studioContext),
       });
       return c.json(result);
     } catch (err) {
       if (err instanceof NotPublishedError) {
         return c.json({ error: err.message }, 404);
-      }
-      if (err instanceof SchemaMismatchError) {
-        return c.json(
-          { error: "schema-mismatch", target: err.target, head: err.head },
-          409,
-        );
       }
       if (err instanceof MainMovedError) {
         return c.json({ error: "main-moved" }, 409);

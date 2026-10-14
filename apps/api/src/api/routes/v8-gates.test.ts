@@ -162,8 +162,9 @@ describe("hosted routes middleware", () => {
 
   const PATHS = [
     ["GET", "/hosted/p1/releases"],
-    ["POST", "/hosted/p1/releases/current"],
-    ["POST", `/hosted/p1/releases/${"a".repeat(40)}/republish`],
+    ["POST", "/hosted/p1/releases/retry"],
+    ["POST", `/hosted/p1/releases/${"a".repeat(40)}/reapply`],
+    ["GET", `/hosted/p1/releases/${"a".repeat(40)}/reapply`],
     ["GET", "/hosted/p1/site-tokens"],
     ["POST", "/hosted/p1/site-tokens"],
   ] as const;

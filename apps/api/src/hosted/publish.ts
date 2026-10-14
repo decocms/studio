@@ -12,10 +12,10 @@
  * Git is the source of truth for content; latest.json alone says what the CDN
  * serves ("Current"). A failed commit fails Publish and keeps the draft. A
  * failure in step 3 or 4 doesn't undo the merge: the result says which step
- * failed, nothing is restored, and Publish's "Try again" (`makeHeadCurrent`)
+ * failed, nothing is restored, and Publish's "Try again" (`releaseMainHead`)
  * retries them for main's head. A draft that commits nothing leaves
  * latest.json alone. Steps 3–4 are {@link releaseCommit}, shared with
- * Republish (republish.ts).
+ * Reapply version (reapply.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
  */
@@ -209,7 +209,7 @@ export async function draftFileChanges(
  * One fast-forward commit of `changes` (block files) on main from `headSha`,
  * with `.deco/blocks.gen.json` regenerated from `next` when the repo tracks
  * it. Main having moved is {@link MainMovedError}: nothing is committed, no
- * retry. Shared by Publish and Republish.
+ * retry. Shared by Publish and Reapply version.
  */
 export async function commitBlocksToMain(
   repo: HostedRepo,

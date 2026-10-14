@@ -13,8 +13,8 @@ import { saveErrorDetail, saveErrorMessage } from "./serve-save-error";
 
 /** Every save failure in the site editor shares this toast. */
 export const SITE_EDITOR_SAVE_TOAST = "site-editor-save";
-/** Publishing from the editor or going live from the Releases screen, its
- *  outcome and a retry of it share this toast. */
+/** Publishing from the editor or reapplying a version from the Releases
+ *  screen, its outcome and a retry of it share this toast. */
 export const SITE_EDITOR_PUBLISH_TOAST = "site-editor-publish";
 
 /** A collapsed "Details" line holding the developer detail of a failure. */
@@ -62,16 +62,9 @@ export function toastSaveError(
  */
 export const FRESH_TOAST = { action: undefined, duration: undefined } as const;
 
-/**
- * Published (or `title`, e.g. Live for a release that went live again): what
- * the site shows now. `description` says what went live.
- */
-export function toastPublished(
-  t: TFunction,
-  description: string,
-  title: string = t("siteEditor.publish.published"),
-) {
-  toast.success(title, {
+/** Published: `description` says what was published. */
+export function toastPublished(t: TFunction, description: string) {
+  toast.success(t("siteEditor.publish.published"), {
     ...FRESH_TOAST,
     id: SITE_EDITOR_PUBLISH_TOAST,
     description,
@@ -135,11 +128,6 @@ export function toastPublishFailed(
     // A failure waits for the user: it carries the next step.
     duration: retry ? Number.POSITIVE_INFINITY : undefined,
   });
-}
-
-/** The publish toast gives way to a dialog (a confirm asks the next step). */
-export function dismissPublishToast() {
-  toast.dismiss(SITE_EDITOR_PUBLISH_TOAST);
 }
 
 /** The developer detail of a failed request, for Details. */

@@ -779,6 +779,21 @@ export const KEYS = {
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
+  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
+  hostedReapplyCheck: (
+    orgSlug: string,
+    virtualMcpId: string,
+    sha: string | null,
+    latest: string | null,
+  ) =>
+    [
+      "hosted-releases",
+      orgSlug,
+      virtualMcpId,
+      "reapply-check",
+      sha,
+      latest,
+    ] as const,
   hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>

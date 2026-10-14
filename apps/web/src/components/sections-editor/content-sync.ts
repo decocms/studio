@@ -6,7 +6,7 @@
  * {@link runContentChange} runs the write and then the ONE refresh every
  * change shares ({@link contentChanged}): the editor's blocks, the draft
  * pointer (a new pointer reloads the preview), the header's publish status,
- * the publish dialog's change list and, after a publish or republish, the
+ * the publish dialog's change list and, after a publish or a reapply, the
  * releases. The open section form re-reads its block when someone other than
  * its own autosave changed it (the store's `epoch`).
  *
@@ -40,7 +40,7 @@ export type ContentChangeKind =
   | "edit"
   | "discard"
   | "publish"
-  | "republish"
+  | "reapply"
   | "external";
 
 export type ContentSyncPhase = "idle" | "saving" | "reloading";
@@ -57,7 +57,7 @@ export interface ContentSyncState {
   reload: { seq: number; navigates: boolean };
   /**
    * Bumped after a change the open form didn't make (discard, publish,
-   * republish, someone else's change): the form re-reads its block.
+   * reapply, someone else's change): the form re-reads its block.
    */
   epoch: number;
 }
@@ -231,9 +231,9 @@ async function contentChanged(
 ): Promise<{ navigates: boolean }> {
   const { queryClient, orgSlug, virtualMcpId, branch, backend, cacheKey } =
     target;
-  // Publish and republish are hosted-only writes: what is live moved.
+  // Publish and reapply are hosted-only writes: the latest version moved.
   const releases =
-    change.kind === "publish" || change.kind === "republish"
+    change.kind === "publish" || change.kind === "reapply"
       ? queryClient.invalidateQueries({
           queryKey: KEYS.hostedReleases(orgSlug, virtualMcpId),
         })

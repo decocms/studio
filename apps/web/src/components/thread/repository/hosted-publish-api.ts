@@ -4,7 +4,7 @@
  * makes it current on the CDN. `release` says how far the CDN steps got:
  * `current`, `created` (making it current failed) or `none` (no release was
  * written). Either way the changes are saved on main, and
- * {@link publishMainHead} retries the CDN steps ("Try again").
+ * {@link retryRelease} retries the CDN steps ("Try again").
  */
 
 import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
@@ -59,17 +59,17 @@ export function publishHostedDraft(
 }
 
 /**
- * "Try again" after a Publish that saved the changes but didn't put them
- * live: writes the companion release of main's head when it is missing and
+ * "Try again" after a Publish that saved the changes but didn't release
+ * them: writes the companion release of main's head when it is missing and
  * makes it current. Main's head holds every published change, this one's
  * included, so it never rolls back a newer Publish.
  */
-export function publishMainHead(params: {
+export function retryRelease(params: {
   orgSlug: string;
   virtualMcpId: string;
 }): Promise<unknown> {
   return post<unknown>(
-    `/api/${params.orgSlug}/hosted/${encodeURIComponent(params.virtualMcpId)}/releases/current`,
-    { head: true },
+    `/api/${params.orgSlug}/hosted/${encodeURIComponent(params.virtualMcpId)}/releases/retry`,
+    {},
   );
 }
