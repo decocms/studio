@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
-import { resolveSiteRepositoryId } from "./resolve-site-repository";
+import { resolveSiteRepository } from "./resolve-site-repository";
 
 const repository = {
   url: "https://github.com/example-org/example-site",
@@ -45,8 +45,8 @@ describe("resolveSiteRepositoryId", () => {
     );
 
     await expect(
-      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
-    ).resolves.toBe("repo-1");
+      resolveSiteRepository(ctx, "org-1", "example-site"),
+    ).resolves.toEqual({ repositoryId: "repo-1" });
   });
 
   it("falls back to the org repository matching an imported binding", async () => {
@@ -58,8 +58,8 @@ describe("resolveSiteRepositoryId", () => {
     );
 
     await expect(
-      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
-    ).resolves.toBe("repo-2");
+      resolveSiteRepository(ctx, "org-1", "example-site"),
+    ).resolves.toEqual({ repositoryId: "repo-2" });
   });
 
   it("follows the org_sites link to a project whose own slug differs", async () => {
@@ -72,8 +72,8 @@ describe("resolveSiteRepositoryId", () => {
     );
 
     await expect(
-      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
-    ).resolves.toBe("repo-3");
+      resolveSiteRepository(ctx, "org-1", "example-site"),
+    ).resolves.toEqual({ repositoryId: "repo-3" });
   });
 
   it("ignores the raw storage key, which no read path returns", async () => {
@@ -83,18 +83,24 @@ describe("resolveSiteRepositoryId", () => {
     );
 
     await expect(
-      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
-    ).resolves.toBeNull();
+      resolveSiteRepository(ctx, "org-1", "example-site"),
+    ).resolves.toMatchObject({
+      repositoryId: null,
+      reason: expect.stringContaining("not bound to a repository"),
+    });
   });
 
-  it("returns null when the binding matches no repository row", async () => {
+  it("names the unlinked repository when the binding matches no row", async () => {
     const ctx = contextWith([
       { title: "example-site", metadata: { repository } },
     ]);
 
     await expect(
-      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
-    ).resolves.toBeNull();
+      resolveSiteRepository(ctx, "org-1", "example-site"),
+    ).resolves.toMatchObject({
+      repositoryId: null,
+      reason: expect.stringContaining("example-org/example-site"),
+    });
   });
 
   it("rejects a site the organization does not own", async () => {
@@ -103,7 +109,7 @@ describe("resolveSiteRepositoryId", () => {
     ]);
 
     await expect(
-      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
+      resolveSiteRepository(ctx, "org-1", "example-site"),
     ).rejects.toThrow("Site not found in organization");
   });
 });
