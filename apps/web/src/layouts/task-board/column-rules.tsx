@@ -268,12 +268,14 @@ export function SkillsField({
       !value.includes(s.id) &&
       !inherited.includes(s.id),
   );
+  // Already shown as inherited below; don't render it twice.
+  const ownValue = value.filter((id) => !inherited.includes(id));
 
   return (
     <div className={cn("flex flex-col gap-2", fill && "min-h-0 flex-1")}>
-      {value.length > 0 && (
+      {ownValue.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {value.map((id) => (
+          {ownValue.map((id) => (
             <Badge key={id} variant="outline" className="py-0 pr-0 pl-2">
               {nameOf(id)}
               <IconButton
