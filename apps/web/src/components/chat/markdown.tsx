@@ -1,18 +1,12 @@
 /* eslint-disable ban-memoization/ban-memoization */
 import { marked, type Token } from "marked";
-import React, {
-  memo,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { memo, useCallback, useContext, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@decocms/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
@@ -71,19 +65,6 @@ function LazyHighlighter({
       {content}
     </SyntaxHighlighter>
   );
-}
-
-// Custom hook for copy functionality - simplified version
-function useCopy() {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, []);
-
-  return { handleCopy, copied };
 }
 
 function Table(props: React.HTMLAttributes<HTMLTableElement>) {
