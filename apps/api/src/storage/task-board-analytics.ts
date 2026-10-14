@@ -1742,6 +1742,7 @@ export class TaskBoardAnalyticsStorage {
       left join task_board_item_tags g on g.task_board_item_id = f.item_id
       left join organization_tags o on o.id = g.id
       group by 1, 2, 3, 4
+      order by n desc limit 500
     `);
     const total = (key: "row" | "col") => {
       const sums = new Map<string, number>();
@@ -1767,6 +1768,7 @@ export class TaskBoardAnalyticsStorage {
       from ft a
       join (select item_id, tag_id, tag from ft) b on b.item_id = a.item_id
       group by 1, 2, 3, 4
+      order by n desc limit 500
     `);
     const tagOrder = [
       ...new Map(
