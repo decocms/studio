@@ -27,6 +27,7 @@ import {
   useAutoResolveConflicts,
   useCodingAgentExcludedMcps,
   useOrgFlag,
+  useReviewerEnabled,
   useSetCodingAgentExcludedMcps,
   useSetNewBlocksEditor,
   useSetOrgFlag,
@@ -54,12 +55,7 @@ export function ReviewSettings() {
       description={t("settings.review.description")}
     >
       <SettingsCard>
-        <FlagToggle
-          flag="reviewer_enabled"
-          icon={<FileSearch02 size={16} />}
-          titleKey="settings.review.reviewerTitle"
-          descriptionKey="settings.review.reviewerDescription"
-        />
+        <ReviewerEnabledToggle />
         <FlagToggle
           flag="cheap_reviewer_model"
           icon={<Coins01 size={16} />}
@@ -492,6 +488,25 @@ export function BlocksEditorSettings() {
         />
       </SettingsCard>
     </SettingsSection>
+  );
+}
+
+/**
+ * Reads through `useReviewerEnabled`, not the raw flag: an org that turned
+ * both legacy QA Agent and Code Reviewer flags off, without ever setting
+ * `reviewer_enabled`, has the server gate reading the Reviewer as off — a
+ * switch bound to the raw (default-on) flag would show it on regardless.
+ */
+function ReviewerEnabledToggle() {
+  const enabled = useReviewerEnabled();
+  return (
+    <FlagToggle
+      flag="reviewer_enabled"
+      icon={<FileSearch02 size={16} />}
+      titleKey="settings.review.reviewerTitle"
+      descriptionKey="settings.review.reviewerDescription"
+      enabled={enabled}
+    />
   );
 }
 
