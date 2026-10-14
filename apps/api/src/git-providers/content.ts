@@ -164,6 +164,11 @@ export interface RepoContentClient {
   readBlob(sha: string): Promise<string>;
   /** One file's text at a ref, by path — null when absent there. */
   readFileAtRef(ref: string, path: string): Promise<string | null>;
+  /**
+   * One commit's full message and committer date, by sha — null when there
+   * is no such commit.
+   */
+  readCommit(sha: string): Promise<{ message: string; date: string } | null>;
 
   /**
    * Put `changes` on `branch` in one commit.
