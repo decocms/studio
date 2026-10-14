@@ -21,7 +21,7 @@
  * GitHub-shaped endpoints (only what the decofile client calls):
  *   GET   /repos/{o}/{r}                              -> { id, full_name, private, html_url, default_branch }
  *   GET   /repos/{o}/{r}/git/ref/heads/{branch}       -> { object: { sha } }
- *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { tree: { sha }, parents }
+ *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { message, committer, tree: { sha }, parents }
  *   GET   /repos/{o}/{r}/git/trees/{sha}[?recursive=1] -> { tree: [...], truncated } (non-recursive = direct children + subtree shas)
  *   GET   /repos/{o}/{r}/git/blobs/{sha}              -> { content, encoding }
  *   GET   /repos/{o}/{r}/contents/{path}?ref={sha}    -> { sha, content, encoding }
@@ -371,6 +371,11 @@ async function handleGraphql(
         oid,
         committedDate: new Date().toISOString(),
         messageHeadline: (repo.commits.get(oid)?.message ?? "").split("\n")[0],
+        messageBody: (repo.commits.get(oid)?.message ?? "")
+          .split("\n")
+          .slice(1)
+          .join("\n")
+          .trim(),
         author: { name: "e2e", email: null, user: null },
       })),
     },
@@ -601,6 +606,7 @@ async function handleRepos(
     json(res, 200, {
       sha: commit.sha,
       message: commit.message,
+      committer: { date: new Date().toISOString() },
       tree: { sha: commit.treeSha },
       parents: commit.parents.map((sha) => ({ sha })),
     });

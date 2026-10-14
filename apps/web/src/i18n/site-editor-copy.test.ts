@@ -31,6 +31,8 @@ const BANNED: RegExp[] = [
   /\bcurrent\b/i,
   /make current/i,
   /tornar atual/i,
+  /\brevert/i,
+  /revers/i,
 ];
 
 const siteEditorEntries = (dict: Record<string, string>) =>

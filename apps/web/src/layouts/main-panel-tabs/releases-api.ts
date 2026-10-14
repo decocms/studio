@@ -1,7 +1,8 @@
 /**
  * The Releases screen's reads and writes (`/api/:org/hosted/:vmcp/*`): the
  * timeline of main's commits with the ones that have a companion release,
- * what latest.json names (Current), and "Make current".
+ * what latest.json names, what the site itself reports serving, and
+ * Republish (a new release with an earlier one's content).
  */
 
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
@@ -9,6 +10,11 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { runContentChange } from "@/components/sections-editor/content-sync";
 import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync";
 import { KEYS } from "@/lib/query-keys";
+import {
+  type HostedPublishResult,
+  publishMainHead,
+} from "@/components/thread/repository/hosted-publish-api";
+import { GOING_LIVE_POLL_MS, waitingForSite } from "./releases-status";
 
 export interface ReleasePointer {
   revision: string;
@@ -21,13 +27,26 @@ export interface ReleaseCommit {
   date: string;
   message: string;
   author: string | null;
-  /** Has a companion release on the CDN: it can be made current. */
+  /** Has a companion release on the CDN: it can be republished. */
   hasRelease: boolean;
+  /** This release republished the release of that commit. */
+  republishOf: { sha: string } | null;
 }
+
+/**
+ * What the site serves. `site`: what its telemetry reported in the last
+ * minutes (`revision` null when it matches no release here). `none`: no
+ * report; the screen falls back to `current`, and says so.
+ */
+export type ReleaseServing =
+  | { source: "site"; revision: string | null; lastSeen: string }
+  | { source: "none" };
 
 export interface ReleasesPage {
   /** What latest.json names; null when there is none. */
   current: ReleasePointer | null;
+  /** On the first page only. */
+  serving: ReleaseServing | null;
   commits: ReleaseCommit[];
   nextCursor: string | null;
 }
@@ -72,15 +91,24 @@ export function useReleases(orgSlug: string, virtualMcpId: string) {
     },
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
+    // A release just published is "Going live…" until the site reports it:
+    // ask again every 15 s while it waits (ten minutes at most).
+    refetchInterval: (query: {
+      state: { data?: { pages: ReleasesPage[] } };
+    }) => {
+      const first = query.state.data?.pages[0];
+      return first && waitingForSite(first) ? GOING_LIVE_POLL_MS : false;
+    },
   });
 }
 
 /**
- * "Make current": point latest.json at a commit's companion release. A
- * content change (content-sync.ts): the releases list, the publish status
- * and the preview refresh as after any other change, on a failure too.
+ * Republish: a new release with the content of the release of `sha` (the
+ * API commits it and runs Publish's release path). A content change
+ * (content-sync.ts): the releases, the editor's blocks, the publish status
+ * and the preview refresh as after a Publish, on a failure too.
  */
-export function useMakeCurrent(orgSlug: string, virtualMcpId: string) {
+export function useRepublish(orgSlug: string, virtualMcpId: string) {
   const content = useContentSyncTarget({
     orgSlug,
     virtualMcpId,
@@ -89,16 +117,44 @@ export function useMakeCurrent(orgSlug: string, virtualMcpId: string) {
   return useMutation({
     mutationFn: (vars: { sha: string; confirm: boolean }) =>
       runContentChange(content, {
-        kind: "rollback",
+        kind: "republish",
+        reread: true,
         refreshOnError: true,
         write: async () =>
-          readJson<unknown>(
-            await fetch(hostedUrl(orgSlug, virtualMcpId, "releases/current"), {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(vars),
-            }),
+          readJson<HostedPublishResult>(
+            await fetch(
+              hostedUrl(
+                orgSlug,
+                virtualMcpId,
+                `releases/${encodeURIComponent(vars.sha)}/republish`,
+              ),
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ confirm: vars.confirm }),
+              },
+            ),
           ),
+      }),
+  });
+}
+
+/**
+ * "Try again" after a Republish that saved its content but didn't put it
+ * live: Publish's own retry (main's head made current).
+ */
+export function usePutMainLive(orgSlug: string, virtualMcpId: string) {
+  const content = useContentSyncTarget({
+    orgSlug,
+    virtualMcpId,
+    branch: useOptionalChatTask()?.currentBranch ?? null,
+  });
+  return useMutation({
+    mutationFn: () =>
+      runContentChange(content, {
+        kind: "republish",
+        refreshOnError: true,
+        write: () => publishMainHead({ orgSlug, virtualMcpId }),
       }),
   });
 }

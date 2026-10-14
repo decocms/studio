@@ -111,7 +111,7 @@ describe("one toast per publish", () => {
     expect((failed[0] as { title?: unknown }).title).toBe(
       "Couldn't go live with this release.",
     );
-    toastPublished(t, "This release is live.");
+    toastPublished(t, "Your changes are live.");
     const shown = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
@@ -152,35 +152,30 @@ describe("one toast per publish", () => {
     expect(shown).toHaveLength(1);
     expect((shown[0] as { type?: string }).type).toBe("loading");
     expect((shown[0] as { action?: unknown }).action).toBeUndefined();
-    toastPublished(t, "This release is live.");
+    toastPublished(t, "Your changes are live.");
     const [done] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect((done as { title?: unknown }).title).toBe("Published");
   });
-  test("Releases: a go-live says Going live… and Live, never Publish", () => {
+  test("Releases: a failed republish says so, and its retry says Republishing…", () => {
     toastPublishFailed(t, {
-      headline: t("releases.goLiveFailed"),
-      pending: t("releases.goingLive"),
+      headline: t("releases.republishFailed"),
+      pending: t("releases.republishing"),
       retry: () => {},
     });
     const [failed] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect((failed as { title?: unknown }).title).toBe(
+      "Couldn't republish this release.",
+    );
     (
       failed as { action?: { onClick: (event: unknown) => void } }
     ).action?.onClick({ preventDefault: () => {} });
     const [pending] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
-    expect((pending as { title?: unknown }).title).toBe("Going live…");
-    toastPublished(t, t("releases.versionLive"), t("releases.live"));
-    const [done] = toast
-      .getToasts()
-      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
-    expect((done as { title?: unknown }).title).toBe("Live");
-    expect((done as { description?: unknown }).description).toBe(
-      "This release is live.",
-    );
+    expect((pending as { title?: unknown }).title).toBe("Republishing…");
   });
 });
