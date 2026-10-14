@@ -73,6 +73,7 @@ async function openEditor(
   orgSlug: string,
   previewServerUrl: string,
   homeSection: unknown,
+  branch = "main",
 ) {
   const api = page.request;
   const owner = uniqueOwner();
@@ -100,13 +101,15 @@ async function openEditor(
           ".deco/blocks/SharedHero.json": JSON.stringify(hero),
         },
       },
+      // No files: the draft starts at main's head, with nothing of its own.
+      ...(branch === "main" ? {} : { [branch]: null }),
     },
   });
   const { item: thread } = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
+    { data: { virtual_mcp_id: project.vmcpId, branch } },
   );
   await page.goto(
     `/${orgSlug}/projects/${project.vmcpId}/site-editor?thread=${thread.id}&sidepanel=false`,
@@ -124,7 +127,8 @@ async function openEditor(
   return {
     blocks,
     headline,
-    url: `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+    vmcpId: project.vmcpId,
+    url: `/api/${orgSlug}/decofile/${project.vmcpId}/${branch}`,
   };
 }
 
@@ -231,6 +235,81 @@ test.describe("Site Editor stale section form", () => {
             },
           ],
         });
+    } finally {
+      await previewSite.close();
+    }
+  });
+  test("a form left open while a sync brings in another draft's publish merges without a refused save", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    test.setTimeout(150_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url, vmcpId } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+        "draft",
+      );
+      const published = {
+        ...hero,
+        slides: [{ title: "First slide", description: "Published elsewhere" }],
+      };
+      // Another draft publishes a change to the same block...
+      await writeElsewhere(
+        page.request,
+        `/api/${orgSlug}/decofile/${vmcpId}/main`,
+        "SharedHero",
+        published,
+      );
+      // ...and "get latest" fast-forwards this draft, which has nothing of
+      // its own yet, onto that publish.
+      const sync = await page.request.post(
+        `/api/${orgSlug}/sandbox/${vmcpId}/draft/git/rebase`,
+        { data: { base: "main" } },
+      );
+      expect(sync.status()).toBe(200);
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+
+      // The editor re-reads the draft once its copy is stale (here, on
+      // refocus); the open form still holds the copy it loaded.
+      const reread = page.waitForResponse(
+        (r) =>
+          r.request().method() === "GET" &&
+          new URL(r.url()).pathname ===
+            `/api/${orgSlug}/decofile/${vmcpId}/draft` &&
+          r.ok(),
+        { timeout: 60_000 },
+      );
+      await page.waitForTimeout(31_000);
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("visibilitychange"));
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("focus"));
+      });
+      await reread;
+
+      const saves: number[] = [];
+      page.on("response", (r) => {
+        if (
+          r.request().method() === "PATCH" &&
+          r.url().includes("/decofile/")
+        ) {
+          saves.push(r.status());
+        }
+      });
+      await headline.fill("Draft headline");
+      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual({ ...published, headline: "Draft headline" });
+      // Caught by the editor before writing: no save had to be refused.
+      expect(saves.length).toBeGreaterThan(0);
+      expect(saves).not.toContain(409);
     } finally {
       await previewSite.close();
     }
