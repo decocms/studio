@@ -119,6 +119,44 @@ describe("createDraftContentStorage", () => {
     expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
   });
 
+  it("a discard (changes.discard) removes the entry: the read is main as it is now, and follows main when it moves", async () => {
+    const { repo, drafts, storage } = setup();
+    await storage.commit({
+      base: await storage.snapshot(),
+      put: { "Home.json": serializeBlock({ path: "/", title: "draft" }) },
+      delete: [],
+      expected: {},
+    });
+    const edited = await storage.snapshot();
+    const etag = (await drafts.load(REF))?.etag;
+
+    const discarded = await call(storage, "changes.discard", {
+      names: ["Home"],
+    });
+    expect(discarded.error).toBeUndefined();
+    const draft = await drafts.load(REF);
+    expect(draft?.body).toEqual({ set: {}, delete: [] });
+    // A new draft object: a new ETag, so a new pointer and revision.
+    expect(draft?.etag).not.toBe(etag);
+    const after = await storage.snapshot();
+    expect(after.revision).not.toBe(edited.revision);
+    expect(discarded.result.revision).toBe(after.revision);
+    const read = async () =>
+      JSON.parse(
+        (await storage.readFiles(await storage.snapshot(), ["Home.json"]))[
+          "Home.json"
+        ]!.text,
+      );
+    expect(await read()).toEqual({ path: "/", title: "main" });
+
+    // main moves after the discard (a publish from elsewhere).
+    repo.pushDirect({
+      ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "main v2" }),
+    });
+    expect(await read()).toEqual({ path: "/", title: "main v2" });
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+  });
+
   it("reads main with no draft, at revision <head>~none", async () => {
     const { repo, storage } = setup();
     const snap = await storage.snapshot();
