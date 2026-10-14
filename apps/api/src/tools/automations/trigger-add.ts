@@ -26,7 +26,10 @@ import {
   BoardTransitionFromSchema,
 } from "../../automations/board-column-transition";
 import { normalizeFrom } from "../../jira/rule-from";
-import { AutomationTriggerTypeSchema } from "./trigger-schema";
+import {
+  AutomationTriggerTypeSchema,
+  TriggerParamsSchema,
+} from "./trigger-schema";
 
 // Cluster-wide floor on cron firing frequency. Tighter than the 60s floor
 // the old NATS dispatcher allowed: each fire writes ~4 DBOS workflow rows
@@ -62,7 +65,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
     cron_expression: z.string().optional(),
     connection_id: z.string().optional(),
     event_type: z.string().optional(),
-    params: z.record(z.string(), z.string()).optional(),
+    params: TriggerParamsSchema.optional(),
     column_key: BoardColumnKeySchema.optional().describe(
       "For board_column_transition: the board column a card enters.",
     ),
