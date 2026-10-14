@@ -12,12 +12,12 @@ import { buildRevision } from "./release-objects";
 import { listReleases } from "./releases";
 import {
   NotPublishedError,
-  republishedFrom,
-  republishMessage,
-  republishRelease,
-  republishTitle,
-  SchemaMismatchError,
-} from "./republish";
+  reappliedFrom,
+  reapplyMessage,
+  reapplySchemaChanged,
+  reapplyTitle,
+  reapplyVersion,
+} from "./reapply";
 
 beforeAll(() => {
   process.env.FAST_PREVIEW_CACHE_DIR = "";
@@ -61,8 +61,8 @@ async function revisionBlocks(repo: HostedRepo, sha: string) {
   return (object?.value as { blocks?: unknown } | undefined)?.blocks;
 }
 
-describe("republishRelease", () => {
-  it("commits the release's blocks on main and makes that new release live", async () => {
+describe("reapplyVersion", () => {
+  it("commits the version's blocks on main and releases that new version", async () => {
     const { git, delivery, repo, release } = setup();
     const first = await release();
     // Later releases: Home changed, Promo added, Footer deleted.
@@ -77,21 +77,23 @@ describe("republishRelease", () => {
     await release();
     const before = git.head();
 
-    const result = await republishRelease(repo, first, {
-      confirm: false,
-      coAuthor: ANA,
-    });
+    const result = await reapplyVersion(repo, first, { coAuthor: ANA });
 
     const sha = git.head();
     expect(sha).not.toBe(before);
-    expect(result).toEqual({ result: "merged", sha, release: "current" });
+    expect(result).toEqual({
+      result: "merged",
+      sha,
+      release: "current",
+      schemaChanged: false,
+    });
     const files = git.filesAt(sha);
     expect(files[".deco/blocks/Home.json"]).toBe(HOME_V1);
     expect(files[".deco/blocks/Footer.json"]).toBe(
       serializeBlock({ links: 1 }),
     );
     expect(files[".deco/blocks/Promo.json"]).toBeUndefined();
-    // The new release has exactly the old one's content, and is live.
+    // The new release has exactly the old one's content, and is latest.
     expect(await revisionBlocks(repo, sha)).toEqual(
       await revisionBlocks(repo, first),
     );
@@ -124,7 +126,7 @@ describe("republishRelease", () => {
       written.push(...params.changes.map((c) => c.path));
       return commitFiles(params);
     };
-    await republishRelease(repo, first, { confirm: true });
+    await reapplyVersion(repo, first);
     expect(written).toEqual([".deco/blocks/Home.json"]);
     const files = git.filesAt(git.head());
     expect(files[".deco/index.ts"]).toBe("export default { v: 2 };\n");
@@ -139,7 +141,7 @@ describe("republishRelease", () => {
     git.pushDirect({ ".deco/blocks/Home.json": HOME_V1 }, "back by hand");
     const head = git.head();
     delivery.log.length = 0;
-    expect(await republishRelease(repo, first, { confirm: false })).toEqual({
+    expect(await reapplyVersion(repo, first)).toEqual({
       result: "up-to-date",
     });
     expect(git.head()).toBe(head);
@@ -157,9 +159,7 @@ describe("republishRelease", () => {
     };
     const moved = git.head();
     delivery.log.length = 0;
-    await expect(
-      republishRelease(repo, first, { confirm: false }),
-    ).rejects.toThrow(MainMovedError);
+    await expect(reapplyVersion(repo, first)).rejects.toThrow(MainMovedError);
     expect(git.history[0]?.message).toBe("someone else");
     expect(git.history[1]?.sha).toBe(moved);
     expect(delivery.log).toEqual([]);
@@ -167,33 +167,52 @@ describe("republishRelease", () => {
 
   it("refuses a commit without a release, or not a commit at all", async () => {
     const { git, repo } = setup();
-    await expect(
-      republishRelease(repo, git.head(), { confirm: false }),
-    ).rejects.toThrow(NotPublishedError);
-    await expect(
-      republishRelease(repo, "main", { confirm: false }),
-    ).rejects.toThrow(NotPublishedError);
+    await expect(reapplyVersion(repo, git.head())).rejects.toThrow(
+      NotPublishedError,
+    );
+    await expect(reapplyVersion(repo, "main")).rejects.toThrow(
+      NotPublishedError,
+    );
   });
 
-  it("asks before republishing a release made for another schema; goes live once confirmed", async () => {
+  it("reapplies a version made for another schema all the same, and says so", async () => {
     const { git, delivery, repo, release } = setup();
     const first = await release();
     git.pushDirect({
       ".deco/schema.gen.json": SCHEMA_TEXT.replace("next.7", "next.8"),
       ".deco/blocks/Home.json": serializeBlock({ t: 2 }),
     });
-    const head = git.head();
-    await expect(
-      republishRelease(repo, first, { confirm: false }),
-    ).rejects.toThrow(SchemaMismatchError);
-    expect(git.head()).toBe(head);
-    const result = await republishRelease(repo, first, { confirm: true });
-    expect(result).toMatchObject({ result: "merged", release: "current" });
+    expect(await reapplySchemaChanged(repo, first)).toBe(true);
+    const result = await reapplyVersion(repo, first);
+    expect(result).toMatchObject({
+      result: "merged",
+      release: "current",
+      schemaChanged: true,
+    });
     // It carries main's schema (the code's), so the site does take it.
-    const live = await readLatest(delivery.store, "acme");
-    expect(live?.revision).toBe(git.head());
+    const latest = await readLatest(delivery.store, "acme");
+    expect(latest?.revision).toBe(git.head());
     expect(git.filesAt(git.head())[".deco/schema.gen.json"]).toContain(
       "next.8",
+    );
+  });
+
+  it("reports no schema change for the same schema, or a formatting-only change", async () => {
+    const { git, repo, release } = setup();
+    const first = await release();
+    git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 2 }) });
+    expect(await reapplySchemaChanged(repo, first)).toBe(false);
+    git.pushDirect({
+      ".deco/schema.gen.json": JSON.stringify(JSON.parse(SCHEMA_TEXT), null, 4),
+    });
+    expect(await reapplySchemaChanged(repo, first)).toBe(false);
+    expect(await reapplyVersion(repo, first)).toMatchObject({
+      result: "merged",
+      schemaChanged: false,
+    });
+    git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 3 }) });
+    await expect(reapplySchemaChanged(repo, git.head())).rejects.toThrow(
+      NotPublishedError,
     );
   });
 
@@ -203,12 +222,12 @@ describe("republishRelease", () => {
     git.pushDirect({
       ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "v2" }),
     });
-    await republishRelease(repo, first, { confirm: false });
+    await reapplyVersion(repo, first);
     const gen = JSON.parse(git.filesAt(git.head())[".deco/blocks.gen.json"]!);
     expect(gen.Home).toEqual({ path: "/", title: "v1" });
   });
 
-  it("writes the Republish message, and Releases links the new row to the original", async () => {
+  it("writes the Reapply message, and Releases links the new row to the original", async () => {
     const { git, repo, release } = setup();
     git.pushDirect(
       { ".deco/blocks/Home.json": serializeBlock({ t: 1 }) },
@@ -217,9 +236,9 @@ describe("republishRelease", () => {
     const original = await release();
     git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 2 }) });
     await release();
-    await republishRelease(repo, original, { confirm: false, coAuthor: ANA });
+    await reapplyVersion(repo, original, { coAuthor: ANA });
     expect(git.history[0]?.message).toBe(
-      `Republish: Black Friday banner\n\nRepublished-From: ${original}\nCo-authored-by: Ana <ana@acme.com>`,
+      `Reapply: Black Friday banner\n\nReapplied-From: ${original}\nCo-authored-by: Ana <ana@acme.com>`,
     );
     const page = await listReleases(
       repo,
@@ -227,9 +246,9 @@ describe("republishRelease", () => {
       null,
     );
     expect(page.commits[0]).toMatchObject({
-      message: "Republish: Black Friday banner",
+      message: "Reapply: Black Friday banner",
       hasRelease: true,
-      republishOf: { sha: original },
+      reapplyOf: { sha: original },
     });
   });
 
@@ -237,7 +256,7 @@ describe("republishRelease", () => {
     const { git, repo, release } = setup();
     const first = await release();
     git.pushDirect({ ".deco/blocks/Home.json": serializeBlock({ t: 2 }) });
-    await republishRelease(repo, first, { confirm: false });
+    await reapplyVersion(repo, first);
     const restored = git.head();
     git.pushDirect({ ".deco/blocks/Promo.json": serializeBlock({ p: 1 }) });
     const files = git.filesAt(git.head());
@@ -247,52 +266,52 @@ describe("republishRelease", () => {
   });
 });
 
-describe("republish message", () => {
+describe("reapply message", () => {
   const date = "2026-10-01T09:30:12Z";
 
-  it("is `Republish: <note>`", () => {
-    expect(republishTitle({ message: "Summer sale\n\nbody", date })).toBe(
-      "Republish: Summer sale",
+  it("is `Reapply: <note>`", () => {
+    expect(reapplyTitle({ message: "Summer sale\n\nbody", date })).toBe(
+      "Reapply: Summer sale",
     );
   });
 
-  it("never chains: a republish of a republish keeps one prefix", () => {
-    expect(republishTitle({ message: "Republish: Summer sale", date })).toBe(
-      "Republish: Summer sale",
+  it("never chains: reapplying a reapplied version keeps one prefix", () => {
+    expect(reapplyTitle({ message: "Reapply: Summer sale", date })).toBe(
+      "Reapply: Summer sale",
     );
   });
 
-  it("names a release without a note by its date", () => {
+  it("names a version without a note by its date", () => {
     expect(
-      republishTitle({ message: "chore(decofile): update Home", date }),
-    ).toBe("Republish: release from 2026-10-01 09:30 UTC");
-    expect(republishTitle({ message: "", date })).toBe(
-      "Republish: release from 2026-10-01 09:30 UTC",
+      reapplyTitle({ message: "chore(decofile): update Home", date }),
+    ).toBe("Reapply: version from 2026-10-01 09:30 UTC");
+    expect(reapplyTitle({ message: "", date })).toBe(
+      "Reapply: version from 2026-10-01 09:30 UTC",
     );
-    expect(republishTitle({ message: "", date: "nope" })).toBe(
-      "Republish: earlier release",
+    expect(reapplyTitle({ message: "", date: "nope" })).toBe(
+      "Reapply: earlier version",
     );
-    // …and keeps that name when republished again.
+    // …and keeps that name when reapplied again.
     expect(
-      republishTitle({
-        message: "Republish: release from 2026-10-01 09:30 UTC",
+      reapplyTitle({
+        message: "Reapply: version from 2026-10-01 09:30 UTC",
         date: "2026-10-05T00:00:00Z",
       }),
-    ).toBe("Republish: release from 2026-10-01 09:30 UTC");
+    ).toBe("Reapply: version from 2026-10-01 09:30 UTC");
   });
 
-  it("ends with the Republished-From trailer, co-author in the same block", () => {
+  it("ends with the Reapplied-From trailer, co-author in the same block", () => {
     const sha = "a".repeat(40);
-    expect(republishMessage({ message: "Hi", date }, sha)).toBe(
-      `Republish: Hi\n\nRepublished-From: ${sha}`,
+    expect(reapplyMessage({ message: "Hi", date }, sha)).toBe(
+      `Reapply: Hi\n\nReapplied-From: ${sha}`,
     );
-    expect(republishMessage({ message: "Hi", date }, sha, ANA)).toBe(
-      `Republish: Hi\n\nRepublished-From: ${sha}\nCo-authored-by: Ana <ana@acme.com>`,
+    expect(reapplyMessage({ message: "Hi", date }, sha, ANA)).toBe(
+      `Reapply: Hi\n\nReapplied-From: ${sha}\nCo-authored-by: Ana <ana@acme.com>`,
     );
-    expect(
-      republishedFrom(republishMessage({ message: "Hi", date }, sha)),
-    ).toBe(sha);
-    expect(republishedFrom("plain")).toBeNull();
-    expect(republishedFrom(undefined)).toBeNull();
+    expect(reappliedFrom(reapplyMessage({ message: "Hi", date }, sha))).toBe(
+      sha,
+    );
+    expect(reappliedFrom("plain")).toBeNull();
+    expect(reappliedFrom(undefined)).toBeNull();
   });
 });
