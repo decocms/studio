@@ -37,7 +37,7 @@ const GetOutputSchema = z.object({
 export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
   name: "COLLECTION_VIRTUAL_MCP_GET",
   description:
-    "Get a Virtual MCP's configuration, connections, and virtual tools by ID.",
+    "Get a Virtual MCP's configuration, connections, and virtual tools by ID or URL slug.",
   annotations: {
     title: "Get Virtual MCP",
     readOnlyHint: true,
