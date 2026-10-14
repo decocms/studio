@@ -69,7 +69,7 @@ describe("releaseTitle", () => {
   test("a reapplied version is labeled in the viewer's language", () => {
     const reapplied = commit(NEW, {
       message: "Reapply: Summer sale",
-      reapplyOf: { sha: OLD },
+      reapplyOf: { sha: OLD, date: null },
     });
     expect(releaseTitle(t, reapplied, "en")).toBe("Reapply: Summer sale");
     expect(releaseTitle(tPt, reapplied, "pt-BR")).toBe(

@@ -238,9 +238,17 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         <ul className="divide-y divide-border/60">
           {commits.map((commit) => {
             const latest = commit.hasRelease && isLatest(commit.sha, current);
-            const original = commit.reapplyOf
+            // The original's row, when it is loaded (else plain text).
+            const originalRow = commit.reapplyOf
               ? bySha.get(commit.reapplyOf.sha)
               : undefined;
+            const originalDate =
+              originalRow?.date ?? commit.reapplyOf?.date ?? null;
+            const sameContentAs = originalDate
+              ? t("releases.sameContentAs", {
+                  when: formatWhen(new Date(originalDate), language),
+                })
+              : null;
             return (
               <li
                 key={commit.sha}
@@ -270,16 +278,18 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
-                  {original ? (
+                  {sameContentAs && originalRow ? (
                     <button
                       type="button"
                       className="truncate text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
-                      onClick={() => showRow(original.sha)}
+                      onClick={() => showRow(originalRow.sha)}
                     >
-                      {t("releases.sameContentAs", {
-                        when: formatWhen(new Date(original.date), language),
-                      })}
+                      {sameContentAs}
                     </button>
+                  ) : sameContentAs ? (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {sameContentAs}
+                    </p>
                   ) : null}
                 </div>
                 {latest ? <LatestPill /> : null}
