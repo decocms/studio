@@ -19,6 +19,7 @@ import * as migration239taskboardretireoldlanes from "./239-task-board-retire-ol
 import * as migration240taskboardrestoretodo from "./240-task-board-restore-todo";
 import * as migration241automationboardcolumntransition from "./241-automation-board-column-transition";
 import * as migration242connectionurlslug from "./242-connection-url-slug";
+import * as migration243connectionurlslugrolloutbackfill from "./243-connection-url-slug-rollout-backfill";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -523,6 +524,8 @@ const migrations: Record<string, Migration> = {
   "241-automation-board-column-transition":
     migration241automationboardcolumntransition,
   "242-connection-url-slug": migration242connectionurlslug,
+  "243-connection-url-slug-rollout-backfill":
+    migration243connectionurlslugrolloutbackfill,
 };
 
 export default migrations;
