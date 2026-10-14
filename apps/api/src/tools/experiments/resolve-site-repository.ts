@@ -1,7 +1,5 @@
 import type { StudioContext } from "../../core/studio-context";
-import { findRepositoryForBinding } from "@/git-providers/repository-binding";
-import type { RepositoryBinding } from "@decocms/shared/sdk";
-import { findOwnedProject } from "./ownership";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 
 /**
  * The Studio `repositories` row id backing `site`'s GitHub repo, or `null`
@@ -9,27 +7,22 @@ import { findOwnedProject } from "./ownership";
  * to GitHub) — a site in that state simply can't be delegated to the Super
  * Agent, which needs a repo to check out.
  *
- * Finds the project the same way ownership does, so a slug linked in
- * `org_sites` resolves to its project rather than only to one whose own slug
- * matches. Then resolves `metadata.repository` the way sandbox start does:
- * the binding's `repositoryId` when it has one, else the organization's
- * repository matching its host and path, since an imported project carries a
- * binding that names no repository row.
+ * Reads `metadata.repository.repositoryId`, the same first-class binding
+ * `VirtualMCPStorage` writes on create/update (see `boundRepositoryId` in
+ * `storage/virtual.ts`) — not a `repositories` table lookup by owner/name,
+ * which would fail for a repo connected under a different identity string.
  */
 export async function resolveSiteRepositoryId(
   ctx: StudioContext,
   organizationId: string,
   site: string,
 ): Promise<string | null> {
-  const project = await findOwnedProject(ctx, organizationId, site);
-  const binding = (
-    project.metadata as { repository?: RepositoryBinding | null } | null
-  )?.repository;
-  if (!binding) return null;
-  const repository = await findRepositoryForBinding(
-    ctx.storage,
-    organizationId,
-    binding,
-  );
-  return repository?.id ?? null;
+  const projects = await ctx.storage.virtualMcps.list(organizationId);
+  const project = projects.find((vm) => resolveAgentSiteSlug(vm) === site);
+  const repositoryId = (
+    project?.metadata as { repository?: { repositoryId?: unknown } } | null
+  )?.repository?.repositoryId;
+  return typeof repositoryId === "string" && repositoryId.length > 0
+    ? repositoryId
+    : null;
 }
