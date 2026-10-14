@@ -4,7 +4,8 @@
  * refused; the starter dialog adds one with its origin; a card that settles
  * in the column is fired on once, and a move into a column nothing watches
  * starts no settle wait. Every org also has the built-in implementer, which
- * the tools only let it turn on or off.
+ * the tools only let it turn on or off, and a column's rules sheet turns the
+ * automations on that column on and off.
  *
  * The run itself needs a model and a sandbox this tier does not have, so the
  * fire is asserted by its claim and by the fire workflow that ran it. Which moves fire is covered at the
@@ -320,5 +321,46 @@ test.describe("automation board column trigger", () => {
 
     await call("AUTOMATION_UPDATE", { id: implementer.id, active: false });
     expect((await builtin())?.active).toBe(false);
+  });
+
+  test("a column's rules turn the automations that run there on and off", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+    const implementer = async () =>
+      (
+        await call<{
+          automations: {
+            id: string;
+            active: boolean;
+            system_key: string | null;
+          }[];
+        }>("AUTOMATION_LIST", {})
+      ).automations.find((a) => a.system_key === "implementer");
+    await expect.poll(implementer).toBeDefined();
+    // The board draws its lanes once it has a card.
+    await call("TASK_BOARD_ITEM_CREATE", { title: "Something to do" });
+    await call("TASK_BOARD_PROMPT_UPSERT", {
+      columnKey: "in_progress",
+      prompt: "Follow the repo's conventions.",
+      skills: [],
+    });
+
+    await page.goto(`/${orgSlug}/tasks`);
+    const rules = page.getByRole("button", {
+      name: "Edit rules for In Progress",
+    });
+    await rules.waitFor({ state: "attached" });
+    await rules.click({ force: true });
+    const toggle = page.getByRole("switch", {
+      name: "Run Implementer on cards that land here",
+    });
+    await expect(toggle).toBeChecked();
+    await toggle.click();
+
+    await expect.poll(async () => (await implementer())?.active).toBe(false);
   });
 });

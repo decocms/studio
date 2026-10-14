@@ -116,6 +116,8 @@ export interface AutomationListItem {
   nearest_next_run_at: string | null;
   /** Set on a built-in, which can only be turned on or off. */
   system_key: string | null;
+  /** The board columns its "card enters a column" starters watch. */
+  board_columns: string[];
 }
 
 export interface AutomationTrigger {

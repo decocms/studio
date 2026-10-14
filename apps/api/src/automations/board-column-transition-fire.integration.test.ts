@@ -384,6 +384,7 @@ describe("board column transition trigger (real Postgres)", () => {
             itemId: moved.id,
             columnKey: "in_progress",
             eventKey: move!,
+            movedBy: USER,
           },
         },
         // One workflow per (trigger, move), however many times it is handed over.
@@ -392,8 +393,11 @@ describe("board column transition trigger (real Postgres)", () => {
     ]);
   });
 
-  it("runs the implementer as the org, and leaves a delegated card to its run", async () => {
-    await ensureBuiltinAutomations(database.db, { id: ORG, createdBy: USER });
+  it("runs the implementer as the org for whoever moved the card, and leaves a delegated card to its run", async () => {
+    await ensureBuiltinAutomations(database.db, {
+      id: ORG,
+      createdBy: "user_1",
+    });
     await sql`update automation_triggers set created_at = ${new Date(NOW - 60 * 60_000).toISOString()}`.execute(
       database.db,
     );
@@ -410,6 +414,8 @@ describe("board column transition trigger (real Postgres)", () => {
     await sweepSettledMoves(deps, NOW, SETTLE_MS);
 
     expect(await claimedForAgent(unassigned.id)).toBe(true);
+    // Claimed for the member who moved it, not the one standing in as creator.
+    expect((await taskBoard.getById(unassigned.id, ORG))?.updatedBy).toBe(USER);
     expect(await claimedForAgent(delegated.id)).toBe(false);
     expect((await taskBoard.getById(delegated.id, ORG))?.assigneeId).toBe(
       SUPER_AGENT_ASSIGNEE_ID,

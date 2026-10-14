@@ -10,7 +10,7 @@
  * DB-side acquire/release.
  */
 
-import { type Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type {
   Automation,
@@ -72,6 +72,8 @@ export interface AutomationWithTriggerCount extends Automation {
 
 export interface AutomationWithTriggerInfo extends AutomationWithTriggerCount {
   nearest_next_run_at: string | null;
+  /** The board columns its `board_column_transition` starters watch. */
+  board_columns: string[];
 }
 
 export interface AutomationsStorage {
@@ -375,6 +377,13 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ])
       .select((eb) => eb.fn.count("t.id").as("trigger_count"))
       .select((eb) => eb.fn.min("t.next_run_at").as("nearest_next_run_at"))
+      .select(
+        sql<
+          string[]
+        >`coalesce(array_agg(distinct t.column_key) filter (where t.type = 'board_column_transition'), '{}')`.as(
+          "board_columns",
+        ),
+      )
       .where("a.organization_id", "=", organizationId);
 
     if (virtualMcpId) {
@@ -404,6 +413,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return rows.map((row) => ({
       ...automationFromDbRow(row),
       trigger_count: Number(row.trigger_count),
+      board_columns: row.board_columns,
       nearest_next_run_at: row.nearest_next_run_at
         ? toIsoString(row.nearest_next_run_at as unknown as string)
         : null,

@@ -92,9 +92,11 @@ export const taskBoard = {
   "taskBoard.columnRules.add": "Adicionar instruções",
   "taskBoard.columnRules.editAriaLabel": "Editar regras de {lane}",
   "taskBoard.columnRules.skillsOnly": "{count} skills",
-  "taskBoard.columnRules.automationsHint":
-    'Para rodar um agente nos cards que chegam aqui, dê a uma automação o gatilho "Quando um card entra numa coluna".',
-  "taskBoard.columnRules.openAutomations": "Abrir automações",
+  "taskBoard.columnRules.automationsLabel": "Automações",
+  "taskBoard.columnRules.toggleAutomation":
+    "Rodar {name} nos cards que chegam aqui",
+  "taskBoard.columnRules.noAutomations": "Nada roda nos cards que chegam aqui.",
+  "taskBoard.columnRules.addAutomation": "Adicionar uma automação",
   "taskBoard.columnRules.promptLabel": "Instruções",
   "taskBoard.columnRules.promptPlaceholder":
     "Convenções, ferramentas preferidas, o que nunca tocar",

@@ -22,6 +22,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@decocms/ui/components/sheet.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
@@ -31,23 +32,90 @@ import {
   useTaskBoardPrompts,
 } from "@/hooks/use-task-board-prompts";
 import { getDecopilotId, useProjectContext } from "@/sdk";
+import { useAutomationActions, useAutomations } from "@/hooks/use-automations";
 import { useT } from "@/i18n/use-t.ts";
 
 /** A column's saved rules and a one-line summary of them, for the lane header icon. */
 export function useColumnRules(columnKey: string) {
   const t = useT();
   const prompts = useTaskBoardPrompts();
+  const automations = useColumnAutomations(columnKey);
   const scope = prompts.data?.find((p) => p.columnKey === columnKey);
   const skillCount = scope?.skills.length ?? 0;
+  const running = automations.filter((a) => a.active).map((a) => a.name);
   const summary =
     scope?.prompt ||
+    running.join(", ") ||
     t("taskBoard.columnRules.skillsOnly", { count: skillCount });
   return {
     scope,
-    configured: !!scope,
+    configured: !!scope || running.length > 0,
     summary,
     boardSkills: prompts.data?.find((p) => p.columnKey === null)?.skills ?? [],
   };
+}
+
+/** The automations whose "card enters a column" starter watches `columnKey`. */
+function useColumnAutomations(columnKey: string) {
+  const { data } = useAutomations();
+  return (data ?? []).filter((a) => a.board_columns.includes(columnKey));
+}
+
+/** Each automation that runs on cards landing in the column, with its switch. */
+function ColumnAutomations({ columnKey }: { columnKey: string }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const automations = useColumnAutomations(columnKey);
+  const { update } = useAutomationActions();
+
+  return (
+    <section className="flex flex-col gap-2">
+      <SectionTitle>{t("taskBoard.columnRules.automationsLabel")}</SectionTitle>
+      {automations.map((automation) => (
+        <div
+          key={automation.id}
+          className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
+        >
+          <Link
+            to="/$org/projects/$agentId/automations/$automationId"
+            params={{
+              org: org.slug,
+              agentId: automation.virtual_mcp_id,
+              automationId: automation.id,
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2 text-sm text-foreground hover:underline"
+          >
+            <span className="truncate">{automation.name}</span>
+            {automation.system_key && (
+              <Badge variant="muted">{t("automations.builtin.badge")}</Badge>
+            )}
+          </Link>
+          <Switch
+            checked={automation.active}
+            disabled={update.isPending}
+            onCheckedChange={(active) =>
+              update.mutate({ id: automation.id, active })
+            }
+            aria-label={t("taskBoard.columnRules.toggleAutomation", {
+              name: automation.name,
+            })}
+          />
+        </div>
+      ))}
+      <p className="text-meta">
+        {automations.length === 0 && (
+          <>{t("taskBoard.columnRules.noAutomations")} </>
+        )}
+        <Link
+          to="/$org/projects/$agentId/automations"
+          params={{ org: org.slug, agentId: getDecopilotId(org.id) }}
+          className="text-foreground underline underline-offset-2"
+        >
+          {t("taskBoard.columnRules.addAutomation")}
+        </Link>
+      </p>
+    </section>
+  );
 }
 
 export function ColumnRulesSheet({
@@ -105,7 +173,6 @@ function ColumnRulesForm({
 }) {
   const t = useT();
   const save = useSaveColumnRules();
-  const { org } = useProjectContext();
   const [prompt, setPrompt] = useState(initial.prompt);
   const [skills, setSkills] = useState(initial.skills);
 
@@ -135,16 +202,7 @@ function ColumnRulesForm({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
-        <p className="text-meta">
-          {t("taskBoard.columnRules.automationsHint")}{" "}
-          <Link
-            to="/$org/projects/$agentId/automations"
-            params={{ org: org.slug, agentId: getDecopilotId(org.id) }}
-            className="text-foreground underline underline-offset-2"
-          >
-            {t("taskBoard.columnRules.openAutomations")}
-          </Link>
-        </p>
+        <ColumnAutomations columnKey={columnKey} />
         <section className="flex flex-col gap-2">
           <SectionTitle>{t("taskBoard.columnRules.promptLabel")}</SectionTitle>
           <Textarea

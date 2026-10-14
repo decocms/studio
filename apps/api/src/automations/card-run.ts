@@ -24,6 +24,8 @@ export interface CardTarget {
   itemId: string;
   columnKey: string;
   eventKey: string;
+  /** Who moved the card there; null for a machine move. */
+  movedBy: string | null;
 }
 
 export type CardRunSkip =
@@ -77,14 +79,19 @@ export async function runAutomationOnCard(
     return { skipped: "delegated" };
   }
 
+  // The claim makes the run its owner's. A built-in's run belongs to whoever
+  // moved the card, as delegating it would; the member standing in as its
+  // creator is only the fallback.
+  const owner =
+    (automation.system_key && target.movedBy) || automation.created_by;
   let card = item;
   let claimed = false;
   if (!item.assigneeId) {
     const won = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
       item.id,
       item.organizationId,
-      automation.created_by,
-      automation.created_by,
+      owner,
+      owner,
       target.columnKey,
     );
     if (!won) return { skipped: "lost_claim" };
@@ -122,7 +129,7 @@ export async function runAutomationOnCard(
       const released = await ctx.storage.taskBoard.unassignSuperAgent(
         item.id,
         item.organizationId,
-        automation.created_by,
+        owner,
       );
       if (released) emitTaskBoardUpdated(item.organizationId, released);
     }

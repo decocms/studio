@@ -1051,6 +1051,8 @@ export class TaskBoardStorage {
       from: string | null;
       to: string;
       occurredAt: string;
+      /** Who moved the card; null for a machine move. */
+      actorId: string | null;
     }[]
   > {
     if (params.organizationIds.length === 0) return [];
@@ -1065,6 +1067,7 @@ export class TaskBoardStorage {
         sql<string | null>`a.data->>'from'`.as("from"),
         sql<string>`a.data->>'to'`.as("to"),
         "a.occurred_at as occurredAt",
+        "a.actor_id as actorId",
       ])
       .where("a.action", "=", "status_changed")
       .where("a.occurred_at", ">", params.since)

@@ -6425,6 +6425,7 @@ export interface StudioToolIO {
         nearest_next_run_at: string | null;
         virtual_mcp_id: string;
         system_key: string | null;
+        board_columns: string[];
       }[];
     };
   };

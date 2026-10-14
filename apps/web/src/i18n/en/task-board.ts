@@ -88,9 +88,12 @@ export const taskBoard = {
   "taskBoard.columnRules.add": "Add instructions",
   "taskBoard.columnRules.editAriaLabel": "Edit rules for {lane}",
   "taskBoard.columnRules.skillsOnly": "{count} skills",
-  "taskBoard.columnRules.automationsHint":
-    'To run an agent on the cards that land here, give an automation the starter "When a card enters a column".',
-  "taskBoard.columnRules.openAutomations": "Open automations",
+  "taskBoard.columnRules.automationsLabel": "Automations",
+  "taskBoard.columnRules.toggleAutomation":
+    "Run {name} on cards that land here",
+  "taskBoard.columnRules.noAutomations":
+    "Nothing runs on the cards that land here.",
+  "taskBoard.columnRules.addAutomation": "Add an automation",
   "taskBoard.columnRules.promptLabel": "Instructions",
   "taskBoard.columnRules.promptPlaceholder":
     "Conventions, tools to prefer, what never to touch",

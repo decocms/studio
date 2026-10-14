@@ -117,6 +117,7 @@ async function fireSettledMoves(
               itemId: move.itemId,
               columnKey: move.to,
               eventKey: move.activityId,
+              movedBy: move.actorId,
             },
           },
           { idempotencyKey: `board:${trigger.id}:${move.activityId}` },
