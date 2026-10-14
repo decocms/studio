@@ -53,7 +53,7 @@ import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
 import { isProtocolProject } from "./content-backend";
-import { useContentSyncState } from "./content-sync";
+import { useContentDiscardListener, useContentSyncState } from "./content-sync";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -404,6 +404,40 @@ export function SectionsEditor({
   );
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
+
+  // A discard of the block an armed autosave would write drops that autosave
+  // (content-sync.ts): fired after the discard, it would bring the discarded
+  // edit back. The open page and the section's saved block are what this
+  // form's timers write; any of them discarded drops them all.
+  useContentDiscardListener(orgSlug, virtualMcpId, (keys) => {
+    const { activePageKey, rawSections, parsedSections, selectedSectionIndex } =
+      latestRef.current;
+    const targets = new Set<string>();
+    if (activePageKey) targets.add(activePageKey);
+    for (const index of [
+      pendingSectionSaveRef.current?.sectionIndex,
+      selectedSectionIndex,
+    ]) {
+      const raw = index == null ? undefined : rawSections[index];
+      const parsed = index == null ? undefined : parsedSections[index];
+      const saved =
+        raw && parsed?.isSavedBlock ? savedBlockKey(raw, parsed) : null;
+      if (saved) targets.add(saved);
+    }
+    if (![...targets].some((key) => keys.has(key))) return;
+    for (const timer of [
+      debounceRef,
+      ruleDebounceRef,
+      sectionRuleDebounceRef,
+    ]) {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+    }
+    pendingSectionSaveRef.current = null;
+    if (activePageKey && keys.has(activePageKey)) {
+      pendingPageFieldsRef.current = {};
+    }
+  });
 
   // Keep a ref to the latest render-scope values so debounced callbacks
   // always read fresh data instead of a stale closure.

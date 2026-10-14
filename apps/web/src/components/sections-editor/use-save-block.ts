@@ -5,7 +5,7 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
 import { applyProtocolPatch } from "./content-protocol-api";
-import { runContentChange } from "./content-sync";
+import { runContentChange, useContentDiscardListener } from "./content-sync";
 import { usePackagePath } from "./use-package-path";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -264,6 +264,17 @@ export function useDebouncedSaveBlock(
       runPendingSave(blockKey);
     }
   };
+
+  // A discard of a block drops its armed save: fired after the discard, it
+  // would bring the discarded edit back (content-sync.ts).
+  useContentDiscardListener(params.orgSlug, params.virtualMcpId, (keys) => {
+    for (const blockKey of keys) {
+      const timer = timersRef.current.get(blockKey);
+      if (timer) clearTimeout(timer);
+      timersRef.current.delete(blockKey);
+      pendingRef.current.delete(blockKey);
+    }
+  });
 
   // Cancel pending debounced saves on unmount so they can't fire against a torn
   // -down editor after navigation. Call `flush()` explicitly when closing a sheet

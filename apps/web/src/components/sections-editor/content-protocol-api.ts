@@ -262,16 +262,40 @@ async function readContent(
 }
 
 /**
- * One `blocks.apply`, run as a content change (content-sync.ts): it adopts
- * the returned revision, and the shared refresh re-reads what the write
- * moved: on GitHub the CDN draft (the draft pointer, `useProtocolDraft`, whose
- * version is the draft's ETag, so the preview reloads) and the publish
- * status; in a sandbox the header's status.
+ * One `blocks.apply`, adopting the returned revision: the write alone, for a
+ * caller that runs it inside its own content change (a discard).
  * `ifMatch` guards entries by version (`null`: only if it doesn't exist yet);
  * a failed guard rejects the whole patch with a Conflict.
- * `kind`: an `edit` (the form's own save, whose hook updates the blocks
- * cache) or a `discard` (the blocks cache takes the patch, and the open form
- * re-reads it).
+ */
+export async function protocolApply(
+  queryClient: QueryClient,
+  backend: ProtocolBackend,
+  params: DecofileScopeParams,
+  cacheKey: string,
+  patch: DecofilePatchBody,
+  ifMatch?: Record<string, string | null>,
+): Promise<{ revision: string }> {
+  const result = await guarded(queryClient, backend, params, () =>
+    backend.client.blocksApply({
+      set: patch.set as Record<string, Record<string, unknown>> | undefined,
+      delete: patch.delete,
+      ...(ifMatch ? { ifMatch } : {}),
+    }),
+  );
+  queryClient.setQueryData<ContentRevisions>(
+    KEYS.contentRevision(cacheKey),
+    (seen) => ({ ...seen, revision: result.revision }),
+  );
+  return { revision: result.revision };
+}
+
+/**
+ * An edit's `blocks.apply` ({@link protocolApply}), run as a content change
+ * (content-sync.ts): the shared refresh re-reads what the write moved: on
+ * GitHub the CDN draft (the draft pointer, `useProtocolDraft`, whose version
+ * is the draft's ETag, so the preview reloads) and the publish status; in a
+ * sandbox the header's status. The form's own save hook updates the blocks
+ * cache.
  */
 export async function applyProtocolPatch(
   queryClient: QueryClient,
@@ -280,7 +304,6 @@ export async function applyProtocolPatch(
   cacheKey: string,
   patch: DecofilePatchBody,
   ifMatch?: Record<string, string | null>,
-  kind: "edit" | "discard" = "edit",
 ): Promise<{ revision: string }> {
   return runContentChange(
     {
@@ -292,24 +315,9 @@ export async function applyProtocolPatch(
       cacheKey,
     },
     {
-      kind,
-      ...(kind === "edit" ? {} : { patch }),
-      write: async () => {
-        const result = await guarded(queryClient, backend, params, () =>
-          backend.client.blocksApply({
-            set: patch.set as
-              | Record<string, Record<string, unknown>>
-              | undefined,
-            delete: patch.delete,
-            ...(ifMatch ? { ifMatch } : {}),
-          }),
-        );
-        queryClient.setQueryData<ContentRevisions>(
-          KEYS.contentRevision(cacheKey),
-          (seen) => ({ ...seen, revision: result.revision }),
-        );
-        return { revision: result.revision };
-      },
+      kind: "edit",
+      write: () =>
+        protocolApply(queryClient, backend, params, cacheKey, patch, ifMatch),
     },
   );
 }
