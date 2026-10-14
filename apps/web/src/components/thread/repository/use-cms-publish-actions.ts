@@ -28,7 +28,6 @@ import {
   isChangedMeanwhile,
   isOutdatedServerError,
 } from "@/components/sections-editor/content-changes.ts";
-import type { ContentRevisions } from "@/components/sections-editor/content-protocol-api.ts";
 import { KEYS } from "@/lib/query-keys.ts";
 import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
 import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
@@ -139,18 +138,10 @@ export function useContentDiscard(args: {
     try {
       await runContentDiscard(content, {
         blockKeys: entries.map((entry) => entry.name),
-        write: async () => {
-          const result = await discardContentChanges(backend.client, entries);
-          // Adopt the revision, as an edit does: the next poll is "not
-          // modified" unless someone else wrote.
-          if (content.cacheKey && result.revision) {
-            queryClient.setQueryData<ContentRevisions>(
-              KEYS.contentRevision(content.cacheKey),
-              (seen) => ({ ...seen, revision: result.revision }),
-            );
-          }
-          return result;
-        },
+        // The revision is not adopted (an edit's is): the editor holds no
+        // copy of the base's blocks, so the refresh must read them, and a
+        // poll conditional on this revision would answer "not modified".
+        write: () => discardContentChanges(backend.client, entries),
       });
       toast.success(success);
     } catch (error) {

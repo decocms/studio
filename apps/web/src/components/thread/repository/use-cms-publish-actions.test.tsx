@@ -163,18 +163,24 @@ function hostedBackend() {
       return { revision: revision(), versions: {} };
     },
     // The content poll: blocks.list (layered), schema.get, changes.list.
-    batch: async (calls: Array<{ method: string }>) =>
+    batch: async (
+      calls: Array<{ method: string; params?: { ifNoneMatch?: string } }>,
+    ) =>
       calls.map((call) =>
         call.method === "blocks.list"
           ? {
               ok: true,
-              result: {
-                notModified: false,
-                revision: revision(),
-                resolvedRef: null,
-                blocks: layered(),
-                versions: {},
-              },
+              // As the core answers: "not modified" for the revision seen.
+              result:
+                call.params?.ifNoneMatch === revision()
+                  ? { notModified: true, revision: revision() }
+                  : {
+                      notModified: false,
+                      revision: revision(),
+                      resolvedRef: null,
+                      blocks: layered(),
+                      versions: {},
+                    },
             }
           : call.method === "changes.list"
             ? { ok: true, result: changesList() }
@@ -295,6 +301,24 @@ function mountEditorQueries() {
   watch(KEYS.contentChanges(CACHE_KEY), "changes");
 }
 
+/** The editor's blocks, read through the content poll (as `useDecofile`). */
+async function mountPolledBlocks(backend: ProtocolBackend) {
+  new QueryObserver(queryClient, {
+    queryKey: KEYS.decofile(CACHE_KEY),
+    queryFn: async () =>
+      (
+        await pollProtocolContent(
+          queryClient,
+          backend,
+          publishTarget,
+          CACHE_KEY,
+        )
+      ).blocks,
+    staleTime: Number.POSITIVE_INFINITY,
+  }).subscribe(() => {});
+  await settle();
+}
+
 /** The editor's blocks, read the way the editor reads them (layered). */
 async function mountBlocks() {
   new QueryObserver(queryClient, {
@@ -412,10 +436,6 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     // The changes list re-reads; a hosted draft never reads git's status.
     expect(reads.changes).toBe(before.changes + 1);
     expect(reads.status).toBe(before.status);
-    // The editor adopted the discard's revision.
-    expect(
-      queryClient.getQueryData(KEYS.contentRevision(CACHE_KEY)),
-    ).toMatchObject({ revision: revision() });
     expect(toasts).toEqual([{ kind: "success", message: expect.any(String) }]);
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "reloading",
@@ -425,6 +445,21 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     confirmPreviewReloaded(SCOPE);
     expect(getContentSyncState(SCOPE).phase).toBe("idle");
     unregister();
+  });
+
+  it("after a discard the editor's poll reads the base's blocks back (it doesn't adopt the discard's revision as already read)", async () => {
+    const { backend } = hostedBackend();
+    server.draft.set = { "pages-home": { title: "Discard me" } };
+    await mountPolledBlocks(backend);
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "Discard me" } });
+    const { result } = render(backend, { hosted: true });
+    await act(() => result.current.discardChange(homeChange));
+    await act(settle);
+    expect(server.draft).toEqual({ set: {}, delete: [] });
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
+    expect(
+      queryClient.getQueryData(KEYS.contentRevision(CACHE_KEY)),
+    ).toMatchObject({ revision: revision() });
   });
 
   it("discard all removes every changed block from the draft, 500 names per call", async () => {
