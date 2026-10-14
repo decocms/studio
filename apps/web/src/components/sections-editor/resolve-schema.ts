@@ -85,6 +85,12 @@ export interface SchemaProperty {
    * the array editor when the stored value is a `{ __resolveType }` reference.
    */
   loaderRef?: SchemaProperty;
+  /**
+   * `$ref` of a recursive type whose nested schema was skipped because it
+   * re-entered itself (`Item.children: Item[]`). Expand it on demand with
+   * {@link resolveSchemaRef}.
+   */
+  recursiveRef?: string;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -311,8 +317,28 @@ export function resolveSchema(
   resolveType: string,
   meta: LiveMeta,
 ): SchemaProperty | null {
+  return buildSchema(meta, { resolveType });
+}
+
+/** Build the schema of a definition `$ref` (see {@link SchemaProperty.recursiveRef}). */
+export function resolveSchemaRef(ref: string, meta: LiveMeta): SchemaProperty {
+  return buildSchema(meta, { ref });
+}
+
+function buildSchema(meta: LiveMeta, target: { ref: string }): SchemaProperty;
+function buildSchema(
+  meta: LiveMeta,
+  target: { resolveType: string },
+): SchemaProperty | null;
+function buildSchema(
+  meta: LiveMeta,
+  target: { resolveType: string } | { ref: string },
+): SchemaProperty | null {
   const globalSchema = meta.schema ?? {};
-  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
+  const blockSchema =
+    "resolveType" in target
+      ? lookupManifestBlockSchema(target.resolveType, meta)
+      : {};
   // Always read $defs/definitions from the global live schema. Manifest block
   // entries often carry `$ref` plus an empty `definitions` object; spreading
   // blockSchema over globalSchema clobbers the real defs and breaks $ref
@@ -532,7 +558,7 @@ export function resolveSchema(
     }
     resolved = unwrapRefAliases(resolved);
 
-    // Re-entered refs (Section unions, Product → hasVariant: Product[]) recurse exponentially; emit the node, skip its nested schema.
+    // Re-entered refs (Section unions, Product → hasVariant: Product[]) recurse exponentially; emit the node, skip its nested schema (expanded on demand via `recursiveRef`).
     const cyclicRef = vRefKey !== undefined && seen.has(vRefKey);
     const unionSeen =
       vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
@@ -1205,6 +1231,12 @@ export function resolveSchema(
       required: requiredKeys,
       items: itemsSchema,
       lazy: lazyBlock && !!nestedProperties?.value ? true : undefined,
+      recursiveRef:
+        cyclicRef &&
+        typeof v.$ref === "string" &&
+        (type === "object" || type === "array" || resolved.type === "array")
+          ? v.$ref
+          : undefined,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
         typeof resolved.titleBy === "string"
@@ -1222,6 +1254,8 @@ export function resolveSchema(
             : fromLeaf<string>("options"),
     };
   };
+
+  if ("ref" in target) return buildProperty({ $ref: target.ref });
 
   // deco wraps a block's config as
   //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},
