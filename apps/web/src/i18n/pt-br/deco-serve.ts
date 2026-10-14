@@ -47,7 +47,7 @@ export const decoServe = {
     "O deco serve em {host} não está respondendo. A reconexão é automática quando ele voltar.",
   "decoServe.state.outdated.title": "Este deco serve está desatualizado",
   "decoServe.state.outdated.body":
-    "O servidor em {host} pede um token de acesso, como as versões antigas do deco serve faziam. Atualize o @decocms/blocks do seu site para a versão mais recente e inicie o deco serve de novo.",
+    "O deco serve em {host} é mais antigo que este Studio. Atualize o @decocms/blocks do seu site para a versão 8.2.1 ou mais recente e inicie o deco serve de novo.",
   "decoServe.state.versionMismatch.title":
     "Este Studio e o deco serve não são compatíveis",
   "decoServe.state.versionMismatch.body":
@@ -78,6 +78,19 @@ export const decoServe = {
     "Não foi possível enviar {name}: o deco serve parou de responder. Inicie de novo e tente outra vez.",
   "decoServe.upload.readOnly":
     "Não foi possível enviar {name}: o deco serve está em somente leitura (iniciado com --read-only).",
+
+  "decoServe.changes.button": "Alterações",
+  "decoServe.changes.buttonCount": "Alterações ({count})",
+  "decoServe.changes.title": "Alterações desde o seu último commit",
+  "decoServe.changes.titleOne": "1 alteração desde o seu último commit",
+  "decoServe.changes.titleCount":
+    "{count} alterações desde o seu último commit",
+  "decoServe.changes.empty": "Nenhuma alteração desde o seu último commit.",
+  "decoServe.changes.hint":
+    "O Studio salva direto nos arquivos do seu site. Faça o commit e o push com o git quando quiser publicar.",
+  "decoServe.changes.loadFailed":
+    "Não foi possível ler as alterações do deco serve. O Studio tenta de novo sozinho.",
+  "decoServe.changes.close": "Fechar",
 
   "decoServe.version.v8":
     "Blocks v8: o Studio edita os arquivos de conteúdo do seu site diretamente, sem rodar o código do site.",

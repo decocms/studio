@@ -45,7 +45,7 @@ function serveOn(ports: number[]) {
               id: call.id,
               result: {
                 protocol: PROTOCOL_NAME,
-                version: { major: 1, minor: 0 },
+                version: { major: 1, minor: 1 },
                 readOnly: false,
               },
             }

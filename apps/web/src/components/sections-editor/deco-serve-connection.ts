@@ -14,6 +14,7 @@
  * and compares the same.
  */
 
+import { isOutdatedServerError } from "./content-changes";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import { z } from "zod";
 
@@ -200,7 +201,8 @@ export function parseServeAddress(input: string): ParsedServeAddress {
  * - `not-answering`: nothing answered (stopped, restarting, another port, or a
  *   Chrome permission not granted, which a browser can't tell apart):
  *   `/site-editor` shows its guide and keeps looking;
- * - `outdated`: an older `deco serve`, which asked for an access token;
+ * - `outdated`: a `deco serve` older than this Studio (an 8.1.x one, whose
+ *   protocol has no `changes.*`, or an older one that asked for a token);
  * - `version-mismatch`: a `deco serve` of another major protocol version;
  * - `not-deco-serve`: another program answered on that port;
  * - `not-v8`: its schema isn't a Blocks v8 one (no `"blocksMajor": 8`, see
@@ -238,9 +240,12 @@ export function classifyServeProbeError(error: unknown): ServeProblem {
   }
   switch (error.code) {
     case ErrorCode.Unauthorized:
+    case ErrorCode.MethodNotFound:
       return { reason: "outdated" };
     case ErrorCode.Unsupported:
-      return { reason: "version-mismatch" };
+      return isOutdatedServerError(error)
+        ? { reason: "outdated" }
+        : { reason: "version-mismatch" };
     case ErrorCode.Unavailable:
       // The client's own: an HTTP answer without a JSON-RPC body.
       if (/^the endpoint answered HTTP/.test(error.message)) {

@@ -24,6 +24,8 @@ export const siteEditor = {
   "siteEditor.publish.defaultNote": "Changes by {name}",
   "siteEditor.publish.defaultNoteAnonymous": "Site update",
   "siteEditor.discard.failed": "Couldn't discard. Try again.",
+  "siteEditor.discard.changedMeanwhile":
+    "This changed while you were looking, so nothing was discarded. The list is up to date now.",
   "siteEditor.save.failed": "Couldn't save your change. Try again.",
   "siteEditor.save.conflict":
     "Not saved: someone else changed this at the same time. We're loading their version, so make your change again.",

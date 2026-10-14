@@ -14,13 +14,15 @@ import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigat
 import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-drawer-gate";
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
 import { ChatLayout } from "@/components/chat-layout";
-import { useVirtualMCP } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { LocalChangesButton } from "@/components/thread/repository/local-changes-dialog";
 import { DecoServeReadOnlyBadge } from "@/components/sections-editor/deco-serve-read-only-badge";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { ContentVersionBadge } from "@/components/sections-editor/content-version-badge";
 
 function SiteEditorActions() {
   const session = useOptionalChatTask();
+  const { org } = useProjectContext();
   const entity = useVirtualMCP(session?.virtualMcpId);
   const currentBranch = session?.currentBranch ?? null;
   const runtime = useSessionRuntime(entity?.id).runtime;
@@ -42,6 +44,14 @@ function SiteEditorActions() {
       <ContentVersionBadge virtualMcpId={virtualMcpId} branch={currentBranch} />
       {servingLocally && (
         <DecoServeReadOnlyBadge
+          virtualMcpId={virtualMcpId}
+          branch={currentBranch}
+        />
+      )}
+      {servingLocally && (
+        // What the editor saved since the last commit; no Publish here.
+        <LocalChangesButton
+          orgSlug={org.slug}
           virtualMcpId={virtualMcpId}
           branch={currentBranch}
         />

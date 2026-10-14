@@ -552,6 +552,97 @@ test.describe("site editor over deco serve", () => {
     }
   });
 
+  test("Changes lists what changed since the last commit, shows both sides, and discards it", async ({
+    page,
+  }) => {
+    const { publicKey } = await generateKeyPair();
+    const stub = await startStub(publicKey);
+    try {
+      const committed = (await stub.readFiles())[`${HERO}.json`]!;
+      await page.goto(linkOf(stub));
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 30_000,
+      });
+      const button = page.getByTestId("local-changes-button");
+      await expect(button).toHaveText("Changes", { timeout: 30_000 });
+
+      // An edit to the working tree (the site editor's, or a code editor's).
+      await stub.writeFile(
+        `${HERO}.json`,
+        heroFile({ __resolveType: "hero", title: "Edited on disk" }),
+      );
+      await expect(button).toHaveText("Changes (1)", { timeout: 30_000 });
+      await button.click();
+      const dialog = page.getByRole("dialog");
+      await expect(
+        dialog.getByText("1 change since your last commit"),
+      ).toBeVisible({ timeout: 30_000 });
+      // No Publish here: the developer commits with git.
+      await expect(dialog.getByRole("button", { name: /Publish/ })).toHaveCount(
+        0,
+      );
+      // One card for the entry, edited against the last commit.
+      await expect(dialog.getByText("Edited", { exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
+
+      await dialog.getByRole("button", { name: "Discard" }).first().click();
+      await dialog
+        .getByRole("button", { name: "Discard", exact: true })
+        .click();
+      await expect(
+        dialog.getByText("No changes since your last commit."),
+      ).toBeVisible({ timeout: 30_000 });
+      // The committed bytes are back, through changes.discard.
+      expect((await stub.readFiles())[`${HERO}.json`]).toBe(committed);
+      expect(await stub.git("status", "--porcelain")).toBe("");
+      const methods = stub.requestBodies.flatMap((body) => {
+        try {
+          const parsed = JSON.parse(body) as unknown;
+          return (Array.isArray(parsed) ? parsed : [parsed]).map(
+            (call) => (call as { method?: string }).method,
+          );
+        } catch {
+          return [];
+        }
+      });
+      expect(methods).toContain("changes.list");
+      expect(methods).toContain("changes.get");
+      expect(methods.filter((m) => m === "changes.discard")).toHaveLength(1);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test("an older deco serve (8.1.x) says it's out of date and how to update", async ({
+    page,
+  }) => {
+    const { publicKey } = await generateKeyPair();
+    const app = await startPreviewApp();
+    const stub = await startDecoServeStub({
+      schema,
+      secretsPublicKey: publicKey,
+      previewUrl: app.url,
+      outdated: true,
+    });
+    try {
+      await page.goto(linkOf(stub));
+      await expect(
+        page.getByText("This deco serve is out of date"),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByText(
+          /Update @decocms\/blocks in your site to 8\.2\.1 or newer/,
+        ),
+      ).toBeVisible();
+      // Never the editor over a server it can't list changes on.
+      await expect(page.getByTestId("local-changes-button")).toHaveCount(0);
+    } finally {
+      await stub.close();
+      await app.close();
+    }
+  });
+
   test("refuses a link to a server off this machine", async ({ page }) => {
     await page.goto(
       `/site-editor#endpoint=${encodeURIComponent("https://attacker.example/rpc")}`,

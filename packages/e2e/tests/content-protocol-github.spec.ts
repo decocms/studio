@@ -228,6 +228,8 @@ test.describe("content protocol on GitHub", () => {
         fetch: contextFetch(ctx),
         secretField: { blockType: SECRET_BLOCK, field: SECRET_FIELD },
         secretsPublicKey: publicKey,
+        // On main and untouched: the changes.* cases modify and restore it.
+        baseEntry: { name: "hero-home" },
       });
       const failures = report.outcomes.filter((o) => o.status === "failed");
       expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
@@ -1212,10 +1214,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
         },
       );
       const rpcMethods: string[] = [];
-      const gitDiscards: string[] = [];
+      // The v8 change list, its sides and its discards are the content
+      // protocol's (changes.*): no git route is asked about them.
+      const gitRoutes: string[] = [];
       page.on("request", (request) => {
         const path = new URL(request.url()).pathname;
-        if (path.endsWith("/git/discard")) gitDiscards.push(path);
+        if (/\/git\/(status|diff|discard)$/.test(path)) gitRoutes.push(path);
         if (!/\/decofile\/.+\/rpc$/.test(path)) return;
         const body = request.postDataJSON() as
           | { method?: string }
@@ -1281,9 +1285,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
 
-      // The discard removed the block from the draft (no main sync: nothing
-      // of main's is written through blocks.apply).
-      expect(gitDiscards).toHaveLength(1);
+      // The discard removed the block from the draft through the protocol
+      // (no main sync: nothing of main's is written through blocks.apply).
+      expect(rpcMethods.filter((m) => m === "changes.discard")).toHaveLength(1);
+      expect(rpcMethods).toContain("changes.list");
+      expect(rpcMethods).toContain("changes.get");
+      expect(gitRoutes).toEqual([]);
       expect(rpcMethods.filter((m) => m === "blocks.apply").length).toBe(
         appliesBefore,
       );

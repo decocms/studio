@@ -768,6 +768,12 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
+  // A protocol project's changes against its base (`changes.list`); the
+  // prefix of its sides too, so one invalidation refreshes both.
+  contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  // Both sides of the listed changes (`changes.get`), per changes revision.
+  contentChangeSides: (cacheKey: string, revision: string) =>
+    ["content-changes", cacheKey, "sides", revision] as const,
   // A hosted v8 project's draft pointer ({ draft, version }), from the
   // session decofile read (GitHub backend).
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>

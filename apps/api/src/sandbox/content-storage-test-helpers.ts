@@ -148,6 +148,51 @@ export function seedSite(root: string, opts: { schema: boolean }): void {
   }
 }
 
+/** Git with no user or system config, and fixed identities and dates. */
+function gitEnv(): NodeJS.ProcessEnv {
+  const at = "2026-01-01T00:00:00Z";
+  return {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_AUTHOR_DATE: at,
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+    GIT_COMMITTER_DATE: at,
+  };
+}
+
+/** Runs git in `dir`; throws with its stderr on failure. */
+export function git(dir: string, ...args: string[]): string {
+  const run = spawnSync("git", args, {
+    cwd: dir,
+    encoding: "utf8",
+    env: gitEnv(),
+  });
+  if (run.status !== 0) throw new Error(`git ${args[0]}: ${run.stderr}`);
+  return run.stdout;
+}
+
+/** `git init` on `main`, so every repository reports the same branch. */
+export function gitInit(dir: string): void {
+  git(dir, "init", "-q", "-b", "main");
+}
+
+/**
+ * Commits everything in `dir`. Identities and dates are fixed, so the same
+ * tree committed in two repositories gets the same commit id (the parity run
+ * compares `changes.*` answers, which carry it).
+ */
+export function commitAll(dir: string, message = "site"): void {
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "--no-verify", "-m", message);
+}
+
+/** The block the conformance suite's `baseEntry` cases modify and restore. */
+const BASE_ENTRY = "hero-home";
+
 // ---------------------------------------------------------------------------
 // The route under test
 // ---------------------------------------------------------------------------
@@ -346,10 +391,18 @@ export function defineSandboxContentSuites(
   const withoutSchemaRoute = sandboxRoute(() => withoutSchema!);
 
   beforeAll(async () => {
+    // With a schema: a committed site with one block (the base entry).
     withSchema = await start();
-    spawnSync("git", ["init", "-q"], { cwd: withSchema.repoDir });
+    gitInit(withSchema.repoDir);
     seedSite(withSchema.repoDir, { schema: true });
+    writeFileSync(
+      join(withSchema.repoDir, ".deco", "blocks", blockFileName(BASE_ENTRY)),
+      serializeBlock({ __resolveType: "hero", title: "committed" }),
+    );
+    commitAll(withSchema.repoDir);
+    // Without one: a repository with no commits yet (an empty base).
     withoutSchema = await start();
+    gitInit(withoutSchema.repoDir);
     seedSite(withoutSchema.repoDir, { schema: false });
   }, timeoutMs);
 
@@ -365,6 +418,7 @@ export function defineSandboxContentSuites(
       fetch: withSchemaRoute.fetch,
       secretField: { blockType: "newsletter", field: "apiKey" },
       secretsPublicKey: publicKeyPem,
+      baseEntry: { name: BASE_ENTRY },
     }),
     `content protocol conformance (${label}, with a schema)`,
   );
@@ -376,6 +430,7 @@ export function defineSandboxContentSuites(
       fetch: withoutSchemaRoute.fetch,
       hasSchema: false,
       secretsPublicKey: publicKeyPem,
+      emptyBase: true,
     }),
     `content protocol conformance (${label}, without a schema)`,
   );
@@ -569,19 +624,37 @@ export function defineSandboxContentSuites(
         ),
       ).toBe(serializeBlock({ path: "/" }));
     });
+
+    test("compares `<app root>/.deco` with HEAD, and discards there", async () => {
+      gitInit(sandbox!.repoDir);
+      commitAll(sandbox!.repoDir);
+      const file = join(
+        sandbox!.repoDir,
+        "apps",
+        "site",
+        ".deco",
+        "blocks",
+        "Home.json",
+      );
+      const committed = readFileSync(file, "utf8");
+      await rpc(route, "blocks.apply", { set: { Home: { path: "/edited" } } });
+      git(sandbox!.repoDir, "add", "-A");
+      await new Promise((r) => setTimeout(r, 300));
+      const listed = await rpc(route, "changes.list");
+      expect(Object.keys(listed.result.changes)).toEqual(["Home"]);
+      const discarded = await rpc(route, "changes.discard", {
+        names: ["Home"],
+      });
+      expect(discarded.error).toBeUndefined();
+      expect(readFileSync(file, "utf8")).toBe(committed);
+      expect(git(sandbox!.repoDir, "status", "--porcelain")).toBe("");
+    });
   });
 
   describe(`sandbox content protocol over a committed site (${label})`, () => {
     let sandbox: SandboxUnderTest | null = null;
     const route = sandboxRoute(() => sandbox!);
-    const git = (...args: string[]) => {
-      const run = spawnSync(
-        "git",
-        ["-c", "user.name=t", "-c", "user.email=t@t", ...args],
-        { cwd: sandbox!.repoDir, encoding: "utf8" },
-      );
-      if (run.status !== 0) throw new Error(run.stderr);
-    };
+    const repoGit = (...args: string[]) => git(sandbox!.repoDir, ...args);
     const blockFile = (name: string) =>
       join(sandbox!.repoDir, ".deco", "blocks", `${name}.json`);
     /** A poll after the listing reuse window, as the editor's next one is. */
@@ -598,9 +671,9 @@ export function defineSandboxContentSuites(
       for (const name of ["a", "b", "c"]) {
         writeFileSync(blockFile(name), `{"v":"${name}0"}\n`);
       }
-      git("init", "-q");
-      git("add", ".");
-      git("commit", "-qm", "site");
+      repoGit("init", "-q", "-b", "main");
+      repoGit("add", ".");
+      repoGit("commit", "-qm", "site");
     }, timeoutMs);
     afterAll(async () => {
       if (sandbox) await stop(sandbox);
@@ -617,7 +690,7 @@ export function defineSandboxContentSuites(
       // Same size, right after the commit: git's racy-entry check catches it.
       writeFileSync(blockFile("a"), '{"v":"a1"}\n');
       writeFileSync(blockFile("b"), '{"v":"b1"}\n');
-      git("add", ".deco/blocks/b.json");
+      repoGit("add", ".deco/blocks/b.json");
       writeFileSync(blockFile("d"), '{"v":"d0"}\n');
       unlinkSync(blockFile("c"));
       const listed = await list();
@@ -639,10 +712,107 @@ export function defineSandboxContentSuites(
         "*.json eol=crlf\n",
       );
       writeFileSync(blockFile("crlf"), '{\r\n"v": 1\r\n}\r\n');
-      git("add", ".");
-      git("commit", "-qm", "crlf");
+      repoGit("add", ".");
+      repoGit("commit", "-qm", "crlf");
       const listed = await list();
       expect(listed.versions.crlf).toBe(blob(readFileSync(blockFile("crlf"))));
+    });
+
+    /** The changes after the listing reuse window, as the editor's next poll. */
+    const changes = async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      const { result, error } = await rpc(route, "changes.list");
+      expect(error).toBeUndefined();
+      return result;
+    };
+    const staged = () =>
+      git(
+        sandbox!.repoDir,
+        "diff",
+        "--cached",
+        "--no-renames",
+        "--name-status",
+        "HEAD",
+      )
+        .split("\n")
+        .filter(Boolean)
+        .sort();
+
+    test("compares with HEAD through git's filters: a CRLF checkout isn't a change", async () => {
+      const head = git(sandbox!.repoDir, "rev-parse", "HEAD").trim();
+      // Everything is committed (the crlf file too, converted by git).
+      const listed = await changes();
+      expect(listed.base).toEqual({ revision: head, resolvedRef: "main" });
+      expect(listed.changes).toEqual({});
+      // Edited, then discarded: the CRLF bytes come back, byte for byte.
+      const crlf = readFileSync(blockFile("crlf"));
+      const saved = await rpc(route, "blocks.apply", {
+        set: { crlf: { v: 2 } },
+      });
+      expect(Object.keys((await changes()).changes)).toContain("crlf");
+      const sides = await rpc(route, "changes.get", { names: ["crlf"] });
+      expect(sides.result.entries.crlf).toMatchObject({
+        kind: "set",
+        before: { v: 1 },
+        after: { v: 2 },
+      });
+      const discarded = await rpc(route, "changes.discard", {
+        names: ["crlf"],
+        ifMatch: { crlf: saved.result.versions.crlf },
+      });
+      expect(discarded.error).toBeUndefined();
+      expect(readFileSync(blockFile("crlf"))).toEqual(crlf);
+      expect(Object.keys((await changes()).changes)).not.toContain("crlf");
+    });
+
+    test("a discard unstages what it restores: a staged edit, a staged new file, both sides of a rename", async () => {
+      const committedB = readFileSync(blockFile("b"), "utf8");
+      writeFileSync(blockFile("b"), '{"v":"b9"}\n');
+      git(sandbox!.repoDir, "add", ".deco/blocks/b.json");
+      writeFileSync(blockFile("e"), '{"v":"e0"}\n');
+      git(sandbox!.repoDir, "add", ".deco/blocks/e.json");
+      git(
+        sandbox!.repoDir,
+        "mv",
+        ".deco/blocks/a.json",
+        ".deco/blocks/moved.json",
+      );
+      expect(staged()).toEqual(
+        [
+          "A\t.deco/blocks/e.json",
+          "D\t.deco/blocks/a.json",
+          "A\t.deco/blocks/moved.json",
+          "M\t.deco/blocks/b.json",
+        ].sort(),
+      );
+      const listed = await changes();
+      expect(listed.changes.a).toMatchObject({ kind: "delete" });
+      expect(listed.changes.moved).toMatchObject({ kind: "set" });
+      const answer = await rpc(route, "changes.discard", {
+        names: ["b", "e", "moved"],
+      });
+      expect(answer.error).toBeUndefined();
+      expect(answer.result.versions).toMatchObject({
+        b: expect.any(String),
+        e: null,
+        moved: null,
+      });
+      // As a checkout writes it (this repository converts .json to CRLF).
+      expect(
+        readFileSync(blockFile("b"), "utf8").replaceAll("\r\n", "\n"),
+      ).toBe(committedB.replaceAll("\r\n", "\n"));
+      expect(existsSync(blockFile("e"))).toBe(false);
+      expect(existsSync(blockFile("moved"))).toBe(false);
+      // The rename's other side (a) is back in the index; it's still gone on disk.
+      expect(staged()).toEqual([]);
+      expect(existsSync(blockFile("a"))).toBe(false);
+      const after = await changes();
+      expect(Object.keys(after.changes)).toEqual(["a"]);
+      // Discarding it too brings the committed site back.
+      const all = await rpc(route, "changes.discard", { names: ["a"] });
+      expect(all.error).toBeUndefined();
+      expect((await changes()).changes).toEqual({});
+      expect(git(sandbox!.repoDir, "status", "--porcelain")).toBe("");
     });
   });
 
@@ -901,7 +1071,61 @@ const parityCalls: Call[] = [
   { body: req("blocks.apply", { delete: ["never-existed"] }) },
   { body: req("blocks.list") },
   { body: req("blocks.list"), headers: { "accept-encoding": "gzip" } },
+  // Changes against the committed base (PARITY_BASE).
+  { body: req("changes.list") },
+  {
+    body: req("blocks.apply", {
+      set: { "base-edited": { v: "edited" }, "base-new": { v: 1 } },
+      delete: ["base-removed"],
+    }),
+  },
+  { body: req("changes.list") },
+  {
+    body: req("changes.get", {
+      names: [
+        "base-edited",
+        "base-removed",
+        "base-new",
+        "base-kept",
+        "nowhere",
+      ],
+    }),
+  },
+  {
+    body: req("changes.get", {
+      names: ["pages-Base Page", "pages-Base%20Page"],
+    }),
+  },
+  {
+    body: req("changes.get", {
+      names: Array.from({ length: 21 }, (_, i) => `n${i}`),
+    }),
+  },
+  { body: req("changes.get", { names: [""] }) },
+  {
+    body: req("changes.discard", {
+      names: ["base-edited"],
+      ifMatch: { "base-edited": "nope" },
+    }),
+  },
+  {
+    body: req("changes.discard", {
+      names: ["base-edited", "base-removed", "base-new", "base-kept"],
+    }),
+  },
+  { body: req("changes.discard", { names: [] }) },
+  { body: req("changes.discard", { names: ["a/b"] }) },
+  { body: req("changes.list") },
+  { body: req("blocks.list") },
 ];
+
+/** The blocks committed to both repositories before the parity run. */
+const PARITY_BASE: Record<string, unknown> = {
+  "base-kept": { v: "base" },
+  "base-edited": { v: "base" },
+  "base-removed": { v: "base" },
+  "pages-Base Page": { path: "/base", v: 0 },
+};
 
 /** Status, the headers the protocol fixes, and the (decompressed) body. */
 async function snapshotResponse(res: Response) {
@@ -946,10 +1170,20 @@ function defineParitySuite(
     const route = sandboxRoute(() => sandbox!);
 
     beforeAll(async () => {
+      // The same commit (same id) in both, so `changes.*` answers compare too.
       sandbox = await start();
-      seedSite(sandbox.repoDir, { schema: true });
       refRoot = mkdtempSync(join(tmpdir(), "content-protocol-ref-"));
-      seedSite(refRoot, { schema: true });
+      for (const root of [sandbox.repoDir, refRoot]) {
+        gitInit(root);
+        seedSite(root, { schema: true });
+        for (const [name, entry] of Object.entries(PARITY_BASE)) {
+          writeFileSync(
+            join(root, ".deco", "blocks", blockFileName(name)),
+            serializeBlock(entry),
+          );
+        }
+        commitAll(root);
+      }
     }, timeoutMs);
 
     afterAll(async () => {

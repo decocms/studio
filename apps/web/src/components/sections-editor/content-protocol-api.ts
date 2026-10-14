@@ -3,9 +3,10 @@
  * (`useDecofile`, `useLiveMeta`, the write hooks) call these when the project
  * has a protocol backend, and keep their legacy paths otherwise.
  *
- * Polling follows the protocol: one batched request reads the blocks and the
- * schema, each conditional on the revision (or schema version) last seen, and
- * gets a short "not modified" when nothing changed. After a write the client
+ * Polling follows the protocol: one batched request reads the blocks, the
+ * schema and the changes against the base (`changes.list`), each conditional
+ * on the revision (or schema version) last seen, and gets a short "not
+ * modified" when nothing changed. After a write the client
  * adopts the returned revision, so its next poll is "not modified" unless
  * someone else wrote.
  */
@@ -26,9 +27,15 @@ import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
   type BlocksListResult,
+  type ChangesListResult,
   type SchemaGetResult,
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
+import {
+  adoptChangesList,
+  type ContentChanges,
+  isOutdatedServerError,
+} from "./content-changes";
 import { externalContentChange, runContentChange } from "./content-sync";
 import {
   blockKeysOfWrite,
@@ -90,6 +97,16 @@ function savingBlockKeys(
   return new Set(pending.flatMap((m) => blockKeysOfWrite(m.state.variables)));
 }
 
+/** Resets a `deco serve`'s probe, so the editor says where it stands and reconnects. */
+function resetLocalProbe(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+) {
+  void queryClient.resetQueries({
+    queryKey: KEYS.contentBackend(params.orgSlug, params.virtualMcpId, "local"),
+  });
+}
+
 /**
  * Runs a request against the backend. When a `deco serve` can't be reached
  * (it stopped or is restarting), its probe is reset, so the editor waits for
@@ -106,14 +123,12 @@ async function guarded<T>(
   } catch (error) {
     const lostServer = !(error instanceof ContentProtocolError);
     if (backend.source === "local" && lostServer) {
-      void queryClient.resetQueries({
-        queryKey: KEYS.contentBackend(
-          params.orgSlug,
-          params.virtualMcpId,
-          "local",
-        ),
-      });
+      resetLocalProbe(queryClient, params);
       throw new ServeLostError(error);
+    }
+    // An older `deco serve` took its place: the probe says it's out of date.
+    if (backend.source === "local" && isOutdatedServerError(error)) {
+      resetLocalProbe(queryClient, params);
     }
     throw error;
   }
@@ -176,19 +191,45 @@ async function readContent(
     conditional && currentBlocks ? seen?.revision : undefined;
   const schemaIfNoneMatch =
     conditional && currentMeta ? seen?.schemaVersion : undefined;
+  const changesKey = KEYS.contentChanges(cacheKey);
+  const seenChanges = queryClient.getQueryData<ContentChanges>(changesKey);
 
-  const [listed, schema] = await guarded(queryClient, backend, params, () =>
-    backend.client.batch([
-      {
-        method: "blocks.list",
-        params: blocksIfNoneMatch ? { ifNoneMatch: blocksIfNoneMatch } : {},
-      },
-      {
-        method: "schema.get",
-        params: schemaIfNoneMatch ? { ifNoneMatch: schemaIfNoneMatch } : {},
-      },
-    ]),
+  const [listed, schema, changed] = await guarded(
+    queryClient,
+    backend,
+    params,
+    () =>
+      backend.client.batch([
+        {
+          method: "blocks.list",
+          params: blocksIfNoneMatch ? { ifNoneMatch: blocksIfNoneMatch } : {},
+        },
+        {
+          method: "schema.get",
+          params: schemaIfNoneMatch ? { ifNoneMatch: schemaIfNoneMatch } : {},
+        },
+        {
+          method: "changes.list",
+          params: seenChanges ? { ifNoneMatch: seenChanges.revision } : {},
+        },
+      ]),
   );
+  // The changes ride along: a failure there never fails the content read
+  // (the list says so where it's shown), except an older `deco serve`,
+  // which the editor explains.
+  if (changed?.ok) {
+    const adopted = adoptChangesList(
+      seenChanges,
+      changed.result as ChangesListResult,
+    );
+    if (adopted) queryClient.setQueryData(changesKey, adopted);
+  } else if (
+    changed &&
+    backend.source === "local" &&
+    isOutdatedServerError(changed.error)
+  ) {
+    resetLocalProbe(queryClient, params);
+  }
   if (!listed?.ok) throw listed?.error ?? new Error("no blocks.list");
   if (!schema) throw new Error("no schema.get");
   const list = listed.result as BlocksListResult;

@@ -312,10 +312,35 @@ describe("classifyServeProbeError", () => {
     ).toEqual({ reason: "outdated" });
   });
 
+  test("an 8.1.x deco serve (protocol 1.0) is out of date", () => {
+    expect(
+      classifyServeProbeError(
+        new ContentProtocolError(ErrorCode.Unsupported, "speaks 1.0", {
+          reason: "outdated",
+          required: { major: 1, minor: 1 },
+        }),
+      ),
+    ).toEqual({ reason: "outdated" });
+    // An old server's answer to a `changes.*` call.
+    expect(
+      classifyServeProbeError(
+        new ContentProtocolError(ErrorCode.MethodNotFound, "changes.list"),
+      ),
+    ).toEqual({ reason: "outdated" });
+  });
+
   test("another major version", () => {
     expect(
       classifyServeProbeError(
         new ContentProtocolError(ErrorCode.Unsupported, "speaks 2.x"),
+      ),
+    ).toEqual({ reason: "version-mismatch" });
+    expect(
+      classifyServeProbeError(
+        new ContentProtocolError(ErrorCode.Unsupported, "speaks 2.x", {
+          reason: "major",
+          required: { major: 1, minor: 1 },
+        }),
       ),
     ).toEqual({ reason: "version-mismatch" });
   });

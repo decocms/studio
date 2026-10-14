@@ -152,6 +152,10 @@ export const thread = {
   "thread.publishPopover.blocksGroup": "Blocks",
   "thread.publishPopover.detailsUnavailable":
     "Details for these changes could not be loaded.",
+  "thread.publishPopover.alsoOtherWork":
+    "Publishing also includes other work from this session, such as code changes.",
+  "thread.publishPopover.onlyOtherWork":
+    "No content changes. Publishing puts this session's other work live, such as code changes.",
   "thread.publishPopover.loadFailed": "Couldn't load your changes",
   "thread.publishPopover.retry": "Try again",
   "thread.publishPopover.showingFirst":
@@ -226,6 +230,7 @@ export const thread = {
   "thread.publishCompare.removedTitle": "Page removed",
   "thread.publishCompare.removedDescription":
     "This page will no longer be on the site.",
+  "thread.publishCompare.sideUnreadable": "This version can't be shown here.",
   "thread.analytics.title": "Chats & automations",
   "thread.analytics.notAdmin":
     "Chat analytics is only available in an admin organization.",
