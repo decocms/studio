@@ -21,7 +21,26 @@ import type { TaskBoardItem } from "@/storage/types";
 import { ensureBuiltinAutomations, IMPLEMENTER_SYSTEM_KEY } from "./builtin";
 import type { ManualRun } from "./card-run";
 import { enqueueAutomationFire, fireAutomationDirect } from "./dbos-sync";
-import type { FireAutomationContext } from "./dbos-workflow";
+import type {
+  FireAutomationContext,
+  FireAutomationOutcome,
+} from "./dbos-workflow";
+
+/** The error a manual fire's caller should see, or null once it actually
+ *  started a run. Every skip is surfaced, even one with no `error` (the card
+ *  vanished under us) — a manual fire has to tell its caller it did nothing,
+ *  not report success on a no-op. */
+export function manualFireError(outcome: FireAutomationOutcome): Error | null {
+  if ("error" in outcome && outcome.error) {
+    if (typeof outcome.error === "string") return new Error(outcome.error);
+    const { quotaReason, message } = outcome.error;
+    return quotaReason ? new TaskQuotaError(quotaReason) : new Error(message);
+  }
+  if ("skipped" in outcome) {
+    return new Error(`The Implementer did not start (${outcome.skipped}).`);
+  }
+  return null;
+}
 
 /** The org's Implementer and its trigger; seeds it when the org has none
  *  yet, so a Run never depends on the boot seed having reached the org. */
@@ -75,10 +94,8 @@ export async function fireImplementer(
   const outcome = await fireAutomationDirect(fire, {
     idempotencyKey: eventKey,
   });
-  if ("skipped" in outcome && outcome.error) {
-    const { quotaReason, message } = outcome.error;
-    throw quotaReason ? new TaskQuotaError(quotaReason) : new Error(message);
-  }
+  const err = manualFireError(outcome);
+  if (err) throw err;
 }
 
 /**
