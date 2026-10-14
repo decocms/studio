@@ -7,6 +7,7 @@
 
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation, AutomationTrigger } from "@/storage/types";
+import { truncateString } from "@/monitoring/truncate-string";
 import type { ContextMessage } from "./dbos-workflow";
 
 // Resolves once the workflow is durably enqueued, not when it finishes.
@@ -228,12 +229,10 @@ export class AutomationEventDispatcher {
     type: string;
     data: unknown;
   }): ContextMessage[] {
-    let serialized = JSON.stringify(event.data, null, 2) ?? "null";
-    if (serialized.length > AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) {
-      serialized =
-        serialized.slice(0, AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) +
-        "\n[TRUNCATED]";
-    }
+    const serialized = truncateString(
+      JSON.stringify(event.data, null, 2) ?? "null",
+      AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES,
+    );
     return [
       {
         role: "user",
