@@ -296,9 +296,9 @@ export async function refuseIfMergePending(
  * this write keeps its real terminal state (and is then absent from the
  * returned list).
  *
- * Shared with the Jira trigger's by-hand run (`startJiraRunForIssue`), which is
- * the same act on an issue's anchor item and has the same two-agents-one-task
- * hazard `stopSupersededRun` documents.
+ * Shared with an automation's run on a Jira issue (`automations/jira-run.ts`),
+ * which is the same act on an issue's anchor item and has the same
+ * two-agents-one-task hazard `stopSupersededRun` documents.
  *
  * Returns the threads this call really took over.
  */

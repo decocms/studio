@@ -139,57 +139,69 @@ test.describe("Jira run trigger", () => {
     });
   });
 
-  test("a rule exists only while its row does", async ({ authedPage }) => {
+  test("a rule is an automation with a jira_transition trigger", async ({
+    authedPage,
+  }) => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
     await connectIntegration(api, orgSlug);
-    const list = () =>
-      callSelfMcpTool<{
-        automations: Array<{
-          jiraStatus: string;
-          from: { kind: string; statuses?: string[] };
-          prompt: string | null;
-          continuePr: boolean;
-        }>;
-      }>(api, orgSlug, "JIRA_AUTOMATION_LIST", {});
+    const list = async () =>
+      (
+        await callSelfMcpTool<{
+          automations: Array<{
+            automationId: string;
+            jiraStatus: string;
+            from: { kind: string; statuses?: string[] };
+            prompt: string | null;
+            active: boolean;
+          }>;
+        }>(api, orgSlug, "JIRA_AUTOMATION_LIST", {})
+      ).automations.map(({ automationId: _, ...rule }) => rule);
 
-    expect((await list()).automations).toEqual([]);
-    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
-      jiraStatus: AUTOMATED_STATUS,
-    });
-    expect((await list()).automations).toEqual([
-      {
-        jiraStatus: AUTOMATED_STATUS,
-        from: { kind: "any" },
-        prompt: null,
-        continuePr: false,
-      },
-    ]);
-
-    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+    expect(await list()).toEqual([]);
+    const { automation } = await callSelfMcpTool<{
+      automation: { automationId: string };
+    }>(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
       jiraStatus: AUTOMATED_STATUS,
       prompt: "Implement it and open a pull request.",
-      continuePr: true,
     });
-    expect((await list()).automations).toEqual([
+    expect(await list()).toEqual([
       {
         jiraStatus: AUTOMATED_STATUS,
         from: { kind: "any" },
         prompt: "Implement it and open a pull request.",
-        continuePr: true,
+        active: true,
       },
     ]);
+    const { automation: detail } = await callSelfMcpTool<{
+      automation: {
+        virtual_mcp_id: string;
+        triggers: Array<{
+          type: string;
+          column_key: string | null;
+          from: unknown;
+        }>;
+      };
+    }>(api, orgSlug, "AUTOMATION_GET", { id: automation.automationId });
+    expect(detail.virtual_mcp_id).toMatch(/^decopilot_/);
+    expect(detail.triggers).toEqual([
+      expect.objectContaining({
+        type: "jira_transition",
+        column_key: AUTOMATED_STATUS,
+        from: { kind: "any" },
+      }),
+    ]);
 
+    // Rewording keeps the same automation.
     await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
       jiraStatus: AUTOMATED_STATUS,
-      continuePr: false,
     });
-    expect((await list()).automations).toEqual([
+    expect(await list()).toEqual([
       {
         jiraStatus: AUTOMATED_STATUS,
         from: { kind: "any" },
         prompt: null,
-        continuePr: false,
+        active: true,
       },
     ]);
 
@@ -198,9 +210,8 @@ test.describe("Jira run trigger", () => {
       jiraStatus: AUTOMATED_STATUS,
       from: { kind: "later" },
       prompt: "Read why it came back and fix it.",
-      continuePr: true,
     });
-    expect((await list()).automations.map((a) => a.from)).toEqual([
+    expect((await list()).map((a) => a.from)).toEqual([
       { kind: "any" },
       { kind: "later" },
     ]);
@@ -216,6 +227,43 @@ test.describe("Jira run trigger", () => {
         from: { kind: "statuses", statuses: ["Code Review", "teste"] },
       }),
     ).rejects.toThrow(/already answers moves from "teste"/);
+    // Nor may a trigger added from the automations side.
+    const { id: otherId } = await callSelfMcpTool<{ id: string }>(
+      api,
+      orgSlug,
+      "AUTOMATION_CREATE",
+      {
+        name: "Another Jira automation",
+        virtual_mcp_id: detail.virtual_mcp_id,
+        messages: "Work the issue.",
+        models: { tier: "smart" },
+      },
+    );
+    await expect(
+      callSelfMcpTool(api, orgSlug, "AUTOMATION_TRIGGER_ADD", {
+        automation_id: otherId,
+        type: "jira_transition",
+        jira_status: AUTOMATED_STATUS,
+        from: { kind: "later" },
+      }),
+    ).rejects.toThrow(/already answers the same origin/);
+    await expect(
+      callSelfMcpTool(api, orgSlug, "AUTOMATION_TRIGGER_ADD", {
+        automation_id: otherId,
+        type: "jira_transition",
+      }),
+    ).rejects.toThrow(/jira_status is required/);
+    await callSelfMcpTool(api, orgSlug, "AUTOMATION_TRIGGER_ADD", {
+      automation_id: otherId,
+      type: "jira_transition",
+      jira_status: "Code Review",
+    });
+    expect((await list()).map((a) => a.jiraStatus)).toEqual([
+      "Code Review",
+      AUTOMATED_STATUS,
+      AUTOMATED_STATUS,
+      AUTOMATED_STATUS,
+    ]);
 
     for (const from of [
       { kind: "any" },
@@ -230,7 +278,13 @@ test.describe("Jira run trigger", () => {
       );
       expect(removed).toBe(true);
     }
-    expect((await list()).automations).toEqual([]);
+    expect((await list()).map((a) => a.jiraStatus)).toEqual(["Code Review"]);
+    // Removing the rule removed the automation it was the only trigger of.
+    await expect(
+      callSelfMcpTool(api, orgSlug, "AUTOMATION_GET", {
+        id: automation.automationId,
+      }),
+    ).resolves.toEqual({ automation: null });
   });
 
   test("a rule answers only the origin it names", async ({ authedPage }) => {
@@ -392,6 +446,59 @@ test.describe("Jira run trigger", () => {
     );
     expect(claims.rows).toEqual([]);
     expect(await anchors(db, orgId)).toEqual([]);
+  });
+
+  test("a run by hand fires the automation on the issue", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const api = page.context().request;
+    const orgId = await orgIdOf(orgSlug);
+    await connectIntegration(api, orgSlug);
+    const { automation } = await callSelfMcpTool<{
+      automation: { automationId: string };
+    }>(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      prompt: "Implement it and open a pull request.",
+    });
+
+    await expect(
+      callSelfMcpTool(api, orgSlug, "JIRA_RUN_START", {
+        automationId: "auto_not_here",
+        issueKey: ISSUE_KEY,
+      }),
+    ).rejects.toThrow(/Automation not found/);
+
+    // Switched off, it no longer fires on moves; a run by hand still runs.
+    await callSelfMcpTool(api, orgSlug, "AUTOMATION_UPDATE", {
+      id: automation.automationId,
+      active: false,
+    });
+    const result = await callSelfMcpTool<{
+      started: Array<{ issueKey: string; issueUrl: string }>;
+      failed: Array<{ issueKey: string; error: string }>;
+      unreadable: string[];
+    }>(api, orgSlug, "JIRA_RUN_START", {
+      automationId: automation.automationId,
+      issueKey: `${ISSUE_KEY}, EX-404, not-a-key`,
+    });
+    expect(result.unreadable).toEqual(["not-a-key"]);
+    expect(result.failed.map((f) => f.issueKey)).toEqual(["EX-404", ISSUE_KEY]);
+    // No sandbox here, so the dispatch is refused — and the refusal reaches
+    // the caller instead of disappearing into a queued fire.
+    expect(result.failed[1]?.error).toMatch(/hosted sandbox/);
+    expect(result.started).toEqual([]);
+
+    // The fire workflow made the issue's anchor and left it unowned; no move
+    // was claimed.
+    const [anchor] = await anchors(db, orgId);
+    expect(anchor?.external_key).toBe(ISSUE_KEY);
+    expect(anchor?.assignee_id).toBeNull();
+    const claims = await db.query(
+      "select 1 from jira_trigger_claims where organization_id = $1",
+      [orgId],
+    );
+    expect(claims.rows).toEqual([]);
   });
 
   test("an unknown webhook secret is refused", async ({ authedPage }) => {

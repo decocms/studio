@@ -67,7 +67,7 @@ export interface RunError {
   quotaReason?: TaskQuotaReason;
 }
 
-function runErrorOf(err: unknown): RunError {
+export function runErrorOf(err: unknown): RunError {
   if (err instanceof TaskQuotaError) {
     return { message: err.message, quotaReason: err.reason };
   }

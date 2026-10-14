@@ -108,7 +108,6 @@ export function useSetJiraAutomation() {
       jiraStatus: string;
       from: JiraRuleFrom;
       prompt: string | null;
-      continuePr?: boolean;
     }) => {
       if (input.prompt === null) {
         await studio.call("JIRA_AUTOMATION_DELETE", {
@@ -121,7 +120,6 @@ export function useSetJiraAutomation() {
         jiraStatus: input.jiraStatus,
         from: input.from,
         prompt: input.prompt.trim() === "" ? undefined : input.prompt,
-        continuePr: input.continuePr ?? false,
       });
     },
     onSettled: () =>
@@ -130,9 +128,9 @@ export function useSetJiraAutomation() {
 }
 
 /**
- * Run the agent on one issue, now — the way a rule is tried before it is
- * turned on for a whole column. Needs no rule and works with the integration
- * disabled, so nothing has to move on the real board to see what it does.
+ * Fire a Jira automation on issues, now — the way it is tried before it runs
+ * on a whole column. Works with the integration disabled, so nothing has to
+ * move on the real board to see what it does.
  */
 export function useStartJiraRun() {
   const studio = useStudioTools();

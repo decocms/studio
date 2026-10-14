@@ -58,7 +58,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Criar um API token",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":
-    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 10 minutos; com ele, a run começa quando o card fica um minuto parado.",
+    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 5 minutos; com ele, a run começa quando o card fica 20 segundos parado.",
   "settings.jira.webhookCopy": "Copiar",
   "settings.jira.webhookCopied": "URL do webhook copiada",
   "settings.jira.webhookStep1":
@@ -70,11 +70,11 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Opcionalmente restrinja com um filtro JQL, ex.: project = <chave do projeto>.",
   "settings.jira.webhookStep5":
-    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run depois de ficar um minuto nele.",
+    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run depois de ficar 20 segundos nele.",
   "settings.jira.automationsLabel":
     "Rodar o agente quando uma issue entrar em…",
   "settings.jira.automationsDescription":
-    "Quando uma issue entra em um destes status e fica nele por um minuto, o Studio inicia um run do agente nela. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+    "Quando uma issue entra em um destes status e fica nele por 20 segundos, o Studio inicia um run do agente nela. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. Uma issue que tem um pull request aberto linkado continua nele. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
   "settings.jira.addAutomation": "Adicionar automação",
   "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
   "settings.jira.promptHelp":
@@ -97,7 +97,7 @@ export const settings = {
     "Não foi possível carregar as colunas do board",
   "settings.jira.testRunLabel": "Rodar na mão",
   "settings.jira.testRunDescription":
-    "Rode o agente em uma issue ou num lote agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
+    "Rode uma das automações acima em uma issue ou num lote agora, sem habilitar a integração \u2014 assim você vê o que o prompt dela faz antes que ele rode em toda issue que entra em um status.",
   "settings.jira.issueKeysPlaceholder":
     "ABC-123, ou um link — um por linha, ou separados por vírgula",
   "settings.jira.issueKeysCount": "{count} issue(s)",
@@ -108,11 +108,10 @@ export const settings = {
   "settings.jira.testRunStarted": "Iniciado em",
   "settings.jira.testRunFailed": "Não foi possível iniciar o run",
   "settings.jira.testRunHelp":
-    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",
-  "settings.jira.continuePr":
-    "Continuar o pull request que a issue já carrega (re-run depois de um review pedir mudanças)",
-  "settings.jira.continuePrRuleHelp":
-    "Checado em todo card que entra neste status: quem já carrega um pull request aberto continua nele, quem não tem começa do zero. Deixe desligado num status de review.",
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue, e uma issue com um pull request aberto linkado continua nele.",
+  "settings.jira.testRunAutomation": "Automação a rodar",
+  "settings.jira.testRunNoAutomations":
+    "Adicione uma automação acima primeiro: rodar à mão dispara uma delas.",
   "settings.jira.together":
     "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
   "settings.jira.togetherStarted": "Iniciado um run em",

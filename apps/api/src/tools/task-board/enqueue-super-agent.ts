@@ -86,7 +86,8 @@ export type SuperAgentPromptOpts = {
   automation?: {
     name: string;
     agentId: string;
-    triggerId: string;
+    /** Absent for a manual fire, which no trigger started. */
+    triggerId?: string;
     fence: { threadId: string; workflowID: string };
   };
 };
@@ -204,7 +205,7 @@ export async function enqueueSuperAgentForTask(
     const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
     const pr =
       opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
-    // A caller-supplied head (Jira's continuePr) always wins over the flag.
+    // A caller-supplied head (a Jira issue's linked pull request) always wins over the flag.
     const pinnedRef =
       opts?.pr?.head ??
       (reusesPrBranch && pr

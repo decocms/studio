@@ -81,7 +81,11 @@ export function createJiraStubServer(): Server {
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const path = url.pathname;
+    // Jira addresses an issue by id or key alike.
+    const path = url.pathname.replace(
+      `/issue/${ISSUE_KEY}`,
+      `/issue/${ISSUE_ID}`,
+    );
     const json = (body: unknown, status = 200) => {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));

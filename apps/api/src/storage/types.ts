@@ -1451,7 +1451,8 @@ export interface AutomationTriggerTable {
   // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
   // Null for cron/event triggers.
   api_key_id: string | null;
-  // For board_column_transition triggers: the column a card entered, and
+  // For board_column_transition triggers: the column a card entered; for
+  // jira_transition triggers: the Jira status an issue entered. Both say
   // which moves count by where it came from. Null / '{}' for the others.
   column_key: string | null;
   from_kind: BoardTransitionFromKind | null;
@@ -1495,7 +1496,8 @@ export type AutomationTriggerType =
   | "event"
   | "webhook"
   | "board_column_transition"
-  | "board_pr_ready";
+  | "board_pr_ready"
+  | "jira_transition";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks

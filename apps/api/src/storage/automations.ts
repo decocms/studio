@@ -122,6 +122,10 @@ export interface AutomationsStorage {
     taskBoardItemId: string,
     columnKey: string,
   ): Promise<boolean>;
+  listJiraTransitionTriggers(
+    organizationId: string,
+    opts?: { jiraStatus?: string; activeOnly?: boolean },
+  ): Promise<(AutomationTrigger & { automation: Automation })[]>;
   claimTriggerFire(triggerId: string, eventKey: string): Promise<boolean>;
   findBuiltinTrigger(
     organizationId: string,
@@ -695,6 +699,49 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .limit(1)
       .executeTakeFirst();
     return row ?? null;
+  }
+
+  /**
+   * The org's `jira_transition` triggers with their automations, oldest
+   * first; on one status when `jiraStatus` is given (`column_key` holds it).
+   */
+  async listJiraTransitionTriggers(
+    organizationId: string,
+    opts?: { jiraStatus?: string; activeOnly?: boolean },
+  ): Promise<(AutomationTrigger & { automation: Automation })[]> {
+    let query = this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select([
+        "t.id",
+        "t.automation_id",
+        "t.type",
+        "t.cron_expression",
+        "t.connection_id",
+        "t.event_type",
+        "t.params",
+        "t.last_run_at",
+        "t.api_key_id",
+        "t.column_key",
+        "t.from_kind",
+        "t.from_statuses",
+        "t.created_at",
+        ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
+      ])
+      .where("t.type", "=", "jira_transition")
+      .where("a.organization_id", "=", organizationId);
+    if (opts?.jiraStatus !== undefined) {
+      query = query.where("t.column_key", "=", opts.jiraStatus);
+    }
+    if (opts?.activeOnly) query = query.where("a.active", "=", true);
+    const rows = await query
+      .orderBy("t.created_at", "asc")
+      .orderBy("t.id", "asc")
+      .execute();
+    return rows.map((row) => ({
+      ...triggerFromDbRow(row),
+      automation: automationFromAliasedRow(row),
+    }));
   }
 
   /**

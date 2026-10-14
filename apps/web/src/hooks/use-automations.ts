@@ -130,7 +130,8 @@ export interface AutomationTrigger {
     | "event"
     | "webhook"
     | "board_column_transition"
-    | "board_pr_ready";
+    | "board_pr_ready"
+    | "jira_transition";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -138,9 +139,10 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
-  /** For `board_column_transition`: the board column a card enters. */
+  /** For `board_column_transition`: the board column a card enters; for
+   *  `jira_transition`: the Jira status an issue enters. */
   column_key: string | null;
-  /** For `board_column_transition`: which moves into the column count. */
+  /** For both: which moves count, by where the card came from. */
   from:
     | { kind: "any" | "earlier" | "later" }
     | { kind: "statuses"; statuses: string[] }

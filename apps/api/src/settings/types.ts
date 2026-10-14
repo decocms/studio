@@ -48,8 +48,9 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
-  /** How long a Jira card must stay in a status before a rule runs on it
-   *  (`JIRA_SETTLE_SECONDS`, default 60). Shortened only by e2e. */
+  /** How long a Jira card must stay in a status before a trigger fires on it
+   *  (`JIRA_SETTLE_SECONDS`, default 20, as on the board). Shortened only by
+   *  e2e. */
   jiraSettleSeconds: number;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */

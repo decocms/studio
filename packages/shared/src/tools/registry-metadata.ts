@@ -1083,22 +1083,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_AUTOMATION_LIST",
-    description: "List which Jira statuses start an agent run",
+    description: "List the automations Jira status changes fire",
     category: "Jira",
   },
   {
     name: "JIRA_AUTOMATION_UPSERT",
-    description: "Run the agent on issues entering a Jira status",
+    description: "Fire an automation on issues entering a Jira status",
     category: "Jira",
   },
   {
     name: "JIRA_AUTOMATION_DELETE",
-    description: "Stop running the agent on issues entering a Jira status",
+    description: "Stop firing on issues entering a Jira status",
     category: "Jira",
   },
   {
     name: "JIRA_RUN_START",
-    description: "Run the agent on Jira issues now, to try a rule out",
+    description: "Fire an automation on Jira issues now",
     category: "Jira",
   },
   {

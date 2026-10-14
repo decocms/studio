@@ -281,7 +281,7 @@ export function resolveConfig(
     jiraSettleSeconds: toPositiveIntegerOrDefault(
       "JIRA_SETTLE_SECONDS",
       envVars.JIRA_SETTLE_SECONDS,
-      60,
+      20,
       3600,
     ),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,

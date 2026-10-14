@@ -99,7 +99,7 @@ describe("board column transition trigger (real Postgres)", () => {
           fire.automationId,
           fire.organizationId,
         );
-        if (automation && fire.triggerId && fire.target) {
+        if (automation && fire.triggerId && fire.target?.kind === "card") {
           await runOnCardStep(automation, fire.triggerId, fire.target);
         }
       },

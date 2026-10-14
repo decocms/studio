@@ -5,10 +5,8 @@
  */
 
 import { withBuiltinActive } from "../../automations/builtin";
-import {
-  BoardTransitionFromSchema,
-  triggerFrom,
-} from "../../automations/board-column-transition";
+import { triggerFrom } from "../../automations/board-column-transition";
+import { RuleFromSchema, ruleFromColumns } from "../../jira/rule-from";
 import { AutomationTriggerTypeSchema } from "./trigger-schema";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
@@ -55,7 +53,7 @@ export const AUTOMATION_GET = defineTool({
             last_run_at: z.string().nullable(),
             api_key_id: z.string().nullable(),
             column_key: z.string().nullable(),
-            from: BoardTransitionFromSchema.nullable(),
+            from: RuleFromSchema.nullable(),
             created_at: z.string(),
           }),
         ),
@@ -105,7 +103,12 @@ export const AUTOMATION_GET = defineTool({
           last_run_at: t.last_run_at,
           api_key_id: t.api_key_id,
           column_key: t.column_key,
-          from: t.type === "board_column_transition" ? triggerFrom(t) : null,
+          from:
+            t.type === "board_column_transition"
+              ? triggerFrom(t)
+              : t.type === "jira_transition"
+                ? ruleFromColumns(t)
+                : null,
           created_at: t.created_at,
         })),
       },

@@ -220,6 +220,8 @@ export const automations = {
   "automations.triggerCard.fromEarlier": "De uma coluna anterior",
   "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",
   "automations.triggerCard.fromColumns": "De {columns}",
+  "automations.triggerCard.issueEntersJiraStatus":
+    "Quando uma issue do Jira entra em {status}",
   "automations.triggerCard.cardEntersColumn": "Quando um card entra em {lane}",
   "automations.webhookSecretDialog.copied": "Copiado",
   "automations.webhookSecretDialog.copy": "Copiar",

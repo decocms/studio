@@ -6399,7 +6399,8 @@ export interface StudioToolIO {
             | "event"
             | "webhook"
             | "board_column_transition"
-            | "board_pr_ready";
+            | "board_pr_ready"
+            | "jira_transition";
           cron_expression: string | null;
           connection_id: string | null;
           event_type: string | null;
@@ -6411,21 +6412,7 @@ export interface StudioToolIO {
             | { kind: "any" }
             | { kind: "earlier" }
             | { kind: "later" }
-            | {
-                kind: "statuses";
-                statuses: (
-                  | "done"
-                  | "triage"
-                  | "todo"
-                  | "in_progress"
-                  | "in_review"
-                  | "qa"
-                  | "customer_approval"
-                  | "ready_for_deployment"
-                  | "post_deploy_validation"
-                  | "archived"
-                )[];
-              }
+            | { kind: "statuses"; statuses: string[] }
             | null;
           created_at: string;
         }[];
@@ -6490,7 +6477,8 @@ export interface StudioToolIO {
         | "event"
         | "webhook"
         | "board_column_transition"
-        | "board_pr_ready";
+        | "board_pr_ready"
+        | "jira_transition";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
       event_type?: string | undefined;
@@ -6507,25 +6495,12 @@ export interface StudioToolIO {
         | "post_deploy_validation"
         | "archived"
         | undefined;
+      jira_status?: string | undefined;
       from?:
         | { kind: "any" }
         | { kind: "earlier" }
         | { kind: "later" }
-        | {
-            kind: "statuses";
-            statuses: (
-              | "done"
-              | "triage"
-              | "todo"
-              | "in_progress"
-              | "in_review"
-              | "qa"
-              | "customer_approval"
-              | "ready_for_deployment"
-              | "post_deploy_validation"
-              | "archived"
-            )[];
-          }
+        | { kind: "statuses"; statuses: string[] }
         | undefined;
     };
     output: {
@@ -6536,7 +6511,8 @@ export interface StudioToolIO {
         | "event"
         | "webhook"
         | "board_column_transition"
-        | "board_pr_ready";
+        | "board_pr_ready"
+        | "jira_transition";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;
     };
@@ -7417,6 +7393,7 @@ export interface StudioToolIO {
     input: { [x: string]: never };
     output: {
       automations: {
+        automationId: string;
         jiraStatus: string;
         from:
           | { kind: "any" }
@@ -7424,7 +7401,7 @@ export interface StudioToolIO {
           | { kind: "later" }
           | { kind: "statuses"; statuses: string[] };
         prompt: string | null;
-        continuePr: boolean;
+        active: boolean;
       }[];
     };
   };
@@ -7438,10 +7415,10 @@ export interface StudioToolIO {
         | { kind: "statuses"; statuses: string[] }
         | undefined;
       prompt?: string | null | undefined;
-      continuePr?: boolean | undefined;
     };
     output: {
       automation: {
+        automationId: string;
         jiraStatus: string;
         from:
           | { kind: "any" }
@@ -7449,7 +7426,7 @@ export interface StudioToolIO {
           | { kind: "later" }
           | { kind: "statuses"; statuses: string[] };
         prompt: string | null;
-        continuePr: boolean;
+        active: boolean;
       };
     };
   };
@@ -7467,18 +7444,12 @@ export interface StudioToolIO {
   };
   JIRA_RUN_START: {
     input: {
+      automationId: string;
       issueKey: string;
-      prompt?: string | null | undefined;
       together?: boolean | undefined;
-      continuePr?: boolean | undefined;
     };
     output: {
-      started: {
-        issueKey: string;
-        issueUrl: string;
-        itemId: string;
-        supersededThreadIds: string[];
-      }[];
+      started: { issueKey: string; issueUrl: string }[];
       failed: { issueKey: string; error: string }[];
       unreadable: string[];
     };

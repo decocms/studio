@@ -1,7 +1,8 @@
 /**
  * Every board run starts as an automation fire: a person's Run, a delegation,
- * a retry, a review, a card entering a column. They all reach the run through
- * the fire workflow's card step (`card-run.ts`), so a run is always "an
+ * a retry, a review, a card entering a column, a Jira issue entering a
+ * status. They all reach the run through the fire workflow's card step
+ * (`card-run.ts`) or its Jira step (`jira-run.ts`), so a run is always "an
  * automation fired, with a target". This fails when code anywhere else calls
  * a run dispatcher directly, which is the path this replaced.
  */
@@ -17,8 +18,7 @@ const SRC = join(import.meta.dir, "..");
 const ALLOWED: Record<string, string[]> = {
   enqueueSuperAgentForTask: [
     "automations/card-run.ts",
-    // Until the Jira trigger moves onto the fire workflow.
-    "jira/trigger.ts",
+    "automations/jira-run.ts",
   ],
   enqueueReviewerForTask: ["automations/card-run.ts"],
   // The two run builders above, which assemble the board run's request.
