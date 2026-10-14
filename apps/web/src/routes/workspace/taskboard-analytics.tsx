@@ -17,7 +17,13 @@ export default function TaskBoardAnalyticsRoute() {
   const orgSlug = params.org ?? "";
   const project = params.agentId;
   const admin = useTaskBoardAdminOrgs();
+  // Resets the picker to the new org whenever the URL org changes.
+  const [prevOrgSlug, setPrevOrgSlug] = useState(orgSlug);
   const [org, setOrg] = useState<string>(orgSlug);
+  if (orgSlug !== prevOrgSlug) {
+    setPrevOrgSlug(orgSlug);
+    setOrg(orgSlug);
+  }
 
   // A project lives in one org, so its page has no cross-org picker.
   const isAdmin = !project && (admin.data?.isTaskBoardAdmin ?? false);
