@@ -3,6 +3,7 @@
  * Displays and allows inline editing of cron-based triggers.
  */
 
+import { JiraIcon } from "@/components/icons/jira-icon";
 import {
   useAutomationActions,
   type AutomationTrigger,
@@ -160,7 +161,9 @@ export function TriggerCard({
       <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-background group">
         {isCron ? (
           <Clock size={14} className="text-muted-foreground shrink-0" />
-        ) : isColumnTransition || isPrReady || isJiraTransition ? (
+        ) : isJiraTransition ? (
+          <JiraIcon size={14} className="shrink-0" />
+        ) : isColumnTransition || isPrReady ? (
           <Columns01 size={14} className="text-muted-foreground shrink-0" />
         ) : isWebhook ? (
           <Globe01 size={14} className="text-muted-foreground shrink-0" />
