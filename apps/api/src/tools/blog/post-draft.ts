@@ -558,6 +558,9 @@ export const BLOG_POST_DRAFT = defineTool({
     let droppedSections = 0;
     const dropped = new Map<string, number>();
 
+    const validProductIds = new Set(
+      campaign.intent.products.map((product) => product.id),
+    );
     const posts = await Promise.all(
       drafts.map(async (draft) => {
         const sections: {
@@ -581,9 +584,7 @@ export const BLOG_POST_DRAFT = defineTool({
           sections.push({
             type: section.type,
             props: read.props,
-            productIds: section.productIds.filter((id) =>
-              campaign.intent.products.some((product) => product.id === id),
-            ),
+            productIds: resolveProductIds(section.productIds, validProductIds),
           });
         }
 
@@ -632,6 +633,24 @@ export const BLOG_POST_DRAFT = defineTool({
 /** Tally one reason a section was dropped, so the log groups rather than floods. */
 function note(seen: Map<string, number>, reason: string): void {
   seen.set(reason, (seen.get(reason) ?? 0) + 1);
+}
+
+/**
+ * A section's product ids, kept to the campaign's own and to one mention each.
+ *
+ * Nothing stops a model from listing the same id twice — the schema only says
+ * "the campaign products this block shows, in order" — and a product block
+ * given a repeated id renders that product twice in the same slot.
+ */
+export function resolveProductIds(
+  ids: string[],
+  validIds: ReadonlySet<string>,
+): string[] {
+  const kept = new Set<string>();
+  for (const id of ids) {
+    if (validIds.has(id)) kept.add(id);
+  }
+  return [...kept];
 }
 
 /** What separates one draft from the next, when several are asked for. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { describeGaps, renderCampaign } from "./post-draft";
+import { describeGaps, renderCampaign, resolveProductIds } from "./post-draft";
 
 const RUN = {
   grounded: true,
@@ -158,5 +158,20 @@ describe("renderCampaign — the product's id", () => {
     const rendered = renderCampaign(withProduct("1948858"));
     expect(rendered).toContain("https://loja.com.br/mochila-frozen/p");
     expect(rendered).toContain("Mochila Frozen");
+  });
+});
+
+describe("resolveProductIds", () => {
+  const valid = new Set(["1948858", "2001"]);
+
+  test("drops an id the campaign never listed", () => {
+    expect(resolveProductIds(["1948858", "9999"], valid)).toEqual(["1948858"]);
+  });
+
+  test("keeps a repeated id only once, in its first position", () => {
+    expect(resolveProductIds(["2001", "1948858", "2001"], valid)).toEqual([
+      "2001",
+      "1948858",
+    ]);
   });
 });
