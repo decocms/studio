@@ -10,17 +10,27 @@
  * - A commit edits the draft, never git: put X sets `set[X]` and drops X from
  *   `delete`; deleting X that exists on main moves it to `delete`; deleting a
  *   draft-only X just drops it from `set`. Putting X back to exactly main's
- *   content (a discard) drops X from the draft instead of keeping a copy,
- *   which would hide a later change on main and never let the draft be
- *   empty. The last writer wins (no stale check against the draft); the
- *   schema is still checked against main's.
+ *   content drops X from the draft instead of keeping a copy, which would
+ *   hide a later change on main and never let the draft be empty. A save is
+ *   last-writer-wins (no stale check against the draft); the schema is still
+ *   checked against main's.
+ * - The base (`changes.*`) is main's head: the changes are the files the
+ *   draft makes differ from main, which are the draft's own names (a `set`
+ *   byte-equal to main's one file isn't a change). A discard
+ *   (`reason: "discard"`) drops the discarded names from the draft
+ *   altogether, so main's files show through again, whatever their bytes
+ *   (main may hold a file that isn't valid JSON) or spellings. It honours
+ *   `expected` inside the draft lock and `expectedBase` against main's head.
  */
 
 import {
   blockFileName,
   blockNameFromFile,
+  type CommitAttempt,
   type CommitResult,
   type ContentStorage,
+  type StorageBase,
+  type StorageChanges,
   type StorageDescription,
   type StorageFile,
   type StorageSnapshot,
@@ -128,6 +138,40 @@ export function applyAttemptToDraft(
   };
 }
 
+/** The draft without any name of `groups` (spelling groups): main shows through. */
+function dropGroupsFromDraft(
+  draft: DraftBody,
+  groups: ReadonlySet<string>,
+): DraftBody {
+  return {
+    set: Object.fromEntries(
+      Object.entries(draft.set).filter(
+        ([name]) => !groups.has(spellingKey(name)),
+      ),
+    ),
+    delete: draft.delete.filter((name) => !groups.has(spellingKey(name))),
+  };
+}
+
+/** The files of `snapshot` that differ from `base`, by version (git blob sha). */
+function filesChangedFrom(
+  base: StorageSnapshot,
+  snapshot: StorageSnapshot,
+): string[] {
+  const inBase = new Map(base.files.map((f) => [f.file, f.version]));
+  const inSnapshot = new Set(snapshot.files.map((f) => f.file));
+  const files = snapshot.files
+    .filter((f) => inBase.get(f.file) !== f.version)
+    .map((f) => f.file);
+  for (const file of inBase.keys()) {
+    if (!inSnapshot.has(file)) files.push(file);
+  }
+  return files.sort();
+}
+
+/** Thrown inside the draft lock when a discard's `expected` versions moved. */
+const STALE_DRAFT = Symbol("stale draft");
+
 export function createDraftContentStorage(options: {
   client: RepoContentClient;
   packagePath: string | null;
@@ -144,12 +188,25 @@ export function createDraftContentStorage(options: {
   });
   /** Draft file texts of the snapshots this storage handed out. */
   const draftTexts = new Map<string, Map<string, string>>();
+  /** Main's listings by commit sha (immutable), from this storage's reads. */
+  const mainListings = new Map<string, StorageSnapshot>();
+  const mainAt = async (base: StorageBase): Promise<StorageSnapshot> => {
+    const known = mainListings.get(base.revision);
+    if (known) return known;
+    const listing = await main.snapshotAt(
+      base.revision,
+      base.resolvedRef ?? options.mainBranch,
+    );
+    mainListings.set(base.revision, listing);
+    return listing;
+  };
 
   const snapshot = async (): Promise<StorageSnapshot> => {
     const [base, draft] = await Promise.all([
       main.snapshot(),
       drafts.load(ref),
     ]);
+    mainListings.set(base.revision, base);
     const { files, texts } = layerDraftFiles(
       base.files,
       draft?.body ?? { set: {}, delete: [] },
@@ -198,6 +255,52 @@ export function createDraftContentStorage(options: {
     return same;
   };
 
+  /**
+   * Drops the discarded names from the draft: what the layered read serves
+   * for them is main's files again, byte for byte (the core only restores
+   * files main has now, `expectedBase` saw to that).
+   */
+  const discard = async (
+    base: StorageSnapshot,
+    attempt: CommitAttempt,
+  ): Promise<CommitResult> => {
+    const onMain = new Map(base.files.map((f) => [f.file, f.version]));
+    const versions: Record<string, string> = {};
+    for (const file of Object.keys(attempt.put)) {
+      const version = onMain.get(file);
+      if (version === undefined) return { status: "stale" };
+      versions[file] = version;
+    }
+    const groups = new Set(
+      [...Object.keys(attempt.put), ...attempt.delete].map(groupOf),
+    );
+    const expected = Object.entries(attempt.expected);
+    try {
+      const saved = await drafts.update(ref, (body) => {
+        if (expected.length > 0) {
+          const now = new Map(
+            layerDraftFiles(base.files, body).files.map((f) => [
+              f.file,
+              f.version,
+            ]),
+          );
+          for (const [file, version] of expected) {
+            if ((now.get(file) ?? null) !== version) throw STALE_DRAFT;
+          }
+        }
+        return dropGroupsFromDraft(body, groups);
+      });
+      return {
+        status: "committed",
+        revision: draftRevision(base.revision, saved.etag),
+        versions,
+      };
+    } catch (error) {
+      if (error === STALE_DRAFT) return { status: "stale" };
+      throw error;
+    }
+  };
+
   return {
     describe(): StorageDescription {
       const description = {
@@ -230,6 +333,22 @@ export function createDraftContentStorage(options: {
     readSchema: () => main.readSchema(),
     readSecretsPublicKey: () => main.readSecretsPublicKey(),
 
+    base: async (): Promise<StorageBase> => {
+      const head = await main.head();
+      return { revision: head.sha, resolvedRef: head.ref };
+    },
+
+    changes: async (base, snap): Promise<StorageChanges> => {
+      const onMain = await mainAt(base);
+      return {
+        files: filesChangedFrom(onMain, snap),
+        baseFiles: onMain.files,
+      };
+    },
+
+    readBaseFiles: async (base, files) =>
+      main.readFiles(await mainAt(base), files),
+
     commit: async (attempt): Promise<CommitResult> => {
       // Never write a v7 site through the protocol, even by a direct call.
       const schema = await main.readSchema();
@@ -241,6 +360,14 @@ export function createDraftContentStorage(options: {
         return { status: "stale" };
       }
       const base = await main.snapshot();
+      mainListings.set(base.revision, base);
+      if (
+        attempt.expectedBase !== undefined &&
+        base.revision !== attempt.expectedBase
+      ) {
+        return { status: "stale" };
+      }
+      if (attempt.reason === "discard") return discard(base, attempt);
       const mainGroups = new Set(base.files.map((f) => groupOf(f.file)));
       const versions: Record<string, string> = {};
       for (const [file, content] of Object.entries(attempt.put)) {
@@ -307,5 +434,12 @@ export function createV7MainStorage(options: {
     commit: async () => {
       throw unsupported("not a Blocks v8 site");
     },
+    // No saved blocks, so nothing differs from main.
+    base: async () => ({
+      revision: "not-v8",
+      resolvedRef: options.mainBranch,
+    }),
+    changes: async () => ({ files: [], baseFiles: [] }),
+    readBaseFiles: async () => ({}),
   };
 }
