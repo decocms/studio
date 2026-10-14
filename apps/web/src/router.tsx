@@ -816,6 +816,10 @@ const agentAnalyticsRoute = createRoute({
     defaultMain: "analytics",
     mainView: "analytics",
   },
+  // `view` lets another tab deep-link straight to one of AnalyticsTab's
+  // DATA_VIEWS (e.g. Experiments' "ver dados" opens here with view=experiments)
+  // instead of always landing on "overview".
+  validateSearch: z.object({ view: z.string().optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-analytics.tsx"),
   ),
@@ -831,6 +835,8 @@ const agentExperimentsRoute = createRoute({
     defaultMain: "experiments",
     mainView: "experiments",
   },
+  // `?ui=legacy` previews the pre-flag tab without flipping the org's flag.
+  validateSearch: z.object({ ui: z.literal("legacy").optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-experiments.tsx"),
   ),

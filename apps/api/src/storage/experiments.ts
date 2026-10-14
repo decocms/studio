@@ -126,6 +126,25 @@ export class ExperimentStorage {
     return this.getByKey(organizationId, site, key);
   }
 
+  /** Point the experiment at the task board card implementing it. Separate from
+   *  `update` because it is not a definition edit: it must not stamp a
+   *  lifecycle timestamp, and `EXPERIMENT_UPDATE` must never let a caller
+   *  re-point an experiment at an arbitrary card. */
+  async linkTaskBoardItem(
+    organizationId: string,
+    site: string,
+    key: string,
+    taskBoardItemId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("experiments")
+      .set({ task_board_item_id: taskBoardItemId })
+      .where("organization_id", "=", organizationId)
+      .where("site", "=", site)
+      .where("key", "=", key)
+      .execute();
+  }
+
   async delete(
     organizationId: string,
     site: string,
@@ -151,6 +170,7 @@ export class ExperimentStorage {
     variants: unknown;
     started_at: Date | string | null;
     ended_at: Date | string | null;
+    task_board_item_id: string | null;
     created_by: string;
     created_at: Date | string;
     updated_at: Date | string;
@@ -169,6 +189,7 @@ export class ExperimentStorage {
       variants: (row.variants ?? []) as ExperimentVariant[],
       startedAt: row.started_at ? iso(row.started_at) : null,
       endedAt: row.ended_at ? iso(row.ended_at) : null,
+      taskBoardItemId: row.task_board_item_id,
       createdBy: row.created_by,
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),

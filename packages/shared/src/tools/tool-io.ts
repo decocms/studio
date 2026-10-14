@@ -130,6 +130,7 @@ export interface StudioToolIO {
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
+            experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
@@ -210,6 +211,7 @@ export interface StudioToolIO {
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
+            experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
@@ -286,6 +288,7 @@ export interface StudioToolIO {
             deco_analytics_enabled?: boolean | undefined;
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
+            experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
@@ -5027,9 +5030,12 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
         createdBy: string;
         createdAt: string;
         updatedAt: string;
@@ -5051,9 +5057,12 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
         createdBy: string;
         createdAt: string;
         updatedAt: string;
@@ -5071,6 +5080,7 @@ export interface StudioToolIO {
             id: string;
             weight: number;
             role?: "control" | "treatment" | null | undefined;
+            description?: string | null | undefined;
           }[]
         | undefined;
     };
@@ -5087,14 +5097,60 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
         createdBy: string;
         createdAt: string;
         updatedAt: string;
       };
     };
+  };
+  EXPERIMENT_SUGGEST: {
+    input: { site: string; prompt: string };
+    output: {
+      key: string;
+      name: string;
+      hypothesis: string;
+      variants: {
+        id: string;
+        weight: number;
+        role: "control" | "treatment";
+        description: string;
+      }[];
+    };
+  };
+  EXPERIMENT_IMPLEMENT: {
+    input: { site: string; key: string };
+    output: { taskBoardItemId: string; taskKey: string | null };
+  };
+  EXPERIMENT_IMPLEMENT_LOCAL: {
+    input: {
+      site: string;
+      key: string;
+      variants: {
+        id: string;
+        role?: "control" | "treatment" | null | undefined;
+        description?: string | null | undefined;
+      }[];
+    };
+    output: {
+      implemented: boolean;
+      reason?: string | undefined;
+      cssFile?: string | undefined;
+      targetFile?: string | undefined;
+    };
+  };
+  EXPERIMENT_PREVIEW_SYNC_LOCAL: {
+    input: {
+      site: string;
+      key: string;
+      variants: { id: string; weight: number }[];
+    };
+    output: { synced: boolean };
   };
   EXPERIMENT_UPDATE: {
     input: {
@@ -5108,6 +5164,7 @@ export interface StudioToolIO {
             id: string;
             weight: number;
             role?: "control" | "treatment" | null | undefined;
+            description?: string | null | undefined;
           }[]
         | undefined;
     };
@@ -5124,9 +5181,12 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
+        taskBoardItemId: string | null;
+        taskKey: string | null;
         createdBy: string;
         createdAt: string;
         updatedAt: string;
