@@ -347,28 +347,24 @@ export function ToolSetSelector({
 
   // Toggle all tools for a connection
   const toggleConnection = (connectionId: string) => {
-    const tools = connectionId === selectedConnectionId ? connectionTools : [];
-    if (!tools.length) return;
-
     const currentTools = toolSet[connectionId] ?? [];
-    const allToolNames = tools.map((t) => t.name);
-    const allSelected =
-      currentTools.length > 0 &&
-      allToolNames.every((name) => currentTools.includes(name));
 
-    const newToolSet = { ...toolSet };
-
-    if (allSelected) {
-      // Deselect all tools
+    // Deselect needs no live tool list, so it works for a closed row too.
+    if (currentTools.length > 0) {
+      const newToolSet = { ...toolSet };
       delete newToolSet[connectionId];
-    } else {
-      // Select all tools
-      newToolSet[connectionId] = allToolNames;
-      // Set this connection as the selected connection
-      setSelectedConnectionId(connectionId);
+      onToolSetChange(newToolSet);
+      return;
     }
 
-    onToolSetChange(newToolSet);
+    const tools = connectionId === selectedConnectionId ? connectionTools : [];
+    if (!tools.length) {
+      // Open the row instead of no-op'ing the click.
+      setSelectedConnectionId(connectionId);
+      return;
+    }
+
+    onToolSetChange({ ...toolSet, [connectionId]: tools.map((t) => t.name) });
   };
 
   // Handle connection selection (mobile opens detail view)
