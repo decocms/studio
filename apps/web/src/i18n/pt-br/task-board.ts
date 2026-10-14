@@ -89,6 +89,8 @@ export const taskBoard = {
     "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",
   "taskBoard.agenticSetup.failed":
     "Não foi possível iniciar o chat de configuração do quadro",
+  "taskBoard.dropHint.pickUp": "{names} vai pegar este card",
+  "taskBoard.dropHint.pickUpMany": "{names} vai pegar estes cards",
   "taskBoard.columnRules.add": "Adicionar instruções",
   "taskBoard.columnRules.editAriaLabel": "Editar regras de {lane}",
   "taskBoard.columnRules.skillsOnly": "{count} skills",

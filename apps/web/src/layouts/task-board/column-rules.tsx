@@ -56,7 +56,7 @@ export function useColumnRules(columnKey: string) {
 }
 
 /** The automations whose "card enters a column" starter watches `columnKey`. */
-function useColumnAutomations(columnKey: string) {
+export function useColumnAutomations(columnKey: string) {
   const { data } = useAutomations();
   return (data ?? []).filter((a) => a.board_columns.includes(columnKey));
 }
