@@ -3,6 +3,7 @@ import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import {
   blockRefLoaderConfigHasData,
   blockRefOptionLabel,
+  blockRefValueForBranch,
   detectBlockRefType,
   enrichBlockRefOptions,
   lazyWrappedInner,
@@ -337,5 +338,45 @@ describe("lazyWrappedInner", () => {
     expect(lazyWrappedInner({ __resolveType: LAZY, section: "x" })).toBeNull();
     expect(lazyWrappedInner(null)).toBeNull();
     expect(lazyWrappedInner([])).toBeNull();
+  });
+});
+
+describe("blockRefValueForBranch", () => {
+  const PRODUCT_LIST = "vtex/loaders/intelligentSearch/productList.ts";
+
+  test("persists the shown branch when the value had no __resolveType", () => {
+    expect(
+      blockRefValueForBranch(
+        { props: { collection: "2629", count: 12 } },
+        PRODUCT_LIST,
+      ),
+    ).toEqual({
+      props: { collection: "2629", count: 12 },
+      __resolveType: PRODUCT_LIST,
+    });
+  });
+
+  test("keeps an existing __resolveType", () => {
+    const value = { __resolveType: PRODUCT_LIST, props: { query: "shirt" } };
+    expect(blockRefValueForBranch(value, PRODUCT_LIST)).toBe(value);
+  });
+
+  test("strips __resolveType from embedded union variants", () => {
+    expect(
+      blockRefValueForBranch(
+        { __resolveType: "site/sections/Carousel.tsx@ImageBanner", src: "a" },
+        "site/sections/Carousel.tsx@ImageBanner",
+      ),
+    ).toEqual({ src: "a" });
+  });
+
+  test("does not point bare props at a saved block", () => {
+    const value = { props: { count: 4 } };
+    expect(blockRefValueForBranch(value, "Saved Shelf")).toBe(value);
+  });
+
+  test("passes non-object values through", () => {
+    expect(blockRefValueForBranch(undefined, PRODUCT_LIST)).toBeUndefined();
+    expect(blockRefValueForBranch([], PRODUCT_LIST)).toEqual([]);
   });
 });

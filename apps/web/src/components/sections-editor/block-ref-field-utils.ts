@@ -2,6 +2,7 @@ import { labelFromResolveType } from "./section-types";
 import { isLazyResolveType } from "./section-lazy";
 import {
   embeddedUnionBlockId,
+  isEmbeddedUnionResolveType,
   isSavedBlockResolveType,
   parseSavedBlockSchemaTitle,
   unionRefMatchesValue,
@@ -170,6 +171,29 @@ export function detectBlockRefType(
   if (bestScore > 0) return best;
 
   return best;
+}
+
+/**
+ * The value to store after editing the selected branch's form. A value with no
+ * `__resolveType` shows the first branch as selected, so the edit must persist
+ * that choice: deco hands bare `{ props }` to the section unresolved. Embedded
+ * union variants (`…@Name`) store plain props instead.
+ */
+export function blockRefValueForBranch(
+  next: unknown,
+  activeRt: string,
+): unknown {
+  if (!next || typeof next !== "object" || Array.isArray(next)) return next;
+  const { __resolveType, ...rest } = next as Record<string, unknown>;
+  if (isEmbeddedUnionResolveType(activeRt)) return rest;
+  if (
+    typeof __resolveType === "string" ||
+    !activeRt ||
+    isSavedBlockResolveType(activeRt)
+  ) {
+    return next;
+  }
+  return { ...next, __resolveType: activeRt };
 }
 
 /** Resolve nested form schema from live meta (admin uses getSchemaRefForResolveType). */
