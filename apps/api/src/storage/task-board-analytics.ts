@@ -374,6 +374,14 @@ const operationFacts = (
     join threads t on t.id = l.thread_id
     join task_board_items ri on ri.id = l.task_board_item_id
     where ${orgIn(q.orgIds, "ri.organization_id")}
+      ${
+        cohort === "ran"
+          ? // Only cards with a run in range can have their first one there.
+            sql`and l.task_board_item_id in (
+                  select task_board_item_id from task_board_item_threads
+                  where ${orgIn(q.orgIds, "organization_id")} and ${inRange("created_at", q)})`
+          : sql``
+      }
     group by 1
   ) r on r.item_id = i.id
   where ${scoped(q)}
@@ -646,12 +654,35 @@ export const table = (
   ...(units ? { units } : {}),
 });
 
+/** Where a report reads `operationFacts` from, and how it runs queries. */
+interface Facts {
+  rows: (query: ReturnType<typeof sql>) => Promise<Row[]>;
+  f: ReturnType<typeof sql>;
+}
+
 export class TaskBoardAnalyticsStorage {
   constructor(private readonly db: Kysely<Database>) {}
 
   private async rows(query: ReturnType<typeof sql>): Promise<Row[]> {
     const result = await query.execute(this.db);
     return result.rows as Row[];
+  }
+
+  /** Runs a report against `operationFacts(q)` computed once: a report reads
+   *  it up to ten times, and each read scans the org's cards. */
+  private withFacts<T>(
+    q: AnalyticsQuery,
+    run: (x: Facts) => Promise<T>,
+  ): Promise<T> {
+    return this.db.transaction().execute(async (trx) => {
+      await sql`create temp table operation_facts on commit drop as ${operationFacts(q)}`.execute(
+        trx,
+      );
+      return run({
+        rows: async (query) => (await query.execute(trx)).rows as Row[],
+        f: sql`select * from operation_facts`,
+      });
+    });
   }
 
   /** Panels 1–7: did the work ship, and where did the time go? */
@@ -924,7 +955,10 @@ export class TaskBoardAnalyticsStorage {
    */
   async cost(q: AnalyticsQuery): Promise<Section[]> {
     const taskCost = taskCostCte(q);
-    const spend = await this.reworkSpend(q);
+    const spend = await this.reworkSpend({
+      rows: (query) => this.rows(query),
+      f: operationFacts(q),
+    });
 
     const [total] = await this.rows(sql`
       with task_cost as (${taskCost})
@@ -1447,6 +1481,10 @@ export class TaskBoardAnalyticsStorage {
    * and its whole journey is judged; human steps count only after that first run.
    */
   async operation(q: AnalyticsQuery): Promise<Section[]> {
+    return this.withFacts(q, (x) => this.operationOf(x, q));
+  }
+
+  private async operationOf(x: Facts, q: AnalyticsQuery): Promise<Section[]> {
     const span = Date.parse(q.to) - Date.parse(q.from);
     // Exclusive of `from`, which the current window already counts.
     const previous = {
@@ -1460,9 +1498,9 @@ export class TaskBoardAnalyticsStorage {
     ).toISOString();
     const bucket = span <= 14 * 86_400_000 ? "day" : "week";
 
-    const summary = async (w: AnalyticsQuery, asOf?: string) => {
-      const [row] = await this.rows(sql`
-        with f as (${operationFacts(w, "ran", asOf)})
+    const summary = async (facts: Facts["f"]) => {
+      const [row] = await x.rows(sql`
+        with f as (${facts})
         select ${sql.join(
           Object.entries(OPERATION_COHORTS).map(
             ([key, filter]) =>
@@ -1478,12 +1516,12 @@ export class TaskBoardAnalyticsStorage {
       return row ?? {};
     };
     const [now, before] = await Promise.all([
-      summary(q),
-      summary(previous, previousAsOf),
+      summary(x.f),
+      summary(operationFacts(previous, "ran", previousAsOf)),
     ]);
 
-    const trend = await this.rows(sql`
-      with f as (${operationFacts(q)})
+    const trend = await x.rows(sql`
+      with f as (${x.f})
       select date_trunc(${bucket}, first_run_at) as t,
              round(100.0 * ${cohortCount("shipped_untouched")}
                    / nullif(${cohortCount("shipped")}, 0), 1) as "Shipped on its own %",
@@ -1492,8 +1530,8 @@ export class TaskBoardAnalyticsStorage {
       from f group by 1 order by 1
     `);
 
-    const touches = await this.rows(sql`
-      with f as (${operationFacts(q)}),
+    const touches = await x.rows(sql`
+      with f as (${x.f}),
       t as (${humanTouches()})
       select class, count(distinct item_id) as tasks, count(*) as actions,
              string_agg(distinct kind, ', ') as kinds
@@ -1504,8 +1542,8 @@ export class TaskBoardAnalyticsStorage {
       return r ? [{ ...c, row: r }] : [];
     });
 
-    const needed = await this.rows(sql`
-      with f as (${operationFacts(q)}),
+    const needed = await x.rows(sql`
+      with f as (${x.f}),
       t as (${humanTouches()})
       select left(f.title, 80) as "Task",
              f.status as "Lane",
@@ -1640,8 +1678,12 @@ export class TaskBoardAnalyticsStorage {
    * who wrote it) — the indicators of where rework concentrates.
    */
   async rework(q: AnalyticsQuery): Promise<Section[]> {
-    const [summary] = await this.rows(sql`
-      with f as (${operationFacts(q)}),
+    return this.withFacts(q, (x) => this.reworkOf(x));
+  }
+
+  private async reworkOf(x: Facts): Promise<Section[]> {
+    const [summary] = await x.rows(sql`
+      with f as (${x.f}),
       t as (${humanTouches()})
       select count(*) as ran,
              ${cohortCount("reached_qa")} as reached_qa,
@@ -1662,10 +1704,10 @@ export class TaskBoardAnalyticsStorage {
       from f
     `);
     const count = (key: string) => num(summary?.[key]) ?? 0;
-    const spend = await this.reworkSpend(q);
+    const spend = await this.reworkSpend(x);
 
-    const sources = await this.rows(sql`
-      with f as (${operationFacts(q)}),
+    const sources = await x.rows(sql`
+      with f as (${x.f}),
       rt as (${returnsOf()})
       select source, count(distinct item_id) as tasks, count(*) as times
       from rt group by 1
@@ -1675,8 +1717,8 @@ export class TaskBoardAnalyticsStorage {
       REWORK_CUTS.map(async (cut) => ({
         label: cut.label,
         rows: (
-          await this.rows(sql`
-            with f as (${operationFacts(q)})
+          await x.rows(sql`
+            with f as (${x.f})
             select ${cut.name} as name, ${cut.drill} as drill, ${REWORK_RATES}
             from f ${cut.join}
             group by 1, 2
@@ -1692,8 +1734,8 @@ export class TaskBoardAnalyticsStorage {
       })),
     );
 
-    const cells = await this.rows(sql`
-      with f as (${operationFacts(q)})
+    const cells = await x.rows(sql`
+      with f as (${x.f})
       select coalesce(o.name, 'No tag') as row, coalesce(o.id, 'none') as row_id,
              initcap(f.type) as col, f.type as col_id, ${REWORK_RATES}
       from f
@@ -1712,8 +1754,8 @@ export class TaskBoardAnalyticsStorage {
     const matrixRows = total("row").slice(0, 8);
 
     // Tags crossed with tags: where size is tagged, "UI and Large" is a cell.
-    const pairs = await this.rows(sql`
-      with f as (${operationFacts(q)}),
+    const pairs = await x.rows(sql`
+      with f as (${x.f}),
       ft as (
         select f.*, o.id as tag_id, o.name as tag
         from f
@@ -2015,10 +2057,10 @@ export class TaskBoardAnalyticsStorage {
 
   /** USD spent on runs of the cards first run in range, and how much of it came after a send-back. */
   private async reworkSpend(
-    q: AnalyticsQuery,
+    x: Facts,
   ): Promise<{ rework: number | null; total: number | null }> {
-    const [row] = await this.rows(sql`
-      with f as (${operationFacts(q)}),
+    const [row] = await x.rows(sql`
+      with f as (${x.f}),
       rt as (${returnsOf()}),
       fr as (select item_id, min(at) as first_return from rt group by 1)
       select round(coalesce(sum(${RUN_COST}) filter (where l.created_at > fr.first_return), 0), 2) as rework,
