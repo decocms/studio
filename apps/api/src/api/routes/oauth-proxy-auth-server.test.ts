@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "bun:test";
-import { getOriginAuthServer } from "./oauth-proxy";
+import { firstAuthorizationServer, getOriginAuthServer } from "./oauth-proxy";
 
 const originalFetch = globalThis.fetch;
 
@@ -41,5 +41,35 @@ describe("getOriginAuthServer", () => {
 
     const result = await getOriginAuthServer("https://mcp.example.com/sse");
     expect(result).toBe("https://mcp.example.com");
+  });
+});
+
+describe("firstAuthorizationServer", () => {
+  it("returns a string entry", () => {
+    expect(
+      firstAuthorizationServer({
+        authorization_servers: ["https://idp.example.com"],
+      }),
+    ).toBe("https://idp.example.com");
+  });
+
+  it("rejects a non-string entry", () => {
+    expect(
+      firstAuthorizationServer({ authorization_servers: [12345] }),
+    ).toBeUndefined();
+  });
+
+  it("rejects a non-array authorization_servers", () => {
+    expect(
+      firstAuthorizationServer({
+        authorization_servers: "https://idp.example.com",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("handles missing or malformed data", () => {
+    expect(firstAuthorizationServer({})).toBeUndefined();
+    expect(firstAuthorizationServer(null)).toBeUndefined();
+    expect(firstAuthorizationServer(undefined)).toBeUndefined();
   });
 });

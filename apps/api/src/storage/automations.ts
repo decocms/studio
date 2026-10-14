@@ -72,8 +72,13 @@ export interface AutomationWithTriggerCount extends Automation {
 
 export interface AutomationWithTriggerInfo extends AutomationWithTriggerCount {
   nearest_next_run_at: string | null;
-  /** The board columns its `board_column_transition` starters watch. */
-  board_columns: string[];
+  /** Its board starters: the column each one is about, and its type. */
+  board_triggers: BoardTrigger[];
+}
+
+export interface BoardTrigger {
+  type: "board_column_transition" | "board_pr_ready";
+  column_key: string;
 }
 
 export interface AutomationsStorage {
@@ -118,6 +123,10 @@ export interface AutomationsStorage {
     columnKey: string,
   ): Promise<boolean>;
   claimTriggerFire(triggerId: string, eventKey: string): Promise<boolean>;
+  findBuiltinTrigger(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<{ automationId: string; triggerId: string } | null>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
@@ -378,11 +387,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .select((eb) => eb.fn.count("t.id").as("trigger_count"))
       .select((eb) => eb.fn.min("t.next_run_at").as("nearest_next_run_at"))
       .select(
-        sql<
-          string[]
-        >`coalesce(array_agg(distinct t.column_key) filter (where t.type = 'board_column_transition'), '{}')`.as(
-          "board_columns",
-        ),
+        sql<BoardTrigger[]>`coalesce(
+          jsonb_agg(jsonb_build_object('type', t.type, 'column_key', t.column_key))
+            filter (where t.type in ('board_column_transition', 'board_pr_ready')),
+          '[]'::jsonb)`.as("board_triggers"),
       )
       .where("a.organization_id", "=", organizationId);
 
@@ -413,7 +421,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return rows.map((row) => ({
       ...automationFromDbRow(row),
       trigger_count: Number(row.trigger_count),
-      board_columns: row.board_columns,
+      board_triggers: row.board_triggers,
       nearest_next_run_at: row.nearest_next_run_at
         ? toIsoString(row.nearest_next_run_at as unknown as string)
         : null,
@@ -670,6 +678,23 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .limit(1)
       .executeTakeFirst();
     return row !== undefined;
+  }
+
+  /** A built-in's automation and its trigger in one org; null when the org
+   *  was not seeded with it. */
+  async findBuiltinTrigger(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<{ automationId: string; triggerId: string } | null> {
+    const row = await this.db
+      .selectFrom("automations as a")
+      .innerJoin("automation_triggers as t", "t.automation_id", "a.id")
+      .select(["a.id as automationId", "t.id as triggerId"])
+      .where("a.organization_id", "=", organizationId)
+      .where("a.system_key", "=", systemKey)
+      .limit(1)
+      .executeTakeFirst();
+    return row ?? null;
   }
 
   /**

@@ -38,7 +38,7 @@ import {
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import { ColumnRulesSheet, useColumnAutomations } from "./column-rules";
+import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -2727,7 +2727,7 @@ function Lane({
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const takers = useColumnAutomations(status)
+  const takers = useEntryAutomations(status)
     .filter((automation) => automation.active)
     .map((automation) => automation.name);
   const announce = firesOnDrop && takers.length > 0;

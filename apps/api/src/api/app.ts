@@ -115,6 +115,7 @@ import {
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
   fetchProtectedResourceMetadata,
+  firstAuthorizationServer,
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
@@ -490,10 +491,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
 
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
-    const resourceData = (await resourceRes.json()) as {
-      authorization_servers?: string[];
-    };
-    originAuthServer = resourceData.authorization_servers?.[0];
+    originAuthServer = firstAuthorizationServer(await resourceRes.json());
   }
 
   // Fall back to origin root if:

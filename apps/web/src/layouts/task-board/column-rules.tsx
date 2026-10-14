@@ -44,10 +44,23 @@ function useColumnRules(columnKey: string) {
   };
 }
 
-/** The automations whose "card enters a column" starter watches `columnKey`. */
-export function useColumnAutomations(columnKey: string) {
+/** The automations a card dropped in `columnKey` starts: the ones with a
+ *  "card enters a column" starter there. */
+export function useEntryAutomations(columnKey: string) {
   const { data } = useAutomations();
-  return (data ?? []).filter((a) => a.board_columns.includes(columnKey));
+  return (data ?? []).filter((a) =>
+    a.board_triggers.some(
+      (t) => t.type === "board_column_transition" && t.column_key === columnKey,
+    ),
+  );
+}
+
+/** Every automation with a board starter on `columnKey`, whatever starts it. */
+function useColumnAutomations(columnKey: string) {
+  const { data } = useAutomations();
+  return (data ?? []).filter((a) =>
+    a.board_triggers.some((t) => t.column_key === columnKey),
+  );
 }
 
 /** Each automation that runs on cards landing in the column, with its switch. */

@@ -6,16 +6,25 @@
  * when and on which card.
  */
 
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  type ReviewerKind,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
+import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import type { StudioContext } from "@/core/studio-context";
-import type { Automation } from "@/storage/types";
+import type { Automation, TaskBoardItem } from "@/storage/types";
 import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
+import {
+  enqueueReviewerForTask,
+  reviewerThreadId,
+  reviewFenceKey,
+} from "@/tools/task-board/reviewer-run";
 import {
   automationInstruction,
   cardFireFence,
 } from "./board-column-transition";
-import { IMPLEMENTER_SYSTEM_KEY } from "./builtin";
+import { IMPLEMENTER_SYSTEM_KEY, REVIEWER_SYSTEM_KEY } from "./builtin";
 
 /** A card a fire runs on: the card, the column the run is for, and the event
  *  that picked it (it keys the run, so a retried fire starts it once). */
@@ -26,6 +35,15 @@ export interface CardTarget {
   eventKey: string;
   /** Who moved the card there; null for a machine move. */
   movedBy: string | null;
+  /** Set on the built-in Reviewer's fire: which review run to start. The
+   *  review sweep already decided it is due. */
+  review?: {
+    kind: ReviewerKind;
+    /** ISO; the cycle's start, which the run's fence and token key on. */
+    cycleAt: string;
+    attempt: number;
+    modelClass: ClaudeCodeModelClass;
+  };
 }
 
 export type CardRunSkip =
@@ -57,6 +75,9 @@ export async function runAutomationOnCard(
     automation.organization_id,
   );
   if (!item) return { skipped: "card_gone" };
+  if (automation.system_key === REVIEWER_SYSTEM_KEY && target.review) {
+    return await runReviewOnCard(ctx, item, triggerId, target.review);
+  }
   if (item.status !== target.columnKey) return { skipped: "moved_on" };
   if (
     item.threads.some(
@@ -136,4 +157,39 @@ export async function runAutomationOnCard(
     return { skipped: "rejected" };
   }
   return { threadId: fence.threadId };
+}
+
+/** The Reviewer's run: the card stays the Super Agent's, the review runs as a
+ *  linked thread. None of the column gates apply; the sweep that fired it
+ *  checked the review is due. */
+async function runReviewOnCard(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+  triggerId: string,
+  review: NonNullable<CardTarget["review"]>,
+): Promise<CardRunOutcome> {
+  const cycleAt = new Date(review.cycleAt);
+  const queued = await enqueueReviewerForTask(
+    ctx,
+    item,
+    review.kind,
+    cycleAt,
+    review.attempt,
+    review.modelClass,
+    triggerId,
+  ).catch((err) => {
+    console.warn(
+      `[automations] ${review.kind} on card ${item.id} was not dispatched:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  });
+  if (queued === null) return { skipped: "rejected" };
+  // A concurrent fire already started this attempt's run.
+  if (!queued) return { skipped: "busy" };
+  return {
+    threadId: reviewerThreadId(
+      reviewFenceKey(item.id, review.kind, cycleAt, review.attempt),
+    ),
+  };
 }

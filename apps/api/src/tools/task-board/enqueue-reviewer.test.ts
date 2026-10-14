@@ -10,8 +10,6 @@ import {
   authorRunLive,
   MAX_REVIEWER_ATTEMPTS,
   reviewerAttemptsExhausted,
-  pinnedRepoId,
-  priorCycleReviewAt,
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
@@ -20,6 +18,7 @@ import {
   verdictNudgedThreads,
   awaitingVerdictNudge,
 } from "./enqueue-reviewer";
+import { pinnedRepoId, priorCycleReviewAt } from "./reviewer-run";
 
 /** Cycle start (the task last entered In Review) at 10:00. */
 const CYCLE_START = new Date("2026-01-01T10:00:00Z").getTime();

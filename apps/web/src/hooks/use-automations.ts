@@ -116,13 +116,21 @@ export interface AutomationListItem {
   nearest_next_run_at: string | null;
   /** Set on a built-in, which can only be turned on or off. */
   system_key: string | null;
-  /** The board columns its "card enters a column" starters watch. */
-  board_columns: string[];
+  /** Its board starters: each one's column and type. */
+  board_triggers: {
+    type: "board_column_transition" | "board_pr_ready";
+    column_key: string;
+  }[];
 }
 
 export interface AutomationTrigger {
   id: string;
-  type: "cron" | "event" | "webhook" | "board_column_transition";
+  type:
+    | "cron"
+    | "event"
+    | "webhook"
+    | "board_column_transition"
+    | "board_pr_ready";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -317,6 +325,10 @@ export function useAutomationActions() {
       if (typeof variables.id === "string") {
         invalidateOne(variables.id);
       }
+      // The built-in Reviewer's switch is the org's review flag.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.organizationSettings(org.id),
+      });
       toast.success("Automation updated successfully");
     },
     onError: (error: unknown) => {

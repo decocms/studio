@@ -1153,7 +1153,7 @@ export class TaskBoardAnalyticsStorage {
       where ${inRange("i.created_at::timestamptz", q)} and ${scoped(q)}
       group by 1, 2
       having sum(i.retry_attempts) > 0
-      order by 4 desc
+      order by 4 desc limit 50
     `);
 
     return [

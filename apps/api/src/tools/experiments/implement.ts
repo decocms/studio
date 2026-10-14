@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { assertOwnsSite } from "./ownership";
+import { findOwnedProject } from "./ownership";
 import { assertExperimentsV2 } from "./v2-gate";
-import { resolveSiteRepositoryId } from "./resolve-site-repository";
+import { resolveRepositoryIdForProject } from "./resolve-site-repository";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskKey } from "@decocms/shared/task-key";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
@@ -126,7 +126,7 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    await assertOwnsSite(ctx, organization.id, input.site);
+    const project = await findOwnedProject(ctx, organization.id, input.site);
     await assertExperimentsV2(ctx, organization.id);
 
     const experiment = await ctx.storage.experiments.getByKey(
@@ -162,10 +162,10 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       // The card was deleted; delegate again.
     }
 
-    const repositoryId = await resolveSiteRepositoryId(
+    const repositoryId = await resolveRepositoryIdForProject(
       ctx,
       organization.id,
-      input.site,
+      project,
     );
     if (!repositoryId) {
       throw new Error(

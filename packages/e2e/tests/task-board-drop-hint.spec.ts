@@ -81,6 +81,15 @@ test.describe("task board drop hint", () => {
       page.locator('[data-lane="qa"]').getByRole("status"),
     ).toHaveCount(0);
     await expect(hint).toHaveCount(0);
+    // The Reviewer lives on In Review, but a drop there starts nothing: it
+    // waits for the card's pull request.
+    await page.mouse.move(
+      ...(await centerOf(page.locator('[data-lane="in_review"]'))),
+      { steps: 10 },
+    );
+    await expect(
+      page.locator('[data-lane="in_review"]').getByRole("status"),
+    ).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.mouse.up();
 

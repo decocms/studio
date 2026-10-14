@@ -642,6 +642,9 @@ function ConnectionInspectorViewWithConnection({
                       }
                       // New instance shares the same app slug — no navigation needed
                       // The page will re-render with the new sibling
+                    } catch (err) {
+                      console.error("Failed to add connection instance:", err);
+                      toast.error(t("details.connection.failedAddInstance"));
                     } finally {
                       setIsAddingInstance(false);
                     }

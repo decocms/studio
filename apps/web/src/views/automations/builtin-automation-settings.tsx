@@ -68,7 +68,9 @@ export function BuiltinAutomationSettings({
         <p className="text-sm text-muted-foreground">
           {automation.system_key === "implementer"
             ? t("automations.builtin.implementerDescription")
-            : t("automations.builtin.description")}
+            : automation.system_key === "reviewer"
+              ? t("automations.builtin.reviewerDescription")
+              : t("automations.builtin.description")}
         </p>
       </div>
     </div>

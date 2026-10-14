@@ -5,6 +5,7 @@
  * event triggers on their MCP connections accordingly.
  */
 
+import { setFlagBackedActive } from "../../automations/builtin";
 import { z } from "zod";
 import { syncAutomationActiveChanged } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
@@ -82,6 +83,19 @@ export const AUTOMATION_UPDATE = defineTool({
       Object.values(edits).some((value) => value !== undefined)
     ) {
       throw new Error("Built-in automations can only be turned on or off.");
+    }
+
+    // The Reviewer's switch is still the org's review flag.
+    if (
+      input.active !== undefined &&
+      (await setFlagBackedActive(ctx, existing, input.active))
+    ) {
+      return {
+        id: existing.id,
+        name: existing.name,
+        active: input.active,
+        updated_at: existing.updated_at,
+      };
     }
 
     // Build update payload

@@ -4,6 +4,7 @@
  * Gets a single automation by ID, including its full configuration and triggers.
  */
 
+import { withBuiltinActive } from "../../automations/builtin";
 import {
   BoardTransitionFromSchema,
   triggerFrom,
@@ -66,14 +67,16 @@ export const AUTOMATION_GET = defineTool({
     const organization = requireOrganization(ctx);
     await ctx.access.check();
 
-    const automation = await ctx.storage.automations.findById(
+    const found = await ctx.storage.automations.findById(
       input.id,
       organization.id,
     );
 
-    if (!automation) {
+    if (!found) {
       return { automation: null };
     }
+    const [automation] = await withBuiltinActive(ctx, organization.id, [found]);
+    if (!automation) return { automation: null };
 
     const triggers = await ctx.storage.automations.listTriggers(automation.id);
 

@@ -2661,6 +2661,7 @@ export interface StudioToolIO {
         slug?: string | null | undefined;
         app_name?: string | null | undefined;
         app_id?: string | null | undefined;
+        url_slug?: string | null | undefined;
         connection_url?: string | null | undefined;
         connection_token?: string | null | undefined;
         connection_headers?:
@@ -2777,6 +2778,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
     };
@@ -2888,6 +2890,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       }[];
       totalCount?: number | undefined;
@@ -2983,6 +2986,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       } | null;
     };
@@ -3088,6 +3092,7 @@ export interface StudioToolIO {
           | undefined;
         bindings?: string[] | null | undefined;
         status?: "error" | "active" | "inactive" | undefined;
+        url_slug?: string | null | undefined;
       };
     };
     output: {
@@ -3177,6 +3182,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
     };
@@ -3270,6 +3276,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
     };
@@ -3394,6 +3401,7 @@ export interface StudioToolIO {
         status: "error" | "active" | "inactive";
         updated_by?: string | undefined;
         slug?: string | null | undefined;
+        url_slug?: string | null | undefined;
         configuration_scopes?: string[] | null | undefined;
       };
       virtualMcp: {
@@ -3606,6 +3614,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
       reportApp: {
@@ -4064,6 +4073,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
     };
@@ -4292,6 +4302,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       }[];
       totalCount?: number | undefined;
@@ -4511,6 +4522,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       } | null;
     };
@@ -4520,6 +4532,7 @@ export interface StudioToolIO {
       id: string;
       data: {
         title?: string | undefined;
+        url_slug?: string | null | undefined;
         description?: string | null | undefined;
         icon?: string | null | undefined;
         status?: "active" | "inactive" | undefined;
@@ -4929,6 +4942,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
     };
@@ -5146,6 +5160,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       };
     };
@@ -6379,7 +6394,12 @@ export interface StudioToolIO {
         temperature: number;
         triggers: {
           id: string;
-          type: "cron" | "event" | "webhook" | "board_column_transition";
+          type:
+            | "cron"
+            | "event"
+            | "webhook"
+            | "board_column_transition"
+            | "board_pr_ready";
           cron_expression: string | null;
           connection_id: string | null;
           event_type: string | null;
@@ -6425,7 +6445,10 @@ export interface StudioToolIO {
         nearest_next_run_at: string | null;
         virtual_mcp_id: string;
         system_key: string | null;
-        board_columns: string[];
+        board_triggers: {
+          type: "board_column_transition" | "board_pr_ready";
+          column_key: string;
+        }[];
       }[];
     };
   };
@@ -6462,7 +6485,12 @@ export interface StudioToolIO {
   AUTOMATION_TRIGGER_ADD: {
     input: {
       automation_id: string;
-      type: "cron" | "event" | "webhook" | "board_column_transition";
+      type:
+        | "cron"
+        | "event"
+        | "webhook"
+        | "board_column_transition"
+        | "board_pr_ready";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
       event_type?: string | undefined;
@@ -6503,7 +6531,12 @@ export interface StudioToolIO {
     output: {
       id: string;
       automation_id: string;
-      type: "cron" | "event" | "webhook" | "board_column_transition";
+      type:
+        | "cron"
+        | "event"
+        | "webhook"
+        | "board_column_transition"
+        | "board_pr_ready";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;
     };
@@ -6782,6 +6815,7 @@ export interface StudioToolIO {
           selected_resources: string[] | null;
           selected_prompts: string[] | null;
         }[];
+        url_slug?: string | null | undefined;
         updated_by?: string | undefined;
       } | null;
     };
@@ -8648,7 +8682,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("task" | "connection" | "thread")[] | undefined;
+      types?: ("connection" | "task" | "thread")[] | undefined;
     };
     output: {
       items: (
