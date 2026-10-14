@@ -3,7 +3,7 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { assertOwnsSite } from "./ownership";
 import { assertExperimentsV2 } from "./v2-gate";
-import { resolveSiteRepositoryId } from "./resolve-site-repository";
+import { resolveSiteRepository } from "./resolve-site-repository";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskKey } from "@decocms/shared/task-key";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
@@ -162,16 +162,15 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       // The card was deleted; delegate again.
     }
 
-    const repositoryId = await resolveSiteRepositoryId(
+    const resolved = await resolveSiteRepository(
       ctx,
       organization.id,
       input.site,
     );
-    if (!repositoryId) {
-      throw new Error(
-        `${input.site} has no linked GitHub repository — connect one before implementing an experiment.`,
-      );
+    if (resolved.repositoryId === null) {
+      throw new Error(`Cannot implement an experiment: ${resolved.reason}`);
     }
+    const { repositoryId } = resolved;
 
     const owner = await ctx.db
       .selectFrom("member")
