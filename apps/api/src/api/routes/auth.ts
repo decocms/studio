@@ -120,16 +120,7 @@ app.post("/local-session", async (c) => {
   try {
     // Wait for local-mode seeding to complete before attempting login
     const { waitForSeed } = await import("@/auth/local-mode");
-    // Bounded so a stuck seed surfaces as an error, not a hung login screen.
-    await Promise.race([
-      waitForSeed(),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Local authentication setup timed out")),
-          15_000,
-        ),
-      ),
-    ]);
+    await waitForSeed();
 
     const { auth } = await import("../../auth");
     const adminUser = await getLocalAdminUser();
