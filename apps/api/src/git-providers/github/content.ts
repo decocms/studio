@@ -727,6 +727,19 @@ export class GithubContentClient implements RepoContentClient {
     return this.blobText(sha);
   }
 
+  async readCommit(
+    sha: string,
+  ): Promise<{ message: string; date: string } | null> {
+    const { status, json } = await this.call<{
+      message?: string;
+      committer?: { date?: string } | null;
+    }>("GET", `${this.repoBase}/git/commits/${sha}`, undefined, {
+      allow: [404, 422],
+    });
+    if (status !== 200 || typeof json?.message !== "string") return null;
+    return { message: json.message, date: json.committer?.date ?? "" };
+  }
+
   async readFileAtRef(ref: string, path: string): Promise<string | null> {
     const { status, json } = await this.call<{
       content?: string;

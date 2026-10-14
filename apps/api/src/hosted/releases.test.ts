@@ -7,15 +7,11 @@ import {
   SCHEMA_HASH,
   SCHEMA_TEXT,
 } from "./hosted-test-helpers";
-import { type HostedRepo, LatestUpdateError, readLatest } from "./publish";
+import { computeContentRevision } from "@decocms/blocks/protocol";
+import { type HostedRepo, readLatest, writeLatest } from "./publish";
 import { buildRevision } from "./release-objects";
-import {
-  listReleases,
-  makeCurrent,
-  makeHeadCurrent,
-  NotPublishedError,
-  SchemaMismatchError,
-} from "./releases";
+import { listReleases, makeHeadCurrent } from "./releases";
+import type { ServedLabel } from "./serving";
 
 beforeAll(() => {
   process.env.FAST_PREVIEW_CACHE_DIR = "";
@@ -94,7 +90,11 @@ describe("listReleases", () => {
     const first = await release();
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' });
     await release();
-    await makeCurrent(repo, first, { confirm: false });
+    await writeLatest(repo, {
+      revision: first,
+      schemaHash: SCHEMA_HASH,
+      publishedAt: new Date().toISOString(),
+    });
     // Not main's head, and not inferred from it: what latest.json says.
     const page = await listReleases(repo, insights.client, null);
     expect(page.current?.revision).toBe(first);
@@ -121,75 +121,115 @@ describe("listReleases", () => {
   });
 });
 
-describe("makeCurrent", () => {
-  it("writes latest.json for the companion, then purges it", async () => {
-    const { git, delivery, repo, release } = setup();
+describe("listReleases: republishes", () => {
+  it("links a republish to the release it republished (its trailer)", async () => {
+    const { git, repo, insights, release } = setup();
+    const first = await release();
+    git.pushDirect(
+      { ".deco/blocks/Home.json": '{"a":1}\n' },
+      `Republish: Summer\n\nRepublished-From: ${first}\nCo-authored-by: Ana <ana@x.com>`,
+    );
+    const page = await listReleases(repo, insights.client, null);
+    expect(page.commits[0]).toMatchObject({
+      message: "Republish: Summer",
+      republishOf: { sha: first },
+    });
+    expect(page.commits[1]?.republishOf).toBeNull();
+  });
+});
+
+describe("listReleases: what the site serves", () => {
+  const reader =
+    (labels: ServedLabel[] | null | Error) =>
+    async (): Promise<ServedLabel[] | null> => {
+      if (labels instanceof Error) throw labels;
+      return labels;
+    };
+  const at = (minutesAgo: number) =>
+    new Date(Date.now() - minutesAgo * 60_000).toISOString();
+
+  it("has no signal without a reader, or when the site reported nothing", async () => {
+    const { repo, insights, release } = setup();
+    await release();
+    expect((await listReleases(repo, insights.client, null)).serving).toEqual({
+      source: "none",
+    });
+    const empty = await listReleases(repo, insights.client, null, reader([]));
+    expect(empty.serving).toEqual({ source: "none" });
+    const failed = await listReleases(
+      repo,
+      insights.client,
+      null,
+      reader(new Error("ACCESS_DENIED")),
+    );
+    expect(failed.serving).toEqual({ source: "none" });
+  });
+
+  it("names the newest release the site reported (a CDN release is its commit)", async () => {
+    const { git, repo, insights, release } = setup();
     const first = await release();
     git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' });
-    delivery.log.length = 0;
-    const pointer = await makeCurrent(repo, first, { confirm: false });
-    expect(pointer).toMatchObject({ revision: first, schemaHash: SCHEMA_HASH });
-    expect(Date.now() - Date.parse(pointer.publishedAt)).toBeLessThan(5_000);
-    expect(delivery.log).toEqual([`put ${LATEST}`, `purge ${LATEST}`]);
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(first);
-  });
-
-  it("refuses a commit without a companion release", async () => {
-    const { git, delivery, repo } = setup();
-    await expect(
-      makeCurrent(repo, git.head(), { confirm: false }),
-    ).rejects.toThrow(NotPublishedError);
-    expect(delivery.log).toEqual([]);
-  });
-
-  it("fails fast on a failed purge: one purge call, no restore", async () => {
-    const { git, delivery, repo, release } = setup();
-    const first = await release();
-    git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' });
     const second = await release();
-    await makeCurrent(repo, second, { confirm: false });
-    delivery.failPurge(true);
-    delivery.log.length = 0;
-    const error = await makeCurrent(repo, first, { confirm: false }).catch(
-      (e: unknown) => e,
+    // An isolate still on the first one reported last: the site moves forward.
+    const now = at(0);
+    const page = await listReleases(
+      repo,
+      insights.client,
+      null,
+      reader([
+        { label: first, lastSeen: now },
+        { label: second, lastSeen: at(1) },
+      ]),
     );
-    expect(error).toBeInstanceOf(LatestUpdateError);
-    expect((error as Error).message).toContain("Try again");
-    expect(delivery.log).toEqual([`put ${LATEST}`, `purge ${LATEST}`]);
-    // No restore: the written pointer stays, and the screen reads it back.
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(first);
-  });
-
-  it("fails without purging when the latest.json write fails; Current stays put", async () => {
-    const { git, delivery, repo, release } = setup();
-    const first = await release();
-    await makeCurrent(repo, first, { confirm: false });
-    git.pushDirect({ ".deco/blocks/Home.json": '{"b":1}\n' });
-    const second = await release();
-    const put = delivery.store.putJson;
-    delivery.store.putJson = async (key, value, cache) => {
-      if (key === LATEST) throw new Error("R2 down");
-      return put(key, value, cache);
-    };
-    delivery.log.length = 0;
-    await expect(makeCurrent(repo, second, { confirm: false })).rejects.toThrow(
-      LatestUpdateError,
-    );
-    expect(delivery.log).toEqual([]);
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(first);
-  });
-
-  it("warns when the target's schema differs from main's, unless confirmed", async () => {
-    const { git, delivery, repo, release } = setup();
-    const old = await release();
-    git.pushDirect({
-      ".deco/schema.gen.json": SCHEMA_TEXT.replace("next.7", "next.8"),
+    expect(page.serving).toEqual({
+      source: "site",
+      revision: second,
+      lastSeen: now,
     });
-    await expect(makeCurrent(repo, old, { confirm: false })).rejects.toThrow(
-      SchemaMismatchError,
+  });
+
+  it("matches a bundled snapshot's content revision to the newest release with that content", async () => {
+    const { git, repo, insights, release } = setup();
+    const first = await release();
+    git.pushDirect({ ".deco/blocks/Home.json": '{"a":1}\n' });
+    await release();
+    // A republish of `first`: same content, newer commit.
+    git.pushDirect({ ".deco/blocks/Home.json": "{}\n" }, "Republish: initial");
+    const again = await release();
+    const label = await computeContentRevision(
+      (await buildRevision(git.client, null, first)).blocks,
     );
-    await makeCurrent(repo, old, { confirm: true });
-    expect((await readLatest(delivery.store, "acme"))?.revision).toBe(old);
+    const page = await listReleases(
+      repo,
+      insights.client,
+      null,
+      reader([{ label, lastSeen: at(0) }]),
+    );
+    expect(page.serving).toMatchObject({ source: "site", revision: again });
+  });
+
+  it("says the site reports something Studio can't match", async () => {
+    const { repo, insights, release } = setup();
+    await release();
+    const page = await listReleases(
+      repo,
+      insights.client,
+      null,
+      reader([{ label: "f".repeat(64), lastSeen: at(0) }]),
+    );
+    expect(page.serving).toMatchObject({ source: "site", revision: null });
+  });
+
+  it("reads it on the first page only", async () => {
+    const { repo, insights, release } = setup();
+    const first = await release();
+    const page = await listReleases(
+      repo,
+      insights.client,
+      "0",
+      reader([{ label: first, lastSeen: at(0) }]),
+    );
+    expect(page.serving).toBeNull();
   });
 });
 
