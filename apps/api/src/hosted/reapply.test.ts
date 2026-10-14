@@ -281,23 +281,23 @@ describe("reapply message", () => {
     );
   });
 
-  it("names a version without a note by its date", () => {
+  it("names a release without a note by its date", () => {
     expect(
       reapplyTitle({ message: "chore(decofile): update Home", date }),
-    ).toBe("Reapply: version from 2026-10-01 09:30 UTC");
+    ).toBe("Reapply: release from 2026-10-01 09:30 UTC");
     expect(reapplyTitle({ message: "", date })).toBe(
-      "Reapply: version from 2026-10-01 09:30 UTC",
+      "Reapply: release from 2026-10-01 09:30 UTC",
     );
     expect(reapplyTitle({ message: "", date: "nope" })).toBe(
-      "Reapply: earlier version",
+      "Reapply: earlier release",
     );
     // …and keeps that name when reapplied again.
     expect(
       reapplyTitle({
-        message: "Reapply: version from 2026-10-01 09:30 UTC",
+        message: "Reapply: release from 2026-10-01 09:30 UTC",
         date: "2026-10-05T00:00:00Z",
       }),
-    ).toBe("Reapply: version from 2026-10-01 09:30 UTC");
+    ).toBe("Reapply: release from 2026-10-01 09:30 UTC");
   });
 
   it("ends with the Reapplied-From trailer, co-author in the same block", () => {
