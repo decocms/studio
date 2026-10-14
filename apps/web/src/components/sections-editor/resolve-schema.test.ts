@@ -3,6 +3,7 @@ import {
   inferSchemaFromValue,
   isFreeformPropsSchema,
   resolveSchema,
+  resolveSchemaRef,
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
@@ -1417,6 +1418,59 @@ describe("resolveSchema – recursive data types (hang guard)", () => {
       product?.properties?.isVariantOf?.properties?.hasVariant?.items;
     expect(variant?.type).toBe("object");
     expect(variant?.properties).toBeUndefined();
+    expect(variant?.recursiveRef).toBe("#/definitions/Product");
+  });
+
+  test("resolveSchemaRef builds the level a recursive ref skipped", () => {
+    const meta = recursiveProductMeta();
+    const related = resolveSchema("site/sections/Shelf.tsx", meta)?.properties
+      ?.product?.properties?.isRelatedTo?.items;
+
+    const expanded = resolveSchemaRef(related!.recursiveRef!, meta);
+    expect(expanded.properties?.name?.type).toBe("string");
+    // The next re-entry is cut again, so each level stays lazy.
+    expect(expanded.properties?.isRelatedTo?.items?.recursiveRef).toBe(
+      "#/definitions/Product",
+    );
+  });
+
+  test("marks a recursive array def (Item.children: Item[])", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Menu.tsx": { $ref: "#/definitions/Menu" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Menu: {
+            type: "object",
+            properties: { items: { $ref: "#/definitions/[Item]" } },
+          },
+          "[Item]": { type: "array", items: { $ref: "#/definitions/Item" } },
+          Item: {
+            type: "object",
+            title: "{{{label}}}",
+            properties: {
+              label: { type: "string" },
+              children: { $ref: "#/definitions/[Item]", title: "Children" },
+            },
+          },
+        },
+      },
+    };
+    const item = resolveSchema("site/sections/Menu.tsx", meta)?.properties
+      ?.items?.items;
+    const children = item?.properties?.children;
+    expect(children?.title).toBe("Children");
+    expect(children?.items).toBeUndefined();
+    expect(children?.recursiveRef).toBe("#/definitions/[Item]");
+
+    const expanded = resolveSchemaRef(children!.recursiveRef!, meta);
+    expect(expanded.items?.titleBy).toBe("{{{label}}}");
+    expect(expanded.items?.properties?.label?.type).toBe("string");
   });
 });
 

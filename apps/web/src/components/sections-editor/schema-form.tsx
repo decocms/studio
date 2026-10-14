@@ -18,6 +18,7 @@ import { InlineUnionField } from "./fields/inline-union-field";
 import { LocationField } from "./fields/location-field";
 import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
+import { expandRecursiveSchema } from "./fields/resolved-schema-cache";
 import { isSecretBlock } from "@decocms/shared/decofile";
 import { isSecretField, SecretField } from "./fields/secret-field";
 import {
@@ -168,7 +169,11 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   );
 }
 
-export function renderField(props: FieldProps) {
+export function renderField(fieldProps: FieldProps) {
+  const props = {
+    ...fieldProps,
+    schema: expandRecursiveSchema(fieldProps.schema, fieldProps.meta),
+  };
   const { schema, value } = props;
 
   if (isMultivariateArrayWrapper(value)) {
