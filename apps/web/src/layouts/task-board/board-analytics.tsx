@@ -100,7 +100,8 @@ function DrillSheet({
   const t = useT();
   const { data, isLoading, error } = useTaskBoardOperationTasks(
     params,
-    target?.drill ?? null,
+    // Closed, it keeps its cards for the slide-out but stops fetching.
+    open ? (target?.drill ?? null) : null,
   );
   const tasks = data?.sections.find((s) => s.kind === "table");
   const count = tasks?.rows.length ?? 0;

@@ -43,6 +43,7 @@ import {
 } from "recharts";
 import type { AnalyticsSection } from "@/hooks/use-task-board-analytics";
 import { useT } from "@/i18n/use-t";
+import { useNavigate } from "@tanstack/react-router";
 import { timeAgo } from "@/lib/format-time";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { SettingsSection } from "@/components/settings/settings-section";
@@ -52,6 +53,33 @@ import {
   TASK_TYPE_CONFIG,
   laneHeader,
 } from "./config";
+
+/** A task link that stays in the app; modified clicks still open a new tab. */
+function TaskLink({
+  href,
+  className,
+  children,
+}: {
+  href?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const navigate = useNavigate();
+  return (
+    <a
+      href={href}
+      className={className}
+      onClick={(e) => {
+        if (!href || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey)
+          return;
+        e.preventDefault();
+        navigate({ href });
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 type SectionOf<K extends AnalyticsSection["kind"]> = Extract<
   AnalyticsSection,
@@ -882,12 +910,12 @@ function TableCard({
                             {String(value)}
                           </button>
                         ) : taskId ? (
-                          <a
+                          <TaskLink
                             href={taskHref?.(String(taskId))}
                             className="focus-ring text-foreground underline-offset-2 hover:underline"
                           >
                             {String(value)}
-                          </a>
+                          </TaskLink>
                         ) : c === "Lane" && typeof value === "string" ? (
                           <LaneBadge lane={value} />
                         ) : c === "Priority" && typeof value === "string" ? (
@@ -986,7 +1014,7 @@ export function DrillList({
         return (
           <li key={id} className="border-b border-border/50 last:border-b-0">
             {taskHref ? (
-              <a
+              <TaskLink
                 href={taskHref(id)}
                 className={cn(
                   CLICKABLE,
@@ -994,7 +1022,7 @@ export function DrillList({
                 )}
               >
                 {body}
-              </a>
+              </TaskLink>
             ) : (
               <div className="flex items-center gap-3 p-2">{body}</div>
             )}

@@ -1066,7 +1066,7 @@ const tasksRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/tasks.tsx")),
 });
 
-/** The task board's Grafana dashboards, in-product. Admin orgs only. */
+/** The org board's analytics. Every member; the cross-org picker is admin-org only. */
 const taskBoardAnalyticsRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,

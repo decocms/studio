@@ -4,6 +4,7 @@
 
 import { ChatLayout } from "@/components/chat-layout";
 import { BoardAnalytics } from "@/layouts/task-board/board-analytics";
+import { taskSharePath } from "@/layouts/task-board/task-route";
 import { useTaskBoardAdminOrgs } from "@/hooks/use-task-board-analytics";
 import { useT } from "@/i18n/use-t";
 import { Combobox } from "@decocms/ui/components/combobox.tsx";
@@ -27,10 +28,10 @@ export default function TaskBoardAnalyticsRoute() {
       .filter((o) => o.slug !== orgSlug)
       .map((o) => ({ value: o.slug, label: `${o.slug} · ${o.name}` })),
   ];
+  // Another org's card opens on your own board pointed at it (`?boardOrg=`).
   const taskHref = (taskId: string) =>
-    project
-      ? `/${orgSlug}/projects/${project}/tasks/${encodeURIComponent(taskId)}`
-      : `/${org}/tasks/${encodeURIComponent(taskId)}`;
+    taskSharePath(orgSlug, { id: taskId, keySeq: null }, project) +
+    (org === orgSlug ? "" : `?boardOrg=${encodeURIComponent(org)}`);
 
   return (
     <ChatLayout.Content>
