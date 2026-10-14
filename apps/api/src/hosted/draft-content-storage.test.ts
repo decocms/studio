@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { serializeBlock } from "@decocms/blocks/protocol";
+import { defineConformanceSuite } from "@decocms/blocks/protocol/conformance";
+import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { deliveryKeys } from "./delivery-store";
 import {
   applyAttemptToDraft,
@@ -85,7 +87,7 @@ describe("applyAttemptToDraft", () => {
 });
 
 describe("createDraftContentStorage", () => {
-  it("writing main's version back (a discard) leaves no draft entry", async () => {
+  it("a save of main's own content leaves no draft entry", async () => {
     const { storage, drafts } = setup();
     const snap = await storage.snapshot();
     await storage.commit({
@@ -284,5 +286,235 @@ describe("createDraftStore", () => {
       "B",
       "C",
     ]);
+  });
+});
+
+/** bun:test treats a test function that declares a parameter as callback-style. */
+const runner = {
+  describe,
+  it: (name: string, body: () => Promise<void>, timeout?: number) =>
+    it(name, () => body(), timeout),
+};
+
+/** A JSON-RPC call to the content handler over this storage. */
+async function call(
+  storage: ReturnType<typeof setup>["storage"],
+  method: string,
+  params?: unknown,
+) {
+  const handler = createContentHandler(storage, {
+    server: { name: "studio-github", version: "1" },
+    bodyCacheBytes: 0,
+  });
+  const res = await handler(
+    new Request("http://studio.test/rpc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    }),
+  );
+  // biome-ignore lint/suspicious/noExplicitAny: protocol results are asserted per test
+  return (await res.json()) as { result?: any; error?: any };
+}
+
+describe("hosted draft storage: conformance, main as the base", () => {
+  // One project for the whole suite, as an editor session is.
+  const repo = fakeRepo({
+    ".deco/schema.gen.json": SCHEMA_TEXT,
+    ".deco/blocks/hero-home.json": serializeBlock({
+      __resolveType: "hero",
+      title: "on main",
+    }),
+  });
+  const delivery = memoryDeliveryStore();
+  const drafts = createDraftStore({ kv: memoryKv(), store: delivery.store });
+  defineConformanceSuite(
+    runner,
+    () => ({
+      endpoint: "http://studio.test/rpc",
+      // Per request, as the route builds it.
+      fetch: async (request: Request) =>
+        createContentHandler(
+          createDraftContentStorage({
+            client: repo.client,
+            packagePath: null,
+            mainBranch: "main",
+            drafts,
+            ref: REF,
+          }),
+          {
+            server: { name: "studio-github", version: "1" },
+            bodyCacheBytes: 0,
+          },
+        )(request),
+      baseEntry: { name: "hero-home" },
+    }),
+    "content protocol conformance (hosted draft over main)",
+  );
+});
+
+describe("hosted draft storage: changes against main", () => {
+  it("lists the draft's names: sets, deletes, and a set equal to main is no change", async () => {
+    const { repo, storage } = setup();
+    await call(storage, "blocks.apply", {
+      set: { Home: { path: "/", title: "draft" }, New: { v: 1 } },
+      delete: ["Footer"],
+    });
+    const listed = await call(storage, "changes.list");
+    expect(listed.result.base).toEqual({
+      revision: repo.head(),
+      resolvedRef: "main",
+    });
+    expect(listed.result.changes).toEqual({
+      Footer: {
+        kind: "delete",
+        version: null,
+        baseVersion: expect.any(String),
+      },
+      Home: {
+        kind: "set",
+        version: expect.any(String),
+        baseVersion: expect.any(String),
+      },
+      New: { kind: "set", version: expect.any(String), baseVersion: null },
+    });
+    const sides = await call(storage, "changes.get", {
+      names: ["Home", "Footer"],
+    });
+    expect(sides.result.entries.Home).toMatchObject({
+      before: { path: "/", title: "main" },
+      after: { path: "/", title: "draft" },
+    });
+    expect(sides.result.entries.Footer).toMatchObject({
+      before: { links: [] },
+      after: null,
+    });
+    // Main's own content back: not a change, and gone from the draft.
+    await call(storage, "blocks.apply", {
+      set: { Home: { path: "/", title: "main" } },
+    });
+    expect(
+      Object.keys((await call(storage, "changes.list")).result.changes),
+    ).toEqual(["Footer", "New"]);
+  });
+
+  it("discards back to main, dropping the names from the draft", async () => {
+    const { storage, drafts } = setup();
+    const saved = await call(storage, "blocks.apply", {
+      set: { Home: { path: "/", title: "draft" }, New: { v: 1 } },
+      delete: ["Footer"],
+    });
+    const discarded = await call(storage, "changes.discard", {
+      names: ["Home", "New", "Footer"],
+      ifMatch: { Home: saved.result.versions.Home, Footer: null },
+    });
+    expect(discarded.error).toBeUndefined();
+    expect(discarded.result.versions).toEqual({
+      Home: expect.any(String),
+      New: null,
+      Footer: expect.any(String),
+    });
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+    expect((await call(storage, "changes.list")).result.changes).toEqual({});
+    const listed = await call(storage, "blocks.list");
+    expect(listed.result.versions.Home).toBe(discarded.result.versions.Home);
+  });
+
+  it("restores a main file that isn't valid JSON, byte for byte", async () => {
+    const repo = fakeRepo({
+      ".deco/schema.gen.json": SCHEMA_TEXT,
+      ".deco/blocks/Broken.json": '{"v": 1,,}',
+    });
+    const drafts = createDraftStore({
+      kv: memoryKv(),
+      store: memoryDeliveryStore().store,
+    });
+    const storage = createDraftContentStorage({
+      client: repo.client,
+      packagePath: null,
+      mainBranch: "main",
+      drafts,
+      ref: REF,
+    });
+    await call(storage, "blocks.apply", { set: { Broken: { v: 2 } } });
+    const sides = await call(storage, "changes.get", { names: ["Broken"] });
+    expect(sides.result.entries.Broken).toMatchObject({
+      before: null,
+      after: { v: 2 },
+    });
+    expect(sides.result.diagnostics).toMatchObject([
+      { file: "Broken.json", kind: "invalid-json", side: "before" },
+    ]);
+    const discarded = await call(storage, "changes.discard", {
+      names: ["Broken"],
+    });
+    expect(discarded.error).toBeUndefined();
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+    expect((await call(storage, "changes.list")).result.changes).toEqual({});
+  });
+
+  it("an entry main holds under two spellings leaves the list once discarded", async () => {
+    const repo = fakeRepo({
+      ".deco/schema.gen.json": SCHEMA_TEXT,
+      ".deco/blocks/a%20b.json": serializeBlock({ v: "encoded" }),
+      ".deco/blocks/a%2520b.json": serializeBlock({ v: "double" }),
+    });
+    const drafts = createDraftStore({
+      kv: memoryKv(),
+      store: memoryDeliveryStore().store,
+    });
+    const storage = createDraftContentStorage({
+      client: repo.client,
+      packagePath: null,
+      mainBranch: "main",
+      drafts,
+      ref: REF,
+    });
+    expect((await call(storage, "changes.list")).result.changes).toEqual({});
+    await call(storage, "blocks.apply", { set: { "a b": { v: "draft" } } });
+    // The draft hides both of main's spellings: one change.
+    expect(
+      Object.keys((await call(storage, "changes.list")).result.changes),
+    ).toEqual(["a b"]);
+    const before = await call(storage, "blocks.list");
+    await call(storage, "changes.discard", { names: ["a b"] });
+    expect((await call(storage, "changes.list")).result.changes).toEqual({});
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+    const after = await call(storage, "blocks.list");
+    expect(after.result.blocks["a b"]).not.toEqual(before.result.blocks["a b"]);
+  });
+
+  it("a discard computed from an older main is stale; one guarded by a moved version too", async () => {
+    const { repo, storage } = setup();
+    await call(storage, "blocks.apply", {
+      set: { Home: { path: "/", title: "draft" } },
+    });
+    const base = await storage.base();
+    const snap = await storage.snapshot();
+    repo.pushDirect({ ".deco/blocks/Other.json": serializeBlock({ v: 1 }) });
+    expect(
+      await storage.commit({
+        base: snap,
+        put: { "Home.json": serializeBlock({ path: "/", title: "main" }) },
+        delete: [],
+        expected: {},
+        expectedBase: base.revision,
+        reason: "discard",
+      }),
+    ).toEqual({ status: "stale" });
+    const moved = await storage.snapshot();
+    expect(
+      await storage.commit({
+        base: moved,
+        put: { "Home.json": serializeBlock({ path: "/", title: "main" }) },
+        delete: [],
+        expected: { "Home.json": "not-the-version" },
+        expectedBase: repo.head(),
+        reason: "discard",
+      }),
+    ).toEqual({ status: "stale" });
+    expect(
+      Object.keys((await call(storage, "changes.list")).result.changes),
+    ).toEqual(["Home"]);
   });
 });

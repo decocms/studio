@@ -15,13 +15,20 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  commitAll,
   defineSandboxContentSuites,
   fakeDaemon,
+  git,
+  gitInit,
   rpc,
   sandboxRoute,
   seedSite,
 } from "./content-storage-test-helpers";
-import { parseScan, stripLineNumbers } from "./content-storage";
+import {
+  createSandboxContentStorage,
+  parseScan,
+  stripLineNumbers,
+} from "./content-storage";
 
 defineSandboxContentSuites(
   "stand-in daemon",
@@ -97,6 +104,90 @@ describe("sandbox content storage", () => {
     expect(() => parseScan(`${h("2")} blocks/Home.json\n`)).toThrow();
     expect(() => parseScan("")).toThrow();
     expect(() => parseScan(`json\n${h("2")} blocks/Home.json\n@end`)).toThrow();
+  });
+
+  test("a listing carries HEAD, its branch, its blocks and the filter-equal files", () => {
+    const h = (c: string) => c.repeat(40);
+    const scan = parseScan(
+      [
+        `${h("2")} blocks/Home.json`,
+        `@head ${h("c")}`,
+        "@ref main",
+        `@base ${h("2")} 12 blocks/Home.json`,
+        `@base ${h("3")}  blocks/Old.json`,
+        `@base ${h("4")} 3 blocks/.hidden.json`,
+        "@clean blocks/Home.json",
+        "@end",
+      ].join("\n"),
+    );
+    expect(scan.git).toEqual({
+      head: h("c"),
+      ref: "main",
+      base: new Map([
+        ["Home.json", { version: h("2"), size: 12 }],
+        ["Old.json", { version: h("3") }],
+      ]),
+      clean: new Set(["Home.json"]),
+    });
+    expect(parseScan("@head unborn\n@ref\n@end").git).toMatchObject({
+      head: "unborn",
+      ref: null,
+    });
+    expect(parseScan("@head none\n@end").git).toBeNull();
+    expect(() => parseScan("@head HEAD\n@end")).toThrow();
+    expect(() => parseScan("@what x\n@end")).toThrow();
+  });
+
+  test("a commit computed from another HEAD is stale, and writes nothing", async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "sandbox-content-"));
+    try {
+      gitInit(repoDir);
+      seedSite(repoDir, { schema: true });
+      writeFileSync(join(repoDir, ".deco/blocks/a.json"), '{"v":"a0"}');
+      commitAll(repoDir);
+      const storage = createSandboxContentStorage({
+        daemon: (path, body) =>
+          fakeDaemon(repoDir)("claim", path, {
+            method: "POST",
+            headers: new Headers(),
+            body: JSON.stringify(body),
+          }),
+        packagePath: null,
+      });
+      const base = await storage.base();
+      expect(base.revision).toBe(git(repoDir, "rev-parse", "HEAD").trim());
+      writeFileSync(join(repoDir, ".deco/blocks/a.json"), '{"v":"a1"}');
+      commitAll(repoDir, "moved on");
+      const result = await storage.commit({
+        base: await storage.snapshot(),
+        put: { "a.json": '{"v":"a0"}' },
+        delete: [],
+        expected: {},
+        expectedBase: base.revision,
+        reason: "discard",
+      });
+      expect(result).toEqual({ status: "stale" });
+      expect(readFileSync(join(repoDir, ".deco/blocks/a.json"), "utf8")).toBe(
+        '{"v":"a1"}',
+      );
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  test("outside a git repository, changes are Unavailable and the rest still works", async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "sandbox-content-"));
+    try {
+      seedSite(repoDir, { schema: true });
+      const route = sandboxRoute(() => ({
+        repoDir,
+        proxyDaemonRequest: fakeDaemon(repoDir),
+      }));
+      expect((await rpc(route, "blocks.list")).error).toBeUndefined();
+      expect((await rpc(route, "changes.list")).error?.code).toBe(-32008);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
   });
 
   test("a listing the daemon cut short is an error, never an empty site", async () => {
