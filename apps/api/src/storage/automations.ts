@@ -74,6 +74,8 @@ export interface AutomationWithTriggerInfo extends AutomationWithTriggerCount {
   nearest_next_run_at: string | null;
   /** The board columns its `board_column_transition` starters watch. */
   board_columns: string[];
+  /** Whether it has the "pull request ready for review" starter. */
+  reviews_prs: boolean;
 }
 
 export interface AutomationsStorage {
@@ -118,6 +120,10 @@ export interface AutomationsStorage {
     columnKey: string,
   ): Promise<boolean>;
   claimTriggerFire(triggerId: string, eventKey: string): Promise<boolean>;
+  findBuiltinTrigger(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<{ automationId: string; triggerId: string } | null>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
@@ -384,6 +390,11 @@ class KyselyAutomationsStorage implements AutomationsStorage {
           "board_columns",
         ),
       )
+      .select(
+        sql<boolean>`coalesce(bool_or(t.type = 'board_pr_ready'), false)`.as(
+          "reviews_prs",
+        ),
+      )
       .where("a.organization_id", "=", organizationId);
 
     if (virtualMcpId) {
@@ -414,6 +425,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ...automationFromDbRow(row),
       trigger_count: Number(row.trigger_count),
       board_columns: row.board_columns,
+      reviews_prs: row.reviews_prs,
       nearest_next_run_at: row.nearest_next_run_at
         ? toIsoString(row.nearest_next_run_at as unknown as string)
         : null,
@@ -670,6 +682,23 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .limit(1)
       .executeTakeFirst();
     return row !== undefined;
+  }
+
+  /** A built-in's automation and its trigger in one org; null when the org
+   *  was not seeded with it. */
+  async findBuiltinTrigger(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<{ automationId: string; triggerId: string } | null> {
+    const row = await this.db
+      .selectFrom("automations as a")
+      .innerJoin("automation_triggers as t", "t.automation_id", "a.id")
+      .select(["a.id as automationId", "t.id as triggerId"])
+      .where("a.organization_id", "=", organizationId)
+      .where("a.system_key", "=", systemKey)
+      .limit(1)
+      .executeTakeFirst();
+    return row ?? null;
   }
 
   /**

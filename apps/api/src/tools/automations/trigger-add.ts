@@ -103,6 +103,12 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       throw new Error("A built-in automation's starters can't be changed.");
     }
 
+    if (input.type === "board_pr_ready") {
+      throw new Error(
+        "The pull-request-ready starter belongs to the built-in Reviewer for now.",
+      );
+    }
+
     if (input.type === "cron") {
       if (!input.cron_expression) {
         throw new Error("cron_expression is required for cron triggers");

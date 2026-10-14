@@ -184,6 +184,8 @@ export const automations = {
   "automations.builtin.badge": "Built-in",
   "automations.builtin.implementerDescription":
     "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. A card delegated to the agent already runs, so it is skipped. The run follows the In Progress column's instructions and skills on the board; change them there.",
+  "automations.builtin.reviewerDescription":
+    "Reviews a card's pull request once it is ready for review (open, checks done, preview on its latest commit) and records a verdict: an approval sends the card to QA, a request for changes hands it to a person. Turning it off is the same as turning off the Reviewer in Settings → Review. The review follows the In Review column's instructions and skills on the board; change them there.",
   "automations.builtin.description":
     "Studio runs this automation for the board. It follows the board's column instructions and skills; change them there.",
   "automations.columnTransitionDialog.title": "When a card enters a column",
@@ -200,6 +202,8 @@ export const automations = {
     "It runs on a card nobody owns, or one the agent already owns, once it has stayed in the column for 20 seconds; a card a person owns is left alone. Where it came from is the column it last stayed in, not one it was dragged through.",
   "automations.columnTransitionDialog.cancel": "Cancel",
   "automations.columnTransitionDialog.add": "Add starter",
+  "automations.triggerCard.prReady":
+    "When a card's pull request is ready for review",
   "automations.triggerCard.unownedOnly": "Only cards nobody owns",
   "automations.triggerCard.fromEarlier": "From an earlier column",
   "automations.triggerCard.fromLater": "From a later column (sent back)",

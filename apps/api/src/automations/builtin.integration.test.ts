@@ -121,4 +121,35 @@ describe("built-in automations (real Postgres)", () => {
       expect.objectContaining({ organization_id: "org_1", active: false }),
     ]);
   });
+
+  it("seeds the Reviewer on In Review with the pull-request-ready starter", async () => {
+    await member("org_1", "user_1", "2026-01-01T00:00:00Z");
+
+    await ensureBuiltinAutomations(database.db);
+    await ensureBuiltinAutomations(database.db);
+
+    const rows = (
+      await sql<{
+        name: string;
+        active: boolean;
+        type: string;
+        column_key: string;
+        from_kind: string | null;
+      }>`
+        select a.name, a.active, t.type, t.column_key, t.from_kind
+          from automations a
+          join automation_triggers t on t.automation_id = a.id
+         where a.system_key = 'reviewer'
+      `.execute(database.db)
+    ).rows;
+    expect(rows).toEqual([
+      {
+        name: "Reviewer",
+        active: true,
+        type: "board_pr_ready",
+        column_key: "in_review",
+        from_kind: null,
+      },
+    ]);
+  });
 });

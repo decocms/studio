@@ -15,6 +15,17 @@
  *     deletes, starter changes and manual runs (`tools/automations/*`).
  * - The implementer: skips a card already delegated to the Super Agent,
  *   whose run started when it was delegated (`card-run.ts`).
+ * - The reviewer:
+ *   - its on/off is still the org's `reviewer_enabled` flag, which the review
+ *     gate's other readers (auto-merge, conflicts, admin flags) read; the tools
+ *     read and write it through `withBuiltinActive` / `setFlagBackedActive`
+ *     (this file), and its row stays active;
+ *   - its starter, "pull request ready for review", is fired by the review
+ *     sweep (`tools/task-board/enqueue-reviewer.ts`), which keeps the cycle,
+ *     attempt, preview and verdict-nudge decisions; people can't use it yet
+ *     (`tools/automations/trigger-add.ts`);
+ *   - its card step starts the review run, not the board's run
+ *     (`card-run.ts` → `tools/task-board/reviewer-run.ts`).
  *
  * A new built-in adds its special case to this list. Its board run takes its
  * instructions from the board's column prompts, which is where an org
@@ -25,19 +36,32 @@
  */
 
 import { getDecopilotId } from "@decocms/shared/sdk";
-import { LANES } from "@decocms/shared/task-board";
+import { LANES, reviewerEnabled } from "@decocms/shared/task-board";
 import { sql, type Kysely } from "kysely";
+import type { StudioContext } from "@/core/studio-context";
 import type { Database } from "@/storage/types";
 
 /** The board's implementer: picks up an unassigned card that lands in In
  *  Progress. */
 export const IMPLEMENTER_SYSTEM_KEY = "implementer";
 
+/** The board's reviewer: reviews a card's pull request once it is ready. */
+export const REVIEWER_SYSTEM_KEY = "reviewer";
+
 const BUILTINS = [
   {
     key: IMPLEMENTER_SYSTEM_KEY,
     name: "Implementer",
+    triggerType: "board_column_transition",
     columnKey: LANES.progress,
+    fromKind: "any",
+  },
+  {
+    key: REVIEWER_SYSTEM_KEY,
+    name: "Reviewer",
+    triggerType: "board_pr_ready",
+    columnKey: LANES.review,
+    fromKind: null,
   },
 ] as const;
 
@@ -75,8 +99,41 @@ export async function ensureBuiltinAutomations(
         returning id
       )
       insert into automation_triggers (id, automation_id, type, column_key, from_kind)
-      select 'trg_' || id, id, 'board_column_transition', ${builtin.columnKey}, 'any'
+      select 'trg_' || id, id, ${builtin.triggerType}, ${builtin.columnKey},
+             ${builtin.fromKind}
         from seeded
     `.execute(db);
   }
+}
+
+/** True for a built-in whose on/off is still the org's `reviewer_enabled`
+ *  flag, not its own row: every reader of the review gate (auto-merge,
+ *  conflicts, the admin flags) reads the flag. Its row stays active. */
+function flagBacked(systemKey: string | null): boolean {
+  return systemKey === REVIEWER_SYSTEM_KEY;
+}
+
+/** `automations` with a flag-backed built-in's `active` read from the flag. */
+export async function withBuiltinActive<
+  T extends { system_key: string | null; active: boolean },
+>(ctx: StudioContext, organizationId: string, automations: T[]): Promise<T[]> {
+  if (!automations.some((a) => flagBacked(a.system_key))) return automations;
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  const on = reviewerEnabled(settings?.flags);
+  return automations.map((a) =>
+    flagBacked(a.system_key) ? { ...a, active: on } : a,
+  );
+}
+
+/** Turn a flag-backed built-in on or off; false for any other automation. */
+export async function setFlagBackedActive(
+  ctx: StudioContext,
+  automation: { system_key: string | null; organization_id: string },
+  active: boolean,
+): Promise<boolean> {
+  if (!flagBacked(automation.system_key)) return false;
+  await ctx.storage.organizationSettings.upsert(automation.organization_id, {
+    flags: { reviewer_enabled: active },
+  });
+  return true;
 }

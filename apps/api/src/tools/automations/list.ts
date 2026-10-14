@@ -4,6 +4,7 @@
  * Lists automations for the current organization, including trigger counts.
  */
 
+import { withBuiltinActive } from "../../automations/builtin";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -36,6 +37,8 @@ export const AUTOMATION_LIST = defineTool({
         system_key: z.string().nullable(),
         /** The board columns its "card enters a column" starters watch. */
         board_columns: z.array(z.string()),
+        /** Has the "pull request ready for review" starter (In Review). */
+        reviews_prs: z.boolean(),
       }),
     ),
   }),
@@ -44,9 +47,13 @@ export const AUTOMATION_LIST = defineTool({
     const organization = requireOrganization(ctx);
     await ctx.access.check();
 
-    const automations = await ctx.storage.automations.listWithTriggerCounts(
+    const automations = await withBuiltinActive(
+      ctx,
       organization.id,
-      input.virtual_mcp_id,
+      await ctx.storage.automations.listWithTriggerCounts(
+        organization.id,
+        input.virtual_mcp_id,
+      ),
     );
 
     const results = automations.map((automation) => ({
@@ -60,6 +67,7 @@ export const AUTOMATION_LIST = defineTool({
       virtual_mcp_id: automation.virtual_mcp_id,
       system_key: automation.system_key,
       board_columns: automation.board_columns,
+      reviews_prs: automation.reviews_prs,
     }));
 
     return { automations: results };

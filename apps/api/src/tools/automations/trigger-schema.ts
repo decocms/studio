@@ -5,4 +5,5 @@ export const AutomationTriggerTypeSchema = z.enum([
   "event",
   "webhook",
   "board_column_transition",
+  "board_pr_ready",
 ]);

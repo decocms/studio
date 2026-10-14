@@ -118,11 +118,18 @@ export interface AutomationListItem {
   system_key: string | null;
   /** The board columns its "card enters a column" starters watch. */
   board_columns: string[];
+  /** Has the "pull request ready for review" starter (In Review). */
+  reviews_prs: boolean;
 }
 
 export interface AutomationTrigger {
   id: string;
-  type: "cron" | "event" | "webhook" | "board_column_transition";
+  type:
+    | "cron"
+    | "event"
+    | "webhook"
+    | "board_column_transition"
+    | "board_pr_ready";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -317,6 +324,10 @@ export function useAutomationActions() {
       if (typeof variables.id === "string") {
         invalidateOne(variables.id);
       }
+      // The built-in Reviewer's switch is the org's review flag.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.organizationSettings(org.id),
+      });
       toast.success("Automation updated successfully");
     },
     onError: (error: unknown) => {

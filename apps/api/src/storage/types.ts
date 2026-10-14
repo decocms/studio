@@ -1494,7 +1494,8 @@ export type AutomationTriggerType =
   | "cron"
   | "event"
   | "webhook"
-  | "board_column_transition";
+  | "board_column_transition"
+  | "board_pr_ready";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks

@@ -25,7 +25,10 @@ import {
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
+import {
+  LANES,
+  TASK_SYSTEM_PROMPT_MAX_LENGTH,
+} from "@decocms/shared/task-board";
 import { useOrgFsSkillCatalog } from "@/hooks/use-org-fs";
 import {
   useSaveColumnRules,
@@ -44,10 +47,22 @@ function useColumnRules(columnKey: string) {
   };
 }
 
-/** The automations whose "card enters a column" starter watches `columnKey`. */
-export function useColumnAutomations(columnKey: string) {
+/** The automations whose "card enters a column" starter watches `columnKey`:
+ *  the ones a card dropped there starts. */
+export function useEntryAutomations(columnKey: string) {
   const { data } = useAutomations();
   return (data ?? []).filter((a) => a.board_columns.includes(columnKey));
+}
+
+/** Every automation that runs on cards in `columnKey`: the entry ones, and on
+ *  In Review the ones that review a card's pull request once it is ready. */
+function useColumnAutomations(columnKey: string) {
+  const { data } = useAutomations();
+  return (data ?? []).filter(
+    (a) =>
+      a.board_columns.includes(columnKey) ||
+      (columnKey === LANES.review && a.reviews_prs),
+  );
 }
 
 /** Each automation that runs on cards landing in the column, with its switch. */

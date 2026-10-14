@@ -194,6 +194,8 @@ export const automations = {
   "automations.builtin.badge": "Nativa",
   "automations.builtin.implementerDescription":
     "Pega cada card sem dono que chega em In Progress e trabalha nele como o Super Agent. Um card delegado ao agente já roda, então ele é pulado. A run segue as instruções e skills da coluna In Progress no board; mude lá.",
+  "automations.builtin.reviewerDescription":
+    "Revisa o pull request de um card quando ele fica pronto para review (aberto, checks terminados, preview no último commit) e registra um veredito: aprovar manda o card para QA, pedir mudanças passa o card para uma pessoa. Desligar aqui é o mesmo que desligar o Reviewer em Settings → Review. A revisão segue as instruções e skills da coluna In Review no board; mude lá.",
   "automations.builtin.description":
     "O Studio roda esta automação para o board. Ela segue as instruções e skills das colunas do board; mude lá.",
   "automations.columnTransitionDialog.title":
@@ -212,6 +214,8 @@ export const automations = {
     "Roda num card sem dono, ou que já é do agente, depois que ele fica 20 segundos na coluna; um card de uma pessoa fica de fora. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
   "automations.columnTransitionDialog.cancel": "Cancelar",
   "automations.columnTransitionDialog.add": "Adicionar gatilho",
+  "automations.triggerCard.prReady":
+    "Quando o pull request de um card fica pronto para review",
   "automations.triggerCard.unownedOnly": "Só cards sem dono",
   "automations.triggerCard.fromEarlier": "De uma coluna anterior",
   "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",
