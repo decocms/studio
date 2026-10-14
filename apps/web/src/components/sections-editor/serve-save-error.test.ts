@@ -95,7 +95,7 @@ describe("one toast per publish", () => {
     let retried = 0;
     const before = toast.getToasts().length;
     toastPublishFailed(t, {
-      headline: "Couldn't go live with this release.",
+      headline: "Couldn't publish your changes.",
       detail: "latest-update-failed",
       retry: () => {
         retried++;
@@ -109,7 +109,7 @@ describe("one toast per publish", () => {
     expect(action?.label).toBe("Try again");
     // The headline never carries the developer detail.
     expect((failed[0] as { title?: unknown }).title).toBe(
-      "Couldn't go live with this release.",
+      "Couldn't publish your changes.",
     );
     toastPublished(t, "Your changes are live.");
     const shown = toast
@@ -126,7 +126,7 @@ describe("one toast per publish", () => {
   test("Try again keeps the toast, as Publishing…, until the outcome", () => {
     let retried = 0;
     toastPublishFailed(t, {
-      headline: "Couldn't go live with this release.",
+      headline: "Couldn't publish your changes.",
       retry: () => {
         retried++;
       },
@@ -158,17 +158,17 @@ describe("one toast per publish", () => {
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect((done as { title?: unknown }).title).toBe("Published");
   });
-  test("Releases: a failed republish says so, and its retry says Republishing…", () => {
+  test("Releases: a failed reapply says so, and its retry says Reapplying…", () => {
     toastPublishFailed(t, {
-      headline: t("releases.republishFailed"),
-      pending: t("releases.republishing"),
+      headline: t("releases.reapplyFailed"),
+      pending: t("releases.reapplying"),
       retry: () => {},
     });
     const [failed] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect((failed as { title?: unknown }).title).toBe(
-      "Couldn't republish this release.",
+      "Couldn't reapply this version.",
     );
     (
       failed as { action?: { onClick: (event: unknown) => void } }
@@ -176,6 +176,6 @@ describe("one toast per publish", () => {
     const [pending] = toast
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
-    expect((pending as { title?: unknown }).title).toBe("Republishing…");
+    expect((pending as { title?: unknown }).title).toBe("Reapplying…");
   });
 });

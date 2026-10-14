@@ -1,84 +1,39 @@
 /**
  * What each row of the Releases screen says, as pure functions: its title in
- * business words, and its pill.
+ * business words, its pill and whether it offers Reapply version.
  *
- * "Live" is the release the site itself reports serving (`serving`, from its
- * telemetry). The release just published (what latest.json names) is
- * "Going live…" until the site reports it, for up to ten minutes; after
- * that it is "Published" with a hint that the site hasn't confirmed it. A
- * site that reports nothing (`serving.source === "none"`) falls back to the
- * last publish: that row is "Live", with a hint saying it's based on it.
+ * "Latest" is the version latest.json names: the newest one Publish (or a
+ * reapply) put on the CDN. It says nothing about what a visitor's page
+ * shows at this second; the screen never claims that.
  */
 
 import type { TFunction } from "@/i18n/use-t.ts";
-import type {
-  ReleaseCommit,
-  ReleasePointer,
-  ReleaseServing,
-} from "./releases-api";
+import type { ReleaseCommit, ReleasePointer } from "./releases-api";
 
-/** How long a just-published release waits for the site to report it. */
-export const GOING_LIVE_WINDOW_MS = 10 * 60_000;
-/** How often the screen asks again while it waits. */
-export const GOING_LIVE_POLL_MS = 15_000;
-
-export type ReleaseBadge =
-  | { kind: "live"; hint: "liveHint" | null }
-  | { kind: "goingLive"; hint: "goingLiveHint" }
-  | { kind: "published"; hint: "notReportedHint" };
-
-interface ReleasesState {
-  current: ReleasePointer | null;
-  serving: ReleaseServing | null;
+/** Whether the row for commit `sha` is the latest version. */
+export function isLatest(sha: string, current: ReleasePointer | null): boolean {
+  return current !== null && sha === current.revision;
 }
 
-function recentlyPublished(current: ReleasePointer, now: number): boolean {
-  const at = Date.parse(current.publishedAt);
-  return Number.isFinite(at) && now - at < GOING_LIVE_WINDOW_MS;
+/** The sha latest.json names on a releases page, or null. */
+export function latestSha(
+  page: { current: ReleasePointer | null } | undefined,
+): string | null {
+  if (!page) return null;
+  const { current } = page;
+  return current ? current.revision : null;
 }
 
-/** The pill of the row for commit `sha`, or null for none. */
-export function releaseBadge(
-  sha: string,
-  { current, serving }: ReleasesState,
-  now: number = Date.now(),
-): ReleaseBadge | null {
-  if (!serving || serving.source === "none") {
-    return sha === current?.revision
-      ? { kind: "live", hint: "liveHint" }
-      : null;
-  }
-  if (sha === serving.revision) return { kind: "live", hint: null };
-  if (current && sha === current.revision) {
-    return recentlyPublished(current, now)
-      ? { kind: "goingLive", hint: "goingLiveHint" }
-      : { kind: "published", hint: "notReportedHint" };
-  }
-  return null;
-}
-
-/** Whether the screen should ask again soon: the last publish isn't confirmed. */
-export function waitingForSite(
-  { current, serving }: ReleasesState,
-  now: number = Date.now(),
+/** Whether a row offers Reapply version: an earlier version with a release. */
+export function canReapply(
+  commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
+  current: ReleasePointer | null,
 ): boolean {
-  if (!current || !recentlyPublished(current, now)) return false;
-  return serving?.source !== "site" || serving.revision !== current.revision;
+  return commit.hasRelease && !isLatest(commit.sha, current);
 }
 
-/** Whether a row offers Republish: a release the site doesn't show already. */
-export function canRepublish(
-  commit: ReleaseCommit,
-  { current, serving }: ReleasesState,
-): boolean {
-  if (!commit.hasRelease) return false;
-  if (commit.sha === current?.revision) return false;
-  return !(serving?.source === "site" && commit.sha === serving.revision);
-}
-
-const REPUBLISH_PREFIX = "Republish: ";
-const REPUBLISH_OF_DATE =
-  /^release from (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
+const REAPPLY_PREFIX = "Reapply: ";
+const REAPPLY_OF_DATE = /^version from (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
 /** Publish's title when there was no note: developer words, never shown. */
 const NO_NOTE = /^chore\(decofile\):/;
 
@@ -94,7 +49,7 @@ export function formatWhen(date: Date, language: string): string {
   }).format(date);
 }
 
-/** A release's note in business words (a republish is localized). */
+/** A version's note in business words (a reapply is localized). */
 export function releaseTitle(
   t: TFunction,
   commit: Pick<ReleaseCommit, "message" | "hasRelease">,
@@ -102,21 +57,21 @@ export function releaseTitle(
 ): string {
   if (!commit.hasRelease) return t("releases.siteUpdate");
   const title = titleLine(commit.message);
-  if (title.startsWith(REPUBLISH_PREFIX)) {
-    const rest = title.slice(REPUBLISH_PREFIX.length).trim();
-    const dated = rest.match(REPUBLISH_OF_DATE);
+  if (title.startsWith(REAPPLY_PREFIX)) {
+    const rest = title.slice(REAPPLY_PREFIX.length).trim();
+    const dated = rest.match(REAPPLY_OF_DATE);
     if (dated) {
       const when = new Date(`${dated[1]}T${dated[2]}:00Z`);
       if (!Number.isNaN(when.getTime())) {
-        return t("releases.republishOfDate", {
+        return t("releases.reapplyOfDate", {
           when: formatWhen(when, language),
         });
       }
     }
-    if (!rest || rest === "earlier release" || NO_NOTE.test(rest)) {
-      return t("releases.republishOf", { title: t("releases.untitled") });
+    if (!rest || rest === "earlier version" || NO_NOTE.test(rest)) {
+      return t("releases.reapplyOf", { title: t("releases.untitled") });
     }
-    return t("releases.republishOf", { title: rest });
+    return t("releases.reapplyOf", { title: rest });
   }
   if (!title || NO_NOTE.test(title)) return t("releases.untitled");
   return title;

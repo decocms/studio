@@ -22,7 +22,7 @@ import {
 
 /**
  * The one toast for a finished Publish. `retry` puts saved-but-not-live
- * changes live (see `publishMainHead`); it is offered whenever the changes
+ * changes live (see `retryRelease`); it is offered whenever the changes
  * reached main but the site doesn't show them yet.
  */
 export function notifyHostedPublish(

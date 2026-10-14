@@ -3,38 +3,30 @@ import type { releases as enReleases } from "../en/releases.ts";
 export const releases = {
   "releases.title": "Releases",
   "releases.subtitle":
-    "Todas as releases do seu site, da mais recente para a mais antiga. Republique uma anterior para trazer o conteúdo dela de volta.",
+    "Todas as versões do seu site, da mais recente para a mais antiga. Reaplique uma anterior para trazer o conteúdo dela de volta.",
   "releases.loadFailed": "Não foi possível carregar suas releases.",
-  "releases.nothingLive": "Nada no ar ainda",
-  "releases.checkedWithSite": "Seu site confirmou o que está mostrando {when}.",
-  "releases.outsideStudio":
-    "Seu site mostra uma versão que não está nesta lista.",
+  "releases.nothingPublished": "Nada publicado ainda",
   "releases.lastPublished": "Última publicação {when}.",
-  "releases.liveHint":
-    "Com base na sua última publicação: seu site ainda não informou o que está mostrando.",
-  "releases.live": "No ar",
-  "releases.goingLive": "Entrando no ar…",
-  "releases.goingLiveHint": "Seu site vai mostrá-la em um ou dois minutos.",
-  "releases.published": "Publicada",
-  "releases.notReportedHint":
-    "Publicada. Seu site ainda não confirmou que a está mostrando.",
-  "releases.actions": "Ações da release",
-  "releases.republish": "Republicar",
-  "releases.republishTitle": "Republicar esta release?",
-  "releases.republishBody":
-    "Isso publica uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
-  "releases.schemaMismatchBody":
-    "Esta release foi feita para um design anterior do seu site. Algumas partes podem ficar diferentes ou não aparecer depois de republicá-la.",
-  "releases.republishAnyway": "Republicar mesmo assim",
-  "releases.republishing": "Republicando…",
-  "releases.republished": "Republicada. Seu site vai mostrá-la em instantes.",
-  "releases.republishFailed": "Não foi possível republicar esta release.",
-  "releases.alreadyShown": "Seu site já mostra o conteúdo desta release.",
+  "releases.latest": "Mais recente",
+  "releases.actions": "Ações da versão",
+  "releases.reapply": "Reaplicar versão",
+  "releases.reapplyTitle": "Reaplicar esta versão?",
+  "releases.reapplyBody":
+    "Isso publica uma nova versão com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
+  "releases.reapplyUndoHint":
+    "Se algo não ficar certo depois, reaplique a versão que você tem agora para voltar.",
+  "releases.reapplyConfirm": "Reaplicar",
+  "releases.reapplying": "Reaplicando…",
+  "releases.reapplied": "Reaplicada. Seu site vai mostrá-la em instantes.",
+  "releases.reappliedUndoHint":
+    "Se algo não ficar certo, reaplique a versão anterior para voltar.",
+  "releases.reapplyFailed": "Não foi possível reaplicar esta versão.",
+  "releases.alreadyShown": "Seu site já tem o conteúdo desta versão.",
   "releases.publishedMeanwhile":
-    "Alguém publicou enquanto você republicava, então nada mudou. Tente de novo.",
-  "releases.republishOf": "Republicação: {title}",
-  "releases.republishOfDate": "Republicação da release de {when}",
-  "releases.sameContentAs": "Mesmo conteúdo da release de {when}",
+    "Alguém publicou enquanto você reaplicava, então nada mudou. Tente de novo.",
+  "releases.reapplyOf": "Reaplicação: {title}",
+  "releases.reapplyOfDate": "Reaplicação da versão de {when}",
+  "releases.sameContentAs": "Mesmo conteúdo da versão de {when}",
   "releases.untitled": "Alterações publicadas",
   "releases.siteUpdate": "Atualização do site",
   "releases.loadMore": "Carregar mais",

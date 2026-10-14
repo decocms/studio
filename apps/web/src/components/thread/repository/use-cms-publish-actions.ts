@@ -40,7 +40,7 @@ import {
   HostedPublishError,
   type HostedPublishResult,
   publishHostedDraft,
-  publishMainHead,
+  retryRelease,
 } from "./hosted-publish-api.ts";
 import {
   hostedPublishFailure,
@@ -144,23 +144,23 @@ export function useCmsPublishActions(
     branch: target.branch,
   });
 
-  /** "Try again": put the saved changes live (main's head), same toast. */
-  const goLive = async () => {
+  /** "Try again": release the saved changes (main's head), same toast. */
+  const retryPublish = async () => {
     try {
       await runContentChange(content, {
         kind: "publish",
         refreshOnError: true,
-        write: () => publishMainHead(target),
+        write: () => retryRelease(target),
       });
       toastPublished(t, t("siteEditor.publish.changesLive"));
     } catch (error) {
-      notifySavedNotPublished(t, error, () => void goLive());
+      notifySavedNotPublished(t, error, () => void retryPublish());
     }
   };
 
   /** Saved on main is done: the popover closes with one toast. */
   const settleHosted = async (result: HostedPublishResult) => {
-    notifyHostedPublish(t, result, () => void goLive());
+    notifyHostedPublish(t, result, () => void retryPublish());
     onOpenChange(false);
     await quietly(onPublished);
   };
