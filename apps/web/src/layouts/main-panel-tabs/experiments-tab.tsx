@@ -1,7 +1,8 @@
 import { type CSSProperties, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
+import { pickExperimentsTab } from "./experiments-tab-choice";
 import { Cell, Pie, PieChart } from "recharts";
 import {
   ArrowUpRight,
@@ -1903,10 +1904,12 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
 /**
  * Picks which Experiments tab an org gets. `experiments_enabled` already
  * decided the tab is reachable; this only chooses between the rebuilt
- * experience and the one main shipped.
+ * experience and the one main shipped. See {@link pickExperimentsTab}.
  */
 export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
-  return useOrgFlag("experiments_v2_enabled") ? (
+  const { ui } = useSearch({ strict: false }) as { ui?: string };
+  const flagEnabled = useOrgFlag("experiments_v2_enabled");
+  return pickExperimentsTab(flagEnabled, ui) === "v2" ? (
     <ExperimentsTabV2 virtualMcpId={virtualMcpId} />
   ) : (
     <LegacyExperimentsTab virtualMcpId={virtualMcpId} />

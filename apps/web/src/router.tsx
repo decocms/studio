@@ -813,6 +813,8 @@ const agentExperimentsRoute = createRoute({
     defaultMain: "experiments",
     mainView: "experiments",
   },
+  // `?ui=legacy` previews the pre-flag tab without flipping the org's flag.
+  validateSearch: z.object({ ui: z.literal("legacy").optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-experiments.tsx"),
   ),
