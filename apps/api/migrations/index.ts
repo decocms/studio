@@ -21,6 +21,7 @@ import * as migration241automationboardcolumntransition from "./241-automation-b
 import * as migration242connectionurlslug from "./242-connection-url-slug";
 import * as migration243experimenttaskboarditem from "./243-experiment-task-board-item";
 import * as migration244connectionurlslugrolloutbackfill from "./244-connection-url-slug-rollout-backfill";
+import * as migration245automationsystemkey from "./245-automation-system-key";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -528,6 +529,7 @@ const migrations: Record<string, Migration> = {
   "243-experiment-task-board-item": migration243experimenttaskboarditem,
   "244-connection-url-slug-rollout-backfill":
     migration244connectionurlslugrolloutbackfill,
+  "245-automation-system-key": migration245automationsystemkey,
 };
 
 export default migrations;

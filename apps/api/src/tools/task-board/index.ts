@@ -4,11 +4,6 @@ export { TASK_BOARD_ITEM_LIST } from "./list";
 export { TASK_BOARD_ITEM_UPDATE } from "./update";
 export { TASK_BOARD_ITEM_DELETE } from "./delete";
 export {
-  TASK_BOARD_AUTOMATION_DELETE,
-  TASK_BOARD_AUTOMATION_LIST,
-  TASK_BOARD_AUTOMATION_UPSERT,
-} from "./automations";
-export {
   TASK_BOARD_PROMPT_DELETE,
   TASK_BOARD_PROMPT_LIST,
   TASK_BOARD_PROMPT_UPSERT,

@@ -33,6 +33,7 @@ export const AUTOMATION_LIST = defineTool({
         trigger_count: z.number(),
         nearest_next_run_at: z.string().nullable(),
         virtual_mcp_id: z.string(),
+        system_key: z.string().nullable(),
       }),
     ),
   }),
@@ -55,6 +56,7 @@ export const AUTOMATION_LIST = defineTool({
       trigger_count: automation.trigger_count,
       nearest_next_run_at: automation.nearest_next_run_at,
       virtual_mcp_id: automation.virtual_mcp_id,
+      system_key: automation.system_key,
     }));
 
     return { automations: results };

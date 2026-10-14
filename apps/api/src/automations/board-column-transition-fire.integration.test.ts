@@ -19,6 +19,7 @@ import {
   it,
 } from "bun:test";
 import { sql } from "kysely";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "../core/studio-context";
 import type { StudioDatabase } from "../database";
 import {
@@ -39,8 +40,12 @@ import {
   settleBoardMove,
   sweepSettledMoves,
 } from "./board-column-transition-fire";
-import { runAutomationOnCard } from "./card-run";
-import type { FireAutomationContext } from "./dbos-workflow";
+import { ensureBuiltinAutomations } from "./builtin";
+import {
+  type FireAutomationContext,
+  runOnCardStep,
+  setAutomationRuntime,
+} from "./dbos-workflow";
 
 const ORG = "org_test";
 const USER = "user_test";
@@ -51,6 +56,17 @@ describe("board column transition trigger (real Postgres)", () => {
   let taskBoard: TaskBoardStorage;
   let automations: ReturnType<typeof createAutomationsStorage>;
   let deps: BoardTransitionDeps;
+  let orgCtx: StudioContext;
+  /** The contexts the fire workflow's card step runs with. */
+  const runAs = (contexts: {
+    member: StudioContext | null;
+    org: StudioContext | null;
+  }) =>
+    setAutomationRuntime({
+      storage: automations,
+      studioContextFactory: async () => contexts.member,
+      orgContextFactory: async () => contexts.org,
+    });
   let handed: {
     fire: FireAutomationContext;
     idempotencyKey: string;
@@ -73,7 +89,7 @@ describe("board column transition trigger (real Postgres)", () => {
       storage: { taskBoard, automations },
     } as unknown as StudioContext;
     handed = [];
-    // What the fire workflow does with a card target, minus the queue.
+    // The fire workflow's own card step, minus the queue.
     deps = {
       automations,
       taskBoard,
@@ -84,15 +100,12 @@ describe("board column transition trigger (real Postgres)", () => {
           fire.organizationId,
         );
         if (automation && fire.triggerId && fire.target) {
-          await runAutomationOnCard(
-            ctx,
-            automation,
-            fire.triggerId,
-            fire.target,
-          );
+          await runOnCardStep(automation, fire.triggerId, fire.target);
         }
       },
     };
+    orgCtx = ctx;
+    runAs({ member: ctx, org: ctx });
   });
 
   afterAll(async () => {
@@ -377,5 +390,29 @@ describe("board column transition trigger (real Postgres)", () => {
         idempotencyKey: `board:${trigger.id}:${move}`,
       },
     ]);
+  });
+
+  it("runs the implementer as the org, and leaves a delegated card to its run", async () => {
+    await ensureBuiltinAutomations(database.db, { id: ORG, createdBy: USER });
+    await sql`update automation_triggers set created_at = ${new Date(NOW - 60 * 60_000).toISOString()}`.execute(
+      database.db,
+    );
+    const unassigned = await card([
+      { from: "triage", to: "in_progress", secondsAgo: 30 },
+    ]);
+    const delegated = await card(
+      [{ from: "triage", to: "in_progress", secondsAgo: 30 }],
+      { assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+    );
+    // A built-in belongs to the org: no member context is asked for.
+    runAs({ member: null, org: orgCtx });
+
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
+
+    expect(await claimedForAgent(unassigned.id)).toBe(true);
+    expect(await claimedForAgent(delegated.id)).toBe(false);
+    expect((await taskBoard.getById(delegated.id, ORG))?.assigneeId).toBe(
+      SUPER_AGENT_ASSIGNEE_ID,
+    );
   });
 });

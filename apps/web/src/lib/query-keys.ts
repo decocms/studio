@@ -466,8 +466,6 @@ export const KEYS = {
   // Automations (scoped by organization, optionally by project)
   taskBoardPrompts: (organizationId: string) =>
     ["task-board-prompts", organizationId] as const,
-  taskBoardColumnAutomations: (organizationId: string) =>
-    ["task-board-column-automations", organizationId] as const,
   taskBoardSprints: (organizationId: string) =>
     ["task-board-sprints", organizationId] as const,
   automationsAll: (organizationId: string) =>

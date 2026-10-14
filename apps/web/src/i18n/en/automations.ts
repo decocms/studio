@@ -181,6 +181,11 @@ export const automations = {
     "A new token will be generated and the current token will stop working. Any senders using the old token must be updated.",
   "automations.triggerCard.starterRemoved": "Starter removed",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST to fire",
+  "automations.builtin.badge": "Built-in",
+  "automations.builtin.implementerDescription":
+    "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. A card delegated to the agent already runs, so it is skipped. The run follows the In Progress column's instructions and skills on the board; change them there.",
+  "automations.builtin.description":
+    "Studio runs this automation for the board. It follows the board's column instructions and skills; change them there.",
   "automations.columnTransitionDialog.title": "When a card enters a column",
   "automations.columnTransitionDialog.description":
     "Run this automation on each card that enters the column.",

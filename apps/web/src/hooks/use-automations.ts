@@ -114,6 +114,8 @@ export interface AutomationListItem {
   trigger_count: number;
   virtual_mcp_id: string;
   nearest_next_run_at: string | null;
+  /** Set on a built-in, which can only be turned on or off. */
+  system_key: string | null;
 }
 
 export interface AutomationTrigger {
@@ -144,6 +146,7 @@ export interface AutomationDetail {
   created_at: string;
   updated_at: string;
   virtual_mcp_id: string;
+  system_key: string | null;
   messages: unknown[];
   models: {
     tier?: "fast" | "smart" | "thinking";

@@ -27,9 +27,6 @@ describe("createTaskBoardTools", () => {
   test("registers the task-board tools under their raw names", () => {
     expect(Object.keys(tools).sort()).toEqual([
       "TASK_BOARD_ADMIN_ORG_LIST",
-      "TASK_BOARD_AUTOMATION_DELETE",
-      "TASK_BOARD_AUTOMATION_LIST",
-      "TASK_BOARD_AUTOMATION_UPSERT",
       "TASK_BOARD_COST",
       "TASK_BOARD_DELIVERY",
       "TASK_BOARD_ERRORS",
@@ -59,8 +56,6 @@ describe("createTaskBoardTools", () => {
     for (const name of [
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",
-      "TASK_BOARD_AUTOMATION_UPSERT",
-      "TASK_BOARD_AUTOMATION_DELETE",
     ]) {
       expect(tools[name]?.needsApproval).toBe(true);
     }

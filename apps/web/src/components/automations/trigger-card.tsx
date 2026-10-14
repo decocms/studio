@@ -45,10 +45,13 @@ export function TriggerCard({
   trigger,
   automationId,
   connectionName,
+  readOnly = false,
 }: {
   trigger: AutomationTrigger;
   automationId: string;
   connectionName?: string;
+  /** A built-in's starter: shown, never changed. */
+  readOnly?: boolean;
 }) {
   const t = useT();
   const {
@@ -264,14 +267,16 @@ export function TriggerCard({
               <RefreshCw01 size={13} className="text-muted-foreground" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={() => setConfirmDelete(true)}
-          >
-            <XClose size={13} className="text-muted-foreground" />
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <XClose size={13} className="text-muted-foreground" />
+            </Button>
+          )}
         </div>
       </div>
 

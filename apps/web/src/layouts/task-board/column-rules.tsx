@@ -1,6 +1,7 @@
 /** A column's rules, edited from the icon in its lane header. */
 
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Plus, XClose } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
@@ -21,36 +22,29 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@decocms/ui/components/sheet.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
 import { useOrgFsSkillCatalog } from "@/hooks/use-org-fs";
 import {
   useSaveColumnRules,
-  useTaskBoardColumnAutomations,
   useTaskBoardPrompts,
 } from "@/hooks/use-task-board-prompts";
+import { getDecopilotId, useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 
 /** A column's saved rules and a one-line summary of them, for the lane header icon. */
 export function useColumnRules(columnKey: string) {
   const t = useT();
   const prompts = useTaskBoardPrompts();
-  const automations = useTaskBoardColumnAutomations();
   const scope = prompts.data?.find((p) => p.columnKey === columnKey);
-  const automation = automations.data?.find((a) => a.columnKey === columnKey);
   const skillCount = scope?.skills.length ?? 0;
   const summary =
-    automation?.prompt ||
     scope?.prompt ||
-    (automation
-      ? t("taskBoard.columnRules.defaultRun")
-      : t("taskBoard.columnRules.skillsOnly", { count: skillCount }));
+    t("taskBoard.columnRules.skillsOnly", { count: skillCount });
   return {
     scope,
-    automation,
-    configured: !!automation || !!scope,
+    configured: !!scope,
     summary,
     boardSkills: prompts.data?.find((p) => p.columnKey === null)?.skills ?? [],
   };
@@ -67,7 +61,7 @@ export function ColumnRulesSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { scope, automation, boardSkills } = useColumnRules(columnKey);
+  const { scope, boardSkills } = useColumnRules(columnKey);
 
   return (
     <>
@@ -82,8 +76,6 @@ export function ColumnRulesSheet({
           <ColumnRulesForm
             columnKey={columnKey}
             initial={{
-              run: !!automation,
-              automation: automation?.prompt ?? "",
               prompt: scope?.prompt ?? "",
               skills: scope?.skills ?? [],
             }}
@@ -105,8 +97,6 @@ function ColumnRulesForm({
 }: {
   columnKey: string;
   initial: {
-    run: boolean;
-    automation: string;
     prompt: string;
     skills: string[];
   };
@@ -115,13 +105,10 @@ function ColumnRulesForm({
 }) {
   const t = useT();
   const save = useSaveColumnRules();
-  const [run, setRun] = useState(initial.run);
-  const [automation, setAutomation] = useState(initial.automation);
+  const { org } = useProjectContext();
   const [prompt, setPrompt] = useState(initial.prompt);
   const [skills, setSkills] = useState(initial.skills);
 
-  const nextAutomation = run ? automation : null;
-  const initialAutomation = initial.run ? initial.automation : null;
   const submit = () =>
     save.mutate(
       {
@@ -129,9 +116,6 @@ function ColumnRulesForm({
         ...(prompt !== initial.prompt ||
         skills.join("\n") !== initial.skills.join("\n")
           ? { rules: { prompt, skills } }
-          : {}),
-        ...(nextAutomation !== initialAutomation
-          ? { automation: nextAutomation }
           : {}),
       },
       {
@@ -151,28 +135,16 @@ function ColumnRulesForm({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
-        <section className="flex flex-col gap-2">
-          <label className="flex items-start gap-3">
-            <span className="flex-1">
-              <span className="block text-sm font-medium text-foreground">
-                {t("taskBoard.columnRules.runLabel")}
-              </span>
-              <span className="text-meta mt-0.5 block">
-                {t("taskBoard.columnRules.runHint")}
-              </span>
-            </span>
-            <Switch checked={run} onCheckedChange={setRun} />
-          </label>
-          {run && (
-            <Textarea
-              value={automation}
-              rows={5}
-              onChange={(e) => setAutomation(e.target.value)}
-              placeholder={t("taskBoard.columnRules.automationPlaceholder")}
-              aria-label={t("taskBoard.columnRules.automationLabel")}
-            />
-          )}
-        </section>
+        <p className="text-meta">
+          {t("taskBoard.columnRules.automationsHint")}{" "}
+          <Link
+            to="/$org/projects/$agentId/automations"
+            params={{ org: org.slug, agentId: getDecopilotId(org.id) }}
+            className="text-foreground underline underline-offset-2"
+          >
+            {t("taskBoard.columnRules.openAutomations")}
+          </Link>
+        </p>
         <section className="flex flex-col gap-2">
           <SectionTitle>{t("taskBoard.columnRules.promptLabel")}</SectionTitle>
           <Textarea

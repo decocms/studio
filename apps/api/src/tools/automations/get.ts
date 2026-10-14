@@ -36,6 +36,8 @@ export const AUTOMATION_GET = defineTool({
         created_at: z.string(),
         updated_at: z.string(),
         virtual_mcp_id: z.string(),
+        /** Set on a built-in, which can only be turned on or off. */
+        system_key: z.string().nullable(),
         messages: z.unknown(),
         models: z.unknown(),
         tools: z.array(z.string()).nullable(),
@@ -84,6 +86,7 @@ export const AUTOMATION_GET = defineTool({
         created_at: automation.created_at,
         updated_at: automation.updated_at,
         virtual_mcp_id: automation.virtual_mcp_id,
+        system_key: automation.system_key,
         messages: JSON.parse(automation.messages),
         models: JSON.parse(automation.models),
         tools: automation.tools ? JSON.parse(automation.tools) : null,

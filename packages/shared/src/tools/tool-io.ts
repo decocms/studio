@@ -631,18 +631,6 @@ export interface StudioToolIO {
     input: { id: string };
     output: { success: boolean };
   };
-  TASK_BOARD_AUTOMATION_LIST: {
-    input: { [x: string]: never };
-    output: { automations: { columnKey: string; prompt: string | null }[] };
-  };
-  TASK_BOARD_AUTOMATION_UPSERT: {
-    input: { columnKey: string; prompt?: string | null | undefined };
-    output: { automation: { columnKey: string; prompt: string | null } };
-  };
-  TASK_BOARD_AUTOMATION_DELETE: {
-    input: { columnKey: string };
-    output: { removed: boolean };
-  };
   TASK_BOARD_PROMPT_LIST: {
     input: { [x: string]: never };
     output: {
@@ -3454,7 +3442,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -3464,6 +3451,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -3513,7 +3501,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -3523,6 +3510,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null
@@ -3721,7 +3709,6 @@ export interface StudioToolIO {
                             | undefined;
                           sidebarViews?:
                             | (
-                                | "automations"
                                 | "overview"
                                 | "reports"
                                 | "board"
@@ -3731,6 +3718,7 @@ export interface StudioToolIO {
                                 | "e2e"
                                 | "analytics"
                                 | "cdn"
+                                | "automations"
                                 | "experiments"
                               )[]
                             | null
@@ -3780,7 +3768,6 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
-                    | "automations"
                     | "overview"
                     | "reports"
                     | "board"
@@ -3790,6 +3777,7 @@ export interface StudioToolIO {
                     | "e2e"
                     | "analytics"
                     | "cdn"
+                    | "automations"
                     | "experiments"
                   )[]
                 | null
@@ -3912,7 +3900,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -3922,6 +3909,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -3971,7 +3959,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -3981,6 +3968,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null
@@ -4140,7 +4128,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -4150,6 +4137,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -4199,7 +4187,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -4209,6 +4196,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null
@@ -4359,7 +4347,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -4369,6 +4356,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -4418,7 +4406,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -4428,6 +4415,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null
@@ -4578,7 +4566,6 @@ export interface StudioToolIO {
                             | undefined;
                           sidebarViews?:
                             | (
-                                | "automations"
                                 | "overview"
                                 | "reports"
                                 | "board"
@@ -4588,6 +4575,7 @@ export interface StudioToolIO {
                                 | "e2e"
                                 | "analytics"
                                 | "cdn"
+                                | "automations"
                                 | "experiments"
                               )[]
                             | null
@@ -4637,7 +4625,6 @@ export interface StudioToolIO {
                 | undefined;
               sidebarViews?:
                 | (
-                    | "automations"
                     | "overview"
                     | "reports"
                     | "board"
@@ -4647,6 +4634,7 @@ export interface StudioToolIO {
                     | "e2e"
                     | "analytics"
                     | "cdn"
+                    | "automations"
                     | "experiments"
                   )[]
                 | null
@@ -4777,7 +4765,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -4787,6 +4774,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -4836,7 +4824,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -4846,6 +4833,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null
@@ -4994,7 +4982,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -5004,6 +4991,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -5053,7 +5041,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -5063,6 +5050,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null
@@ -5828,7 +5816,7 @@ export interface StudioToolIO {
         | "failed"
         | "completed"
         | undefined;
-      kind?: "automation" | "task" | "chat" | undefined;
+      kind?: "task" | "chat" | "automation" | undefined;
       limit?: number | undefined;
     };
     output: {
@@ -5840,7 +5828,7 @@ export interface StudioToolIO {
         orgSlug: string;
         title: string;
         status: string;
-        kind: "automation" | "task" | "chat";
+        kind: "task" | "chat" | "automation";
         failureKind: string | null;
         failureReason: string | null;
         lastError: string | null;
@@ -6383,6 +6371,7 @@ export interface StudioToolIO {
         created_at: string;
         updated_at: string;
         virtual_mcp_id: string;
+        system_key: string | null;
         messages: unknown;
         models: unknown;
         tools: string[] | null;
@@ -6435,6 +6424,7 @@ export interface StudioToolIO {
         trigger_count: number;
         nearest_next_run_at: string | null;
         virtual_mcp_id: string;
+        system_key: string | null;
       }[];
     };
   };
@@ -6627,7 +6617,6 @@ export interface StudioToolIO {
                       cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
-                            | "automations"
                             | "overview"
                             | "reports"
                             | "board"
@@ -6637,6 +6626,7 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
+                            | "automations"
                             | "experiments"
                           )[]
                         | null
@@ -6686,7 +6676,6 @@ export interface StudioToolIO {
             | undefined;
           sidebarViews?:
             | (
-                | "automations"
                 | "overview"
                 | "reports"
                 | "board"
@@ -6696,6 +6685,7 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
+                | "automations"
                 | "experiments"
               )[]
             | null

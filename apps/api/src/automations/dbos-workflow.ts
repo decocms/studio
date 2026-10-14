@@ -42,6 +42,7 @@ import {
   runAutomationOnCard,
 } from "./card-run";
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
+import type { StudioContext } from "@/core/studio-context";
 import type { Pool } from "pg";
 import {
   runDispatchSteps,
@@ -135,6 +136,9 @@ export async function cleanupOrphanedOrgQueues(pool: Pool): Promise<void> {
 export interface AutomationRuntime {
   storage: AutomationsStorage;
   studioContextFactory: StudioContextFactory;
+  /** The org's own context, for a built-in automation: it belongs to the org,
+   *  not to the member who stood in as its creator. */
+  orgContextFactory?: (organizationId: string) => Promise<StudioContext | null>;
   /** For enqueueing a fire from inside a workflow or step, where the
    *  in-process API cannot (see `enqueueAutomationFire`). */
   systemDatabaseUrl?: string;
@@ -149,6 +153,20 @@ export function setAutomationRuntime(rt: AutomationRuntime): void {
 /** The system database a fire enqueued from inside DBOS is written to. */
 export function automationSystemDatabaseUrl(): string | undefined {
   return runtime?.systemDatabaseUrl;
+}
+
+/** The context a fire runs with: the creator's, or the org's for a built-in. */
+async function fireContext(
+  rt: AutomationRuntime,
+  automation: Automation,
+): Promise<StudioContext | null> {
+  if (automation.system_key) {
+    return (await rt.orgContextFactory?.(automation.organization_id)) ?? null;
+  }
+  return await rt.studioContextFactory(
+    automation.organization_id,
+    automation.created_by,
+  );
 }
 
 function requireRuntime(): AutomationRuntime {
@@ -196,7 +214,14 @@ export interface FireAutomationContext {
 export type FireAutomationOutcome =
   | { taskId: string }
   | { taskId: string; error: string }
-  | { skipped: "not_found" | "inactive" | "creator_invalid" | CardRunSkip };
+  | {
+      skipped:
+        | "not_found"
+        | "inactive"
+        | "creator_invalid"
+        | "org_unavailable"
+        | CardRunSkip;
+    };
 
 function toThinkingCapabilities(caps: string[] | undefined) {
   if (!caps || caps.length === 0) return undefined;
@@ -209,7 +234,7 @@ function toThinkingCapabilities(caps: string[] | undefined) {
 }
 
 type PrepareOutcome =
-  | { skip: "not_found" | "inactive" | "creator_invalid" }
+  | { skip: "not_found" | "inactive" | "creator_invalid" | "org_unavailable" }
   /** A card run resolves its own model (`enqueueAgentRunForTask`). */
   | { automation: Automation; onCard: CardTarget }
   | {
@@ -229,10 +254,8 @@ async function prepareFireStep(
   if (!automation) return { skip: "not_found" };
   if (!automation.active) return { skip: "inactive" };
 
-  const studioCtx = await rt.studioContextFactory(
-    automation.organization_id,
-    automation.created_by,
-  );
+  const studioCtx = await fireContext(rt, automation);
+  if (!studioCtx && automation.system_key) return { skip: "org_unavailable" };
   if (!studioCtx) {
     console.warn(
       `[fireAutomationWorkflow] deactivating "${automation.name}" — creator ${automation.created_by} no longer in org ${automation.organization_id}`,
@@ -462,16 +485,12 @@ async function buildDispatchRequestStep(
   return { ok: true, request: serializableRequest };
 }
 
-async function runOnCardStep(
+export async function runOnCardStep(
   automation: Automation,
   triggerId: string,
   target: CardTarget,
 ): Promise<CardRunOutcome> {
-  const rt = requireRuntime();
-  const studioCtx = await rt.studioContextFactory(
-    automation.organization_id,
-    automation.created_by,
-  );
+  const studioCtx = await fireContext(requireRuntime(), automation);
   const outcome: CardRunOutcome = studioCtx
     ? await runAutomationOnCard(studioCtx, automation, triggerId, target)
     : { skipped: "rejected" };

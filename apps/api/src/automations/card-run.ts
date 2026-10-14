@@ -15,6 +15,7 @@ import {
   automationInstruction,
   cardFireFence,
 } from "./board-column-transition";
+import { IMPLEMENTER_SYSTEM_KEY } from "./builtin";
 
 /** A card a fire runs on: the card, the column the run is for, and the event
  *  that picked it (it keys the run, so a retried fire starts it once). */
@@ -30,6 +31,7 @@ export type CardRunSkip =
   | "moved_on"
   | "busy"
   | "owned"
+  | "delegated"
   | "lost_claim"
   | "rejected";
 
@@ -65,6 +67,14 @@ export async function runAutomationOnCard(
   }
   if (item.assigneeId && item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) {
     return { skipped: "owned" };
+  }
+  // Delegating a card moves it to In Progress and starts its run right away;
+  // the implementer is for the cards nobody handed over.
+  if (
+    automation.system_key === IMPLEMENTER_SYSTEM_KEY &&
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID
+  ) {
+    return { skipped: "delegated" };
   }
 
   let card = item;

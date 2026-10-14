@@ -191,6 +191,11 @@ export const automations = {
     "Um novo token será gerado e o token atual deixará de funcionar. Quaisquer remetentes que usem o token antigo devem ser atualizados.",
   "automations.triggerCard.starterRemoved": "Disparador removido",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST para disparar",
+  "automations.builtin.badge": "Nativa",
+  "automations.builtin.implementerDescription":
+    "Pega cada card sem dono que chega em In Progress e trabalha nele como o Super Agent. Um card delegado ao agente já roda, então ele é pulado. A run segue as instruções e skills da coluna In Progress no board; mude lá.",
+  "automations.builtin.description":
+    "O Studio roda esta automação para o board. Ela segue as instruções e skills das colunas do board; mude lá.",
   "automations.columnTransitionDialog.title":
     "Quando um card entra numa coluna",
   "automations.columnTransitionDialog.description":

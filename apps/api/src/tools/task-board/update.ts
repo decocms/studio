@@ -21,7 +21,6 @@ import { recordTaskActivities } from "./activity";
 import { assertPlannableSprint, sprintChangeEntry } from "./sprints";
 import { isBoardRunThread, taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { runColumnAutomation } from "./run-column-automation";
 import { shipOnArrivalIfAutoMerge } from "./merge-pr";
 import { findChangeRequestIn } from "./change-request-extract";
 import { normalizePreviewRoutes } from "./preview-routes";
@@ -472,19 +471,13 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       return { item };
     }
 
-    // A card that just landed in a column runs that column's rule, whoever
-    // moved it. Only on an actual lane change: re-saving a title must not
-    // re-trigger, and the card is already owned once the rule has fired.
+    // Trunk-based orgs merge as soon as a card is cleared for release. Only
+    // on an actual lane change: re-saving a title must not re-trigger.
     if (
       input.status !== undefined &&
       previous !== null &&
       previous.status !== item.status
     ) {
-      item = await runColumnAutomation(ctx, item, {
-        assignedBy: getUserId(ctx)!,
-        actor: getUserId(ctx)!,
-      });
-      // Trunk-based orgs merge as soon as a card is cleared for release.
       item = await shipOnArrivalIfAutoMerge(ctx, item);
     }
 

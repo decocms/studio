@@ -286,9 +286,6 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
-  "TASK_BOARD_AUTOMATION_LIST",
-  "TASK_BOARD_AUTOMATION_UPSERT",
-  "TASK_BOARD_AUTOMATION_DELETE",
   "TASK_BOARD_PROMPT_LIST",
   "TASK_BOARD_PROMPT_UPSERT",
   "TASK_BOARD_PROMPT_DELETE",
@@ -1378,21 +1375,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
-    name: "TASK_BOARD_AUTOMATION_LIST",
-    description: "List what the board runs when a card lands in each column",
-    category: "Task Board",
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_UPSERT",
-    description: "Run the agent on cards landing in a board column",
-    category: "Task Board",
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_DELETE",
-    description: "Stop running the agent on cards landing in a board column",
-    category: "Task Board",
-  },
-  {
     name: "TASK_BOARD_PROMPT_LIST",
     description:
       "List the instructions appended to the system prompt of the board's runs",
@@ -1792,9 +1774,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
-      "TASK_BOARD_AUTOMATION_LIST",
-      "TASK_BOARD_AUTOMATION_UPSERT",
-      "TASK_BOARD_AUTOMATION_DELETE",
       "TASK_BOARD_PROMPT_LIST",
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",

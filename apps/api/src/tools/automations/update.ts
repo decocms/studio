@@ -76,6 +76,13 @@ export const AUTOMATION_UPDATE = defineTool({
     if (!existing) {
       throw new Error("Automation not found");
     }
+    const { id: _id, active: _active, ...edits } = input;
+    if (
+      existing.system_key &&
+      Object.values(edits).some((value) => value !== undefined)
+    ) {
+      throw new Error("Built-in automations can only be turned on or off.");
+    }
 
     // Build update payload
     const updateData: Record<string, unknown> = {};

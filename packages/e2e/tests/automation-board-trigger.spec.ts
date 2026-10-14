@@ -3,7 +3,8 @@
  * one, reads it back with its column, and a trigger without a column is
  * refused; the starter dialog adds one with its origin; a card that settles
  * in the column is fired on once, and a move into a column nothing watches
- * starts no settle wait.
+ * starts no settle wait. Every org also has the built-in implementer, which
+ * the tools only let it turn on or off.
  *
  * The run itself needs a model and a sandbox this tier does not have, so the
  * fire is asserted by its claim and by the fire workflow that ran it. Which moves fire is covered at the
@@ -33,7 +34,7 @@ interface Activity {
 
 /** Longer than the server's `BOARD_TRANSITION_SETTLE_SECONDS` plus its
  *  clock-skew margin, with room for the queue to pick the wait up. */
-const SETTLED_MS = 15_000;
+const SETTLED_MS = 20_000;
 
 test.describe("automation board column trigger", () => {
   test("an automation runs on cards entering a column", async ({
@@ -228,5 +229,96 @@ test.describe("automation board column trigger", () => {
         from: { kind: "statuses", statuses: ["customer_approval"] },
       }),
     ]);
+  });
+
+  test("every org has the built-in implementer, which can only be turned on or off", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+    const orgId = await findOrgId(request, orgSlug);
+
+    // Seeded right after the org is created, off the signup request.
+    const builtin = async () =>
+      (
+        await call<{
+          automations: {
+            id: string;
+            name: string;
+            active: boolean;
+            system_key: string | null;
+            virtual_mcp_id: string;
+          }[];
+        }>("AUTOMATION_LIST", {})
+      ).automations.find((a) => a.system_key === "implementer");
+    await expect.poll(builtin).toBeDefined();
+    const implementer = (await builtin())!;
+    expect(implementer).toMatchObject({
+      name: "Implementer",
+      active: true,
+      virtual_mcp_id: `decopilot_${orgId}`,
+    });
+    const { automation } = await call<{
+      automation: { triggers: Trigger[] };
+    }>("AUTOMATION_GET", { id: implementer.id });
+    expect(automation.triggers).toEqual([
+      expect.objectContaining({
+        type: "board_column_transition",
+        column_key: "in_progress",
+        from: { kind: "any" },
+      }),
+    ]);
+
+    await expect(
+      call("AUTOMATION_DELETE", { id: implementer.id }),
+    ).rejects.toThrow(/can't be deleted/);
+    await expect(
+      call("AUTOMATION_UPDATE", { id: implementer.id, name: "Mine now" }),
+    ).rejects.toThrow(/only be turned on or off/);
+    await expect(
+      call("AUTOMATION_TRIGGER_ADD", {
+        automation_id: implementer.id,
+        type: "board_column_transition",
+        column_key: "qa",
+      }),
+    ).rejects.toThrow(/starters can't be changed/);
+    await expect(
+      call("AUTOMATION_TRIGGER_REMOVE", {
+        trigger_id: automation.triggers[0]!.id,
+      }),
+    ).rejects.toThrow(/starters can't be changed/);
+
+    // It answers an unassigned card that settles in In Progress.
+    test.setTimeout(60_000);
+    const { item } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_CREATE",
+      { title: "Nobody picked this up" },
+    );
+    await call("TASK_BOARD_ITEM_UPDATE", {
+      id: item.id,
+      status: "in_progress",
+    });
+    const db: Client = await connectDevDb();
+    try {
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.query(
+                "select 1 from automation_trigger_fires where trigger_id = $1",
+                [automation.triggers[0]!.id],
+              )
+            ).rowCount,
+          { timeout: SETTLED_MS },
+        )
+        .toBe(1);
+    } finally {
+      await db.end();
+    }
+
+    await call("AUTOMATION_UPDATE", { id: implementer.id, active: false });
+    expect((await builtin())?.active).toBe(false);
   });
 });

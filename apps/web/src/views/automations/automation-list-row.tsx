@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   AlertDialog,
@@ -94,6 +95,9 @@ export function AutomationListRow({
             <span className="text-sm font-medium text-foreground truncate">
               {automation.name}
             </span>
+            {automation.system_key && (
+              <Badge variant="muted">{t("automations.builtin.badge")}</Badge>
+            )}
             {showAgent && agent && (
               <span className="text-xs text-muted-foreground truncate">
                 · {agent.title}
@@ -110,7 +114,7 @@ export function AutomationListRow({
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
           role="presentation"
-          className="shrink-0"
+          className={cn("shrink-0", automation.system_key && "invisible")}
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

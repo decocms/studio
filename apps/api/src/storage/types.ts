@@ -1399,6 +1399,9 @@ export interface AutomationTable {
   // Parent agent-loop step cap (AI SDK stopWhen). null = PARENT_STEP_LIMIT.
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  /** Set on a built-in automation Studio seeds in every org (see
+   *  `automations/builtin.ts`); null on the ones people create. */
+  system_key: ColumnType<string | null, string | null | undefined, never>;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -1418,6 +1421,7 @@ export interface Automation {
   temperature: number;
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  system_key: string | null;
   created_at: string;
   updated_at: string;
 }

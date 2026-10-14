@@ -99,6 +99,9 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
     if (!automation) {
       throw new Error("Automation not found");
     }
+    if (automation.system_key) {
+      throw new Error("A built-in automation's starters can't be changed.");
+    }
 
     if (input.type === "cron") {
       if (!input.cron_expression) {

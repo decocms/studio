@@ -211,6 +211,8 @@ import {
   registerBoardTransitionWorkflows,
   setBoardTransitionRuntime,
 } from "../automations/board-column-transition-workflows";
+import { ensureBuiltinAutomations } from "../automations/builtin";
+import { buildOrgContext } from "../tools/task-board/org-context";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -1697,6 +1699,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   setAutomationRuntime({
     storage: automationsStorage,
     studioContextFactory: automationContextFactory,
+    orgContextFactory: (organizationId) =>
+      buildOrgContext(database.db, organizationId),
     systemDatabaseUrl: withSslmode(
       getSettings().databaseUrl,
       getSettings().databasePgSsl,
@@ -2522,6 +2526,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     // replicas/workers all enqueueing in parallel collapse via OAOO.
     backfillStudioPackForAllOrgs().catch((err) => {
       console.error("[studio-pack-backfill] failed:", err);
+    });
+
+    // Seeds the built-in automations an org lacks. One set-based statement
+    // per built-in, a no-op once every org has them; replicas booting
+    // together collapse on the unique key.
+    ensureBuiltinAutomations(database.db).catch((err) => {
+      console.error("[automations] built-in seed failed:", err);
     });
 
     // Fire-and-forget immediate public-sets sync (hour-bucketed workflow ID,

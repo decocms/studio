@@ -46,6 +46,11 @@ export const AUTOMATION_DELETE = defineTool({
     if (!existing) {
       throw new Error("Automation not found");
     }
+    if (existing.system_key) {
+      throw new Error(
+        "Built-in automations can't be deleted. Turn it off instead.",
+      );
+    }
 
     // Disable all event triggers on their MCP connections (best-effort)
     const triggers = await ctx.storage.automations.listTriggers(input.id);
