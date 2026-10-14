@@ -280,7 +280,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.blockChangedElsewhere":
     "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":
-    "Outra pessoa também editou este bloco. As alterações dela foram mantidas junto com as suas.",
+    "Este bloco foi atualizado enquanto você editava. Suas alterações foram aplicadas sobre a versão mais recente.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',

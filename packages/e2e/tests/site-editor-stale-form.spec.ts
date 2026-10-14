@@ -24,7 +24,7 @@ import { expect, test } from "../fixtures/test";
 
 test.use({ newBlocksEditor: true });
 
-const MERGED = "Someone else also edited this block";
+const MERGED = "This block was updated while you were editing";
 
 const hero = {
   __resolveType: "site/sections/HeroSlideShow.tsx",
