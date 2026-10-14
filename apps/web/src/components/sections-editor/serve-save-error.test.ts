@@ -95,7 +95,7 @@ describe("one toast per publish", () => {
     let retried = 0;
     const before = toast.getToasts().length;
     toastPublishFailed(t, {
-      headline: "Couldn't publish this release.",
+      headline: "Couldn't go live with this release.",
       detail: "latest-update-failed",
       retry: () => {
         retried++;
@@ -109,7 +109,7 @@ describe("one toast per publish", () => {
     expect(action?.label).toBe("Try again");
     // The headline never carries the developer detail.
     expect((failed[0] as { title?: unknown }).title).toBe(
-      "Couldn't publish this release.",
+      "Couldn't go live with this release.",
     );
     toastPublished(t, "This release is live.");
     const shown = toast
@@ -126,7 +126,7 @@ describe("one toast per publish", () => {
   test("Try again keeps the toast, as Publishing…, until the outcome", () => {
     let retried = 0;
     toastPublishFailed(t, {
-      headline: "Couldn't publish this release.",
+      headline: "Couldn't go live with this release.",
       retry: () => {
         retried++;
       },
@@ -157,5 +157,30 @@ describe("one toast per publish", () => {
       .getToasts()
       .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
     expect((done as { title?: unknown }).title).toBe("Published");
+  });
+  test("Releases: a go-live says Going live… and Live, never Publish", () => {
+    toastPublishFailed(t, {
+      headline: t("releases.goLiveFailed"),
+      pending: t("releases.goingLive"),
+      retry: () => {},
+    });
+    const [failed] = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    (
+      failed as { action?: { onClick: (event: unknown) => void } }
+    ).action?.onClick({ preventDefault: () => {} });
+    const [pending] = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect((pending as { title?: unknown }).title).toBe("Going live…");
+    toastPublished(t, t("releases.versionLive"), t("releases.live"));
+    const [done] = toast
+      .getToasts()
+      .filter((item) => item.id === SITE_EDITOR_PUBLISH_TOAST);
+    expect((done as { title?: unknown }).title).toBe("Live");
+    expect((done as { description?: unknown }).description).toBe(
+      "This release is live.",
+    );
   });
 });

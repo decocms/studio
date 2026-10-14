@@ -1,8 +1,8 @@
 /**
  * Releases tab (the `releases` route) — a hosted v8 site's timeline: main's
- * commits, newest first. A commit with a companion release on the CDN can be
- * published ("Make current" on the API); the one latest.json names is
- * Published (read, never inferred). A commit without a companion (a
+ * commits, newest first. A commit with a companion release on the CDN can go
+ * live again ("Make current" on the API; not a Publish — it was published
+ * already); the one latest.json names is Live (read, never inferred). A commit without a companion (a
  * developer push, or a Publish whose release write failed) is listed with no
  * badge and no action, as "Site update" (its own message, which may name
  * git, is developer detail in the tooltip).
@@ -108,13 +108,13 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const runMakeCurrent = async (commit: ReleaseCommit, confirmed: boolean) => {
     try {
       await makeCurrent.mutateAsync({ sha: commit.sha, confirm: confirmed });
-      toastPublished(t, t("releases.versionLive"));
+      toastPublished(t, t("releases.versionLive"), t("releases.live"));
     } catch (error) {
       if (
         error instanceof HostedRequestError &&
         error.code === "schema-mismatch"
       ) {
-        // The confirm dialog asks the next step; a retry's "Publishing…"
+        // The confirm dialog asks the next step; a retry's "Going live…"
         // toast must not stay behind it.
         dismissPublishToast();
         setConfirm({ commit, schemaMismatch: true });
@@ -122,8 +122,9 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
       }
       // Failed: the badge stays where latest.json says (the list refetches).
       toastPublishFailed(t, {
-        headline: t("releases.publishVersionFailed"),
+        headline: t("releases.goLiveFailed"),
         detail: errorDetail(error),
+        pending: t("releases.goingLive"),
         retry: () => void runMakeCurrent(commit, confirmed),
       });
     }
@@ -145,13 +146,13 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         <p className="mt-2 text-sm">
           <span className="text-muted-foreground">
             {current
-              ? t("releases.publishedAgo", {
+              ? t("releases.wentLiveAgo", {
                   when: formatRelativeTime(
                     new Date(current.publishedAt),
                     language,
                   ),
                 })
-              : t("releases.nothingPublished")}
+              : t("releases.nothingLive")}
           </span>
         </p>
       </div>
@@ -194,7 +195,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                 </div>
                 {isCurrent ? (
                   <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
-                    {t("releases.published")}
+                    {t("releases.live")}
                   </span>
                 ) : null}
                 {commit.hasRelease && !isCurrent ? (
@@ -218,7 +219,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                         }
                       >
                         <ClockRewind size={14} />
-                        {t("releases.publishVersion")}
+                        {t("releases.goLive")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -253,21 +254,19 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("releases.publishVersionTitle")}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t("releases.goLiveTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.schemaMismatch
                 ? t("releases.schemaMismatchBody")
-                : t("releases.publishVersionBody")}
+                : t("releases.goLiveBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("releases.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={onConfirm}>
               {confirm?.schemaMismatch
-                ? t("releases.publishAnyway")
-                : t("releases.publishVersion")}
+                ? t("releases.goLiveAnyway")
+                : t("releases.goLive")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

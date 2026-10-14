@@ -13,8 +13,8 @@ import { saveErrorDetail, saveErrorMessage } from "./serve-save-error";
 
 /** Every save failure in the site editor shares this toast. */
 export const SITE_EDITOR_SAVE_TOAST = "site-editor-save";
-/** Publishing (from the editor or the Releases screen), its outcome and a
- *  retry of it share this toast. */
+/** Publishing from the editor or going live from the Releases screen, its
+ *  outcome and a retry of it share this toast. */
 export const SITE_EDITOR_PUBLISH_TOAST = "site-editor-publish";
 
 /** A collapsed "Details" line holding the developer detail of a failure. */
@@ -62,9 +62,16 @@ export function toastSaveError(
  */
 export const FRESH_TOAST = { action: undefined, duration: undefined } as const;
 
-/** Published: what the site shows now. `description` says what went live. */
-export function toastPublished(t: TFunction, description: string) {
-  toast.success(t("siteEditor.publish.published"), {
+/**
+ * Published (or `title`, e.g. Live for a release that went live again): what
+ * the site shows now. `description` says what went live.
+ */
+export function toastPublished(
+  t: TFunction,
+  description: string,
+  title: string = t("siteEditor.publish.published"),
+) {
+  toast.success(title, {
     ...FRESH_TOAST,
     id: SITE_EDITOR_PUBLISH_TOAST,
     description,
@@ -74,7 +81,8 @@ export function toastPublished(t: TFunction, description: string) {
 /**
  * Publishing didn't finish: `headline` says so in plain words, `detail` (the
  * error's own text) sits behind Details, and `retry` offers "Try again".
- * `tone: "warning"` when nothing is lost (the changes are saved).
+ * `tone: "warning"` when nothing is lost (the changes are saved). `pending`
+ * is what the toast says while the retry runs (default "Publishing…").
  */
 export function toastPublishFailed(
   t: TFunction,
@@ -83,12 +91,14 @@ export function toastPublishFailed(
     body,
     detail,
     retry,
+    pending,
     tone = "error",
   }: {
     headline: string;
     body?: string;
     detail?: string | null;
     retry?: () => void;
+    pending?: string;
     tone?: "error" | "warning";
   },
 ) {
@@ -113,7 +123,7 @@ export function toastPublishFailed(
             // the toast: it turns into "Publishing…" (also blocking a second
             // click) until the retry's outcome replaces it.
             event.preventDefault();
-            toast.loading(t("thread.publishPopover.publishing"), {
+            toast.loading(pending ?? t("thread.publishPopover.publishing"), {
               ...FRESH_TOAST,
               id: SITE_EDITOR_PUBLISH_TOAST,
               description: undefined,
