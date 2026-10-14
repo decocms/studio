@@ -15,7 +15,6 @@ import type { ContentBackend, ProtocolBackend } from "./content-backend";
 import {
   applyProtocolPatch,
   pollProtocolContent,
-  protocolApply,
 } from "./content-protocol-api";
 import { decofileWriteScope } from "./decofile-api";
 import {
@@ -287,36 +286,38 @@ describe("content-sync pending state", () => {
 });
 
 describe("content-sync refresh (contentChanged)", () => {
-  it("a hosted discard writes through blocks.apply and refreshes the blocks, pointer, status and change list", async () => {
+  it("a hosted discard removes the draft's entries and refreshes the blocks, pointer, status and change list", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = fakeBackend();
     const { pointer, reads } = editorQueries(queryClient);
-    await settle();
-    const before = { ...reads };
-    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+    // The editor's blocks: the draft over main.
+    state.blocks = {
       Home: { title: "edited" },
       Promo: { title: "draft only" },
-    });
-    pointer.version = "e3";
+    };
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => state.blocks,
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
+    const before = { ...reads };
 
-    const patch = { set: { Home: { title: "main" } }, delete: ["Promo"] };
     await runContentDiscard(target(queryClient, backend), {
       blockKeys: ["Home", "Promo"],
-      write: () =>
-        protocolApply(queryClient, backend, params, CACHE_KEY, patch),
-      outcome: () => ({ patch }),
+      // The server drops the entries: main shows through; a new draft ETag.
+      write: async () => {
+        state.blocks = { Home: { title: "main" } };
+        pointer.version = "e3";
+      },
     });
 
-    expect(state.applied).toEqual([
-      { set: { Home: { title: "main" } }, delete: ["Promo"] },
-    ]);
+    expect(state.applied).toEqual([]);
     expect(
       queryClient.getQueryData<Record<string, unknown>>(
         KEYS.decofile(CACHE_KEY),
       ),
-    ).toEqual({
-      Home: { title: "main" },
-    });
+    ).toEqual({ Home: { title: "main" } });
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(reads.status).toBe(before.status + 1);
     expect(reads.bodies).toBe(before.bodies + 1);
@@ -352,22 +353,14 @@ describe("content-sync refresh (contentChanged)", () => {
       blockKeys: ["Home"],
       write: async () => {
         order.push("discard");
-        state.gate = null;
-        return protocolApply(queryClient, backend, params, CACHE_KEY, {
-          set: { Home: { title: "main" } },
-        });
       },
     });
     await settle();
-    // Queued behind the save: nothing written yet.
+    // Queued behind the save: nothing discarded yet.
     expect(order).toEqual([]);
     gate.resolve();
     await Promise.all([save, discard]);
     expect(order).toEqual(["save", "discard"]);
-    expect(state.applied).toEqual([
-      { set: { Home: { title: "edited" } } },
-      { set: { Home: { title: "main" } } },
-    ]);
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "idle",
       inFlight: 0,
@@ -378,36 +371,34 @@ describe("content-sync refresh (contentChanged)", () => {
   it("a save made after a discard queues behind it (the newer edit wins)", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = fakeBackend();
+    const order: string[] = [];
     const gate = deferred<void>();
-    state.gate = gate.promise;
     const discard = runContentDiscard(target(queryClient, backend), {
       blockKeys: ["Home"],
-      write: () =>
-        protocolApply(queryClient, backend, params, CACHE_KEY, {
-          set: { Home: { title: "main" } },
-        }),
+      write: async () => {
+        await gate.promise;
+        order.push("discard");
+      },
     });
     await settle();
     const save = queryClient
       .getMutationCache()
       .build(queryClient, {
         scope: decofileWriteScope(ORG, VM, BRANCH),
-        mutationFn: () => {
-          state.gate = null;
-          return applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
+        mutationFn: async () => {
+          await applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
             set: { Home: { title: "after" } },
           });
+          order.push("save");
         },
       })
       .execute(undefined);
     await settle();
-    expect(state.applied).toHaveLength(1);
+    expect(state.applied).toEqual([]);
     gate.resolve();
     await Promise.all([discard, save]);
-    expect(state.applied).toEqual([
-      { set: { Home: { title: "main" } } },
-      { set: { Home: { title: "after" } } },
-    ]);
+    expect(order).toEqual(["discard", "save"]);
+    expect(state.applied).toEqual([{ set: { Home: { title: "after" } } }]);
   });
 
   it("a publish or rollback re-reads the releases and the blocks", async () => {

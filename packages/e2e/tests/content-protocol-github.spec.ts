@@ -1195,7 +1195,6 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
 
       await page.getByRole("button", { name: "Review & Publish" }).click();
       const dialog = page.getByRole("dialog");
-      // The change's bodies are in: the discard writes main's version back.
       await expect(dialog.locator('[data-publish-state="ready"]')).toBeVisible({
         timeout: 60_000,
       });
@@ -1217,11 +1216,12 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
 
-      // One write path: the discard went through blocks.apply.
-      expect(
-        rpcMethods.filter((m) => m === "blocks.apply").length,
-      ).toBeGreaterThan(appliesBefore);
-      expect(gitDiscards).toEqual([]);
+      // The discard removed the block from the draft (no main sync: nothing
+      // of main's is written through blocks.apply).
+      expect(gitDiscards).toHaveLength(1);
+      expect(rpcMethods.filter((m) => m === "blocks.apply").length).toBe(
+        appliesBefore,
+      );
       // The open form shows main's value again, with no wait for a poll.
       await expect(title).toHaveValue("Hello", { timeout: 10_000 });
       // The preview left the discarded draft, and its indicator cleared.
@@ -1241,7 +1241,7 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
     }
   });
 
-  test("a discard after main moved puts main's current value back, not the one the dialog loaded", async ({
+  test("a discard removes the block from the draft: main's current value shows, and follows main when it moves again", async ({
     authedPage: { page, orgSlug },
   }) => {
     const preview = await startPreviewSite();
@@ -1301,8 +1301,15 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       await expect(title).toHaveValue("Hello again", { timeout: 10_000 });
       const left = Object.values(await deliveryObjects(page.request, drafts));
       expect(left.some((o) => o.text.includes("Discard me"))).toBe(false);
-      // The draft carries no old main over the new one.
-      expect(left.some((o) => /"title":\s*"Hello"/.test(o.text))).toBe(false);
+      // The draft holds no copy of main: the block is simply not in it.
+      expect(left.some((o) => /"title":\s*"Hello/.test(o.text))).toBe(false);
+
+      // main moves again after the discard: the editor follows it.
+      await moveStubMain(page.request, project.owner, "site", {
+        ".deco/schema.gen.json": schema,
+        ".deco/blocks/home.json": homePage.replace("Hello", "Hello third"),
+      });
+      await expect(title).toHaveValue("Hello third", { timeout: 60_000 });
     } finally {
       await preview.close();
     }
