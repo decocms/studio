@@ -175,6 +175,9 @@ async function mergeDuplicateSSOUser(data: {
       // Delete the duplicate user
       await sql`DELETE FROM "user" WHERE "id" = ${user.id}`.execute(tx);
     });
+
+    // The caller reuses this object for the session cookie right after this returns.
+    Object.assign(user, originalUser);
   } catch (error) {
     console.error("[SSO] Failed to merge duplicate user:", error);
   }
