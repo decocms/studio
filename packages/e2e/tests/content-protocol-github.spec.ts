@@ -6,7 +6,7 @@
  *   POST /api/:org/decofile/:virtualMcpId/:branch/rpc        (session, v8 site)
  *   GET  /api/:org/decofile/:virtualMcpId/:branch            the draft pointer (session)
  *   POST /api/:org/decofile/:virtualMcpId/:branch/publish    commit + release
- *   /api/:org/hosted/:virtualMcpId/{releases,releases/current,site-tokens}
+ *   /api/:org/hosted/:virtualMcpId/{releases,releases/:sha/republish,releases/current,site-tokens}
  *
  * The protocol's own black-box conformance suite runs against the endpoint,
  * with the repository on the local GitHub stub (see fixtures/fast-preview.ts)
@@ -662,7 +662,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("Publish commits the draft to main and makes it live; publishing a version or Try again switches what the site serves", async ({
+  test("Publish commits the draft to main and makes it live; Republish rolls forward to an earlier release's content; Try again puts main's head live", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -737,35 +737,93 @@ test.describe("content protocol on GitHub", () => {
         [expect.any(String), false],
       ]);
 
-      // Make an older release current: latest.json only, git stays.
-      const made = await ctx.post(`${hosted}/releases/current`, {
-        data: { sha: first.sha },
-      });
-      expect(made.status()).toBe(200);
-      // Every latest.json write is stamped now (the SDK's timeline rule).
-      const rolledBackAt = await publishedAt();
-      expect(Date.parse(rolledBackAt)).toBeGreaterThan(Date.parse(secondAt));
+      // Republish the first release: a NEW release (a commit on main) with
+      // its content, made live; history stays linear.
+      const republished = await ctx.post(
+        `${hosted}/releases/${first.sha}/republish`,
+        { data: {} },
+      );
+      expect(republished.status()).toBe(200);
+      const third = (await republished.json()) as {
+        result: string;
+        sha: string;
+        release: string;
+      };
+      expect(third).toMatchObject({ result: "merged", release: "current" });
+      expect(third.sha).not.toBe(first.sha);
+      const afterRepublish = await inspectStubRepo(ctx, project.owner, "site");
+      expect(afterRepublish.refs.main).toBe(third.sha);
+      expect(
+        afterRepublish.branches.main!.files[".deco/blocks/hero-home.json"],
+      ).toBe(
+        `${JSON.stringify({ __resolveType: "hero", title: "One" }, null, 2)}\n`,
+      );
+      // The live store holds exactly the first release's content.
+      const stored = await deliveryObjects(ctx, `sites/${site}/`);
+      const blocksOf = (sha: string) =>
+        JSON.parse(stored[`sites/${site}/revisions/${sha}.json`]!.text).blocks;
+      expect(blocksOf(third.sha)).toEqual(blocksOf(first.sha));
+      const republishedAt = await publishedAt();
+      expect(Date.parse(republishedAt)).toBeGreaterThan(Date.parse(secondAt));
+      expect(
+        JSON.parse(stored[`sites/${site}/latest.json`]!.text).revision,
+      ).toBe(third.sha);
       releases = await (await ctx.get(`${hosted}/releases`)).json();
-      expect(releases).toMatchObject({ current: { revision: first.sha } });
-      // A commit without a companion release can't be made current.
+      expect(releases).toMatchObject({
+        current: { revision: third.sha },
+        // No telemetry in e2e: the screen falls back to the last publish.
+        serving: { source: "none" },
+      });
+      expect(releases.commits[0]).toMatchObject({
+        sha: third.sha,
+        message: "Republish: Publish One",
+        hasRelease: true,
+        republishOf: { sha: first.sha },
+      });
+      // Republishing what main already holds commits nothing.
+      const again = await ctx.post(
+        `${hosted}/releases/${first.sha}/republish`,
+        { data: {} },
+      );
+      expect(await again.json()).toEqual({ result: "up-to-date" });
+      // A commit without a companion release can't be republished.
       const initial = releases.commits.at(-1).sha as string;
       expect(
         (
-          await ctx.post(`${hosted}/releases/current`, {
-            data: { sha: initial },
+          await ctx.post(`${hosted}/releases/${initial}/republish`, {
+            data: {},
           })
         ).status(),
       ).toBe(404);
+      // The pointer flip is gone: releases/current only takes { head: true }.
+      expect(
+        (
+          await ctx.post(`${hosted}/releases/current`, {
+            data: { sha: second.sha },
+          })
+        ).status(),
+      ).toBe(400);
 
       // A Publish that commits nothing leaves latest.json alone.
       await rpc(ctx, rpcPath(project, "draft-1"), "blocks.apply", {
-        set: { "hero-home": { __resolveType: "hero", title: "Two" } },
+        set: { "hero-home": { __resolveType: "hero", title: "One" } },
       });
       const noop = await ctx.post(`${decofile}/draft-1/publish`, {
         data: { note: "" },
       });
       expect(await noop.json()).toEqual({ result: "up-to-date" });
-      expect(await publishedAt()).toBe(rolledBackAt);
+      expect(await publishedAt()).toBe(republishedAt);
+
+      // A later edit sits on the restored content.
+      const fourth = await publish("Four");
+      expect(fourth).toMatchObject({ result: "merged", release: "current" });
+      const afterEdit = await inspectStubRepo(ctx, project.owner, "site");
+      expect(afterEdit.refs.main).toBe(fourth.sha);
+      expect(
+        afterEdit.branches.main!.files[".deco/blocks/hero-home.json"],
+      ).toBe(
+        `${JSON.stringify({ __resolveType: "hero", title: "Four" }, null, 2)}\n`,
+      );
 
       // Publish's "Try again" ({ head: true }) puts main's head live: the
       // newest Publish, never an older one.
@@ -774,10 +832,17 @@ test.describe("content protocol on GitHub", () => {
       });
       expect(retried.status()).toBe(200);
       expect(await retried.json()).toMatchObject({
-        current: { revision: second.sha },
+        current: { revision: fourth.sha },
       });
       releases = await (await ctx.get(`${hosted}/releases`)).json();
-      expect(releases).toMatchObject({ current: { revision: second.sha } });
+      expect(releases).toMatchObject({ current: { revision: fourth.sha } });
+      expect(releases.commits.map((c: { sha: string }) => c.sha)).toEqual([
+        fourth.sha,
+        third.sha,
+        second.sha,
+        first.sha,
+        initial,
+      ]);
     } finally {
       await ctx.dispose();
     }

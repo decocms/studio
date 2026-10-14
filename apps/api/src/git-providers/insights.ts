@@ -169,6 +169,8 @@ export interface RepoCommit {
   date: string;
   /** The subject line, not the full body — every consumer matches on the first line. */
   message: string;
+  /** The rest of the message (trailers included), when the provider gives it. */
+  body?: string;
   author: RepoCommitAuthor;
 }
 

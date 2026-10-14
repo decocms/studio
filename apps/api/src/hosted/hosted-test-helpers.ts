@@ -157,6 +157,10 @@ export function fakeRepo(files: Record<string, string>) {
       return content;
     },
     readFileAtRef: async (ref, path) => treeAt(ref).get(path) ?? null,
+    readCommit: async (sha) => {
+      const row = history.find((c) => c.sha === sha);
+      return row ? { message: row.message, date: row.date } : null;
+    },
     commitFiles: async ({ branch, message, expectedHead, changes }) => {
       if (branch !== "main") throw new Error("only main");
       if (expectedHead !== null && expectedHead !== head) {
@@ -166,6 +170,11 @@ export function fakeRepo(files: Record<string, string>) {
       for (const change of changes as FileChange[]) {
         if ("deleted" in change) tree.delete(change.path);
         else if ("content" in change) tree.set(change.path, change.content);
+        else {
+          const content = treeAt(change.copyFromRef).get(change.path);
+          if (content === undefined) throw new Error(`no ${change.path}`);
+          tree.set(change.path, content);
+        }
       }
       return { sha: commit(tree, message) };
     },
@@ -217,12 +226,18 @@ export function fakeInsights(
     }) => {
       calls.push({ cursor: cursor ?? null, limit });
       const from = cursor ? Number(cursor) : 0;
-      const items = history.slice(from, from + limit).map((c) => ({
-        sha: c.sha,
-        date: c.date,
-        message: c.message,
-        author: { name: "Ana", email: null, login: null },
-      }));
+      // Like the providers: the subject line, and the rest as `body`.
+      const items = history.slice(from, from + limit).map((c) => {
+        const [subject = "", ...rest] = c.message.split("\n");
+        const body = rest.join("\n").trim();
+        return {
+          sha: c.sha,
+          date: c.date,
+          message: subject,
+          ...(body ? { body } : {}),
+          author: { name: "Ana", email: null, login: null },
+        };
+      });
       return {
         items,
         nextCursor: from + limit < history.length ? String(from + limit) : null,

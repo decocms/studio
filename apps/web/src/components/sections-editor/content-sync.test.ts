@@ -401,7 +401,7 @@ describe("content-sync refresh (contentChanged)", () => {
     expect(state.applied).toEqual([{ set: { Home: { title: "after" } } }]);
   });
 
-  it("a publish or rollback re-reads the releases and the blocks", async () => {
+  it("a publish or republish re-reads the releases and the blocks", async () => {
     const queryClient = new QueryClient();
     const { reads } = editorQueries(queryClient);
     await settle();
@@ -416,7 +416,7 @@ describe("content-sync refresh (contentChanged)", () => {
       staleTime: Number.POSITIVE_INFINITY,
     }).subscribe(() => {});
     await settle();
-    for (const kind of ["publish", "rollback"] as const) {
+    for (const kind of ["publish", "republish"] as const) {
       await runContentChange(target(queryClient, fakeBackend().backend), {
         kind,
         reread: true,
@@ -435,7 +435,7 @@ describe("content-sync refresh (contentChanged)", () => {
     await settle();
     const before = { ...reads };
     await runContentChange(target(queryClient, { kind: "pending" }), {
-      kind: "rollback",
+      kind: "republish",
       write: async () => "ok",
     });
     expect(reads.releases).toBe(before.releases + 1);
