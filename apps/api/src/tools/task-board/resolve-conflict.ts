@@ -12,7 +12,7 @@
  *
  * Reuses the exact machinery the automatic reaction does — the atomic
  * `claimConflictResolution` fence (Ready for Deployment + Super Agent → In Progress) so a
- * click racing the poll can't double-dispatch, and `enqueueSuperAgentForTask`
+ * click racing the poll can't double-dispatch, and the Implementer's run
  * with `{ pr, resolveConflict: true }` so the re-run checks out the SAME PR's
  * branch, merges the base, and pushes — rather than opening a second PR.
  *
@@ -41,7 +41,7 @@ import {
 } from "@/billing/task-quota";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { fireImplementer } from "@/automations/fire-implementer";
 import { fetchPrConflict } from "./prs-get";
 
 export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
@@ -121,7 +121,7 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
     emitTaskBoardUpdated(organizationId, claimed);
 
     try {
-      await enqueueSuperAgentForTask(ctx, claimed, {
+      await fireImplementer(ctx, claimed, {
         pr: { number: pr.number, url: pr.url },
         resolveConflict: true,
         runClass: "retry",

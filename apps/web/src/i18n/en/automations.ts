@@ -183,7 +183,7 @@ export const automations = {
   "automations.triggerCard.webhookPostToFire": "Webhook · POST to fire",
   "automations.builtin.badge": "Built-in",
   "automations.builtin.implementerDescription":
-    "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. A card delegated to the agent already runs, so it is skipped. The run follows the In Progress column's instructions and skills on the board; change them there.",
+    "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. It is also what runs when someone clicks Run or Re-run on a card, delegates one to the agent, or the board retries a run. Turning it off stops it picking cards up on its own; Run on a card still works. The run follows the In Progress column's instructions and skills on the board; change them there.",
   "automations.builtin.reviewerDescription":
     "Reviews a card's pull request once it is ready for review (open, checks done, preview on its latest commit) and records a verdict: an approval sends the card to QA, a request for changes hands it to a person. Turning it off is the same as turning off the Reviewer in Settings → Review. The review follows the In Review column's instructions and skills on the board; change them there.",
   "automations.builtin.description":

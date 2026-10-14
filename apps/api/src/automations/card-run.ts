@@ -13,7 +13,11 @@ import {
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import type { StudioContext } from "@/core/studio-context";
 import type { Automation, TaskBoardItem } from "@/storage/types";
-import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
+import {
+  enqueueSuperAgentForTask,
+  type SuperAgentPromptOpts,
+} from "@/tools/task-board/enqueue-super-agent";
+import { TaskQuotaError, type TaskQuotaReason } from "@/billing/task-quota";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import {
   enqueueReviewerForTask,
@@ -44,6 +48,30 @@ export interface CardTarget {
     attempt: number;
     modelClass: ClaudeCodeModelClass;
   };
+  /** Set when a person or the board asked for this run (Run, Re-run, a
+   *  delegation, a retry, a conflict fix): it runs whatever the column gates
+   *  say, with these run options, and its error goes back to the caller. */
+  manual?: ManualRun;
+}
+
+/** The board-run options a manual fire carries through to the run. */
+export type ManualRun = Pick<
+  SuperAgentPromptOpts,
+  "userInitiated" | "runClass" | "pr" | "resolveConflict"
+>;
+
+/** Why a run was refused, serializable so it survives the workflow. A quota
+ *  refusal keeps its reason, so the caller can raise the paywall. */
+export interface RunError {
+  message: string;
+  quotaReason?: TaskQuotaReason;
+}
+
+function runErrorOf(err: unknown): RunError {
+  if (err instanceof TaskQuotaError) {
+    return { message: err.message, quotaReason: err.reason };
+  }
+  return { message: err instanceof Error ? err.message : String(err) };
 }
 
 export type CardRunSkip =
@@ -55,7 +83,9 @@ export type CardRunSkip =
   | "lost_claim"
   | "rejected";
 
-export type CardRunOutcome = { threadId: string } | { skipped: CardRunSkip };
+export type CardRunOutcome =
+  | { threadId: string }
+  | { skipped: CardRunSkip; error?: RunError };
 
 /**
  * Run `automation` on the target card. It skips a card that left the column
@@ -77,6 +107,9 @@ export async function runAutomationOnCard(
   if (!item) return { skipped: "card_gone" };
   if (automation.system_key === REVIEWER_SYSTEM_KEY && target.review) {
     return await runReviewOnCard(ctx, item, triggerId, target.review);
+  }
+  if (target.manual) {
+    return await runManuallyOnCard(ctx, automation, item, triggerId, target);
   }
   if (item.status !== target.columnKey) return { skipped: "moved_on" };
   if (
@@ -154,7 +187,35 @@ export async function runAutomationOnCard(
       );
       if (released) emitTaskBoardUpdated(item.organizationId, released);
     }
-    return { skipped: "rejected" };
+    return { skipped: "rejected", error: runErrorOf(err) };
+  }
+  return { threadId: fence.threadId };
+}
+
+/** A run someone asked for on a card the caller already put in place: the
+ *  card is the agent's and in its column, so no gate or claim applies. */
+async function runManuallyOnCard(
+  ctx: StudioContext,
+  automation: Automation,
+  item: TaskBoardItem,
+  triggerId: string,
+  target: CardTarget,
+): Promise<CardRunOutcome> {
+  const fence = cardFireFence(triggerId, target.eventKey);
+  try {
+    await enqueueSuperAgentForTask(ctx, item, {
+      ...target.manual,
+      instruction: automationInstruction(automation.messages) || undefined,
+      column: target.columnKey,
+      automation: {
+        name: automation.name,
+        agentId: automation.virtual_mcp_id,
+        triggerId,
+        fence,
+      },
+    });
+  } catch (err) {
+    return { skipped: "rejected", error: runErrorOf(err) };
   }
   return { threadId: fence.threadId };
 }

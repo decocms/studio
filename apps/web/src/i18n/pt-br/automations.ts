@@ -193,7 +193,7 @@ export const automations = {
   "automations.triggerCard.webhookPostToFire": "Webhook · POST para disparar",
   "automations.builtin.badge": "Nativa",
   "automations.builtin.implementerDescription":
-    "Pega cada card sem dono que chega em In Progress e trabalha nele como o Super Agent. Um card delegado ao agente já roda, então ele é pulado. A run segue as instruções e skills da coluna In Progress no board; mude lá.",
+    "Pega cada card sem dono que chega em In Progress e trabalha nele como o Super Agent. É também o que roda quando alguém clica em Run ou Re-run num card, delega um card ao agente, ou o board tenta uma run de novo. Desligar faz ele parar de pegar cards sozinho; o Run num card continua funcionando. A run segue as instruções e skills da coluna In Progress no board; mude lá.",
   "automations.builtin.reviewerDescription":
     "Revisa o pull request de um card quando ele fica pronto para review (aberto, checks terminados, preview no último commit) e registra um veredito: aprovar manda o card para QA, pedir mudanças passa o card para uma pessoa. Desligar aqui é o mesmo que desligar o Reviewer em Settings → Review. A revisão segue as instruções e skills da coluna In Review no board; mude lá.",
   "automations.builtin.description":

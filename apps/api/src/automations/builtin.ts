@@ -13,8 +13,13 @@
  *     as its creator (`card-run.ts`);
  *   - can only be turned on or off; the automation tools refuse edits,
  *     deletes, starter changes and manual runs (`tools/automations/*`).
- * - The implementer: skips a card already delegated to the Super Agent,
- *   whose run started when it was delegated (`card-run.ts`).
+ * - The implementer:
+ *   - its starter skips a card already delegated to the Super Agent, whose
+ *     run started when it was delegated (`card-run.ts`);
+ *   - it is also fired by hand: Run, Re-run, a delegation, a card created or
+ *     imported for the agent, a retry, a conflict fix (`fire-implementer.ts`).
+ *     A manual fire runs when it is off and skips the column gates
+ *     (`card-run.ts`, `dbos-workflow.ts`).
  * - The reviewer:
  *   - its on/off is still the org's `reviewer_enabled` flag, which the review
  *     gate's other readers (auto-merge, conflicts, admin flags) read; the tools

@@ -52,7 +52,7 @@ import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { fireImplementer } from "@/automations/fire-implementer";
 import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
 import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { conflictResolutionCapReached } from "./conflict-reaction";
@@ -389,7 +389,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
 
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
-    // chunk lands. `enqueueSuperAgentForTask` claims quota itself (idempotent
+    // chunk lands. the Implementer's run claims quota itself (idempotent
     // per task, and exempt from `maxRunsPerTask`) and throws
     // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
@@ -412,7 +412,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await enqueueSuperAgentForTask(ctx, updated, { userInitiated: true });
+    await fireImplementer(ctx, updated, { userInitiated: true });
 
     return { status: updated.status, supersededThreadIds };
   },

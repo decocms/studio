@@ -39,6 +39,7 @@ import {
   type CardRunOutcome,
   type CardRunSkip,
   type CardTarget,
+  type RunError,
   runAutomationOnCard,
 } from "./card-run";
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
@@ -221,6 +222,8 @@ export type FireAutomationOutcome =
         | "creator_invalid"
         | "org_unavailable"
         | CardRunSkip;
+      /** Why a card run was refused. */
+      error?: RunError;
     };
 
 function toThinkingCapabilities(caps: string[] | undefined) {
@@ -252,7 +255,9 @@ async function prepareFireStep(
     ctx.organizationId,
   );
   if (!automation) return { skip: "not_found" };
-  if (!automation.active) return { skip: "inactive" };
+  // A run someone asked for runs whether or not the automation fires on its
+  // own: off means its starters don't fire.
+  if (!automation.active && !ctx.target?.manual) return { skip: "inactive" };
 
   const studioCtx = await fireContext(rt, automation);
   if (!studioCtx && automation.system_key) return { skip: "org_unavailable" };
@@ -549,7 +554,7 @@ export async function fireAutomationWorkflowFn(
     );
     return "threadId" in outcome
       ? { taskId: outcome.threadId }
-      : { skipped: outcome.skipped };
+      : { skipped: outcome.skipped, error: outcome.error };
   }
 
   const taskId = await DBOS.runStep(

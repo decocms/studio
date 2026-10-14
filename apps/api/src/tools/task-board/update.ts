@@ -16,7 +16,7 @@ import {
 import { inReviewPhase, LANE_RANK, laneRank } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
-import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { recordTaskActivities } from "./activity";
 import { assertPlannableSprint, sprintChangeEntry } from "./sprints";
 import { isBoardRunThread, taskRunContextStore } from "./task-run-context";

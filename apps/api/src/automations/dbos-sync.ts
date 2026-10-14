@@ -132,6 +132,22 @@ export async function fireAutomationNow(
   return await handle.getResult();
 }
 
+/**
+ * Run a fire now, off the queue, and wait for its outcome: for a run a person
+ * is waiting on (Run, Re-run), whose error has to reach them. The queue caps
+ * the in-process runs of an org; a card fire only enqueues the board's run,
+ * so it has nothing to wait for there. Not from inside a workflow or step.
+ */
+export async function fireAutomationDirect(
+  ctx: FireAutomationContext,
+  opts: { idempotencyKey: string },
+): Promise<FireAutomationOutcome> {
+  const handle = await DBOS.startWorkflow(fireAutomationWorkflow, {
+    workflowID: workflowIdFromIdempotencyKey(ctx, opts.idempotencyKey),
+  })(ctx);
+  return await handle.getResult();
+}
+
 // Returns once the enqueue commits — durability handed off to DBOS.
 export async function enqueueAutomationFire(
   ctx: FireAutomationContext,

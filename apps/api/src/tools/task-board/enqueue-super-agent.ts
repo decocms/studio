@@ -1,14 +1,9 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import {
-  LANES,
-  outstandingReviewFeedback,
-  SUPER_AGENT_ASSIGNEE_ID,
-} from "@decocms/shared/task-board";
+import { LANES, outstandingReviewFeedback } from "@decocms/shared/task-board";
 import {
   claimTaskExecution,
   rollbackTaskExecution,
-  TaskQuotaError,
   userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 import { isReportsTask } from "@decocms/shared/task-board";
@@ -23,30 +18,6 @@ import {
   buildClaudeCodeTaskPrompt,
   resolveTaskRepoChoice,
 } from "./claude-code-task-run";
-
-/**
- * The shared post-write reaction for a task delegated to the Super Agent:
- * enqueue the run. No-op for any other assignee, so callers that already know
- * the write delegated (create) and callers that gate on the transition
- * (update) share one body. The SSE broadcast is emitted by each write site
- * itself (every create/update broadcasts, not just delegations). Enqueue is
- * best-effort — the task is already persisted, so a dispatch failure (e.g. no
- * model configured) must never fail the write that delegated it.
- */
-export async function reactToSuperAgentDelegation(
-  ctx: StudioContext,
-  item: TaskBoardItem,
-  opts?: Pick<SuperAgentPromptOpts, "userInitiated" | "instruction" | "column">,
-): Promise<void> {
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await enqueueSuperAgentForTask(ctx, item, opts).catch((err) => {
-    // A paywall rejection is NOT best-effort: swallowing it would leave the
-    // task delegated-but-never-running with only a log line. Callers decide
-    // (the update tool surfaces it; the import route un-delegates).
-    if (err instanceof TaskQuotaError) throw err;
-    console.error("[task-board] Super Agent enqueue failed", err);
-  });
-}
 
 /**
  * Enqueue a Super Agent run for a task delegated to it. Creates a fresh thread

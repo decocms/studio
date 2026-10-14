@@ -7,7 +7,7 @@ import { resolveSiteRepositoryId } from "./resolve-site-repository";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskKey } from "@decocms/shared/task-key";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
-import { reactToSuperAgentDelegation } from "../task-board/enqueue-super-agent";
+import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 
 /** The branch the implementation PR is opened from. Named after the test so a
  *  person reading the repo's branch list, and the Experiments screen reading
