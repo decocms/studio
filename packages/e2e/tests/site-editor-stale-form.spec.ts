@@ -400,6 +400,56 @@ test.describe("Site Editor stale section form", () => {
       await previewSite.close();
     }
   });
+  test("with identical twin sections, an edit to the open one stays on it", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        hero,
+      );
+      const home = (await storedBlock(page.request, url, "home")) as Record<
+        string,
+        unknown
+      >;
+      // Seed a twin below the open section, the way a page repeats a spacer.
+      await writeElsewhere(page.request, url, "home", {
+        ...home,
+        sections: [hero, hero],
+      });
+      await page.reload();
+      const blocks = page.getByTestId("blocks-panel");
+      await blocks
+        .getByRole("button", { name: /HeroSlideShow/ })
+        .first()
+        .click({ timeout: 60_000 });
+      await expect(headline).toHaveValue("Original headline");
+
+      // Someone else edits the open (first) twin in place.
+      const editedTwin = {
+        ...hero,
+        slides: [{ title: "First slide", description: "Published elsewhere" }],
+      };
+      await writeElsewhere(page.request, url, "home", {
+        ...home,
+        sections: [editedTwin, hero],
+      });
+
+      await headline.fill("Draft headline");
+      await expect
+        .poll(() => storedBlock(page.request, url, "home"))
+        .toEqual({
+          ...home,
+          sections: [{ ...editedTwin, headline: "Draft headline" }, hero],
+        });
+    } finally {
+      await previewSite.close();
+    }
+  });
 });
 
 test.describe("Site Editor stale page fields", () => {

@@ -912,10 +912,10 @@ export function SectionsEditor({
           );
           return;
         }
-        // A section was inserted, removed, or moved above the form's: follow
-        // it to its new position and save there.
+        // Sections were inserted or removed: follow the form's section to its
+        // new position and save there, or start over when it can't be found.
         const movedTo = parsed.isSavedBlock
-          ? -1
+          ? "here"
           : findSectionMovedTo(
               startedFrom,
               latestRawSections.map((raw, j) =>
@@ -927,8 +927,16 @@ export function SectionsEditor({
                 ),
               ),
               sectionIndex,
+              formBase?.sectionCount ?? latestRawSections.length,
             );
-        if (movedTo >= 0 && formBase) {
+        if (movedTo === "unknown") {
+          reloadStaleForm(
+            t("sectionsEditor.sectionsEditor.sectionReplacedElsewhere"),
+          );
+          return;
+        }
+        if (typeof movedTo === "number" && formBase) {
+          formBase.sectionCount = latestRawSections.length;
           formBase.sectionIndex = movedTo;
           setSelectedSectionIndex(movedTo);
           scheduleAutoSave(nextValue, movedTo, conflicts);
@@ -968,7 +976,10 @@ export function SectionsEditor({
       }
       // The stored copy becomes this value; a failed write puts it back.
       const savedBase = showRebased || !rebased ? value : nextValue;
-      if (formBase) formBase.base = savedBase;
+      if (formBase) {
+        formBase.base = savedBase;
+        formBase.sectionCount = latestRawSections.length;
+      }
       const saveCallbacks = {
         onSuccess: () => onSaved?.(),
         onError: (err: Error) => {
@@ -1155,6 +1166,7 @@ export function SectionsEditor({
         variantIndex: latestRef.current.sectionVariantIndex,
         shown: formValue,
         next,
+        sectionCount: latestRef.current.rawSections.length,
       });
     }
     setFormValue(next);
