@@ -163,6 +163,7 @@ describe("hosted routes middleware", () => {
   const PATHS = [
     ["GET", "/hosted/p1/releases"],
     ["POST", "/hosted/p1/releases/current"],
+    ["POST", `/hosted/p1/releases/${"a".repeat(40)}/republish`],
     ["GET", "/hosted/p1/site-tokens"],
     ["POST", "/hosted/p1/site-tokens"],
   ] as const;
@@ -176,7 +177,7 @@ describe("hosted routes middleware", () => {
     for (const [method, path] of PATHS) {
       expect((await app.request(path, { method })).status).toBe(404);
     }
-    // One schema read for all four: the answer is reused for a minute.
+    // One schema read for all of them: the answer is reused for a minute.
     expect(repo.schemaReads().length).toBe(1);
     expect(orgSiteReads).toEqual([]);
     expect(patches).toEqual([]);

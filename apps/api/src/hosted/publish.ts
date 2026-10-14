@@ -12,8 +12,10 @@
  * Git is the source of truth for content; latest.json alone says what the CDN
  * serves ("Current"). A failed commit fails Publish and keeps the draft. A
  * failure in step 3 or 4 doesn't undo the merge: the result says which step
- * failed, nothing is restored, and Releases → Make current retries step 4. A
- * draft that commits nothing leaves latest.json alone.
+ * failed, nothing is restored, and Publish's "Try again" (`makeHeadCurrent`)
+ * retries them for main's head. A draft that commits nothing leaves
+ * latest.json alone. Steps 3–4 are {@link releaseCommit}, shared with
+ * Republish (republish.ts).
  * Every latest.json write stamps `publishedAt` now: the SDK prefers the CDN
  * only when it is later than its bundle's build time.
  */
@@ -73,7 +75,7 @@ export class MainMovedError extends Error {
 
 /**
  * Writing latest.json or purging it from the edge (after its one retry)
- * failed. Nothing is restored: the user tries Make current again.
+ * failed. Nothing is restored: the user tries again.
  */
 export class LatestUpdateError extends Error {
   constructor(cause: unknown) {
@@ -116,7 +118,7 @@ export async function readLatest(
 }
 
 /** Whether `sites/<site>/revisions/<sha>.json` exists (a listing, not a read). */
-async function hasRevision(
+export async function hasRevision(
   store: DeliveryStore,
   site: string,
   sha: string,
@@ -204,23 +206,28 @@ export async function draftFileChanges(
 }
 
 /**
- * Step 1: one fast-forward commit on main. Returns the commit sha, or null
- * when the draft changes nothing on main.
+ * One fast-forward commit of `changes` (block files) on main from `headSha`,
+ * with `.deco/blocks.gen.json` regenerated from `next` when the repo tracks
+ * it. Main having moved is {@link MainMovedError}: nothing is committed, no
+ * retry. Shared by Publish and Republish.
  */
-async function commitDraftToMain(
+export async function commitBlocksToMain(
   repo: HostedRepo,
-  draft: DraftBody,
+  headSha: string,
+  files: {
+    changes: FileChange[];
+    tree: TreeEntry[];
+    next: Iterable<BlockSource>;
+  },
   message: string,
-): Promise<string | null> {
-  const headSha = await requireBranchHead(repo.client, repo.mainBranch);
-  const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
-  if (changes.length === 0) return null;
+): Promise<string> {
+  const changes = [...files.changes];
   const gen = await regenerateGenArtifact({
     client: repo.client,
-    tree,
+    tree: files.tree,
     packagePath: repo.packagePath,
     branch: repo.mainBranch,
-    nextBlocks: next.values(),
+    nextBlocks: files.next,
     memo: new Map(),
   });
   if (gen) changes.push(gen);
@@ -238,6 +245,26 @@ async function commitDraftToMain(
     if (error instanceof RepoWriteConflict) throw new MainMovedError();
     throw error;
   }
+}
+
+/**
+ * Step 1: one fast-forward commit on main. Returns the commit sha, or null
+ * when the draft changes nothing on main.
+ */
+async function commitDraftToMain(
+  repo: HostedRepo,
+  draft: DraftBody,
+  message: string,
+): Promise<string | null> {
+  const headSha = await requireBranchHead(repo.client, repo.mainBranch);
+  const { changes, tree, next } = await draftFileChanges(repo, headSha, draft);
+  if (changes.length === 0) return null;
+  return commitBlocksToMain(
+    repo,
+    headSha,
+    { changes, tree, next: next.values() },
+    message,
+  );
 }
 
 /**
@@ -292,7 +319,7 @@ async function makeCommitCurrent(
 ): Promise<boolean> {
   await hooks.beforePointerWrite?.();
   // OPEN: O-10 — a plain PUT after the head check; a race lost in between is
-  // fixed with Make current.
+  // fixed with Publish's "Try again" (main's head).
   const head = await requireBranchHead(repo.client, repo.mainBranch);
   if (head !== sha) return false;
   await writeLatest(repo, {
@@ -359,18 +386,35 @@ export async function publishDraft(
   await removeDraft();
   // Nothing committed: latest.json is left alone.
   if (sha === null) return { result: "up-to-date" };
+  return {
+    result: "merged",
+    sha,
+    release: await releaseCommit(repo, sha, hooks),
+  };
+}
+
+/**
+ * Steps 3–4 for a commit just made on main: write its companion release,
+ * then make it current while it is still main's head. Never throws: the
+ * outcome says which step failed (logged), and nothing is undone.
+ */
+export async function releaseCommit(
+  repo: HostedRepo,
+  sha: string,
+  hooks: PublishHooks = {},
+): Promise<ReleaseOutcome> {
   let schemaHash: string;
   try {
     schemaHash = await ensureRevision(repo, sha);
   } catch (error) {
     logCdnFailure(repo, sha, "release write", error);
-    return { result: "merged", sha, release: "none" };
+    return "none";
   }
   try {
     const current = await makeCommitCurrent(repo, sha, schemaHash, hooks);
-    return { result: "merged", sha, release: current ? "current" : "created" };
+    return current ? "current" : "created";
   } catch (error) {
-    logCdnFailure(repo, sha, "make current", error);
-    return { result: "merged", sha, release: "created" };
+    logCdnFailure(repo, sha, "latest.json update", error);
+    return "created";
   }
 }
