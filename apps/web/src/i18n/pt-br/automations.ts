@@ -209,9 +209,10 @@ export const automations = {
   "automations.columnTransitionDialog.fromColumns": "Colunas específicas",
   "automations.columnTransitionDialog.columnsPlaceholder": "Escolha as colunas",
   "automations.columnTransitionDialog.help":
-    "Roda depois que o card fica 20 segundos na coluna. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
+    "Roda num card sem dono, ou que já é do agente, depois que ele fica 20 segundos na coluna; um card de uma pessoa fica de fora. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
   "automations.columnTransitionDialog.cancel": "Cancelar",
   "automations.columnTransitionDialog.add": "Adicionar gatilho",
+  "automations.triggerCard.unownedOnly": "Só cards sem dono",
   "automations.triggerCard.fromEarlier": "De uma coluna anterior",
   "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",
   "automations.triggerCard.fromColumns": "De {columns}",

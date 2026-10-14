@@ -197,9 +197,10 @@ export const automations = {
   "automations.columnTransitionDialog.fromColumns": "Specific columns",
   "automations.columnTransitionDialog.columnsPlaceholder": "Pick columns",
   "automations.columnTransitionDialog.help":
-    "It runs once the card has stayed in the column for 20 seconds. Where it came from is the column it last stayed in, not one it was dragged through.",
+    "It runs on a card nobody owns, or one the agent already owns, once it has stayed in the column for 20 seconds; a card a person owns is left alone. Where it came from is the column it last stayed in, not one it was dragged through.",
   "automations.columnTransitionDialog.cancel": "Cancel",
   "automations.columnTransitionDialog.add": "Add starter",
+  "automations.triggerCard.unownedOnly": "Only cards nobody owns",
   "automations.triggerCard.fromEarlier": "From an earlier column",
   "automations.triggerCard.fromLater": "From a later column (sent back)",
   "automations.triggerCard.fromColumns": "From {columns}",
