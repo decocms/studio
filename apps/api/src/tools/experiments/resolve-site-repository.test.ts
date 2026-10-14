@@ -10,20 +10,22 @@ const repository = {
 
 function contextWith(
   projects: unknown[],
-  repositories: {
+  options: {
     byId?: Record<string, string>;
     byPath?: Record<string, string>;
+    link?: { organizationId: string | null; projectId: string | null };
   } = {},
 ): StudioContext {
   return {
     storage: {
       virtualMcps: { list: async () => projects },
+      orgSites: { getBySlug: async () => options.link ?? null },
       repositories: {
         get: async (id: string) =>
-          repositories.byId?.[id] ? { id: repositories.byId[id] } : null,
+          options.byId?.[id] ? { id: options.byId[id] } : null,
         findByRef: async (_org: string, ref: { path: string }) =>
-          repositories.byPath?.[ref.path.toLowerCase()]
-            ? { id: repositories.byPath[ref.path.toLowerCase()] }
+          options.byPath?.[ref.path.toLowerCase()]
+            ? { id: options.byPath[ref.path.toLowerCase()] }
             : null,
       },
     },
@@ -50,12 +52,28 @@ describe("resolveSiteRepositoryId", () => {
   it("falls back to the org repository matching an imported binding", async () => {
     const ctx = contextWith(
       [{ title: "example-site", metadata: { repository } }],
-      { byPath: { "example-org/example-site": "repo-2" } },
+      {
+        byPath: { "example-org/example-site": "repo-2" },
+      },
     );
 
     await expect(
       resolveSiteRepositoryId(ctx, "org-1", "example-site"),
     ).resolves.toBe("repo-2");
+  });
+
+  it("follows the org_sites link to a project whose own slug differs", async () => {
+    const ctx = contextWith(
+      [{ id: "vm-1", title: "another-name", metadata: { repository } }],
+      {
+        byPath: { "example-org/example-site": "repo-3" },
+        link: { organizationId: "org-1", projectId: "vm-1" },
+      },
+    );
+
+    await expect(
+      resolveSiteRepositoryId(ctx, "org-1", "example-site"),
+    ).resolves.toBe("repo-3");
   });
 
   it("ignores the raw storage key, which no read path returns", async () => {
@@ -79,13 +97,13 @@ describe("resolveSiteRepositoryId", () => {
     ).resolves.toBeNull();
   });
 
-  it("returns null when no project matches the site", async () => {
+  it("rejects a site the organization does not own", async () => {
     const ctx = contextWith([
       { title: "other-site", metadata: { repository } },
     ]);
 
     await expect(
       resolveSiteRepositoryId(ctx, "org-1", "example-site"),
-    ).resolves.toBeNull();
+    ).rejects.toThrow("Site not found in organization");
   });
 });
