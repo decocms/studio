@@ -70,7 +70,8 @@ function utcMinute(date: string): string | null {
  * The new version's title for reapplying a version whose commit has
  * `message` and `date`: `Reapply: <its note>`. Reapplying a reapplied
  * version keeps the one prefix (it names the same content); a version
- * without a note is named by its date.
+ * without a note is named by its date, in the Releases screen's words
+ * (`release from <date>`; older notes say `version from <date>`).
  */
 export function reapplyTitle(original: {
   message: string;
@@ -80,7 +81,7 @@ export function reapplyTitle(original: {
   if (title.startsWith(PREFIX) && title.length > PREFIX.length) return title;
   if (title && !NO_NOTE.test(title)) return `${PREFIX}${title}`;
   const when = utcMinute(original.date);
-  return when ? `${PREFIX}version from ${when}` : `${PREFIX}earlier version`;
+  return when ? `${PREFIX}release from ${when}` : `${PREFIX}earlier release`;
 }
 
 /** The full commit message: title, then the trailers (one block). */

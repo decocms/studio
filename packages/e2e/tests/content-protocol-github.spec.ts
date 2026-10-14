@@ -664,7 +664,7 @@ test.describe("content protocol on GitHub", () => {
     }
   });
 
-  test("Publish commits the draft to main and releases it; Reapply version rolls forward to an earlier version's content; Try again releases main's head", async ({
+  test("Publish commits the draft to main and releases it; Reapply release rolls forward to an earlier release's content; Try again releases main's head", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);

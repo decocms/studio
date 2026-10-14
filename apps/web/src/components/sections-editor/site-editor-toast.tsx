@@ -62,13 +62,17 @@ export function toastSaveError(
  */
 export const FRESH_TOAST = { action: undefined, duration: undefined } as const;
 
-/** Published: `description` says what was published. */
-export function toastPublished(t: TFunction, description: string) {
-  toast.success(t("siteEditor.publish.published"), {
-    ...FRESH_TOAST,
-    id: SITE_EDITOR_PUBLISH_TOAST,
-    description,
-  });
+/**
+ * Published, in one line: your site (or `host`, when the publish names where
+ * it goes) will show it shortly. Never "live": a CDN takes a moment.
+ */
+export function toastPublished(t: TFunction, host?: string | null) {
+  toast.success(
+    host
+      ? t("siteEditor.publish.publishedOn", { host })
+      : t("siteEditor.publish.published"),
+    { ...FRESH_TOAST, id: SITE_EDITOR_PUBLISH_TOAST, description: undefined },
+  );
 }
 
 /**

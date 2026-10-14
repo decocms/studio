@@ -1,20 +1,20 @@
 /**
  * Site editor copy for business users: saving and publishing a site. Plain
  * words only — never CDN, git, branch, commit, merge, pointer, revision or
- * sha (`site-editor-copy.test.ts` enforces it). "Published" means live.
+ * sha (`site-editor-copy.test.ts` enforces it). A publish toast says your
+ * site will show it shortly, never "live".
  * Developer detail (an error's own text) goes behind `siteEditor.details`.
  */
 export const siteEditor = {
   "siteEditor.details": "Details",
   "siteEditor.tryAgain": "Try again",
-  "siteEditor.publish.published": "Published",
-  "siteEditor.publish.changesLive": "Your changes are live.",
-  "siteEditor.publish.liveOn": "Your changes are live on {host}.",
+  "siteEditor.publish.published": "Published. Your site will show it shortly.",
+  "siteEditor.publish.publishedOn": "Published. {host} will show it shortly.",
   "siteEditor.publish.nothingToPublish": "Nothing to publish",
-  "siteEditor.publish.everythingLive": "Everything is already live.",
+  "siteEditor.publish.everythingPublished": "Everything is already published.",
   "siteEditor.publish.savedNotPublished": "Saved, but not published yet",
   "siteEditor.publish.savedNotPublishedBody":
-    "Your changes are safe. Try again to put them live.",
+    "Your changes are safe. Try again to publish them.",
   "siteEditor.publish.publishedMeanwhile":
     "Someone else published while you were publishing, so nothing changed. Review your changes and publish again.",
   "siteEditor.publish.changedMeanwhile":

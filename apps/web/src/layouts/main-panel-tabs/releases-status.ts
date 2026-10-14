@@ -1,6 +1,6 @@
 /**
  * What each row of the Releases screen says, as pure functions: its title in
- * business words, its pill and whether it offers Reapply version.
+ * business words, its pill and whether it offers Reapply release.
  *
  * "Latest" is the version latest.json names: the newest one Publish (or a
  * reapply) put on the CDN. It says nothing about what a visitor's page
@@ -24,7 +24,7 @@ export function latestSha(
   return current ? current.revision : null;
 }
 
-/** Whether a row offers Reapply version: an earlier version with a release. */
+/** Whether a row offers Reapply release: an earlier release that was released. */
 export function canReapply(
   commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
   current: ReleasePointer | null,
@@ -33,7 +33,11 @@ export function canReapply(
 }
 
 const REAPPLY_PREFIX = "Reapply: ";
-const REAPPLY_OF_DATE = /^version from (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
+/** The server's dated note: "release from …" (older notes: "version from …"). */
+const REAPPLY_OF_DATE =
+  /^(?:release|version) from (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC$/;
+/** The server's note when even the date was unreadable (old and new words). */
+const REAPPLY_OF_UNKNOWN = new Set(["earlier release", "earlier version"]);
 /** Publish's title when there was no note: developer words, never shown. */
 const NO_NOTE = /^chore\(decofile\):/;
 
@@ -68,7 +72,7 @@ export function releaseTitle(
         });
       }
     }
-    if (!rest || rest === "earlier version" || NO_NOTE.test(rest)) {
+    if (!rest || REAPPLY_OF_UNKNOWN.has(rest) || NO_NOTE.test(rest)) {
       return t("releases.reapplyOf", { title: t("releases.untitled") });
     }
     return t("releases.reapplyOf", { title: rest });
