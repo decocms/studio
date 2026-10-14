@@ -38,6 +38,7 @@ import {
   isolatedSectionKey,
   type CompareDraft,
 } from "./cms-publish-compare-path.ts";
+import { blockFileName } from "@decocms/blocks/protocol";
 import type { PublishChange } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
 
@@ -65,6 +66,34 @@ interface PublishCompareProps {
   /** Where the changes render; null until Fast Preview stashes a grant. */
   draft: CompareDraft | null;
   lastPage: LastPreviewPage | null;
+}
+
+/**
+ * A v8 change's Code tab: its two sides (`changes.get`, secrets masked) as
+ * JSON, under the entry's file name. Empty until the sides are loaded; a
+ * side that exists but can't be read says so instead.
+ */
+function entryDiff(change: PublishChange, unreadable: string): GitDiffResult {
+  const side = (
+    json: Record<string, unknown> | null,
+    which: "before" | "after",
+  ) =>
+    change.unreadable?.includes(which)
+      ? unreadable
+      : json
+        ? `${JSON.stringify(json, null, 2)}\n`
+        : null;
+  const from = change.status === "new" ? null : side(change.fromJson, "before");
+  const to = change.status === "removed" ? null : side(change.toJson, "after");
+  if (from === null && to === null) return { diffs: {} };
+  // A new entry's `toJson` stands in from the current blocks before its
+  // sides load: only a loaded edit or removal has a `from`.
+  if (change.status === "edited" && (from === null || to === null)) {
+    return { diffs: {} };
+  }
+  return {
+    diffs: { [blockFileName(change.entry!.name)]: { from, to } },
+  };
 }
 
 export function PublishCompare({
@@ -96,14 +125,16 @@ export function PublishCompare({
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
   const afterUrl = url ? compareDraftUrl(url, draft) : null;
 
-  const rawDiff: GitDiffResult = {
-    diffs: Object.fromEntries(
-      change.filepaths.flatMap((p) => {
-        const entry = diff?.diffs[p];
-        return entry ? [[p, entry] as const] : [];
-      }),
-    ),
-  };
+  const rawDiff: GitDiffResult = change.entry
+    ? entryDiff(change, t("thread.publishCompare.sideUnreadable"))
+    : {
+        diffs: Object.fromEntries(
+          change.filepaths.flatMap((p) => {
+            const entry = diff?.diffs[p];
+            return entry ? [[p, entry] as const] : [];
+          }),
+        ),
+      };
   const hasBody = Object.keys(rawDiff.diffs).length > 0;
 
   const pathHint =

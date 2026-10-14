@@ -12,6 +12,7 @@ import { interpolate, type InterpolationVars } from "@/i18n/interpolate.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
 import {
   hostedCmsHeaderButton,
+  hostedHeaderState,
   selectCmsHeaderButton,
   type SelectCmsHeaderButtonInput,
 } from "./cms-panel-state";
@@ -162,5 +163,59 @@ describe("hosted v8 header button", () => {
     view.unmount();
     const upToDate = renderHeaderButton(select({}));
     expect(upToDate.queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+});
+
+describe("hosted v8 header state (changes.list, never git)", () => {
+  const list = (names: string[]) => ({
+    revision: "c1",
+    base: { revision: "m1", resolvedRef: "main" },
+    changes: Object.fromEntries(
+      names.map((name) => [
+        name,
+        { kind: "set", version: "v", baseVersion: "b" },
+      ]),
+    ),
+  });
+  const button = (names: string[] | undefined) => {
+    const state = hostedHeaderState(names ? list(names) : undefined, "draft-1");
+    return hostedCmsHeaderButton(
+      select({
+        branch: state.branchMeta,
+        publishableChangeCount: state.publishableChangeCount,
+      }),
+    );
+  };
+
+  test("listed changes are the count: Review & Publish", () => {
+    expect(hostedHeaderState(list(["Home", "Footer"]), "draft-1")).toEqual({
+      branchMeta: {
+        kind: "ready",
+        branch: "draft-1",
+        base: "main",
+        workingTreeDirty: false,
+        unpushed: 0,
+        aheadOfBase: 2,
+        behindBase: 0,
+        headSha: "c1",
+      },
+      publishableChangeCount: 2,
+    });
+    expect(button(["Home", "Footer"]).label).toBe(
+      en["thread.cmsActions.reviewAndPublish"],
+    );
+  });
+
+  test("no changes: nothing to publish, and nothing to get", () => {
+    const empty = button([]);
+    expect(empty.label).not.toBe(en["thread.cmsActions.reviewAndPublish"]);
+    expect(empty.menu).toEqual([]);
+  });
+
+  test("before the list is read: loading, never a git answer", () => {
+    expect(hostedHeaderState(undefined, "draft-1")).toEqual({
+      branchMeta: { kind: "unknown" },
+      publishableChangeCount: null,
+    });
   });
 });

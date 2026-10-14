@@ -423,6 +423,19 @@ describe("a v8 GitHub open reads main's schema once", () => {
           result: { notModified: false, revision: "r1", blocks: {} },
         };
       }
+      // The poll's changes against main ride along.
+      if (call.method === "changes.list") {
+        return {
+          jsonrpc: "2.0",
+          id: call.id,
+          result: {
+            notModified: false,
+            revision: "c1",
+            base: { revision: "m1", resolvedRef: "main" },
+            changes: {},
+          },
+        };
+      }
       schemaCalls++;
       if (call.params?.ifNoneMatch === "s1") {
         return {

@@ -5,9 +5,9 @@
  *
  * {@link runContentChange} runs the write and then the ONE refresh every
  * change shares ({@link contentChanged}): the editor's blocks, the draft
- * pointer (a new pointer reloads the preview), the header's publish status,
- * the publish dialog's change list and, after a publish or a reapply, the
- * releases. The open section form re-reads its block when someone other than
+ * pointer (a new pointer reloads the preview), the changes against the base
+ * (`changes.list`: the header's count, the publish dialog's and Localhost's
+ * change lists) and, after a publish or a reapply, the releases. The open section form re-reads its block when someone other than
  * its own autosave changed it (the store's `epoch`).
  *
  * It also owns the pending state both indicators show, the preview's progress
@@ -22,9 +22,9 @@
  * A discard ({@link runContentDiscard}) runs in the editor's own write queue:
  * the autosaves armed for the discarded blocks are dropped, and the discard
  * waits for the writes already queued or in flight, so it lands last. On a v8
- * site it removes those blocks from the draft (the draft is a sparse map of
- * changed blocks over main, layered over main's current version when read),
- * so the editor and the preview show main as it is then, and as it moves.
+ * site it drops those blocks back to the source's base (`changes.discard`:
+ * main on GitHub, the last commit in a sandbox or on Localhost), so the
+ * editor and the preview show the base as it is then.
  */
 
 import { notifyManager, type QueryClient } from "@tanstack/react-query";
@@ -34,7 +34,6 @@ import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
 import { decofileWriteMutationKey, decofileWriteScope } from "./decofile-api";
 import { sandboxGitStatusQueryPrefix } from "../thread/repository/sandbox-git-api";
-import { cmsPublishBodiesQueryPrefix } from "../thread/repository/use-cms-publish-state";
 
 export type ContentChangeKind =
   | "edit"
@@ -255,23 +254,26 @@ async function contentChanged(
       queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) }),
     );
   }
-  if (branch) {
-    // The header's publish status and the dialog's change list.
+  if (cacheKey) {
+    // The changes against the base and their sides: the header's count and
+    // every change list.
+    work.push(
+      queryClient.invalidateQueries({
+        queryKey: KEYS.contentChanges(cacheKey),
+      }),
+    );
+  }
+  if (branch && backend.source === "sandbox") {
+    // A sandbox publishes with git: its coding header and the Publish step
+    // read the branch's git status.
     work.push(
       queryClient.invalidateQueries({
         queryKey: sandboxGitStatusQueryPrefix(orgSlug, virtualMcpId, branch),
       }),
     );
   }
-  if (isHosted(backend)) {
-    if (pointerKey) {
-      work.push(queryClient.invalidateQueries({ queryKey: pointerKey }));
-    }
-    work.push(
-      queryClient.invalidateQueries({
-        queryKey: cmsPublishBodiesQueryPrefix(orgSlug, virtualMcpId),
-      }),
-    );
+  if (isHosted(backend) && pointerKey) {
+    work.push(queryClient.invalidateQueries({ queryKey: pointerKey }));
   }
   await Promise.all(work);
   if (change.kind !== "edit") {
@@ -340,11 +342,10 @@ async function runBegun<T>(
  * editors drop their armed autosaves of those blocks, which would otherwise
  * fire after the discard and bring the edit back; then the discard waits for
  * the writes already queued or in flight, and runs as a content change. So
- * the last write to land is the discard's: `write` removes the blocks from
- * the draft after every earlier save of them, and the refresh re-reads the
- * blocks (main's version now shows through), the draft pointer (the preview
- * reloads), the publish status and the change list; the open form re-reads
- * its block.
+ * the last write to land is the discard's: `write` drops the blocks back to
+ * the base after every earlier save of them, and the refresh re-reads the
+ * blocks (the base's version now shows through), the draft pointer (the
+ * preview reloads) and the changes; the open form re-reads its block.
  */
 export function runContentDiscard<T>(
   target: ContentSyncTarget,

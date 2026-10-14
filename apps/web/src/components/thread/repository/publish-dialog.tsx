@@ -1,7 +1,9 @@
 /**
  * The shared content-first publish surface — presentation only: reads come
- * from {@link useCmsPublishState}, writes from {@link useCmsPublishActions}.
- * Loads in two beats — see {@link useCmsPublishState} for what each decides.
+ * from {@link useCmsPublishState} on a v7 site (git) and from
+ * {@link useContentPublishState} on a v8 one (the content protocol's
+ * changes), writes from {@link useCmsPublishActions}. Loads in two beats: the
+ * list, then what changed inside each card.
  */
 
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
@@ -56,12 +58,17 @@ import {
 } from "./cms-publish-frame.tsx";
 import { lastPublishAttribution } from "./pr-attribution.ts";
 import {
+  blockKeyFromDiffPath,
   buildAutoNote,
   resolveVersionNote,
   type PublishChange,
+  type PublishChangeSummary,
 } from "./publish-change-summary.ts";
 import type { PublishTarget } from "./publish-flow.ts";
 import {
+  type GitDiffResult,
+  isGeneratedArtifactPath,
+  type PublishGate,
   readGitHeadBranch,
   reviewDiffSignature,
   type PublishPolicy,
@@ -72,9 +79,15 @@ import {
   type CmsPublishMode,
 } from "./use-cms-publish-actions.ts";
 import { useCmsPublishState } from "./use-cms-publish-state.ts";
+import {
+  type ContentPublishState,
+  useContentPublishState,
+} from "./use-content-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
+import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.ts";
+import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 
@@ -155,10 +168,17 @@ function isProductionBranch(base: string): boolean {
 const MAX_LIVE_PANES = 4;
 
 /** Above the list on narrow screens, beside it from `md` up. */
-const REVIEW_PANE = "flex h-[45%] min-h-0 min-w-0 shrink-0 md:h-auto md:flex-1";
+export const REVIEW_PANE =
+  "flex h-[45%] min-h-0 min-w-0 shrink-0 md:h-auto md:flex-1";
 
 /** The review pane beside the list column, whose header clears the close button. */
-function ReviewLayout({ list, pane }: { list: ReactNode; pane: ReactNode }) {
+export function ReviewLayout({
+  list,
+  pane,
+}: {
+  list: ReactNode;
+  pane: ReactNode;
+}) {
   return (
     <>
       {pane}
@@ -169,7 +189,7 @@ function ReviewLayout({ list, pane }: { list: ReactNode; pane: ReactNode }) {
   );
 }
 
-function ReviewPaneGhost() {
+export function ReviewPaneGhost() {
   return (
     <div className={cn(REVIEW_PANE, "bg-muted/40 p-3")}>
       <PublishGhost className="h-full w-full rounded-lg" />
@@ -371,12 +391,239 @@ function CmsPublishBody(
   );
 }
 
-function CmsPublishContent({
+/** What the dialog lists and acts on: git (v7) or the content protocol (v8). */
+interface PublishSource {
+  summary: PublishChangeSummary;
+  /** v7: every changed path, what "discard all" reverts. */
+  allPaths: string[];
+  canDiscard: (change: PublishChange) => boolean;
+  canDiscardAll: boolean;
+  changedFilesTotal: number;
+  changedFilesTruncated: boolean;
+  /** v7: the file bodies the Code tab slices. v8 cards carry their sides. */
+  diff: GitDiffResult | null;
+  bodiesPending: boolean;
+  bodiesFailed: boolean;
+  cardsPending: boolean;
+  refresh: () => Promise<unknown>;
+  gate: PublishGate;
+  headBranch: string;
+  expectedHeadSha?: string;
+  expectedDiffSignature?: string;
+  /** A hosted v8 draft: no pull request, Publish goes through the CDN draft. */
+  hosted: boolean;
+  /** v8: discards go through `changes.discard` on this backend. */
+  protocol?: {
+    backend: ProtocolBackend;
+    entries: Array<{ name: string; version: string | null }>;
+  };
+  /** A v8 sandbox's Publish also carries work these changes don't list. */
+  otherWork: boolean;
+}
+
+type CmsPublishContentProps = PublishDialogProps & {
+  publishLockRef: React.MutableRefObject<boolean>;
+};
+
+/** Picks the source: the content protocol on a v8 site, git otherwise. */
+function CmsPublishContent(props: CmsPublishContentProps) {
+  const backend = useContentBackend(props.virtualMcpId, props.branch);
+  const cacheKey = useDecofileCacheKey({
+    orgSlug: props.orgSlug,
+    virtualMcpId: props.virtualMcpId,
+    branch: props.branch,
+  });
+  if (backend.kind === "protocol" && cacheKey) {
+    return backend.source === "sandbox" ? (
+      <SandboxContentPublish {...props} backend={backend} cacheKey={cacheKey} />
+    ) : (
+      <ContentPublish {...props} backend={backend} cacheKey={cacheKey} />
+    );
+  }
+  // Until the backend is known, the dialog would read (and publish) the
+  // wrong way on a v8 site: it waits.
+  if (backend.kind !== "legacy") {
+    return (
+      <CmsPublishSkeleton
+        mode={props.mode ?? "publish"}
+        draftPreviewUrl={props.draftPreviewUrl}
+      />
+    );
+  }
+  return <GitPublish {...props} />;
+}
+
+/** A v7 site: the changes, the gate and the discards are git's. */
+function GitPublish(props: CmsPublishContentProps) {
+  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const state = useCmsPublishState({
+    orgSlug: props.orgSlug,
+    virtualMcpId: props.virtualMcpId,
+    branch: props.branch,
+    threadId,
+    baseBranch: props.baseBranch,
+    fastPreview: props.fastPreview,
+    recoverSandbox: props.recoverSandbox,
+  });
+  // Submitting for review IS the escalation the gate asks for — never judge it.
+  const { gate } = useResolvedPublishGate({
+    orgSlug: props.orgSlug,
+    virtualMcpId: props.virtualMcpId,
+    branch: props.branch,
+    threadId,
+    fastPreview: props.fastPreview,
+    status: state.status,
+    diff: state.diff,
+    paths: state.allPaths,
+    policy: props.publishPolicy,
+    judgeEnabled: props.mode !== "review",
+  });
+  const discardable = state.discardablePaths;
+  const canDiscardPaths = (paths: readonly string[]) =>
+    discardable === null || paths.every((p) => discardable.has(p));
+  return (
+    <CmsPublishView
+      {...props}
+      source={{
+        summary: state.summary,
+        allPaths: state.allPaths,
+        canDiscard: (change) => canDiscardPaths(change.filepaths),
+        // Never offer an all-files action over a set the server truncated.
+        canDiscardAll:
+          !state.changedFilesTruncated && canDiscardPaths(state.allPaths),
+        changedFilesTotal: state.changedFilesTotal,
+        changedFilesTruncated: state.changedFilesTruncated,
+        diff: state.diff,
+        bodiesPending: state.bodiesPending,
+        bodiesFailed: state.bodiesFailed,
+        cardsPending: state.cardsPending,
+        refresh: state.refresh,
+        gate,
+        headBranch: readGitHeadBranch(state.status) ?? props.branch,
+        expectedHeadSha: state.headSha ?? undefined,
+        ...(!props.fastPreview && state.diff
+          ? { expectedDiffSignature: reviewDiffSignature(state.diff) }
+          : {}),
+        hosted: false,
+        otherWork: false,
+      }}
+    />
+  );
+}
+
+/** The v8 list's part of a source (content-changes.ts): every entry discardable. */
+function contentListSource(
+  state: ContentPublishState,
+  backend: ProtocolBackend,
+) {
+  return {
+    summary: state.summary,
+    allPaths: [],
+    canDiscard: () => true,
+    canDiscardAll: true,
+    changedFilesTotal: state.summary.count,
+    changedFilesTruncated: false,
+    diff: null,
+    bodiesPending: state.sidesPending,
+    bodiesFailed: state.sidesFailed,
+    cardsPending: false,
+    refresh: state.refresh,
+    protocol: { backend, entries: state.entries },
+  };
+}
+
+/**
+ * A hosted v8 site (the draft against main): no pull request and no review
+ * path, so nothing gates its Publish.
+ */
+function ContentPublish({
+  backend,
+  cacheKey,
+  ...props
+}: CmsPublishContentProps & { backend: ProtocolBackend; cacheKey: string }) {
+  const state = useContentPublishState({ backend, cacheKey });
+  return (
+    <CmsPublishView
+      {...props}
+      source={{
+        ...contentListSource(state, backend),
+        gate: { allowed: true, reason: null },
+        headBranch: props.branch,
+        hosted: backend.source === "github",
+        otherWork: false,
+      }}
+    />
+  );
+}
+
+/**
+ * A v8 sandbox: the list, the Code tab and the discards come from the
+ * content protocol (its working tree against its last commit). Its Publish
+ * is git's (it pushes the session's work and merges it), so the Publish step
+ * and its review gate still read the branch's git status and diff, and the
+ * dialog says when that carries more than the listed changes (code, or
+ * changes already committed in the session).
+ */
+function SandboxContentPublish({
+  backend,
+  cacheKey,
+  ...props
+}: CmsPublishContentProps & { backend: ProtocolBackend; cacheKey: string }) {
+  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const state = useContentPublishState({ backend, cacheKey });
+  const git = useCmsPublishState({
+    orgSlug: props.orgSlug,
+    virtualMcpId: props.virtualMcpId,
+    branch: props.branch,
+    threadId,
+    baseBranch: props.baseBranch,
+    fastPreview: props.fastPreview,
+    recoverSandbox: props.recoverSandbox,
+  });
+  const { gate } = useResolvedPublishGate({
+    orgSlug: props.orgSlug,
+    virtualMcpId: props.virtualMcpId,
+    branch: props.branch,
+    threadId,
+    fastPreview: props.fastPreview,
+    status: git.status,
+    diff: git.diff,
+    paths: git.allPaths,
+    policy: props.publishPolicy,
+    judgeEnabled: props.mode !== "review",
+  });
+  const otherWork = git.allPaths.some((path) => {
+    const name = blockKeyFromDiffPath(path);
+    return name === null
+      ? !isGeneratedArtifactPath(path)
+      : !Object.hasOwn(state.changes.changes, name);
+  });
+  return (
+    <CmsPublishView
+      {...props}
+      source={{
+        ...contentListSource(state, backend),
+        // The git refresh too: a discard can leave the branch's diff moved.
+        refresh: () => Promise.all([state.refresh(), git.refresh()]),
+        gate,
+        headBranch: readGitHeadBranch(git.status) ?? props.branch,
+        expectedHeadSha: git.headSha ?? undefined,
+        ...(git.diff
+          ? { expectedDiffSignature: reviewDiffSignature(git.diff) }
+          : {}),
+        hosted: false,
+        otherWork,
+      }}
+    />
+  );
+}
+
+function CmsPublishView({
+  source,
   publishLockRef,
   onOpenChange,
   mode = "publish",
   fastPreview,
-  recoverSandbox,
   orgSlug,
   virtualMcpId,
   branch,
@@ -384,7 +631,6 @@ function CmsPublishContent({
   repoTarget,
   owner,
   repo,
-  publishPolicy,
   draftPreviewUrl,
   destinationHost,
   previewServerUrl,
@@ -394,9 +640,7 @@ function CmsPublishContent({
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
-}: PublishDialogProps & {
-  publishLockRef: React.MutableRefObject<boolean>;
-}) {
+}: CmsPublishContentProps & { source: PublishSource }) {
   const t = useT();
   const [{ language }] = usePreferences();
   /** The session publishing — the git routes resolve their runtime from it. */
@@ -409,27 +653,19 @@ function CmsPublishContent({
   );
 
   const {
-    status: gitStatus,
     summary,
     allPaths,
-    discardablePaths,
     changedFilesTotal,
     changedFilesTruncated,
-    headSha,
     diff: gitDiff,
     bodiesPending,
     bodiesFailed,
     cardsPending,
     refresh,
-  } = useCmsPublishState({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    threadId,
-    baseBranch,
-    fastPreview,
-    recoverSandbox,
-  });
+    gate,
+    hosted,
+    otherWork,
+  } = source;
 
   /** The author's text once they type — until then the note is derived, so a
    *  change list that lands after mount still describes itself. */
@@ -465,8 +701,6 @@ function CmsPublishContent({
   ]
     .filter((id) => changes.some((change) => changeId(change) === id))
     .slice(0, MAX_LIVE_PANES);
-  const backend = useContentBackend(virtualMcpId, branch);
-  const hosted = backend.kind === "protocol" && backend.source === "github";
   // A hosted v8 draft has no pull request: review mode doesn't apply to it.
   const isReview = mode === "review" && !hosted;
   const surfaceState: PublishSurfaceState = cardsPending
@@ -474,20 +708,6 @@ function CmsPublishContent({
     : bodiesPending
       ? "manifest"
       : "ready";
-
-  // Submitting for review IS the escalation the gate asks for — never judge it.
-  const { gate } = useResolvedPublishGate({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    threadId,
-    fastPreview,
-    status: gitStatus,
-    diff: gitDiff,
-    paths: allPaths,
-    policy: publishPolicy,
-    judgeEnabled: !isReview,
-  });
 
   const commitToOpenPr = openPullRequest?.state === "open";
   const target: PublishTarget = {
@@ -500,11 +720,11 @@ function CmsPublishContent({
     target: repoTarget,
     owner,
     repo,
-    headBranch: readGitHeadBranch(gitStatus) ?? branch,
+    headBranch: source.headBranch,
     coAuthor: coAuthorFromSessionUser(session?.user),
-    expectedHeadSha: headSha ?? undefined,
-    ...(!fastPreview && gitDiff
-      ? { expectedDiffSignature: reviewDiffSignature(gitDiff) }
+    expectedHeadSha: source.expectedHeadSha,
+    ...(source.expectedDiffSignature
+      ? { expectedDiffSignature: source.expectedDiffSignature }
       : {}),
   };
 
@@ -528,22 +748,16 @@ function CmsPublishContent({
     onPublished,
     hosted,
     authorName: session?.user?.name,
+    protocol: source.protocol,
   });
 
   // A content change is being written (a discard, or an edit still saving).
   const isDiscarding =
     useContentSyncState(orgSlug, virtualMcpId).phase === "saving";
 
-  const canDiscard = (paths: readonly string[]) =>
-    discardablePaths === null || paths.every((p) => discardablePaths.has(p));
-
-  // Until the backend is known, Publish would take the git path on a hosted
-  // site (and speak git): wait for it.
-  const canSubmit =
-    backend.kind !== "pending" &&
-    !isPublishing &&
-    summary.count > 0 &&
-    (isReview || gate.allowed);
+  /** Changes to publish: the listed ones, or a v8 sandbox's other work. */
+  const hasWork = summary.count > 0 || otherWork;
+  const canSubmit = !isPublishing && hasWork && (isReview || gate.allowed);
 
   const headerTitle = isReview
     ? summary.count === 0
@@ -610,7 +824,7 @@ function CmsPublishContent({
                 setConfirmingId(confirming ? id : null)
               }
               onDiscard={
-                canDiscard(change.filepaths)
+                source.canDiscard(change)
                   ? () => void discardChange(change)
                   : undefined
               }
@@ -624,7 +838,7 @@ function CmsPublishContent({
   };
 
   const gateRow = (() => {
-    if (isReview || summary.count === 0) return null;
+    if (isReview || !hasWork) return null;
     if (gate.pending) {
       return (
         <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
@@ -645,11 +859,8 @@ function CmsPublishContent({
     );
   })();
 
-  // Never offer an all-files action over a set the server truncated.
   const discardAllControl =
-    summary.count <= 1 ||
-    changedFilesTruncated ||
-    !canDiscard(allPaths) ? null : (
+    summary.count <= 1 || !source.canDiscardAll ? null : (
       <>
         <button
           type="button"
@@ -696,6 +907,10 @@ function CmsPublishContent({
         <PublishGhostCard />
       </div>
     </PublishListRegion>
+  ) : summary.count === 0 && otherWork ? (
+    <p className="px-4 py-6 text-xs text-muted-foreground">
+      {t("thread.publishPopover.onlyOtherWork")}
+    </p>
   ) : summary.count === 0 ? (
     <div className="flex flex-col items-center gap-1 py-10 text-center">
       <CheckCircle className="mb-1 size-5 text-success" />
@@ -726,6 +941,11 @@ function CmsPublishContent({
       {bodiesFailed ? (
         <p className="text-[11px] text-muted-foreground">
           {t("thread.publishPopover.detailsUnavailable")}
+        </p>
+      ) : null}
+      {otherWork ? (
+        <p className="text-[11px] text-muted-foreground">
+          {t("thread.publishPopover.alsoOtherWork")}
         </p>
       ) : null}
     </PublishListRegion>
@@ -805,7 +1025,7 @@ function CmsPublishContent({
                 <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
                 {!isReview &&
                 !hosted &&
-                summary.count > 0 &&
+                hasWork &&
                 !gate.allowed &&
                 !gate.pending ? (
                   <Button

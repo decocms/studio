@@ -47,6 +47,18 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+const BASE = { revision: "main-1", resolvedRef: "main" };
+
+/** `changes.list`'s answer at a content revision. */
+function changesOf(revision: string) {
+  return {
+    notModified: false as const,
+    revision: `c-${revision}`,
+    base: BASE,
+    changes: {},
+  };
+}
+
 /** A content server that records its writes; `revision` is what it lists. */
 function fakeBackend(source: "github" | "sandbox" | "local" = "github") {
   const state = {
@@ -62,33 +74,47 @@ function fakeBackend(source: "github" | "sandbox" | "local" = "github") {
       state.revision = `r${state.applied.length + 1}`;
       return { revision: state.revision, versions: {} };
     },
+    changesList: async () => changesOf(state.revision),
     batch: async (calls: BatchCall[]) =>
       calls.map(
         (call): BatchOutcome =>
-          call.method === "blocks.list"
+          call.method === "changes.list"
             ? {
                 ok: true,
                 result:
                   (call.params as { ifNoneMatch?: string }).ifNoneMatch ===
-                  state.revision
-                    ? { notModified: true, revision: state.revision }
-                    : {
-                        notModified: false,
-                        revision: state.revision,
-                        resolvedRef: null,
-                        blocks: state.blocks,
-                        versions: {},
-                      },
+                  `c-${state.revision}`
+                    ? {
+                        notModified: true,
+                        revision: `c-${state.revision}`,
+                        base: BASE,
+                      }
+                    : changesOf(state.revision),
               }
-            : {
-                ok: true,
-                result: {
-                  notModified: false,
-                  version: null,
-                  resolvedRef: null,
-                  schema: null,
+            : call.method === "blocks.list"
+              ? {
+                  ok: true,
+                  result:
+                    (call.params as { ifNoneMatch?: string }).ifNoneMatch ===
+                    state.revision
+                      ? { notModified: true, revision: state.revision }
+                      : {
+                          notModified: false,
+                          revision: state.revision,
+                          resolvedRef: null,
+                          blocks: state.blocks,
+                          versions: {},
+                        },
+                }
+              : {
+                  ok: true,
+                  result: {
+                    notModified: false,
+                    version: null,
+                    resolvedRef: null,
+                    schema: null,
+                  },
                 },
-              },
       ),
   } as unknown as ContentClient;
   const backend: ProtocolBackend = {
@@ -104,7 +130,7 @@ function fakeBackend(source: "github" | "sandbox" | "local" = "github") {
 /** The editor's queries a change refreshes, mounted as the editor mounts them. */
 function editorQueries(queryClient: QueryClient) {
   const pointer = { version: "e1" };
-  const reads = { pointer: 0, status: 0, bodies: 0, releases: 0 };
+  const reads = { pointer: 0, status: 0, changes: 0, releases: 0 };
   const watch = (queryKey: readonly unknown[], queryFn: () => unknown) =>
     new QueryObserver(queryClient, {
       queryKey,
@@ -120,9 +146,11 @@ function editorQueries(queryClient: QueryClient) {
     reads.status++;
     return {};
   });
-  watch(["cms-publish-bodies", ORG, VM, BRANCH, "main", null, null], () => {
-    reads.bodies++;
-    return {};
+  // The changes against the base (`changes.list`): the header's count and
+  // every change list.
+  watch(KEYS.contentChanges(CACHE_KEY), () => {
+    reads.changes++;
+    return changesOf("any");
   });
   watch(KEYS.hostedReleases(ORG, VM), () => {
     reads.releases++;
@@ -286,7 +314,7 @@ describe("content-sync pending state", () => {
 });
 
 describe("content-sync refresh (contentChanged)", () => {
-  it("a hosted discard removes the draft's entries and refreshes the blocks, pointer, status and change list", async () => {
+  it("a hosted discard removes the draft's entries and refreshes the blocks, pointer and changes (never git)", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = fakeBackend();
     const { pointer, reads } = editorQueries(queryClient);
@@ -319,8 +347,9 @@ describe("content-sync refresh (contentChanged)", () => {
       ),
     ).toEqual({ Home: { title: "main" } });
     expect(reads.pointer).toBe(before.pointer + 1);
-    expect(reads.status).toBe(before.status + 1);
-    expect(reads.bodies).toBe(before.bodies + 1);
+    expect(reads.changes).toBe(before.changes + 1);
+    // A hosted draft's changes are the protocol's: git's status isn't read.
+    expect(reads.status).toBe(before.status);
     expect(reads.releases).toBe(before.releases);
     // The open form re-reads the block it shows.
     expect(getContentSyncState(SCOPE).epoch).toBe(1);
@@ -483,12 +512,55 @@ describe("content-sync refresh (contentChanged)", () => {
     await settle();
     await settle();
     expect(reads.pointer).toBe(before.pointer + 1);
-    expect(reads.status).toBe(before.status + 1);
+    expect(reads.changes).toBe(before.changes + 1);
+    expect(reads.status).toBe(before.status);
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "reloading",
       epoch: 1,
       reload: { navigates: true },
     });
+  });
+
+  it("the poll carries changes.list, conditional on its revision, and keeps the list current", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = fakeBackend();
+    const sent: BatchCall[][] = [];
+    const batch = backend.client.batch.bind(backend.client);
+    backend.client.batch = async (calls) => {
+      sent.push(calls);
+      return batch(calls);
+    };
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(sent[0]!.map((call) => call.method)).toEqual([
+      "blocks.list",
+      "schema.get",
+      "changes.list",
+    ]);
+    expect(sent[0]![2]!.params).toEqual({});
+    expect(
+      queryClient.getQueryData(KEYS.contentChanges(CACHE_KEY)),
+    ).toMatchObject({ revision: "c-r1", base: BASE });
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(sent[1]![2]!.params).toEqual({ ifNoneMatch: "c-r1" });
+    state.revision = "r2";
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(
+      queryClient.getQueryData(KEYS.contentChanges(CACHE_KEY)),
+    ).toMatchObject({ revision: "c-r2" });
+  });
+
+  it("a sandbox change also re-reads the branch's git status (its Publish is git)", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = fakeBackend("sandbox");
+    const { reads } = editorQueries(queryClient);
+    await settle();
+    const before = { ...reads };
+    await runContentChange(target(queryClient, backend), {
+      kind: "edit",
+      write: async () => "ok",
+    });
+    expect(reads.changes).toBe(before.changes + 1);
+    expect(reads.status).toBe(before.status + 1);
   });
 
   it("a poll during this editor's own write is not someone else's change", async () => {

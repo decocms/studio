@@ -4,11 +4,12 @@
  * the publish's in-flight/error state. The sequence itself is shared with the
  * sandbox runtime and lives in {@link ./publish-flow.ts}.
  *
- * On a hosted v8 site every write here is a content change (content-sync.ts):
- * a discard removes the blocks from the draft (in the editor's own write
- * queue), and a publish or "Try again" refreshes the editor, the preview and
- * the releases the same way an edit does. The other sites keep their git
- * paths.
+ * On a v8 site every discard is a content change (content-sync.ts) over the
+ * content protocol: `changes.discard` drops the entries back to the source's
+ * base (main on GitHub, the last commit in a sandbox), in the editor's own
+ * write queue, guarded by the versions the list showed. On a hosted v8 site
+ * a publish or "Try again" refreshes the editor, the preview and the
+ * releases the same way an edit does. v7 sites keep their git paths.
  */
 
 import type { MutableRefObject } from "react";
@@ -21,12 +22,17 @@ import {
   runContentDiscard,
 } from "@/components/sections-editor/content-sync.ts";
 import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync.ts";
+import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
+import {
+  discardContentChanges,
+  isChangedMeanwhile,
+  isOutdatedServerError,
+} from "@/components/sections-editor/content-changes.ts";
+import type { ContentRevisions } from "@/components/sections-editor/content-protocol-api.ts";
+import { KEYS } from "@/lib/query-keys.ts";
 import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
 import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
-import {
-  blockKeyFromDiffPath,
-  type PublishChange,
-} from "./publish-change-summary.ts";
+import type { PublishChange } from "./publish-change-summary.ts";
 import {
   describePublishFailure,
   notifySubmittedForReview,
@@ -79,6 +85,14 @@ interface CmsPublishActionsArgs {
   hosted?: boolean;
   /** Who publishes: a hosted Publish's default version note names them. */
   authorName?: string | null;
+  /**
+   * A v8 site: discards go through the content protocol (`changes.discard`)
+   * on this backend, and "discard all" drops `entries`, every listed change.
+   */
+  protocol?: {
+    backend: ProtocolBackend;
+    entries: ReadonlyArray<{ name: string; version: string | null }>;
+  };
 }
 
 interface CmsPublishActions {
@@ -90,6 +104,76 @@ interface CmsPublishActions {
   submit: () => Promise<void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
+}
+
+/**
+ * A v8 discard (`changes.discard`): the entries go back to the source's
+ * base (main on GitHub, the last commit in a sandbox or on Localhost), so the
+ * editor and the preview show the base as it is now. It runs in the editor's
+ * write queue (content-sync.ts `runContentDiscard`): armed autosaves of these
+ * entries are dropped and the ones in flight land first; then the editor, the
+ * preview and the lists refresh as after an edit. Each entry is guarded by
+ * the version the list showed: one changed since (someone else's save) is a
+ * Conflict, nothing is dropped, and the list shows what is there now. One
+ * toast either way.
+ */
+export function useContentDiscard(args: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string | null;
+  /** Re-reads the caller's list after a Conflict. */
+  refresh: () => Promise<unknown>;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const content = useContentSyncTarget({
+    orgSlug: args.orgSlug,
+    virtualMcpId: args.virtualMcpId,
+    branch: args.branch,
+  });
+  return async (
+    backend: ProtocolBackend,
+    entries: ReadonlyArray<{ name: string; version: string | null }>,
+    success: string,
+  ): Promise<void> => {
+    try {
+      await runContentDiscard(content, {
+        blockKeys: entries.map((entry) => entry.name),
+        write: async () => {
+          const result = await discardContentChanges(backend.client, entries);
+          // Adopt the revision, as an edit does: the next poll is "not
+          // modified" unless someone else wrote.
+          if (content.cacheKey && result.revision) {
+            queryClient.setQueryData<ContentRevisions>(
+              KEYS.contentRevision(content.cacheKey),
+              (seen) => ({ ...seen, revision: result.revision }),
+            );
+          }
+          return result;
+        },
+      });
+      toast.success(success);
+    } catch (error) {
+      if (isChangedMeanwhile(error)) {
+        toast(t("siteEditor.discard.changedMeanwhile"));
+        await args.refresh().catch(() => {});
+        return;
+      }
+      // An older `deco serve` took its place: its probe says so.
+      if (backend.source === "local" && isOutdatedServerError(error)) {
+        void queryClient.resetQueries({
+          queryKey: KEYS.contentBackend(
+            args.orgSlug,
+            args.virtualMcpId,
+            "local",
+          ),
+        });
+      }
+      toast.error(t("siteEditor.discard.failed"), {
+        description: errorDetailsDescription(t, errorDetail(error)),
+      });
+    }
+  };
 }
 
 export function useCmsPublishActions(
@@ -108,6 +192,7 @@ export function useCmsPublishActions(
     onPublished,
     hosted = false,
     authorName,
+    protocol,
   } = args;
   const t = useT();
   const queryClient = useQueryClient();
@@ -267,47 +352,33 @@ export function useCmsPublishActions(
     }
   };
 
-  /**
-   * A hosted v8 discard removes the blocks from the draft (`/git/discard`):
-   * the draft only holds the blocks that differ from main, layered over
-   * main's current version when read, so without them the editor and the
-   * preview show main as it is now, and follow it when it moves. It runs in
-   * the editor's write queue (content-sync.ts `runContentDiscard`): armed
-   * autosaves of these blocks are dropped and the ones in flight land first.
-   * Then the editor, the preview and this list refresh as after an edit.
-   */
-  const discardHosted = (filepaths: string[]) =>
-    runContentDiscard(content, {
-      blockKeys: filepaths.flatMap((path) => blockKeyFromDiffPath(path) ?? []),
-      write: () => discardGitFiles(target, filepaths, { fastPreview: true }),
-    });
+  const discardEntries = useContentDiscard({
+    orgSlug: target.orgSlug,
+    virtualMcpId: target.virtualMcpId,
+    branch: target.branch,
+    refresh,
+  });
 
+  /** A v7 discard: its git path, as before; only the pending state is shared. */
   const discardFiles = async (filepaths: string[], success: string) => {
     try {
-      if (hosted) {
-        await discardHosted(filepaths);
-      } else {
-        // Its git path, as before; only the pending state is shared. A v8
-        // sandbox also re-reads its blocks before the open form re-reads its
-        // block (v7 refreshes the way it always has: `reread` is ignored).
-        await runContentChange(content, {
-          kind: "discard",
-          reread: true,
-          write: () =>
-            discardGitFiles(
-              {
-                orgSlug: target.orgSlug,
-                virtualMcpId: target.virtualMcpId,
-                branch: target.branch,
-                threadId: target.threadId,
-              },
-              filepaths,
-              target.fastPreview ? { fastPreview: true } : undefined,
-            ),
-        });
-      }
+      await runContentChange(content, {
+        kind: "discard",
+        reread: true,
+        write: () =>
+          discardGitFiles(
+            {
+              orgSlug: target.orgSlug,
+              virtualMcpId: target.virtualMcpId,
+              branch: target.branch,
+              threadId: target.threadId,
+            },
+            filepaths,
+            target.fastPreview ? { fastPreview: true } : undefined,
+          ),
+      });
       toast.success(success);
-      if (!hosted) await refresh();
+      await refresh();
     } catch (error) {
       toast.error(t("siteEditor.discard.failed"), {
         description: errorDetailsDescription(t, errorDetail(error)),
@@ -322,17 +393,23 @@ export function useCmsPublishActions(
     // Hosted callers never pass review mode (no pull request to open).
     submit:
       mode === "review" ? submitForReview : hosted ? publishHosted : publish,
-    discardChange: (change) =>
-      discardFiles(
-        change.filepaths,
-        t("thread.publishPopover.discarded", { name: change.name }),
-      ),
+    discardChange: (change) => {
+      const success = t("thread.publishPopover.discarded", {
+        name: change.name,
+      });
+      return protocol && change.entry
+        ? discardEntries(protocol.backend, [change.entry], success)
+        : discardFiles(change.filepaths, success);
+    },
     discardAll: async () => {
+      const success = t("thread.publishDialog.allChangesDiscarded");
+      if (protocol) {
+        if (protocol.entries.length === 0) return;
+        await discardEntries(protocol.backend, protocol.entries, success);
+        return;
+      }
       if (allPaths.length === 0) return;
-      await discardFiles(
-        allPaths,
-        t("thread.publishDialog.allChangesDiscarded"),
-      );
+      await discardFiles(allPaths, success);
     },
   };
 }

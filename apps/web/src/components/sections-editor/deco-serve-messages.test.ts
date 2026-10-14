@@ -30,6 +30,15 @@ const CASES: [string, unknown, ServeProblem["reason"], RegExp][] = [
     /out of date/,
   ],
   [
+    "an 8.1.x deco serve (protocol 1.0)",
+    new ContentProtocolError(ErrorCode.Unsupported, "speaks 1.0", {
+      reason: "outdated",
+      required: { major: 1, minor: 1 },
+    }),
+    "outdated",
+    /out of date/,
+  ],
+  [
     "another major version",
     new ContentProtocolError(ErrorCode.Unsupported, "speaks 2.x"),
     "version-mismatch",
@@ -77,6 +86,13 @@ describe("connection messages", () => {
         "@decocms/blocks",
       );
     }
+  });
+
+  test("out of date names the version to update to, and no token", () => {
+    const { body } = serveProblemCopy(t, { reason: "outdated" }, HOST);
+    expect(body).toContain("8.2.1 or newer");
+    expect(body).toContain("start deco serve again");
+    expect(body).not.toMatch(/token/i);
   });
 });
 

@@ -20,6 +20,8 @@ export const siteEditor = {
   "siteEditor.publish.defaultNote": "Alterações de {name}",
   "siteEditor.publish.defaultNoteAnonymous": "Atualização do site",
   "siteEditor.discard.failed": "Não foi possível descartar. Tente de novo.",
+  "siteEditor.discard.changedMeanwhile":
+    "Isto mudou enquanto você olhava, então nada foi descartado. A lista já está atualizada.",
   "siteEditor.save.failed":
     "Não foi possível salvar sua alteração. Tente de novo.",
   "siteEditor.save.conflict":

@@ -186,11 +186,12 @@ describe("startDiscovery", () => {
     let probes = 0;
     const d = run(h, [DEFAULT_SERVE_ENDPOINT], () => {
       probes += 1;
+      // An 8.1.x deco serve: protocol 1.0, refused by this client.
       return Promise.reject(
-        new ContentProtocolError(
-          ErrorCode.Unauthorized,
-          "missing or invalid bearer token",
-        ),
+        new ContentProtocolError(ErrorCode.Unsupported, "speaks 1.0", {
+          reason: "outdated",
+          required: { major: 1, minor: 1 },
+        }),
       );
     });
     await h.advance(0);

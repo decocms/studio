@@ -49,7 +49,7 @@ export const decoServe = {
     "deco serve on {host} isn't answering. Reconnecting on its own when it's back.",
   "decoServe.state.outdated.title": "This deco serve is out of date",
   "decoServe.state.outdated.body":
-    "The server on {host} asks for an access token, as older versions of deco serve did. Update @decocms/blocks in your site to the latest version, then start deco serve again.",
+    "deco serve on {host} is older than this Studio. Update @decocms/blocks in your site to 8.2.1 or newer, then start deco serve again.",
   "decoServe.state.versionMismatch.title":
     "This Studio and deco serve don't match",
   "decoServe.state.versionMismatch.body":
@@ -79,6 +79,18 @@ export const decoServe = {
     "Couldn't upload {name}: deco serve stopped answering. Start it again and retry.",
   "decoServe.upload.readOnly":
     "Couldn't upload {name}: deco serve is read-only (started with --read-only).",
+
+  "decoServe.changes.button": "Changes",
+  "decoServe.changes.buttonCount": "Changes ({count})",
+  "decoServe.changes.title": "Changes since your last commit",
+  "decoServe.changes.titleOne": "1 change since your last commit",
+  "decoServe.changes.titleCount": "{count} changes since your last commit",
+  "decoServe.changes.empty": "No changes since your last commit.",
+  "decoServe.changes.hint":
+    "Studio saves straight to your site's files. Commit and push them with git when you're ready to publish.",
+  "decoServe.changes.loadFailed":
+    "Couldn't read the changes from deco serve. Studio tries again on its own.",
+  "decoServe.changes.close": "Close",
 
   "decoServe.version.v8":
     "Blocks v8: Studio edits your site's content files directly, without running your site's code.",
