@@ -149,6 +149,26 @@ describe("githubErrorMessage", () => {
     ).toBe("Resource not accessible by integration");
   });
 
+  test("appends the validation errors GitHub lists under a 422", () => {
+    expect(
+      githubErrorMessage(
+        JSON.stringify({
+          message: "Validation Failed",
+          errors: [
+            {
+              resource: "Issue",
+              code: "custom",
+              field: "title",
+              message: "title is too long (maximum is 256 characters)",
+            },
+            { resource: "PullRequest", code: "missing_field", field: "head" },
+            "not an object",
+          ],
+        }),
+      ),
+    ).toBe("Validation Failed: title is too long (maximum is 256 characters)");
+  });
+
   test("falls back to the truncated raw body for non-JSON or message-less bodies", () => {
     expect(githubErrorMessage("<html>502 Bad Gateway</html>")).toBe(
       "<html>502 Bad Gateway</html>",
