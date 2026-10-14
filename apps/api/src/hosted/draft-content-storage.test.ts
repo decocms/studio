@@ -7,7 +7,6 @@ import {
   applyAttemptToDraft,
   createDraftContentStorage,
 } from "./draft-content-storage";
-import { draftGitDiscard } from "./draft-publish-status";
 import { createDraftStore, type HostedDraftRef } from "./draft-store";
 import {
   fakeRepo,
@@ -120,7 +119,7 @@ describe("createDraftContentStorage", () => {
     expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
   });
 
-  it("a discard removes the entry: the read is main as it is now, and follows main when it moves", async () => {
+  it("a discard (changes.discard) removes the entry: the read is main as it is now, and follows main when it moves", async () => {
     const { repo, drafts, storage } = setup();
     await storage.commit({
       base: await storage.snapshot(),
@@ -131,13 +130,17 @@ describe("createDraftContentStorage", () => {
     const edited = await storage.snapshot();
     const etag = (await drafts.load(REF))?.etag;
 
-    await draftGitDiscard(drafts, REF, [".deco/blocks/Home.json"]);
-    const discarded = await drafts.load(REF);
-    expect(discarded?.body).toEqual({ set: {}, delete: [] });
+    const discarded = await call(storage, "changes.discard", {
+      names: ["Home"],
+    });
+    expect(discarded.error).toBeUndefined();
+    const draft = await drafts.load(REF);
+    expect(draft?.body).toEqual({ set: {}, delete: [] });
     // A new draft object: a new ETag, so a new pointer and revision.
-    expect(discarded?.etag).not.toBe(etag);
+    expect(draft?.etag).not.toBe(etag);
     const after = await storage.snapshot();
     expect(after.revision).not.toBe(edited.revision);
+    expect(discarded.result.revision).toBe(after.revision);
     const read = async () =>
       JSON.parse(
         (await storage.readFiles(await storage.snapshot(), ["Home.json"]))[

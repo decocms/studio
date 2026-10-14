@@ -155,7 +155,7 @@ export type PublishResult =
  * that file already holds exactly this content, and drops its other
  * spellings; a delete name removes every spelling.
  */
-export async function draftFileChanges(
+async function draftFileChanges(
   repo: Pick<HostedRepo, "client" | "packagePath">,
   headSha: string,
   draft: DraftBody,

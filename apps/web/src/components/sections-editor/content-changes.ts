@@ -50,11 +50,11 @@ export interface ContentChangeSides {
 }
 
 /** Names per `changes.get` (the protocol's limit). */
-export const CHANGES_GET_NAMES = 20;
+const CHANGES_GET_NAMES = 20;
 /** `changes.get` calls sent in one batched request. */
 const CHANGES_GET_CALLS_PER_REQUEST = 5;
 /** Names per `changes.discard` (the protocol's limit). */
-export const CHANGES_DISCARD_NAMES = 500;
+const CHANGES_DISCARD_NAMES = 500;
 
 /**
  * Whether an error says the server is older than this Studio: Unsupported
