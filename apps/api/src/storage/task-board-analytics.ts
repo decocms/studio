@@ -1041,7 +1041,7 @@ export class TaskBoardAnalyticsStorage {
              round((percentile_cont(0.5) within group (order by usd))::numeric, 2) as "Median USD / task",
              round(max(usd), 2) as "Priciest task USD"
       from task_cost where ${inRange("first_run_at", q)}
-      group by 1, 2 order by 4 desc nulls last
+      group by 1, 2 order by 4 desc nulls last limit 50
     `);
 
     return [
@@ -1428,7 +1428,7 @@ export class TaskBoardAnalyticsStorage {
       left join review r on r.org_id = c.org_id
       left join errs   e on e.org_id = c.org_id
       left join cost   co on co.org_id = c.org_id
-      group by 1, 2 order by 3 desc
+      group by 1, 2 order by 3 desc limit 50
     `);
 
     const queueWait = await this.rows(sql`
@@ -1439,7 +1439,7 @@ export class TaskBoardAnalyticsStorage {
              round((percentile_cont(0.9) within group (order by extract(epoch from (left_at - entered_at))))::numeric, 0) as "p90"
       from moves
       where lane = 'todo' and left_at is not null and ${inRange("entered_at", q)}
-      group by 1, 2 order by 5 desc nulls last
+      group by 1, 2 order by 5 desc nulls last limit 50
     `);
 
     return [
