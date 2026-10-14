@@ -351,7 +351,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.blogBlocks.sectionTitle": "Blog blocks",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "AI blog",
+  "settings.blog.aiDescription":
+    "Brand context, campaigns and post generation. With this off the blog is written by hand.",
   "settings.blogBlocks.title": "Hide the default blog blocks",
   "settings.blogBlocks.description":
     "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",
@@ -536,7 +539,6 @@ export const settings = {
   "settings.connectClients.anyOtherClientDescription":
     "Any other MCP client: paste this endpoint into it to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
   "settings.connectClients.apiKeyOption": "API key",
-  "settings.connectClients.connectAClient": "Connect a client",
   "settings.connectClients.copy": "Copy",
   "settings.connectClients.doneHideKey": "Done, hide key",
   "settings.connectClients.generateKey": "Generate key",
@@ -546,6 +548,8 @@ export const settings = {
     "For CI, Conductor, or headless agents that can't open a browser.",
   "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
+  "settings.connectClients.mcpDescription":
+    "For clients without a shell. Sharing Library files and messaging agents need the CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
@@ -554,6 +558,18 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
+  "settings.connectClients.recommended": "Recommended",
+  "settings.connectClients.skillDescription":
+    "Install the Studio skill and log in once. Your agent then works with this org's chats, agents, tasks and Library files through the decocms CLI.",
+  "settings.connectClients.skillInstallStep": "1. Install the skill",
+  "settings.connectClients.skillLoginHint":
+    "A browser opens for you to approve the login. The session renews itself, so log in again only when your agent asks.",
+  "settings.connectClients.skillLoginStep": "2. Log in",
+  "settings.connectClients.skillNeedsBun": "Needs Bun.",
+  "settings.connectClients.skillOtherAgentsHint":
+    "The installer asks which agents to add the skill to.",
+  "settings.connectClients.skillTab": "CLI + skill",
+  "settings.connectClients.skillTitle": "Connect your agent",
   "settings.connectClients.snippetOneTimeWarning":
     "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
@@ -806,22 +822,19 @@ export const settings = {
   "settings.orgGeneral.organization": "Organization",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+    "The automated Reviewer runs on a task's pull request when the card reaches In Review (checks passing or none). It appears as a session on the task card.",
   "settings.review.reviewerTitle": "Enable Reviewer",
   "settings.review.reviewerDescription":
-    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
+    "When the card reaches In Review, reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview. An approval moves the card to QA; when it can't settle something itself, it hands the task to you.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+    "When a card reaches Ready for Deployment, merge its pull request automatically instead of waiting for someone to press Ship.",
   "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
   "settings.review.autoResolveConflictsDescription":
-    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
-  "settings.review.deliveryLanesTitle": "Show delivery lanes",
-  "settings.review.deliveryLanesDescription":
-    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
+    "When a pull request in Ready for Deployment conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":

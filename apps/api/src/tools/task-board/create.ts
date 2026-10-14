@@ -7,7 +7,6 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -29,7 +28,6 @@ import {
 } from "./change-request-extract";
 import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
-import { rejectsUngatedDeliveryLane } from "./update";
 import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -122,30 +120,13 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       );
     }
 
-    if (input.status !== undefined) {
-      const settings =
-        await ctx.storage.organizationSettings.get(organizationId);
-      if (
-        rejectsUngatedDeliveryLane(
-          input.status,
-          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
-        )
-      ) {
-        throw new Error(
-          "Delivery lanes are not enabled for this organization — enable " +
-            "them in Settings before creating a task in Approved, Merged, " +
-            "or Post-deploy Validation.",
-        );
-      }
-    }
-
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
     const status = delegatedToSuperAgent
-      ? LANES.queue
+      ? LANES.progress
       : (input.status ?? LANES.intake);
 
     if (input.tagIds?.length) {

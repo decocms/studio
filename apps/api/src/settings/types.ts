@@ -203,6 +203,10 @@ export interface Settings {
    *  reviewer runs for every org on a timer, so it needs one way to stop it that
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
+  /** How long a card must stay in a column before a `board_column_transition`
+   *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
+   *  Shortened only by e2e. */
+  boardTransitionSettleSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap

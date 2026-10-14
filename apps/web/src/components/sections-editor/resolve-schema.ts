@@ -526,15 +526,8 @@ export function resolveSchema(
     }
     resolved = unwrapRefAliases(resolved);
 
-    // Cycle guard for recursive block-ref unions. The `__SECTION_REF__`
-    // "pick any section" selector lists every section, and 20+ of those
-    // sections themselves have a `Section` field pointing back at the same
-    // union. Without this guard, eagerly materializing each branch's nested
-    // `schema` recurses ~exponentially and blows up browser memory (multi-GB).
-    // When we re-enter a union already on the current path, we still emit the
-    // selector's option list but skip the per-branch nested schema — the UI
-    // resolves the selected branch lazily via resolveSchema().
-    const cyclicUnion = vRefKey !== undefined && seen.has(vRefKey);
+    // Re-entered refs (Section unions, Product → hasVariant: Product[]) recurse exponentially; emit the node, skip its nested schema.
+    const cyclicRef = vRefKey !== undefined && seen.has(vRefKey);
     const unionSeen =
       vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
 
@@ -556,7 +549,7 @@ export function resolveSchema(
       branchCount: number,
       lazilyResolvable = true,
     ): SchemaProperty | undefined =>
-      !cyclicUnion &&
+      !cyclicRef &&
       (!lazilyResolvable || branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES) &&
       branchDepth < MAX_BUILD_PROPERTY_DEPTH
         ? buildProperty(branch, branchDepth, unionSeen)
@@ -762,7 +755,7 @@ export function resolveSchema(
           );
           // Built directly (not eagerBranchSchema) so its depth cap can't null this leaf and demote the field to a block-ref picker at deep nesting.
           const plainSchema =
-            nonLoaderBranches.length === 1 && !cyclicUnion
+            nonLoaderBranches.length === 1 && !cyclicRef
               ? buildProperty(nonLoaderBranches[0]!, depth + 1, unionSeen)
               : undefined;
 
@@ -1109,7 +1102,7 @@ export function resolveSchema(
     // Nested properties for object types (see MAX_STRUCTURE_DEPTH).
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
-    if (depth < MAX_STRUCTURE_DEPTH) {
+    if (depth < MAX_STRUCTURE_DEPTH && !cyclicRef) {
       const nestedRaw = collectProps(resolved);
       const nestedRequired = asStringArray(nestedRaw.__required);
       if (nestedRequired.length > 0) requiredKeys = nestedRequired;
@@ -1132,19 +1125,19 @@ export function resolveSchema(
     let itemsSchema: SchemaProperty | undefined;
     if (
       (type === "array" || resolved.type === "array") &&
-      depth < MAX_STRUCTURE_DEPTH
+      depth < MAX_STRUCTURE_DEPTH &&
+      !cyclicRef
     ) {
-      let rawItems = resolved.items as RawSchema | undefined;
+      const rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
-        if (typeof rawItems.$ref === "string") {
-          rawItems = resolveRef(rawItems.$ref);
-        }
+        // Pass the `$ref` itself so the cycle guard sees the item type.
         itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
+        const itemsDef = resolveBranchDef(rawItems);
         if (
-          typeof rawItems.title === "string" &&
-          rawItems.title.includes("{{")
+          typeof itemsDef.title === "string" &&
+          itemsDef.title.includes("{{")
         ) {
-          itemsSchema.titleBy = rawItems.title;
+          itemsSchema.titleBy = itemsDef.title;
         }
       }
     }

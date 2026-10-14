@@ -1338,6 +1338,88 @@ describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)"
   });
 });
 
+describe("resolveSchema – recursive data types (hang guard)", () => {
+  /**
+   * Commerce types like `Product` reference themselves through plain
+   * properties and array items (`isVariantOf.hasVariant: Product[]`,
+   * `ImageObject.image: ImageObject[]`). Each ref re-entered on the current
+   * path used to expand again until the structural depth cap, so a few
+   * self-references per level hung the editor.
+   */
+  function recursiveProductMeta(): LiveMeta {
+    const ref = (key: string) => ({ $ref: `#/definitions/${key}` });
+    const refArray = (key: string) => ({ type: "array", items: ref(key) });
+    return {
+      manifest: {
+        blocks: {
+          sections: { "site/sections/Shelf.tsx": ref("Shelf") },
+        },
+      },
+      schema: {
+        definitions: {
+          Shelf: { type: "object", properties: { product: ref("Product") } },
+          Product: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              image: refArray("ImageObject"),
+              video: refArray("VideoObject"),
+              isRelatedTo: refArray("Product"),
+              isSimilarTo: refArray("Product"),
+              isAccessoryOrSparePartFor: refArray("Product"),
+              isVariantOf: ref("ProductGroup"),
+            },
+          },
+          ProductGroup: {
+            type: "object",
+            properties: { hasVariant: refArray("Product") },
+          },
+          ImageObject: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              image: refArray("ImageObject"),
+              thumbnail: ref("ImageObject"),
+              video: refArray("VideoObject"),
+            },
+          },
+          VideoObject: {
+            type: "object",
+            properties: {
+              contentUrl: { type: "string" },
+              thumbnail: ref("ImageObject"),
+              video: refArray("VideoObject"),
+            },
+          },
+        },
+      },
+    };
+  }
+
+  test("resolves without expanding a re-entered ref", () => {
+    const start = Date.now();
+    const product = resolveSchema(
+      "site/sections/Shelf.tsx",
+      recursiveProductMeta(),
+    )?.properties?.product;
+    expect(Date.now() - start).toBeLessThan(1000);
+
+    expect(product?.properties?.name?.type).toBe("string");
+    expect(product?.properties?.image?.items?.properties?.url?.type).toBe(
+      "string",
+    );
+    // The cycle is cut where `Product` re-enters, through an array item…
+    const related = product?.properties?.isRelatedTo?.items;
+    expect(related?.type).toBe("object");
+    expect(related?.properties).toBeUndefined();
+    // …or through a nested object's array.
+    const variant =
+      product?.properties?.isVariantOf?.properties?.hasVariant?.items;
+    expect(variant?.type).toBe("object");
+    expect(variant?.properties).toBeUndefined();
+  });
+});
+
 describe("resolveSchema – __SECTION_REF__ falls back to root.sections", () => {
   /**
    * Regression: a Section-typed prop (`children`/`fallback` on

@@ -29,6 +29,13 @@ export interface ProductPickerOption {
   image?: string;
   /** PDP path/URL, when the loader reports one — used to link to the product. */
   url?: string;
+  /** Every image URL the payload lists, `image` being the first. The caller
+   *  decides how many to keep. */
+  images?: string[];
+  /** Main category, as the storefront reports it. */
+  category?: string;
+  /** Short description, when the payload carries one. */
+  description?: string;
 }
 
 /** A category surfaced by the tree loader, selectable to filter products. */
@@ -37,6 +44,8 @@ export interface CategoryOption {
   path: string;
   /** `Parent › Child` breadcrumb for display. */
   label: string;
+  /** The URL the tree reports, kept whole — absolute when the store says so. */
+  url: string;
 }
 
 /** A single loader invoke: resolveType + the flat props the loader receives. */
@@ -86,8 +95,11 @@ export function buildProductRequests(
     return [{ resolveType, props: { facets, count } }];
   }
 
-  // mode === "search": empty term browses the default catalog listing.
-  if (!trimmed) return [{ resolveType, props: { count } }];
+  // mode === "search": empty term browses the default catalog listing. The
+  // props still need the `query` discriminator — the loader's props are a union
+  // (query | facets | collection | ids) and `{ count }` alone matches no
+  // variant, which the runtime rejects with `Unknown props`.
+  if (!trimmed) return [{ resolveType, props: { query: "", count } }];
 
   const requests: PickerLoaderRequest[] = [];
   if (/^\d+$/.test(trimmed)) {
@@ -148,18 +160,74 @@ export function productOptionsFromPayload(
       (typeof variant?.name === "string" && variant.name) ||
       (typeof product.name === "string" && product.name) ||
       id;
-    const imageEntry = Array.isArray(product.image)
-      ? asRecord(product.image[0])
-      : null;
-    const image =
-      typeof imageEntry?.url === "string" ? imageEntry.url : undefined;
+    const images = imageUrls(product.image);
+    const image = images[0];
     const url =
       (typeof product.url === "string" && product.url) ||
       (typeof variant?.url === "string" && variant.url) ||
       undefined;
-    options.push({ id, label, image, url });
+    options.push({
+      id,
+      label,
+      image,
+      images,
+      url,
+      category: mainCategory(product.category),
+      description: shortDescription(product, variant),
+    });
   }
   return options;
+}
+
+/**
+ * Every `image[].url`, deduped. A post picks one of these to run with, so
+ * bringing a single one would mean going back to the store to change it.
+ */
+function imageUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const urls: string[] = [];
+  for (const entry of value) {
+    const record = asRecord(entry);
+    const url = typeof record?.url === "string" ? record.url : "";
+    if (url && !urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
+/**
+ * The deepest segment of schema.org `category`, which VTEX reports as a full
+ * path (`Apparel > Shirts`). The leaf is the useful one: it is what a writer
+ * would call the product.
+ */
+function mainCategory(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const leaf = value
+    .split(/[>/]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .pop();
+  return leaf || undefined;
+}
+
+/**
+ * A one-paragraph description. Prefers the product's own over the variant's,
+ * and takes only the first paragraph: these feed a prompt, and a full PDP
+ * description is mostly markup and shipping boilerplate.
+ */
+function shortDescription(
+  product: Record<string, unknown>,
+  variant: Record<string, unknown> | null,
+): string | undefined {
+  const raw =
+    (typeof product.description === "string" && product.description) ||
+    (typeof variant?.description === "string" && variant.description) ||
+    "";
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return undefined;
+  return text.length > 400 ? `${text.slice(0, 400).trimEnd()}…` : text;
 }
 
 /** Category path from a tree node URL: pathname without surrounding slashes. */
@@ -192,7 +260,13 @@ export function categoryOptionsFromPayload(data: unknown): CategoryOption[] {
     const path = categoryPathFromUrl(rec.url);
     if (path && !seen.has(path)) {
       seen.add(path);
-      options.push({ path, label: nextTrail.join(" › ") || path });
+      options.push({
+        path,
+        label: nextTrail.join(" › ") || path,
+        // The node's own URL, untouched: it is already what a reader opens, and
+        // rebuilding one from the path would drop the store's origin.
+        url: typeof rec.url === "string" ? rec.url : `/${path}`,
+      });
     }
     if (Array.isArray(rec.children)) {
       for (const child of rec.children) walk(child, nextTrail);

@@ -109,6 +109,11 @@ export const admin = {
   "admin.orgs.siteReassigned": "{slug} movido para {org}",
   "admin.orgs.siteReassignWarning":
     '"{slug}" pertence a {owner} e será movido para esta organização.',
+  "admin.orgs.siteInUse": "Em uso",
+  "admin.orgs.siteInUseHint":
+    "Um projeto usa este id de site, então ele não pode ser removido nem movido: caminhos de CDN, tokens e URLs de assets usam ele.",
+  "admin.orgs.siteNotReassignable":
+    '"{slug}" pertence a {owner} e um projeto usa ele, então não pode ser movido: caminhos de CDN, tokens e URLs de assets usam ele.',
   "admin.orgs.siteRemoved": "{slug} removido de {org}",
   "admin.orgs.siteSlugPlaceholder": "meu-site",
   "admin.orgs.sites": "Sites",

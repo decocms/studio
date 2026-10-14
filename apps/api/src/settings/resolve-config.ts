@@ -373,6 +373,12 @@ export function resolveConfig(
       envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
       true,
     ),
+    boardTransitionSettleSeconds: toPositiveIntegerOrDefault(
+      "BOARD_TRANSITION_SETTLE_SECONDS",
+      envVars.BOARD_TRANSITION_SETTLE_SECONDS,
+      20,
+      3600,
+    ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
       envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,

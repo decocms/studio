@@ -81,6 +81,7 @@ import {
   useStartJiraRun,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useProjectContext } from "@/sdk";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
 
@@ -244,7 +245,16 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const boards = useJiraBoards(true);
-  const boardOptions = (boards.data ?? []).map((board) => {
+  // Boards past the first 200 are only reachable by a name search.
+  const [search, setSearch] = useState("");
+  const query = useDebouncedValue(search.trim(), 300);
+  const searched = useJiraBoards(query !== "", query);
+  const listed = boards.data ?? [];
+  const listedIds = new Set(listed.map((board) => board.id));
+  const matches = query
+    ? (searched.data ?? []).filter((board) => !listedIds.has(board.id))
+    : [];
+  const boardOptions = [...listed, ...matches].map((board) => {
     const { primary, secondary } = boardLabels(board);
     return {
       value: String(board.id),
@@ -274,8 +284,11 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
           placeholder={t("settings.jira.boardPlaceholder")}
           searchPlaceholder={t("settings.jira.boardSearchPlaceholder")}
           filter={boardSearchFilter}
+          onSearchChange={setSearch}
           emptyMessage={
-            boards.isPending
+            boards.isPending ||
+            search.trim() !== query ||
+            (query !== "" && searched.isFetching)
               ? t("settings.jira.loadingBoards")
               : t("settings.jira.noBoardsMatch")
           }

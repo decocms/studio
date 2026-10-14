@@ -30,6 +30,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Clock,
+  Columns01,
   Edit01,
   Globe01,
   RefreshCw01,
@@ -38,6 +39,7 @@ import {
 } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
+import { laneHeader } from "@/layouts/task-board/config";
 
 export function TriggerCard({
   trigger,
@@ -72,6 +74,7 @@ export function TriggerCard({
     removeTrigger.isPending || addTrigger.isPending || rotateToken.isPending;
   const isCron = trigger.type === "cron";
   const isWebhook = trigger.type === "webhook";
+  const isColumnTransition = trigger.type === "board_column_transition";
 
   const handleRemove = async () => {
     try {
@@ -152,6 +155,8 @@ export function TriggerCard({
       <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-background group">
         {isCron ? (
           <Clock size={14} className="text-muted-foreground shrink-0" />
+        ) : isColumnTransition ? (
+          <Columns01 size={14} className="text-muted-foreground shrink-0" />
         ) : isWebhook ? (
           <Globe01 size={14} className="text-muted-foreground shrink-0" />
         ) : (
@@ -206,12 +211,20 @@ export function TriggerCard({
             <span className="text-sm font-mono text-xs text-muted-foreground truncate">
               {isCron
                 ? humanReadableCron(trigger.cron_expression ?? "")
-                : isWebhook
-                  ? t("automations.triggerCard.webhookPostToFire")
-                  : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
+                : isColumnTransition
+                  ? t("automations.triggerCard.cardEntersColumn", {
+                      lane: laneHeader(trigger.column_key ?? "", t).label,
+                    })
+                  : isWebhook
+                    ? t("automations.triggerCard.webhookPostToFire")
+                    : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
             </span>
+            {isColumnTransition && trigger.from && (
+              <ColumnOrigin from={trigger.from} />
+            )}
             {!isCron &&
               !isWebhook &&
+              !isColumnTransition &&
               trigger.params &&
               Object.keys(trigger.params).length > 0 && (
                 <span className="text-xs text-muted-foreground/60 truncate">
@@ -318,5 +331,30 @@ export function TriggerCard({
         description={t("automations.triggerCard.newWebhookTokenDescription")}
       />
     </>
+  );
+}
+
+/** Which moves into the column count; nothing for any column. */
+function ColumnOrigin({
+  from,
+}: {
+  from: NonNullable<AutomationTrigger["from"]>;
+}) {
+  const t = useT();
+  const text =
+    from.kind === "earlier"
+      ? t("automations.triggerCard.fromEarlier")
+      : from.kind === "later"
+        ? t("automations.triggerCard.fromLater")
+        : from.kind === "statuses"
+          ? t("automations.triggerCard.fromColumns", {
+              columns: from.statuses
+                .map((key) => laneHeader(key, t).label)
+                .join(", "),
+            })
+          : null;
+  if (!text) return null;
+  return (
+    <span className="text-xs text-muted-foreground/60 truncate">{text}</span>
   );
 }

@@ -11,6 +11,8 @@ export const automations = {
     "Erro ao adicionar gatilho webhook",
   "automations.addStarterPopover.starterAdded": "Gatilho adicionado",
   "automations.addStarterPopover.webhook": "Webhook",
+  "automations.addStarterPopover.cardEntersColumn":
+    "Quando um card entra numa coluna",
   "automations.addStarterPopover.webhookStarterAdded":
     "Gatilho webhook adicionado",
   "automations.automationConfig.all": "Todos",
@@ -189,6 +191,26 @@ export const automations = {
     "Um novo token será gerado e o token atual deixará de funcionar. Quaisquer remetentes que usem o token antigo devem ser atualizados.",
   "automations.triggerCard.starterRemoved": "Disparador removido",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST para disparar",
+  "automations.columnTransitionDialog.title":
+    "Quando um card entra numa coluna",
+  "automations.columnTransitionDialog.description":
+    "Roda esta automação em cada card que entra na coluna.",
+  "automations.columnTransitionDialog.column": "Coluna",
+  "automations.columnTransitionDialog.origin": "Vindo de",
+  "automations.columnTransitionDialog.fromAny": "Qualquer coluna",
+  "automations.columnTransitionDialog.fromEarlier": "Uma coluna anterior",
+  "automations.columnTransitionDialog.fromLater":
+    "Uma coluna posterior (devolvido)",
+  "automations.columnTransitionDialog.fromColumns": "Colunas específicas",
+  "automations.columnTransitionDialog.columnsPlaceholder": "Escolha as colunas",
+  "automations.columnTransitionDialog.help":
+    "Roda depois que o card fica 20 segundos na coluna. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
+  "automations.columnTransitionDialog.cancel": "Cancelar",
+  "automations.columnTransitionDialog.add": "Adicionar gatilho",
+  "automations.triggerCard.fromEarlier": "De uma coluna anterior",
+  "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",
+  "automations.triggerCard.fromColumns": "De {columns}",
+  "automations.triggerCard.cardEntersColumn": "Quando um card entra em {lane}",
   "automations.webhookSecretDialog.copied": "Copiado",
   "automations.webhookSecretDialog.copy": "Copiar",
   "automations.webhookSecretDialog.done": "Concluído",

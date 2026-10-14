@@ -201,11 +201,16 @@ import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
-import { TaskBoardStorage } from "../storage/task-board";
+import { setBoardMoveListener, TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
+import {
+  onBoardMove,
+  registerBoardTransitionWorkflows,
+  setBoardTransitionRuntime,
+} from "../automations/board-column-transition-workflows";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -229,7 +234,10 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
+import {
+  BOARD_TRANSITIONS_QUEUE,
+  GITHUB_READS_QUEUE,
+} from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -1759,6 +1767,20 @@ export async function createApp(options: CreateAppOptions = {}) {
       taskBoardReviewSweeper.dispose();
     };
   }
+  // Fires `board_column_transition` automation triggers when a card settles
+  // in a column: every logged lane move is offered to the settle wait, and a
+  // 5-minute sweep catches what it missed.
+  setBoardTransitionRuntime({
+    automations: automationsStorage,
+    taskBoard: projectorTaskBoard,
+    contextFactory: automationContextFactory,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+    settleMs: getSettings().boardTransitionSettleSeconds * 1000,
+  });
+  setBoardMoveListener(onBoardMove);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1938,6 +1960,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardArchiveSweepWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
+  registerBoardTransitionWorkflows();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
@@ -2471,6 +2494,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
+    await DBOS.registerQueue(BOARD_TRANSITIONS_QUEUE);
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

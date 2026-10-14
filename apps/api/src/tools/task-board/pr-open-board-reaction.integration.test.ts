@@ -90,10 +90,8 @@ describe("applyBoardDecision", () => {
     await closeTestPgDatabase(database);
   });
 
-  // Inverted with migration 190: a PR used to put the card In Review. It now
-  // opens the card's REVIEW CYCLE and leaves the lane at In Progress — an agent
-  // reviewer is about to work on it, and In Review is what the board says once
-  // it is a person's turn.
+  // A PR opens the card's review cycle, which puts it In Review, where the
+  // agent reviewer works on it.
   it("create: opens a new card under review with the PR and thread linked", async () => {
     const item = await apply(
       {
@@ -105,7 +103,7 @@ describe("applyBoardDecision", () => {
       "thr_create",
     );
     expect(item).not.toBeNull();
-    expect(item!.status).toBe("in_progress");
+    expect(item!.status).toBe("in_review");
     expect(item!.reviewCycleStartedAt).not.toBeNull();
     expect(item!.title).toBe("Ship the widget");
     // Owned by the Super Agent — otherwise the reviewers never pick the card up.
@@ -134,7 +132,7 @@ describe("applyBoardDecision", () => {
       "thr_update",
     );
     expect(item!.id).toBe(card.id);
-    expect(item!.status).toBe("in_progress");
+    expect(item!.status).toBe("in_review");
     expect(item!.reviewCycleStartedAt).not.toBeNull();
     // Was unassigned, so entering the review phase claims it for the Super Agent.
     expect(item!.assigneeId).toBe(SUPER_AGENT_ASSIGNEE_ID);
@@ -157,7 +155,7 @@ describe("applyBoardDecision", () => {
       "thr_human",
     );
     expect(item!.id).toBe(card.id);
-    expect(item!.status).toBe("in_progress");
+    expect(item!.status).toBe("in_review");
     expect(item!.reviewCycleStartedAt).not.toBeNull();
     // A human owns it — the claim must not steal the card from them.
     expect(item!.assigneeId).toBe(USER);
@@ -186,10 +184,10 @@ describe("applyBoardDecision", () => {
     const card = await taskBoard.create({
       organizationId: ORG,
       title: "raced move",
-      status: "todo",
+      status: "triage",
       by: USER,
     });
-    // Stale snapshot: still To Do, before the card ships below.
+    // Stale snapshot: still in Backlog, before the card ships below.
     const staleSnapshot = card;
     await taskBoard.update(card.id, ORG, { status: "done" }, USER);
     const item = await apply(
@@ -197,7 +195,7 @@ describe("applyBoardDecision", () => {
       [staleSnapshot],
       "thr_moved",
     );
-    // The advance was decided against To Do and lost the race: the shipped card
+    // The advance was decided against Backlog and lost the race: the shipped card
     // stays shipped, unclaimed, and still gets the PR linked.
     expect(item!.id).toBe(card.id);
     expect(item!.status).toBe("done");
@@ -221,7 +219,7 @@ describe("applyBoardDecision", () => {
     );
     expect(item).not.toBeNull();
     expect(item!.id).not.toBe(card.id);
-    expect(item!.status).toBe("in_progress");
+    expect(item!.status).toBe("in_review");
     expect(item!.reviewCycleStartedAt).not.toBeNull();
     expect(await taskBoard.linkedTaskIds("thr_fallback", ORG)).toContain(
       item!.id,

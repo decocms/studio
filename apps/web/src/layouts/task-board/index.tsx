@@ -68,6 +68,7 @@ import {
   X,
   Zap,
 } from "@untitledui/icons";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -113,8 +114,8 @@ import {
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
+  boardGridColumns,
   laneVisibility,
-  moveTargets,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -135,10 +136,7 @@ import {
   type OrgTag,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
@@ -803,13 +801,12 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
 
 /**
  * The card's checks indicator, or null when there is nothing to say: this org
- * runs no reviewers, or the task has not reached review yet (a To Do card with
- * `0/1` would be reporting a failure that hasn't had a chance to happen).
+ * runs no reviewers, or the task has not reached review yet (a Backlog card
+ * with `0/1` would be reporting a failure that hasn't had a chance to happen).
  *
- * "Reached review" is the open cycle, not the In Review lane. Since migration
- * 189 a card whose reviewer is working reads In Progress, and that is exactly
- * when the pending chip earns its place — the lane alone would hide the checks
- * for the whole time they are actually being decided.
+ * "Reached review" is the open cycle as well as the In Review lane: a cycle
+ * opened by the previous release can sit on an In Progress card, and the lane
+ * alone would hide the checks for the whole time they are being decided.
  */
 function useCardChecks(item: TaskBoardItem): {
   summary: ChecksSummary;
@@ -1994,7 +1991,6 @@ function SelectionBar({
   const openSprints = useTaskBoardSprints().filter(
     (sprint) => sprint.state !== "closed",
   );
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
@@ -2017,7 +2013,7 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {moveTargets(deliveryEnabled).map((status) => (
+                {CANONICAL_COLUMN_KEYS.map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
@@ -2236,7 +2232,6 @@ function Lanes({
   /** See `TaskBoardPage`'s own doc comment. */
   inlineTabs?: boolean;
 }) {
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
   // on drag start so dropping the same card twice replays it (a CSS animation
@@ -2333,9 +2328,7 @@ function Lanes({
     hidden: hiddenLanes,
     hideable: hideableLanes,
   } = laneVisibility({
-    deliveryEnabled,
     shownLanes: preferences.shownTaskBoardLanes,
-    occupied: placed.map((item) => item.status),
   });
   const setLaneShown = (status: string, shown: boolean) =>
     setPreferences((prev) => ({
@@ -2343,6 +2336,14 @@ function Lanes({
       shownTaskBoardLanes: shown
         ? [...prev.shownTaskBoardLanes, status]
         : prev.shownTaskBoardLanes.filter((s) => s !== status),
+    }));
+  const collapsedLanes = preferences.collapsedTaskBoardLanes;
+  const toggleLaneCollapsed = (status: string) =>
+    setPreferences((prev) => ({
+      ...prev,
+      collapsedTaskBoardLanes: prev.collapsedTaskBoardLanes.includes(status)
+        ? prev.collapsedTaskBoardLanes.filter((s) => s !== status)
+        : [...prev.collapsedTaskBoardLanes, status],
     }));
 
   /** Resolved against `placed` rather than dnd-kit's `over.data`, which is a
@@ -2477,25 +2478,19 @@ function Lanes({
             room is handled per-lane by each column's own scrollable div — a pb
             here would eat into this row's h-full and cut every column short,
             since it no longer wraps a single page-level scroll. */}
-        {/* The lanes SHARE the width instead of each taking a fixed 300px:
-            `minmax(280px, 1fr)` fills the panel when there is room and falls
-            back to scrolling once every lane is at its minimum. Fixed columns
-            left a dead margin on a wide screen and made the board scroll
-            sideways at widths where it did not have to. Inline, because the
-            track count is the lane count. 280px, not less — below it a card's
-            footer (type + key, due date, priority, checks, assignee) runs out
-            of room and its icons start overlapping instead of wrapping. */}
+        {/* Inline tracks, because their count is the lane count — see
+            `boardGridColumns`. */}
         <div
           className={cn(
             "mx-auto grid h-full w-full max-w-[1680px] gap-3",
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
           style={{
-            // The hidden-lanes tail needs its own track, or the grid wraps it
-            // onto a second row below the lanes.
-            gridTemplateColumns: `repeat(${boardLanes.length}, minmax(280px, 1fr))${
-              hiddenLanes.length > 0 ? " 280px" : ""
-            }`,
+            gridTemplateColumns: boardGridColumns({
+              lanes: boardLanes,
+              collapsed: collapsedLanes,
+              hasHiddenTail: hiddenLanes.length > 0,
+            }),
           }}
         >
           {boardLanes.map((status) => (
@@ -2528,6 +2523,8 @@ function Lanes({
                   ? () => setLaneShown(status, false)
                   : undefined
               }
+              collapsed={collapsedLanes.includes(status)}
+              onToggleCollapsed={() => toggleLaneCollapsed(status)}
             />
           ))}
           {hiddenLanes.length > 0 && (
@@ -2671,6 +2668,8 @@ function Lane({
   onTypeChange,
   onDueDateChange,
   onHide,
+  collapsed,
+  onToggleCollapsed,
 }: {
   status: TaskBoardItemStatus;
   items: TaskBoardItem[];
@@ -2694,6 +2693,9 @@ function Lane({
   onDueDateChange?: (id: string, iso: string) => void;
   /** Present only for a hidden-by-default lane, which can be put back away. */
   onHide?: () => void;
+  /** Drawn as a narrow strip with its label and count, cards out of view. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const t = useT();
   const { label, visual } = laneHeader(status, t);
@@ -2705,6 +2707,57 @@ function Lane({
   const { setNodeRef } = useDroppable({
     id: `${LANE_DROPPABLE_PREFIX}${status}`,
   });
+
+  if (collapsed) {
+    return (
+      // The whole strip stays a drop target, so a card can still be dragged
+      // into a collapsed lane.
+      <div
+        ref={setNodeRef}
+        data-lane={status}
+        data-lane-collapsed=""
+        className="group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1"
+      >
+        <div
+          className={cn(
+            "flex w-full flex-col items-center gap-2 rounded-xl px-1 py-3 transition-colors",
+            isTarget ? "bg-muted" : "bg-muted/50",
+          )}
+        >
+          <LaneIcon
+            size={15}
+            className={cn(
+              "shrink-0",
+              visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            )}
+          />
+          <span className="text-sm font-medium text-foreground [writing-mode:vertical-rl]">
+            {label}
+          </span>
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {items.length}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.expandColumnAriaLabel", {
+                  lane: label,
+                })}
+                onClick={onToggleCollapsed}
+                className={LANE_ACTION}
+              >
+                <Maximize2 size={15} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {t("taskBoard.taskBoard.expandColumn")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -2821,6 +2874,23 @@ function Lane({
                 ? rules.summary
                 : t("taskBoard.columnRules.add")}
             </span>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
+                lane: label,
+              })}
+              onClick={onToggleCollapsed}
+              className={LANE_ACTION}
+            >
+              <Minimize2 size={15} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {t("taskBoard.taskBoard.collapseColumn")}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -3293,7 +3363,6 @@ function FeedComposer({
   onCreated: (input: FeedComposeInput) => void;
 }) {
   const t = useT();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
@@ -3369,7 +3438,7 @@ function FeedComposer({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              {moveTargets(deliveryEnabled).map((s) => {
+              {CANONICAL_COLUMN_KEYS.map((s) => {
                 const { label, visual } = laneHeader(s, t);
                 const Icon = visual.icon;
                 return (
@@ -3834,7 +3903,6 @@ function ListRowStatusMenu({
   onStatusChange: (status: TaskBoardItemStatus) => void;
 }) {
   const t = useT();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const StatusIcon = laneVisual(item.status).icon;
   return (
     <DropdownMenu>
@@ -3850,7 +3918,7 @@ function ListRowStatusMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
-        {moveTargets(deliveryEnabled).map((status) => {
+        {CANONICAL_COLUMN_KEYS.map((status) => {
           const { label, visual } = laneHeader(status, t);
           const Icon = visual.icon;
           return (

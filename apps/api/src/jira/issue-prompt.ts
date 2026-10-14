@@ -124,9 +124,19 @@ function renderMove(move: StatusMove): string {
   return `${parts.join(" ")} — the move that started this run.`;
 }
 
+export interface RenderIssueOptions {
+  /**
+   * Render only the comments older than this one: the first `commentsBefore`
+   * of the thread, oldest first. How a run pages back through a thread whose
+   * newest comments filled the budget; the marker below names the value.
+   */
+  commentsBefore?: number;
+}
+
 export function renderIssueForPrompt(
   issue: IssueForPrompt,
   move?: StatusMove,
+  options: RenderIssueOptions = {},
 ): string {
   const lines: string[] = [
     `# ${issue.key}: ${issue.summary}`,
@@ -159,27 +169,43 @@ export function renderIssueForPrompt(
       "Fetch one with `JIRA_ATTACHMENT_DOWNLOAD` and the attachment id; it returns a short-lived URL to `curl` into the sandbox.",
     );
   }
-  if (issue.comments.length > 0) {
-    lines.push("", "## Comments");
+  const total = issue.comments.length;
+  const end = Math.min(options.commentsBefore ?? total, total);
+  if (end > 0) {
+    lines.push(
+      "",
+      end < total ? `## Comments (1–${end} of ${total})` : "## Comments",
+    );
     // The budget goes to the NEWEST comments: the latest review verdict or a
     // client's rejection is what a run acts on, and it is the one a long
     // thread of earlier handoffs would otherwise push out.
     const kept: typeof issue.comments = [];
+    let oldestClipped = false;
     let budget = MAX_COMMENTS_CHARS;
-    for (let i = issue.comments.length - 1; i >= 0 && budget > 0; i--) {
+    for (let i = end - 1; i >= 0 && budget > 0; i--) {
       const c = issue.comments[i];
       if (!c) continue;
       const body = clip(c.body, budget);
       kept.unshift({ ...c, body });
+      oldestClipped = body !== c.body;
       budget -= body.length;
     }
-    const omitted = issue.comments.length - kept.length;
+    const omitted = end - kept.length;
+    // Where the next page ends: before the oldest comment shown in full. A
+    // clipped one is re-read whole on that page, unless it is the only one
+    // here — then it alone exceeds the budget and paging would not move.
+    const nextBefore = oldestClipped && kept.length > 1 ? omitted + 1 : omitted;
     if (omitted > 0) {
       lines.push(
         `[… ${omitted} older comment${omitted === 1 ? "" : "s"} omitted]`,
-        "",
       );
     }
+    if (nextBefore > 0) {
+      lines.push(
+        `To read the earlier comments, call JIRA_ISSUE_GET with \`commentsBefore: ${nextBefore}\`.`,
+      );
+    }
+    if (omitted > 0 || nextBefore > 0) lines.push("");
     for (const c of kept) {
       lines.push(`**${c.author}** (${c.created}):`, c.body, "");
     }

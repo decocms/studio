@@ -76,8 +76,8 @@ export type SuperAgentPromptOpts = {
    *  opening instruction; the task's own title and description still follow,
    *  or the agent would not know which card it is on. */
   instruction?: string;
-  /** The lane whose rules the run follows. Defaults to To Do, where the Super
-   *  Agent picks work up; a column automation passes its own column. */
+  /** The lane whose rules the run follows. Defaults to In Progress, where the
+   *  Super Agent works; a column automation passes its own column. */
   column?: string | null;
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
@@ -109,6 +109,15 @@ export type SuperAgentPromptOpts = {
    *  a call without a key means and the monitoring filter can tell it
    *  apart. */
   source?: { kind: "jira"; issueKeys: string[]; title: string; body: string };
+  /** An automation fired this run on the card: its agent runs it, the thread
+   *  is named after it and listed in its history, and `fence` makes the fire
+   *  start one run however many times it is replayed. */
+  automation?: {
+    name: string;
+    agentId: string;
+    triggerId: string;
+    fence: { threadId: string; workflowID: string };
+  };
 };
 
 /**
@@ -267,7 +276,11 @@ export async function enqueueSuperAgentForTask(
     const promptTask = opts?.source
       ? { ...task, description: opts.source.body }
       : task;
-    const title = opts?.source?.title ?? `Super Agent: ${task.title}`;
+    const title =
+      opts?.source?.title ??
+      (opts?.automation
+        ? `${opts.automation.name}: ${task.title}`
+        : `Super Agent: ${task.title}`);
     const runMetadata = opts?.source
       ? {
           source: opts.source.kind,
@@ -285,7 +298,8 @@ export async function enqueueSuperAgentForTask(
     const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
       ? "conflict"
       : undefined;
-    const rulesColumn = opts?.column !== undefined ? opts.column : LANES.queue;
+    const rulesColumn =
+      opts?.column !== undefined ? opts.column : LANES.progress;
 
     if (!choice) {
       throw new Error(
@@ -309,6 +323,13 @@ export async function enqueueSuperAgentForTask(
       temperature: 0.5,
       ...(modelClass ? { modelClass } : {}),
       ...(repo ? { repo } : {}),
+      ...(opts?.automation
+        ? {
+            agentId: opts.automation.agentId,
+            triggerId: opts.automation.triggerId,
+            fence: opts.automation.fence,
+          }
+        : {}),
     });
   } catch (err) {
     // Nothing was dispatched — no thread exists to ever trigger the

@@ -11,18 +11,20 @@ import {
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
 /**
- * Public-share endpoints a non-member must still reach: the read proxy
- * (`GET .../fs/:volume/read`, serves public/password files) and the password
- * unlock (`POST .../fs/:volume/unlock`). The membership gate below defers to
- * these; the routes themselves serve only shared content and still gate
- * everything else on ORG_FS_READ (a non-member fails → 403). Every other
- * org-scoped route stays member-gated.
+ * Endpoints a non-member must still reach: the read proxy
+ * (`GET .../fs/:volume/read`, serves public/password files), the password
+ * unlock (`POST .../fs/:volume/unlock`), and uploads through a signed grant
+ * (`PUT .../fs/:volume/upload/:token`, the token is the authentication). The
+ * membership gate below defers to these; the routes themselves serve only
+ * shared content or the granted file and gate everything else (a non-member
+ * fails → 403). Every other org-scoped route stays member-gated.
  */
 function isPublicSharePath(c: Context): boolean {
   const p = c.req.path;
   return (
     (c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(p)) ||
-    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p))
+    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p)) ||
+    (c.req.method === "PUT" && /\/fs\/[^/]+\/upload\/[^/]+$/.test(p))
   );
 }
 

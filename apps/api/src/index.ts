@@ -12,6 +12,7 @@ import { retry, sleep } from "@decocms/shared/std";
 import {
   AUTOMATIONS_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
+  BOARD_TRANSITIONS_QUEUE,
   GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
   HOSTED_HARNESS_SANDBOXED_QUEUE,
@@ -85,6 +86,8 @@ const RUN_QUEUES = [
   // and awaits its enqueued read, so an "api"-only deployment would block
   // forever if no worker dequeued this.
   GITHUB_READS_QUEUE,
+  // A board settle wait ends by dispatching an automation run.
+  BOARD_TRANSITIONS_QUEUE,
   // Board→Jira comment pushes are outbound I/O, i.e. worker load.
 ];
 const listenQueues: string[] | undefined =

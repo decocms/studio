@@ -1447,7 +1447,23 @@ export interface AutomationTriggerTable {
   // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
   // Null for cron/event triggers.
   api_key_id: string | null;
+  // For board_column_transition triggers: the column a card entered, and
+  // which moves count by where it came from. Null / '{}' for the others.
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Which moves into a column a `board_column_transition` trigger answers, by
+ *  where the card came from. */
+export type BoardTransitionFromKind = "any" | "earlier" | "later" | "statuses";
+
+/** One fire claimed per (trigger, event) — see migration 241. */
+export interface AutomationTriggerFireTable {
+  trigger_id: string;
+  event_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -1456,7 +1472,7 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -1464,8 +1480,17 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: string[];
   created_at: string;
 }
+
+export type AutomationTriggerType =
+  | "cron"
+  | "event"
+  | "webhook"
+  | "board_column_transition";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks
@@ -1568,9 +1593,22 @@ export interface OrgSiteTable {
   // Globally-unique site slug = object-key prefix namespace in the shared
   // tenant bucket. Primary key enforces global uniqueness across orgs.
   slug: string;
-  organization_id: string;
+  // NULL = tombstone: the org was deleted and the slug stays reserved forever.
+  organization_id: ColumnType<string | null, string, string | null>;
   // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
   source: ColumnType<string, string | undefined, string>;
+  // The project (VIRTUAL connection) this slug is the site of; one per project.
+  project_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  // First time the slug was linked to a project; never cleared.
+  linked_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1579,8 +1617,13 @@ export interface OrgSiteTable {
 
 export interface OrgSite {
   slug: string;
-  organizationId: string;
+  /** Null for a tombstone (its org was deleted): reserved, nobody can claim it. */
+  organizationId: string | null;
   source: string;
+  /** The project this slug is the site of, if linked. */
+  projectId: string | null;
+  /** When the slug was first linked to a project; set once, never cleared. */
+  linkedAt: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1692,8 +1735,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
-  | "approved"
-  | "merged"
+  | "qa"
+  | "customer_approval"
+  | "ready_for_deployment"
   | "post_deploy_validation"
   | "done"
   | "archived";
@@ -2471,6 +2515,7 @@ export interface Database {
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+  automation_trigger_fires: AutomationTriggerFireTable;
 
   // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;

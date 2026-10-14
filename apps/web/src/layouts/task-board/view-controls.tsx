@@ -57,6 +57,7 @@ import {
   User01,
   X,
   Zap,
+  Circle,
 } from "@untitledui/icons";
 import { ProjectEntryIcon } from "@/components/project-entry";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
@@ -72,7 +73,6 @@ import {
   type ProjectIndex,
 } from "@/lib/project-index";
 import {
-  laneVisual,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -714,10 +714,8 @@ function MenuChoice<T>({
   );
 }
 
-const TodoIcon = laneVisual("todo").icon;
-
 const CRITERION_ICONS: Record<GroupBy | SortBy, ReactNode> = {
-  status: <TodoIcon size={14} className="shrink-0" />,
+  status: <Circle size={14} className="shrink-0" />,
   assignee: <User01 size={14} className="shrink-0" />,
   priority: <Flag01 size={14} className="shrink-0" />,
   due: <Calendar size={14} className="shrink-0" />,

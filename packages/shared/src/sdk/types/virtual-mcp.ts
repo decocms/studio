@@ -66,7 +66,7 @@ const KNOWLEDGE_MAX = 100;
 
 /** Cap on releases (named branches) per agent. Exported so the UI can gate
  * creation at the cap instead of letting the write 400 on the server. */
-export const RELEASES_MAX = 50;
+export const RELEASES_MAX = 300;
 
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
@@ -844,7 +844,9 @@ const VirtualMcpMetadataFields = {
     .string()
     .nullable()
     .optional()
-    .describe("Linked asset site slug (managed storage tenancy)"),
+    .describe(
+      "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
+    ),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z
