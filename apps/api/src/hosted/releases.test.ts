@@ -132,7 +132,24 @@ describe("listReleases: reapplied versions", () => {
       message: "Reapply: Summer",
       reapplyOf: { sha: first },
     });
+    expect(page.commits[0]?.reapplyOf?.date).toBe(page.commits[1]?.date);
     expect(page.commits[1]?.reapplyOf).toBeNull();
+  });
+
+  it("dates an original that sits on an older page", async () => {
+    const { git, repo, release } = setup();
+    const first = await release();
+    git.pushDirect(
+      { ".deco/blocks/Home.json": '{"a":1}\n' },
+      `Reapply: Summer\n\nReapplied-From: ${first}`,
+    );
+    const onlyNewest = fakeInsights(git.history.slice(0, 1)).client;
+    const page = await listReleases(repo, onlyNewest, null);
+    expect(page.commits).toHaveLength(1);
+    expect(page.commits[0]?.reapplyOf).toEqual({
+      sha: first,
+      date: git.history[1]?.date ?? null,
+    });
   });
 });
 

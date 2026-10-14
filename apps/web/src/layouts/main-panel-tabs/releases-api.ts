@@ -28,8 +28,8 @@ export interface ReleaseCommit {
   author: string | null;
   /** Has a companion release on the CDN: it can be reapplied. */
   hasRelease: boolean;
-  /** This version reapplied the version of that commit. */
-  reapplyOf: { sha: string } | null;
+  /** This version reapplied the version of that commit, made at `date`. */
+  reapplyOf: { sha: string; date: string | null } | null;
 }
 
 export interface ReleasesPage {

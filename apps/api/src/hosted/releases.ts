@@ -26,8 +26,11 @@ export interface ReleaseCommit {
   author: string | null;
   /** Has a companion release: it can be reapplied. */
   hasRelease: boolean;
-  /** This version reapplied the version of that commit. */
-  reapplyOf: { sha: string } | null;
+  /**
+   * This version reapplied the version of that commit, made at `date` (read
+   * from git when that commit isn't on this page; null if unreadable).
+   */
+  reapplyOf: { sha: string; date: string | null } | null;
 }
 
 export interface ReleasesPage {
@@ -56,15 +59,27 @@ export async function listReleases(
       limit: PAGE_SIZE,
     }),
   ]);
-  const commits = page.items.map((commit): ReleaseCommit => {
-    const from = reappliedFrom(commit.body);
+  const dates = new Map(page.items.map((c) => [c.sha, c.date]));
+  const origins = page.items.map((commit) => reappliedFrom(commit.body));
+  // An original on an older page: one commit read each, so the row can
+  // still say which version it has the same content as.
+  await Promise.all(
+    [...new Set(origins)]
+      .filter((sha): sha is string => sha !== null && !dates.has(sha))
+      .map(async (sha) => {
+        const original = await repo.client.readCommit(sha).catch(() => null);
+        if (original) dates.set(sha, original.date);
+      }),
+  );
+  const commits = page.items.map((commit, i): ReleaseCommit => {
+    const from = origins[i];
     return {
       sha: commit.sha,
       date: commit.date,
       message: commit.message,
       author: commit.author.name ?? commit.author.login,
       hasRelease: withRelease.has(commit.sha),
-      reapplyOf: from ? { sha: from } : null,
+      reapplyOf: from ? { sha: from, date: dates.get(from) ?? null } : null,
     };
   });
   return {

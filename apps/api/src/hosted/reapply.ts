@@ -114,7 +114,6 @@ async function restoreFileChanges(
 ): Promise<{
   changes: FileChange[];
   tree: TreeEntry[];
-  targetTree: TreeEntry[];
   next: BlockSource[];
 }> {
   const [tree, targetTree] = await Promise.all([
@@ -137,7 +136,6 @@ async function restoreFileChanges(
   return {
     changes,
     tree,
-    targetTree,
     next: target.map((e) => ({ stem: e.stem, sha: e.sha })),
   };
 }
@@ -153,17 +151,22 @@ async function schemaHashOrNull(repo: HostedRepo, sha: string) {
 
 /**
  * Whether the schema at `targetSha` differs from the one at `headSha`. The
- * blob ids decide when they are equal (or both absent); only when they
- * differ are both read and compared as canonical JSON, so a formatting-only
- * change is not a difference.
+ * blob ids (one small tree read per side; `listDecofileEntries` doesn't
+ * list the schema) decide when they are equal or both absent; only when
+ * they differ are both read and compared as canonical JSON, so a
+ * formatting-only change is not a difference.
  */
 async function schemaDiffers(
   repo: HostedRepo,
   headSha: string,
   targetSha: string,
-  blobs: { head: string | undefined; target: string | undefined },
 ): Promise<boolean> {
-  if (blobs.head === blobs.target) return false;
+  const path = schemaGenPath(repo.packagePath);
+  const [atHead, atTarget] = await Promise.all([
+    repo.client.getEntriesAtPaths(headSha, [path]),
+    repo.client.getEntriesAtPaths(targetSha, [path]),
+  ]);
+  if (atHead.get(path)?.sha === atTarget.get(path)?.sha) return false;
   const [head, target] = await Promise.all([
     schemaHashOrNull(repo, headSha),
     schemaHashOrNull(repo, targetSha),
@@ -190,15 +193,7 @@ export async function reapplySchemaChanged(
 ): Promise<boolean> {
   await requireRelease(repo, targetSha);
   const head = await requireBranchHead(repo.client, repo.mainBranch);
-  const path = schemaGenPath(repo.packagePath);
-  const [atHead, atTarget] = await Promise.all([
-    repo.client.getEntriesAtPaths(head, [path]),
-    repo.client.getEntriesAtPaths(targetSha, [path]),
-  ]);
-  return schemaDiffers(repo, head, targetSha, {
-    head: atHead.get(path)?.sha,
-    target: atTarget.get(path)?.sha,
-  });
+  return schemaDiffers(repo, head, targetSha);
 }
 
 type ReapplyResult =
@@ -222,11 +217,7 @@ export async function reapplyVersion(
   const files = await restoreFileChanges(repo, head, targetSha);
   // Main already holds this content: nothing to commit, nothing to release.
   if (files.changes.length === 0) return { result: "up-to-date" };
-  const path = schemaGenPath(repo.packagePath);
-  const schemaChanged = await schemaDiffers(repo, head, targetSha, {
-    head: files.tree.find((e) => e.path === path)?.sha,
-    target: files.targetTree.find((e) => e.path === path)?.sha,
-  });
+  const schemaChanged = await schemaDiffers(repo, head, targetSha);
   if (schemaChanged) {
     console.info("hosted reapply: schema differs", {
       site: repo.site,
