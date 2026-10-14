@@ -11,15 +11,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Chat, useChatTask } from "@/components/chat/index";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
-import {
-  decofileStatusQueryOptions,
-  isBranchStale,
-} from "@/components/sections-editor/decofile-api";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
+import { ChatVoiceProvider } from "@/components/chat/voice";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { AlertCircle } from "@untitledui/icons";
@@ -46,13 +41,13 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { useChatLayoutState } from "@/hooks/use-chat-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
-import { getActiveGithubRepo } from "@/lib/github-repo";
-import { useBaseBranch } from "@/components/thread/github/use-version-gate";
+import { getActiveRepository } from "@/lib/repository-binding";
+import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
 import {
   nextDraftName,
   nextReleaseColor,
   useReleases,
-} from "@/components/thread/github/use-releases";
+} from "@/components/thread/repository/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
@@ -66,12 +61,15 @@ import { resolveThreadSessionIdentity } from "./session-identity";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useAppTakeover } from "@/hooks/use-app-takeover";
 import {
   SandboxLifecycleProvider,
   overlayThreadSandboxMap,
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
+import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
+import type { Task } from "@/components/chat/task/types";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { canonicalThreadRouteTarget } from "@/layouts/main-panel-tabs/tab-route";
@@ -204,12 +202,12 @@ function NewTaskBridge({
 
 function VmEventsBridge({
   virtualMcpId,
-  hasActiveGithubRepo,
+  hasActiveRepository,
   sandboxMap,
   children,
 }: {
   virtualMcpId: string;
-  hasActiveGithubRepo: boolean;
+  hasActiveRepository: boolean;
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
@@ -238,8 +236,8 @@ function VmEventsBridge({
     ownerId: activeTask?.created_by,
     branch: currentBranch,
   });
-  const effectiveHasGithubRepo =
-    hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
+  const effectiveHasRepository =
+    hasActiveRepository || agentHasClonableSource(activeTask?.metadata);
 
   // Assign a branch to a loaded repo-backed thread that has none, so the
   // branch-gated auto-start can run for it. Only reachable when the repo was
@@ -255,7 +253,7 @@ function VmEventsBridge({
     shouldAdoptBranch({
       threadLoaded: !!activeTask,
       isOwner: !!userId && activeTask?.created_by === userId,
-      hasActiveGithubRepo: effectiveHasGithubRepo,
+      hasActiveRepository: effectiveHasRepository,
       branch: currentBranch ?? null,
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
       attempted: adoptedBranchForThreadRef.current === (activeTask?.id ?? null),
@@ -274,51 +272,7 @@ function VmEventsBridge({
     );
   }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
 
-  /**
-   * Auto-fresh-branch (org-gated, off by default): opening the CMS on a branch
-   * whose last commit predates the staleness window moves the session to a
-   * freshly minted branch off the default branch. The stale branch is left on
-   * GitHub. One switch per thread per tab, mirroring the adopt guard above.
-   */
-  const { org } = useProjectContext();
-  const autoFreshBranchEnabled = useOrgFlag("cms_auto_fresh_branch");
   const sessionState = useSessionRuntime(virtualMcpId);
-  const freshBranchForThreadRef = useRef<string | null>(null);
-  const staleCheckEnabled =
-    autoFreshBranchEnabled &&
-    sessionState.resolved &&
-    sessionState.runtime === "cms" &&
-    !!org?.slug &&
-    !!currentBranch &&
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
-    freshBranchForThreadRef.current !== (activeTask?.id ?? null);
-  const staleStatusQuery = useQuery({
-    ...decofileStatusQueryOptions({
-      orgSlug: org?.slug ?? "",
-      virtualMcpId,
-      branch: currentBranch ?? "",
-    }),
-    enabled: staleCheckEnabled,
-  });
-  const staleLastCommitAt = staleStatusQuery.data?.lastCommitAt ?? null;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot branch switch gated on the resolved CMS status; no render-time equivalent
-  useEffect(() => {
-    if (!staleCheckEnabled || !activeTask) return;
-    if (!isBranchStale(staleLastCommitAt, Date.now())) return;
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't switch twice
-    freshBranchForThreadRef.current = activeTask.id;
-    setCurrentTaskBranch(
-      generateBranchName(
-        session?.user?.name || session?.user?.email?.split("@")[0],
-      ),
-    );
-  }, [
-    staleCheckEnabled,
-    staleLastCommitAt,
-    activeTask,
-    session,
-    setCurrentTaskBranch,
-  ]);
 
   // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
@@ -447,7 +401,7 @@ function VmEventsBridge({
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? null}
         userId={userId ?? null}
-        hasActiveGithubRepo={effectiveHasGithubRepo}
+        hasActiveRepository={effectiveHasRepository}
         vmEntry={vmEntry}
         threadId={activeTask?.id ?? null}
       >
@@ -505,6 +459,16 @@ function ThreadSessionContent({
 
   const entity = useVirtualMCP(virtualMcpId);
   const contentKey = useActivePanelTabId() ?? "overview";
+  /** Takeover apps default the chat panel closed, in local state so
+   *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
+   *  the chat in one app does not carry into the next one launched. */
+  const takeover = useAppTakeover();
+  const [threadOpenIn, setThreadOpenIn] = useState<string | null>(null);
+  const takeoverThreadOpen = threadOpenIn === contentKey;
+  const threadOpen = takeover ? takeoverThreadOpen : layout.threadOpen;
+  const toggleThread = takeover
+    ? () => setThreadOpenIn(takeoverThreadOpen ? null : contentKey)
+    : layout.toggleThread;
 
   return (
     <>
@@ -514,6 +478,8 @@ function ThreadSessionContent({
       />
       <ChatLayout
         {...layout}
+        threadOpen={threadOpen}
+        toggleThread={toggleThread}
         contentKey={contentKey}
         contentNavigation={
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
@@ -577,8 +543,30 @@ function ThreadSessionProvider() {
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
 
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasActiveRepository = !!(entity && getActiveRepository(entity));
   const baseBranch = useBaseBranch(entity, null);
+
+  const resolvingEntry = routeThreadId === null && !!routeAgentId && !!entity;
+  const findEntry = (candidates: Task[]) =>
+    findAgentEntryThread(
+      candidates,
+      virtualMcpId,
+      session?.user?.id,
+      defaultThreadRuntime(entity?.metadata),
+      hasActiveRepository,
+      { baseBranch },
+    );
+  const localEntry =
+    resolvingEntry && threadsStatus.kind !== "loading"
+      ? findEntry(threads)
+      : undefined;
+  // The shared feed is the user's latest page across the org, so this agent's
+  // last draft can be missing from it; read the agent's own threads before
+  // minting a duplicate draft.
+  const scopedEntryThreads = useAgentEntryThreads(
+    virtualMcpId,
+    resolvingEntry && threadsStatus.kind !== "loading" && !localEntry,
+  );
 
   // Ensure the thread row exists for this URL before rendering the chat. On
   // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
@@ -591,7 +579,7 @@ function ThreadSessionProvider() {
     generatedDraftBranch,
   );
 
-  // Read-only teammate threads: pull the current metadata (githubRepo /
+  // Read-only teammate threads: pull the current metadata (repository /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview
   // doesn't render "no source" / miss the owner's sandbox. No-op for own
   // threads. Must run before the early returns (Rules of Hooks).
@@ -674,9 +662,12 @@ function ThreadSessionProvider() {
   }
 
   // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
-  if (routeThreadId === null && routeAgentId && entity) {
-    // Wait for the first thread page: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
-    if (threadsStatus.kind === "loading") {
+  if (resolvingEntry) {
+    // Wait for the thread lists: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
+    if (
+      threadsStatus.kind === "loading" ||
+      scopedEntryThreads.status === "loading"
+    ) {
       return (
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div
@@ -691,16 +682,13 @@ function ThreadSessionProvider() {
       );
     }
     // Resume the last version/conversation for this agent; a repo editor mints a fresh thread when none resolves, a branchless agent falls through to its lazy composer.
-    const entry = findAgentEntryThread(
-      threads,
-      virtualMcpId,
-      session?.user?.id,
-      defaultThreadRuntime(entity.metadata),
-      hasActiveGithubRepo,
-      { baseBranch },
-    );
+    const entry =
+      localEntry ??
+      (scopedEntryThreads.status === "ready"
+        ? findEntry(scopedEntryThreads.threads)
+        : undefined);
     const threadId =
-      entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);
+      entry?.id ?? (hasActiveRepository ? generatedThreadId : null);
     if (threadId) {
       return (
         <Navigate
@@ -782,21 +770,23 @@ function ThreadSessionProvider() {
         virtualMcpId={virtualMcpId}
         task={ensureState.status === "ready" ? ensureState.task : null}
       >
-        <VmEventsBridge
-          virtualMcpId={virtualMcpId}
-          hasActiveGithubRepo={hasActiveGithubRepo}
-          sandboxMap={entity.metadata?.sandboxMap}
-        >
-          <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>
-            <MainPanelBoundary>
-              <ThreadSessionContent
-                layout={layout}
-                onNewTaskRef={onNewTask}
-                createNewTask={createNewTask}
-              />
-            </MainPanelBoundary>
-          </ActiveTaskRuntimeProvider>
-        </VmEventsBridge>
+        <ChatVoiceProvider layout={layout}>
+          <VmEventsBridge
+            virtualMcpId={virtualMcpId}
+            hasActiveRepository={hasActiveRepository}
+            sandboxMap={entity.metadata?.sandboxMap}
+          >
+            <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>
+              <MainPanelBoundary>
+                <ThreadSessionContent
+                  layout={layout}
+                  onNewTaskRef={onNewTask}
+                  createNewTask={createNewTask}
+                />
+              </MainPanelBoundary>
+            </ActiveTaskRuntimeProvider>
+          </VmEventsBridge>
+        </ChatVoiceProvider>
       </Chat.Provider>
     </div>
   );

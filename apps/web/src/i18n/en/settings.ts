@@ -1,4 +1,7 @@
 export const settings = {
+  "settings.voice.title": "Voice mode",
+  "settings.voice.description":
+    "Let members talk to agents in chats. Requires ElevenLabs to be configured on this Studio deployment.",
   "settings.title": "Profile & Preferences",
   "settings.nav.organization": "Organization",
   "settings.nav.build": "Build",
@@ -52,7 +55,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts within seconds.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts once the card has stayed put for a minute.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -64,18 +67,27 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. An issue entering an automated status now starts its run within seconds.",
+    "Save. An issue entering an automated status now starts its run once it has stayed there for a minute.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses, Studio starts an agent run on it. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "When an issue enters one of these statuses and stays there for a minute, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
   "settings.jira.addAutomation": "Add automation",
-  "settings.jira.automationOn": "Automation on",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
     "This is the whole instruction the run gets — there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
   "settings.jira.promptSave": "Save",
   "settings.jira.promptDiscard": "Discard",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
+  "settings.jira.fromAny": "From any column",
+  "settings.jira.fromEarlier": "From an earlier column",
+  "settings.jira.fromLater": "From a later column (sent back)",
+  "settings.jira.fromStatuses": "From {statuses}",
+  "settings.jira.originLabel": "When the card comes from",
+  "settings.jira.originStatusesPlaceholder": "Pick statuses",
+  "settings.jira.originHelp":
+    "A move starts one rule: the one naming where the card came from, else the one for its direction on the board, else the one for any column. Where it came from is the status it last stayed in, not one it was dragged through.",
+  "settings.jira.createRule": "Create rule",
+  "settings.jira.cancelRule": "Cancel",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.jira.testRunLabel": "Run it by hand",
@@ -123,11 +135,7 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Stop syncing "{volume}"?',
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
-  "settings.repositories.pageDescription":
-    "Connect your git provider accounts and link the repositories this organization works with.",
   "settings.repositories.accountsTitle": "Connected accounts",
-  "settings.repositories.accountsDescription":
-    "Accounts Studio uses to read your repositories and push changes on your behalf.",
   "settings.repositories.accountsEmptyTitle": "No accounts connected",
   "settings.repositories.accountsEmptyDescription":
     "Connect a GitHub, GitLab or Bitbucket account to browse your repositories and link private ones.",
@@ -145,8 +153,6 @@ export const settings = {
   "settings.repositories.githubSelectTitle": "Select repositories",
   "settings.repositories.githubSelectedShareHint":
     "Members with repository permissions in {organization} can use the repositories you authorize here.",
-  "settings.repositories.githubSelectHint":
-    "Choose up to 500 repositories for this workspace.",
   "settings.repositories.githubPreselectedHint":
     "Previously authorized or linked repositories are already selected when you have permission to authorize them. Review the selection before saving.",
   "settings.repositories.githubReplaceHint":
@@ -293,18 +299,18 @@ export const settings = {
   "settings.repositories.connecting": "Connecting…",
   "settings.repositories.connected": 'Connected as "{login}"',
   "settings.repositories.reposTitle": "Repositories",
-  "settings.repositories.reposDescription":
-    "Repositories available to this organization's agents and workflows.",
   "settings.repositories.reposEmptyTitle": "No repositories yet",
   "settings.repositories.reposEmptyDescription":
     "Choose a repository from a connected GitHub, GitLab or Bitbucket account.",
   "settings.repositories.addRepository": "Add repository",
+  "settings.repositories.moreActions": "More actions",
+  "settings.repositories.repoAccountNeedsAttention":
+    "Connected through {login}, which needs attention in Connected accounts.",
   "settings.repositories.unlink": "Unlink",
   "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
   "settings.repositories.unlinkDescription":
     "The repository is removed from this organization. Nothing is deleted on the provider.",
   "settings.repositories.unlinked": "Repository unlinked",
-  "settings.repositories.defaultBranch": "Default branch: {branch}",
   "settings.repositories.openInProvider": "Open repository",
   "settings.repositories.visibilityPublic": "Public",
   "settings.repositories.visibilityPrivate": "Private",
@@ -322,6 +328,7 @@ export const settings = {
   "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
+  "settings.nav.memory": "Memory",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
@@ -344,9 +351,19 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.newBlocksEditor": "New blocks editor",
-  "settings.preferences.newBlocksEditorDescription":
-    "Try the redesigned blocks editor. The rest of Studio always uses the new layout.",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "AI blog",
+  "settings.blog.aiDescription":
+    "Brand context, campaigns and post generation. With this off the blog is written by hand.",
+  "settings.blogBlocks.title": "Hide the default blog blocks",
+  "settings.blogBlocks.description":
+    "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",
+  "settings.blocksEditor.title": "New blocks editor",
+  "settings.blocksEditor.description":
+    "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
+  "settings.preferences.projectFirstNav": "Project-first navigation",
+  "settings.preferences.projectFirstNavDescription":
+    "Try the org rail, project launcher and the Today/Agents home.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",
@@ -415,6 +432,37 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
+  "settings.memory.pageTitle": "Memory",
+  "settings.memory.tabOrg": "Organization",
+  "settings.memory.tabUser": "Just you",
+  "settings.memory.orgHeading": "Shared with everyone in {org}",
+  "settings.memory.orgDescription":
+    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
+  "settings.memory.userHeading": "Your personal memory",
+  "settings.memory.userDescription":
+    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
+  "settings.memory.orgPlaceholder":
+    "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
+  "settings.memory.userPlaceholder":
+    "Things Deco should remember about you. For example: reply in Portuguese, I own the checkout, keep summaries short.",
+  "settings.memory.saving": "Saving…",
+  "settings.memory.saved": "Saved",
+  "settings.memory.notSaved": "Not saved",
+  "settings.memory.saveError": "Couldn't save. Keep typing to retry.",
+  "settings.memory.readOnly": "You can read this memory but not change it.",
+  "settings.memory.updated": "Updated {time}",
+  "settings.memory.notStarted": "Nothing remembered yet",
+  "settings.memory.conflict": "This memory changed while you were editing.",
+  "settings.memory.loadLatest": "Load latest",
+  "settings.memory.keepMine": "Keep my version",
+  "settings.memory.budget": "{percent}% of what chats read",
+  "settings.memory.budgetOver": "Chats only read the beginning",
+  "settings.memory.budgetHint":
+    "Chats load the first 16,000 characters. Keep this a short index and move details into separate notes.",
+  "settings.memory.errorTitle": "Couldn't load memory",
+  "settings.memory.errorDescription":
+    "The organization's files couldn't be loaded. You may not have access to them.",
+  "settings.memory.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",
@@ -491,7 +539,6 @@ export const settings = {
   "settings.connectClients.anyOtherClientDescription":
     "Any other MCP client: paste this endpoint into it to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
   "settings.connectClients.apiKeyOption": "API key",
-  "settings.connectClients.connectAClient": "Connect a client",
   "settings.connectClients.copy": "Copy",
   "settings.connectClients.doneHideKey": "Done, hide key",
   "settings.connectClients.generateKey": "Generate key",
@@ -501,6 +548,8 @@ export const settings = {
     "For CI, Conductor, or headless agents that can't open a browser.",
   "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
+  "settings.connectClients.mcpDescription":
+    "For clients without a shell. Sharing Library files and messaging agents need the CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
@@ -509,6 +558,18 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
+  "settings.connectClients.recommended": "Recommended",
+  "settings.connectClients.skillDescription":
+    "Install the Studio skill and log in once. Your agent then works with this org's chats, agents, tasks and Library files through the decocms CLI.",
+  "settings.connectClients.skillInstallStep": "1. Install the skill",
+  "settings.connectClients.skillLoginHint":
+    "A browser opens for you to approve the login. The session renews itself, so log in again only when your agent asks.",
+  "settings.connectClients.skillLoginStep": "2. Log in",
+  "settings.connectClients.skillNeedsBun": "Needs Bun.",
+  "settings.connectClients.skillOtherAgentsHint":
+    "The installer asks which agents to add the skill to.",
+  "settings.connectClients.skillTab": "CLI + skill",
+  "settings.connectClients.skillTitle": "Connect your agent",
   "settings.connectClients.snippetOneTimeWarning":
     "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
@@ -603,15 +664,15 @@ export const settings = {
   "settings.plans.perMonth": "/ month",
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
-  "settings.planUsage.oneTimeHint":
-    "One-time trial credit. Top up to keep going, or upgrade for a monthly allowance.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
+  "settings.planUsage.noPlan": "No active plan",
+  "settings.planUsage.noPlanDescription":
+    "This organization has no active plan. Pick one below — Starter's first month is free.",
   "settings.planUsage.creditsLeft": "left",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
   "settings.planUsage.changePlan": "Change plan",
-  "settings.planUsage.downgrade": "Downgrade",
   "settings.planUsage.changed": "Plan updated",
   "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
   "settings.planUsage.feature.cms": "CMS",
@@ -619,16 +680,24 @@ export const settings = {
   "settings.planUsage.feature.monitoring": "Site analytics",
   "settings.planUsage.feature.kanban": "Agentic Kanban",
   "settings.planUsage.feature.model_choice": "Choose your model",
-  "settings.planUsage.feature.trialChat": "Limited access to chat",
   "settings.planUsage.feature.credits": "Extra credits",
   "settings.planUsage.feature.diagnostic": "Deco Score",
   "settings.planUsage.feature.diagnostic_enriched": "Enriched Deco Score",
   "settings.plans.title": "Plans",
   "settings.plans.loadFailed": "Couldn't load the plans.",
   "settings.plans.currentPlan": "Current plan",
-  "settings.plans.downgradeTitle": "Downgrade to Free?",
-  "settings.plans.downgradeDescription": "{plan} features stop right away.",
-  "settings.plans.downgradeCancel": "Keep my plan",
+  "settings.plans.firstMonthFree": "1st month free",
+  "settings.plans.startTrial": "Start free trial",
+  "settings.plans.custom.name": "Custom",
+  "settings.plans.custom.description":
+    "For large teams with their own contract",
+  "settings.plans.custom.cta": "Talk to us",
+  "settings.plans.managed": "Your plan: {plan}. Contact us to change it.",
+  "settings.plans.invoice.cta": "Add to my invoice",
+  "settings.plans.invoice.confirm":
+    "{plan} will be added to your next invoice. Switch now?",
+  "settings.plans.invoice.cancel": "Cancel",
+  "settings.plans.invoice.switch": "Switch plan",
   "settings.paywall.bullets.kanban.1":
     "Agents that do the work and move the cards",
   "settings.paywall.bullets.kanban.2": "A board the whole team shares",
@@ -753,22 +822,19 @@ export const settings = {
   "settings.orgGeneral.organization": "Organization",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+    "The automated Reviewer runs on a task's pull request when the card reaches In Review (checks passing or none). It appears as a session on the task card.",
   "settings.review.reviewerTitle": "Enable Reviewer",
   "settings.review.reviewerDescription":
-    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
+    "When the card reaches In Review, reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview. An approval moves the card to QA; when it can't settle something itself, it hands the task to you.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+    "When a card reaches Ready for Deployment, merge its pull request automatically instead of waiting for someone to press Ship.",
   "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
   "settings.review.autoResolveConflictsDescription":
-    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
-  "settings.review.deliveryLanesTitle": "Show delivery lanes",
-  "settings.review.deliveryLanesDescription":
-    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
+    "When a pull request in Ready for Deployment conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
@@ -781,6 +847,7 @@ export const settings = {
   "settings.taskPrompt.save": "Save",
   "settings.taskPrompt.saved": "System prompt saved",
   "settings.taskPrompt.failed": "Couldn't save the system prompt",
+  "settings.taskPrompt.skillsLabel": "Skills on every column",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",
@@ -805,6 +872,11 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Discard",
   "settings.agentTools.orgMcpsPickSaved":
     "Saved which connections runs can reach",
+  "settings.agentTools.chatRuntimeSection": "Chats",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Run every chat with Claude Code in its own sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Every new chat runs Claude Code in a sandbox of its own instead of on Decopilot, and existing Decopilot chats switch over on their next message. The first message of a chat waits for its sandbox to start. Needs an Anthropic, OpenRouter or deco AI gateway key, or a Claude subscription.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
@@ -1080,7 +1152,7 @@ export const settings = {
   "settings.infraBilling.tooManySites":
     "Showing the first {count} sites. Select specific sites to see the rest.",
   "settings.infraBilling.multipleTeams":
-    "Plan and invoices belong to a single legacy team — narrow the selection to see them.",
+    "These sites are billed by {count} legacy teams. Each team's plan and invoices are listed under Invoices.",
   "settings.infraBilling.noTeam":
     "These sites aren't linked to a legacy billing team.",
   "settings.infraBilling.partialTeam":
@@ -1112,7 +1184,7 @@ export const settings = {
   "settings.infraBilling.dataTransfer": "Data transfer",
   "settings.infraBilling.dataTransferDescription":
     "Bandwidth served from the edge and the origin.",
-  "settings.infraBilling.noInvoices": "No invoices issued for this site.",
+  "settings.infraBilling.noInvoices": "No invoices issued for this team.",
   "settings.infraBilling.invoiceReference": "Reference",
   "settings.infraBilling.invoiceDue": "Due date",
   "settings.infraBilling.invoiceAmount": "Amount",
@@ -1144,6 +1216,8 @@ export const settings = {
   "settings.gitCredentials.hostInvalidMessage":
     "Bare hostname, e.g. github.com (no scheme or path).",
   "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.maxReached":
+    "You've reached the limit of {max} git credentials. Remove one to add another.",
   "settings.gitCredentials.nameLabel": "Name",
   "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
   "settings.gitCredentials.nameHelperText":
@@ -1164,5 +1238,5 @@ export const settings = {
   "settings.gitCredentials.tokenExposureWarning":
     "The token is installed in the sandbox's git config for the session, so commands and agents running there can use it. Scope it to the repositories it needs.",
   "settings.gitCredentials.tokenLabel": "Personal access token",
-  "settings.gitCredentials.tokenPlaceholder": "ghp_…",
+  "settings.gitCredentials.tokenPlaceholder": "Paste your token",
 } as const;

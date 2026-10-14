@@ -52,7 +52,7 @@ describe("prompt regions", () => {
 
 /**
  * A shorter id that is a prefix of a longer one's marker (e.g. "super-agent" /
- * "super-agent-sandbox", both real ids in the registry today) must not match
+ * "super-agent-sandbox") must not match
  * the longer marker's line — or an edit to the short id would splice into the
  * long id's region instead.
  */
@@ -98,7 +98,6 @@ describe("prompt regions with a prefix-colliding id", () => {
 describe("the real prompt regions", () => {
   const REGIONS: Array<[string, string]> = [
     ["reviewer", "../../tools/task-board/enqueue-reviewer.ts"],
-    ["super-agent", "../../tools/task-board/enqueue-super-agent.ts"],
     ["super-agent-sandbox", "../../tools/task-board/claude-code-task-run.ts"],
   ];
 

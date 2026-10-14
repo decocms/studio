@@ -80,6 +80,12 @@ Keep real credentials and customer identifiers out of source, fixtures, logs,
 PRs, and other shared artifacts. Use synthetic examples. Redact secrets before
 quoting debugging output.
 
+Never name an organization or customer in commit messages, PR titles or
+descriptions, review comments, or issues. That covers org names and slugs,
+site, repository, and branch names, URLs, people, and IDs of their threads,
+projects, or connections. Describe the case generically, such as "a project
+with Fast Preview on, on a PR branch", even while debugging a reported issue.
+
 Strip embedded credentials at the persistence boundary and fail closed if a
 value cannot be parsed safely. Test the written artifact's bytes, not only an
 intermediate object. Treat pushed credentials as exposed: rotate them first;
@@ -87,8 +93,14 @@ rewriting Git history does not revoke them.
 
 ## Documentation
 
-`apps/docs/` describes intended system behavior and architecture. When code
-differs, preserve the specification and identify the implementation gap.
+Public product documentation lives in
+[docs-tanstack](https://github.com/deco-sites/docs-tanstack) and is published at
+[Studio documentation](https://docs.decocms.com/studio). Update product guides
+and architecture there. When code differs, preserve the specification and
+identify the implementation gap.
+
+Keep workspace setup, contributor guidance, and implementation plans in this
+repository's READMEs and engineering documents.
 
 Keep each instruction in one place. Put task-specific guidance near its owner
 and link to it here with a condition for reading it. Let code, schemas, and

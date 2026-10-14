@@ -116,7 +116,7 @@ describe("project sidebar views", () => {
     const shell = { id: "decopilot", metadata: {} };
     const project = {
       id: "vir_project",
-      metadata: { githubRepo: { url: "https://github.com/deco/site" } },
+      metadata: { repository: { url: "https://github.com/deco/site" } },
     };
 
     const context = resolveProjectMainViewContext(project.id, project, shell);

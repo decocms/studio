@@ -2,23 +2,23 @@ import { describe, expect, test } from "bun:test";
 import { buildCodingWorkspacePrompt } from "./coding-workspace-prompt";
 
 describe("buildCodingWorkspacePrompt", () => {
-  test("renders repo, branch, cwd, and connected GitHub status", () => {
+  test("renders repo, branch, cwd, and repository link status", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "deco",
         name: "site",
-        connectedGithub: true,
+        linked: true,
       },
       branch: "feature/chat",
       cwd: "/repo",
-      workspaceKind: "github",
+      workspaceKind: "repository",
     });
 
     expect(prompt).toContain("<coding-workspace>");
     expect(prompt).toContain("Repository: deco/site");
     expect(prompt).toContain("Branch: feature/chat");
     expect(prompt).toContain("Working directory: /repo");
-    expect(prompt).toContain("GitHub linked: yes");
+    expect(prompt).toContain("Repository linked: yes");
     expect(prompt).toContain(
       "Use the repository and working tree as the source of truth",
     );
@@ -38,72 +38,72 @@ describe("buildCodingWorkspacePrompt", () => {
     expect(prompt).not.toContain("null");
   });
 
-  test("warns disconnected GitHub workspaces not to assume GitHub operations", () => {
+  test("warns disconnected repository workspaces not to assume remote operations", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "template",
         name: "starter",
-        connectedGithub: false,
+        linked: false,
       },
       cwd: "/repo",
     });
 
-    expect(prompt).toContain("GitHub linked: no");
+    expect(prompt).toContain("Repository linked: no");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
-  test("warns template workspaces not to assume GitHub operations even when linked", () => {
+  test("warns template workspaces not to assume remote operations even when linked", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "template",
         name: "starter",
-        connectedGithub: true,
+        linked: true,
       },
       workspaceKind: "template",
       cwd: "/repo",
     });
 
-    expect(prompt).toContain("GitHub linked: yes");
+    expect(prompt).toContain("Repository linked: yes");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
-  test("warns local workspaces not to assume GitHub operations even without repo metadata", () => {
+  test("warns local workspaces not to assume remote operations even without repo metadata", () => {
     const prompt = buildCodingWorkspacePrompt({
       workspaceKind: "local",
       cwd: "/repo",
     });
 
-    expect(prompt).not.toContain("GitHub linked:");
+    expect(prompt).not.toContain("Repository linked:");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
-  test("warns local workspaces not to assume GitHub operations even when linked", () => {
+  test("warns local workspaces not to assume remote operations even when linked", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "local",
         name: "workspace",
-        connectedGithub: true,
+        linked: true,
       },
       workspaceKind: "local",
       cwd: "/repo",
     });
 
-    expect(prompt).toContain("GitHub linked: yes");
+    expect(prompt).toContain("Repository linked: yes");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
   test("includes Deco CMS content rules only when isDecoSite is set", () => {
     const decoPrompt = buildCodingWorkspacePrompt({
-      repo: { owner: "deco", name: "site", connectedGithub: true },
-      workspaceKind: "github",
+      repo: { owner: "deco", name: "site", linked: true },
+      workspaceKind: "repository",
       cwd: "/repo",
       isDecoSite: true,
     });
@@ -120,14 +120,14 @@ describe("buildCodingWorkspacePrompt", () => {
       { workspaceKind: "local" as const },
       // A repo workspace that was NOT confirmed to be a deco site.
       {
-        repo: { owner: "deco", name: "site", connectedGithub: true },
-        workspaceKind: "github" as const,
+        repo: { owner: "deco", name: "site", linked: true },
+        workspaceKind: "repository" as const,
         cwd: "/repo",
       },
       // Explicitly not a deco site.
       {
-        repo: { owner: "acme", name: "app", connectedGithub: true },
-        workspaceKind: "github" as const,
+        repo: { owner: "acme", name: "app", linked: true },
+        workspaceKind: "repository" as const,
         cwd: "/repo",
         isDecoSite: false,
       },
@@ -144,7 +144,7 @@ describe("buildCodingWorkspacePrompt", () => {
       repo: {
         owner: "deco",
         name: "site",
-        connectedGithub: true,
+        linked: true,
       },
     });
 

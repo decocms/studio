@@ -73,6 +73,12 @@ export interface SchemaProperty {
    * anyOf union.
    */
   plainSchema?: SchemaProperty;
+  /**
+   * For "array" fields collapsed from a union that also accepts loaders or
+   * saved blocks: the block-ref picker for those branches. Rendered instead of
+   * the array editor when the stored value is a `{ __resolveType }` reference.
+   */
+  loaderRef?: SchemaProperty;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -392,6 +398,41 @@ export function resolveSchema(
     return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
   };
 
+  const inlineLoaderResolveType = (s: RawSchema): string | undefined => {
+    const rtEnum = (
+      (s.properties as RawSchema | undefined)?.__resolveType as
+        | RawSchema
+        | undefined
+    )?.enum;
+    return Array.isArray(rtEnum) && typeof rtEnum[0] === "string"
+      ? rtEnum[0]
+      : undefined;
+  };
+
+  const isInlineLoaderBranch = (s: RawSchema): boolean =>
+    inlineLoaderResolveType(s) !== undefined;
+
+  /**
+   * deco buckets loaders by return type and nests the plain bucket inside the
+   * nullable one (`[Product]|null` → `$ref [Product]`), so a loader returning
+   * `T` sits one union below a `T | null` prop's own loader branches.
+   */
+  const nestedUnionLoaderBranches = (
+    branch: RawSchema,
+    seen: Set<string> = new Set(),
+  ): RawSchema[] => {
+    if (typeof branch.$ref !== "string") return [];
+    const key = branch.$ref.split("/").pop() ?? "";
+    if (!key || seen.has(key)) return [];
+    const def = resolveRef(branch.$ref);
+    const union = def.anyOf ?? def.oneOf;
+    if (!Array.isArray(union)) return [];
+    const nextSeen = new Set([...seen, key]);
+    return (union as RawSchema[]).flatMap((b) =>
+      isInlineLoaderBranch(b) ? [b] : nestedUnionLoaderBranches(b, nextSeen),
+    );
+  };
+
   const isSchemaHidden = (s: RawSchema): boolean => {
     const hide = s.hide;
     return hide === true || hide === "true";
@@ -485,15 +526,8 @@ export function resolveSchema(
     }
     resolved = unwrapRefAliases(resolved);
 
-    // Cycle guard for recursive block-ref unions. The `__SECTION_REF__`
-    // "pick any section" selector lists every section, and 20+ of those
-    // sections themselves have a `Section` field pointing back at the same
-    // union. Without this guard, eagerly materializing each branch's nested
-    // `schema` recurses ~exponentially and blows up browser memory (multi-GB).
-    // When we re-enter a union already on the current path, we still emit the
-    // selector's option list but skip the per-branch nested schema — the UI
-    // resolves the selected branch lazily via resolveSchema().
-    const cyclicUnion = vRefKey !== undefined && seen.has(vRefKey);
+    // Re-entered refs (Section unions, Product → hasVariant: Product[]) recurse exponentially; emit the node, skip its nested schema.
+    const cyclicRef = vRefKey !== undefined && seen.has(vRefKey);
     const unionSeen =
       vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
 
@@ -515,7 +549,7 @@ export function resolveSchema(
       branchCount: number,
       lazilyResolvable = true,
     ): SchemaProperty | undefined =>
-      !cyclicUnion &&
+      !cyclicRef &&
       (!lazilyResolvable || branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES) &&
       branchDepth < MAX_BUILD_PROPERTY_DEPTH
         ? buildProperty(branch, branchDepth, unionSeen)
@@ -609,14 +643,7 @@ export function resolveSchema(
         }
 
         // deco.cx inline loader branches
-        const loaderBranches = nonNull.filter((a) => {
-          const rtEnum = (
-            (a.properties as RawSchema | undefined)?.__resolveType as
-              | RawSchema
-              | undefined
-          )?.enum;
-          return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
-        });
+        const loaderBranches = nonNull.filter(isInlineLoaderBranch);
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
@@ -642,53 +669,18 @@ export function resolveSchema(
             rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
           );
         });
-        if (arrayBranch) {
-          const isConfigArray = !isSectionLoaderArrayBranch(
-            arrayBranch,
-            resolveRef,
-          );
-          if (
-            isConfigArray &&
-            nonNull.length > 1 &&
-            arraySiblingsAreModuleRefs
-          ) {
-            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
-            return {
-              ...built,
-              type: "array",
-              title:
-                typeof resolved.title === "string"
-                  ? resolved.title
-                  : built.title,
-              description:
-                typeof resolved.description === "string"
-                  ? resolved.description
-                  : built.description,
-            };
+        const buildLoaderBlockRef = (): SchemaProperty => {
+          const pickerBranches = new Map<string, RawSchema>();
+          for (const branch of [
+            ...loaderBranches,
+            ...nonNull
+              .filter((b) => !loaderBranches.includes(b))
+              .flatMap((b) => nestedUnionLoaderBranches(b)),
+          ]) {
+            const rt = inlineLoaderResolveType(branch);
+            if (rt && !pickerBranches.has(rt)) pickerBranches.set(rt, branch);
           }
-          if (hasPageMultivariateLoader) {
-            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
-            return {
-              ...built,
-              type: "array",
-              title:
-                typeof resolved.title === "string"
-                  ? resolved.title
-                  : built.title,
-              description:
-                typeof resolved.description === "string"
-                  ? resolved.description
-                  : built.description,
-            };
-          }
-        }
-
-        if (loaderBranches.length > 0) {
-          const loaderRefs = loaderBranches.map((branch) => {
-            const rtSchema = (branch.properties as RawSchema | undefined)
-              ?.__resolveType as RawSchema | undefined;
-            const rtEnum = (rtSchema?.enum ?? []) as unknown[];
-            const rt = String(rtEnum[0]);
+          const loaderRefs = [...pickerBranches].map(([rt, branch]) => {
             return {
               resolveType: rt,
               title:
@@ -699,7 +691,7 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema: eagerBranchSchema(branch, depth + 1, nonNull.length),
+              schema: eagerBranchSchema(branch, depth + 1, pickerBranches.size),
             };
           });
 
@@ -763,24 +755,84 @@ export function resolveSchema(
           );
           // Built directly (not eagerBranchSchema) so its depth cap can't null this leaf and demote the field to a block-ref picker at deep nesting.
           const plainSchema =
-            nonLoaderBranches.length === 1 && !cyclicUnion
+            nonLoaderBranches.length === 1 && !cyclicRef
               ? buildProperty(nonLoaderBranches[0]!, depth + 1, unionSeen)
               : undefined;
 
           return {
             type: "block-ref",
             title:
-              typeof resolved.title === "string" ? resolved.title : undefined,
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
             description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : undefined,
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
             anyOfRefs,
             plainSchema,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };
+        };
+
+        if (arrayBranch) {
+          const isConfigArray = !isSectionLoaderArrayBranch(
+            arrayBranch,
+            resolveRef,
+          );
+          if (
+            isConfigArray &&
+            nonNull.length > 1 &&
+            arraySiblingsAreModuleRefs
+          ) {
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
+            // The prop's own @title/@description sit beside its `$ref`.
+            const title =
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title;
+            const description =
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description;
+            return {
+              ...built,
+              type: "array",
+              title,
+              description,
+              loaderRef:
+                loaderBranches.length > 0
+                  ? { ...buildLoaderBlockRef(), title, description }
+                  : undefined,
+            };
+          }
+          if (hasPageMultivariateLoader) {
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
         }
+
+        if (loaderBranches.length > 0) return buildLoaderBlockRef();
 
         // A branch is a real module/block when its def carries `__resolveType` or a saved-block title.
         const branchHasModuleIdentity = (branch: RawSchema): boolean => {
@@ -947,11 +999,17 @@ export function resolveSchema(
           return {
             type: "block-ref",
             title:
-              typeof resolved.title === "string" ? resolved.title : undefined,
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
             description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : undefined,
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
             anyOfRefs,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
@@ -1044,7 +1102,7 @@ export function resolveSchema(
     // Nested properties for object types (see MAX_STRUCTURE_DEPTH).
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
-    if (depth < MAX_STRUCTURE_DEPTH) {
+    if (depth < MAX_STRUCTURE_DEPTH && !cyclicRef) {
       const nestedRaw = collectProps(resolved);
       const nestedRequired = asStringArray(nestedRaw.__required);
       if (nestedRequired.length > 0) requiredKeys = nestedRequired;
@@ -1067,19 +1125,19 @@ export function resolveSchema(
     let itemsSchema: SchemaProperty | undefined;
     if (
       (type === "array" || resolved.type === "array") &&
-      depth < MAX_STRUCTURE_DEPTH
+      depth < MAX_STRUCTURE_DEPTH &&
+      !cyclicRef
     ) {
-      let rawItems = resolved.items as RawSchema | undefined;
+      const rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
-        if (typeof rawItems.$ref === "string") {
-          rawItems = resolveRef(rawItems.$ref);
-        }
+        // Pass the `$ref` itself so the cycle guard sees the item type.
         itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
+        const itemsDef = resolveBranchDef(rawItems);
         if (
-          typeof rawItems.title === "string" &&
-          rawItems.title.includes("{{")
+          typeof itemsDef.title === "string" &&
+          itemsDef.title.includes("{{")
         ) {
-          itemsSchema.titleBy = rawItems.title;
+          itemsSchema.titleBy = itemsDef.title;
         }
       }
     }

@@ -1051,6 +1051,140 @@ describe("resolveSchema – array branch hidden behind a $ref", () => {
   });
 });
 
+describe("resolveSchema – collapsed array keeps its loader picker", () => {
+  // deco's shape for `LoaderReturnType<Link[] | null>` when no loader returns plain `Link[]`:
+  // the prop is a $ref to a nullable union whose array branch is a bare `type: "array"` def.
+  const meta = metaWithSchema({
+    type: "object",
+    properties: {
+      links: {
+        $ref: "#/definitions/LinkArrayOrNull",
+        title: "Links loader",
+        description: "Loads the links",
+      },
+    },
+  });
+  (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+    LinkArrayOrNull: {
+      anyOf: [
+        { $ref: "#/definitions/LinkArray" },
+        { type: "null" },
+        {
+          title: "site/loaders/links.ts",
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["site/loaders/links.ts"],
+              default: "site/loaders/links.ts",
+            },
+          },
+        },
+        {
+          title: "#site/loaders/links.ts@Footer Links",
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["Footer Links"],
+              default: "Footer Links",
+            },
+          },
+        },
+      ],
+    },
+    LinkArray: {
+      type: "array",
+      items: { $ref: "#/definitions/Link" },
+      title: "[Link]",
+    },
+    Link: {
+      type: "object",
+      properties: { label: { type: "string", title: "Label" } },
+    },
+  };
+
+  test("renders the inline array with the prop's own title", () => {
+    const links = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.links;
+    expect(links?.type).toBe("array");
+    expect(links?.title).toBe("Links loader");
+    expect(links?.description).toBe("Loads the links");
+    expect(links?.items?.properties?.label?.title).toBe("Label");
+  });
+
+  test("carries a picker for the loader and the saved block", () => {
+    const loaderRef = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.links?.loaderRef;
+    expect(loaderRef?.type).toBe("block-ref");
+    expect(loaderRef?.title).toBe("Links loader");
+    expect(loaderRef?.anyOfRefs?.map((r) => r.resolveType)).toEqual([
+      "site/loaders/links.ts",
+      "Footer Links",
+    ]);
+  });
+
+  test("a plain config array without loader siblings has no picker", () => {
+    const plainMeta = metaWithSchema({
+      type: "object",
+      properties: {
+        flags: {
+          anyOf: [
+            { type: "array", items: { type: "string" } },
+            { $ref: "#/definitions/Resolvable" },
+          ],
+        },
+      },
+    });
+    const flags = resolveSchema("site/sections/Test.tsx", plainMeta)?.properties
+      ?.flags;
+    expect(flags?.type).toBe("array");
+    expect(flags?.loaderRef).toBeUndefined();
+  });
+});
+
+describe("resolveSchema – block-ref keeps the prop's own title", () => {
+  test("an ImageWidget prop behind a $ref keeps its @title/@description", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        background: {
+          $ref: "#/definitions/ImageWidget",
+          title: "Background image",
+          description: "Shown behind the CTA",
+        },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      ImageWidget: {
+        anyOf: [
+          { type: "string", format: "image-uri", title: "ImageWidget" },
+          {
+            title: "Image Variants",
+            type: "object",
+            properties: {
+              __resolveType: {
+                type: "string",
+                enum: ["website/flags/multivariate/image.ts"],
+                default: "website/flags/multivariate/image.ts",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const background = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.background;
+    expect(background?.type).toBe("block-ref");
+    expect(background?.title).toBe("Background image");
+    expect(background?.description).toBe("Shown behind the CTA");
+    expect(background?.plainSchema?.format).toBe("image-uri");
+  });
+});
+
 describe("resolveSchema – @hide on block-ref fields", () => {
   // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
   // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in
@@ -1201,6 +1335,88 @@ describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)"
     expect(nestedMenu?.anyOfRefs?.every((r) => r.schema === undefined)).toBe(
       true,
     );
+  });
+});
+
+describe("resolveSchema – recursive data types (hang guard)", () => {
+  /**
+   * Commerce types like `Product` reference themselves through plain
+   * properties and array items (`isVariantOf.hasVariant: Product[]`,
+   * `ImageObject.image: ImageObject[]`). Each ref re-entered on the current
+   * path used to expand again until the structural depth cap, so a few
+   * self-references per level hung the editor.
+   */
+  function recursiveProductMeta(): LiveMeta {
+    const ref = (key: string) => ({ $ref: `#/definitions/${key}` });
+    const refArray = (key: string) => ({ type: "array", items: ref(key) });
+    return {
+      manifest: {
+        blocks: {
+          sections: { "site/sections/Shelf.tsx": ref("Shelf") },
+        },
+      },
+      schema: {
+        definitions: {
+          Shelf: { type: "object", properties: { product: ref("Product") } },
+          Product: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              image: refArray("ImageObject"),
+              video: refArray("VideoObject"),
+              isRelatedTo: refArray("Product"),
+              isSimilarTo: refArray("Product"),
+              isAccessoryOrSparePartFor: refArray("Product"),
+              isVariantOf: ref("ProductGroup"),
+            },
+          },
+          ProductGroup: {
+            type: "object",
+            properties: { hasVariant: refArray("Product") },
+          },
+          ImageObject: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              image: refArray("ImageObject"),
+              thumbnail: ref("ImageObject"),
+              video: refArray("VideoObject"),
+            },
+          },
+          VideoObject: {
+            type: "object",
+            properties: {
+              contentUrl: { type: "string" },
+              thumbnail: ref("ImageObject"),
+              video: refArray("VideoObject"),
+            },
+          },
+        },
+      },
+    };
+  }
+
+  test("resolves without expanding a re-entered ref", () => {
+    const start = Date.now();
+    const product = resolveSchema(
+      "site/sections/Shelf.tsx",
+      recursiveProductMeta(),
+    )?.properties?.product;
+    expect(Date.now() - start).toBeLessThan(1000);
+
+    expect(product?.properties?.name?.type).toBe("string");
+    expect(product?.properties?.image?.items?.properties?.url?.type).toBe(
+      "string",
+    );
+    // The cycle is cut where `Product` re-enters, through an array item…
+    const related = product?.properties?.isRelatedTo?.items;
+    expect(related?.type).toBe("object");
+    expect(related?.properties).toBeUndefined();
+    // …or through a nested object's array.
+    const variant =
+      product?.properties?.isVariantOf?.properties?.hasVariant?.items;
+    expect(variant?.type).toBe("object");
+    expect(variant?.properties).toBeUndefined();
   });
 });
 
@@ -2391,5 +2607,60 @@ describe("resolveSchema – loader picker whose loader has a `type` input prop",
     for (const ref of content?.anyOfRefs ?? []) {
       expect(ref.discriminatorValue).toBeUndefined();
     }
+  });
+});
+
+describe("resolveSchema – loaders in the nested non-null return bucket", () => {
+  const loader = (rt: string, title: string) => ({
+    title,
+    type: "object",
+    required: ["__resolveType"],
+    properties: {
+      __resolveType: { type: "string", enum: [rt], default: rt },
+    },
+  });
+
+  test("a `T | null` prop also lists loaders that return plain `T`", () => {
+    // deco's `[Product]|null` bucket nests `[Product]` by $ref; a site loader returning `Product[]` (not `| null`) only lives in the nested one.
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        products: { $ref: "#/definitions/ProductArrayOrNull" },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      Product: { type: "object", properties: { name: { type: "string" } } },
+      ProductArray: {
+        anyOf: [
+          { type: "array", items: { $ref: "#/definitions/Product" } },
+          loader("site/loaders/customProductList.ts", "Custom product list"),
+          loader("vtex/loaders/intelligentSearch/productList.ts", "Dup"),
+          { $ref: "#/definitions/ProductArrayOrNull" },
+        ],
+      },
+      ProductArrayOrNull: {
+        anyOf: [
+          { $ref: "#/definitions/ProductArray" },
+          { type: "null" },
+          loader(
+            "vtex/loaders/intelligentSearch/productList.ts",
+            "Product List Intelligent Search",
+          ),
+        ],
+      },
+    };
+
+    const products = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.products;
+
+    expect(products?.type).toBe("block-ref");
+    expect(products?.anyOfRefs?.map((r) => [r.resolveType, r.title])).toEqual([
+      [
+        "vtex/loaders/intelligentSearch/productList.ts",
+        "Product List Intelligent Search",
+      ],
+      ["site/loaders/customProductList.ts", "Custom product list"],
+    ]);
+    expect(products?.plainSchema?.type).toBe("array");
   });
 });

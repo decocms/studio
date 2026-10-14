@@ -6,6 +6,10 @@
  */
 
 import {
+  readRepositoryMetadata,
+  writeRepositoryMetadata,
+} from "./repository-metadata";
+import {
   type Insertable,
   type Kysely,
   type RawBuilder,
@@ -475,7 +479,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     // Skip findById() here — it decrypts secrets we don't need just for a slug merge.
     const existing = await this.db
       .selectFrom("connections")
-      .select(["app_name", "connection_url", "title"])
+      .select(["app_name", "connection_url", "title", "connection_type"])
       .where("id", "=", id)
       .executeTakeFirst();
     if (existing) {
@@ -490,10 +494,13 @@ export class ConnectionStorage implements ConnectionStoragePort {
       });
     }
 
-    const serialized = await this.serializeConnection({
-      ...slugData,
-      updated_at: new Date().toISOString(),
-    });
+    const serialized = await this.serializeConnection(
+      {
+        ...slugData,
+        updated_at: new Date().toISOString(),
+      },
+      data.connection_type ?? existing?.connection_type,
+    );
 
     const row = await this.db
       .updateTable("connections")
@@ -511,7 +518,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
   /**
    * Is any thread pinned to this connection as its repo?
    *
-   * `threads.metadata.githubRepo.connectionId` is a pointer with no FK behind
+   * `threads.metadata.repository.connectionId` is a pointer with no FK behind
    * it, so deleting the connection strands every thread that holds it — the
    * sandbox can never boot again. Callers that tear a repo connection down
    * must check this first.
@@ -520,6 +527,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     const row = await this.db
       .selectFrom("threads")
       .select("id")
+      // Compatibility: the database retains the indexed legacy repository key.
       .where(sql<boolean>`metadata -> 'githubRepo' ->> 'connectionId' = ${id}`)
       .limit(1)
       .executeTakeFirst();
@@ -616,8 +624,13 @@ export class ConnectionStorage implements ConnectionStoragePort {
    */
   private async serializeConnection(
     data: Partial<ConnectionEntity>,
+    connectionType = data.connection_type,
   ): Promise<Updateable<Database["connections"]>> {
     const result: Record<string, unknown> = {};
+    const storedMetadata =
+      connectionType === "VIRTUAL"
+        ? writeRepositoryMetadata(data.metadata)
+        : data.metadata;
 
     for (const [key, value] of Object.entries(data)) {
       if (value === undefined) continue;
@@ -649,12 +662,18 @@ export class ConnectionStorage implements ConnectionStoragePort {
           result[key] = JSON.stringify(params);
         }
       } else if (JSON_FIELDS.includes(key as (typeof JSON_FIELDS)[number])) {
-        result[key] = value ? JSON.stringify(value) : null;
+        result[key] = value
+          ? JSON.stringify(key === "metadata" ? storedMetadata : value)
+          : null;
       } else {
         result[key] = value;
       }
     }
 
+    if (connectionType === "VIRTUAL" && data.metadata !== undefined) {
+      const binding = readRepositoryMetadata(storedMetadata)?.repository;
+      result.repository_id = binding?.repositoryId ?? null;
+    }
     return result as Updateable<Database["connections"]>;
   }
 
@@ -834,7 +853,12 @@ export class ConnectionStorage implements ConnectionStoragePort {
       oauth_config: decryptedOAuthConfig,
       configuration_state: decryptedConfigState,
       configuration_scopes: parseJson<string[]>(row.configuration_scopes),
-      metadata: parseJson<Record<string, unknown>>(row.metadata),
+      metadata:
+        row.connection_type === "VIRTUAL"
+          ? readRepositoryMetadata(
+              parseJson<Record<string, unknown>>(row.metadata),
+            )
+          : parseJson<Record<string, unknown>>(row.metadata),
       tools: null,
       bindings: parseJson<string[]>(row.bindings),
       status: row.status,

@@ -9,7 +9,10 @@ import { Page } from "@/components/page";
  * disconnected.
  */
 
-import type { GitProviderKind } from "@decocms/shared/git-providers";
+import {
+  DEFAULT_HOSTS,
+  type GitProviderKind,
+} from "@decocms/shared/git-providers";
 import { GitAccountConnect } from "@/components/git-account-connect";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { useProjectContext } from "@/sdk";
@@ -17,13 +20,17 @@ import { RepositoryPicker } from "@/components/repository-picker";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
-import { useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  Container,
+  DotsHorizontal,
   GitBranch01,
+  LinkBroken01,
   LinkExternal01,
   Plus,
+  Users01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -40,19 +47,33 @@ import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
-
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
-import { SettingsSection } from "@/components/settings/settings-section";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 import { GitCredentialsSection } from "@/components/settings/git-credentials-section";
 import {
   type GitAccount,
@@ -138,6 +159,61 @@ const ACCESS_ISSUE_COPY = {
   },
 } as const;
 
+/** Host in the meta line only when it says something: a self-hosted instance. */
+function customHost(provider: GitProviderKind, host: string): string | null {
+  return host === DEFAULT_HOSTS[provider] ? null : host;
+}
+
+function MetaLine({ parts }: { parts: ReactNode[] }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {parts.map((part, index) => (
+        <Fragment key={index}>
+          {index > 0 && <span aria-hidden="true">·</span>}
+          <span className="truncate">{part}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+function AccessWarning({ label, hint }: { label: string; hint: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className="focus-ring inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-normal text-warning"
+        >
+          <AlertTriangle size={12} aria-hidden="true" />
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function needsAttention(account: GitAccount): boolean {
+  return account.status === "revoked" || !account.servable;
+}
+
+function RowMenu({ children }: { children: ReactNode }) {
+  const t = useT();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton label={t("settings.repositories.moreActions")}>
+          <DotsHorizontal size={16} />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-52">
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function AccountRow({
   account,
   onDisconnect,
@@ -149,10 +225,13 @@ function AccountRow({
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const capabilities = useGitProviderCapabilities();
-  const needsAttention = account.status === "revoked" || !account.servable;
+  const attention = needsAttention(account);
   const isGithubApp =
     account.type === "github" && account.authKind === "github_app";
   const githubConnectPath = capabilities.data?.github.connectPath;
+  const githubConnectHref = githubConnectPath
+    ? `${githubConnectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories${account.installationId ? `?git_installation=${account.installationId}` : ""}`)}`
+    : null;
   const accessCopy = account.accessIssue
     ? ACCESS_ISSUE_COPY[account.accessIssue]
     : null;
@@ -168,92 +247,97 @@ function AccountRow({
       : account.accessIssue === "no_repositories"
         ? t("settings.repositories.selectRepositories")
         : t("settings.repositories.githubReconnect");
+  const host = customHost(account.type, account.host);
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
-      <div className="flex items-start gap-3 min-w-0">
+    <SettingsCardItem
+      icon={
         <Avatar
           url={account.avatarUrl?.trim() || undefined}
           fallback={<ProviderIcon provider={account.type} />}
           shape="circle"
           size="sm"
-          className="size-9"
+          className="size-8"
           muted
         />
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-sm truncate">
-              {account.login}
-            </span>
-            {needsAttention && (
-              <span className="inline-flex items-center gap-1 text-xs text-warning">
-                <AlertTriangle size={14} aria-hidden="true" />
-                {t(
-                  accessCopy?.label ??
-                    "settings.repositories.accessUnavailable",
-                )}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            {account.host} · {authKindLabel(account, t)}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {account.connectedBy
+      }
+      title={
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{account.login}</span>
+          {attention && (
+            <AccessWarning
+              label={t(
+                accessCopy?.label ?? "settings.repositories.accessUnavailable",
+              )}
+              hint={accessHint}
+            />
+          )}
+        </span>
+      }
+      description={
+        <MetaLine
+          parts={[
+            ...(host ? [host] : []),
+            authKindLabel(account, t),
+            account.connectedBy
               ? t("settings.repositories.connectedBy", {
                   name: account.connectedBy.name,
                 })
-              : t("settings.repositories.connectedByUnknown")}
-          </p>
-          {needsAttention && (
-            <p className="text-xs text-muted-foreground mt-0.5">{accessHint}</p>
-          )}
-        </div>
-      </div>
-      <div className="flex flex-wrap justify-end gap-2 max-w-full">
-        {isGithubApp && githubConnectPath && (
-          <Button
-            variant={needsAttention ? "default" : "outline"}
-            size="sm"
-            asChild
-          >
-            <a
-              href={`${githubConnectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories${account.installationId ? `?git_installation=${account.installationId}` : ""}`)}`}
-            >
-              {needsAttention
-                ? githubAction
-                : t("settings.repositories.githubEditWorkspaceAccess")}
-            </a>
-          </Button>
-        )}
-        {account.type === "github" &&
-          account.installationId &&
-          !needsAttention && (
+              : t("settings.repositories.connectedByUnknown"),
+          ]}
+        />
+      }
+      action={
+        <div className="flex items-center gap-1">
+          {attention && isGithubApp && githubConnectHref && (
             <Button variant="outline" size="sm" asChild>
-              <a
-                href={`/api/${encodeURIComponent(org.slug)}/git-providers/github/accounts/${encodeURIComponent(account.id)}/manage`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => {
-                  void queryClient.invalidateQueries({
-                    queryKey: KEYS.providerRepoSearch(
-                      org.id,
-                      account.id,
-                      "",
-                    ).slice(0, 3),
-                    refetchType: "none",
-                  });
-                }}
-              >
-                <LinkExternal01 size={14} />
-                {t("settings.repositories.manageRepositoryAccess")}
-              </a>
+              <a href={githubConnectHref}>{githubAction}</a>
             </Button>
           )}
-        <Button variant="outline" size="sm" onClick={onDisconnect}>
-          {t("settings.repositories.disconnect")}
-        </Button>
-      </div>
-    </div>
+          <RowMenu>
+            {!attention && isGithubApp && githubConnectHref && (
+              <DropdownMenuItem asChild>
+                <a href={githubConnectHref}>
+                  <Users01 />
+                  {t("settings.repositories.githubEditWorkspaceAccess")}
+                </a>
+              </DropdownMenuItem>
+            )}
+            {!attention &&
+              account.type === "github" &&
+              account.installationId && (
+                <DropdownMenuItem asChild>
+                  <a
+                    href={`/api/${encodeURIComponent(org.slug)}/git-providers/github/accounts/${encodeURIComponent(account.id)}/manage`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      void queryClient.invalidateQueries({
+                        queryKey: KEYS.providerRepoSearch(
+                          org.id,
+                          account.id,
+                          "",
+                        ).slice(0, 3),
+                        refetchType: "none",
+                      });
+                    }}
+                  >
+                    <LinkExternal01 />
+                    {t("settings.repositories.manageRepositoryAccess")}
+                  </a>
+                </DropdownMenuItem>
+              )}
+            {!attention && account.type === "github" && (
+              <DropdownMenuSeparator />
+            )}
+            <DropdownMenuItem variant="destructive" onSelect={onDisconnect}>
+              <LinkBroken01 />
+              {t("settings.repositories.disconnect")}
+            </DropdownMenuItem>
+          </RowMenu>
+        </div>
+      }
+    />
   );
 }
 
@@ -262,112 +346,128 @@ function AccountRow({
  * sandbox: a running one keeps the image it was claimed with, because a
  * SandboxClaim names its template once and the pod cannot be re-imaged.
  */
-function SandboxImageSelect({ repository }: { repository: Repository }) {
+function SandboxImageMenu({ repository }: { repository: Repository }) {
   const t = useT();
   const update = useUpdateRepository();
   return (
-    <Select
-      value={repository.sandboxImage}
-      disabled={update.isPending}
-      onValueChange={(value) =>
-        update.mutate(
-          { id: repository.id, sandboxImage: value },
-          {
-            onError: (error) =>
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : t("settings.repositories.sandboxImageError"),
-              ),
-          },
-        )
-      }
-    >
-      <SelectTrigger
-        size="sm"
-        className="text-xs w-40"
-        aria-label={t("settings.repositories.sandboxImageLabel")}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="default" className="text-xs">
-          {t("settings.repositories.sandboxImageDefault")}
-        </SelectItem>
-        <SelectItem value="android" className="text-xs">
-          {t("settings.repositories.sandboxImageAndroid")}
-        </SelectItem>
-        {/* A variant set through REPOSITORY_UPDATE that this list doesn't
-            name still has to show as the current value. */}
-        {repository.sandboxImage !== "default" &&
-          repository.sandboxImage !== "android" && (
-            <SelectItem value={repository.sandboxImage} className="text-xs">
-              {repository.sandboxImage}
-            </SelectItem>
-          )}
-      </SelectContent>
-    </Select>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger disabled={update.isPending}>
+        <Container />
+        {t("settings.repositories.sandboxImageLabel")}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuRadioGroup
+          value={repository.sandboxImage}
+          onValueChange={(value) =>
+            update.mutate(
+              { id: repository.id, sandboxImage: value },
+              {
+                onError: (error) =>
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : t("settings.repositories.sandboxImageError"),
+                  ),
+              },
+            )
+          }
+        >
+          <DropdownMenuRadioItem value="default">
+            {t("settings.repositories.sandboxImageDefault")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="android">
+            {t("settings.repositories.sandboxImageAndroid")}
+          </DropdownMenuRadioItem>
+          {/* A variant set through REPOSITORY_UPDATE that this list doesn't
+              name still has to show as the current value. */}
+          {repository.sandboxImage !== "default" &&
+            repository.sandboxImage !== "android" && (
+              <DropdownMenuRadioItem value={repository.sandboxImage}>
+                {repository.sandboxImage}
+              </DropdownMenuRadioItem>
+            )}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
+}
+
+function sandboxImageLabel(
+  image: string,
+  t: ReturnType<typeof useT>,
+): string | null {
+  if (image === "default") return null;
+  if (image === "android") {
+    return t("settings.repositories.sandboxImageAndroid");
+  }
+  return image;
 }
 
 function RepositoryRow({
   repository,
+  account,
   onUnlink,
 }: {
   repository: Repository;
+  account: GitAccount | undefined;
   onUnlink: () => void;
 }) {
   const t = useT();
   const visibility = visibilityLabel(repository.visibility, t);
+  const host = customHost(repository.provider, repository.host);
+  const image = sandboxImageLabel(repository.sandboxImage, t);
+  const meta: ReactNode[] = [
+    ...(visibility ? [visibility] : []),
+    ...(repository.defaultBranch
+      ? [
+          <span key="branch" className="inline-flex items-center gap-1">
+            <GitBranch01 size={12} aria-hidden="true" />
+            {repository.defaultBranch}
+          </span>,
+        ]
+      : []),
+    ...(host ? [host] : []),
+  ];
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
-      <div className="flex items-start gap-3 min-w-0">
-        <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
-          <ProviderIcon provider={repository.provider} />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">
-              {repository.path}
-            </span>
-            {visibility && (
-              <Badge variant="secondary" className="shrink-0">
-                {visibility}
-              </Badge>
-            )}
-            {!repository.accountId && (
-              <Badge variant="outline" className="shrink-0">
-                {t("settings.repositories.anonymousClone")}
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            {repository.host}
-            {repository.defaultBranch
-              ? ` · ${t("settings.repositories.defaultBranch", {
-                  branch: repository.defaultBranch,
-                })}`
-              : ""}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <SandboxImageSelect repository={repository} />
-        <Button variant="ghost" size="sm" asChild>
-          <a
-            href={repository.webUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={t("settings.repositories.openInProvider")}
-          >
-            <LinkExternal01 size={14} />
-          </a>
-        </Button>
-        <Button variant="outline" size="sm" onClick={onUnlink}>
-          {t("settings.repositories.unlink")}
-        </Button>
-      </div>
-    </div>
+    <SettingsCardItem
+      icon={<ProviderIcon provider={repository.provider} />}
+      title={
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{repository.path}</span>
+          {!repository.accountId && (
+            <Badge variant="muted">
+              {t("settings.repositories.anonymousClone")}
+            </Badge>
+          )}
+          {image && <Badge variant="muted">{image}</Badge>}
+          {account && needsAttention(account) && (
+            <AccessWarning
+              label={t("settings.repositories.accessUnavailable")}
+              hint={t("settings.repositories.repoAccountNeedsAttention", {
+                login: account.login,
+              })}
+            />
+          )}
+        </span>
+      }
+      description={meta.length > 0 ? <MetaLine parts={meta} /> : undefined}
+      action={
+        <RowMenu>
+          <DropdownMenuItem asChild>
+            <a href={repository.webUrl} target="_blank" rel="noreferrer">
+              <LinkExternal01 />
+              {t("settings.repositories.openInProvider")}
+            </a>
+          </DropdownMenuItem>
+          <SandboxImageMenu repository={repository} />
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={onUnlink}>
+            <LinkBroken01 />
+            {t("settings.repositories.unlink")}
+          </DropdownMenuItem>
+        </RowMenu>
+      }
+    />
   );
 }
 
@@ -393,8 +493,6 @@ function AccountsSection({
   return (
     <SettingsSection
       title={t("settings.repositories.accountsTitle")}
-      headerClassName="flex-col items-start [&>div]:w-full"
-      description={t("settings.repositories.accountsDescription")}
       actions={rows.length > 0 ? <GitAccountConnect /> : null}
     >
       {accounts.isPending ? (
@@ -431,18 +529,17 @@ function AccountsSection({
           <GitAccountConnect />
         </div>
       ) : (
-        <section
-          data-testid="git-accounts-list"
-          className="rounded-2xl border border-border/60 bg-background px-5 py-2"
-        >
-          {rows.map((account) => (
-            <AccountRow
-              key={account.id}
-              account={account}
-              onDisconnect={() => onDisconnect(account)}
-            />
-          ))}
-        </section>
+        <div data-testid="git-accounts-list">
+          <SettingsCard>
+            {rows.map((account) => (
+              <AccountRow
+                key={account.id}
+                account={account}
+                onDisconnect={() => onDisconnect(account)}
+              />
+            ))}
+          </SettingsCard>
+        </div>
       )}
     </SettingsSection>
   );
@@ -457,13 +554,16 @@ function RepositoriesSection({
 }) {
   const t = useT();
   const repositories = useRepositories();
+  const accounts = useGitAccounts();
   if (repositories.isError) throw repositories.error;
   const rows = repositories.data ?? [];
+  const accountById = new Map(
+    (accounts.data ?? []).map((account) => [account.id, account]),
+  );
 
   return (
     <SettingsSection
       title={t("settings.repositories.reposTitle")}
-      description={t("settings.repositories.reposDescription")}
       actions={
         rows.length > 0 ? (
           <Page.Actions>
@@ -498,18 +598,22 @@ function RepositoriesSection({
           </Page.Actions>
         </div>
       ) : (
-        <section
-          data-testid="repositories-list"
-          className="rounded-2xl border border-border/60 bg-background px-5 py-2"
-        >
-          {rows.map((repository) => (
-            <RepositoryRow
-              key={repository.id}
-              repository={repository}
-              onUnlink={() => onUnlink(repository)}
-            />
-          ))}
-        </section>
+        <div data-testid="repositories-list">
+          <SettingsCard>
+            {rows.map((repository) => (
+              <RepositoryRow
+                key={repository.id}
+                repository={repository}
+                account={
+                  repository.accountId
+                    ? accountById.get(repository.accountId)
+                    : undefined
+                }
+                onUnlink={() => onUnlink(repository)}
+              />
+            ))}
+          </SettingsCard>
+        </div>
       )}
     </SettingsSection>
   );
@@ -605,10 +709,6 @@ function RepositoriesContent() {
 
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        {t("settings.repositories.pageDescription")}
-      </p>
-
       {!search.git_flow && <ConnectError />}
       {search.git_flow && (
         <GithubConnectDialog
@@ -632,12 +732,12 @@ function RepositoriesContent() {
         />
       )}
 
-      <AccountsSection onDisconnect={setPendingAccount} />
-
       <RepositoriesSection
         onAdd={() => setAddOpen(true)}
         onUnlink={setPendingRepository}
       />
+
+      <AccountsSection onDisconnect={setPendingAccount} />
 
       <GitCredentialsSection />
 

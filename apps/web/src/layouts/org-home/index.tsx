@@ -62,12 +62,18 @@ export default function OrgHome() {
   }
 
   /** No project to scope to — Home, which resolves on the Super Agent (the
-   *  absence of a project segment) and opens on its Overview default view. */
+   *  absence of a project segment) and opens on its Overview default view.
+   *  The reducer form rather than a spread: Home declares its own search now
+   *  (`?view=`), so handing it this route's whole bag is a type error and,
+   *  worse, would carry another destination's state onto it. */
   return (
     <Navigate
       to={DESTINATION_ROUTE.home}
       params={{ org: org.slug }}
-      search={{ ...search, virtualmcpid: undefined }}
+      search={(prev: Record<string, unknown>) => ({
+        ...prev,
+        virtualmcpid: undefined,
+      })}
       hash={true}
       replace
     />

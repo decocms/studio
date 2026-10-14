@@ -15,7 +15,7 @@ const servers = Array.isArray(base.webServer) ? base.webServer : [];
 export default defineConfig({
   ...base,
   testIgnore: [],
-  testMatch: "**/github-connect.spec.ts",
+  testMatch: ["**/github-connect.spec.ts", "**/create-site.spec.ts"],
   outputDir: "./test-results/github-connect",
   webServer: servers.map((server) => ({
     ...server,

@@ -3,18 +3,22 @@
 Studio uses four components to separate the application frame, the optional
 chat arrangement, panel surfaces, and document content.
 
-## Default layout and blocks editor preference
+## Default layout and blocks editor flag
 
 The shared page headers, toolbars, sidebar, and controls are the default UI.
 They do not depend on a browser preference. Shared control defaults use CSS
 variables where callers need to override them through `className`.
 
-Only the redesigned blocks editor remains opt-in through **Profile & Preferences
-→ New blocks editor**. Components in the editor read `useNewBlocksEditor()`.
-The preference retains the `compactPageLayout` storage key so existing opt-ins
-survive, and defaults to `false`. Switching it changes only the editor;
+Only the redesigned blocks editor remains opt-in, per organization, through
+**Settings → General → New blocks editor** (the `new_blocks_editor` org flag,
+off by default). Any member may switch it, through the basic-usage
+`ORGANIZATION_BLOCKS_EDITOR_SET` tool; General shows plain members only that
+switch. Components in the editor read
+`useNewBlocksEditor()`. Switching it changes only the editor for every member;
 navigation, page headers, and other application screens keep the default UI.
-Editor browser tests opt in with `test.use({ newBlocksEditor: true })`.
+Editor browser tests opt in with `test.use({ newBlocksEditor: true })`, which
+sets the flag on the test's org. Component tests choose the editor through the
+`use-new-blocks-editor` stub.
 
 ## Ownership and naming
 
@@ -202,7 +206,10 @@ export default function SiteEditorRoute() {
 }
 ```
 
-The drawer stays outside the body's error boundary. The Develop/Live project
+The drawer stays outside the body's error boundary. `aside` is a second surface
+beside the content on desktop, such as the Library's file preview; the route
+composes it, and with the conversation open the Library shows the file in the
+content itself so the page never holds three panels. The Develop/Live project
 switch is supplied by the session route to the common topbar because it changes
 project identity on every destination, including project Settings.
 
@@ -431,9 +438,10 @@ background; callers supply placement and size without radius overrides.
 
 Tasks uses `Page.Tabs` for Board and List, with filters in the header beside
 New task through `Page.Actions secondary={…}`. Narrow panels use the existing
-filters drawer in the same action group. Library uses the same tabs for
-All files, Documents, and Media, with folder, document, and image icons beside
-the labels. Search and refresh sit on the right. Its upload
+filters drawer in the same action group. Library uses the same tabs for its
+places (All files, Projects, Uploads, Outputs, Skills and synced repositories),
+followed by Type and Modified menus; one bar both moves and filters. Search
+and refresh sit on the right. Its upload
 action lives in the header, separated from New folder by a vertical divider.
 `Page.Actions secondary={…}` provides that grouping to other pages too.
 
@@ -447,9 +455,11 @@ General. Tab changes keep the same form and autosave queue while resetting the
 content scroll position.
 The previous settings index and its second breadcrumb have been removed.
 
-Library's file view is saved in `?fileView=` and applies to the current folder,
-search results, and the recent feed. All files and Documents use compact rows;
-Media uses thumbnails. Folders remain available in every view. Existing upload,
+Library's type filter is saved in `?fileView=` and its date filter in
+`?modified=`; both apply to the current folder, search results, and the recent
+feed. The list is the design system's `Table` with folders first; the grid shows
+folder cards and file thumbnails. Uploads and Outputs list their files flat,
+newest first, since their folders are per-chat ids. Existing upload,
 sharing, download, rename, and drag-and-drop handlers stay with their entries.
 Its folder trail lives only in the shared header: organization → Library →
 folder ancestors → current folder. Library returns to the home volume, and the

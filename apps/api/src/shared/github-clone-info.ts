@@ -32,6 +32,8 @@ export interface GitHubCloneInfo {
   cloneUrl: string;
   gitUserName: string;
   gitUserEmail: string;
+  /** When the token in `cloneUrl` expires; null when it never does, absent without one. */
+  expiresAt?: Date | null;
 }
 
 /**
@@ -156,5 +158,10 @@ export async function buildCloneInfo(
     }
   }
 
-  return { cloneUrl, gitUserName, gitUserEmail };
+  return {
+    cloneUrl,
+    gitUserName,
+    gitUserEmail,
+    expiresAt: tokenResult.expiresAt,
+  };
 }

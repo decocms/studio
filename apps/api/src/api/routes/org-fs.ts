@@ -24,6 +24,9 @@
  * `ORG_FS_READ`, writes on `ORG_FS_WRITE` (both basic-usage today); a future
  * per-volume ACL removes them from basic-usage and gates by role/permission
  * with no route changes. See `.context/org-filesystem-proposal.md`.
+ *
+ * The one carve-out is `home/users/<id>/`: only its owner reads or writes it
+ * (`personal-home.ts`).
  */
 
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
@@ -34,12 +37,21 @@ import { getCookie, setCookie } from "hono/cookie";
 import type { NatsConnection } from "@nats-io/nats-core";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
-import type { OrgFs, ReadAccess } from "@/file-storage/org-fs";
+import type {
+  OrgFs,
+  ReadAccess,
+  WriteExpectation,
+} from "@/file-storage/org-fs";
 import {
+  OrgFsConflictError,
   OrgFsNotFoundError,
   OrgFsQuotaError,
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
+import {
+  canReadPersonal,
+  canWritePersonal,
+} from "@/file-storage/personal-home";
 import {
   signUnlockToken,
   unlockCookieName,
@@ -52,6 +64,8 @@ import {
   orgFsChangeSubjects,
 } from "@/file-storage/org-fs-notify";
 import { isValidVolume } from "@/file-storage/org-fs-path";
+import { orgFsWriteDenial } from "@/file-storage/org-fs-write-guard";
+import { verifyOrgFsUploadToken } from "@/file-storage/upload-grant";
 import {
   buildPublicOrgFs,
   getPublicSets,
@@ -64,7 +78,10 @@ import {
   selectSkillFiles,
   streamSkillTar,
 } from "@/file-storage/skill-tar";
-import { fsByteResponse as byteResponse } from "../utils/fs-bytes";
+import {
+  downloadsOnly,
+  fsByteResponse as byteResponse,
+} from "../utils/fs-bytes";
 
 type Variables = { studioContext: StudioContext };
 type Ctx = Context<{ Variables: Variables }>;
@@ -219,6 +236,16 @@ ${opts.error ? `<div class="err">${escapeHtml(opts.error)}</div>` : ""}
   });
 }
 
+/**
+ * Optional compare-and-swap for a PUT: `If-Match: "<contentHash>"` writes only
+ * over that version, `If-None-Match: *` only when nothing is there yet.
+ */
+function writePrecondition(c: Ctx): WriteExpectation | undefined {
+  if (c.req.header("if-none-match") === "*") return { absent: true };
+  const match = c.req.header("if-match")?.replace(/^"|"$/g, "");
+  return match ? { contentHash: match } : undefined;
+}
+
 /** Translate an OrgFs error into an explicit JSON response (never thrown). */
 function fsErrorResponse(c: Ctx, err: unknown): Response {
   if (err instanceof OrgFsQuotaError)
@@ -227,6 +254,8 @@ function fsErrorResponse(c: Ctx, err: unknown): Response {
     return c.json({ error: err.message }, 404);
   if (err instanceof OrgFsValidationError)
     return c.json({ error: err.message }, 400);
+  if (err instanceof OrgFsConflictError)
+    return c.json({ error: err.message }, 412);
   // Unexpected — let the global handler log + 500 it.
   throw err;
 }
@@ -312,6 +341,20 @@ async function waitForChanges(
   }
 }
 
+const THREAD_ID_FOLDER =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The chat a file came from: the write's thread, else the thread-id folder
+ *  chat volumes keep each run's files in. */
+function sourceThreadOf(entry: {
+  path: string;
+  threadId: string | null;
+}): string | null {
+  if (entry.threadId) return entry.threadId;
+  const top = entry.path.split("/")[0] ?? "";
+  return entry.path.includes("/") && THREAD_ID_FOLDER.test(top) ? top : null;
+}
+
 export interface OrgFsRoutesDeps {
   /**
    * Shared NATS connection (null until connected / when unconfigured). Powers
@@ -343,6 +386,21 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       }
       throw err;
     }
+  };
+
+  /** 403 unless the caller may touch every path in `home/users/<id>/` it names. */
+  const personalDenied = (
+    c: Ctx,
+    ctx: StudioContext,
+    volume: string,
+    paths: string[],
+    mode: "read" | "write",
+  ): Response | null => {
+    const caller = ctx.auth.user!.id;
+    const allowed = mode === "read" ? canReadPersonal : canWritePersonal;
+    return paths.every((p) => allowed(volume, p, caller))
+      ? null
+      : c.json({ error: "This folder belongs to another member" }, 403);
   };
 
   /**
@@ -440,8 +498,12 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_RECENT_LIMIT,
     );
     try {
+      const caller = ctx.auth.user!.id;
+      const entries = await ctx.orgFs.recentWithEffectivePublic(limit);
       return c.json({
-        entries: await ctx.orgFs.recentWithEffectivePublic(limit),
+        entries: entries.filter((e) =>
+          canReadPersonal(e.volume, e.path, caller),
+        ),
       });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -509,7 +571,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             )
           : [],
       ]);
+      const caller = ctx.auth.user!.id;
       const entries = [...own, ...pub]
+        .filter((e) => canReadPersonal(e.volume, e.path, caller))
         .sort((a, b) => Number(BigInt(b.seq) - BigInt(a.seq)))
         .slice(0, limit);
       return c.json({ entries });
@@ -560,7 +624,12 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
     try {
-      const entries = selectSkillFiles(await r.fs.listVolumeFiles(volume));
+      const caller = r.ctx.auth.user!.id;
+      const entries = selectSkillFiles(
+        (await r.fs.listVolumeFiles(volume)).filter((e) =>
+          canReadPersonal(volume, e.path, caller),
+        ),
+      );
       if (entries.length === 0) {
         return c.json({ error: "No skills in this volume" }, 404);
       }
@@ -600,8 +669,13 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
     const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "read");
+    if (denied) return denied;
+    const caller = r.ctx.auth.user!.id;
     try {
-      const entries = await r.fs.listDir(volume, path);
+      const entries = (await r.fs.listDir(volume, path)).filter((e) =>
+        canReadPersonal(volume, e.path, caller),
+      );
       const dirs = entries.filter((e) => e.kind === "dir");
       const exists = dirs.length
         ? await r.fs.filesExist(
@@ -637,13 +711,66 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   });
 
+  // A volume's newest files at any depth — the Library's flat view of the
+  // volumes chat fills one thread folder at a time (uploads, outputs). Paged
+  // newest first: `next` is the `before` cursor for the following page. Each
+  // file's chat comes along in `threads`, from the write's thread or the
+  // thread-id folder it sits in.
+  app.get("/:volume/files", async (c) => {
+    const volume = c.req.param("volume");
+    const r = await resolve(c, volume, "ORG_FS_READ");
+    if (!r.ok) return r.res;
+    const limit = Math.min(
+      Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
+      MAX_RECENT_LIMIT,
+    );
+    const before = c.req.query("before") || undefined;
+    if (before !== undefined && !/^\d{1,19}$/.test(before)) {
+      return c.json({ error: "Invalid cursor" }, 400);
+    }
+    const caller = r.ctx.auth.user!.id;
+    try {
+      const page = await r.fs.searchWithEffectivePublic(
+        "",
+        limit,
+        [volume],
+        undefined,
+        before,
+      );
+      const entries = page
+        .filter((e) => canReadPersonal(volume, e.path, caller))
+        .map((e) => ({ ...e, sourceThreadId: sourceThreadOf(e) }));
+      const threadIds = new Set(
+        entries
+          .map((e) => e.sourceThreadId)
+          .filter((id): id is string => id !== null),
+      );
+      const threads = Object.fromEntries(
+        (await r.ctx.storage.threads.summaries([...threadIds])).map((t) => [
+          t.id,
+          { title: t.title, agentId: t.virtual_mcp_id },
+        ]),
+      );
+      return c.json({
+        entries,
+        threads,
+        next: page.length === limit ? (page.at(-1)?.seq ?? null) : null,
+      });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
   // Metadata for a single entry (404 if absent).
   app.get("/:volume/stat", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "read");
+    if (denied) return denied;
     try {
-      const entry = await r.fs.stat(volume, c.req.query("path") ?? "");
+      const entry = await r.fs.stat(volume, path);
       if (!entry) return c.json({ error: "Not found" }, 404);
       const effectivePublic =
         entry.readPublic || (await r.fs.inheritsPublic(volume, entry.path));
@@ -692,6 +819,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             await ctx.orgFs.read(volume, path),
             path,
             access.access === "public",
+            { downloadOnly: downloadsOnly(volume, path) },
           );
         } catch (err) {
           return fsErrorResponse(c, err);
@@ -712,11 +840,15 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       }
       return r.res;
     }
+    const denied = personalDenied(c, r.ctx, volume, [path], "read");
+    if (denied) return denied;
     try {
       if (c.req.query("presign")) {
         return c.json({ url: await r.fs.presignRead(volume, path) });
       }
-      return byteResponse(c, await r.fs.read(volume, path), path, false);
+      return byteResponse(c, await r.fs.read(volume, path), path, false, {
+        downloadOnly: downloadsOnly(volume, path),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -740,18 +872,23 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_CHANGES_LIMIT,
     );
     const wait = c.req.query("wait") === "1" || c.req.query("wait") === "true";
+    const caller = r.ctx.auth.user!.id;
     try {
-      if (!wait) {
-        return c.json(await r.fs.changes(volume, since, limit));
-      }
-      return c.json(
-        await waitForChanges(c, r.fs, getConnection(), {
-          orgId: r.ctx.organization!.id,
-          volume,
-          since,
-          limit,
-        }),
-      );
+      const feed = wait
+        ? await waitForChanges(c, r.fs, getConnection(), {
+            orgId: r.ctx.organization!.id,
+            volume,
+            since,
+            limit,
+          })
+        : await r.fs.changes(volume, since, limit);
+      // The cursor stays the unfiltered one, so hidden entries are skipped, not replayed.
+      return c.json({
+        ...feed,
+        entries: feed.entries.filter((e) =>
+          canReadPersonal(volume, e.path, caller),
+        ),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -784,6 +921,8 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       const r = await resolve(c, volume, "ORG_FS_WRITE");
       if (!r.ok) return r.res;
       const path = c.req.query("path") ?? "";
+      const denied = personalDenied(c, r.ctx, volume, [path], "write");
+      if (denied) return denied;
       const contentType = c.req.header("content-type");
       const bytes = new Uint8Array(await c.req.arrayBuffer());
       try {
@@ -793,6 +932,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             contentType && contentType !== "application/octet-stream"
               ? contentType
               : undefined,
+          expect: writePrecondition(c),
         });
         await notifyOrgFsChange(
           getConnection(),
@@ -806,13 +946,64 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     },
   );
 
+  // Upload through a `PUT_PRESIGNED_URL` grant. No session: the signed token
+  // is the authentication, so it reaches this route the way a public-share
+  // read does. The write rules are checked again here because a volume can
+  // become a repo-sync mirror between minting and upload.
+  app.put(
+    "/:volume/upload/:token",
+    bodyLimit({
+      maxSize: MAX_UPLOAD_BYTES,
+      onError: (c) =>
+        c.json({ error: "File exceeds the per-file size limit" }, 413),
+    }),
+    async (c) => {
+      const ctx = c.get("studioContext");
+      const grant = verifyOrgFsUploadToken(c.req.param("token"));
+      if (
+        !grant ||
+        grant.organizationId !== ctx.organization?.id ||
+        grant.volume !== c.req.param("volume")
+      ) {
+        return c.json({ error: "Invalid or expired upload link" }, 404);
+      }
+      if (!ctx.orgFs) {
+        return c.json({ error: "Object storage not configured" }, 503);
+      }
+      const denial = await orgFsWriteDenial(ctx.storage, grant);
+      if (denial) return c.json({ error: denial }, 403);
+      const contentType = c.req.header("content-type");
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      try {
+        const entry = await ctx.orgFs.write(grant.volume, grant.path, bytes, {
+          actor: grant.userId,
+          contentType:
+            contentType && contentType !== "application/octet-stream"
+              ? contentType
+              : undefined,
+        });
+        await notifyOrgFsChange(
+          getConnection(),
+          grant.organizationId,
+          grant.volume,
+        );
+        return c.json({ entry });
+      } catch (err) {
+        return fsErrorResponse(c, err);
+      }
+    },
+  );
+
   // Create a directory (and ancestors). Idempotent.
   app.post("/:volume/dir", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_WRITE");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "write");
+    if (denied) return denied;
     try {
-      await r.fs.mkdir(volume, c.req.query("path") ?? "", {
+      await r.fs.mkdir(volume, path, {
         actor: r.ctx.auth!.user!.id,
       });
       await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
@@ -827,8 +1018,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_WRITE");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
+    const denied = personalDenied(c, r.ctx, volume, [path], "write");
+    if (denied) return denied;
     try {
-      await r.fs.delete(volume, c.req.query("path") ?? "", {
+      await r.fs.delete(volume, path, {
         actor: r.ctx.auth!.user!.id,
       });
       await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
@@ -863,6 +1057,14 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           400,
         );
       }
+      const denied = personalDenied(
+        c,
+        r.ctx,
+        volume,
+        [body.from, body.to],
+        "write",
+      );
+      if (denied) return denied;
       try {
         await r.fs.move(volume, body.from, body.to, {
           actor: r.ctx.auth!.user!.id,
@@ -896,6 +1098,8 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       const r = await resolve(c, volume, "ORG_FS_WRITE");
       if (!r.ok) return r.res;
       const path = c.req.query("path") ?? "";
+      const denied = personalDenied(c, r.ctx, volume, [path], "write");
+      if (denied) return denied;
       const body = (await c.req.json().catch(() => null)) as {
         mode?: unknown;
         public?: unknown;

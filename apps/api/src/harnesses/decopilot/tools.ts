@@ -20,10 +20,10 @@
  */
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import {
-  getThreadGithubRepo,
+  getThreadRepository,
   getThreadPinnedRef,
   resolveSandboxBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -38,6 +38,7 @@ import {
 import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import { agentSandboxEnabled } from "@/settings";
+import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
 import {
   toolsFromMCP,
   type PrOpenedEvent,
@@ -120,7 +121,7 @@ export interface AssembleDecopilotToolsExtras {
    *  the chat provider when the org's `deep_research` tier shares the chat
    *  credential. */
   deepResearchProvider: StudioProvider | null;
-  /** Per-turn HTML-artifact fast-path mirror (`org/home/{decks,pages}/
+  /** Per-turn HTML-artifact fast-path mirror (`/app/org/home/{decks,pages}/
    *  *.html`) — flushed into org-fs at step-end by the dispatch layer. */
   htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
@@ -291,30 +292,32 @@ export async function assembleDecopilotTools(
     // provisioned lazily on the first tool call inside getBuiltInTools.
     //
     // Two keying regimes:
-    // - GitHub-linked agents (githubRepo set) need per-branch isolation
+    // - repository-linked agents (repository set) need per-branch isolation
     //   so PR/branch workflows don't trample each other. Falls back to a
     //   `thread:<taskId>` synthetic branch when no explicit branch is
     //   supplied yet.
-    // - Ephemeral agents (no githubRepo) share one VM per (user, agent)
+    // - Ephemeral agents (no repository) share one VM per (user, agent)
     //   across threads. The skills work is mostly read-heavy and
     //   sharing a sandbox cuts the VM count linearly with thread count.
     //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
     //   parallel writes to overlapping filenames can race. Fine for
     //   reads and scoped outputs; revisit if it bites.
     const vmMetadata = runContext.virtualMcp.metadata as {
-      githubRepo?: GithubRepo | null;
+      repository?: RepositoryBinding | null;
     };
     // A thread-scoped repo (set by `load_repo`, super-agent-only) wins: it's the
     // only place a repo can persist for the synthetic Decopilot agent. Threads of
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
-    const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
+    const threadRepo = await getThreadRepository(ctx, extras.threadId);
     // Must be read here too, not just in `resolveSandboxBranchForThread`: this
     // derivation and the dispatch path's have to agree exactly, and a pin seen
     // by only one of them would provision a second pod for the same thread.
     const pinnedRef = await getThreadPinnedRef(ctx, extras.threadId);
     // Without the hosted sandbox, building the file tools throws.
     const vmEnabled = Boolean(input.user.id) && agentSandboxEnabled();
+    const sandboxOnlyChats =
+      vmEnabled && (await sandboxOnlyChatsEnabled(ctx, organization.id));
     const vmContext: VmContext | null = vmEnabled
       ? {
           virtualMcpId: input.agent.id,
@@ -324,12 +327,13 @@ export async function assembleDecopilotTools(
           branch: resolveSandboxBranch({
             threadId: extras.threadId,
             threadRepo,
-            agentRepo: vmMetadata.githubRepo,
+            agentRepo: vmMetadata.repository,
             runBranch: runContext.branch,
             pinnedRef,
+            sandboxOnlyChats,
           }),
           userId: input.user.id,
-          // Scopes org/output and thread-owned artifacts. Cannot be derived
+          // Scopes /app/org/output and thread-owned artifacts. Cannot be derived
           // from the sandbox row since one ephemeral sandbox serves many
           // threads.
           threadId: extras.threadId,
@@ -360,7 +364,7 @@ export async function assembleDecopilotTools(
         htmlArtifactBuffer: extras.htmlArtifactBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
-        isCodeProject: Boolean(vmMetadata.githubRepo?.url || threadRepo),
+        isCodeProject: Boolean(vmMetadata.repository?.url || threadRepo),
         onChildUsage: extras.onChildUsage,
         backgroundDispatcher: extras.backgroundDispatcher,
       },

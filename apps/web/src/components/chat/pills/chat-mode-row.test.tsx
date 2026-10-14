@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 // Mock BranchPicker so BranchPill tests don't pull in its heavy
 // network/hook dependencies. The mock just renders a plain <button>
 // so tests can assert the unlocked path forwards to BranchPicker.
-mock.module("../../thread/github/branch-picker", () => ({
+mock.module("../../thread/repository/branch-picker", () => ({
   BranchPicker: ({ spawnsNewChat }: { spawnsNewChat?: boolean }) => (
     <button
       type="button"

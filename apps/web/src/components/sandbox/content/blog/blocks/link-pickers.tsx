@@ -6,12 +6,15 @@
  */
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loading02, SearchSm } from "@untitledui/icons";
+import { File02, Loading02, SearchSm, Tag01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { LinkSource } from "@/components/sections-editor/rich-text-link-control";
 import { applyBlogPageSlug, findBlogPageSlug } from "../blog-preview-url";
-import { listPostsWithMeta } from "../blog-data";
+import { listPostsWithMeta, readBlogContext } from "../blog-data";
+import { str } from "./primitives";
+import { reHome } from "@decocms/shared/store-url";
 import {
   buildProductRequests,
   type ProductPickerOption,
@@ -89,7 +92,7 @@ function ResultRow({
 }
 
 /** Link to one of the site's own posts — resolves the on-site post path. */
-export function PostLinkPicker({
+function PostLinkPicker({
   decofile,
   onPick,
 }: {
@@ -146,11 +149,14 @@ export function PostLinkPicker({
 }
 
 /** Link to a catalog product — resolves the PDP url via the site's loader. */
-export function ProductLinkPicker({
+function ProductLinkPicker({
   sandboxRef,
+  storeUrl,
   onPick,
 }: {
   sandboxRef: PreviewProxyRef;
+  /** The brand's storefront domain; the loader reports the platform's. */
+  storeUrl: string;
   onPick: (url: string) => void;
 }) {
   const t = useT();
@@ -200,10 +206,60 @@ export function ProductLinkPicker({
             key={option.id}
             label={option.label}
             image={option.image ?? ""}
-            onPick={() => option.url && onPick(option.url)}
+            onPick={() => {
+              /** Empty when the brand has no store address to put it on —
+               *  writing that over an existing link would lose it. */
+              const href = reHome(option.url, storeUrl);
+              if (href) onPick(href);
+            }}
           />
         ))
       )}
     </PickerShell>
   );
+}
+
+/**
+ * The link-target tabs a block editor offers beyond a plain URL: "a post" when
+ * the site's blocks are known, "a product" when a preview is running. Shared by
+ * every rich-text surface in a post, so a link is picked the same way from a
+ * paragraph, a list item or a table cell.
+ */
+export function useLinkSources({
+  decofile,
+  sandboxRef,
+}: {
+  decofile?: Record<string, unknown>;
+  sandboxRef?: PreviewProxyRef | null;
+}): LinkSource[] {
+  const t = useT();
+  // The decofile is already here for the post picker, and the brand block it
+  // holds is where the storefront domain lives.
+  const storeUrl = decofile
+    ? str(readBlogContext(decofile).merged.storeUrl)
+    : "";
+  const sources: LinkSource[] = [];
+  if (decofile) {
+    sources.push({
+      id: "post",
+      label: t("sandbox.linkPicker.tabPost"),
+      icon: <File02 size={12} />,
+      render: (apply) => <PostLinkPicker decofile={decofile} onPick={apply} />,
+    });
+  }
+  if (sandboxRef) {
+    sources.push({
+      id: "product",
+      label: t("sandbox.linkPicker.tabProduct"),
+      icon: <Tag01 size={12} />,
+      render: (apply) => (
+        <ProductLinkPicker
+          sandboxRef={sandboxRef}
+          storeUrl={storeUrl}
+          onPick={apply}
+        />
+      ),
+    });
+  }
+  return sources;
 }

@@ -214,6 +214,7 @@ Main sections:
 | `image.tag` | Image tag | `latest` |
 | `nginx.image.repository` | Front-door nginx image repository | `ghcr.io/decocms/studio/studio-nginx` |
 | `nginx.image.tag` | Front-door nginx image tag | `latest` |
+| `nginx.apiMaxConns` | Concurrent requests nginx sends to each API process (upstream `max_conns`) | image default `128` |
 | `service.type` | Service type | `ClusterIP` |
 | `persistence.enabled` | Enable PVC | `true` |
 | `persistence.distributed` | PVC supports ReadWriteMany | `false` |

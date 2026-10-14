@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   applyBlogCategorySlug,
+  categoryPath,
   applyBlogPageSlug,
   buildBlogCategoryPreviewUrl,
   buildBlogPostPreviewUrl,
@@ -381,5 +382,192 @@ describe("buildBlogPostPreviewUrl", () => {
         draftPointer: null,
       }),
     ).toBe("https://abc.preview.example.com/blogteste/news/my-post");
+  });
+});
+
+/** Two category blocks, `filho` nested under `pai`. */
+const NESTED_CATEGORIES = {
+  "collections/blog/categories/a": {
+    __resolveType: "blog/loaders/Category.ts",
+    category: { name: "Pai", slug: "pai" },
+  },
+  "collections/blog/categories/b": {
+    __resolveType: "blog/loaders/Category.ts",
+    category: { name: "Filho", slug: "filho", parentSlug: "pai" },
+  },
+};
+
+describe("categoryPath", () => {
+  it("returns the whole ancestor chain, root first", () => {
+    expect(categoryPath(NESTED_CATEGORIES, "filho")).toBe("pai/filho");
+  });
+
+  it("returns the bare slug for a root category", () => {
+    expect(categoryPath(NESTED_CATEGORIES, "pai")).toBe("pai");
+  });
+
+  it("falls back to the bare slug when the category is unknown", () => {
+    expect(categoryPath(NESTED_CATEGORIES, "ghost")).toBe("ghost");
+  });
+
+  it("is empty for an empty slug", () => {
+    expect(categoryPath(NESTED_CATEGORIES, "")).toBe("");
+  });
+
+  it("falls back to the bare slug on a cycle", () => {
+    const cyclic = {
+      "collections/blog/categories/a": {
+        __resolveType: "blog/loaders/Category.ts",
+        category: { name: "A", slug: "a", parentSlug: "b" },
+      },
+      "collections/blog/categories/b": {
+        __resolveType: "blog/loaders/Category.ts",
+        category: { name: "B", slug: "b", parentSlug: "a" },
+      },
+    };
+    // The list lays `a` out as a root, so `b/a` would be a route nothing
+    // serves.
+    expect(categoryPath(cyclic, "a")).toBe("a");
+  });
+
+  it("falls back to the bare slug past the depth cap", () => {
+    const chain = Object.fromEntries(
+      ["a", "b", "c", "d", "e"].map((slug, i, all) => [
+        `collections/blog/categories/${slug}`,
+        {
+          __resolveType: "blog/loaders/Category.ts",
+          category: {
+            name: slug,
+            slug,
+            ...(i === 0 ? {} : { parentSlug: all[i - 1] }),
+          },
+        },
+      ]),
+    );
+    expect(categoryPath(chain, "d")).toBe("a/b/c/d");
+    // `e` is flattened to a root by the layout; its preview follows.
+    expect(categoryPath(chain, "e")).toBe("e");
+  });
+});
+
+describe("subcategory routes", () => {
+  it("consumes the `*` of a catch-all template instead of leaving it in the URL", () => {
+    expect(applyBlogCategorySlug("/blog/:category*", "pai/filho")).toBe(
+      "/blog/pai/filho",
+    );
+  });
+
+  it("keeps the separators of a nested path, encoding each segment", () => {
+    expect(applyBlogCategorySlug("/blog/:category", "pai/a b")).toBe(
+      "/blog/pai/a%20b",
+    );
+  });
+
+  it("uses only the leaf slug on a route that cannot hold a path", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            categorySlug: "/blog/:category",
+          },
+        },
+        category: { slug: "filho" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/filho");
+  });
+
+  it("uses only the leaf slug for a post on a non-catch-all route", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            pageSlug: "/blog/:category/:slug",
+          },
+        },
+        post: { slug: "my-post", categories: [{ slug: "filho" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/filho/my-post");
+  });
+
+  it("treats a category route's own `:slug*` as the category path", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            categorySlug: "/blog/:slug*",
+          },
+        },
+        category: { slug: "filho" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/pai/filho");
+  });
+
+  it("does not treat a catch-all POST slug as a catch-all category", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            pageSlug: "/blog/:category/:slug*",
+          },
+        },
+        post: { slug: "my-post", categories: [{ slug: "filho" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/filho/my-post");
+  });
+
+  it("fills a standalone /* catch-all, the shape generic Pages use", () => {
+    expect(applyBlogCategorySlug("/blog/*", "pai/filho")).toBe(
+      "/blog/pai/filho",
+    );
+  });
+
+  it("drops a dot segment that would walk out of the blog route", () => {
+    expect(applyBlogCategorySlug("/blog/:category*", "pai/../etc")).toBe(
+      "/blog/pai/etc",
+    );
+  });
+
+  it("builds a category preview at its full path", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            categorySlug: "/blog/:category*",
+          },
+        },
+        category: { slug: "filho" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/pai/filho");
+  });
+
+  it("builds a post preview under its category's full path", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile: {
+          ...NESTED_CATEGORIES,
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            pageSlug: "/blog/:category*/:slug",
+          },
+        },
+        post: { slug: "my-post", categories: [{ slug: "filho" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/pai/filho/my-post");
   });
 });

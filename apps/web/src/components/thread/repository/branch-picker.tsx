@@ -1,0 +1,1022 @@
+import { type Ref, useRef, useState } from "react";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@decocms/ui/components/command.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  DotsVertical,
+  Edit01,
+  GitBranch01,
+  GitPullRequest,
+  Plus,
+  Trash01,
+} from "@untitledui/icons";
+import { generateBranchName } from "@decocms/shared/branch-name";
+import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
+import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
+import type { SandboxMap } from "@/sdk";
+import { useMembersQuery } from "@/hooks/use-members";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useT } from "@/i18n/use-t.ts";
+import { toast } from "sonner";
+import { decodeHtmlEntities } from "./decode-html-entities.ts";
+import { matchesBranchSearch, useBranches } from "./use-branches";
+import { useOpenPrs } from "./use-pr-data.ts";
+import {
+  nextDraftName,
+  nextReleaseColor,
+  releaseDotClass,
+  useReleases,
+} from "./use-releases";
+
+interface Props {
+  virtualMcpId: string;
+  /** Human-readable creator label used to seed the generated branch name. */
+  userLabel: string | null | undefined;
+  /** The current branch (a release's branch, or the base). */
+  value: string | null | undefined;
+  /** The project's production branch. Not listed (read-only); used only for the
+   *  current-version label and as the fallback when the active draft is deleted. */
+  baseBranch?: string | null;
+  /** Repo scope for the "Advanced" flow (adopt an existing branch/PR as a draft). */
+  orgId: string;
+  orgSlug: string;
+  userId: string;
+  target: RepoToolTarget;
+  owner: string;
+  repo: string;
+  sandboxMap: SandboxMap | undefined;
+  onChange: (branch: string) => void;
+  /** Called instead of `onChange` when a brand-new release is created, so CMS
+   *  projects can start a fresh thread on the new branch. Falls back to
+   *  `onChange`. */
+  onCreateBranch?: (branch: string) => void;
+  /** Adopting an existing branch/PR (the Advanced tabs) means "I want this
+   *  branch's CODE" → a sandbox coding session, not a Fast Preview against
+   *  production. When provided, the Advanced adopt uses this (a
+   *  `createTask({ runtime: "sandbox" })`) instead of `onChange` + a release. */
+  onAdoptBranch?: (branch: string) => void;
+  disabled?: boolean;
+  /** When true, picking/creating opens a *new* chat on the branch rather than
+   *  switching in place (the current thread's branch is fixed). */
+  spawnsNewChat?: boolean;
+  /** Chat input collapses the label responsively; header always shows it. */
+  placement?: "chat" | "header";
+}
+
+/** Version switcher over {@link useReleases}: the curated list of named,
+ *  color-coded drafts (releases) plus an inline "New draft" create. It is NOT a
+ *  branch list — only versions people named appear here; each is backed by a git
+ *  branch under the hood. Production (the published base) is deliberately absent
+ *  from the list: it is read-only, so the picker only offers editable drafts.
+ *  It still surfaces as the trigger label when you happen to be on production. */
+export function BranchPicker({
+  virtualMcpId,
+  userLabel,
+  value,
+  baseBranch,
+  orgId,
+  orgSlug,
+  userId,
+  target,
+  owner,
+  repo,
+  sandboxMap,
+  onChange,
+  onCreateBranch,
+  onAdoptBranch,
+  disabled = false,
+  spawnsNewChat = false,
+  placement = "chat",
+}: Props) {
+  const t = useT();
+  const isHeader = placement === "header";
+  const [open, setOpen] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [advancedTab, setAdvancedTab] = useState<"branches" | "prs" | "local">(
+    "branches",
+  );
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  // Scroll the selected row into view when the popover opens.
+  const selectedRowRef = useRef<HTMLDivElement>(null);
+  const { releases, createRelease, renameRelease, deleteRelease } =
+    useReleases(virtualMcpId);
+  /**
+   * "Local" mode: a tunnel URL that overrides preview + CMS meta for this
+   * project (per-browser). Orthogonal to the branch `value` — picking any
+   * branch/draft clears it (see `pick`/`create`/`adoptBranch`).
+   */
+  const {
+    url: localUrl,
+    setUrl: setLocalUrl,
+    clear: clearLocal,
+  } = useLocalPreviewUrl(virtualMcpId);
+  const localActive = !!localUrl;
+  // Non-suspense + deferred to `open`: the trigger renders before members load.
+  const { data: membersData } = useMembersQuery({ enabled: open });
+  const creatorName = (id: string | undefined): string | undefined =>
+    id
+      ? (membersData?.data?.members?.find(
+          (m: { userId: string; user?: { name?: string | null } }) =>
+            m.userId === id,
+        )?.user?.name ?? undefined)
+      : undefined;
+
+  // At RELEASES_MAX the server rejects another create, so gate it in the UI.
+  const atReleaseCap = releases.length >= RELEASES_MAX;
+  const capReachedMessage = t("thread.branchPicker.capReached", {
+    max: RELEASES_MAX,
+  });
+
+  const isBase = !!value && value === baseBranch;
+  const current = releases.find((r) => r.branch === value);
+  // Current branch that is neither base nor a stored release: show as a draft.
+  const unlisted = !isBase && !current && !!value;
+
+  const currentLabel = isBase
+    ? t("thread.branchPicker.live")
+    : (current?.name ?? t("thread.branchPicker.defaultVersionName"));
+  const label = localActive
+    ? t("thread.branchPicker.localLabel")
+    : value
+      ? currentLabel
+      : t("thread.branchPicker.selectVersion");
+  const currentDot = localActive
+    ? "bg-special"
+    : isBase
+      ? "bg-success"
+      : releaseDotClass(current?.color ?? "orange");
+
+  const pick = (branch: string) => {
+    // Picking a branch/draft turns Local mode off.
+    clearLocal();
+    onChange(branch);
+    setOpen(false);
+  };
+
+  // A failed release write reverts the row silently otherwise — surface it.
+  const reportReleaseError = (err: unknown) => {
+    toast.error(
+      err instanceof Error ? err.message : t("thread.branchPicker.saveError"),
+    );
+  };
+
+  // Save + activate a Local tunnel URL, or turn it off when cleared.
+  const activateLocal = (url: string | null) => {
+    setLocalUrl(url);
+    setAdvanced(false);
+    setOpen(false);
+  };
+
+  // Advanced: adopt an existing branch/PR head as a named draft, then switch.
+  const adoptBranch = (branch: string, name: string) => {
+    clearLocal();
+    // A branch/PR is CODE → open a sandbox coding session, not Fast Preview.
+    if (onAdoptBranch) {
+      onAdoptBranch(branch);
+      setAdvanced(false);
+      setOpen(false);
+      return;
+    }
+    if (!releases.some((r) => r.branch === branch)) {
+      if (atReleaseCap) {
+        toast.error(capReachedMessage);
+        return;
+      }
+      createRelease({
+        branch,
+        name: name.trim() || branch,
+        color: nextReleaseColor(releases.length),
+        createdBy: userId,
+        createdAt: new Date().toISOString(),
+      }).catch(reportReleaseError);
+    }
+    onChange(branch);
+    setAdvanced(false);
+    setOpen(false);
+  };
+
+  const create = () => {
+    if (atReleaseCap) {
+      toast.error(capReachedMessage);
+      return;
+    }
+    clearLocal();
+    const branch = generateBranchName(userLabel);
+    createRelease({
+      branch,
+      name: nextDraftName(
+        releases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
+      color: nextReleaseColor(releases.length),
+      createdBy: userId,
+      createdAt: new Date().toISOString(),
+    }).catch(reportReleaseError);
+    (onCreateBranch ?? onChange)(branch);
+    setOpen(false);
+  };
+
+  const resetTransient = () => {
+    setEditing(null);
+    setEditName("");
+    setAdvanced(false);
+    setAdvancedTab("branches");
+  };
+
+  const openAdvanced = (tab: "branches" | "prs" | "local") => {
+    setAdvancedTab(tab);
+    setAdvanced(true);
+  };
+
+  const startRename = (r: Release) => {
+    setEditing(r.branch);
+    setEditName(r.name);
+  };
+
+  const saveRename = (branch: string) => {
+    const next = editName.trim();
+    if (next) renameRelease(branch, next).catch(reportReleaseError);
+    setEditing(null);
+    setEditName("");
+  };
+
+  // Naming the current unlisted branch adopts it as a release (a named version).
+  const saveUnlistedName = () => {
+    const next = editName.trim();
+    if (next && value) {
+      if (atReleaseCap) {
+        toast.error(capReachedMessage);
+        setEditing(null);
+        setEditName("");
+        return;
+      }
+      createRelease({
+        branch: value,
+        name: next,
+        color: nextReleaseColor(releases.length),
+        createdBy: userId,
+        createdAt: new Date().toISOString(),
+      }).catch(reportReleaseError);
+    }
+    setEditing(null);
+    setEditName("");
+  };
+
+  const cancelRename = () => {
+    setEditing(null);
+    setEditName("");
+  };
+
+  const confirmDelete = () => {
+    const r = pendingDelete;
+    setPendingDelete(null);
+    if (!r) return;
+    // Deleting the active draft: switch to a sibling draft, else read-only production.
+    if (r.branch === value) {
+      const sibling = releases.find((x) => x.branch !== r.branch);
+      if (sibling) pick(sibling.branch);
+      else if (baseBranch) pick(baseBranch);
+      else setOpen(false);
+    } else setOpen(false);
+    deleteRelease(r.branch).catch(reportReleaseError);
+  };
+
+  const popover = (
+    <Popover
+      open={open}
+      onOpenChange={
+        disabled
+          ? undefined
+          : (next) => {
+              if (!next) resetTransient();
+              setOpen(next);
+            }
+      }
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex min-w-0 shrink">
+            <PopoverTrigger asChild>
+              <Button
+                data-tour={LAYOUT_TOUR_ANCHORS.branchPicker}
+                variant={isHeader ? "outline" : "ghost"}
+                size={isHeader ? "sm" : "default"}
+                aria-label={label}
+                disabled={disabled}
+                className={cn(
+                  "shrink min-w-0 max-w-[220px] gap-2",
+                  isHeader
+                    ? "text-xs"
+                    : "text-xs text-muted-foreground hover:text-foreground",
+                  /** Inset, like every other button in the panel header: the
+                   *  Button default draws its ring OUTSIDE the box, where the
+                   *  header's scroll container shaves it off. Unconditional —
+                   *  `isHeader` is false here even inside the header, and an
+                   *  inset ring is never the wrong choice anyway. */
+                  INSET_FOCUS_RING,
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    value || localActive ? currentDot : "bg-muted-foreground",
+                  )}
+                />
+                <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
+                  {label}
+                </span>
+                {!disabled && (
+                  <ChevronDown size={12} className="opacity-60 shrink-0" />
+                )}
+              </Button>
+            </PopoverTrigger>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        className="w-[min(300px,calc(100vw-2rem))] p-1.5"
+        align="start"
+        // Don't steal focus onto the first row: it fires that row's branch tooltip.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+        }}
+      >
+        {spawnsNewChat && (
+          <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
+            {t("thread.branchPicker.newChatHint")}
+          </p>
+        )}
+        {advanced ? (
+          <AdvancedPicker
+            orgId={orgId}
+            orgSlug={orgSlug}
+            userId={userId}
+            target={target}
+            owner={owner}
+            repo={repo}
+            sandboxMap={sandboxMap}
+            enabled={open}
+            tab={advancedTab}
+            onTabChange={setAdvancedTab}
+            localUrl={localUrl}
+            onSaveLocal={activateLocal}
+            onBack={() => setAdvanced(false)}
+            onAdopt={adoptBranch}
+          />
+        ) : (
+          <>
+            {/* Scroll the list, not the popover: the rows below must stay reachable. */}
+            <div className="always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
+              {localActive && localUrl && (
+                <LocalRow
+                  rowRef={selectedRowRef}
+                  url={localUrl}
+                  onSelect={() => openAdvanced("local")}
+                  onEdit={() => openAdvanced("local")}
+                  onTurnOff={() => clearLocal()}
+                />
+              )}
+              {unlisted &&
+                value &&
+                (editing === value ? (
+                  <RenameInput
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={saveUnlistedName}
+                    onCancel={cancelRename}
+                  />
+                ) : (
+                  <ReleaseRow
+                    rowRef={localActive ? undefined : selectedRowRef}
+                    dot={releaseDotClass("orange")}
+                    label={t("thread.branchPicker.defaultVersionName")}
+                    branch={value}
+                    selected={!localActive}
+                    onSelect={() => pick(value)}
+                    onRename={() => {
+                      setEditing(value);
+                      setEditName(
+                        nextDraftName(
+                          releases,
+                          t("thread.branchPicker.defaultVersionName"),
+                        ),
+                      );
+                    }}
+                  />
+                ))}
+              {releases.map((r) =>
+                editing === r.branch ? (
+                  <RenameInput
+                    key={r.branch}
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={() => saveRename(r.branch)}
+                    onCancel={cancelRename}
+                  />
+                ) : (
+                  <ReleaseRow
+                    key={r.branch}
+                    rowRef={
+                      !localActive && r.branch === value
+                        ? selectedRowRef
+                        : undefined
+                    }
+                    dot={releaseDotClass(r.color)}
+                    label={r.name}
+                    creator={creatorName(r.createdBy)}
+                    branch={r.branch}
+                    selected={!localActive && r.branch === value}
+                    onSelect={() => pick(r.branch)}
+                    onRename={() => startRename(r)}
+                    onDelete={() => setPendingDelete(r)}
+                  />
+                ),
+              )}
+            </div>
+            {(unlisted || releases.length > 0) && (
+              <div className="my-1 border-t" />
+            )}
+            <button
+              type="button"
+              onClick={() => void create()}
+              disabled={atReleaseCap}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              {t("thread.branchPicker.newVersion")}
+            </button>
+            {atReleaseCap && (
+              <p className="px-2 pb-1 pt-0.5 text-xs text-warning">
+                {capReachedMessage}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => openAdvanced("branches")}
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              {t("thread.branchPicker.advanced")}
+              <ChevronRight className="h-4 w-4 shrink-0" />
+            </button>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+
+  return (
+    <>
+      {popover}
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("thread.branchPicker.deleteTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete &&
+                t("thread.branchPicker.deleteConfirm", {
+                  name: pendingDelete.name,
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("thread.branchPicker.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("thread.branchPicker.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+/** Inline name editor shared by rename (a release) and adopt (an unlisted branch). */
+function RenameInput({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-1.5 p-1">
+      <input
+        // biome-ignore lint/a11y/noAutofocus: opened by an explicit click
+        autoFocus
+        aria-label={t("thread.branchPicker.rename")}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSave();
+          if (e.key === "Escape") {
+            // Don't let Escape also close the popover behind it.
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+      />
+      <Button size="sm" onClick={onSave}>
+        {t("thread.branchPicker.save")}
+      </Button>
+    </div>
+  );
+}
+
+/** A version row: click to switch, with a ⋯ menu to rename (always) and discard
+ *  (only a stored release — an unlisted branch has nothing to discard). */
+function ReleaseRow({
+  rowRef,
+  dot,
+  label,
+  creator,
+  branch,
+  selected,
+  onSelect,
+  onRename,
+  onDelete,
+}: {
+  rowRef?: Ref<HTMLDivElement>;
+  dot: string;
+  label: string;
+  /** Display name of who created the draft, shown after the label. */
+  creator?: string;
+  branch: string;
+  selected: boolean;
+  onSelect: () => void;
+  onRename: () => void;
+  onDelete?: () => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      ref={rowRef}
+      className={cn(
+        "group flex items-center rounded-lg",
+        selected ? "bg-accent" : "hover:bg-accent/60",
+      )}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-pressed={selected}
+            onClick={onSelect}
+            className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
+          >
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+            <span className="min-w-0 flex-1 truncate">
+              {label}
+              {creator && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground/70">
+                  {creator}
+                </span>
+              )}
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="font-mono text-xs">
+          {t("thread.branchPicker.branchTooltip", { branch })}
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("thread.branchPicker.moreActions")}
+            className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+          >
+            <DotsVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onRename}>
+            <Edit01 className="h-4 w-4" />
+            {t("thread.branchPicker.rename")}
+          </DropdownMenuItem>
+          {onDelete && (
+            <DropdownMenuItem
+              onSelect={onDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash01 className="h-4 w-4" />
+              {t("thread.branchPicker.delete")}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** The active "Local" override row: click to edit its URL, ⋯ to edit or turn
+ *  off. Its subtitle is the tunnel host so it reads at a glance. */
+function LocalRow({
+  rowRef,
+  url,
+  onSelect,
+  onEdit,
+  onTurnOff,
+}: {
+  rowRef?: Ref<HTMLDivElement>;
+  url: string;
+  onSelect: () => void;
+  onEdit: () => void;
+  onTurnOff: () => void;
+}) {
+  const t = useT();
+  const host = (() => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  })();
+  return (
+    <div ref={rowRef} className="group flex items-center rounded-lg bg-accent">
+      <button
+        type="button"
+        aria-pressed
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full bg-special" />
+        <span className="min-w-0 flex-1 truncate">
+          {t("thread.branchPicker.localLabel")}
+          <span className="ml-1.5 text-xs font-normal text-muted-foreground/70">
+            {host}
+          </span>
+        </span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("thread.branchPicker.moreActions")}
+            className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+          >
+            <DotsVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onEdit}>
+            <Edit01 className="h-4 w-4" />
+            {t("thread.branchPicker.rename")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={onTurnOff}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash01 className="h-4 w-4" />
+            {t("thread.branchPicker.localTurnOff")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** "Advanced": adopt an existing branch or open PR as a named draft, or point
+ *  preview + CMS at a "Local" tunnel URL. Reuses the classic branch/PR listing
+ *  ({@link useBranches} + {@link useOpenPrs}). */
+function AdvancedPicker({
+  orgId,
+  orgSlug,
+  userId,
+  target,
+  owner,
+  repo,
+  sandboxMap,
+  enabled,
+  tab,
+  onTabChange,
+  localUrl,
+  onSaveLocal,
+  onBack,
+  onAdopt,
+}: {
+  orgId: string;
+  orgSlug: string;
+  userId: string;
+  target: RepoToolTarget;
+  owner: string;
+  repo: string;
+  sandboxMap: SandboxMap | undefined;
+  enabled: boolean;
+  tab: "branches" | "prs" | "local";
+  onTabChange: (tab: "branches" | "prs" | "local") => void;
+  /** Currently-registered Local URL, prefilled into the form. */
+  localUrl: string | null;
+  /** Save + activate a Local URL, or turn it off with `null`. */
+  onSaveLocal: (url: string | null) => void;
+  onBack: () => void;
+  onAdopt: (branch: string, name: string) => void;
+}) {
+  const t = useT();
+  const [search, setSearch] = useState("");
+  const {
+    recent,
+    yours,
+    others,
+    isLoading,
+    hasMore,
+    isFetchingMore,
+    fetchMore,
+  } = useBranches({
+    orgId,
+    orgSlug,
+    userId,
+    target,
+    sandboxMap,
+    owner,
+    repo,
+    search: tab === "branches" ? search : "",
+    enabled: enabled && tab === "branches",
+  });
+  const { data: prs = [], isLoading: prsLoading } = useOpenPrs({
+    orgId,
+    orgSlug,
+    target,
+    owner,
+    repo,
+    enabled: enabled && tab === "prs",
+  });
+
+  const repoFullName = `${owner}/${repo}`.toLowerCase();
+  const openablePrs = prs.filter(
+    (pr) => pr.headRepoFullName?.toLowerCase() === repoFullName,
+  );
+
+  const seen = new Set<string>();
+  const branches = [...recent, ...yours, ...others].filter((b) => {
+    if (seen.has(b.name)) return false;
+    seen.add(b.name);
+    return true;
+  });
+
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <ChevronLeft className="h-4 w-4 shrink-0" />
+        {t("thread.branchPicker.advancedBack")}
+      </button>
+      <Tabs
+        className="px-2 pt-2 pb-1"
+        value={tab}
+        onValueChange={(v) => {
+          onTabChange(v as "branches" | "prs" | "local");
+          setSearch("");
+        }}
+      >
+        <TabsList
+          className="h-auto w-fit justify-start gap-1 bg-accent p-1"
+          variant="pill"
+        >
+          <TabsTrigger value="branches" className="h-6 px-2.5 text-xs">
+            {t("thread.branchPicker.branchesTab")}
+          </TabsTrigger>
+          <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
+            {t("thread.branchPicker.prsTab")}
+          </TabsTrigger>
+          <TabsTrigger value="local" className="h-6 px-2.5 text-xs">
+            {t("thread.branchPicker.localTab")}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {tab === "local" ? (
+        <LocalUrlForm url={localUrl} onSave={onSaveLocal} />
+      ) : (
+        <Command
+          filter={
+            tab === "branches"
+              ? (v, s) => (matchesBranchSearch(v, s) ? 1 : 0)
+              : undefined
+          }
+        >
+          <CommandInput
+            placeholder={
+              tab === "branches"
+                ? t("thread.branchPicker.searchBranches")
+                : t("thread.branchPicker.searchPullRequests")
+            }
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (
+                tab === "branches" &&
+                el.scrollHeight - el.scrollTop - el.clientHeight < 48
+              ) {
+                fetchMore();
+              }
+            }}
+          >
+            {tab === "branches" ? (
+              <>
+                {isLoading && (
+                  <div className="p-3 text-xs text-muted-foreground">
+                    {t("thread.branchPicker.loadingMore")}
+                  </div>
+                )}
+                {!isLoading && branches.length === 0 && (
+                  <CommandEmpty>
+                    {t("thread.branchPicker.noBranchesFound")}
+                  </CommandEmpty>
+                )}
+                {branches.length > 0 && (
+                  <CommandGroup>
+                    {branches.map((b) => (
+                      <CommandItem
+                        key={b.name}
+                        value={b.name}
+                        className="cursor-pointer"
+                        onSelect={() => onAdopt(b.name, b.name)}
+                      >
+                        <GitBranch01 className="mr-2 h-4 w-4 shrink-0" />
+                        <span className="flex-1 truncate">{b.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+                {hasMore && (
+                  <div className="p-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-full text-xs"
+                      disabled={isFetchingMore}
+                      onClick={fetchMore}
+                    >
+                      {isFetchingMore
+                        ? t("thread.branchPicker.loadingMore")
+                        : t("thread.branchPicker.loadMoreBranches")}
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {prsLoading && (
+                  <div className="p-3 text-xs text-muted-foreground">
+                    {t("thread.branchPicker.loadingPullRequests")}
+                  </div>
+                )}
+                {!prsLoading && openablePrs.length === 0 && (
+                  <CommandEmpty>
+                    {t("thread.branchPicker.noOpenPullRequests")}
+                  </CommandEmpty>
+                )}
+                {openablePrs.length > 0 && (
+                  <CommandGroup>
+                    {openablePrs.map((pr) => (
+                      <CommandItem
+                        key={pr.number}
+                        value={`#${pr.number} ${pr.title} ${pr.head}`}
+                        className="cursor-pointer"
+                        onSelect={() =>
+                          onAdopt(pr.head, decodeHtmlEntities(pr.title))
+                        }
+                      >
+                        <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">
+                            {decodeHtmlEntities(pr.title)}
+                          </span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            #{pr.number} · {pr.head}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+              </>
+            )}
+          </CommandList>
+        </Command>
+      )}
+    </div>
+  );
+}
+
+/** "Local" tab: paste a tunnel URL to point preview + CMS at your own dev
+ *  server, or turn the override off. Save is disabled until the URL changes. */
+function LocalUrlForm({
+  url,
+  onSave,
+}: {
+  url: string | null;
+  onSave: (url: string | null) => void;
+}) {
+  const t = useT();
+  const [value, setValue] = useState(url ?? "");
+  const trimmed = value.trim();
+  const submit = () =>
+    onSave(trimmed ? productionUrlFromDomain(trimmed) : null);
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      <p className="text-xs text-muted-foreground">
+        {t("thread.branchPicker.localHint")}
+      </p>
+      <input
+        type="url"
+        inputMode="url"
+        aria-label={t("thread.branchPicker.localUrlLabel")}
+        placeholder={t("thread.branchPicker.localUrlPlaceholder")}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && trimmed) submit();
+        }}
+        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+      />
+      <div className="flex items-center justify-between gap-2">
+        {url ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-destructive hover:text-destructive"
+            onClick={() => onSave(null)}
+          >
+            {t("thread.branchPicker.localTurnOff")}
+          </Button>
+        ) : (
+          <span />
+        )}
+        <Button size="sm" disabled={!trimmed} onClick={submit}>
+          {t("thread.branchPicker.save")}
+        </Button>
+      </div>
+    </div>
+  );
+}

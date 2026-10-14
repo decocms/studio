@@ -1,5 +1,5 @@
-import type { GithubRepo } from "@decocms/shared/sdk/types";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { RepositoryBinding } from "@decocms/shared/sdk/types";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
@@ -11,7 +11,7 @@ import {
 } from "../../shared/github-clone-info";
 import {
   cloneInfoForRepository,
-  findRepositoryForLegacyBinding,
+  findRepositoryForBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers";
 
@@ -25,11 +25,11 @@ export class GitPushAuthError extends Error {
   }
 }
 
-export function parseGithubRepoFromMetadata(
+export function parseRepositoryBinding(
   metadata: Record<string, unknown> | null,
   connectionIds: readonly string[],
-): GithubRepo | null {
-  const repo = metadata?.githubRepo as GithubRepo | undefined;
+): RepositoryBinding | null {
+  const repo = metadata?.repository as RepositoryBinding | undefined;
   if (!repo?.owner || !repo?.name) return null;
   if (!repo.connectionId) return repo;
   if (!connectionIds.includes(repo.connectionId)) return null;
@@ -43,9 +43,9 @@ export function parseGithubRepoFromMetadata(
  */
 export async function refreshSandboxGitCredentials(
   ctx: StudioContext,
-  runner: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
+  runner: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
-  githubRepo: GithubRepo,
+  repository: RepositoryBinding,
 ): Promise<void> {
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
@@ -53,16 +53,16 @@ export async function refreshSandboxGitCredentials(
   }
 
   // Studio-owned credentials refresh through the repository's provider account.
-  const repository = await findRepositoryForLegacyBinding(
+  const repositoryRecord = await findRepositoryForBinding(
     ctx.storage,
     organizationId,
-    githubRepo,
+    repository,
   );
   if (
-    repository &&
-    (await repositoryUsesStudioCredentials(ctx.storage, repository))
+    repositoryRecord &&
+    (await repositoryUsesStudioCredentials(ctx.storage, repositoryRecord))
   ) {
-    const info = await cloneInfoForRepository(ctx, repository, {
+    const info = await cloneInfoForRepository(ctx, repositoryRecord, {
       forceRefresh: true,
     }).catch((error) => {
       throw new GitPushAuthError(
@@ -74,7 +74,7 @@ export async function refreshSandboxGitCredentials(
   }
 
   const connectionId =
-    githubRepo.connectionId ?? repository?.legacyConnectionId;
+    repository.connectionId ?? repositoryRecord?.legacyConnectionId;
   if (!connectionId) {
     throw new GitPushAuthError(
       "Push requires a connected git account. Connect the repository's provider for this project and restart the sandbox.",
@@ -94,8 +94,8 @@ export async function refreshSandboxGitCredentials(
 
   const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
     connectionId,
-    githubRepo.owner,
-    githubRepo.name,
+    repository.owner,
+    repository.name,
     ctx.db,
     ctx.vault,
   ).catch((error) => {
@@ -115,7 +115,7 @@ export async function refreshSandboxGitCredentials(
 
 async function pushGitConfig(
   ctx: StudioContext,
-  runner: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
+  runner: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
   info: { cloneUrl: string; gitUserName: string; gitUserEmail: string },
 ): Promise<void> {

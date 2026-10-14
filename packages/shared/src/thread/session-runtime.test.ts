@@ -30,7 +30,7 @@ describe("fastPreviewCapability", () => {
   });
 
   test("no other project metadata enters the predicate", () => {
-    const withRepo = { ...FP_PROJECT, githubRepo: { owner: "acme" } };
+    const withRepo = { ...FP_PROJECT, repository: { owner: "acme" } };
     const withoutRepo = { ...FP_PROJECT };
     expect(fastPreviewCapability(withRepo)).toBe(true);
     expect(fastPreviewCapability(withoutRepo)).toBe(true);

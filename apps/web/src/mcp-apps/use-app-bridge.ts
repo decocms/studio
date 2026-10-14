@@ -56,6 +56,14 @@ function detectPlatform(): "web" | "desktop" | "mobile" {
   return /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "web";
 }
 
+/** The logged-in Studio user, surfaced to the app via hostContext.user. */
+export interface McpHostUser {
+  id?: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
 function buildHostContext(
   displayMode: McpUiDisplayMode,
   toolInfo?: McpUiHostContext["toolInfo"],
@@ -65,6 +73,8 @@ function buildHostContext(
   // localizes to match Studio rather than the raw browser locale. Falls back to
   // the detected browser locale when not supplied.
   locale?: string,
+  // The logged-in user, so an app can attribute edits / show collaborators.
+  user?: McpHostUser,
 ): McpUiHostContext {
   return {
     theme: getDocumentTheme(),
@@ -79,6 +89,7 @@ function buildHostContext(
       containerDimensions: { maxHeight },
     }),
     ...(orgId != null && { orgId }),
+    ...(user != null && { user }),
   };
 }
 
@@ -136,6 +147,8 @@ interface BridgeStoreConfig {
   orgId?: string;
   /** Studio UI language (BCP 47) fed into hostContext.locale. */
   locale?: string;
+  /** Logged-in Studio user, surfaced to the app as hostContext.user. */
+  user?: McpHostUser;
   toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
@@ -197,7 +210,8 @@ class BridgeStore {
 
     if (
       config.displayMode !== prev.displayMode ||
-      config.locale !== prev.locale
+      config.locale !== prev.locale ||
+      config.user !== prev.user
     ) {
       this.pushHostContext();
     }
@@ -212,9 +226,10 @@ class BridgeStore {
   /** Rebuild and push full host context to the bridge (e.g. on theme change). */
   private pushHostContext() {
     if (!this.bridge || this.disposed) return;
-    const { displayMode, maxHeight, toolInfo, orgId, locale } = this.config;
+    const { displayMode, maxHeight, toolInfo, orgId, locale, user } =
+      this.config;
     this.bridge.setHostContext(
-      buildHostContext(displayMode, toolInfo, maxHeight, orgId, locale),
+      buildHostContext(displayMode, toolInfo, maxHeight, orgId, locale, user),
     );
   }
 
@@ -311,7 +326,7 @@ class BridgeStore {
     }
 
     try {
-      const { client, displayMode, maxHeight, toolInfo, orgId, locale } =
+      const { client, displayMode, maxHeight, toolInfo, orgId, locale, user } =
         this.config;
       const hostContext = buildHostContext(
         displayMode,
@@ -319,6 +334,7 @@ class BridgeStore {
         maxHeight,
         orgId,
         locale,
+        user,
       );
 
       // Pass the MCP client directly — AppBridge auto-wires oncalltool,
@@ -483,6 +499,8 @@ interface UseAppBridgeOptions {
   orgId?: string;
   /** Studio UI language (BCP 47) fed into hostContext.locale. */
   locale?: string;
+  /** Logged-in Studio user, surfaced to the app as hostContext.user. */
+  user?: McpHostUser;
   toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;

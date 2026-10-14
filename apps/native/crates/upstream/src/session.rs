@@ -784,7 +784,7 @@ impl UpstreamSession {
         let previous = self
             .0
             .identity_generation
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
                 Some(generation.saturating_add(1))
             })
             .unwrap_or_else(|generation| generation);

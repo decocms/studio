@@ -49,14 +49,16 @@ export function useDeleteJiraIntegration() {
   });
 }
 
-export function useJiraBoards(connected: boolean) {
+/** The first boards Jira lists, or with `query`, the boards whose name holds it. */
+export function useJiraBoards(connected: boolean, query = "") {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
-    queryKey: KEYS.jiraBoards(org.id),
+    queryKey: KEYS.jiraBoards(org.id, query),
     enabled: connected,
     staleTime: 60_000,
-    queryFn: async () => (await studio.call("JIRA_BOARDS_LIST", {})).boards,
+    queryFn: async () =>
+      (await studio.call("JIRA_BOARDS_LIST", query ? { query } : {})).boards,
   });
 }
 
@@ -76,6 +78,9 @@ export function useJiraBoardColumns(boardId: string | null) {
 export type JiraAutomation =
   StudioToolIO["JIRA_AUTOMATION_LIST"]["output"]["automations"][number];
 
+/** Which moves into a status a rule answers — its identity within the status. */
+export type JiraRuleFrom = JiraAutomation["from"];
+
 export function useJiraAutomations() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
@@ -87,7 +92,8 @@ export function useJiraAutomations() {
 }
 
 /**
- * Turn a status rule on, off, or reword it.
+ * Turn a status rule on, off, or reword it. A status has one rule per origin,
+ * so `from` says which one.
  *
  * `null` is off: the row is deleted rather than stored empty, so "no rule" has
  * one representation. An empty prompt is stored as no prompt, which means the
@@ -100,17 +106,20 @@ export function useSetJiraAutomation() {
   return useMutation({
     mutationFn: async (input: {
       jiraStatus: string;
+      from: JiraRuleFrom;
       prompt: string | null;
       continuePr?: boolean;
     }) => {
       if (input.prompt === null) {
         await studio.call("JIRA_AUTOMATION_DELETE", {
           jiraStatus: input.jiraStatus,
+          from: input.from,
         });
         return;
       }
       await studio.call("JIRA_AUTOMATION_UPSERT", {
         jiraStatus: input.jiraStatus,
+        from: input.from,
         prompt: input.prompt.trim() === "" ? undefined : input.prompt,
         continuePr: input.continuePr ?? false,
       });

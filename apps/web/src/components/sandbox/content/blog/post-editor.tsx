@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   AlertCircle,
@@ -7,9 +8,21 @@ import {
   Minimize01,
   Pilcrow01,
   Settings01,
+  Trash01,
   XClose,
 } from "@untitledui/icons";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
@@ -23,19 +36,33 @@ import {
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
+import { ResponsiveImageField } from "@/components/sections-editor/fields/responsive-image-field";
 import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { CustomFieldsPanel } from "./custom-fields-panel";
+import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import {
+  blogCustomFieldsSchema,
+  KNOWN_POST_FIELDS,
+  type KnownPostKey,
+} from "./blog-schema";
 import {
   buildPostBlock,
+  canDeletePost,
   getBlogPayload,
   listBlogPayloads,
+  maskSlugInput,
+  missingFieldsLabel,
   missingPostFields,
+  hasDuplicateName,
   POST_STATUSES,
   type PostStatus,
   postStatus,
   relationPickerState,
+  slugifyTitle,
   stampPostModified,
+  uniquePostSlug,
 } from "./blog-data";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
@@ -43,11 +70,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
-import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
@@ -112,8 +139,9 @@ export function PostEditor({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
+  const remove = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
+  const blogAi = useBlogAi();
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
@@ -147,8 +175,17 @@ export function PostEditor({
     void move.apply(blockKey, next, post);
   };
 
-  const setField = (key: string, value: unknown) =>
+  // Key typed from `KNOWN_POST_KEYS`, so a bespoke field absent from it fails to compile.
+  const setField = (key: KnownPostKey, value: unknown) =>
     setPost({ ...post, [key]: value });
+
+  const customFields = blogCustomFieldsSchema("posts", meta, KNOWN_POST_FIELDS);
+
+  // Edits to a field pointing at a saved block belong to that block's own
+  // decofile entry, not to this post.
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
+    save.mutate({ blockKey: refKey, data }),
+  );
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
   const [contentRevision, setContentRevision] = useState(0);
@@ -160,15 +197,46 @@ export function PostEditor({
     draftPointer,
   });
 
+  // Two posts sharing a title is legal but bad for search; warn, never block.
+  const hasDuplicateTitle = hasDuplicateName(
+    decofile,
+    "posts",
+    blockKey,
+    str(post.title),
+  );
+
+  const canDelete = canDeletePost(post);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const deletePost = async () => {
+    // Cancel the debounce first: a timer that fires after the unlink writes
+    // the block straight back.
+    syncPost(post);
+    try {
+      await remove.mutateAsync({ blockKey });
+      toast.success(
+        t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
+      );
+      setConfirmingDelete(false);
+      onClose?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.postEditor.deletePostFailed"),
+      );
+    }
+  };
+
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         })
       : t("sandbox.postEditor.missingFieldPlural", {
-          fields: missing.join(", "),
+          fields: missingFieldsLabel(missing, t),
         });
 
   return (
@@ -238,6 +306,12 @@ export function PostEditor({
             placeholder={t("sandbox.postEditor.postTitlePlaceholder")}
             className="py-1 text-4xl font-bold text-foreground"
           />
+          {hasDuplicateTitle && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+              <AlertCircle size={14} className="mt-px shrink-0" />
+              {t("sandbox.postEditor.duplicateTitleWarning")}
+            </p>
+          )}
 
           {/* Content and Settings are sibling tabs; the body is the default. The
               tab row also carries the save state + preview, so no top chrome. */}
@@ -254,16 +328,38 @@ export function PostEditor({
                 </TabsTrigger>
               </TabsList>
               <div className="flex shrink-0 items-center gap-3">
-                <SuggestLinksButton
-                  decofile={decofile}
-                  sections={asBlocks(post.sections)}
-                  currentKey={blockKey}
-                  hasAi={hasAi}
-                  onApply={(next) => {
-                    setField("sections", next);
-                    setContentRevision((r) => r + 1);
-                  }}
-                />
+                {canDelete && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="px-2 text-muted-foreground hover:text-destructive"
+                        aria-label={t("sandbox.postEditor.deletePost")}
+                        onClick={() => setConfirmingDelete(true)}
+                      >
+                        <Trash01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {t("sandbox.postEditor.deletePost")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {blogAi && (
+                  <SuggestLinksButton
+                    decofile={decofile}
+                    virtualMcpId={virtualMcpId}
+                    sections={asBlocks(post.sections)}
+                    currentKey={blockKey}
+                    hasAi={hasAi}
+                    onApply={(next) => {
+                      setField("sections", next);
+                      setContentRevision((r) => r + 1);
+                    }}
+                  />
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -295,6 +391,8 @@ export function PostEditor({
                   meta={meta}
                   decofile={decofile}
                   sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                  previewBaseUrl={previewBaseUrl}
+                  onSaveReferencedBlock={saveReferencedBlock}
                   emptyMessage={t("sandbox.postEditor.noContentYet")}
                 />
               </div>
@@ -305,17 +403,68 @@ export function PostEditor({
                 <PostSettings
                   post={post}
                   decofile={decofile}
-                  support={support}
                   onChange={setField}
                   blockKey={blockKey}
                   move={move}
                   onMoveStatus={moveStatus}
+                />
+                <CustomFieldsPanel
+                  schema={customFields}
+                  value={post}
+                  onChange={setPost}
+                  basePath="post"
+                  meta={meta}
+                  decofile={decofile}
+                  sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
+                  onSaveReferencedBlock={saveReferencedBlock}
                 />
               </div>
             </TabsContent>
           </Tabs>
         </div>
       </div>
+
+      <AlertDialog
+        open={confirmingDelete}
+        onOpenChange={(next) => {
+          if (!next && !remove.isPending) setConfirmingDelete(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sandbox.postEditor.deletePostConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sandbox.postEditor.deletePostConfirmBody", {
+                title: str(post.title) || t("sandbox.postBoard.untitled"),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>
+              {t("sandbox.postEditor.deletePostCancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void deletePost();
+              }}
+              disabled={remove.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {remove.isPending ? (
+                <>
+                  <Spinner className="size-3.5" />
+                  {t("sandbox.postEditor.deletingPost")}
+                </>
+              ) : (
+                t("sandbox.postEditor.deletePost")
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -379,7 +528,6 @@ function StatusPicker({
 function PostSettings({
   post,
   decofile,
-  support,
   onChange,
   blockKey,
   move,
@@ -387,16 +535,55 @@ function PostSettings({
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
-  /** Gates the scheduled go-live field — see {@link supportsScheduling}. */
-  support: BlogSupport;
-  onChange: (key: string, value: unknown) => void;
+  onChange: (key: KnownPostKey, value: unknown) => void;
   blockKey: string;
   move: PostStatusMove;
   onMoveStatus: (next: PostStatus) => void;
 }) {
   const t = useT();
   const status = postStatus(post);
-  const isScheduled = supportsScheduling(support) && status === "scheduled";
+  const isScheduled = status === "scheduled";
+
+  // Committed on blur, not per keystroke: a half-typed slug must not autosave.
+  const committedSlug = str(post.slug);
+  const [slugDraft, setSlugDraft] = useState(committedSlug);
+  const [slugNotice, setSlugNotice] = useState<string | null>(null);
+  // Re-seed when the slug changes under us (AI generation, another session).
+  const [seenSlug, setSeenSlug] = useState(committedSlug);
+  if (seenSlug !== committedSlug) {
+    setSeenSlug(committedSlug);
+    setSlugDraft(committedSlug);
+  }
+
+  /** Blur handler: normalize, then suffix the slug if another post owns it. */
+  const commitSlugFromDraft = () => {
+    const normalized = slugifyTitle(slugDraft);
+    setSlugDraft(normalized);
+    // Blurring without having touched the field must not queue a write.
+    if (normalized === committedSlug) return;
+    // Stays empty: `missingPostFields` flags it, inventing one hides the gap.
+    if (!normalized) {
+      setSlugNotice(null);
+      onChange("slug", "");
+      return;
+    }
+    const taken = listBlogPayloads(decofile, "posts")
+      .filter((entry) => entry.key !== blockKey)
+      .map((entry) => str(entry.payload.slug))
+      .filter(Boolean);
+    if (!taken.includes(normalized)) {
+      setSlugNotice(null);
+      onChange("slug", normalized);
+      return;
+    }
+    const fixed = uniquePostSlug(normalized, taken);
+    const message = t("sandbox.postEditor.slugDeduped", { slug: fixed });
+    setSlugDraft(fixed);
+    // Inline too: a dismissed toast would hide that the URL changed.
+    setSlugNotice(message);
+    toast.info(message);
+    onChange("slug", fixed);
+  };
 
   return (
     <div className="space-y-5">
@@ -441,11 +628,22 @@ function PostSettings({
           <Label htmlFor="post-slug">{t("sandbox.postEditor.slugLabel")}</Label>
           <Input
             id="post-slug"
-            value={str(post.slug)}
-            onChange={(e) => onChange("slug", e.target.value)}
+            value={slugDraft}
+            onChange={(e) => {
+              setSlugNotice(null);
+              setSlugDraft(maskSlugInput(e.target.value));
+            }}
+            onBlur={commitSlugFromDraft}
             placeholder={t("sandbox.postEditor.slugPlaceholder")}
+            maxLength={80}
             className="h-10"
           />
+          {slugNotice && (
+            <p className="flex items-start gap-1.5 text-xs text-warning">
+              <AlertCircle size={14} className="mt-px shrink-0" />
+              {slugNotice}
+            </p>
+          )}
         </div>
         <StringField
           schema={{
@@ -474,15 +672,12 @@ function PostSettings({
       {/* Cover image + its alt text: `alt` is the blog app's alt for `image`,
           and the front falls back to the title when it is empty. */}
       <div className="space-y-2">
-        <ImageField
-          schema={{
-            type: "string",
-            format: "image-uri",
-            title: t("sandbox.postEditor.coverImageLabel"),
-          }}
+        <ResponsiveImageField
           value={post.image}
+          mobileValue={post.mobileImage}
           onChange={(v) => onChange("image", v)}
-          path="post-image"
+          onMobileChange={(v) => onChange("mobileImage", v)}
+          alt={str(post.alt)}
           label={t("sandbox.postEditor.coverImageLabel")}
         />
         <StringField

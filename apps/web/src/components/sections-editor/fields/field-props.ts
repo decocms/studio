@@ -57,4 +57,10 @@ export interface FieldProps {
     data: Record<string, unknown>,
   ) => void;
   sandbox?: SandboxConfig | null;
+  /**
+   * Render the field at a smaller footprint — shorter preview, no filename
+   * strip. For surfaces where the widget sits inside content (a post block, a
+   * secondary mobile slot) rather than owning a form row of its own.
+   */
+  compact?: boolean;
 }

@@ -111,26 +111,81 @@ describe("Jira trigger storage (real Postgres)", () => {
   });
 
   it("stores a rule per Jira status, and deleting it is the off switch", async () => {
-    expect(await jira.getAutomation(ORG, "Doing")).toBeNull();
-    await jira.upsertAutomation(ORG, "Doing", null);
-    expect(await jira.getAutomation(ORG, "Doing")).toEqual({
+    expect(await jira.listAutomationsFor(ORG, "Doing")).toEqual([]);
+    await jira.upsertAutomation(ORG, { jiraStatus: "Doing", prompt: null });
+    expect(await jira.listAutomationsFor(ORG, "Doing")).toEqual([
+      {
+        jiraStatus: "Doing",
+        from: { kind: "any" },
+        prompt: null,
+        continuePr: false,
+      },
+    ]);
+    await jira.upsertAutomation(ORG, {
       jiraStatus: "Doing",
       prompt: null,
-      continuePr: false,
+      continuePr: true,
     });
-    await jira.upsertAutomation(ORG, "Doing", null, true);
-    expect((await jira.getAutomation(ORG, "Doing"))?.continuePr).toBe(true);
-    await jira.upsertAutomation(ORG, "Doing", "Fix it");
-    expect((await jira.getAutomation(ORG, "Doing"))?.prompt).toBe("Fix it");
-    await jira.upsertAutomation(ORG, "QA", "Test it");
+    const [rule] = await jira.listAutomationsFor(ORG, "Doing");
+    expect(rule?.continuePr).toBe(true);
+    await jira.upsertAutomation(ORG, { jiraStatus: "Doing", prompt: "Fix it" });
+    expect((await jira.listAutomationsFor(ORG, "Doing"))[0]?.prompt).toBe(
+      "Fix it",
+    );
+    await jira.upsertAutomation(ORG, { jiraStatus: "QA", prompt: "Test it" });
     expect((await jira.listAutomations(ORG)).map((a) => a.jiraStatus)).toEqual([
       "Doing",
       "QA",
     ]);
     expect(await jira.removeAutomation(ORG, "Doing")).toBe(true);
     expect(await jira.removeAutomation(ORG, "Doing")).toBe(false);
-    expect(await jira.getAutomation(ORG, "Doing")).toBeNull();
+    expect(await jira.listAutomationsFor(ORG, "Doing")).toEqual([]);
     // Another org's rules are not this org's.
     expect(await jira.listAutomations("org_other")).toEqual([]);
+  });
+
+  it("keeps one rule per origin on a status", async () => {
+    await jira.upsertAutomation(ORG, { jiraStatus: "Build", prompt: "Fresh" });
+    await jira.upsertAutomation(ORG, {
+      jiraStatus: "Build",
+      from: { kind: "later" },
+      prompt: "Iterate",
+      continuePr: true,
+    });
+    await jira.upsertAutomation(ORG, {
+      jiraStatus: "Build",
+      from: { kind: "statuses", statuses: [" Client QA", "backlog"] },
+      prompt: "Listed",
+    });
+    // The same list in another order and case is the same rule.
+    await jira.upsertAutomation(ORG, {
+      jiraStatus: "Build",
+      from: { kind: "statuses", statuses: ["BACKLOG", "client qa"] },
+      prompt: "Listed again",
+    });
+    const rules = await jira.listAutomationsFor(ORG, "Build");
+    expect(rules.map((r) => [r.from, r.prompt])).toEqual([
+      [{ kind: "any" }, "Fresh"],
+      [{ kind: "later" }, "Iterate"],
+      [
+        { kind: "statuses", statuses: ["BACKLOG", "client qa"] },
+        "Listed again",
+      ],
+    ]);
+    expect(await jira.removeAutomation(ORG, "Build", { kind: "earlier" })).toBe(
+      false,
+    );
+    expect(await jira.removeAutomation(ORG, "Build", { kind: "later" })).toBe(
+      true,
+    );
+    expect(
+      await jira.removeAutomation(ORG, "Build", {
+        kind: "statuses",
+        statuses: ["client QA", "Backlog"],
+      }),
+    ).toBe(true);
+    expect(
+      (await jira.listAutomationsFor(ORG, "Build")).map((r) => r.from.kind),
+    ).toEqual(["any"]);
   });
 });

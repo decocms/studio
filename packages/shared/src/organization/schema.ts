@@ -155,6 +155,7 @@ export type DefaultHomeAgentsConfig = z.infer<
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  voice_mode: z.boolean().optional(),
   home_task_intake_enabled: z
     .boolean()
     .optional()
@@ -177,7 +178,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Run the Reviewer on a task's pull request once it's In Review — it reviews the code with the repo's stack-appropriate skills, fixes what it finds on the PR's own branch, then exercises the change on the deploy preview and approves or hands the card to a human.",
+      "Run the Reviewer on a task's pull request when the card reaches In Review — it reviews the code with the repo's stack-appropriate skills, fixes what it finds on the PR's own branch, then exercises the change on the deploy preview and approves or hands the card to a human.",
     ),
   /** @deprecated Superseded by `reviewer_enabled` — the QA Agent and Code
    *  Reviewer are one run now. Kept readable (a `z.object` strips unknown keys)
@@ -196,13 +197,13 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When the Reviewer approves a task's pull request, merge it automatically instead of leaving the merge to a human.",
+      "When a card reaches Ready for Deployment, merge its pull request automatically instead of waiting for someone to press Ship.",
     ),
   auto_resolve_conflicts: z
     .boolean()
     .optional()
     .describe(
-      "When an approved pull request can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
+      "When a pull request in Ready for Deployment can't be merged because it conflicts with its base branch, hand it back to the Super Agent to resolve the conflict (check out the branch, merge the base, push). Unset, it follows `auto_merge`; set it explicitly to run one without the other.",
     ),
   cheap_reviewer_model: z
     .boolean()
@@ -214,13 +215,19 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow task-run surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
+      "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow Studio surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
     ),
   coding_agents_claude_code: z
     .boolean()
     .optional()
     .describe(
       "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
+    ),
+  chat_harness_sandbox_only: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
@@ -264,17 +271,29 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Per-site Monitor tab (CDN Performance + Audience from the stats-lake warehouse). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. Its own deployment-wide switch `MONITOR_GA` opens it to every org at once (independent of the control-plane trio).",
     ),
-  delivery_lanes_enabled: z
+  site_create_enabled: z
     .boolean()
     .optional()
     .describe(
-      "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
+      'The "Create a new site" option under New project: generates a GitHub repository from a site template in an account the org connected, and opens it as a project. Off by default, for every org — deco.cx staff included.',
     ),
-  cms_auto_fresh_branch: z
+  new_blocks_editor: z
     .boolean()
     .optional()
     .describe(
-      "When a user opens the CMS on a branch whose last commit is older than the staleness window (2 days), move the session to a freshly minted branch cut from the default branch. The stale branch is left intact on GitHub. Off by default.",
+      "Use the redesigned blocks editor for every member of the organization. Off by default — the classic editor stays until an admin opts the org in.",
+    ),
+  blog_ai_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "The blog's brand context tab and its agentic generation — campaigns, post drafting and link suggestions. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
+    ),
+  hide_default_blog_blocks: z
+    .boolean()
+    .optional()
+    .describe(
+      "Hide the `deco-cms/blog` built-in post blocks everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
     ),
 });
 
@@ -292,6 +311,7 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "reviewer_enabled",
   "cheap_reviewer_model",
+  "chat_harness_sandbox_only",
 ]);
 
 /**
@@ -322,144 +342,3 @@ export function autoResolveConflictsEnabled(
   const value = flags?.auto_resolve_conflicts;
   return typeof value === "boolean" ? value : flags?.auto_merge === true;
 }
-
-/**
- * `images` and `metadata` are caller-supplied JSON blobs with no other size
- * limit on the write path (BRAND_CONTEXT_CREATE/UPDATE pass this schema
- * straight through to storage) — an org member with ordinary brand-write
- * permission could otherwise stash an arbitrarily large payload in a brand
- * context row. Mirrors the `configuration_state`/`metadata` cap on
- * `ConnectionEntitySchema`.
- */
-const MAX_BRAND_JSON_FIELD_BYTES = 256 * 1024;
-const MAX_BRAND_IMAGES = 50;
-const MAX_BRAND_STRING_LENGTH = 500;
-const MAX_BRAND_OVERVIEW_LENGTH = 5000;
-
-/**
- * Brand context schema - org-scoped company profile
- */
-export const BrandContextSchema = z.object({
-  id: z.string().describe("Brand context ID"),
-  name: z.string().max(MAX_BRAND_STRING_LENGTH).describe("Company name"),
-  domain: z
-    .string()
-    .max(MAX_BRAND_STRING_LENGTH)
-    .describe("Company domain (e.g. example.com)"),
-  overview: z
-    .string()
-    .max(MAX_BRAND_OVERVIEW_LENGTH)
-    .describe("Company overview / description"),
-  logo: z
-    .string()
-    .max(MAX_BRAND_STRING_LENGTH)
-    .nullable()
-    .optional()
-    .describe("Logo URL"),
-  favicon: z
-    .string()
-    .max(MAX_BRAND_STRING_LENGTH)
-    .nullable()
-    .optional()
-    .describe("Favicon URL"),
-  ogImage: z
-    .string()
-    .max(MAX_BRAND_STRING_LENGTH)
-    .nullable()
-    .optional()
-    .describe("OG image URL"),
-  fonts: z
-    .object({
-      heading: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Font family for headings"),
-      body: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Font family for body text"),
-      code: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Font family for code / monospace"),
-    })
-    .nullable()
-    .optional()
-    .describe("Font families by semantic role"),
-  colors: z
-    .object({
-      primary: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Primary brand color (hex)"),
-      secondary: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Secondary brand color (hex)"),
-      accent: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Accent / highlight color (hex)"),
-      background: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Background color (hex)"),
-      foreground: z
-        .string()
-        .max(MAX_BRAND_STRING_LENGTH)
-        .optional()
-        .describe("Foreground / text color (hex)"),
-    })
-    .nullable()
-    .optional()
-    .describe("Semantic color palette"),
-  images: z
-    .array(z.record(z.string(), z.unknown()))
-    .max(MAX_BRAND_IMAGES)
-    .nullable()
-    .optional()
-    .refine(
-      (value) =>
-        value === null ||
-        value === undefined ||
-        JSON.stringify(value).length <= MAX_BRAND_JSON_FIELD_BYTES,
-      {
-        message: `images must serialize to at most ${MAX_BRAND_JSON_FIELD_BYTES} bytes`,
-      },
-    )
-    .describe("Brand images"),
-  metadata: z
-    .record(z.string(), z.unknown())
-    .nullable()
-    .optional()
-    .refine(
-      (value) =>
-        value === null ||
-        value === undefined ||
-        JSON.stringify(value).length <= MAX_BRAND_JSON_FIELD_BYTES,
-      {
-        message: `metadata must serialize to at most ${MAX_BRAND_JSON_FIELD_BYTES} bytes`,
-      },
-    )
-    .describe(
-      "Extra design tokens (typography, components, spacing, layout, tone, etc.)",
-    ),
-  archivedAt: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("Archive timestamp (null to unarchive)"),
-  isDefault: z
-    .boolean()
-    .optional()
-    .describe("Whether this is the default brand for the organization"),
-});
-
-export type BrandContextInput = z.infer<typeof BrandContextSchema>;

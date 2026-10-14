@@ -3,6 +3,8 @@ import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 import { renderField, SchemaForm } from "./schema-form";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import { ArrayField } from "./fields/array-field";
+import { ImageField } from "./fields/image-field";
 import { BooleanField } from "./fields/boolean-field";
 import { NumberField } from "./fields/number-field";
 import { StringField } from "./fields/string-field";
@@ -126,6 +128,86 @@ describe("renderField – collapsed loader-ref value routing", () => {
   });
 });
 
+describe("renderField – collapsed array with a loader picker", () => {
+  const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
+  const schema = {
+    type: "array",
+    items: { type: "object", properties: { label: { type: "string" } } },
+    loaderRef: {
+      type: "block-ref",
+      anyOfRefs: [
+        { resolveType: "site/loaders/links.ts", title: "Links" },
+        { resolveType: "Footer Links", title: "Footer Links" },
+      ],
+    },
+  };
+  const baseProps = { onChange: () => {}, path: "links", label: "Links" };
+
+  // Regression: a saved-block ref on a collapsed array rendered nothing.
+  test("saved-block reference renders the picker", () => {
+    const el = renderField({
+      ...baseProps,
+      schema,
+      value: { __resolveType: "Footer Links" },
+    });
+    expect(typeOf(el)).toBe(AnyOfField);
+  });
+
+  test("inline loader reference renders the picker", () => {
+    const el = renderField({
+      ...baseProps,
+      schema,
+      value: { __resolveType: "site/loaders/links.ts" },
+    });
+    expect(typeOf(el)).toBe(AnyOfField);
+  });
+
+  test("inline array still renders the array editor", () => {
+    const el = renderField({
+      ...baseProps,
+      schema,
+      value: [{ label: "Home" }],
+    });
+    expect(typeOf(el)).toBe(ArrayField);
+  });
+});
+
+describe("renderField – multivariate widget keeps the prop description", () => {
+  const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
+
+  test("the inner image field inherits the outer description", () => {
+    const el = renderField({
+      onChange: () => {},
+      path: "background",
+      label: "Background image",
+      value: "https://example.com/a.jpg",
+      schema: {
+        type: "block-ref",
+        title: "Background image",
+        description: "Shown behind the CTA",
+        plainSchema: { type: "string", format: "image-uri" },
+        anyOfRefs: [
+          {
+            resolveType: "website/flags/multivariate/image.ts",
+            title: "Image Variants",
+          },
+        ],
+      },
+    }) as {
+      props: { renderInnerField: (p: unknown) => unknown };
+    } | null;
+    const inner = el?.props.renderInnerField({
+      onChange: () => {},
+      path: "background",
+      label: "Background image",
+      value: "https://example.com/a.jpg",
+      schema: {},
+    }) as { props: { schema: { description?: string } } } | null;
+    expect(typeOf(inner)).toBe(ImageField);
+    expect(inner?.props.schema.description).toBe("Shown behind the CTA");
+  });
+});
+
 describe("renderField – boolean schema wins over stored value type", () => {
   const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
   const baseProps = {
@@ -193,5 +275,40 @@ describe("renderField – boolean schema wins over stored value type", () => {
       value: "",
     });
     expect(typeOf(el)).toBe(ObjectField);
+  });
+});
+
+describe("renderField – shows the saved value, not the schema @default", () => {
+  const valueOf = (el: unknown) =>
+    (el as { props?: { value?: unknown } } | null)?.props?.value;
+  const baseProps = { onChange: () => {}, path: "display", label: "Mostrar" };
+
+  // Regression: a missing `@default true` flag rendered "on" though unsaved.
+  test("a missing boolean with @default true renders off", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "boolean", default: true },
+      value: undefined,
+    });
+    expect((el as { type?: unknown } | null)?.type).toBe(BooleanField);
+    expect(valueOf(el)).toBe(false);
+  });
+
+  test("a missing string with a @default renders empty", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "string", default: "Ver tudo" },
+      value: undefined,
+    });
+    expect(valueOf(el)).toBe("");
+  });
+
+  test("a saved value is shown as is", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "boolean", default: false },
+      value: true,
+    });
+    expect(valueOf(el)).toBe(true);
   });
 });

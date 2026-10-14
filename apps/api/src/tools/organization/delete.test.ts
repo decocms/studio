@@ -48,6 +48,8 @@ function makeCtx(existingMetadata: unknown) {
     access: { check: mock(async () => {}) },
     organization: { id: "org-1", slug: "acme", name: "Acme" },
     boundAuth: { organization: { get, update } },
+    // No Deco Score connection, so there is no site to release.
+    storage: { connections: { findById: async () => null } },
     db: fakeDb(executeQuery),
     get,
     update,

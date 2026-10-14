@@ -13,6 +13,7 @@ import {
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
+import { sql } from "kysely";
 import { OrganizationSettingsStorage } from "./organization-settings";
 
 describe("OrganizationSettingsStorage — flags bag", () => {
@@ -89,5 +90,44 @@ describe("OrganizationSettingsStorage — flags bag", () => {
     });
     await storage.upsert("org_1", { submodule_credentials: [] });
     expect((await storage.get("org_1"))?.submodule_credentials).toEqual([]);
+  });
+  it("reads manual voice overrides and preserves them during unrelated updates", async () => {
+    await storage.upsert("org_1", { flags: { voice_mode: true } });
+    await sql`update organization_settings
+      set voice_provider = 'openai', voice_model = 'live-example'
+      where "organizationId" = 'org_1'`.execute(database.db);
+    expect(await storage.get("org_1")).toMatchObject({
+      voice_provider: "openai",
+      voice_model: "live-example",
+    });
+    await storage.upsert("org_1", { flags: { demo_mode: true } });
+    expect(await storage.get("org_1")).toMatchObject({
+      voice_provider: "openai",
+      voice_model: "live-example",
+    });
+    expect((await storage.upsert("org_123"))?.voice_provider).toBeNull();
+    await sql`update organization_settings
+      set voice_provider = null, voice_model = null
+      where "organizationId" = 'org_1'`.execute(database.db);
+    expect(await storage.get("org_1")).toMatchObject({
+      voice_provider: null,
+      voice_model: null,
+    });
+  });
+
+  it("rejects unsupported providers and model overrides without a provider", async () => {
+    await storage.upsert("org_1");
+    for (const [provider, model] of [
+      ["unsupported", null],
+      [null, "live-example"],
+      ["openai", " "],
+      ["openai", "x".repeat(129)],
+    ]) {
+      await expect(
+        sql`update organization_settings
+        set voice_provider = ${provider}, voice_model = ${model}
+        where "organizationId" = 'org_1'`.execute(database.db),
+      ).rejects.toThrow();
+    }
   });
 });

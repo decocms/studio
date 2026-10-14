@@ -115,14 +115,23 @@ function PageActions({
 /** Routes supply identity; feature pages contribute controls through the panel's slots. */
 function PageHeader({
   breadcrumbs,
+  scope,
   leading,
   actions,
   navigation,
+  trailingActions,
 }: {
   breadcrumbs: readonly BreadcrumbItem[];
+  /** Follows the breadcrumbs in the browser tab title, e.g. the organization. */
+  scope?: string;
   leading?: ReactNode;
   actions?: ReactNode;
   navigation?: ReactNode;
+  /** Rendered after every portaled feature action (`Page.Title`'s, a route's
+   *  own `actions`) — for a control that must stay the row's rightmost
+   *  element regardless of what a feature contributes, like the app-takeover
+   *  close button. Most callers want `actions`, not this. */
+  trailingActions?: ReactNode;
 }) {
   return (
     <>
@@ -132,7 +141,7 @@ function PageHeader({
       >
         <Panel.Topbar.Left className="flex-1 gap-2">
           {leading}
-          <PageHeaderBreadcrumbs items={breadcrumbs} />
+          <PageHeaderBreadcrumbs items={breadcrumbs} scope={scope} />
           <Panel.Topbar.Left.Target />
         </Panel.Topbar.Left>
         <Panel.Topbar.Right className="shrink-0 gap-2">
@@ -140,6 +149,7 @@ function PageHeader({
             {actions}
           </div>
           <Panel.Topbar.Right.Target className="flex items-center gap-2 before:hidden before:h-4 before:w-px before:shrink-0 before:bg-border peer-[:not(:empty)]:before:block" />
+          {trailingActions}
         </Panel.Topbar.Right>
       </Panel.Topbar>
       <Panel.Toolbar>

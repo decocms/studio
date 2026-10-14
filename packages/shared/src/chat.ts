@@ -38,7 +38,7 @@ export interface Metadata {
   user?: ChatUserConfig;
   created_at?: string | Date;
   thread_id?: string;
-  /** Git branch to pin this thread to on creation. GitHub-linked vms only. */
+  /** Git branch to pin this thread to on creation. repository-linked projects only. */
   branch?: string | null;
   title?: string;
   /** System prompt to prepend to messages at the transport layer */
@@ -59,6 +59,9 @@ export interface Metadata {
   tiptapDoc?: TiptapDoc;
   /** Agent mentions in this message, used to render delegation cards. */
   agentMentions?: Array<{ agentId: string; title: string; taskId?: string }>;
+  /** The user's answer to an interactive tool call of a claude-code thread,
+   *  sent as a message because the harness cannot take a tool result. */
+  toolOutput?: { toolCallId: string; output: unknown };
   /** Tool approval level at send time. */
   toolApprovalLevel?: ToolApprovalLevel;
   /** Decopilot mode, matching the stream schema's `mode` field. */

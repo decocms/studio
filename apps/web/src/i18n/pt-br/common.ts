@@ -4,6 +4,8 @@ export const common = {
   "common.copy": "Copiar",
   "common.seeAll": "Ver todos os {count} {noun}",
   "common.soon": "Em breve",
+  "common.goBack": "Voltar",
+  "common.goHome": "Ir para home",
   "common.accountPopover.account": "Conta",
   "common.accountPopover.adminDashboard": "Painel de administração",
   "common.accountPopover.community": "Comunidade",
@@ -15,7 +17,7 @@ export const common = {
   "common.accountPopover.enableSounds": "Ativar sons",
   "common.accountPopover.failedToStopImpersonation":
     "Falha ao parar de representar",
-  "common.accountPopover.githubRepo": "decocms/studio",
+  "common.accountPopover.repository": "decocms/studio",
   "common.accountPopover.homepage": "Página inicial",
   "common.accountPopover.impersonating": "Representando",
   "common.accountPopover.lightTheme": "Tema claro",
@@ -30,7 +32,6 @@ export const common = {
     "Esta organização foi deletada ou não está mais disponível.",
   "common.archivedOrgScreen.deletedWithName":
     "{orgName} foi deletada ou não está mais disponível.",
-  "common.archivedOrgScreen.goHome": "Ir para home",
   "common.archivedOrgScreen.orgUnavailable": "Organização indisponível",
   "common.blockedOrgScreen.goToBilling": "Ir para faturamento",
   "common.blockedOrgScreen.switchOrg": "Trocar de organização",
@@ -53,7 +54,6 @@ export const common = {
   "common.desktopKeychainUnavailable.title":
     "Não foi possível acessar sua sessão salva",
   "common.autoDomainJoinScreen.enterOrg": "Entrar em {orgName}",
-  "common.autoDomainJoinScreen.goHome": "Ir para home",
   "common.autoDomainJoinScreen.joinDescription":
     "Qualquer pessoa com um e-mail @{domain} pode entrar nesta organização.",
   "common.autoDomainJoinScreen.joinError": "Falha ao entrar na organização",
@@ -119,58 +119,37 @@ export const common = {
     "Não foi possível criar o agente",
   "common.repositoryPicker.agentDescription": "Importado de {path}",
   "common.repositoryPicker.back": "Voltar",
-  "common.githubRepoPicker.accountNotListed": "Conta não listada?",
-  "common.githubRepoPicker.addRepo": "Adicionar repositório",
-  "common.githubRepoPicker.addedRepo": "Adicionado {name}",
-  "common.githubRepoPicker.authenticatingGitHub": "Autenticando com GitHub",
-  "common.githubRepoPicker.backToAccounts": "Voltar às contas",
-  "common.githubRepoPicker.changeConnection": "Alterar conexão",
-  "common.githubRepoPicker.checkAgain": "Verificar novamente",
-  "common.githubRepoPicker.chooseRepositories": "Escolher repositórios",
-  "common.githubRepoPicker.completeOAuthFlow":
-    "Complete o fluxo OAuth no seu navegador",
-  "common.githubRepoPicker.connectionExpiredMessage":
-    "Sua conexão com o GitHub pode ter expirado. Reconecte para restaurar o acesso.",
-  "common.githubRepoPicker.connectionFailed": "Conexão falhou",
-  "common.githubRepoPicker.failedImport":
-    "Falha ao importar repositório: {error}",
-  "common.githubRepoPicker.failedImportFork":
-    "Não foi possível importar o fork {name}. Se ele não estiver compartilhado com o aplicativo GitHub, adicione-o em GitHub → Settings → Installations e tente novamente.",
-  "common.githubRepoPicker.failedLoadAccounts":
-    "Falha ao carregar contas do GitHub",
-  "common.githubRepoPicker.failedReconnect":
-    "Falha ao reconectar GitHub: {error}",
-  "common.githubRepoPicker.forkBadge": "Fork",
-  "common.githubRepoPicker.githubConnected": "GitHub conectado",
-  "common.githubRepoPicker.importFromGitHub": "Importar reposit\u00f3rio",
-  "common.githubRepoPicker.importedRepo": "Importado {name}",
-  "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
-  "common.githubRepoPicker.installingGitHubConnection":
-    "Instalando a conexão com GitHub...",
-  "common.githubRepoPicker.noRepositoriesFound":
-    "Nenhum repositório encontrado",
-  "common.githubRepoPicker.noRepositoriesShared":
-    "Ainda não há repositórios compartilhados com a Deco. Escolha no GitHub o que deseja compartilhar e volte aqui para continuar.",
-  "common.githubRepoPicker.personalAccount": "Conta pessoal",
-  "common.githubRepoPicker.private": "Privado",
-  "common.githubRepoPicker.public": "Público",
-  "common.githubRepoPicker.reconnectGitHub": "Reconectar GitHub",
-  "common.githubRepoPicker.repositoryAccessNote":
-    "Você decide exatamente o que a Deco pode acessar. Escolher “todos os repositórios” é opcional.",
-  "common.githubRepoPicker.searchRepositories": "Pesquisar repositórios...",
-  "common.githubRepoPicker.select": "Selecionar",
-  "common.githubRepoPicker.selectConnection": "Selecione uma conexão",
-  "common.githubRepoPicker.settingUpGitHub": "Configurando GitHub",
-  "common.githubRepoPicker.setupRepositoriesTitle":
-    "Permita que a Deco veja seus repositórios",
-  "common.githubRepoPicker.somethingWentWrong":
-    "Algo deu errado ao conectar ao GitHub.",
-  "common.githubRepoPicker.tryAgain": "Tentar novamente",
-  "common.githubRepoPicker.tryDifferentSearchTerm":
-    "Tente um termo de pesquisa diferente",
-  "common.githubRepoPicker.unknownError": "Erro desconhecido",
+  "common.createSite.entry": "Criar novo site",
+  "common.createSite.entryHint": "Comece por um template, no seu GitHub",
+  "common.createSite.templateSection": "Escolha um template",
+  "common.createSite.templates.storefront.title": "Loja",
+  "common.createSite.templates.storefront.description":
+    "Loja virtual com páginas de produto, carrinho e CMS",
+  "common.createSite.templates.blog.title": "Blog",
+  "common.createSite.templates.blog.description":
+    "Blog com posts, categorias e CMS",
+  "common.createSite.accountSection": "Onde criar",
+  "common.createSite.accountHint":
+    "O repositório do site é criado nesta conta do GitHub.",
+  "common.createSite.noGithubAccount":
+    "Conecte uma conta do GitHub para criar um site nela.",
+  "common.createSite.nameLabel": "Nome do site",
+  "common.createSite.namePlaceholder": "meu-site",
+  "common.createSite.nameHint":
+    "Letras minúsculas, números e hífens. Cria o repositório privado {path}.",
+  "common.createSite.nameInvalid":
+    "Use letras minúsculas, números e hífens, começando e terminando com letra ou número.",
+  "common.createSite.create": "Criar site",
+  "common.createSite.created": "Site {name} criado",
+  "common.createSite.agentDescription":
+    "Criado a partir do template {template}",
+  "common.repositoryPicker.addRepo": "Adicionar repositório",
+  "common.repositoryPicker.addedRepo": "Adicionado {name}",
+  "common.repositoryPicker.importFromGitHub": "Importar repositório",
+  "common.repositoryPicker.importedRepo": "Importado {name}",
   "common.iconPicker.apply": "Aplicar",
   "common.iconPicker.changeColor": "Alterar cor",
+  "common.iconPicker.changeIcon": "Alterar ícone",
   "common.iconPicker.failedToReadImage": "Falha ao ler arquivo de imagem",
   "common.iconPicker.filterPlaceholder": "Filtrar...",
   "common.iconPicker.iconsTab": "Ícones",
@@ -190,7 +169,6 @@ export const common = {
     "Falha ao preparar a importação da deco.cx",
   "common.importFromDecoDialog.githubNotConnected":
     "GitHub não está conectado. Conclua a configuração do GitHub e tente novamente.",
-  "common.importFromDecoDialog.goBack": "Voltar",
   "common.importFromDecoDialog.import": "Importar",
   "common.importFromDecoDialog.importFailed": "Falha na importação: {error}",
   "common.importFromDecoDialog.importSuccess": "Importado {slug} de deco.cx",
@@ -214,7 +192,6 @@ export const common = {
     "O site selecionado não está mais disponível",
   "common.importFromDecoDialog.title": "Importar de deco.cx",
   "common.importFromDecoDialog.unknownError": "Erro desconhecido",
-  "common.index.goBack": "Voltar",
   "common.index.pageNotFound": "Página não encontrada",
   "common.index.pageNotFoundDescription":
     "A página que você está procurando não existe ou foi movida.",
@@ -246,7 +223,6 @@ export const common = {
     "Peça a um administrador que o convide.",
   "common.noAccessScreen.couldNotFind":
     "Não conseguimos encontrar uma organização chamada",
-  "common.noAccessScreen.goToHome": "Ir para home",
   "common.noAccessScreen.noAccess": "Sem acesso",
   "common.noAccessScreen.noAccessTo": "Você não tem acesso a",
   "common.noAccessScreen.organizationNotFound": "Organização não encontrada",
@@ -262,22 +238,16 @@ export const common = {
   "common.pendingInviteScreen.invitedTo": "Você foi convidado para {orgName}",
   "common.requestPendingScreen.description":
     "Sua solicitação para ingressar em {orgName} está aguardando aprovação de um administrador. Você terá acesso após a aprovação.",
-  "common.requestPendingScreen.goHome": "Ir para início",
   "common.requestPendingScreen.title": "Solicitação pendente",
   "common.requestToJoinScreen.description":
     "Um administrador deve aprovar solicitações de e-mails @{domain} antes que você possa entrar.",
   "common.requestToJoinScreen.failedToRequest": "Falha ao solicitar acesso",
-  "common.requestToJoinScreen.goToHome": "Ir para início",
   "common.requestToJoinScreen.requestButton": "Solicitar acesso",
   "common.requestToJoinScreen.requesting": "Solicitando…",
   "common.requestToJoinScreen.title": "Solicitar acesso a {orgName}?",
   "common.signInScreen.configLoadFailed":
     "Não foi possível carregar as opções de login.",
   "common.signInScreen.tryAgain": "Tentar novamente",
-  "common.simpleIconPicker.changeIcon": "Alterar ícone",
-  "common.simpleIconPicker.filterPlaceholder": "Filtrar…",
-  "common.simpleIconPicker.noIconsFound": "Nenhum ícone encontrado",
-  "common.ssoRequiredScreen.goBack": "Voltar",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "Esta organização requer autenticação SSO para acessar.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requer autenticação SSO",
@@ -304,19 +274,20 @@ export const common = {
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
-  "common.createAgentDropdown.importFromGitHub": "Importar reposit\u00f3rio",
+  "common.createAgentDropdown.importFromGitHub": "Importar repositório",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",
   "common.mainPanelTabs.content": "Conteúdo",
   "common.mainPanelTabs.assets": "Assets",
-  "common.mainPanelTabs.reviewChanges": "Revisar alterações",
   "common.mainPanelTabs.hosting": "Hospedagem",
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.analytics": "Deco Analytics",
+  "common.mainPanelTabs.experiments": "Experimentos",
   "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
+  "common.taskBoard.feedView": "Feed",
   "common.openExternalFailed": "Não foi possível abrir este link no navegador.",
   "common.taskStatus.requiresAction": "Requer revisão",
   "common.taskStatus.failed": "Falhou",

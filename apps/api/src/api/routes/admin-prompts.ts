@@ -56,11 +56,6 @@ const PROMPTS = [
     label: "Super Agent (sandbox)",
     path: "apps/api/src/tools/task-board/claude-code-task-run.ts",
   },
-  {
-    id: "super-agent",
-    label: "Super Agent (hosted)",
-    path: "apps/api/src/tools/task-board/enqueue-super-agent.ts",
-  },
 ] as const;
 
 type PromptId = (typeof PROMPTS)[number]["id"];

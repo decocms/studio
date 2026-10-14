@@ -25,7 +25,7 @@ import type { ClaimFailureReason, ClaimPhase } from "./sandbox-events-context";
 
 export interface ShouldAutoStartArgs {
   executionEnabled: boolean;
-  hasActiveGithubRepo: boolean;
+  hasActiveRepository: boolean;
   userId: string | null;
   branch: string | null;
   vmEntry: SandboxRecord | null;
@@ -61,7 +61,7 @@ export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
     args.executionEnabled &&
     args.sessionRuntime === "sandbox" &&
-    args.hasActiveGithubRepo &&
+    args.hasActiveRepository &&
     !!args.userId &&
     !!args.branch &&
     !args.vmEntry &&
@@ -77,7 +77,7 @@ export interface ShouldAdoptBranchArgs {
   threadLoaded: boolean;
   /** The viewer created this thread. A teammate's row stays read-only. */
   isOwner: boolean;
-  hasActiveGithubRepo: boolean;
+  hasActiveRepository: boolean;
   branch: string | null;
   /** Already adopted once for this thread in this session. */
   attempted: boolean;
@@ -89,7 +89,7 @@ export interface ShouldAdoptBranchArgs {
  *
  * Threads only reach this state when the repo was attached to the agent AFTER
  * they were created — `COLLECTION_THREADS_CREATE` assigns a branch whenever the
- * agent already has a `githubRepo`. Before the branch gate those threads were
+ * agent already has a `repository`. Before the branch gate those threads were
  * covered by `SANDBOX_START` minting a branch server-side, which is exactly the
  * race that leaked a sandbox per new chat; minting here instead is safe because
  * the row already exists, so nothing else is naming it concurrently.
@@ -98,7 +98,7 @@ export function shouldAdoptBranch(args: ShouldAdoptBranchArgs): boolean {
   return (
     args.threadLoaded &&
     args.isOwner &&
-    args.hasActiveGithubRepo &&
+    args.hasActiveRepository &&
     !args.branch &&
     !args.attempted
   );
@@ -433,7 +433,7 @@ export function SandboxLifecycleProvider({
   virtualMcpId,
   branch,
   userId,
-  hasActiveGithubRepo,
+  hasActiveRepository,
   vmEntry,
   threadId,
   children,
@@ -444,7 +444,7 @@ export function SandboxLifecycleProvider({
   virtualMcpId: string | null;
   branch: string | null;
   userId: string | null;
-  hasActiveGithubRepo: boolean;
+  hasActiveRepository: boolean;
   vmEntry: SandboxRecord | null;
   /** Active thread id — the row re-read after a successful start (see
    *  `onStarted` below). */
@@ -568,7 +568,7 @@ export function SandboxLifecycleProvider({
     autoStartAttemptedForBranchRef.current.has(autoStartDedupKey);
   const autoStartEligible = shouldAutoStart({
     executionEnabled,
-    hasActiveGithubRepo,
+    hasActiveRepository,
     userId,
     branch,
     vmEntry,

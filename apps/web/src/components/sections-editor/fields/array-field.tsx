@@ -19,7 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { AddListRow } from "../editor-list-row";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";

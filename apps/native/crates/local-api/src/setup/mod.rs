@@ -492,7 +492,7 @@ async fn worker_loop(orch: Weak<SetupOrchestrator>, mut rx: mpsc::UnboundedRecei
 }
 
 fn decrement(value: &AtomicUsize) {
-    let _ = value.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+    let _ = value.try_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
         Some(current.saturating_sub(1))
     });
 }

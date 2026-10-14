@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   authorizeProjectMetadataPatch,
+  listSiteProjects,
   parseProjectMetadataPatch,
   pickProjectMetadata,
 } from "./admin-project-metadata";
@@ -87,5 +88,75 @@ describe("pickProjectMetadata", () => {
       analyticsSiteSlug: "acme",
     });
     expect(pickProjectMetadata(null)).toEqual({ analyticsSiteSlug: null });
+  });
+});
+
+describe("listSiteProjects", () => {
+  const owned = new Map<string, string | null>([
+    ["acme", null],
+    ["acme-tanstack", null],
+  ]);
+
+  it("lists a project whose slug is only its title", () => {
+    expect(
+      listSiteProjects(
+        [{ id: "vir_1", title: "acme-tanstack", metadata: null }],
+        owned,
+      ),
+    ).toEqual([
+      {
+        id: "vir_1",
+        title: "acme-tanstack",
+        siteSlug: "acme-tanstack",
+        metadata: { analyticsSiteSlug: null },
+      },
+    ]);
+  });
+
+  it("prefers metadata.siteSlug over the title", () => {
+    expect(
+      listSiteProjects(
+        [
+          {
+            id: "vir_1",
+            title: "Acme Store",
+            metadata: { siteSlug: "acme", analyticsSiteSlug: "acme-tanstack" },
+          },
+        ],
+        owned,
+      ),
+    ).toEqual([
+      {
+        id: "vir_1",
+        title: "Acme Store",
+        siteSlug: "acme",
+        metadata: { analyticsSiteSlug: "acme-tanstack" },
+      },
+    ]);
+  });
+
+  it("lists only the linked project when the slug is linked", () => {
+    const linked = new Map<string, string | null>([["acme", "vir_2"]]);
+    expect(
+      listSiteProjects(
+        [
+          { id: "vir_1", title: "Copy", metadata: { siteSlug: "acme" } },
+          { id: "vir_2", title: "Acme", metadata: { siteSlug: "acme" } },
+        ],
+        linked,
+      ).map((p) => p.id),
+    ).toEqual(["vir_2"]);
+  });
+
+  it("skips projects whose slug the org does not own", () => {
+    expect(
+      listSiteProjects(
+        [
+          { id: "vir_1", title: "Support agent", metadata: {} },
+          { id: "vir_2", title: "other", metadata: { siteSlug: "other" } },
+        ],
+        owned,
+      ),
+    ).toEqual([]);
   });
 });

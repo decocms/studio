@@ -16,7 +16,7 @@ import { orgSettingsPath } from "@decocms/shared/organization-paths";
 import { getPublicUrl } from "../../core/server-constants";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
-  resolveOwnedTeam,
+  resolveTeamScopes,
   teamStripeSubscriptionId,
 } from "../../deco-legacy/infra-billing";
 import { resolveOwnedSlugs } from "./ownership";
@@ -33,7 +33,7 @@ export const INFRA_BILLING_PORTAL = defineTool({
     openWorldHint: true,
   },
   inputSchema: z.object({
-    /** The same selection the page is showing; they must share one team. */
+    /** The sites of one legacy team, as grouped by INFRA_BILLING_GET. */
     siteSlugs: z
       .array(z.string().min(1).max(60).refine(isValidSiteSlug))
       .min(1)
@@ -55,17 +55,22 @@ export const INFRA_BILLING_PORTAL = defineTool({
       input.siteSlugs,
     );
 
+    const scopes = await resolveTeamScopes(slugs, ownedSlugs);
+    if (scopes && scopes.teams.length > 1) {
+      throw new Error("These sites belong to different legacy teams.");
+    }
+    const team = scopes?.teams[0];
+    if (!team) {
+      throw new Error("This site has no Stripe subscription to manage.");
+    }
     // Portal sessions can cancel the team's subscription — require the whole team.
-    const scope = await resolveOwnedTeam(slugs, ownedSlugs);
-    if (!scope.ok) {
+    if (!team.fullyOwned) {
       throw new Error(
-        scope.reason === "partial_team"
-          ? "This site's legacy team also bills sites outside this organization. Manage the subscription from the deco.cx admin."
-          : "This site has no Stripe subscription to manage.",
+        "This site's legacy team also bills sites outside this organization. Manage the subscription from the deco.cx admin.",
       );
     }
 
-    const subscriptionId = await teamStripeSubscriptionId(scope.teamId);
+    const subscriptionId = await teamStripeSubscriptionId(team.teamId);
     if (!subscriptionId) {
       throw new Error("This site has no Stripe subscription to manage.");
     }

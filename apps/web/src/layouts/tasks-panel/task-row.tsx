@@ -11,7 +11,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { getStatusConfig } from "@/lib/task-status";
 import { formatTimeAgo } from "@/lib/format-time";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+import { getActiveRepository } from "@/lib/repository-binding";
 import { isSyntheticBranch } from "@decocms/shared/is-synthetic-branch";
 import { useClockTick } from "@/lib/use-clock-tick";
 import type { Task } from "@/components/chat/task/types";
@@ -51,7 +51,7 @@ export function TaskRow({
   const virtualMcp = useVirtualMCP(
     isToolCallRun ? undefined : task.virtual_mcp_id,
   );
-  const githubRepo = getActiveGithubRepo(virtualMcp);
+  const repository = getActiveRepository(virtualMcp);
   // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
   // when `task` is referentially stable.
   useClockTick(60_000);
@@ -120,10 +120,10 @@ export function TaskRow({
                 <span className="truncate font-mono">{task.branch}</span>
                 <span className="shrink-0">·</span>
               </>
-            ) : githubRepo ? (
+            ) : repository ? (
               <>
                 <span className="truncate">
-                  {githubRepo.owner}/{githubRepo.name}
+                  {repository.owner}/{repository.name}
                 </span>
                 <span className="shrink-0">·</span>
               </>

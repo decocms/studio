@@ -28,6 +28,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Plus, Trash01 } from "@untitledui/icons";
 import {
+  GIT_CREDENTIALS_MAX,
   SUBMODULE_HOST_RE,
   type SubmoduleCredential,
 } from "@decocms/shared/organization/schema";
@@ -125,6 +126,23 @@ function GitCredentialsEditor() {
     }
   }
 
+  // Unlike commit(), a removal must persist even if another row is half-filled.
+  async function removeAt(index: number) {
+    const next = rows
+      .filter((_, i) => i !== index)
+      .map((r) => ({ ...r, host: r.host.trim() }));
+    setDraft(next);
+    try {
+      await setCredentials.mutateAsync(next.filter(isComplete));
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.gitCredentials.failedToSave"),
+      );
+    }
+  }
+
   const replaceAt = (index: number, row: SubmoduleCredential) =>
     rows.map((r, i) => (i === index ? row : r));
 
@@ -148,7 +166,7 @@ function GitCredentialsEditor() {
                 void commit(replaceAt(index, { ...row, secretId }))
               }
               onCreateNewSecret={() => setDialogIndex(index)}
-              onRemove={() => void commit(rows.filter((_, i) => i !== index))}
+              onRemove={() => void removeAt(index)}
             />
           </li>
         ))}
@@ -160,10 +178,19 @@ function GitCredentialsEditor() {
         </p>
       ) : null}
 
+      {rows.length >= GIT_CREDENTIALS_MAX ? (
+        <p className="text-xs text-muted-foreground">
+          {t("settings.gitCredentials.maxReached", {
+            max: GIT_CREDENTIALS_MAX,
+          })}
+        </p>
+      ) : null}
+
       <Button
         type="button"
         variant="outline"
         size="sm"
+        disabled={rows.length >= GIT_CREDENTIALS_MAX}
         onClick={() => setDraft([...rows, { host: "", secretId: "" }])}
         className="w-full"
       >

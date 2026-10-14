@@ -23,7 +23,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -69,7 +69,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -130,7 +130,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",
@@ -177,7 +177,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
         status: "active",
         pinned: false,
         metadata: {
-          githubRepo: {
+          repository: {
             owner: "acme",
             name: "repo",
             url: "https://github.com/acme/repo",

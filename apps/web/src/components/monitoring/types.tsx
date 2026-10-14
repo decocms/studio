@@ -606,6 +606,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                               org: org.slug,
                             },
                             search: {
+                              tab: "overview",
                               propertyFilters: serializePropertyFilters([
                                 filter,
                               ]),

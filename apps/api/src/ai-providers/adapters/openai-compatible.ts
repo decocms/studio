@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
 
@@ -74,25 +75,25 @@ export const openaiCompatibleAdapter: ProviderAdapter = {
         if (!res.ok) {
           await throwResponseError("OpenAI-compatible listModels", res);
         }
-        const text = await res.text();
-        let body: { data: Array<{ id: string; owned_by?: string }> };
-        try {
-          body = JSON.parse(text);
-        } catch {
-          throw new Error(
-            `OpenAI-compatible listModels returned malformed JSON: ${text.slice(0, 200)}`,
-          );
-        }
-        return body.data.map((m) => ({
-          providerId: "openai-compatible",
-          modelId: m.id,
-          title: m.id,
-          description: m.owned_by ? `Owned by ${m.owned_by}` : null,
-          logo: null,
-          capabilities: [],
-          limits: null,
-          costs: null,
-        }));
+        const body = await parseJsonResponse<{
+          data: Array<{ id: string; owned_by?: string }>;
+        }>("OpenAI-compatible listModels", res);
+        // Skip a catalog entry missing its id instead of crashing the whole call.
+        return body.data
+          .filter(
+            (m): m is { id: string; owned_by?: string } =>
+              typeof m.id === "string" && m.id.length > 0,
+          )
+          .map((m) => ({
+            providerId: "openai-compatible",
+            modelId: m.id,
+            title: m.id,
+            description: m.owned_by ? `Owned by ${m.owned_by}` : null,
+            logo: null,
+            capabilities: [],
+            limits: null,
+            costs: null,
+          }));
       },
     };
   },

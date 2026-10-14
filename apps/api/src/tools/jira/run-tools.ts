@@ -29,13 +29,11 @@ import {
 } from "@/jira/issue-prompt";
 import {
   pickIssue,
+  requireIssueKey,
   runCreatedIssueKeys,
   runIssueKeys,
 } from "@/jira/run-issue-scope";
-import {
-  requireTaskRunContext,
-  taskRunContextStore,
-} from "@/tools/task-board/task-run-context";
+import { taskRunContextStore } from "@/tools/task-board/task-run-context";
 import type { OrgJiraIntegration } from "@/storage/types";
 
 const MAX_COMMENT_LENGTH = 50_000;
@@ -52,7 +50,8 @@ const issueKeyInput = z
   .optional()
   .describe(
     "Which issue: any on the board, e.g. one this run's issue links to or " +
-      "one you created. Leave out for this run's issue, when it has one.",
+      "one you created. Leave out for this run's issue, when it has one; " +
+      "required outside a Jira run.",
   );
 
 /**
@@ -60,25 +59,33 @@ const issueKeyInput = z
  *
  * `threadId` is the run's thread. Omitted on the MCP endpoint, where the path
  * already names it; passed explicitly by the built-in path, which has no
- * request scope to read it from.
+ * request scope to read it from. A chat — on `/mcp/self`, or on its own thread
+ * endpoint, whose thread is no Jira run — has no run issue: then the issue must
+ * be named and on the board.
  */
 async function resolveRunIssue(
   ctx: StudioContext,
   requestedKey: string | undefined,
-  threadId = requireTaskRunContext().threadId,
+  threadId = taskRunContextStore.getStore()?.threadId,
 ): Promise<RunIssue> {
   const organization = requireOrganization(ctx);
   const integration = await ctx.storage.jiraIntegrations.getByOrg(
     organization.id,
   );
   if (!integration) throw new Error("Jira is not connected for this org");
-  const thread = await ctx.storage.threads.get(threadId);
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
     integration.apiToken,
   );
-  const picked = pickIssue(runIssueKeys(thread?.metadata), requestedKey);
+  const thread = threadId ? await ctx.storage.threads.get(threadId) : null;
+  const runKeys = runIssueKeys(thread?.metadata);
+  if (runKeys.length === 0) {
+    const issueKey = requireIssueKey(requestedKey);
+    await assertOnBoard(client, integration, issueKey);
+    return { integration, client, issueKey };
+  }
+  const picked = pickIssue(runKeys, requestedKey);
   if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
   return { integration, client, issueKey: picked.key };
 }
@@ -103,8 +110,20 @@ export const JIRA_ISSUE_GET = defineTool({
   description:
     "Read a Jira issue — this run's, or another on the board: summary, " +
     "status, description, comments, and attachments with the ids " +
-    "JIRA_ATTACHMENT_DOWNLOAD takes.",
-  inputSchema: z.object({ issueKey: issueKeyInput }),
+    "JIRA_ATTACHMENT_DOWNLOAD takes. A long comment thread shows its newest " +
+    "comments; pass the `commentsBefore` the result names to read older ones.",
+  inputSchema: z.object({
+    issueKey: issueKeyInput,
+    commentsBefore: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe(
+        "Show only the comments older than this one (the first N of the " +
+          "thread). Use the value the previous result names.",
+      ),
+  }),
   outputSchema: z.object({
     key: z.string(),
     url: z.string(),
@@ -126,7 +145,9 @@ export const JIRA_ISSUE_GET = defineTool({
       key: issue.key,
       url: issue.url,
       status: issue.status,
-      markdown: renderIssueForPrompt(issue),
+      markdown: renderIssueForPrompt(issue, undefined, {
+        commentsBefore: input.commentsBefore,
+      }),
     };
   },
 });
@@ -136,9 +157,12 @@ export const JIRA_COMMENT_ADD = defineTool({
   description:
     "Post a comment on a Jira issue on the board. Markdown is " +
     "rendered as Jira rich text, tables included. Leave one when you finish: " +
-    "what you did, and any pull request link. To show evidence, write the " +
-    "image to `org/output/<name>.png` in your working pod and reference it as " +
-    "`![what it shows](org/output/<name>.png)` — it is uploaded to the issue " +
+    "what you did, and any pull request link. To mention someone so they are " +
+    "notified, write `@[Name](accountid:<id>)` — the form people appear in " +
+    "when you read an issue (reporter, assignee, comment authors, mentions); " +
+    "a plain `@name` is only text. To show evidence, write the " +
+    "image to `/app/org/output/<name>.png` in your working pod and reference it " +
+    "as `![what it shows](/app/org/output/<name>.png)` — it is uploaded to the issue " +
     "and rendered inline. Any other URL stays a plain link.",
   inputSchema: z.object({
     issueKey: issueKeyInput,
@@ -321,7 +345,8 @@ function sameSummary(a: string, b: string): boolean {
 export const JIRA_ISSUE_CREATE = defineTool({
   name: "JIRA_ISSUE_CREATE",
   description:
-    "Create a Jira issue in the project this run works in — a release card, " +
+    "Create a Jira issue in the project this run works in (from a chat: the " +
+    "connected board's project) — a release card, " +
     "a follow-up found along the way — then comment on it, link it and move " +
     "it with the other Jira tools by its key. If an open issue this " +
     "integration created in the last two weeks already has this exact " +
@@ -343,7 +368,10 @@ export const JIRA_ISSUE_CREATE = defineTool({
       .string()
       .max(MAX_COMMENT_LENGTH)
       .optional()
-      .describe("Markdown, rendered as Jira rich text, tables included."),
+      .describe(
+        "Markdown, rendered as Jira rich text, tables included; " +
+          "`@[Name](accountid:<id>)` mentions someone.",
+      ),
     relatesTo: z
       .array(z.string().min(1))
       .max(100)
@@ -371,33 +399,47 @@ export const JIRA_ISSUE_CREATE = defineTool({
   handler: async (input, ctx) => {
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    const { threadId } = requireTaskRunContext();
+    const threadId = taskRunContextStore.getStore()?.threadId;
     const integration = await ctx.storage.jiraIntegrations.getByOrg(
       organization.id,
     );
     if (!integration) throw new Error("Jira is not connected for this org");
-    const thread = await ctx.storage.threads.get(threadId);
-    const runKeys = runIssueKeys(thread?.metadata);
-    if (runKeys.length === 0) {
-      throw new Error("This run is not working on a Jira issue");
-    }
-    const projects = [...new Set(runKeys.map(projectOf))];
-    const projectKey = projects[0];
-    if (projects.length !== 1 || !projectKey || !PROJECT_KEY.test(projectKey)) {
-      throw new Error(
-        `This run works in ${projects.join(", ")}; it can only create in a single project`,
-      );
-    }
     const client = new JiraClient(
       integration.siteUrl,
       integration.email,
       integration.apiToken,
     );
+    const thread = threadId ? await ctx.storage.threads.get(threadId) : null;
+    const runKeys = runIssueKeys(thread?.metadata);
+    // A chat's thread is not a Jira run: no run issue, no per-run cap or record.
+    const jiraRunThreadId = runKeys.length > 0 ? threadId : undefined;
+    let projectKey: string | undefined;
+    if (jiraRunThreadId) {
+      const projects = [...new Set(runKeys.map(projectOf))];
+      projectKey = projects[0];
+      if (projects.length !== 1) {
+        throw new Error(
+          `This run works in ${projects.join(", ")}; it can only create in a single project`,
+        );
+      }
+    } else {
+      if (!integration.boardId) {
+        throw new Error(
+          "Jira has no board connected, so there is no project to create in",
+        );
+      }
+      projectKey = await client.getBoardProjectKey(integration.boardId);
+    }
+    if (!projectKey || !PROJECT_KEY.test(projectKey)) {
+      throw new Error(`"${projectKey}" is not a Jira project key`);
+    }
     // Checked before anything is written: a bad key must not leave an issue
     // behind with half its links.
     const relatesTo: string[] = [];
     for (const requested of input.relatesTo) {
-      const picked = pickIssue(runKeys, requested);
+      const picked = jiraRunThreadId
+        ? pickIssue(runKeys, requested)
+        : { key: requireIssueKey(requested), inRun: false };
       if (relatesTo.includes(picked.key)) continue;
       if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
       relatesTo.push(picked.key);
@@ -450,7 +492,9 @@ export const JIRA_ISSUE_CREATE = defineTool({
       }));
       // Before linking, which can fail: the cap and the repeat check both
       // read this record.
-      await ctx.storage.threads.recordJiraIssueCreated(threadId, key);
+      if (jiraRunThreadId) {
+        await ctx.storage.threads.recordJiraIssueCreated(jiraRunThreadId, key);
+      }
     }
 
     const already = created

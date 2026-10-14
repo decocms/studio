@@ -1,23 +1,16 @@
 import { useRef, useState } from "react";
-import {
-  Bold01,
-  File02,
-  Italic01,
-  Tag01,
-  Underline01,
-} from "@untitledui/icons";
+import { Bold01, Italic01, Underline01 } from "@untitledui/icons";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
-  type LinkSource,
   RichTextLinkControl,
   ToolbarButton,
 } from "@/components/sections-editor/rich-text-link-control";
+import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
-import { useT } from "@/i18n/use-t.ts";
-import { PostLinkPicker, ProductLinkPicker } from "./link-pickers";
+import { useLinkSources } from "./link-pickers";
 
 /**
  * Inline rich-text editor for Paragraph blocks. Renders the paragraph as
@@ -41,7 +34,6 @@ export function RichTextBlock({
   /** A running preview — enables linking to a catalog product. */
   sandboxRef?: PreviewProxyRef | null;
 }) {
-  const t = useT();
   // Keep the latest onChange reachable from TipTap's onUpdate without
   // recreating the editor (which would reset selection/undo on every keystroke).
   const onChangeRef = useRef(onChange);
@@ -76,8 +68,7 @@ export function RichTextBlock({
         class: cn(
           "prose prose-sm dark:prose-invert max-w-none focus:outline-none",
           "leading-relaxed [&_p]:my-0",
-          // Make links visibly links while editing (the site renders its own style).
-          "[&_a]:cursor-pointer [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2",
+          EDITOR_LINK_CLASS,
         ),
       },
     },
@@ -102,27 +93,9 @@ export function RichTextBlock({
     }),
   });
 
-  if (!editor) return null;
+  const linkSources = useLinkSources({ decofile, sandboxRef });
 
-  const linkSources: LinkSource[] = [];
-  if (decofile) {
-    linkSources.push({
-      id: "post",
-      label: t("sandbox.linkPicker.tabPost"),
-      icon: <File02 size={12} />,
-      render: (apply) => <PostLinkPicker decofile={decofile} onPick={apply} />,
-    });
-  }
-  if (sandboxRef) {
-    linkSources.push({
-      id: "product",
-      label: t("sandbox.linkPicker.tabProduct"),
-      icon: <Tag01 size={12} />,
-      render: (apply) => (
-        <ProductLinkPicker sandboxRef={sandboxRef} onPick={apply} />
-      ),
-    });
-  }
+  if (!editor) return null;
 
   return (
     <div className="relative">

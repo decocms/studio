@@ -7,7 +7,6 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -19,6 +18,7 @@ import {
   TaskBoardItemStatusSchema,
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
+import { assertValidTagIds } from "./validate-tags";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -28,7 +28,7 @@ import {
 } from "./change-request-extract";
 import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
-import { rejectsUngatedDeliveryLane } from "./update";
+import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -54,6 +54,14 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).max(1000).optional(),
+    sprintId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Plan the new card into this sprint (an id from " +
+          "TASK_BOARD_SPRINT_LIST). Omit or null for the backlog.",
+      ),
     prUrl: z
       .string()
       .nullable()
@@ -112,40 +120,20 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       );
     }
 
-    if (input.status !== undefined) {
-      const settings =
-        await ctx.storage.organizationSettings.get(organizationId);
-      if (
-        rejectsUngatedDeliveryLane(
-          input.status,
-          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
-        )
-      ) {
-        throw new Error(
-          "Delivery lanes are not enabled for this organization — enable " +
-            "them in Settings before creating a task in Approved, Merged, " +
-            "or Post-deploy Validation.",
-        );
-      }
-    }
-
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
     const status = delegatedToSuperAgent
-      ? LANES.queue
+      ? LANES.progress
       : (input.status ?? LANES.intake);
 
     if (input.tagIds?.length) {
-      const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
-      const validTagIds = new Set(orgTags.map((t) => t.id));
-      for (const tagId of input.tagIds) {
-        if (!validTagIds.has(tagId)) {
-          throw new Error(`Tag not found: ${tagId}`);
-        }
-      }
+      await assertValidTagIds(ctx, organizationId, input.tagIds);
+    }
+    if (input.sprintId) {
+      await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
 
     let duplicateCheck: DuplicateOutcome | null = null;
@@ -182,6 +170,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       repo: input.repo ?? null,
+      sprintId: input.sprintId ?? null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });

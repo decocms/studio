@@ -231,7 +231,7 @@ pub(crate) fn config_from_virtual_mcp(
     org_slug: Option<&str>,
 ) -> Option<GitSandboxConfig> {
     let clone_url = metadata
-        .get("githubRepo")?
+        .get("repository")?
         .get("url")?
         .as_str()
         .filter(|url| !url.is_empty())?;
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn maps_repo_and_runtime_the_way_the_dispatch_block_did() {
         let metadata = json!({
-            "githubRepo": { "url": "https://github.com/acme/site.git" },
+            "repository": { "url": "https://github.com/acme/site.git" },
             "runtime": { "selected": "pnpm", "path": "/usr/local/bin/pnpm" },
         });
         let cfg = config_from_virtual_mcp("vm-1", Some("feature"), &metadata, Some("acme"))
@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn defaults_missing_empty_and_protected_branches_to_staging() {
-        let metadata = json!({ "githubRepo": { "url": "https://github.com/acme/site.git" } });
+        let metadata = json!({ "repository": { "url": "https://github.com/acme/site.git" } });
         // The never-on-main rule: a protected branch is normalized away at
         // resolution, so a sandbox on `main` is impossible by construction —
         // including for a thread that PERSISTED `main` before the rule.
@@ -700,8 +700,8 @@ mod tests {
         // The plain-directory case: nothing to clone, so nothing to provision.
         for metadata in [
             json!({}),
-            json!({ "githubRepo": {} }),
-            json!({ "githubRepo": { "url": "" } }),
+            json!({ "repository": {} }),
+            json!({ "repository": { "url": "" } }),
             Value::Null,
         ] {
             assert!(
@@ -719,7 +719,7 @@ mod tests {
         let mut entity = json!({
             "id": "vm-1",
             "metadata": {
-                "githubRepo": { "url": "https://github.com/acme/site" },
+                "repository": { "url": "https://github.com/acme/site" },
                 "sandboxMap": {
                     "user-1": { "main": { "agent-sandbox": { "sandboxHandle": "cloud-1" } } }
                 }
@@ -739,7 +739,7 @@ mod tests {
         assert_eq!(branch["agent-sandbox"]["sandboxHandle"], "cloud-1");
         // Unrelated metadata survives — this is a merge, not a replacement.
         assert_eq!(
-            entity["metadata"]["githubRepo"]["url"],
+            entity["metadata"]["repository"]["url"],
             "https://github.com/acme/site"
         );
     }
@@ -1014,7 +1014,7 @@ mod tests {
     #[test]
     fn unknown_package_manager_leaves_the_runtime_unset() {
         let metadata = json!({
-            "githubRepo": { "url": "https://github.com/acme/site.git" },
+            "repository": { "url": "https://github.com/acme/site.git" },
             "runtime": { "selected": "cargo" },
         });
         let cfg = config_from_virtual_mcp("vm-1", None, &metadata, Some("acme")).unwrap();

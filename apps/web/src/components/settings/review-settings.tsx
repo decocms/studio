@@ -10,8 +10,11 @@ import {
   FileSearch02,
   GitBranch01,
   GitMerge,
-  Rocket01,
+  Microphone01,
+  LayoutAlt01,
+  Pilcrow01,
   SearchLg,
+  Stars02,
   Terminal,
   UserSquare,
 } from "@untitledui/icons";
@@ -25,8 +28,11 @@ import {
   useCodingAgentExcludedMcps,
   useOrgFlag,
   useSetCodingAgentExcludedMcps,
+  useSetNewBlocksEditor,
   useSetOrgFlag,
 } from "@/hooks/use-organization-settings";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
+import { track } from "@/lib/posthog-client";
 import { useConnections, useProjectContext, WellKnownOrgMCPId } from "@/sdk";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Suspense, useState } from "react";
@@ -37,7 +43,8 @@ import type { ReactNode } from "react";
 
 /**
  * Org-level review settings: which automated reviewers run on a task's PR once
- * it's In Review, and whether an all-approved PR is merged automatically.
+ * it's In Review, and whether a card that reaches Ready for Deployment is
+ * merged automatically.
  */
 export function ReviewSettings() {
   const t = useT();
@@ -66,12 +73,6 @@ export function ReviewSettings() {
           descriptionKey="settings.review.autoMergeDescription"
         />
         <AutoResolveConflictsToggle />
-        <FlagToggle
-          flag="delivery_lanes_enabled"
-          icon={<Rocket01 size={16} />}
-          titleKey="settings.review.deliveryLanesTitle"
-          descriptionKey="settings.review.deliveryLanesDescription"
-        />
         <FlagToggle
           flag="auto_assign_report_tasks_to_super_agent"
           icon={<UserSquare size={16} />}
@@ -392,6 +393,102 @@ export function CodeAgentsSettings() {
           icon={<Terminal size={16} />}
           titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
           descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/** Where every chat runs. Its own section: it covers all chats, not Code Agents. */
+export function ChatRuntimeSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="chat_harness_sandbox_only"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
+          descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+export function VoiceModeSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.voice.title")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="voice_mode"
+          icon={<Microphone01 size={16} />}
+          titleKey="settings.voice.title"
+          descriptionKey="settings.voice.description"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * What the blog is, for this org: whether writers reach for the built-in post
+ * blocks or only the site's own, and whether the agentic half exists at all.
+ *
+ * One section rather than two. They are both answers to "how does this org
+ * blog", and a heading per toggle makes the page read like a changelog.
+ */
+export function BlogSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.blog.sectionTitle")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="blog_ai_enabled"
+          icon={<Stars02 size={16} />}
+          titleKey="settings.blog.aiTitle"
+          descriptionKey="settings.blog.aiDescription"
+        />
+        <FlagToggle
+          flag="hide_default_blog_blocks"
+          icon={<Pilcrow01 size={16} />}
+          titleKey="settings.blogBlocks.title"
+          descriptionKey="settings.blogBlocks.description"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Which blocks editor the org's members get. Not a `FlagToggle`: any member may
+ * switch it (ORGANIZATION_BLOCKS_EDITOR_SET), not only org:manage holders.
+ */
+export function BlocksEditorSettings() {
+  const t = useT();
+  const enabled = useNewBlocksEditor();
+  const setEnabled = useSetNewBlocksEditor();
+  return (
+    <SettingsSection title={t("sidebar.projectNav.siteEditor")}>
+      <SettingsCard>
+        <SettingsCardItem
+          icon={<LayoutAlt01 size={16} />}
+          title={t("settings.blocksEditor.title")}
+          description={t("settings.blocksEditor.description")}
+          action={
+            <Switch
+              checked={enabled}
+              disabled={setEnabled.isPending}
+              aria-label={t("settings.blocksEditor.title")}
+              onCheckedChange={(next) => {
+                track("preferences_blocks_editor_toggled", { enabled: next });
+                setEnabled.mutate(next, {
+                  onError: () => toast.error(t("settings.review.updateError")),
+                });
+              }}
+            />
+          }
         />
       </SettingsCard>
     </SettingsSection>

@@ -1,10 +1,12 @@
-/** A task's comment threads, plus the mutations that post, resolve and delete
- *  them. Comments come back flat and are nested here — a reply's `parentId` is
- *  always a thread root, so the tree is one level deep. */
+/** A task's comment threads, plus the mutations that post, edit, resolve and
+ *  delete them. Comments come back flat and are nested here — a reply's
+ *  `parentId` is always a thread root, so the tree is one level deep. */
 
 import { useProjectContext } from "@/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { KEYS } from "@/lib/query-keys";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 
@@ -25,6 +27,27 @@ export function nest(comments: TaskBoardComment[]): TaskBoardCommentThread[] {
     if (comment.parentId) byId.get(comment.parentId)?.replies.push(comment);
   }
   return threads;
+}
+
+/** The threads a person reads by default: human-facing roots, without their
+ *  internal replies. The rest is agent handoff, shown behind the scenes. */
+export function humanFacing(
+  threads: TaskBoardCommentThread[],
+): TaskBoardCommentThread[] {
+  return threads
+    .filter((thread) => thread.audience === "human")
+    .map((thread) => ({
+      ...thread,
+      replies: thread.replies.filter((reply) => reply.audience === "human"),
+    }));
+}
+
+/** Whether the task feed shows agent handoff. One setting for every task. */
+export function useBehindTheScenes() {
+  return useLocalStorage<boolean>(
+    LOCALSTORAGE_KEYS.taskFeedBehindTheScenes(),
+    false,
+  );
 }
 
 export function useTaskBoardComments(itemId: string | undefined) {
@@ -57,6 +80,12 @@ export function useTaskBoardComments(itemId: string | undefined) {
     onSuccess: invalidate,
   });
 
+  const edit = useMutation({
+    mutationFn: (input: { id: string; body: string }) =>
+      studio.call("TASK_BOARD_COMMENT_UPDATE", input),
+    onSuccess: invalidate,
+  });
+
   const setResolved = useMutation({
     mutationFn: (input: { id: string; resolved: boolean }) =>
       studio.call("TASK_BOARD_COMMENT_UPDATE", input),
@@ -73,6 +102,7 @@ export function useTaskBoardComments(itemId: string | undefined) {
     threads: query.data ?? [],
     isLoading: query.isPending,
     post,
+    edit,
     setResolved,
     remove,
   };

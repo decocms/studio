@@ -42,4 +42,4 @@ export * from "./capabilities";
  * into `github/`. GitHub-only underneath, by construction: a binding written
  * before repositories existed could only ever have been a github.com repo.
  */
-export { findRepositoryForLegacyBinding } from "./github/legacy-connection";
+export { findRepositoryForBinding } from "./repository-binding";

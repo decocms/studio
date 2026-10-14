@@ -4,6 +4,11 @@
  * Gets a single automation by ID, including its full configuration and triggers.
  */
 
+import {
+  BoardTransitionFromSchema,
+  triggerFrom,
+} from "../../automations/board-column-transition";
+import { AutomationTriggerTypeSchema } from "./trigger-schema";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -39,13 +44,15 @@ export const AUTOMATION_GET = defineTool({
         triggers: z.array(
           z.object({
             id: z.string(),
-            type: z.enum(["cron", "event", "webhook"]),
+            type: AutomationTriggerTypeSchema,
             cron_expression: z.string().nullable(),
             connection_id: z.string().nullable(),
             event_type: z.string().nullable(),
             params: z.unknown().nullable(),
             last_run_at: z.string().nullable(),
             api_key_id: z.string().nullable(),
+            column_key: z.string().nullable(),
+            from: BoardTransitionFromSchema.nullable(),
             created_at: z.string(),
           }),
         ),
@@ -91,6 +98,8 @@ export const AUTOMATION_GET = defineTool({
           params: t.params ? JSON.parse(t.params) : null,
           last_run_at: t.last_run_at,
           api_key_id: t.api_key_id,
+          column_key: t.column_key,
+          from: t.type === "board_column_transition" ? triggerFrom(t) : null,
           created_at: t.created_at,
         })),
       },

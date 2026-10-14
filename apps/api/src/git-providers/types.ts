@@ -81,9 +81,27 @@ export interface ListReposOptions {
   perPage?: number;
 }
 
+export interface CreateFromTemplateParams {
+  /** A public template repository, as `owner` and `name`. */
+  template: { owner: string; name: string };
+  /** The account (user or organization) the new repository belongs to. */
+  owner: string;
+  name: string;
+  private: boolean;
+}
+
 export interface GitProviderClient {
   readonly kind: GitProviderKind;
   readonly host: string;
+
+  /**
+   * Generate a new repository from a template. Only providers with template
+   * repositories implement it. Fails when `owner/name` already exists: adopting
+   * an existing repository would reach code nobody chose to connect.
+   */
+  createRepoFromTemplate?(
+    params: CreateFromTemplateParams,
+  ): Promise<RepoSummary>;
 
   /**
    * A token that can read and push `repo`. Repo-scoped where the provider

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseWebhookTransition, transitionsFromChangelog } from "./trigger";
+import { parseWebhookTransition } from "./trigger";
 
 describe("parseWebhookTransition", () => {
   const updated = (items: Array<{ field: string; toString?: string }>) => ({
@@ -57,56 +57,5 @@ describe("parseWebhookTransition", () => {
     ]) {
       expect(parseWebhookTransition(bad)).toBeNull();
     }
-  });
-});
-
-describe("transitionsFromChangelog", () => {
-  const issue = { id: "10001", key: "EX-7" };
-  const since = new Date("2026-09-02T10:00:00Z");
-
-  it("keeps only status changes inside the window, oldest first", () => {
-    const out = transitionsFromChangelog(
-      issue,
-      [
-        {
-          id: "3",
-          created: "2026-09-02T10:20:00Z",
-          items: [{ field: "status", toString: "Done" }],
-        },
-        {
-          id: "1",
-          created: "2026-09-02T09:00:00Z",
-          items: [{ field: "status", toString: "Doing" }],
-        },
-        {
-          id: "2",
-          created: "2026-09-02T10:10:00Z",
-          items: [{ field: "priority", toString: "High" }],
-        },
-      ],
-      since,
-    );
-    expect(out.map((t) => t.changelogId)).toEqual(["3"]);
-    expect(out[0]?.toStatus).toBe("Done");
-  });
-
-  it("yields the same shape the webhook does, so both feed one fence", () => {
-    const [t] = transitionsFromChangelog(
-      issue,
-      [
-        {
-          id: "9",
-          created: "2026-09-02T10:01:00Z",
-          items: [{ field: "status", toString: "Doing" }],
-        },
-      ],
-      since,
-    );
-    expect(t).toEqual({
-      issueId: "10001",
-      issueKey: "EX-7",
-      toStatus: "Doing",
-      changelogId: "9",
-    });
   });
 });

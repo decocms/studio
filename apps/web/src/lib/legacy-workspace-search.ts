@@ -23,22 +23,35 @@ export const siteEditorContentSearchShape = contentSearchParams;
 /** Task board view/filter state that has to survive legacy workspace hops. */
 export const taskBoardSearchShape = {
   view: z.string().optional(),
+  group: z.string().optional(),
+  subgroup: z.string().optional(),
+  sort: z.string().optional(),
+  dir: z.string().optional(),
   q: z.string().optional(),
   assignee: z.string().optional(),
   priority: z.string().optional(),
   due: z.string().optional(),
   tags: z.string().optional(),
   repo: z.string().optional(),
+  sprint: z.string().optional(),
   /** Another tenant's board, shown WITHOUT leaving this org. Admin-org only;
    *  ignored when the caller cannot read it. See `board-org.tsx`. */
   boardOrg: z.string().optional(),
 };
 
-/** Library-owned browse, preview, and catalog state. */
+/** Library-owned browse, preview, and catalog state. `layout` and `sort` are
+ *  in the URL with the rest so a link carries the listing someone is looking
+ *  at, not just the folder it is in. Both `.catch()` to their default: a stale
+ *  link with a retired value opens the Library, never a blank route. */
 export const librarySearchShape = {
   fileView: z.enum(["all", "documents", "media"]).catch("all").optional(),
+  modified: z.enum(["any", "today", "week", "month"]).catch("any").optional(),
+  layout: z.enum(["list", "grid"]).catch("list").optional(),
+  sort: z.enum(["name", "updated", "size"]).catch("name").optional(),
   path: z.string().optional(),
   preview: z.string().optional(),
+  /** The preview fills the main panel instead of sitting beside the list. */
+  expanded: z.coerce.boolean().optional().catch(undefined),
   skill: z.string().optional(),
   brand: z.string().optional(),
 };
@@ -69,6 +82,10 @@ export const legacyWorkspaceCompatibilitySearchShape = {
   ...legacyAgentViewSearchShape,
   /** A retired board link carried the selected card in search. */
   task: z.string().optional(),
+  /** The flat shape's project pointer (`lib/flat-projects.ts`). On the shared
+   *  payload rather than its own route: it has to survive the workspace's
+   *  navigations, and one more route breaks search inference. */
+  project: z.string().optional(),
   ...taskBoardSearchShape,
   /** `path` and `preview` already come from the agent-view payload above. */
   skill: librarySearchShape.skill,

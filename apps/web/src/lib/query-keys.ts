@@ -198,6 +198,10 @@ export const KEYS = {
   // e.g. after an MCP connection re-authenticates.
   mcpClientPrefix: () => ["mcp", "client"] as const,
 
+  // The user's recent threads on one agent, for resolving its entry thread.
+  agentEntryThreads: (orgId: string, userId: string, virtualMcpId: string) =>
+    ["agent-entry-threads", orgId, userId, virtualMcpId] as const,
+
   // Most recent thread per agent.
   virtualMcpLastUsed: (orgId: string, ids: string[]) =>
     ["virtual-mcp", "last-used", orgId, ids] as const,
@@ -245,23 +249,6 @@ export const KEYS = {
     repo: string,
   ) => ["github-open-prs", orgSlug, connectionId, owner, repo] as const,
 
-  /** One CI run's report, loaded when a Checks row is expanded. */
-  githubCheckRun: (
-    orgSlug: string,
-    connectionId: string | null | undefined,
-    owner: string,
-    repo: string,
-    checkRunId: string | null,
-  ) =>
-    [
-      "github-check-run",
-      orgSlug,
-      connectionId,
-      owner,
-      repo,
-      checkRunId,
-    ] as const,
-
   githubBranchSearch: (
     orgId: string,
     orgSlug: string,
@@ -294,6 +281,10 @@ export const KEYS = {
 
   userModelPreferences: (organizationId: string) =>
     ["user-model-preferences", organizationId] as const,
+
+  /** The org's folders plus the caller's pins and hides — `SIDEBAR_GET`. */
+  projectSidebar: (organizationId: string) =>
+    ["project-sidebar", organizationId] as const,
 
   // API keys (scoped by organization; the LIST tool filters by org server-side)
   apiKeysList: (organizationId: string) =>
@@ -475,6 +466,10 @@ export const KEYS = {
   // Automations (scoped by organization, optionally by project)
   taskBoardPrompts: (organizationId: string) =>
     ["task-board-prompts", organizationId] as const,
+  taskBoardColumnAutomations: (organizationId: string) =>
+    ["task-board-column-automations", organizationId] as const,
+  taskBoardSprints: (organizationId: string) =>
+    ["task-board-sprints", organizationId] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>
@@ -531,11 +526,17 @@ export const KEYS = {
     ["org-fs", orgId, volume] as const,
   orgFsList: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "list", path] as const,
-  orgFsUsage: (orgId: string, volume: string) =>
-    ["org-fs", orgId, volume, "usage"] as const,
+  /** Under the volume's prefix, so every write to it refreshes the list. */
+  orgFsVolumeFiles: (orgId: string, volume: string) =>
+    ["org-fs", orgId, volume, "files"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
+  orgFsText: (orgId: string, volume: string, path: string, marker: string) =>
+    ["org-fs", orgId, volume, "text", path, marker] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+  /** Keyed on the folder too, so a renamed project scaffolds its new one. */
+  projectFolderEnsure: (orgId: string, projectId: string, dir: string) =>
+    ["project-folder-ensure", orgId, projectId, dir] as const,
 
   // The signed-in user's stored profile pictures (instance-level, org-free).
   userAvatars: () => ["user-avatars"] as const,
@@ -573,7 +574,8 @@ export const KEYS = {
 
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
-  jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
+  jiraBoards: (orgId: string, query: string) =>
+    ["jira-boards", orgId, query] as const,
   jiraBoardColumns: (orgId: string, boardId: string | null) =>
     ["jira-board-columns", orgId, boardId] as const,
   jiraAutomations: (orgId: string) => ["jira-automations", orgId] as const,
@@ -679,10 +681,6 @@ export const KEYS = {
   deploymentAdminOrgProjects: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "projects"] as const,
 
-  // Brand context (scoped by organization)
-  defaultBrand: (organizationId: string) =>
-    ["brand-context", organizationId, "default"] as const,
-
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
   decoApps: () => ["deco-apps"] as const,
@@ -760,17 +758,9 @@ export const KEYS = {
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
-  // Branch drift + head-commit age for the CMS staleness check.
-  decofileStatus: (cacheKey: string) => ["decofile-status", cacheKey] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
-  // The repo's committed `deno.json`, read for its pinned deco-apps version.
-  denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["deno-json", orgSlug, virtualMcpId, branch] as const,
-  // The repo's committed `package.json`, read for its pinned blog-app version.
-  packageJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["package-json", orgSlug, virtualMcpId, branch] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions

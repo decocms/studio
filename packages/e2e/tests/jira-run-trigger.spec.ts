@@ -1,8 +1,8 @@
 /**
  * The Jira integration as a run trigger, end to end over HTTP.
  *
- * An issue entering a Jira status that has a rule starts an agent run on that
- * issue. Studio keeps no copy of the issue: the run hangs off a hidden anchor
+ * An issue that enters a Jira status with a rule, and stays there, starts an
+ * agent run on that issue. Studio keeps no copy of the issue: the run hangs off a hidden anchor
  * item, and the agent works the issue through the Jira tools its run is served.
  *
  * The tenant's Jira is a local stub (`fixtures/jira-stub.ts`), pointed at by
@@ -38,6 +38,10 @@ interface Integration {
   enabled: boolean;
 }
 
+/** Longer than the server's `JIRA_SETTLE_SECONDS` plus its clock-skew margin:
+ *  by then any rule the moves could start has started. */
+const SETTLED_MS = 10_000;
+
 /** A `jira:issue_updated` payload, as Jira sends one. */
 function statusChange(changelogId: string, toStatus = AUTOMATED_STATUS) {
   return {
@@ -51,6 +55,20 @@ function statusChange(changelogId: string, toStatus = AUTOMATED_STATUS) {
       ],
     },
   };
+}
+
+/** Jira records a move before it sends the webhook; the stub has to know it,
+ *  because the trigger reads the issue's history back once the card settles. */
+async function moveInJira(
+  api: APIRequestContext,
+  changelogId: string,
+  to: string,
+  at = Date.now(),
+): Promise<void> {
+  const res = await api.post(`${JIRA_STUB_ORIGIN}/__move`, {
+    data: { changelogId, to, at },
+  });
+  expect(res.ok()).toBe(true);
 }
 
 async function connectIntegration(
@@ -129,6 +147,7 @@ test.describe("Jira run trigger", () => {
       callSelfMcpTool<{
         automations: Array<{
           jiraStatus: string;
+          from: { kind: string; statuses?: string[] };
           prompt: string | null;
           continuePr: boolean;
         }>;
@@ -139,7 +158,12 @@ test.describe("Jira run trigger", () => {
       jiraStatus: AUTOMATED_STATUS,
     });
     expect((await list()).automations).toEqual([
-      { jiraStatus: AUTOMATED_STATUS, prompt: null, continuePr: false },
+      {
+        jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "any" },
+        prompt: null,
+        continuePr: false,
+      },
     ]);
 
     await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
@@ -150,6 +174,7 @@ test.describe("Jira run trigger", () => {
     expect((await list()).automations).toEqual([
       {
         jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "any" },
         prompt: "Implement it and open a pull request.",
         continuePr: true,
       },
@@ -160,17 +185,95 @@ test.describe("Jira run trigger", () => {
       continuePr: false,
     });
     expect((await list()).automations).toEqual([
-      { jiraStatus: AUTOMATED_STATUS, prompt: null, continuePr: false },
+      {
+        jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "any" },
+        prompt: null,
+        continuePr: false,
+      },
     ]);
 
-    const { removed } = await callSelfMcpTool<{ removed: boolean }>(
-      api,
-      orgSlug,
-      "JIRA_AUTOMATION_DELETE",
-      { jiraStatus: AUTOMATED_STATUS },
-    );
-    expect(removed).toBe(true);
+    // A second rule on the same status, for cards sent back to it.
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      from: { kind: "later" },
+      prompt: "Read why it came back and fix it.",
+      continuePr: true,
+    });
+    expect((await list()).automations.map((a) => a.from)).toEqual([
+      { kind: "any" },
+      { kind: "later" },
+    ]);
+
+    // Two lists on one status may not both claim the same origin.
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      from: { kind: "statuses", statuses: ["Teste"] },
+    });
+    await expect(
+      callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+        jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "statuses", statuses: ["Code Review", "teste"] },
+      }),
+    ).rejects.toThrow(/already answers moves from "teste"/);
+
+    for (const from of [
+      { kind: "any" },
+      { kind: "later" },
+      { kind: "statuses", statuses: ["Teste"] },
+    ]) {
+      const { removed } = await callSelfMcpTool<{ removed: boolean }>(
+        api,
+        orgSlug,
+        "JIRA_AUTOMATION_DELETE",
+        { jiraStatus: AUTOMATED_STATUS, from },
+      );
+      expect(removed).toBe(true);
+    }
     expect((await list()).automations).toEqual([]);
+  });
+
+  test("a rule answers only the origin it names", async ({ authedPage }) => {
+    // Two settle windows, each waited out.
+    test.setTimeout(90_000);
+    const { page, orgSlug } = authedPage;
+    const api = page.context().request;
+    const orgId = await orgIdOf(orgSlug);
+
+    const integration = await connectIntegration(api, orgSlug);
+    // Only cards arriving from an earlier column: a first implementation.
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      from: { kind: "earlier" },
+      prompt: "Implement it and open a pull request.",
+    });
+    const hook = (payload: unknown) =>
+      api.post(`/api/_jira/webhook/${integration.webhookSecret}`, {
+        data: payload,
+      });
+    const claimed = async () =>
+      (
+        await db.query(
+          "select changelog_id from jira_trigger_claims where organization_id = $1 order by changelog_id",
+          [orgId],
+        )
+      ).rows.map((r) => r.changelog_id);
+
+    expect((await api.post(`${JIRA_STUB_ORIGIN}/__reset`)).ok()).toBe(true);
+    // Sent back from review, which is right of it on the board: not this rule.
+    await moveInJira(api, "9301", "Code Review", Date.now() - 10 * 60_000);
+    await moveInJira(api, "9302", AUTOMATED_STATUS);
+    expect((await hook(statusChange("9302"))).status()).toBe(202);
+    await page.waitForTimeout(SETTLED_MS);
+    expect(await claimed()).toEqual([]);
+
+    // Out of the backlog, left of it: this rule. The card has to rest there
+    // first, or it merely passed through on its way back.
+    await moveInJira(api, "9303", "Backlog");
+    await page.waitForTimeout(3_000);
+    await moveInJira(api, "9304", AUTOMATED_STATUS);
+    expect((await hook(statusChange("9304"))).status()).toBe(202);
+    await expect.poll(claimed, { timeout: 30_000 }).toEqual(["9304"]);
   });
 
   test("an issue entering an automated status is claimed exactly once", async ({
@@ -191,10 +294,13 @@ test.describe("Jira run trigger", () => {
         data: payload,
       });
 
-    // Answered before the work: Jira times a hook out in seconds.
+    expect((await api.post(`${JIRA_STUB_ORIGIN}/__reset`)).ok()).toBe(true);
+    await moveInJira(api, "9001", AUTOMATED_STATUS);
+    // Answered before the work: Jira times a hook out in seconds. The run
+    // starts once the card has stayed put for the settle window.
     expect((await hook(statusChange("9001"))).status()).toBe(202);
     await expect
-      .poll(async () => (await anchors(db, orgId)).length, { timeout: 20_000 })
+      .poll(async () => (await anchors(db, orgId)).length, { timeout: 30_000 })
       .toBe(1);
 
     // A redelivery of the SAME transition must not buy a second run.
@@ -210,8 +316,9 @@ test.describe("Jira run trigger", () => {
       ).status(),
     ).toBe(202);
     // A status with no rule is uneventful.
+    await moveInJira(api, "9003", "Teste");
     expect((await hook(statusChange("9003", "Teste"))).status()).toBe(202);
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(SETTLED_MS);
 
     const [anchor] = await anchors(db, orgId);
     expect(anchor.title).toBe(`${ISSUE_KEY}: ${ISSUE_SUMMARY}`);
@@ -244,6 +351,47 @@ test.describe("Jira run trigger", () => {
     // dispatch must leave the anchor unowned rather than assigned to an agent
     // that will never run.
     expect(anchor.assignee_id).toBeNull();
+  });
+
+  test("a card dropped in a column and straight back starts nothing", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const api = page.context().request;
+    const orgId = await orgIdOf(orgSlug);
+
+    const integration = await connectIntegration(api, orgSlug);
+    for (const jiraStatus of [AUTOMATED_STATUS, "Code Review"]) {
+      await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+        jiraStatus,
+        prompt: `Work the card in ${jiraStatus}.`,
+      });
+    }
+    const hook = (payload: unknown) =>
+      api.post(`/api/_jira/webhook/${integration.webhookSecret}`, {
+        data: payload,
+      });
+
+    expect((await api.post(`${JIRA_STUB_ORIGIN}/__reset`)).ok()).toBe(true);
+    // The card has long been in the implementing column…
+    await moveInJira(api, "9201", AUTOMATED_STATUS, Date.now() - 10 * 60_000);
+    // …when someone drops it in review by mistake and drags it straight back.
+    await moveInJira(api, "9202", "Code Review");
+    expect((await hook(statusChange("9202", "Code Review"))).status()).toBe(
+      202,
+    );
+    await moveInJira(api, "9203", AUTOMATED_STATUS);
+    expect((await hook(statusChange("9203"))).status()).toBe(202);
+    await page.waitForTimeout(SETTLED_MS);
+
+    // The drop was superseded, and the card went back where it rested: no
+    // run in either column, so nothing superseded the one it was waiting on.
+    const claims = await db.query(
+      "select changelog_id from jira_trigger_claims where organization_id = $1",
+      [orgId],
+    );
+    expect(claims.rows).toEqual([]);
+    expect(await anchors(db, orgId)).toEqual([]);
   });
 
   test("an unknown webhook secret is refused", async ({ authedPage }) => {

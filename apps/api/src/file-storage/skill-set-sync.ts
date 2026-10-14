@@ -14,6 +14,8 @@
  */
 
 import { createHash } from "node:crypto";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import type { Kysely } from "kysely";
 import { retry, RetryError } from "@decocms/shared/std";
@@ -297,10 +299,31 @@ async function fetchRepoFiles(
  */
 export type TarballSource = () => Promise<ReadableStream<Uint8Array> | null>;
 
+/** A local checkout's `paths` subtrees, keyed repo-relative like a tarball's. */
+export async function readLocalFiles(
+  dir: string,
+  paths: RepoSyncSource["paths"],
+): Promise<Map<string, Uint8Array>> {
+  const files = new Map<string, Uint8Array>();
+  for (const { from } of paths) {
+    const root = join(dir, from);
+    for (const rel of await readdir(root, { recursive: true })) {
+      const abs = join(root, rel);
+      if (!(await stat(abs)).isFile()) continue;
+      files.set(
+        from ? `${from}/${rel}` : rel,
+        new Uint8Array(await readFile(abs)),
+      );
+    }
+  }
+  return files;
+}
+
 async function repoFilesFor(
   source: RepoSyncSource,
   opts: { tarball?: TarballSource; authToken?: string },
 ): Promise<Map<string, Uint8Array>> {
+  if (source.dir) return readLocalFiles(source.dir, source.paths);
   if (!opts.tarball) {
     return fetchRepoFiles(source.repo, source.ref, opts.authToken);
   }
@@ -428,6 +451,8 @@ export interface RepoSyncSource {
   repo: string;
   ref: string;
   paths: PublicSkillSetSource["paths"];
+  /** Read this local checkout instead of fetching `repo@ref`. */
+  dir?: string;
 }
 
 /**

@@ -57,6 +57,23 @@ describe("llmapiAdapter.listModels", () => {
     expect(calls).toBe(1);
   });
 
+  test("skips a catalog entry missing an id instead of crashing the whole call", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          data: [{ name: "No id" }, ...MODELS_BODY.data],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const provider = llmapiAdapter.create("secret-key");
+    const models = await provider.listModels();
+
+    expect(models).toHaveLength(1);
+    expect(models[0]?.modelId).toBe("openai/gpt-4");
+  });
+
   test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
     globalThis.fetch = (async (): Promise<Response> => {
       return new Response("not json", { status: 200 });

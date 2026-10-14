@@ -77,7 +77,11 @@ import {
   User01,
   UserPlus01,
   X,
+  Zap,
+  Inbox01,
 } from "@untitledui/icons";
+import { useTaskBoardSprints } from "@/hooks/use-task-board-sprints";
+import { formatSprintDays, sprintLabel } from "./sprint-label";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
@@ -103,7 +107,6 @@ import {
   laneHeader,
   laneVisual,
   STATUS_CONFIG,
-  moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
   isFeedWorthyActivity,
@@ -126,21 +129,17 @@ import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import { usePreviewProbe } from "@/hooks/use-preview-probe";
 import { useTaskBoardActivity } from "@/hooks/use-task-board-activity";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import { useRunReviewer } from "@/hooks/use-run-reviewer";
-import {
-  enabledReviewers,
-  laneCanShip,
-  reviewsSatisfiedForPromotion,
-} from "./review-status";
+import { laneCanShip } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
-import { parseChangeRequestUrl } from "@decocms/shared/git-providers";
+import {
+  changeRequestNumberLabel,
+  parseChangeRequestUrl,
+} from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
 import { entryForFilter, stampableEntries } from "@/lib/project-index";
@@ -154,7 +153,12 @@ import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
 import { CommentThreadCard } from "./task-comments";
-import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+import {
+  humanFacing,
+  type TaskBoardCommentThread,
+  useBehindTheScenes,
+  useTaskBoardComments,
+} from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
 import { TaskConversationFrame } from "./task-conversation-frame";
 import { TaskMessage } from "./task-message";
@@ -190,6 +194,8 @@ type TaskForm = {
   repo: string | null;
   dueDate: Date | null;
   tagIds: string[];
+  /** Create mode only; an existing card's sprint is read live off the item. */
+  sprintId: string | null;
 };
 
 /**
@@ -243,6 +249,36 @@ const EMPTY_PROPERTY = "opacity-50";
  * Hidden entirely when no run recorded usage, so a card that never ran shows
  * nothing rather than a $0.00 we did not measure.
  */
+/** One row of the Sprint property's picker. */
+function SprintOption({
+  icon,
+  label,
+  hint,
+  selected,
+  onSelect,
+}: {
+  icon: ReactNode;
+  label: string;
+  hint?: string | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent"
+      onClick={onSelect}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {hint && (
+        <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
+      )}
+      {selected && <Check size={14} className="shrink-0" />}
+    </button>
+  );
+}
+
 function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
   const summary = summarizeTaskCost(threads);
@@ -387,6 +423,13 @@ interface TaskEditorProps {
    * Project filter's repo, so a card made while the board is narrowed to a
    * project belongs to it). An `owner/name`, matching the {@link repo} field. */
   defaultRepo?: string | null;
+  /** In create mode, the sprint to plan the new task into (the one the board
+   * is showing); null for the backlog. */
+  defaultSprintId?: string | null;
+  /** Edit mode only: move the task to a sprint, or null for the backlog. Its
+   * own write, not part of the autosave: a sprint completed while the card is
+   * open moves it, and a later edit must not move it back. */
+  onSetSprint?: (sprintId: string | null) => void;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -397,6 +440,8 @@ interface TaskEditorProps {
     repo: string | null;
     dueDate: string | null;
     tagIds: string[];
+    /** Create mode only. */
+    sprintId?: string | null;
   }) => void;
   onDelete?: () => void;
   /** Edit mode only: create a copy of this task. */
@@ -432,6 +477,8 @@ function TaskBoardItemEditor({
   item,
   defaultStatus,
   defaultRepo,
+  defaultSprintId,
+  onSetSprint,
   onSubmit,
   onDelete,
   onClone,
@@ -447,7 +494,6 @@ function TaskBoardItemEditor({
   const { agentId } = useParams({ strict: false });
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -474,6 +520,7 @@ function TaskBoardItemEditor({
     repo: item?.repo ?? defaultRepo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
+    sprintId: defaultSprintId ?? null,
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
@@ -507,6 +554,18 @@ function TaskBoardItemEditor({
     return () => observer.disconnect();
   };
   const [dueOpen, setDueOpen] = useState(false);
+  const [sprintOpen, setSprintOpen] = useState(false);
+  const sprints = useTaskBoardSprints();
+  const sprintId = item ? item.sprintId : form.sprintId;
+  const selectedSprint = sprints.find((sprint) => sprint.id === sprintId);
+  const plannableSprints = sprints.filter(
+    (sprint) => sprint.state !== "closed",
+  );
+  const pickSprint = (next: string | null) => {
+    setSprintOpen(false);
+    if (item) onSetSprint?.(next);
+    else patch({ sprintId: next });
+  };
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   /** The linked run being read in the sheet, by id rather than by object: a
@@ -540,6 +599,7 @@ function TaskBoardItemEditor({
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
+      ...(item ? {} : { sprintId: v.sprintId }),
     });
   };
 
@@ -1127,7 +1187,7 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets(deliveryEnabled).map((s) => {
+                  {CANONICAL_COLUMN_KEYS.map((s) => {
                     const { label, visual } = laneHeader(s, t);
                     const Icon = visual.icon;
                     return (
@@ -1422,6 +1482,51 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
 
+              {(sprints.length > 0 || sprintId) && (
+                <Popover open={sprintOpen} onOpenChange={setSprintOpen} modal>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        !sprintId && EMPTY_PROPERTY,
+                      )}
+                    >
+                      <Zap size={16} className="text-muted-foreground" />
+                      <span className="truncate">
+                        {selectedSprint
+                          ? sprintLabel(selectedSprint, t)
+                          : sprintId
+                            ? t("taskBoard.sprints.goneLabel")
+                            : t("taskBoard.sprints.backlog")}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-1">
+                    <SprintOption
+                      icon={
+                        <Inbox01 size={14} className="text-muted-foreground" />
+                      }
+                      label={t("taskBoard.sprints.backlog")}
+                      selected={!sprintId}
+                      onSelect={() => pickSprint(null)}
+                    />
+                    {plannableSprints.map((sprint) => (
+                      <SprintOption
+                        key={sprint.id}
+                        icon={
+                          <Zap size={14} className="text-muted-foreground" />
+                        }
+                        label={sprintLabel(sprint, t)}
+                        hint={formatSprintDays(sprint)}
+                        selected={sprint.id === sprintId}
+                        onSelect={() => pickSprint(sprint.id)}
+                      />
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              )}
+
               <TaskCost threads={item?.threads} />
             </PropertyGroup>
 
@@ -1626,7 +1731,12 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
+    | "onClose"
+    | "defaultStatus"
+    | "defaultRepo"
+    | "defaultSprintId"
+    | "onSubmit"
+    | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -1751,6 +1861,8 @@ function ThreadActivityItem({
         }
         createdAt={thread.createdAt}
         body={message || thread.title || ""}
+        // Only a run waiting on a person shows outside behind the scenes.
+        muted={thread.status !== "requires_action"}
         onOpenThread={onOpen ? () => onOpen(thread) : undefined}
         metadata={
           state && (
@@ -1976,16 +2088,16 @@ function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
 }
 
 /**
- * One PR card: identity + the `#123 ↗` GitHub link, an action row (Edit /
- * preview / ship), and an expandable checks footer that opens each CI check
- * with its GitHub output markdown (fetched for failing runs).
+ * One PR card: identity + the `#123 ↗` link (`!123` on GitLab), an action
+ * row (Edit / preview / ship), and an expandable checks footer that opens each
+ * CI check with its output markdown (fetched for failing runs).
  */
 function PrCard({
   pr,
   routes,
   revalidating,
   previewThread,
-  reviewsReady,
+  readyToShip,
   shipPending,
   resolvePending,
   onShip,
@@ -1998,8 +2110,8 @@ function PrCard({
   /** A live GitHub read is in flight behind the values shown. */
   revalidating: boolean;
   previewThread?: TaskBoardItemThread;
-  /** Task-level: In Review + every enabled reviewer approved. */
-  reviewsReady: boolean;
+  /** Task-level: the card sits in Ready for Deployment. */
+  readyToShip: boolean;
   shipPending: boolean;
   resolvePending: boolean;
   onShip: () => void;
@@ -2008,11 +2120,13 @@ function PrCard({
 }) {
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
+  // Rows linked before urls were canonicalised are all GitHub.
+  const provider = parseChangeRequestUrl(pr.url)?.repo.provider ?? "github";
   const style = prStateStyle(pr, t);
   const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
     pr,
-    reviewsReady,
+    readyToShip,
   );
   const hasActions =
     !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
@@ -2032,7 +2146,7 @@ function PrCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow",
+        "flex flex-col gap-3 rounded-xl border border-border bg-card p-3",
         // Cards are seeded from localStorage, so what's on screen may be a
         // minute (or a day) old. The breathing border says "these numbers are
         // being checked" without blanking the card back to a skeleton.
@@ -2041,7 +2155,7 @@ function PrCard({
     >
       <div className="flex items-center gap-3">
         <GitProviderIcon
-          provider={parseChangeRequestUrl(pr.url)?.repo.provider ?? "github"}
+          provider={provider}
           className="size-4 shrink-0 text-foreground"
         />
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
@@ -2063,7 +2177,7 @@ function PrCard({
           title={pr.url}
           className="group flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
         >
-          #{pr.number}
+          {changeRequestNumberLabel(provider, pr.number)}
           <LinkExternal01
             size={12}
             className="text-muted-foreground/60 group-hover:text-foreground"
@@ -2203,7 +2317,7 @@ function PrCard({
  *  preview) is still loading — the enrichment can take a moment. */
 function PrCardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
       <div className="flex items-center gap-3">
         <Skeleton className="size-4 shrink-0 rounded" />
         <Skeleton className="h-4 min-w-0 flex-1" />
@@ -2238,8 +2352,6 @@ function LinksSection({
     isLoading: prsLoading,
     isFetching: prsFetching,
   } = useTaskBoardItemPrs(item.id);
-  const { data: activity } = useTaskBoardActivity(item.id);
-  const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const comments = useTaskBoardComments(item.id);
@@ -2260,17 +2372,11 @@ function LinksSection({
     return null;
   }
 
-  // Task-level readiness for the manual ship button: a shippable lane + every
-  // enabled reviewer approved. Shown regardless of auto-merge — it's a manual
-  // escape hatch (a human can ship even while auto-merge is pending/blocked on
-  // token verification). The per-card PrCard adds the PR-open + green-checks gate.
-  const reviewsReady =
-    laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(
-      activity ?? [],
-      enabledReviewers(reviewerOn),
-      item.reviewCycleStartedAt,
-    );
+  // Task-level readiness for the manual ship button: the card reached Ready
+  // for Deployment. Shown regardless of auto-merge, so a person can ship while
+  // auto-merge is pending or blocked. The per-card PrCard adds the PR-open +
+  // green-checks gate.
+  const readyToShip = laneCanShip(item.status);
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>
@@ -2310,7 +2416,7 @@ function LinksSection({
               routes={item.previewRoutes ?? []}
               revalidating={prsFetching}
               previewThread={previewThread}
-              reviewsReady={reviewsReady}
+              readyToShip={readyToShip}
               shipPending={promote.isPending}
               resolvePending={resolveConflict.isPending}
               onShip={onShip}
@@ -2395,6 +2501,8 @@ function RunReviewerButton({ item }: { item: TaskBoardItem }) {
 /**
  * Activity feed: the task's change timeline (created, moved, (re)assigned), its
  * linked agent sessions and its comment threads, interleaved oldest-first.
+ * Agent sessions and internal comments are handoff between agents, shown only
+ * behind the scenes.
  * Consecutive timeline events render as one run joined by a rail; a thread or a
  * comment renders as a post. The conversation frame owns the composer.
  */
@@ -2419,6 +2527,21 @@ function ActivitySection({
     image: session?.user?.image,
   };
   const comments = useTaskBoardComments(item.id);
+  const [behindTheScenes, setBehindTheScenes] = useBehindTheScenes();
+  const humanThreads = humanFacing(comments.threads);
+  const liveRuns = item.threads.filter(isLiveAttempt);
+  // A run waiting on a person is talking to them; any other run is the agents'
+  // own work, like their handoff comments.
+  const waitingRuns = liveRuns.filter(
+    (thread) => thread.status === "requires_action",
+  );
+  const messageCount = (threads: TaskBoardCommentThread[]) =>
+    threads.reduce((sum, thread) => sum + 1 + thread.replies.length, 0);
+  const behindTheScenesCount =
+    messageCount(comments.threads) -
+    messageCount(humanThreads) +
+    liveRuns.length -
+    waitingRuns.length;
 
   /** A comment's author, resolved from the org's members; falls back to the id
    *  so a comment from a since-removed member still renders. The Super Agent
@@ -2456,10 +2579,12 @@ function ActivitySection({
       image: member?.user?.image,
     };
   };
-  const threads: TaskComment[] = comments.threads.map((thread) => ({
+  const shownThreads = behindTheScenes ? comments.threads : humanThreads;
+  const threads: TaskComment[] = shownThreads.map((thread) => ({
     id: thread.id,
     author: authorOf(thread.authorId, thread.threadId),
     onOpenThread: openSourceRun(thread.threadId),
+    internal: thread.audience === "internal",
     body: thread.body,
     createdAt: thread.createdAt,
     resolved: thread.resolved,
@@ -2467,6 +2592,7 @@ function ActivitySection({
       id: reply.id,
       author: authorOf(reply.authorId, reply.threadId),
       onOpenThread: openSourceRun(reply.threadId),
+      internal: reply.audience === "internal",
       body: reply.body,
       createdAt: reply.createdAt,
       replies: [],
@@ -2485,7 +2611,7 @@ function ActivitySection({
         activity: a,
       }),
     ),
-    ...item.threads.filter(isLiveAttempt).map(
+    ...(behindTheScenes ? liveRuns : waitingRuns).map(
       (thread): Ev => ({
         kind: "thread",
         at: new Date(thread.createdAt).getTime(),
@@ -2540,6 +2666,21 @@ function ActivitySection({
           {t("taskBoard.conversation.replies")}
         </h2>
         <div className="flex items-center gap-1">
+          {(behindTheScenes || behindTheScenesCount > 0) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setBehindTheScenes(!behindTheScenes)}
+              className="h-7 px-2 text-sm font-normal text-muted-foreground"
+            >
+              {behindTheScenes
+                ? t("taskBoard.conversation.hideBehindTheScenes")
+                : t("taskBoard.conversation.showBehindTheScenes", {
+                    count: behindTheScenesCount,
+                  })}
+            </Button>
+          )}
           <RunReviewerButton item={item} />
           <SubscribeToggle itemId={item.id} members={members} />
         </div>
@@ -2566,6 +2707,19 @@ function ActivitySection({
                   key={`comment-${block.comment.id}`}
                   thread={block.comment}
                   me={me}
+                  onEdit={async (commentId, body) => {
+                    try {
+                      await comments.edit.mutateAsync({ id: commentId, body });
+                      return true;
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("taskBoard.taskDialog.commentEditFailed"),
+                      );
+                      return false;
+                    }
+                  }}
                   onDelete={(commentId) => comments.remove.mutate(commentId)}
                 />
               );
@@ -2755,6 +2909,20 @@ function describeActivity(
       />
     );
   };
+  const sprintChip = (ref: unknown) => {
+    const name =
+      ref && typeof ref === "object" && "name" in ref
+        ? (ref as { name?: unknown }).name
+        : null;
+    return (
+      <ValueChip
+        icon={<Zap size={14} className="text-muted-foreground" />}
+        label={
+          typeof name === "string" ? name : t("taskBoard.sprints.goneLabel")
+        }
+      />
+    );
+  };
   const reviewerChip = (reviewer: unknown) => (
     <ValueChip
       icon={<ReviewerIcon size={14} />}
@@ -2774,6 +2942,10 @@ function describeActivity(
         ? t("taskBoard.taskDialog.activityDuplicateReportedTitled", { title })
         : t("taskBoard.taskDialog.activityDuplicateReported");
     }
+    case "finding_resolved":
+      return t("taskBoard.taskDialog.activityFindingResolved", {
+        url: String(d.url ?? ""),
+      });
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
       // Stored as a stringified Error, wire prefix and all.
@@ -2843,6 +3015,19 @@ function describeActivity(
       });
     case "description_changed":
       return t("taskBoard.taskDialog.activityDescriptionUpdated");
+    // `from`/`to` are `{ id, name }`, or null for the backlog.
+    case "sprint_changed":
+      if (d.to == null)
+        return interleaveChips(
+          t("taskBoard.sprints.activityToBacklog", { from }),
+          { from: sprintChip(d.from) },
+        );
+      return interleaveChips(
+        d.from == null
+          ? t("taskBoard.sprints.activitySet", { to })
+          : t("taskBoard.sprints.activityFromTo", { from, to }),
+        { from: sprintChip(d.from), to: sprintChip(d.to) },
+      );
     case "tags_changed":
       if (!Array.isArray(d.to) || d.to.length === 0)
         return t("taskBoard.taskDialog.activityTagsCleared");
@@ -2929,6 +3114,15 @@ function isMachineActor(actorId: string | null): boolean {
   return !actorId || actorId === SUPER_AGENT_ASSIGNEE_ID;
 }
 
+/** The reports engine also logs with a null actor: a passing check's note and
+ *  the move to done it caused are the Deco Score's, not the Super Agent's. */
+function isDecoScoreEntry(a: TaskBoardActivity): boolean {
+  return (
+    a.action === "finding_resolved" ||
+    (a.action === "status_changed" && a.data.reason === "finding_resolved")
+  );
+}
+
 /** A run of consecutive timeline events, avatars joined by a vertical rail. */
 function TimelineBlock({
   items,
@@ -2940,17 +3134,28 @@ function TimelineBlock({
   const t = useT();
   const [expanded, setExpanded] = useState(false);
 
-  const actorName = (actorId: string | null) => {
-    if (isMachineActor(actorId)) {
+  const actorName = (a: TaskBoardActivity) => {
+    if (isDecoScoreEntry(a)) {
+      return t("taskBoard.taskDialog.createdBySystemLabel");
+    }
+    if (isMachineActor(a.actorId)) {
       return t("taskBoard.taskDialog.superAgentLabel");
     }
     return (
-      memberByUserId.get(actorId!)?.user?.name ??
+      memberByUserId.get(a.actorId!)?.user?.name ??
       t("taskBoard.taskDialog.someoneLabel")
     );
   };
 
-  const actorAvatar = (actorId: string | null): ReactNode => {
+  const actorAvatar = (a: TaskBoardActivity): ReactNode => {
+    const actorId = a.actorId;
+    if (isDecoScoreEntry(a)) {
+      return (
+        <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
+          <Lightning01 size={14} className="text-muted-foreground" />
+        </span>
+      );
+    }
     if (isMachineActor(actorId)) {
       return (
         <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
@@ -2984,9 +3189,9 @@ function TimelineBlock({
       )}
       {visible.map((a) => (
         <div key={a.id} className="relative flex items-center gap-2.5">
-          {actorAvatar(a.actorId)}
+          {actorAvatar(a)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
+            {actorName(a)} {describeActivity(a, t, memberByUserId)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}

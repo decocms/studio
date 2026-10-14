@@ -1,17 +1,17 @@
-import type { GithubRepo } from "@/sdk";
+import type { RepositoryBinding } from "@/sdk";
 
 /**
  * Pure decision logic for mirroring a GitHub repo onto the Report Agent's
- * `metadata.githubRepo` + connection aggregations. The I/O (MCP calls,
+ * `metadata.repository` + connection aggregations. The I/O (MCP calls,
  * provisioning, rollback) lives in the mutation; this module owns the branches
  * that decide *what* to write, so they can be unit-tested without a live agent.
  */
 
 /** Split `owner/name` into its parts. `null` when the shape is invalid. */
 export function parseRepoFullName(
-  githubRepo: string,
+  repository: string,
 ): { owner: string; name: string } | null {
-  const [owner, name] = githubRepo.split("/");
+  const [owner, name] = repository.split("/");
   if (!owner || !name) {
     return null;
   }
@@ -25,7 +25,7 @@ export function parseRepoFullName(
  * reusable connection's id + installationId, or `null` to provision a fresh one.
  */
 export function planRepoReuse(params: {
-  existingRepo?: GithubRepo | null;
+  existingRepo?: RepositoryBinding | null;
   owner: string;
   name: string;
 }): { connectionId: string; installationId?: number } | null {
@@ -58,7 +58,7 @@ export function planRepoReuse(params: {
 export function planAgentConnections<
   T extends { connection_id: string },
 >(params: {
-  existingRepo?: GithubRepo | null;
+  existingRepo?: RepositoryBinding | null;
   existingConnections: T[];
   repoConnectionId: string;
 }): {

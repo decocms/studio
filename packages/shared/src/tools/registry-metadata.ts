@@ -43,7 +43,8 @@ export type ToolCategory =
   | "Search"
   | "Task Board"
   | "Jira"
-  | "Blog";
+  | "Blog"
+  | "Chat";
 
 /**
  * All tool names - keep in sync with CORE_TOOLS in apps/api/src/tools/index.ts
@@ -57,21 +58,14 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
+  "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
-  "BRAND_CONTEXT_LIST",
-  "BRAND_CONTEXT_GET",
-  "BRAND_CONTEXT_CREATE",
-  "BRAND_CONTEXT_UPDATE",
-  "BRAND_CONTEXT_DELETE",
-  "BRAND_CONTEXT_EXTRACT",
   "BLOG_BRAND_EXTRACT",
-  "BLOG_PILLAR_SUGGEST",
-  "BLOG_THEME_SUGGEST",
+  "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
   "BLOG_LINK_SUGGEST",
-  "BRAND_GET",
-  "BRAND_LIST",
+  "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -99,6 +93,8 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "CONNECTION_TOOLS_SEARCH",
+  "CONNECTION_TOOL_CALL",
   "REPORTS_SETUP",
   "REPORTS_RUN",
   "REPORTS_BIND",
@@ -127,6 +123,10 @@ const ALL_TOOL_NAMES = [
   "USER_GET",
   "USER_MODEL_PREFERENCES_GET",
   "USER_MODEL_PREFERENCES_UPDATE",
+  // Project sidebar tools
+  "SIDEBAR_GET",
+  "PROJECT_FOLDERS_SET",
+  "SIDEBAR_PREFERENCES_SET",
   // Thread tools
   "COLLECTION_THREADS_CREATE",
   "COLLECTION_THREADS_LIST",
@@ -165,6 +165,7 @@ const ALL_TOOL_NAMES = [
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
   "VIRTUAL_MCP_LAST_USED_LIST",
+  "PROJECT_FOLDER_ENSURE",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -183,6 +184,7 @@ const ALL_TOOL_NAMES = [
   "AI_PLAN_ENTITLEMENTS",
   "AI_PLAN_LIST",
   "AI_PLAN_SET",
+  "AI_PLAN_INVOICE_UPGRADE",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -263,6 +265,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LIST",
   "REPOSITORY_SEARCH",
   "REPOSITORY_LINK",
+  "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
@@ -303,6 +306,12 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_DELETE",
   "TASK_BOARD_DISMISSED_LIST",
   "TASK_BOARD_DISMISSED_RESTORE",
+  "TASK_BOARD_SPRINT_LIST",
+  "TASK_BOARD_SPRINT_CREATE",
+  "TASK_BOARD_SPRINT_UPDATE",
+  "TASK_BOARD_SPRINT_START",
+  "TASK_BOARD_SPRINT_COMPLETE",
+  "TASK_BOARD_SPRINT_DELETE",
   "TASK_BOARD_ADMIN_ORG_LIST",
   "TASK_BOARD_DELIVERY",
   "TASK_BOARD_STUCK",
@@ -315,6 +324,11 @@ const ALL_TOOL_NAMES = [
   "THREAD_ANALYTICS_USAGE",
   "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
+  "generate_image",
+  "web_search",
+  "deep_research",
+  "suggest_task",
+  "update_interests",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
   "NOTIFICATION_SUBSCRIPTION_SET",
@@ -383,55 +397,31 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
-    name: "BRAND_CONTEXT_LIST",
-    description: "List brand contexts",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_GET",
-    description: "View brand context",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_CREATE",
-    description: "Create brand context",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_UPDATE",
-    description: "Update brand context",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_CONTEXT_DELETE",
-    description: "Delete brand context",
-    category: "Organizations",
-    dangerous: true,
-  },
-  {
-    name: "BRAND_CONTEXT_EXTRACT",
-    description: "Extract brand context from website",
+    name: "ORGANIZATION_BLOCKS_EDITOR_SET",
+    description: "Switch the organization's blocks editor",
     category: "Organizations",
   },
   {
     name: "BLOG_BRAND_EXTRACT",
     description:
-      "Infer editorial brand context (tone, dos and don'ts) from a site",
+      "Infer a brand's identity (name, audience, values, competitors) from a site",
     category: "Blog",
   },
   {
-    name: "BLOG_PILLAR_SUGGEST",
-    description: "Propose content pillars from a brand's editorial context",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_THEME_SUGGEST",
-    description: "Propose blog post ideas from a brand's editorial context",
+    name: "BLOG_CONTEXT_EXTRACT",
+    description:
+      "Infer a blog's writing context (tone, dos and don'ts) from a site",
     category: "Blog",
   },
   {
     name: "BLOG_FORMAT_SUGGEST",
     description: "Name the post formats a blog writes in",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CAMPAIGN_SUGGEST",
+    description:
+      "Propose campaigns from a seed, grounded in the site's systems",
     category: "Blog",
   },
   {
@@ -443,16 +433,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_LINK_SUGGEST",
     description: "Propose internal links from a post to the site's other posts",
     category: "Blog",
-  },
-  {
-    name: "BRAND_GET",
-    description: "Get brand (binding)",
-    category: "Organizations",
-  },
-  {
-    name: "BRAND_LIST",
-    description: "List brands (binding)",
-    category: "Organizations",
   },
   {
     name: "ORGANIZATION_DOMAIN_LIST",
@@ -593,6 +573,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Connections",
   },
   {
+    name: "CONNECTION_TOOLS_SEARCH",
+    description: "Search the tools of your connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_TOOL_CALL",
+    description: "Call a tool on one of your connections",
+    category: "Connections",
+  },
+  {
     name: "REPORTS_SETUP",
     description: "Set up Deco Score",
     category: "Connections",
@@ -711,6 +701,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "USER_MODEL_PREFERENCES_UPDATE",
     description: "Set the calling user's chat tier → model overrides",
+    category: "Users",
+  },
+  // Project sidebar tools
+  {
+    name: "SIDEBAR_GET",
+    description:
+      "Get the org's project folders and the caller's pins and hides",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "PROJECT_FOLDERS_SET",
+    description: "Replace the organization's project folders",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "SIDEBAR_PREFERENCES_SET",
+    description: "Set the calling member's pinned and hidden projects",
     category: "Users",
   },
   // Thread tools
@@ -889,6 +896,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Virtual MCPs",
   },
   {
+    name: "PROJECT_FOLDER_ENSURE",
+    description: "Give a project's folder its shape, once",
+    category: "Virtual MCPs",
+  },
+  {
     name: "AI_PROVIDERS_LIST",
     description: "List available AI providers",
     category: "AI Providers",
@@ -982,6 +994,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "AI_PLAN_SET",
     description: "Change the organization's plan",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_INVOICE_UPGRADE",
+    description: "Move the organization to a paid plan billed on its invoice",
     category: "AI Providers",
   },
   // Secrets tools
@@ -1273,6 +1290,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Git",
   },
   {
+    name: "REPOSITORY_CREATE_FROM_TEMPLATE",
+    description: "Create a site repository from a template and link it",
+    category: "Git",
+  },
+  {
     name: "REPOSITORY_SEARCH_BRANCHES",
     description:
       "Search a repository's branches by name substring, on either provider",
@@ -1488,6 +1510,37 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_SPRINT_LIST",
+    description: "List the board's sprints",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_CREATE",
+    description: "Plan a new sprint",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_UPDATE",
+    description: "Rename a sprint or change its dates",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_START",
+    description: "Start a planned sprint",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_COMPLETE",
+    description: "Complete a running sprint and move its unfinished cards on",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINT_DELETE",
+    description: "Delete a sprint, sending its cards to the backlog",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
     name: "TASK_BOARD_ADMIN_ORG_LIST",
     description:
       "Whether the caller may read every org's task board, and the orgs that have board items",
@@ -1557,6 +1610,31 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Clone an organization repository into the sandbox of the task run calling it",
     category: "Task Board",
   },
+  {
+    name: "generate_image",
+    description: "Generate an image with the organization's image model",
+    category: "Chat",
+  },
+  {
+    name: "web_search",
+    description: "Search the web and synthesize a short cited answer",
+    category: "Chat",
+  },
+  {
+    name: "deep_research",
+    description: "Run multi-source web research into a cited report",
+    category: "Chat",
+  },
+  {
+    name: "suggest_task",
+    description: "Offer the user a task card for the board",
+    category: "Chat",
+  },
+  {
+    name: "update_interests",
+    description: "Record the user's durable goals for the current agent",
+    category: "Chat",
+  },
 ];
 
 // ============================================================================
@@ -1595,10 +1673,18 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
       "CONNECTION_TEST",
+      // Each call is still authorized per connection by the proxy.
+      "CONNECTION_TOOLS_SEARCH",
+      "CONNECTION_TOOL_CALL",
       // View agents
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "VIRTUAL_MCP_LAST_USED_LIST",
+      // Project sidebar: org folders are readable, pins/hides are the caller's own.
+      "SIDEBAR_GET",
+      "SIDEBAR_PREFERENCES_SET",
+      // Every member already has ORG_FS_WRITE (below).
+      "PROJECT_FOLDER_ENSURE",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
@@ -1657,12 +1743,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
       //   USER_GET     → resolve member display ("created by" on agents, etc.);
       //                  handler scopes to shared-org members, no secrets
-      //   BRAND_CONTEXT_LIST → org branding for the chat empty state
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
-      "BRAND_CONTEXT_LIST",
       // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
       "ORGANIZATION_HAS_SITE",
+      // Any member picks the org's blocks editor; writes only that one flag.
+      "ORGANIZATION_BLOCKS_EDITOR_SET",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -1698,6 +1784,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_DELETE",
       "TASK_BOARD_DISMISSED_LIST",
       "TASK_BOARD_DISMISSED_RESTORE",
+      "TASK_BOARD_SPRINT_LIST",
+      "TASK_BOARD_SPRINT_CREATE",
+      "TASK_BOARD_SPRINT_UPDATE",
+      "TASK_BOARD_SPRINT_START",
+      "TASK_BOARD_SPRINT_COMPLETE",
+      "TASK_BOARD_SPRINT_DELETE",
       "TASK_BOARD_ADMIN_ORG_LIST",
       "TASK_BOARD_DELIVERY",
       "TASK_BOARD_STUCK",
@@ -1713,14 +1805,19 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // Chat tools Decopilot ran for every member as built-ins.
+      "generate_image",
+      "web_search",
+      "deep_research",
+      "suggest_task",
+      "update_interests",
     ],
   },
   // Organization
   {
     id: "org:manage",
     label: "Manage organization",
-    description:
-      "Edit organization settings, brand context, and domain configuration",
+    description: "Edit organization settings and domain configuration",
     section: "Organization",
     tools: [
       "ORGANIZATION_GET",
@@ -1728,14 +1825,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_UPDATE",
       "ORGANIZATION_SETTINGS_GET",
       "ORGANIZATION_SETTINGS_UPDATE",
-      "BRAND_CONTEXT_LIST",
-      "BRAND_CONTEXT_GET",
-      "BRAND_CONTEXT_CREATE",
-      "BRAND_CONTEXT_UPDATE",
-      "BRAND_CONTEXT_DELETE",
-      "BRAND_CONTEXT_EXTRACT",
-      "BRAND_GET",
-      "BRAND_LIST",
       "ORGANIZATION_DOMAIN_LIST",
       "ORGANIZATION_DOMAIN_ADD",
       "ORGANIZATION_DOMAIN_UPDATE",
@@ -1762,9 +1851,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_ADD",
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
-      // Seats live on the members page and change who the org pays for —
-      // same trust tier as adding/removing the member itself. Checkout and
-      // preview are the money half of the same surface.
+      // The org's plan subscription and billing — the same trust tier as
+      // adding/removing a member.
       "ORGANIZATION_BILLING_CHECKOUT_START",
       "ORGANIZATION_BILLING_PORTAL",
       "ORGANIZATION_TASK_QUOTA_GET",
@@ -1808,6 +1896,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_UPDATE",
       "COLLECTION_VIRTUAL_MCP_DELETE",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+      // Folders are org-wide structure, so they sit with managing projects.
+      "PROJECT_FOLDERS_SET",
     ],
     dangerous: true,
   },
@@ -1891,6 +1981,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PLAN_ENTITLEMENTS",
       "AI_PLAN_LIST",
       "AI_PLAN_SET",
+      "AI_PLAN_INVOICE_UPGRADE",
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",
@@ -2173,6 +2264,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     "Task Board": [],
     Jira: [],
     Blog: [],
+    Chat: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

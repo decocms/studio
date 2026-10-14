@@ -163,10 +163,13 @@ async function refreshAndStoreOnce(
       accessToken: result.accessToken,
       refreshToken: result.refreshToken ?? token.refreshToken,
       scope: result.scope ?? token.scope,
+      // A rejected expires_in must fail safe as already-expired, not "never expires".
       expiresAt:
-        result.expiresIn === undefined
-          ? null
-          : new Date(Date.now() + result.expiresIn * 1000),
+        result.expiresIn !== undefined
+          ? new Date(Date.now() + result.expiresIn * 1000)
+          : result.expiresInMalformed
+            ? new Date()
+            : null,
       clientId: token.clientId,
       clientSecret: token.clientSecret,
       tokenEndpoint: token.tokenEndpoint,
@@ -226,8 +229,8 @@ export function refreshAndStore(
 
 export type ValidDownstreamAccessTokenResult =
   | { state: "missing"; accessToken: null }
-  | { state: "valid"; accessToken: string }
-  | { state: "refreshed"; accessToken: string }
+  | { state: "valid"; accessToken: string; expiresAt: Date | null }
+  | { state: "refreshed"; accessToken: string; expiresAt: Date | null }
   | { state: "refresh_failed"; accessToken: null }
   | { state: "expired_without_refresh"; accessToken: null };
 
@@ -256,7 +259,11 @@ export async function getValidDownstreamAccessToken(params: {
   const expired = tokenStorage.isExpired(token, bufferMs);
 
   if (!force && !expired) {
-    return { state: "valid", accessToken: token.accessToken };
+    return {
+      state: "valid",
+      accessToken: token.accessToken,
+      expiresAt: expiryOf(token),
+    };
   }
 
   if (!refreshable) {
@@ -280,5 +287,20 @@ export async function getValidDownstreamAccessToken(params: {
     tokenStorage,
   );
   if (!accessToken) return { state: "refresh_failed", accessToken: null };
-  return { state: "refreshed", accessToken };
+  // The refresh stored the new expiry; a store that failed keeps the old
+  // one, which only understates the new token's life.
+  const stored = await tokenStorage.get(connectionId).catch(() => null);
+  return {
+    state: "refreshed",
+    accessToken,
+    expiresAt:
+      stored?.accessToken === accessToken ? expiryOf(stored) : expiryOf(token),
+  };
+}
+
+/** Null when the token never expires; an unparseable expiry reads as now. */
+function expiryOf(token: DownstreamToken): Date | null {
+  if (!token.expiresAt) return null;
+  const at = new Date(token.expiresAt);
+  return Number.isNaN(at.getTime()) ? new Date() : at;
 }

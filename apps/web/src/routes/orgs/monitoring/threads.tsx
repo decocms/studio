@@ -24,6 +24,7 @@ import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 import { KEYS } from "@/lib/query-keys";
 import {
   ThreadSheetBody,
@@ -71,6 +72,7 @@ function ThreadRow({
   lastRowRef?: (node: HTMLTableRowElement | null) => void;
 }) {
   const t = useT();
+  const showCost = useModelDisclosure();
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(
     agentId,
@@ -148,9 +150,11 @@ function ThreadRow({
       <TableCell className="w-24 px-3 text-right tabular-nums text-muted-foreground">
         {usage ? formatCompactNumber(usage.totalTokens) : "—"}
       </TableCell>
-      <TableCell className="w-24 px-3 text-right tabular-nums text-muted-foreground">
-        {usage && usage.costUsd > 0 ? formatUsd(usage.costUsd) : "—"}
-      </TableCell>
+      {showCost && (
+        <TableCell className="w-24 px-3 text-right tabular-nums text-muted-foreground">
+          {usage && usage.costUsd > 0 ? formatUsd(usage.costUsd) : "—"}
+        </TableCell>
+      )}
       <TableCell className="w-32 px-3 pr-5 text-muted-foreground">
         <div>{dateStr}</div>
         <div className="text-xs text-muted-foreground/60">{timeStr}</div>
@@ -236,6 +240,8 @@ export function ThreadsTabContent({
   filterSource,
 }: ThreadsTabContentProps) {
   const t = useT();
+  // Without `model_choice` AI spend is only the plan card's percent bar.
+  const showCost = useModelDisclosure();
   const startDate = dateRange.startDate.toISOString();
   const endDate = dateRange.endDate.toISOString();
 
@@ -422,21 +428,23 @@ export function ThreadsTabContent({
                               ))}
                           </button>
                         </TableHead>
-                        <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("cost")}
-                            className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
-                          >
-                            {t("orgs.threads.cost")}
-                            {sortKey === "cost" &&
-                              (sortDir === "desc" ? (
-                                <ChevronDown size={12} />
-                              ) : (
-                                <ChevronUp size={12} />
-                              ))}
-                          </button>
-                        </TableHead>
+                        {showCost && (
+                          <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+                            <button
+                              type="button"
+                              onClick={() => toggleSort("cost")}
+                              className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
+                            >
+                              {t("orgs.threads.cost")}
+                              {sortKey === "cost" &&
+                                (sortDir === "desc" ? (
+                                  <ChevronDown size={12} />
+                                ) : (
+                                  <ChevronUp size={12} />
+                                ))}
+                            </button>
+                          </TableHead>
+                        )}
                         <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                           {t("orgs.threads.date")}
                         </TableHead>

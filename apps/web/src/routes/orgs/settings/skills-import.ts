@@ -4,7 +4,10 @@
  */
 
 import { parseSkillMd } from "@decocms/shared/harness/skill-md";
-import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import {
+  HOME_MOUNT_PATH,
+  SANDBOX_ORG_ROOT,
+} from "@decocms/shared/organization/home-mount";
 import type { OrgFsSkillCatalogEntry } from "@/hooks/use-org-fs";
 
 /** One PUT per file, so a stray `node_modules` would fan out to thousands. */
@@ -91,10 +94,11 @@ export function optimisticEntry(
     id: `home/${path}`,
     name: meta.name ?? slug,
     description: meta.description,
+    disableModelInvocation: meta.disableModelInvocation,
     // Wire token, not a path — it just happens to spell the volume too.
     source: "home",
     volume: HOME_MOUNT_PATH,
     path,
-    sandboxPath: `org/${HOME_MOUNT_PATH}/${path}`,
+    sandboxPath: `${SANDBOX_ORG_ROOT}/${HOME_MOUNT_PATH}/${path}`,
   };
 }

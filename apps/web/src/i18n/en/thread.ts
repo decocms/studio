@@ -54,23 +54,6 @@ export const thread = {
   "thread.branchPicker.searchPullRequests": "Search pull requests…",
   "thread.branchPicker.selectBranch": "Select branch…",
   "thread.branchPicker.yourBranches": "Your branches",
-  "thread.changesTab.couldntLoadPrChanges": "Couldn't load PR changes.",
-  "thread.changesTab.loadingChanges": "Loading changes…",
-  "thread.changesTab.noCommittedChanges":
-    "No committed changes in this pull request",
-  "thread.checksTab.couldntLoadCheckDetail":
-    "Couldn't load this check's detail.",
-  "thread.checksTab.couldntLoadCheckRuns": "Couldn't load check runs.",
-  "thread.checksTab.failure": "Failure",
-  "thread.checksTab.inProgress": "In progress",
-  "thread.checksTab.loadingCheckDetail": "Loading detail…",
-  "thread.checksTab.loadingChecks": "Loading checks…",
-  "thread.checksTab.noCheckDetail": "This check has no detailed output.",
-  "thread.checksTab.noCheckRunsOnPrHeadCommit":
-    "No check runs on the PR head commit.",
-  "thread.checksTab.rerun": "Re-run",
-  "thread.checksTab.success": "Success",
-  "thread.checksTab.viewRun": "View run",
   "thread.cmsActions.checksFailing":
     "{failed} of {total} checks are not passing",
   "thread.cmsActions.checksRunning": "Running checks {done} of {total} done",
@@ -80,27 +63,10 @@ export const thread = {
   "thread.cmsActions.publishing": "Publishing…",
   "thread.cmsActions.gettingLatest": "Getting latest…",
   "thread.cmsActions.retry": "Retry",
-  "thread.cmsActions.resolveOnGithub": "Resolve on GitHub",
+  "thread.cmsActions.resolveOnProvider": "Resolve on provider",
   "thread.cmsActions.reviewAndPublish": "Review & Publish",
-  "thread.cmsActions.viewOnGithub": "View on GitHub",
+  "thread.cmsActions.viewOnProvider": "View on provider",
   "thread.cmsActions.waitingForReview": "Waiting for review",
-  "thread.gitTab.by": "by @{author}",
-  "thread.gitTab.closed": "✗ Closed",
-  "thread.gitTab.couldNotLoadPrState":
-    "Couldn't load PR state. The GitHub connection may be broken.",
-  "thread.gitTab.into": "into {base}",
-  "thread.gitTab.loadingPrState": "Loading PR state…",
-  "thread.gitTab.merged": "✓ Merged",
-  "thread.gitTab.noBranchSelected": "No branch selected.",
-  "thread.gitTab.noPrYet":
-    'This branch doesn\'t have an open pull request. Use "Review & Publish" in the header (or "Submit for review" in its menu) to open one; the agent will draft the title and summary from the current state of the branch.',
-  "thread.gitTab.notLinkedToGithub":
-    "This virtualmcp is not linked to a GitHub repository.",
-  "thread.gitTab.openBranchOnGithub": "Open branch on GitHub",
-  "thread.gitTab.openPrAriaLabel": "Open PR #{number} on GitHub",
-  "thread.gitTab.pickBranchForPrStatus":
-    "Pick a branch from the header to see PR status.",
-  "thread.gitTab.prNumber": "PR #{number}",
   "thread.headerActions.addressFeedback": "Address feedback",
   "thread.headerActions.branchInSyncTooltip": "Branch is in sync with {base}",
   "thread.headerActions.chatIsRunning": "Chat is running",
@@ -131,10 +97,8 @@ export const thread = {
   "thread.headerActions.openNewPrTooltip":
     "Open a new PR with the latest commits",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
-  "thread.headerActions.publish": "Publish",
   "thread.headerActions.publishAnyway": "Publish anyway",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
-  "thread.headerActions.publishToProduction": "Publish to production",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.review": "Review",
   "thread.headerActions.saving": "Saving…",
@@ -161,34 +125,14 @@ export const thread = {
   "thread.headerActions.waitingForSandboxBranchTooltip":
     "Getting your environment ready — this only takes a moment",
   "thread.publishDialog.allChangesDiscarded": "All changes discarded",
-  "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancel",
-  "thread.publishDialog.change": "change",
-  "thread.publishDialog.changes": "changes",
   "thread.publishDialog.changesFrom": "Changes from {branch}",
-  "thread.publishDialog.changesTab": "Changes",
-  "thread.publishDialog.commitMessage": "Commit message",
-  "thread.publishDialog.commitTitlePlaceholder": "Commit title…",
-  "thread.publishDialog.description": "Description",
-  "thread.publishDialog.descriptionLabel": "Description",
-  "thread.publishDialog.descriptionPlaceholder": "Description (optional)…",
-  "thread.publishDialog.discardAll": "Discard all",
-  "thread.publishDialog.discardConfirmMessage":
-    "Discard all changes? This cannot be undone.",
-  "thread.publishDialog.discardedChanges": "Discarded changes to {filepath}",
-  "thread.publishDialog.failedDiscardChanges": "Failed to discard changes",
-  "thread.publishDialog.failedLoad": "Failed to load changes.",
-  "thread.publishDialog.failedLoadAfterReprovision":
-    "Failed to load changes after re-provisioning the sandbox.",
   "thread.publishDialog.failedMergePullRequest": "Failed to merge pull request",
   "thread.publishDialog.failedOpenPullRequest": "Failed to open pull request",
   "thread.publishDialog.failedPublish": "Failed to publish",
   "thread.publishDialog.failedPushChanges": "Failed to push changes",
   "thread.publishDialog.failedRebase": "Failed to rebase onto base",
   "thread.publishDialog.failedSubmitForReview": "Failed to submit for review",
-  "thread.publishDialog.generating": "Generating…",
-  "thread.publishDialog.inThisPr": "in this PR",
-  "thread.publishDialog.loadingChanges": "Loading changes…",
   "thread.publishDialog.mergeFailed":
     "Changes were pushed and PR #{prNumber} is open, but merge failed: {message}",
   "thread.mergeRefused.conflict":
@@ -200,25 +144,11 @@ export const thread = {
   "thread.mergeRefused.notFound": "It no longer exists.",
   "thread.mergeRefused.error": "Failed to merge.",
   "thread.publishDialog.openingComparison": "Opening the comparison…",
-  "thread.publishDialog.opensPullRequestInto":
-    "Opens a pull request into {baseBranch} for review.",
   "thread.publishDialog.publishedTo": "Published to {baseBranch}",
-  "thread.publishDialog.publishNeedsReview":
-    "This change needs review before publishing.",
-  "thread.publishDialog.pullRequest": "Pull request",
-  "thread.publishDialog.regenerate": "Regenerate",
-  "thread.publishDialog.reviewingChanges": "Reviewing changes…",
-  "thread.publishDialog.squashMergesInto":
-    "{publishLabel} squash-merges into {baseBranch}.",
-  "thread.publishDialog.submitForReview": "Submit for review",
-  "thread.publishDialog.submitForReviewButton": "Submit for review",
   "thread.publishDialog.submittedForReview":
     "Submitted pull request #{prNumber} for review",
-  "thread.publishDialog.title": "Title",
-  "thread.publishDialog.toPublish": "to publish",
-  "thread.publishDialog.viewOnGithub": "View on GitHub",
+  "thread.publishDialog.viewOnProvider": "View on provider",
   "thread.publishDialog.viewPr": "View PR",
-  "thread.publishDialog.visitPreview": "Visit preview",
   "thread.publishPopover.blocksGroup": "Blocks",
   "thread.publishPopover.branchMoved":
     "This branch changed since these changes were shown. Close and reopen to review what will be published.",
@@ -263,8 +193,8 @@ export const thread = {
   "thread.publishPopover.discarded": "Discarded {name}",
   "thread.publishPopover.discard": "Discard",
   "thread.publishPopover.discardAll": "Discard all",
-  "thread.publishPopover.discardAllConfirm":
-    "Discard every change? This can't be undone.",
+  "thread.publishPopover.discardAllConfirm": "This can't be undone.",
+  "thread.publishPopover.discardAllTitle": "Discard all changes?",
   "thread.publishPopover.reviewNote": "Note for reviewers",
   "thread.publishPopover.reviewNotePlaceholder": "What changed and why…",
   "thread.publishPopover.reviewing": "Reviewing content…",
@@ -279,6 +209,27 @@ export const thread = {
   "thread.publishPopover.versionNote": "Version note",
   "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
+  "thread.publishCompare.sideBySide": "Side by side",
+  "thread.publishCompare.before": "Before",
+  "thread.publishCompare.after": "After",
+  "thread.publishCompare.code": "Code",
+  "thread.publishCompare.pathLabel": "Page address",
+  "thread.publishCompare.desktop": "Desktop",
+  "thread.publishCompare.mobile": "Mobile",
+  "thread.publishCompare.openDraft": "Open in new tab",
+  "thread.publishCompare.globalHint":
+    "This change can appear on any page. Showing the home page — type another address to compare it.",
+  "thread.publishCompare.dynamicHint":
+    "This page's address is a pattern ({template}). Type a real address to compare it.",
+  "thread.publishCompare.enterPath": "Type a page address to compare.",
+  "thread.publishCompare.draftUnavailable":
+    "Your changes can't be shown yet. Use Preview to open them.",
+  "thread.publishCompare.newTitle": "New page",
+  "thread.publishCompare.newDescription":
+    "This page isn't on the live site yet.",
+  "thread.publishCompare.removedTitle": "Page removed",
+  "thread.publishCompare.removedDescription":
+    "This page will no longer be on the site.",
   "thread.analytics.title": "Chats & automations",
   "thread.analytics.notAdmin":
     "Chat analytics is only available in an admin organization.",

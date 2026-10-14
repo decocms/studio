@@ -46,6 +46,9 @@ interface SidebarNavRowProps {
   /** A mark for the row's right edge — a lock, a count. Ordered there rather
    *  than placed there, for the `span:last-child` reason above. */
   trailing?: ReactNode;
+  /** `data-context-id` on the item, for a context menu that wraps a whole
+   *  list and reads which row was right-clicked. */
+  contextId?: string;
 }
 
 export function SidebarNavRow({
@@ -59,6 +62,7 @@ export function SidebarNavRow({
   dataTour,
   children,
   trailing,
+  contextId,
 }: SidebarNavRowProps) {
   const isCollapsed = useSidebarCollapsed();
   const name = ariaLabel ?? label;
@@ -90,7 +94,7 @@ export function SidebarNavRow({
 
   if (link) {
     return (
-      <SidebarMenuItem>
+      <SidebarMenuItem data-context-id={contextId}>
         <SidebarMenuButton asChild {...shared}>
           <Link
             {...link}
@@ -107,7 +111,7 @@ export function SidebarNavRow({
   }
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem data-context-id={contextId}>
       <SidebarMenuButton {...shared} aria-label={name} onClick={onSelect}>
         {body}
       </SidebarMenuButton>

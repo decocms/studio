@@ -125,6 +125,13 @@ type PublishDeps struct {
 	// diverged. Interactive publish only — shutdown sync leaves it off so a
 	// stale teardown never clobbers a concurrent sandbox's work.
 	ReconcileRemote bool
+	// RebaseOnDiverge replays the sandbox's commits onto origin/<branch> when
+	// someone else pushed to it, and pushes the result as a fast-forward. A
+	// conflicting rebase is aborted and the work goes to a rescue branch
+	// instead, so it is never lost and never clobbers the other writer.
+	// Shutdown sync only: the harness is cancelled by then, so rewriting the
+	// tree races no writer.
+	RebaseOnDiverge bool
 }
 
 func changedPaths(status WorkingTreeStatus) []string {
@@ -313,7 +320,7 @@ func pushEnv(repoDir string) map[string]string {
 	}
 }
 
-func pushBranch(repoDir, branch string, reconcileRemote bool) error {
+func pushBranch(repoDir, branch string, deps PublishDeps) error {
 	// --no-verify: a repo's pre-push script can hang the push, and the shutdown
 	// sync shares this path with no room to wait it out before SIGKILL.
 	args := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "-u", "origin", branch)
@@ -328,10 +335,13 @@ func pushBranch(repoDir, branch string, reconcileRemote bool) error {
 		}
 		time.Sleep(pushRetryDelayMs * time.Millisecond)
 	}
+	if deps.RebaseOnDiverge && IsNonFastForwardError(err) {
+		return rebaseOntoRemoteOrRescue(repoDir, branch, args)
+	}
 	// origin/<branch> diverged: a prior publish force-pushed a rebased history,
 	// or the sandbox was re-provisioned from base and lost the branch's local
 	// commits. Reconcile by force-pushing the state the user sees.
-	if !reconcileRemote || !IsNonFastForwardError(err) {
+	if !deps.ReconcileRemote || !IsNonFastForwardError(err) {
 		return err
 	}
 	fetchArgs := append(append([]string{}, gitPushConfig...), "fetch", "origin", branch)
@@ -426,7 +436,28 @@ func Publish(deps PublishDeps, message string) error {
 		}
 	}
 
-	return pushBranch(repoDir, branch, deps.ReconcileRemote)
+	return pushBranch(repoDir, branch, deps)
+}
+
+func rebaseOntoRemoteOrRescue(repoDir, branch string, pushArgs []string) error {
+	env := pushEnv(repoDir)
+	fetchArgs := append(append([]string{}, gitPushConfig...), "fetch", "origin", branch)
+	if _, err := Run(fetchArgs, RunOpts{Cwd: repoDir, Env: env}); err != nil {
+		return err
+	}
+	rebaseArgs := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "rebase", "origin/" + branch}
+	if _, err := Run(rebaseArgs, RunOpts{Cwd: repoDir, Env: rebaseEnv(repoDir, env, nonInteractiveEnv)}); err != nil {
+		abortRebase(repoDir)
+	} else if _, err := Run(pushArgs, RunOpts{Cwd: repoDir, Env: env}); err == nil {
+		return nil
+	}
+	rescue := fmt.Sprintf("%s-rescue-%d", branch, time.Now().Unix())
+	rescueArgs := append(append([]string{}, gitPushConfig...), "push", "--no-verify", "origin", "HEAD:refs/heads/"+rescue)
+	if _, err := Run(rescueArgs, RunOpts{Cwd: repoDir, Env: env}); err != nil {
+		return err
+	}
+	slog.Warn("branch diverged and could not be rebased; pushed the work to a rescue branch", "branch", branch, "rescue", rescue)
+	return nil
 }
 
 // Discard restores tracked files and deletes untracked ones.

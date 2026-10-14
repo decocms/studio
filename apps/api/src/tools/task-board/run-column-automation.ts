@@ -63,6 +63,7 @@ export async function runColumnAutomation(
   try {
     await reactToSuperAgentDelegation(ctx, delegated, {
       instruction: automation.prompt ?? undefined,
+      column: item.status,
     });
   } catch (err) {
     console.warn(

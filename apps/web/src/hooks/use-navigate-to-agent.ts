@@ -8,25 +8,27 @@
 import {
   navigateToTabLocation,
   tabRouteLocation,
+  tabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
 import {
   fetchVirtualMCPs,
   useProjectContext,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import { useNavigate } from "@tanstack/react-router";
+import { type LinkProps, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
-import { getActiveGithubRepo } from "@/lib/github-repo";
-import { useBaseBranch } from "@/components/thread/github/use-version-gate";
+import { getActiveRepository } from "@/lib/repository-binding";
+import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
 import {
   defaultThreadRuntime,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { writeThreadIntent } from "@/lib/thread-intent";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const NO_THREADS: Task[] = [];
 
@@ -57,6 +59,7 @@ export function useNavigateToAgent() {
   const manager = useOptionalThreadManager();
   /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
   const baseBranch = useBaseBranch(undefined, null);
+  const projectFirstNav = useProjectFirstNav();
 
   /** The navigation proper, once the wanted runtime is known. */
   const go = (
@@ -64,6 +67,26 @@ export function useNavigateToAgent() {
     options: NavigateToAgentOptions | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
+    /** "Open this project" lands on its one screen — a project is not a scope
+     *  you enter. Naming a VIEW is a different ask ("open its settings", "open
+     *  this automation"), and those are destinations inside the scoped
+     *  workspace, so they keep the path below. Here because this is the single
+     *  funnel every "open this project" caller already goes through. */
+    if (projectFirstNav && !options?.panel) {
+      void navigate({
+        to: "/$org/projects",
+        params: { org: org.slug },
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          project: virtualMcpId,
+          virtualmcpid: undefined,
+          /** Home's own param. Search is spread forward, so leaving it on
+           *  would carry the Agents destination onto a project's screen. */
+          view: undefined,
+        }),
+      });
+      return;
+    }
     const tabId = options?.panel ?? "overview";
     /** Organization destinations do not belong to an agent session. Navigate
      * there without minting a thread whose identity the route cannot encode. */
@@ -82,7 +105,7 @@ export function useNavigateToAgent() {
      *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
      *  CMS" cannot resume a sandbox session. */
     const target = (cachedAgents ?? []).find((a) => a.id === virtualMcpId);
-    const hasBranch = !!(target && getActiveGithubRepo(target));
+    const hasBranch = !!(target && getActiveRepository(target));
     /** An agent's entry thread (its last branch/version for a repo editor, its
      *  last conversation for a plain chat) can only be resolved from the TARGET
      *  project's thread list. The manager here is keyed on `${org}::${locator}`,
@@ -156,5 +179,38 @@ export function useNavigateToAgent() {
           target ? defaultThreadRuntime(target.metadata) : undefined,
         ),
       );
+  };
+}
+
+/**
+ * The same destination `useNavigateToAgent` lands on, as `LinkProps` for a real
+ * anchor — so middle-click and "open in new tab" work. Only for callers that
+ * request no `runtime`: then no thread id is minted at click time and the
+ * target project's shell resolves its own entry thread, so the URL is fully
+ * knowable at render time.
+ */
+export function useAgentLink() {
+  const { org } = useProjectContext();
+  const projectFirstNav = useProjectFirstNav();
+
+  return (virtualMcpId: string, panel?: string): LinkProps => {
+    if (projectFirstNav && !panel) {
+      return {
+        to: "/$org/projects",
+        params: { org: org.slug },
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          project: virtualMcpId,
+          virtualmcpid: undefined,
+          view: undefined,
+        }),
+      };
+    }
+    const target = tabRouteTarget({
+      tabId: panel ?? "overview",
+      org: org.slug,
+      agentId: virtualMcpId,
+    });
+    return { to: target.to, params: target.params, search: target.search };
   };
 }

@@ -12,11 +12,16 @@
  */
 
 import type { ColumnType } from "kysely";
+import type { SprintState } from "@decocms/shared/sprints";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
+import type {
+  ProjectFolder,
+  SidebarPreferences,
+} from "@decocms/shared/project-sidebar";
 import type {
   OrgFlags,
   SubmoduleCredential,
@@ -24,7 +29,10 @@ import type {
 } from "@decocms/shared/organization/schema";
 import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
-import type { ReviewerKind } from "@decocms/shared/task-board";
+import type {
+  ReviewerKind,
+  TaskCommentAudience,
+} from "@decocms/shared/task-board";
 
 export type {
   OrgSsoConfigPublic,
@@ -168,12 +176,29 @@ export interface UserModelPreferencesTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/** An org's sidebar folders, one JSON document — see migration 230. */
+export interface OrgProjectFoldersTable {
+  organization_id: string;
+  folders: JsonObject<ProjectFolder[]>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One member's pins and hides in one org — see migration 230. */
+export interface UserSidebarPreferencesTable {
+  user_id: string;
+  organization_id: string;
+  preferences: JsonObject<SidebarPreferences>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
 export interface OrganizationSettingsTable {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   // Connection ids a coding-agent run must not mount, even with
   // `coding_agent_org_mcps` on. See migration 212.
@@ -191,6 +216,8 @@ export interface OrganizationSettingsTable {
 
 export interface OrganizationSettings {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: SidebarItem[] | null;
   coding_agent_mcp_excluded: string[] | null;
   simple_mode: SimpleModeConfig | null;
@@ -238,7 +265,7 @@ export interface MCPConnectionTable {
    * The repository a VIRTUAL connection (an agent) works in — migration 205.
    * Null for every other connection type, and for an agent with no repository.
    *
-   * Preferred over `metadata.githubRepo`, which is still written and read as
+   * Preferred over `metadata.repository`, which is still written and read as
    * the fallback until the expand completes. A GitLab project in subgroups
    * only fits here: the JSON's `owner`/`name` pair cannot carry a namespace.
    */
@@ -255,7 +282,7 @@ export interface MCPConnectionTable {
  *
  * `TASK_ADD_REPO` appends here so one run can hold several checkouts. The
  * primary key is what makes a concurrent double-add a no-op — the reason this
- * is a table and not the `metadata.githubRepos` array it replaces.
+ * is a table and not the `metadata.additionalRepositories` array it replaces.
  */
 export interface ThreadRepositoryTable {
   thread_id: string;
@@ -968,7 +995,7 @@ export interface ThreadTable {
   >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
-  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  /** Git branch this thread is pinned to (repository-linked projects only) */
   branch: string | null;
   /** Dormant legacy column retained in the physical schema; runtime code ignores it. */
   sandbox_provider_kind: string | null;
@@ -1046,7 +1073,7 @@ export interface Thread {
   last_progress_at: string | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
-  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  /** Git branch this thread is pinned to (repository-linked projects only) */
   branch: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
@@ -1411,7 +1438,23 @@ export interface AutomationTriggerTable {
   // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
   // Null for cron/event triggers.
   api_key_id: string | null;
+  // For board_column_transition triggers: the column a card entered, and
+  // which moves count by where it came from. Null / '{}' for the others.
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Which moves into a column a `board_column_transition` trigger answers, by
+ *  where the card came from. */
+export type BoardTransitionFromKind = "any" | "earlier" | "later" | "statuses";
+
+/** One fire claimed per (trigger, event) — see migration 241. */
+export interface AutomationTriggerFireTable {
+  trigger_id: string;
+  event_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -1420,7 +1463,7 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -1428,8 +1471,17 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: string[];
   created_at: string;
 }
+
+export type AutomationTriggerType =
+  | "cron"
+  | "event"
+  | "webhook"
+  | "board_column_transition";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks
@@ -1532,9 +1584,22 @@ export interface OrgSiteTable {
   // Globally-unique site slug = object-key prefix namespace in the shared
   // tenant bucket. Primary key enforces global uniqueness across orgs.
   slug: string;
-  organization_id: string;
+  // NULL = tombstone: the org was deleted and the slug stays reserved forever.
+  organization_id: ColumnType<string | null, string, string | null>;
   // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
   source: ColumnType<string, string | undefined, string>;
+  // The project (VIRTUAL connection) this slug is the site of; one per project.
+  project_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  // First time the slug was linked to a project; never cleared.
+  linked_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1543,8 +1608,13 @@ export interface OrgSiteTable {
 
 export interface OrgSite {
   slug: string;
-  organizationId: string;
+  /** Null for a tombstone (its org was deleted): reserved, nobody can claim it. */
+  organizationId: string | null;
   source: string;
+  /** The project this slug is the site of, if linked. */
+  projectId: string | null;
+  /** When the slug was first linked to a project; set once, never cleared. */
+  linkedAt: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1656,8 +1726,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
-  | "approved"
-  | "merged"
+  | "qa"
+  | "customer_approval"
+  | "ready_for_deployment"
   | "post_deploy_validation"
   | "done"
   | "archived";
@@ -1696,6 +1767,13 @@ export interface TaskBoardItemTable {
   repo: string | null;
   /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** The sprint the card is planned into (`task_board_sprints.id`); null =
+   *  backlog. */
+  sprint_id: ColumnType<
     string | null,
     string | null | undefined,
     string | null
@@ -1791,6 +1869,24 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** A sprint the board owns (migration 236). Days are `date` columns, read
+ *  back as `YYYY-MM-DD` text by the storage adapter. */
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
+  start_date: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  end_date: ColumnType<string | null, string | null | undefined, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /**
  * Instructions appended to the system prompt of every agent run dispatched
  * from a board card (migration 197). `column_key` null is the org-wide row;
@@ -1805,6 +1901,7 @@ export interface TaskBoardPromptTable {
   organization_id: string;
   column_key: string | null;
   prompt: string;
+  skills: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -1865,6 +1962,12 @@ export interface TaskBoardCommentTable {
   author_id: string;
   /** The agent run that wrote it (migration 187); null for a human's comment. */
   thread_id: string | null;
+  /** Migration 234. */
+  audience: ColumnType<
+    TaskCommentAudience,
+    TaskCommentAudience | undefined,
+    TaskCommentAudience
+  >;
   body: string;
   resolved: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, never>;
@@ -1948,7 +2051,7 @@ export interface TaskBoardItemThreadRef {
   title: string | null;
   /** Latest assistant text, for the card's one-line activity preview. */
   lastMessage: string | null;
-  /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
+  /** True when a repo is bound to the thread (`metadata.repository`) — the
    *  card opens the live dev Preview instead of staying on the board. */
   hasPreview: boolean;
   /** `threads.failure_kind` — null unless `status` is `failed`. Some kinds mean
@@ -2001,6 +2104,8 @@ export interface TaskBoardItem {
    * cannot. Null for a card that names only a name, or none at all.
    */
   repositoryId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -2029,6 +2134,8 @@ export interface TaskBoardItem {
   /** Each reviewer's standing verdict in the current review cycle, in
    *  `REVIEWER_KINDS` order. Reviewers that have not decided are absent. */
   reviewVerdicts: TaskBoardItemReviewVerdict[];
+  /** When the card entered its current status; null when the log cannot say. */
+  statusSince: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -2065,62 +2172,6 @@ export interface TaskBoardActivity {
   /** Event payload — e.g. { from, to } for a status/assignee change. */
   data: Record<string, unknown>;
   occurredAt: string;
-}
-
-// ============================================================================
-// Brand Context Table Definition
-// ============================================================================
-
-export interface BrandContextTable {
-  id: string;
-  organization_id: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  og_image: string | null;
-  fonts: string | null;
-  colors: string | null;
-  images: string | null;
-  metadata: string | null;
-  archived_at: ColumnType<
-    Date | null,
-    Date | string | null,
-    Date | string | null
-  >;
-  is_default: boolean;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
 }
 
 /** Per-org Jira Cloud integration config. */
@@ -2178,6 +2229,15 @@ export interface OrgJiraColumnAutomationTable {
   /** Continue the pull request the issue already carries instead of opening
    *  a new one (migration 220). */
   continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Which origins the rule answers, and its identity within the status
+   *  (migration 229, `jira/rule-from.ts`). */
+  from_kind: ColumnType<
+    "any" | "earlier" | "later" | "statuses",
+    "any" | "earlier" | "later" | "statuses" | undefined,
+    "any" | "earlier" | "later" | "statuses"
+  >;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
+  from_key: ColumnType<string, string | undefined, string>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -2394,6 +2454,8 @@ export interface Database {
   thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
+  org_project_folders: OrgProjectFoldersTable; // Org-wide sidebar folders
+  user_sidebar_preferences: UserSidebarPreferencesTable; // Per-user pins / hides
   api_keys: ApiKeyTable; // Better Auth API keys
 
   // OAuth tables (for MCP OAuth server)
@@ -2426,7 +2488,7 @@ export interface Database {
   organization_tags: OrganizationTagTable;
   member_tags: MemberTagTable;
 
-  // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
+  // Plan billing
   organization_billing: OrganizationBillingTable;
   task_quota_claims: TaskQuotaClaimTable;
   subsidized_gateway_keys: SubsidizedGatewayKeyTable;
@@ -2452,6 +2514,7 @@ export interface Database {
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+  automation_trigger_fires: AutomationTriggerFireTable;
 
   // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
@@ -2462,9 +2525,6 @@ export interface Database {
 
   // Generic org-scoped KV store
   kv: KVTable;
-
-  // Brand context (org-scoped company profile)
-  brand_context: BrandContextTable;
 
   // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;
@@ -2491,6 +2551,7 @@ export interface Database {
   };
   repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
+  task_board_sprints: TaskBoardSprintTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;

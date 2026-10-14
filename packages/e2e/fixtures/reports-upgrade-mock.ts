@@ -15,6 +15,8 @@
  *   POST /upgrade { org_id, name } -> { url, org_id, scope, token, run }
  *   POST /run     { org_id }       -> { url, scope, run }   (triggered on
  *                                      "See full report"; the flow awaits it)
+ *   POST /unlink  { org_id }       -> { url, unlinked: true }  (captured;
+ *                                      read back via GET /__e2e/unlinks?org_id=)
  * It also captures the public report scan contract used by report specs:
  *   POST /api/v2/diagnostics/run { url, email, distinct_id }
  * and serves one published report (`published.example`) as the one-pager:
@@ -29,6 +31,9 @@ import { createServer } from "node:http";
 const port = Number(process.env.COMMERCE_MOCK_PORT ?? "4100");
 const UPGRADE_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/upgrade$/;
 const RUN_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/run$/;
+const UNLINK_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/unlink$/;
+const CAPTURED_UNLINKS_PATH = "/__e2e/unlinks";
+const capturedUnlinks: Array<{ domain: string; org_id: unknown }> = [];
 const PUBLIC_REPORT_RUN_PATH = "/api/v2/diagnostics/run";
 const CAPTURED_REPORT_RUN_PATH = "/__e2e/report-run";
 const capturedReportRuns = new Map<string, Record<string, unknown>>();
@@ -186,6 +191,34 @@ const server = createServer((req, res) => {
           run: { id: "run_e2e", status: "running" },
         }),
       );
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === CAPTURED_UNLINKS_PATH) {
+    const orgId = url.searchParams.get("org_id");
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(capturedUnlinks.filter((u) => u.org_id === orgId)));
+    return;
+  }
+
+  const unlinkMatch = url.pathname.match(UNLINK_RE);
+  if (req.method === "POST" && unlinkMatch) {
+    const domain = decodeURIComponent(unlinkMatch[1]);
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      let orgId: unknown = null;
+      try {
+        orgId = (JSON.parse(raw || "{}") as { org_id?: unknown }).org_id;
+      } catch {
+        orgId = null;
+      }
+      capturedUnlinks.push({ domain, org_id: orgId });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ url: domain, unlinked: true }));
     });
     return;
   }

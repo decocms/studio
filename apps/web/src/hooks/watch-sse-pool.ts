@@ -9,8 +9,11 @@ import {
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
+  TASK_BOARD_RULES_UPDATED_EVENT,
+  TASK_BOARD_SPRINTS_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
+import { PROJECT_FOLDERS_UPDATED_EVENT } from "@decocms/shared/project-sidebar";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -23,7 +26,10 @@ const WATCH_TYPES = [
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
+  TASK_BOARD_RULES_UPDATED_EVENT,
+  TASK_BOARD_SPRINTS_UPDATED_EVENT,
   NOTIFICATION_CREATED_EVENT,
+  PROJECT_FOLDERS_UPDATED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -63,11 +69,29 @@ export const taskBoardPrsWatchView: SSESubscription = filterEventTypes(
   [TASK_BOARD_ITEM_PRS_UPDATED_EVENT],
 );
 
+/** Column rules (board prompts + column automations) changed. */
+export const taskBoardRulesWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [TASK_BOARD_RULES_UPDATED_EVENT],
+);
+
+/** A sprint was created, edited, started, completed or deleted. */
+export const taskBoardSprintsWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [TASK_BOARD_SPRINTS_UPDATED_EVENT],
+);
+
 /** Inbox fan-out (`notification.created`). Org-wide — the consumer matches the
  *  event's `subject` against its own user id. */
 export const notificationWatchView: SSESubscription = filterEventTypes(
   watchSSE,
   [NOTIFICATION_CREATED_EVENT],
+);
+
+/** The org's project folders changed (`project-folders.updated`). */
+export const projectFoldersWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [PROJECT_FOLDERS_UPDATED_EVENT],
 );
 
 /**

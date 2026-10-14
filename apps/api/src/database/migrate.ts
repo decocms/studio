@@ -12,7 +12,7 @@
  * the plugin system was still live.
  */
 
-import { Migrator, sql, type Kysely } from "kysely";
+import { Migrator, sql, type Kysely, type Migration } from "kysely";
 import migrations from "../../migrations";
 import { migrateBetterAuth } from "../auth/migrate";
 import { closeDatabase, getDb, type StudioDatabase } from "./index";
@@ -169,6 +169,30 @@ export interface MigrateOptions {
 }
 
 /**
+ * Rolling back to an older image leaves rows in kysely_migration that this
+ * build has no code for, and Kysely refuses to run at all when that happens.
+ * Treat them as already applied so a rollback can boot; migrations are written
+ * to keep the previous release working against the newer schema.
+ */
+async function migrationsFromNewerReleases(
+  db: Kysely<Database>,
+): Promise<Record<string, Migration>> {
+  if (!(await tableExists(db, "kysely_migration"))) return {};
+  const { rows } = await sql<{ name: string }>`
+    SELECT name FROM kysely_migration
+  `.execute(db);
+  const unknown = rows
+    .map((r) => r.name)
+    .filter((n) => !Object.hasOwn(migrations, n));
+  if (unknown.length > 0) {
+    console.warn(
+      `Database has migrations this build does not know, assuming a newer release applied them: ${unknown.join(", ")}`,
+    );
+  }
+  return Object.fromEntries(unknown.map((n) => [n, { up: async () => {} }]));
+}
+
+/**
  * Run Kysely migrations on a specific database instance
  */
 export async function runKyselyMigrations(
@@ -183,7 +207,12 @@ export async function runKyselyMigrations(
 
   const migrator = new Migrator({
     db,
-    provider: { getMigrations: () => Promise.resolve(migrations) },
+    provider: {
+      getMigrations: async () => ({
+        ...(await migrationsFromNewerReleases(db)),
+        ...migrations,
+      }),
+    },
   });
 
   const { error, results } = await migrator.migrateToLatest();

@@ -10,7 +10,6 @@ on:
     paths-ignore:
       - "apps/api/package.json"
       - ".github/**"
-      - "apps/docs/**"
       - "**/*.md"
   pull_request:
     branches:
@@ -78,7 +77,7 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              .github/*|apps/docs/*|deploy/*|*.md) ;;
+              .github/*|deploy/*|*.md) ;;
               *) relevant=true ;;
             esac
             case "$f" in

@@ -17,9 +17,9 @@ import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useRouteThreadId } from "@/layouts/thread-route";
 
 export interface OrgFileOpenValue {
-  /** Current org slug, for resolving `org/<slug>/…` references. */
+  /** Current org slug, for resolving `/app/org/<slug>/…` references. */
   orgSlug: string | undefined;
-  /** Current thread id (`?thread=` on canonical routes), for resolving `org/output|upload/…`
+  /** Current thread id (`?thread=` on canonical routes), for resolving `/app/org/output|upload/…`
    *  references into their `<threadId>/` subtree of the shared volume. */
   threadId: string | undefined;
   /** Open a Library browse path ("<volume>/<path…>"). */

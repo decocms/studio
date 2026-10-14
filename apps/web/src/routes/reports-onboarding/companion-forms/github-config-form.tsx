@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type ConnectionEntity,
   getReportsAgentId,
-  type GithubRepo,
+  type RepositoryBinding,
   WellKnownOrgMCPId,
 } from "@/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -41,7 +41,7 @@ import type { CompanionFormProps } from "./types.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 const schema = z.object({
-  githubRepo: z
+  repository: z
     .string()
     .min(1, "reportsOnboarding.githubConfigForm.selectRepository"),
 });
@@ -203,11 +203,11 @@ export function GitHubConfigForm({
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { githubRepo: "" },
+    defaultValues: { repository: "" },
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (githubRepo: string) => {
+    mutationFn: async (repository: string) => {
       const cdGet = await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_GET",
         arguments: { id: cdConnectionId },
@@ -218,7 +218,7 @@ export function GitHubConfigForm({
             configuration_state?: Record<string, unknown> | null;
           } | null;
         }>(cdGet).item?.configuration_state ?? null;
-      const merged = { ...(currentState ?? {}), github_repo: githubRepo };
+      const merged = { ...(currentState ?? {}), github_repo: repository };
       await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_UPDATE",
         arguments: {
@@ -227,17 +227,17 @@ export function GitHubConfigForm({
         },
       });
 
-      // Mirror onto the Report Agent virtual MCP's `metadata.githubRepo` —
+      // Mirror onto the Report Agent virtual MCP's `metadata.repository` —
       // `agentHasClonableSource` reads it to show the Preview/Code tabs and
       // SANDBOX_START reads it to clone. A bare `{ owner, name, url }` clones
       // anonymously (fails on a private store repo), so provision a repo-scoped
       // GitHub connection (same path the repo picker uses) and store its
       // `connectionId` so the clone is authenticated.
-      const parsed = parseRepoFullName(githubRepo);
+      const parsed = parseRepoFullName(repository);
       if (!parsed) {
         throw new Error(
           t("reportsOnboarding.githubConfigForm.invalidRepository", {
-            repo: githubRepo,
+            repo: repository,
           }),
         );
       }
@@ -246,7 +246,7 @@ export function GitHubConfigForm({
 
       const agentItem = unwrapToolResult<{
         item: {
-          metadata?: { githubRepo?: GithubRepo | null } | null;
+          metadata?: { repository?: RepositoryBinding | null } | null;
           connections?: Array<{ connection_id: string }> | null;
         } | null;
       }>(
@@ -255,7 +255,7 @@ export function GitHubConfigForm({
           arguments: { id: agentId },
         }),
       ).item;
-      const existingRepo = agentItem?.metadata?.githubRepo;
+      const existingRepo = agentItem?.metadata?.repository;
       const existingConnections = agentItem?.connections ?? [];
 
       // Reuse the existing repo-scoped connection when the same repo is
@@ -312,7 +312,7 @@ export function GitHubConfigForm({
       }
 
       // Aggregate the repo-scoped connection onto the agent — `git publish`
-      // (parseGithubRepoFromMetadata) only trusts `githubRepo.connectionId` when
+      // (parseRepositoryBinding) only trusts `repository.connectionId` when
       // it's one of the agent's connections. A previous save may have linked a
       // different repo whose connection now leaks (metadata overwrite does no
       // cascade); planAgentConnections drops it from the list so the
@@ -332,10 +332,10 @@ export function GitHubConfigForm({
             data: {
               connections: mergedConnections,
               metadata: {
-                githubRepo: {
+                repository: {
                   owner,
                   name,
-                  url: `https://github.com/${githubRepo}`,
+                  url: `https://github.com/${repository}`,
                   installationId,
                   connectionId: repoConnectionId,
                 },
@@ -403,11 +403,11 @@ export function GitHubConfigForm({
   useEffect(() => {
     if (!selectedQuery.isSuccess || prefilledRef.current) return;
     prefilledRef.current = true;
-    if (selectedQuery.data) form.setValue("githubRepo", selectedQuery.data);
+    if (selectedQuery.data) form.setValue("repository", selectedQuery.data);
   }, [selectedQuery.isSuccess, selectedQuery.data, form]);
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    saveMutation.mutate(data.githubRepo);
+    saveMutation.mutate(data.repository);
   });
 
   const results = reposQuery.data?.repos ?? [];
@@ -482,7 +482,7 @@ export function GitHubConfigForm({
             <Form {...form}>
               <FormField
                 control={form.control}
-                name="githubRepo"
+                name="repository"
                 render={({ field }) => (
                   <FormItem>
                     <FormControl>

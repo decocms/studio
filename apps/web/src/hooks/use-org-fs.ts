@@ -5,7 +5,13 @@
  * uploads/downloads move raw bytes, which the HTTP routes are built for.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 
@@ -16,6 +22,8 @@ export interface OrgFsEntry {
   size: number;
   updatedAt: string;
   contentHash?: string | null;
+  /** The member who first wrote it. Agents write as the member they run for. */
+  createdBy?: string;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
   /** Dir is a brand folder (contains tokens.css or brand.md). */
@@ -30,11 +38,6 @@ export interface OrgFsEntry {
 }
 
 export type ShareMode = "private" | "public" | "password";
-
-export interface OrgFsUsage {
-  files: number;
-  bytes: number;
-}
 
 /** A `/fs/recent` entry — cross-volume, so the volume rides along. */
 export interface OrgFsRecentEntry extends OrgFsEntry {
@@ -83,9 +86,14 @@ async function fsFetch(
 }
 
 /** Children of `path` ("" = volume root), dirs first then by name. */
-export function useOrgFsList(volume: string, path: string) {
+export function useOrgFsList(
+  volume: string,
+  path: string,
+  opts?: { enabled?: boolean },
+) {
   const { org } = useProjectContext();
   return useQuery({
+    enabled: opts?.enabled ?? true,
     queryKey: KEYS.orgFsList(org.id, volume, path),
     // Keep the previous listing on screen while navigating into a dir —
     // but only within the same org+volume, so switching orgs (which
@@ -130,12 +138,13 @@ export async function fetchOrgFsStat(
 export function useOrgFsStat(
   volume: string | null,
   path: string,
-  opts?: { refetchIntervalWhenAbsent?: number },
+  opts?: { refetchIntervalWhenAbsent?: number; staleTime?: number },
 ) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsStat(org.id, volume ?? "", path),
     enabled: volume !== null,
+    staleTime: opts?.staleTime,
     // Optional poll while the entry doesn't exist yet (e.g. the deck tab
     // waiting out the sandbox mount's write-back lag).
     refetchInterval: opts?.refetchIntervalWhenAbsent
@@ -143,17 +152,6 @@ export function useOrgFsStat(
           query.state.data ? false : (opts.refetchIntervalWhenAbsent ?? false)
       : undefined,
     queryFn: () => fetchOrgFsStat(org.slug, volume ?? "", path),
-  });
-}
-
-export function useOrgFsUsage(volume: string) {
-  const { org } = useProjectContext();
-  return useQuery({
-    queryKey: KEYS.orgFsUsage(org.id, volume),
-    queryFn: async () => {
-      const res = await fsFetch(fsUrl(org.slug, volume, "usage"));
-      return (await res.json()) as OrgFsUsage;
-    },
   });
 }
 
@@ -173,6 +171,43 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
       );
       return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
     },
+  });
+}
+
+const VOLUME_FILES_PAGE = 200;
+
+/** The chat a listed file came from. */
+export interface OrgFsSourceThread {
+  title: string;
+  agentId: string;
+}
+
+/** A `/files` entry: the chat it came from, when there is one. */
+export interface OrgFsVolumeFile extends OrgFsRecentEntry {
+  sourceThreadId: string | null;
+}
+
+interface OrgFsVolumeFilesPage {
+  entries: OrgFsVolumeFile[];
+  threads: Record<string, OrgFsSourceThread>;
+  next: string | null;
+}
+
+/** A volume's newest files at any depth, a page at a time. */
+export function useOrgFsVolumeFiles(volume: string) {
+  const { org } = useProjectContext();
+  return useInfiniteQuery({
+    queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(VOLUME_FILES_PAGE) });
+      if (pageParam) params.set("before", pageParam);
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/${encodeURIComponent(volume)}/files?${params}`,
+      );
+      return (await res.json()) as OrgFsVolumeFilesPage;
+    },
+    getNextPageParam: (lastPage) => lastPage.next ?? undefined,
   });
 }
 
@@ -269,6 +304,8 @@ export interface OrgFsSkillCatalogEntry {
   volume: string;
   path: string;
   sandboxPath: string;
+  /** Manual-only: the `skill` tool refuses it, only a person can invoke it. */
+  disableModelInvocation: boolean;
 }
 
 /** Fetch the full skill catalog (used by the chat `/` picker, not react-query). */
@@ -296,7 +333,7 @@ export function useOrgFsSkillCatalog() {
 }
 
 /** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */
-async function fetchOrgFsText(
+export async function fetchOrgFsText(
   orgSlug: string,
   volume: string,
   path: string,
@@ -491,6 +528,43 @@ export function useOrgFsWriteText(volume: string) {
   });
 }
 
+/** The version a conditional write must still find: a content hash, or nothing yet. */
+export type OrgFsWriteExpect = { contentHash: string } | { absent: true };
+
+export type OrgFsConditionalWrite =
+  | { ok: true; entry: OrgFsEntry }
+  | { ok: false; reason: "conflict" | "forbidden" };
+
+/**
+ * Write a text file only over the version the caller last saw. A plain
+ * function, not a mutation hook, so a save scheduled before unmount still lands.
+ */
+export async function writeOrgFsTextIf(
+  orgSlug: string,
+  volume: string,
+  path: string,
+  body: string,
+  expect: OrgFsWriteExpect | null,
+): Promise<OrgFsConditionalWrite> {
+  const headers: Record<string, string> = {
+    "content-type": "text/markdown; charset=utf-8",
+  };
+  if (expect && "absent" in expect) headers["if-none-match"] = "*";
+  else if (expect) headers["if-match"] = `"${expect.contentHash}"`;
+  const res = await fetch(fsUrl(orgSlug, volume, "file", { path }), {
+    method: "PUT",
+    headers,
+    body,
+  });
+  if (res.status === 412) return { ok: false, reason: "conflict" };
+  if (res.status === 403) return { ok: false, reason: "forbidden" };
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return {
+    ok: true,
+    entry: ((await res.json()) as { entry: OrgFsEntry }).entry,
+  };
+}
+
 /**
  * Set a file/folder's share mode (private / public / password). Password mode
  * carries the new password (which rotates the node secret server-side).
@@ -554,17 +628,23 @@ export function useOrgFsSetShareMode(volume: string) {
   });
 }
 
+/** What any write to a volume makes stale: its listings and usage, and the
+ *  cross-volume feeds. */
+export function invalidateOrgFsWrite(
+  queryClient: QueryClient,
+  orgId: string,
+  volume: string,
+): void {
+  queryClient.invalidateQueries({ queryKey: KEYS.orgFsVolume(orgId, volume) });
+  queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(orgId) });
+  queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(orgId) });
+}
+
 /** Upload/mkdir/delete/move; each invalidates the whole volume's listings+usage. */
 export function useOrgFsMutations(volume: string) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const invalidate = () => {
-    queryClient.invalidateQueries({
-      queryKey: KEYS.orgFsVolume(org.id, volume),
-    });
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(org.id) });
-  };
+  const invalidate = () => invalidateOrgFsWrite(queryClient, org.id, volume);
 
   const upload = useMutation({
     mutationFn: async (input: { dir: string; files: File[] }) => {

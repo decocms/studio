@@ -3,12 +3,12 @@
  * teammate's thread metadata.
  *
  * A read-only viewer's panel row can predate the thread's `load_repo` binding:
- * the live `data-open-preview` stream chunk that patches `githubRepo` /
+ * the live `data-open-preview` stream chunk that patches `repository` /
  * `sandboxMap` onto the client row reaches only the user who ran the tool, and
  * the thread-status SSE carries no metadata. That stale row makes the preview
  * show "no source to preview", hides the thread's sandbox record (kept under its
- * creator's key), and — with no `githubRepo` — blocks auto-start from booting the
- * thread's sandbox at all (`hasActiveGithubRepo` gates it). Force a fresh
+ * creator's key), and — with no `repository` — blocks auto-start from booting the
+ * thread's sandbox at all (`hasActiveRepository` gates it). Force a fresh
  * `COLLECTION_THREADS_GET` and merge it into the store so `activeTask` picks up
  * the current metadata.
  *

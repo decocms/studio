@@ -46,9 +46,7 @@ export function NoAccessScreen({
         <h3 className="text-lg font-medium">{title}</h3>
         <p className="text-sm text-muted-foreground">{body}</p>
       </div>
-      <Button onClick={handleGoHome}>
-        {t("common.noAccessScreen.goToHome")}
-      </Button>
+      <Button onClick={handleGoHome}>{t("common.goHome")}</Button>
     </AccessScreenLayout>
   );
 }

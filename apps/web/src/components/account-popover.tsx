@@ -437,7 +437,7 @@ export function AccountPopover() {
     },
     {
       key: "github",
-      label: t("common.accountPopover.githubRepo"),
+      label: t("common.accountPopover.repository"),
       icon: <GitHubIcon className="w-4 h-4" />,
       href: "https://github.com/decocms/studio",
       external: true,

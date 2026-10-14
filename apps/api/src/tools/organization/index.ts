@@ -12,14 +12,7 @@ export { ORGANIZATION_DELETE } from "./delete";
 export { ORGANIZATION_SETTINGS_GET } from "./settings-get";
 export { ORGANIZATION_HAS_SITE } from "./has-site";
 export { ORGANIZATION_SETTINGS_UPDATE } from "./settings-update";
-export { BRAND_CONTEXT_LIST, BRAND_CONTEXT_GET } from "./brand-context-get";
-export {
-  BRAND_CONTEXT_CREATE,
-  BRAND_CONTEXT_UPDATE,
-  BRAND_CONTEXT_DELETE,
-} from "./brand-context-update";
-export { BRAND_CONTEXT_EXTRACT } from "./brand-context-extract";
-export { BRAND_GET, BRAND_LIST } from "./brand-get";
+export { ORGANIZATION_BLOCKS_EDITOR_SET } from "./blocks-editor-set";
 
 // Domain management
 export {

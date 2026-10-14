@@ -11,7 +11,7 @@ type VmcpArg = Pick<
 function vmcp(overrides: Record<string, unknown> = {}): VmcpArg {
   return {
     organization_id: "org_1",
-    metadata: { githubRepo: { url: "https://github.com/acme/widget" } },
+    metadata: { repository: { url: "https://github.com/acme/widget" } },
     connections: [{ connection_id: "conn_github" }],
     ...overrides,
   } as VmcpArg;
@@ -38,7 +38,7 @@ describe("codeAgentBoardConnection", () => {
   test("skips an agent without a github repo (no checkout, not a coding agent)", () => {
     expect(codeAgentBoardConnection(vmcp({ metadata: {} }))).toBeNull();
     expect(
-      codeAgentBoardConnection(vmcp({ metadata: { githubRepo: null } })),
+      codeAgentBoardConnection(vmcp({ metadata: { repository: null } })),
     ).toBeNull();
   });
 

@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
+import { LANES } from "@decocms/shared/task-board";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import { emitTaskBoardRulesUpdated } from "./prompts";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "./schema";
 
 const AutomationSchema = z.object({
@@ -71,14 +73,24 @@ export const TASK_BOARD_AUTOMATION_UPSERT = defineTool({
       );
     }
 
+    // The board already runs the reviewer on every card reaching In Review;
+    // a rule there would start the implementer on top of it. How the reviewer
+    // works is In Review's instructions (TASK_BOARD_PROMPT_UPSERT).
+    if (input.columnKey === LANES.review) {
+      throw new Error(
+        "In Review already runs the reviewer on every card that lands there. " +
+          "Set its instructions with TASK_BOARD_PROMPT_UPSERT instead.",
+      );
+    }
+
     const prompt = input.prompt?.trim() ? input.prompt.trim() : null;
-    return {
-      automation: await ctx.storage.columnAutomations.upsert(
-        organizationId,
-        input.columnKey,
-        prompt,
-      ),
-    };
+    const automation = await ctx.storage.columnAutomations.upsert(
+      organizationId,
+      input.columnKey,
+      prompt,
+    );
+    emitTaskBoardRulesUpdated(organizationId, input.columnKey);
+    return { automation };
   },
 });
 
@@ -98,11 +110,11 @@ export const TASK_BOARD_AUTOMATION_DELETE = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
-    return {
-      removed: await ctx.storage.columnAutomations.remove(
-        organizationId,
-        input.columnKey,
-      ),
-    };
+    const removed = await ctx.storage.columnAutomations.remove(
+      organizationId,
+      input.columnKey,
+    );
+    if (removed) emitTaskBoardRulesUpdated(organizationId, input.columnKey);
+    return { removed };
   },
 });

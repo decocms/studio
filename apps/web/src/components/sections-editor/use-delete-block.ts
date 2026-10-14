@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -11,8 +13,9 @@ import {
   setDecofileDraft,
   throwResponseError,
 } from "./decofile-api";
-import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
+import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -38,11 +41,25 @@ export function useDeleteBlock({
   // Sandbox-less mode: deletes commit through the decofile API and remove every
   // encoding alias of the key server-side.
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
+  /**
+   * Local mode: nothing is persisted — the optimistic cache removal below IS
+   * the whole delete, same as `useSaveBlock`. It also keys the cache, so
+   * reading it without the tunnel patched a decofile nobody is rendering.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const cacheKey = decofileCacheKey({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    localPreviewUrl,
+  });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
+      // Local: no persistence — the optimistic cache removal is the delete.
+      if (localPreviewUrl) return { ok: true as const, existed: true };
       if (fastPreviewActive) {
         const draft = await patchDecofile(
           { orgSlug, virtualMcpId, branch },
@@ -67,7 +84,7 @@ export function useDeleteBlock({
       }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const res = await fetch(
-        `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/unlink`,
+        buildSandboxUrl({ orgSlug, virtualMcpId, branch, threadId }, "unlink"),
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -78,7 +95,6 @@ export function useDeleteBlock({
       return res.json() as Promise<{ ok: true; existed: boolean }>;
     },
     onMutate: async ({ blockKey }) => {
-      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       const queryKey = KEYS.decofile(cacheKey);
       await queryClient.cancelQueries({ queryKey });
       const previous =

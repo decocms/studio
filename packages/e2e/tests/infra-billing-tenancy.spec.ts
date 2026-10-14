@@ -83,14 +83,16 @@ test.describe("Infra billing site tenancy", () => {
         usage: { date: string }[];
         pageviewsAvailable: boolean;
         usageUnavailable: boolean;
-        billing: unknown;
-        billingUnavailableReason: string | null;
+        teams: unknown[];
+        siteSlugsWithoutTeam: string[];
+        billingUnavailable: boolean;
       }>(ownerCtx, owner.orgSlug, "INFRA_BILLING_GET", { siteSlugs: [slug] });
       expect(billing.siteSlugs).toEqual([slug]);
       expect(billing.usageUnavailable).toBe(true);
       expect(billing.pageviewsAvailable).toBe(false);
-      expect(billing.billing).toBeNull();
-      expect(billing.billingUnavailableReason).toBe("unavailable");
+      expect(billing.teams).toEqual([]);
+      expect(billing.siteSlugsWithoutTeam).toEqual([]);
+      expect(billing.billingUnavailable).toBe(true);
       // Zero-filled day by day, and never past today.
       expect(billing.usage.length).toBe(
         new Date(`${billing.until}T00:00:00Z`).getUTCDate(),

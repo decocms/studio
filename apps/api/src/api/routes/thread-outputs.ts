@@ -1,9 +1,9 @@
 /**
  * Thread Outputs Route
  *
- * Lists files the model wrote to the thread's `org/output/` subtree. The chat
- * UI polls this endpoint on assistant-turn completion to render download chips
- * on the producing turn.
+ * Lists files the model wrote to the thread's `/app/org/output/` subtree. The
+ * chat UI polls this endpoint on assistant-turn completion to render download
+ * chips on the producing turn.
  *
  * Route: GET /api/threads/:threadId/outputs
  *
@@ -47,8 +47,8 @@ export const createThreadOutputsRoutes = () => {
       throw new HTTPException(404, { message: "Thread not found" });
     }
 
-    // Files written to `org/output/` land in the org-fs `outputs` volume under
-    // `<threadId>/...` (one indexed manifest query).
+    // Files written to `/app/org/output/` land in the org-fs `outputs` volume
+    // under `<threadId>/...` (one indexed manifest query).
     const orgId = ctx.organization?.id;
     const fsOutputs = orgId
       ? await ctx.storage.orgFsEntries

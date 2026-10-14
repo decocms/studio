@@ -1,9 +1,24 @@
+import * as migration228orgvoiceconfig from "./228-org-voice-config";
 import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration222orggitcredentials from "./222-org-git-credentials";
 import * as migration224repositorysandboximage from "./224-repository-sandbox-image";
 import * as migration225threadanalyticsindexes from "./225-thread-analytics-indexes";
 import * as migration226decoscorenames from "./226-deco-score-names";
-import * as migration227experimenttaskboarditem from "./227-experiment-task-board-item";
+import * as migration227taskboardfindingresolvedactivity from "./227-task-board-finding-resolved-activity";
+import * as migration229jiraautomationfrom from "./229-jira-automation-from";
+import * as migration230projectsidebar from "./230-project-sidebar";
+import * as migration231jirachatagent from "./231-jira-chat-agent";
+import * as migration232taskboardpromptskills from "./232-task-board-prompt-skills";
+import * as migration233removejirachatagent from "./233-remove-jira-chat-agent";
+import * as migration234taskboardcommentaudience from "./234-task-board-comment-audience";
+import * as migration235pruneemptythreaddirs from "./235-prune-empty-thread-dirs";
+import * as migration236taskboardsprints from "./236-task-board-sprints";
+import * as migration237orgsitesprojectlink from "./237-org-sites-project-link";
+import * as migration238taskboarddefaultlanes from "./238-task-board-default-lanes";
+import * as migration239taskboardretireoldlanes from "./239-task-board-retire-old-lanes";
+import * as migration240taskboardrestoretodo from "./240-task-board-restore-todo";
+import * as migration241automationboardcolumntransition from "./241-automation-board-column-transition";
+import * as migration242experimenttaskboarditem from "./242-experiment-task-board-item";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -57,8 +72,8 @@ import * as migration033threadstatus from "./033-thread-status.ts";
 import * as migration034monitoringdashboards from "./034-monitoring-dashboards.ts";
 import * as migration035projectconnections from "./035-project-connections.ts";
 import * as migration036updateregistryurl from "./036-update-registry-url.ts";
-import * as migration037aiproviderkeyss from "./037-ai-provider-keys.ts";
-import * as migration038oauthpkcestatess from "./038-oauth-pkce-states.ts";
+import * as migration037aiproviderkeys from "./037-ai-provider-keys.ts";
+import * as migration038oauthpkcestates from "./038-oauth-pkce-states.ts";
 import * as migration039automations from "./039-automations.ts";
 import * as migration040replacenextrunatwithlastrunat from "./040-replace-next-run-at-with-last-run-at.ts";
 import * as migration041aiproviderkeysuniqueconstraint from "./041-ai-provider-keys-unique-constraint.ts";
@@ -271,8 +286,8 @@ const migrations: Record<string, Migration> = {
   "034-monitoring-dashboards": migration034monitoringdashboards,
   "035-project-connections": migration035projectconnections,
   "036-update-registry-url": migration036updateregistryurl,
-  "037-ai-provider-keys": migration037aiproviderkeyss,
-  "038-oauth-pkce-states": migration038oauthpkcestatess,
+  "037-ai-provider-keys": migration037aiproviderkeys,
+  "038-oauth-pkce-states": migration038oauthpkcestates,
   "039-automations": migration039automations,
   "040-replace-next-run-at-with-last-run-at":
     migration040replacenextrunatwithlastrunat,
@@ -490,7 +505,24 @@ const migrations: Record<string, Migration> = {
   "224-repository-sandbox-image": migration224repositorysandboximage,
   "225-thread-analytics-indexes": migration225threadanalyticsindexes,
   "226-deco-score-names": migration226decoscorenames,
-  "227-experiment-task-board-item": migration227experimenttaskboarditem,
+  "227-task-board-finding-resolved-activity":
+    migration227taskboardfindingresolvedactivity,
+  "228-org-voice-config": migration228orgvoiceconfig,
+  "229-jira-automation-from": migration229jiraautomationfrom,
+  "230-project-sidebar": migration230projectsidebar,
+  "231-jira-chat-agent": migration231jirachatagent,
+  "232-task-board-prompt-skills": migration232taskboardpromptskills,
+  "233-remove-jira-chat-agent": migration233removejirachatagent,
+  "234-task-board-comment-audience": migration234taskboardcommentaudience,
+  "235-prune-empty-thread-dirs": migration235pruneemptythreaddirs,
+  "236-task-board-sprints": migration236taskboardsprints,
+  "237-org-sites-project-link": migration237orgsitesprojectlink,
+  "238-task-board-default-lanes": migration238taskboarddefaultlanes,
+  "239-task-board-retire-old-lanes": migration239taskboardretireoldlanes,
+  "240-task-board-restore-todo": migration240taskboardrestoretodo,
+  "241-automation-board-column-transition":
+    migration241automationboardcolumntransition,
+  "242-experiment-task-board-item": migration242experimenttaskboarditem,
 };
 
 export default migrations;

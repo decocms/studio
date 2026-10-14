@@ -37,6 +37,7 @@ import { posthog } from "@/posthog";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDb, getDatabaseUrl, getDbDialect } from "../database";
+import { findOrgByPreviousSlug } from "../core/org-previous-slug";
 import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
@@ -238,6 +239,12 @@ const plugins = [
   // Organization plugin for multi-tenant organization management
   // https://www.better-auth.com/docs/plugins/organization
   organization({
+    // Seats are unlimited on every plan; Better Auth otherwise caps at 100. It
+    // is also its default page size for listMembers / getFullOrganization.
+    // Rides the plans flag so merging this changes nothing until plans ship.
+    ...(getSettings().plansEnabled && {
+      membershipLimit: Number.MAX_SAFE_INTEGER,
+    }),
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);
@@ -249,6 +256,15 @@ const plugins = [
       // and MCP tool wrappers.
       beforeCreateOrganization: async ({ organization }) => {
         rejectReservedOrganizationSlug(organization.slug);
+        // A renamed org's old slug still routes to it; a new org must not take it over.
+        if (
+          organization.slug &&
+          (await findOrgByPreviousSlug(getDb().db, organization.slug))
+        ) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Organization slug is already taken.",
+          });
+        }
       },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets
@@ -301,6 +317,7 @@ const plugins = [
       owner,
     },
     sendInvitationEmail,
+    invitationExpiresIn: 7 * 24 * 60 * 60, // 7 days (Better Auth default is 48h)
   }),
 
   // MCP plugin for OAuth 2.1 server

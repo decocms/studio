@@ -1469,7 +1469,7 @@ async fn is_protected_branch(repo_dir: &Path, branch: &str) -> bool {
 /// it is otherwise byte-parity with. Prod embeds a cluster-minted token in the
 /// clone URL and clears the helper so a stale cached credential cannot shadow
 /// it; the desktop has no such token — its clone URLs come straight from the
-/// agent's `metadata.githubRepo.url` — so clearing the helper left the push
+/// agent's `metadata.repository.url` — so clearing the helper left the push
 /// with NO credential source at all and every private-repo publish failed,
 /// including the shutdown publish that exists to save unsynced work.
 ///

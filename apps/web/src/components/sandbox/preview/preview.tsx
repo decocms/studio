@@ -55,7 +55,10 @@ import {
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { Panel } from "@/components/panel";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+import {
+  inlinePageOverrideParams,
+  withVariantMatcherOverride,
+} from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -148,11 +151,10 @@ import {
   type PreviewEditingMode,
 } from "./editing-mode";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
+import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
-
-type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
 
 /**
  * Logical viewport dimensions per device, matching the legacy admin. The iframe
@@ -182,22 +184,6 @@ const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   tablet: "sandbox.preview.deviceTablet",
   desktop: "sandbox.preview.deviceDesktop",
 };
-
-/**
- * Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`).
- * Falls back to the unmodified `url` on a malformed input instead of throwing
- * mid-render and taking down the whole preview panel (same defensive shape as
- * `previewOrigin` below).
- */
-export function withDeviceHint(url: string, device: PreviewDeviceSize): string {
-  try {
-    const parsed = new URL(url, window.location.href);
-    parsed.searchParams.set("deviceHint", device);
-    return parsed.href;
-  } catch {
-    return url;
-  }
-}
 
 /**
  * Force `__decoFBT=0` and `__deco_ssr=1` on the preview URL — `__decoFBT=0`
@@ -428,6 +414,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
   const [pagesSearch, setPagesSearch] = useState("");
+  const pagesListRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
   const [createPageError, setCreatePageError] = useState<string | undefined>();
   const [activeGlobalSection, setActiveGlobalSection] =
@@ -1058,10 +1045,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       pathTemplate: currentPath,
     });
     if (!req) return;
-    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the variant live right now.
     const src = withVariantMatcherOverride(
       req.src,
-      workspace.state.variantOverride ?? [],
+      inlinePageOverrideParams(
+        workspace.state.variantOverride ?? [],
+        currentPageKey,
+      ),
     );
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },
@@ -1568,10 +1558,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <Command shouldFilter={false} defaultValue={currentPickerValue}>
             <CommandInput
               value={pagesSearch}
-              onValueChange={setPagesSearch}
+              onValueChange={(value) => {
+                setPagesSearch(value);
+                // cmdk skips scrolling when the highlighted item is unchanged.
+                pagesListRef.current?.scrollTo({ top: 0 });
+              }}
               placeholder={t("sandbox.preview.searchPagesAndComponents")}
             />
-            <CommandList className="max-h-80">
+            <CommandList ref={pagesListRef} className="max-h-80">
               <CommandEmpty>
                 {pages.length === 0 &&
                 globalSections.length === 0 &&

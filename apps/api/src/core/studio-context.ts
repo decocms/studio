@@ -48,9 +48,6 @@ export type AddMemberResult = Awaited<ReturnType<BetterAuthApi["addMember"]>>;
 export type RemoveMemberResult = Awaited<
   ReturnType<BetterAuthApi["removeMember"]>
 >;
-export type ListMembersResult = Awaited<
-  ReturnType<BetterAuthApi["listMembers"]>
->;
 export type UpdateMemberRoleResult = Awaited<
   ReturnType<BetterAuthApi["updateMemberRole"]>
 >;
@@ -138,14 +135,6 @@ export interface BoundAuthClient {
       memberIdOrEmail: string;
       organizationId?: string;
     }): Promise<RemoveMemberResult>;
-
-    listMembers(options?: {
-      organizationId?: string;
-      limit?: number;
-      offset?: number;
-      filterField?: string;
-      filterValue?: string;
-    }): Promise<ListMembersResult>;
 
     updateMemberRole(data: {
       memberId: string;
@@ -298,6 +287,8 @@ import type { MonitoringStorage } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
+import type { SprintStorage } from "../storage/sprints";
+import type { ProjectSidebarStorage } from "../storage/project-sidebar";
 import type { ExperimentStorage } from "../storage/experiments";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
@@ -305,7 +296,6 @@ import type { AutomationsStorage } from "../storage/automations";
 import type { TriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
-import type { BrandContextStorage } from "../storage/brand-context";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -363,6 +353,8 @@ export interface StudioStorage {
   threads: OrgScopedThreadStorage;
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
+  sprints: SprintStorage;
+  projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
   subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
@@ -389,7 +381,6 @@ export interface StudioStorage {
   triggerCallbackTokens: TriggerCallbackTokenStorage;
   orgSsoConfig: OrgSsoConfigStorage;
   orgSsoSessions: OrgSsoSessionStorage;
-  brandContext: BrandContextStorage;
   organizationDomains: OrganizationDomainStorage;
   organizationJoinRequests: OrganizationJoinRequestStorage;
   kv: KVStorage;
@@ -480,9 +471,6 @@ export interface StudioContext {
   // object storage or no org scope. See `.context/org-filesystem-proposal.md`.
   orgFs: OrgFs | null;
 
-  // External API keys (optional, from settings)
-  firecrawlApiKey?: string;
-
   // Automation runner — fires an automation manually (wired in app.ts)
   automationRunner?: (
     automationId: string,
@@ -494,13 +482,6 @@ export interface StudioContext {
 // ============================================================================
 // Utility Functions
 // ============================================================================
-
-/**
- * Check if context has organization scope
- */
-export function hasOrganization(ctx: StudioContext): boolean {
-  return ctx.organization !== undefined;
-}
 
 /**
  * Get organization ID or null

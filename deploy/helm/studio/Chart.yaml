@@ -2,6 +2,8 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.16.2: nginx.apiMaxConns sets the per-API-process upstream max_conns
+# (requires a studio-nginx image that renders it; default stays 128).
 # 0.16.1: let a single-node NATS recover a poisoned JetStream stream by using
 # js-server-only for its startup probe; the API can then connect and repair it.
 # 0.16.0: hosted execution is now enabled explicitly with
@@ -80,7 +82,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.16.1
+version: 0.16.2
 appVersion: "latest"
 
 dependencies:

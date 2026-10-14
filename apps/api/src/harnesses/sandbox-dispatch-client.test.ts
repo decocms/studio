@@ -4,12 +4,15 @@ import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { withModelMetadata } from "./with-model-metadata";
 import {
+  cancelDaemonRun,
   describeTermination,
   dispatchWithContinuation,
   errorForTerminal,
   harnessRunsInSandbox,
+  harnessSessionKey,
   isRunSuperseded,
   isStudioOwnedConnection,
+  orgOutputFallbackInstruction,
   sandboxStateInstruction,
   selectRunConnections,
   isUnreachableStatus,
@@ -18,6 +21,7 @@ import {
   RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
+import { sandboxPathsAsUploads } from "@/tools/task-board/description-uploads";
 
 function bodyOf(text: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -144,6 +148,51 @@ describe("selectRunConnections", () => {
         }).map((c) => c.id),
       ).toEqual(["conn_github", "conn_vtex"]);
     }
+  });
+});
+
+describe("harnessSessionKey", () => {
+  const turn = (overrides: Record<string, unknown> = {}) =>
+    ({
+      threadId: "thrd_1",
+      userMessage: { parts: [{ type: "text", text: "first" }] },
+      workspace: { cwd: null },
+      mode: "default",
+      mcp: {
+        url: "https://studio.test/mcp",
+        headers: { a: "1" },
+        expiresAt: 1,
+      },
+      ...overrides,
+    }) as unknown as Parameters<typeof harnessSessionKey>[0];
+
+  test("a follow-up with a new message, title and MCP bearer keeps the session", () => {
+    expect(
+      harnessSessionKey(
+        turn({
+          userMessage: { parts: [{ type: "text", text: "second" }] },
+          currentThreadTitle: "Named",
+          mcp: {
+            url: "https://studio.test/mcp",
+            headers: { a: "2" },
+            expiresAt: 2,
+          },
+        }),
+      ),
+    ).toBe(harnessSessionKey(turn()));
+  });
+
+  test("anything that shapes the session gets a new one", () => {
+    expect(harnessSessionKey(turn({ mode: "plan" }))).not.toBe(
+      harnessSessionKey(turn()),
+    );
+    expect(
+      harnessSessionKey(
+        turn({
+          mcp: { url: "https://other.test/mcp", headers: {}, expiresAt: 1 },
+        }),
+      ),
+    ).not.toBe(harnessSessionKey(turn()));
   });
 });
 
@@ -363,6 +412,43 @@ describe("pushSandboxEnv", () => {
       }
       expect(thrown).toBeInstanceOf(SandboxUnreachableError);
     }
+  });
+});
+
+describe("cancelDaemonRun", () => {
+  test("DELETEs the turn's run on the daemon", async () => {
+    const calls: { handle: string; path: string; method: string }[] = [];
+    const provider = {
+      proxyDaemonRequest: async (
+        handle: string,
+        path: string,
+        init: { method: string },
+      ) => {
+        calls.push({ handle, path, method: init.method });
+        return new Response(null, { status: 204 });
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await cancelDaemonRun(provider, "handle-1", "thread-1:fence-1");
+    expect(calls).toEqual([
+      {
+        handle: "handle-1",
+        path: "/_sandbox/runs/thread-1%3Afence-1",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  test("never throws: a dead or rejecting daemon leaves the stop to its grace", async () => {
+    const throwing = {
+      proxyDaemonRequest: async () => {
+        throw new Error("connection refused");
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    const rejecting = {
+      proxyDaemonRequest: async () => new Response("nope", { status: 503 }),
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await expect(cancelDaemonRun(throwing, "h", "r")).resolves.toBeUndefined();
+    await expect(cancelDaemonRun(rejecting, "h", "r")).resolves.toBeUndefined();
   });
 });
 
@@ -895,5 +981,29 @@ describe("sandboxStateInstruction", () => {
     for (const warm of [true, false]) {
       expect(sandboxStateInstruction(warm)).not.toContain("may");
     }
+  });
+});
+
+describe("orgOutputFallbackInstruction", () => {
+  const text = orgOutputFallbackInstruction("thrd_abc");
+
+  test("names the run's own folder in the outputs mount, never /tmp", () => {
+    expect(text).toContain("/app/org/output");
+    expect(text).toContain("/app/org/.outputs/thrd_abc/");
+    expect(text).toContain("never use `/tmp`");
+  });
+
+  test("only while the mount point exists, never by creating it", () => {
+    expect(text).toContain("but `/app/org/.outputs` does");
+    expect(text).toContain("Never create `/app/org/.outputs` yourself");
+  });
+
+  // The instruction is only worth giving if a comment that follows it renders.
+  test("points at a path task comments turn into an image", () => {
+    const shot = "/app/org/.outputs/thrd_abc/qa/after.png";
+    expect(text).toContain(shot.slice(0, shot.lastIndexOf("qa/")));
+    expect(sandboxPathsAsUploads(`![after](${shot})`, "acme")).toBe(
+      "![after](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fafter.png)",
+    );
   });
 });

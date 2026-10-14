@@ -1,4 +1,5 @@
 import { page } from "./page";
+import { projects } from "./projects.ts";
 import { virtualMcp } from "./virtual-mcp.ts";
 import { user } from "./user.ts";
 import { tools } from "./tools.ts";
@@ -36,6 +37,7 @@ import { chooseEditor } from "./choose-editor.ts";
 import { chat } from "./chat.ts";
 import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
+import { agents } from "./agents.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
@@ -84,12 +86,14 @@ export const en = {
   ...chat,
   ...credits,
   ...automations,
+  ...agents,
   ...agentShellLayout,
   ...admin,
   ...sandbox,
   ...settings,
   ...announcements,
   ...assets,
+  ...projects,
   ...page,
 } as const;
 

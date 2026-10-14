@@ -28,9 +28,9 @@
  */
 
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { projectRepo, resolveGithubAttachment } from "./github-repo";
+import { projectRepo, resolveRepositoryAttachment } from "./repository-binding";
 
-/** A card, as everything here reads one: its stamped repo and its runs. */
+/** The repo field can also contain a project id written by existing clients. */
 export interface AttributableTask {
   repo?: string | null;
   threads?: readonly { virtualMcpId?: string | null }[];
@@ -66,8 +66,7 @@ export function normalizeRepo(label: string | null | undefined): string {
  * 158 dropped its one-parent trigger).
  *
  * `kind: "project"` — keyed by the `vir_…` id, for a project with no repository.
- * Only a linked thread can put a card here, since `task_board_items.repo` has
- * nothing to point at.
+ * Cards reach it through a linked thread or a project id stored in `repo`.
  */
 export interface ProjectIndexEntry {
   /** The value the board's `?repo=` param carries for this bucket. */
@@ -171,7 +170,8 @@ export function buildProjectIndex(
 
   for (const label of extraRepos) {
     const trimmed = (label ?? "").trim();
-    if (trimmed) repoEntry(trimmed);
+    // A project-id stamp must not create a second bucket with the same id.
+    if (trimmed && !byProject.has(trimmed)) repoEntry(trimmed);
   }
 
   for (const entry of byRepo.values()) {
@@ -199,11 +199,8 @@ export function buildProjectIndex(
 /**
  * Which bucket a card belongs to, or null when nothing says.
  *
- * Threads first, then `repo` — the precedence the org home and the sidebar
- * already used, kept so replacing their two copies with this one changes
- * nothing but the collision. A run names the project it ran in, which is the
- * only link that survives a card whose project pins no repository; `repo` is
- * what a card nobody has run yet still carries.
+ * Threads take precedence. Then resolve `repo` as an exact project id before
+ * trying a case-insensitive repository name.
  */
 export function entryForTask(
   task: AttributableTask,
@@ -215,6 +212,8 @@ export function entryForTask(
       : undefined;
     if (found) return found;
   }
+  const project = index.byProject.get((task.repo ?? "").trim());
+  if (project) return project;
   const repo = normalizeRepo(task.repo);
   return (repo ? index.byRepo.get(repo) : undefined) ?? null;
 }
@@ -239,7 +238,34 @@ export function projectsForTask(
       : undefined;
     if (named) return [named];
   }
+  const stamped = entry.projects.find((p) => p.id === task.repo?.trim());
+  if (stamped) return [stamped];
   return entry.projects;
+}
+
+/**
+ * Every card that belongs to one project.
+ *
+ * The narrowing a PROJECT-SCOPED view applies before it does anything else —
+ * the board rendered as a project's home, the org home's per-project lines.
+ * Deliberately NOT the board's `?repo=` filter: that one is an exact string
+ * match, so scoping through it hid every repo-less card the moment a project
+ * was picked (see the inverted tests in `task-board/filters-search.test.ts`).
+ * Scope is a narrowing of the INPUT; the filter is a choice the reader makes
+ * inside it, and conflating the two is what made them indistinguishable.
+ *
+ * Attribution is `projectsForTask`, so a repo-less project is still reached
+ * through its runs and a card on a repository two projects share counts for
+ * both — the same answer the sidebar and the home already give.
+ */
+export function tasksForProject<T extends AttributableTask>(
+  tasks: readonly T[],
+  index: ProjectIndex,
+  projectId: string,
+): T[] {
+  return tasks.filter((task) =>
+    projectsForTask(task, index).some((project) => project.id === projectId),
+  );
 }
 
 /** The single project a card belongs to, or null when the answer is "several"
@@ -378,7 +404,8 @@ export function stampableEntries(index: ProjectIndex): ProjectIndexEntry[] {
       entry.repo !== null &&
       (entry.projects.length === 0 ||
         entry.projects.some(
-          (project) => resolveGithubAttachment(project).status !== "detached",
+          (project) =>
+            resolveRepositoryAttachment(project).status !== "detached",
         )),
   );
 }

@@ -58,7 +58,9 @@ through Studio.
    from the link gate, because that gate waits on mounts that exist only after
    this POST.
 4. **Mount.** The sidecar parses the config (`config.ts`) and mounts every
-   volume concurrently (`mount-manager.ts`). Each volume gets its own
+   volume concurrently (`mount-manager.ts`). First it makes `/app/org`
+   writable by the sandbox user, sticky like `/tmp`, when the pod hands it
+   over root-only; otherwise the daemon cannot add its per-run links. Each volume gets its own
    `OrgFsClient`, its own loopback WebDAV server, and its own
    `rclone mount --allow-other` process (`mounter.ts`). A mount counts as live
    once rclone's rc API reports a VFS, within 15 s. A volume that fails is
@@ -78,7 +80,7 @@ mount point would put user files on ephemeral disk.
 
 | Volume | Mount path | Mode | Purpose |
 | --- | --- | --- | --- |
-| `home` | `org/home` | read-write | Org-wide shared folder; also holds `skills/` and `claude-sessions/` |
+| `home` | `org/home` | read-write | Org-wide shared folder; also holds `skills/` and per-harness session dirs (`claude-sessions/`) |
 | `outputs` | `org/.outputs` | read-write | Per-thread outputs; the agent sees them through `org/output` |
 | `uploads` | `org/.uploads` | read-write | Per-thread chat attachments; the agent sees them through `org/upload` |
 | `public-<set>` | `org/public/<set>` | read-only | Shared public skill sets |
@@ -94,14 +96,19 @@ content in volumes that are already mounted stays live.
 `daemon-go/internal/orgfs/links.go` fails open everywhere except the
 dispatch gate described below.
 
-- **Repo link.** `<repo>/org → ../org`, added to `.git/info/exclude`, so
-  relative `org/...` paths resolve from the harness cwd. The link is created
-  at dispatch time, not at boot, because an existing link makes `git clone`
-  refuse the directory. A real `org/` tracked by the repo takes precedence.
-- **Per-run links.** `org/output → .outputs/<threadId>` and
-  `org/upload → .uploads/<threadId>` are repointed on every fs/exec call that
-  carries `x-thread-id` and at dispatch. A real, non-empty `org/output` is
-  never replaced.
+- **No repo link.** Agents address org-fs by absolute path under `/app/org/`.
+  Nothing org-fs is linked into the checkout, because dev-server file watchers
+  rooted at the repo would follow the link and crawl every mount before the
+  server binds. Instead `<repo>/org` is a small marker file, excluded in
+  `.git/info/exclude`, that names `/app/org/`: a legacy relative `org/...`
+  write fails with "Not a directory" instead of creating files the shutdown
+  `git add -A` would commit. The marker replaces a `<repo>/org → ../org`
+  symlink left by older daemons. A real `org/` directory or any other symlink
+  there belongs to the repo and is never touched.
+- **Per-run links.** `/app/org/output → .outputs/<threadId>` and
+  `/app/org/upload → .uploads/<threadId>` are repointed on every fs/exec call
+  that carries `x-thread-id` and at dispatch. A real, non-empty
+  `/app/org/output` is never replaced.
 - **Home skills.** `$CLAUDE_CONFIG_DIR/skills` (or `~/.claude/skills`) is
   symlinked to `org/home/skills`, so a skill the agent writes there becomes an
   org-fs write. The link is placed only after a read probe (3 s per file)
@@ -113,7 +120,8 @@ dispatch gate described below.
   `GET /api/:org/fs/:volume/skills.tar` first and falls back to walking the
   mount. It is capped in bytes and time and runs once per pod.
 - **Sessions.** Before each run, `RestoreSession` copies
-  `org/home/claude-sessions/<threadId>/` into the Claude config directory.
+  `org/home/<harness>-sessions/<threadId>/` (`claude-sessions/` for
+  `claude-code`) into the Claude config directory.
   After each run, `SaveSession` copies it back, so a follow-up in a new pod
   resumes the conversation. These are copies, never mounts, because the SDK
   reads the transcript on its startup path.
@@ -126,12 +134,25 @@ to link, because a run without its skills or transcript completes with a
 wrong answer instead of an error. `WaitSkillLinks` then waits a bounded time
 for the plugin copy, since Claude Code scans skills only at startup.
 
+## On Freestyle VMs
+
+`FreestyleSandboxProvider` reproduces the pod layout with two containers in
+the VM. Host directories stand in for the `emptyDir` volumes:
+`/srv/sandbox/org` is a shared bind mount, which the sidecar mounts `rshared`
+and the sandbox container mounts `rslave`. `/srv/sandbox/orgfs-ctl` is a
+tmpfs. Both are in the VM's fstab, so they return before Docker restarts the
+containers after a reboot. A reboot empties the ctl directory, which drops
+the stale `status.json`. Every resume relays the config again, and a sidecar
+that has already mounted ignores it. The base snapshot pulls the sidecar
+image next to the sandbox image.
+
 ## Freshness and failure handling
 
 - **External writes.** WebDAV has no change notification. For each volume,
   `invalidator.ts` long-polls `/changes?wait=1` and calls rclone's
   `vfs/refresh` on the parent directory of each changed path. The first drain
-  only primes the cursor. `--dir-cache-time 10s` is the fallback bound.
+  only primes the cursor. A failed poll retries with exponential backoff and
+  jitter, from 1 s up to 30 s. `--dir-cache-time 10s` is the fallback bound.
   `vfs/refresh` is used instead of `vfs/forget`, because forget kills open
   handles, including the mount's own in-flight writes.
 - **Own writes.** `--vfs-write-back 1s` uploads closed files about a second
@@ -175,4 +196,4 @@ Neither is a supported production mode, because Studio prompts still refer to
 - [Sandbox package](../README.md)
 - [Go daemon](../daemon-go/README.md)
 - [sandbox-env chart](../../../deploy/helm/sandbox-env/README.md)
-- [Studio architecture: org filesystem](../../../apps/docs/client/src/content/deco-studio/en/studio/architecture.mdx)
+- [Studio architecture: org filesystem](https://docs.decocms.com/studio/get-started/architecture)

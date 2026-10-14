@@ -52,6 +52,23 @@ describe("openaiCompatibleAdapter.listModels", () => {
     expect(calls).toBe(1);
   });
 
+  test("skips a catalog entry missing an id instead of crashing the whole call", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          data: [{ owned_by: "unknown" }, ...MODELS_BODY.data],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const provider = openaiCompatibleAdapter.create(CREDENTIAL);
+    const models = await provider.listModels?.();
+
+    expect(models).toHaveLength(1);
+    expect(models?.[0]?.modelId).toBe("llama-3");
+  });
+
   test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
     globalThis.fetch = (async (): Promise<Response> => {
       return new Response("not json", {

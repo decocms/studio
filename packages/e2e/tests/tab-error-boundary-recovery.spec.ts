@@ -33,7 +33,7 @@ test.describe("tab error boundary recovers on tab switch", () => {
           pinned: false,
           connections: [{ connection_id: conn.id }],
           metadata: {
-            githubRepo: {
+            repository: {
               url: "https://github.com/example/repo",
               owner: "example",
               name: "repo",

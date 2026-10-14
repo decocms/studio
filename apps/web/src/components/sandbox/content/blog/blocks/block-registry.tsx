@@ -1,20 +1,17 @@
 import { useT } from "@/i18n/use-t.ts";
-import { SchemaForm } from "@/components/sections-editor/schema-form";
-import {
-  resolveSchema,
-  type LiveMeta,
-} from "@/components/sections-editor/resolve-schema";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { RichTextBlock } from "./rich-text-block";
 import { CodeBlock, HeadingBlock, ListBlock, QuoteBlock } from "./plain-blocks";
 import {
-  BlockImageBlock,
   CalloutBlock,
   CtaBlock,
   DividerBlock,
   StatBlock,
   VideoBlock,
 } from "./media-blocks";
+import { BlockImageBlock } from "./image-block";
 import {
   CardGroupBlock,
   ChecklistBlock,
@@ -25,6 +22,7 @@ import {
 import { ProductCardBlock, ProductShelfBlock } from "./product-blocks";
 import { TableBlock } from "./table-block";
 import { blockComponentName, isBlogPostBlockResolveType } from "../blog-data";
+import { GenericBlockEditor } from "./generic-block";
 import { jsonField, str } from "./primitives";
 
 export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
@@ -41,14 +39,23 @@ export function BlockEditor({
   onChange,
   decofile,
   sandboxRef,
+  previewBaseUrl,
+  onSaveReferencedBlock,
 }: {
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
   /** The site's blocks — enables linking to another post from rich text. */
   decofile?: Record<string, unknown>;
-  /** Running sandbox coords — enables the VTEX product picker when present. */
-  sandboxRef?: PreviewProxyRef | null;
+  /**
+   * Running sandbox coords — enables the VTEX product picker, and in the
+   * generic editor the uploads, icon picker and `@options` loaders.
+   */
+  sandboxRef?: SandboxConfig | null;
+  /** Section previews in the generic editor's array fields. */
+  previewBaseUrl?: string | null;
+  /** Where the generic editor persists edits to a field pointing at a saved block. */
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
 }) {
   const t = useT();
   const resolveType = block.__resolveType ?? "";
@@ -96,6 +103,8 @@ export function BlockEditor({
             items={str(block.items)}
             style={str(block.style)}
             onChange={(next) => onChange({ ...block, ...next })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "BlockImage":
@@ -180,6 +189,8 @@ export function BlockEditor({
             headers={jsonField(block.headers)}
             rows={jsonField(block.rows)}
             onChange={(next) => onChange({ ...block, ...next })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "ProductCard":
@@ -203,24 +214,15 @@ export function BlockEditor({
     }
   }
 
-  {
-    const schema = resolveType ? resolveSchema(resolveType, meta) : null;
-    if (!schema) {
-      return (
-        <p className="text-xs text-muted-foreground">
-          {t("sandbox.blockRegistry.unknownBlockType", {
-            type: resolveType ?? "",
-          })}
-        </p>
-      );
-    }
-    return (
-      <SchemaForm
-        schema={schema}
-        value={block}
-        onChange={(v) => onChange(v as RawBlock)}
-        basePath=""
-      />
-    );
-  }
+  return (
+    <GenericBlockEditor
+      block={block}
+      meta={meta}
+      onChange={onChange}
+      decofile={decofile}
+      sandbox={sandboxRef}
+      previewBaseUrl={previewBaseUrl}
+      onSaveReferencedBlock={onSaveReferencedBlock}
+    />
+  );
 }

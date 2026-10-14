@@ -8,6 +8,24 @@ describe("repoTargetOf", () => {
     );
   });
 
+  test("still throws beside a connectionId, which cannot resolve without a ref", () => {
+    expect(() =>
+      repoTargetOf({ repoUrl: "not a url", connectionId: "conn_1" }),
+    ).toThrow("Could not recognise the repository URL: not a url");
+  });
+
+  test("leaves a self-hosted host with no provider label to the repository row", () => {
+    const target = repoTargetOf({
+      repositoryId: "repo_1",
+      repoUrl: "https://git.example.net/group/site",
+    });
+    expect(target).toEqual({
+      repositoryId: "repo_1",
+      ref: null,
+      connectionId: undefined,
+    });
+  });
+
   test("resolves a valid repoUrl to a ref", () => {
     const target = repoTargetOf({
       repoUrl: "https://github.com/decocms/studio",

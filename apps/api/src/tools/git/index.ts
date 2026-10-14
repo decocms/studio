@@ -19,6 +19,11 @@ import {
   SandboxImageSchema,
   RepoRefSchema,
 } from "@decocms/shared/git-providers";
+import {
+  SiteRepoNameSchema,
+  SiteTemplateIdSchema,
+  siteTemplate,
+} from "@decocms/shared/site-templates";
 import { defineTool } from "@/core/define-tool";
 import {
   getUserId,
@@ -433,6 +438,63 @@ export const REPOSITORY_LINK = defineTool({
       defaultBranch: summary.defaultBranch,
       visibility: summary.visibility,
       createdBy: userId,
+    });
+    return { repository: toRepositoryOutput(repository) };
+  },
+});
+
+export const REPOSITORY_CREATE_FROM_TEMPLATE = defineTool({
+  name: "REPOSITORY_CREATE_FROM_TEMPLATE",
+  description:
+    "Create a new private GitHub repository for a site from one of the site templates, owned by the account's user or organization, and link it to the organization.",
+  annotations: {
+    title: "Create repository from template",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  _meta: { ui: { visibility: "app" } },
+  inputSchema: z.object({
+    accountId: z
+      .string()
+      .describe(
+        "GitHub account whose user or organization owns the repository",
+      ),
+    name: SiteRepoNameSchema.describe("Name of the new repository"),
+    template: SiteTemplateIdSchema,
+  }),
+  outputSchema: z.object({ repository: RepositorySchema }),
+  handler: async (input, ctx) => {
+    requireAuth(ctx);
+    await ctx.access.check();
+    const organization = requireOrganization(ctx);
+    const account = await requireAccount(ctx, organization.id, input.accountId);
+    const client = clientForAccount({ db: ctx.db, vault: ctx.vault }, account);
+    if (!client.createRepoFromTemplate) {
+      throw new Error("Sites can only be created in a GitHub account");
+    }
+    const summary = await client.createRepoFromTemplate({
+      template: siteTemplate(input.template).repo,
+      owner: account.login,
+      name: input.name,
+      private: true,
+    });
+    if (account.installationRepositoryIds) {
+      await ctx.storage.gitProviderAccounts.grantRepository(
+        account.id,
+        organization.id,
+        Number(summary.externalId),
+      );
+    }
+    const repository = await ctx.storage.repositories.upsert({
+      organizationId: organization.id,
+      ref: summary.ref,
+      accountId: account.id,
+      externalId: summary.externalId,
+      defaultBranch: summary.defaultBranch,
+      visibility: summary.visibility,
+      createdBy: getUserId(ctx) ?? null,
     });
     return { repository: toRepositoryOutput(repository) };
   },

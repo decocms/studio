@@ -4,7 +4,7 @@
  * toggle in the header. Lives in the agent settings view — the header only
  * shows the toggle, and only once a pair exists.
  *
- * Hidden for agents that are themselves a dev agent (have a `githubRepo`) or
+ * Hidden for agents that are themselves a dev agent (have a `repository`) or
  * Decopilot — those don't link a separate dev counterpart.
  */
 
@@ -40,7 +40,7 @@ export function DevAgentSetup({
 
   const devAgentIds = getDevAgentIds(allAgents);
   // Only "live"-style agents set up a dev counterpart: not Decopilot, not
-  // itself a dev agent (githubRepo), and not already the dev side of a pair.
+  // itself a dev agent (repository), and not already the dev side of a pair.
   if (
     isDecopilot(virtualMcp.id) ||
     agentHasClonableSource(virtualMcp.metadata) ||

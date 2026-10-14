@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { createContext, use, useRef } from "react";
+import { createContext, isValidElement, use, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -47,6 +47,14 @@ const ChatLayoutContext = createContext<ChatLayoutContextValue | null>(null);
 /** Visibility and presentation controls only; agent and thread data stay in their providers. */
 export function useChatLayout(): ChatLayoutState & ChatLayoutActions {
   return useChatLayoutContext();
+}
+
+/** Null outside a ChatLayout (e.g. the settings route), rather than throwing —
+ *  for callers that render in both. */
+export function useOptionalChatLayout():
+  | (ChatLayoutState & ChatLayoutActions)
+  | null {
+  return use(ChatLayoutContext);
 }
 
 function useChatLayoutContext() {
@@ -243,10 +251,14 @@ function ChatLayoutContent({
   children,
   actions,
   drawer,
+  aside,
 }: {
   children: ReactNode;
   actions?: ReactNode;
   drawer?: ReactNode;
+  /** A second surface beside this one, such as a file preview. Desktop only:
+   *  on mobile the route shows it its own way. */
+  aside?: ReactNode;
 }) {
   const layout = useChatLayoutContext();
 
@@ -295,7 +307,26 @@ function ChatLayoutContent({
       data-chat-layout-panel-open={layout.contentOpen ? "" : undefined}
       className="min-w-0 overflow-hidden bg-sidebar"
     >
-      <div className="h-full min-h-0 p-0.5">{panel}</div>
+      {/* Flex, not a nested resizable group: that one sized itself after
+          mount, so a page loading in flashed its loader in a sliver. */}
+      <div className="flex h-full min-h-0">
+        <div className="h-full min-h-0 min-w-0 flex-1 p-0.5">{panel}</div>
+        {aside && (
+          <div className="h-full min-h-0 w-[42%] min-w-80 shrink-0 p-0.5">
+            <Panel data-testid="aside-panel">
+              {/* Keyed like the aside itself, so opening another file clears
+                  a previous one's failure. */}
+              <ErrorBoundary
+                key={
+                  isValidElement(aside) ? (aside.key ?? undefined) : undefined
+                }
+              >
+                <MainPanelBoundary>{aside}</MainPanelBoundary>
+              </ErrorBoundary>
+            </Panel>
+          </div>
+        )}
+      </div>
     </ResizablePanel>
   );
 }

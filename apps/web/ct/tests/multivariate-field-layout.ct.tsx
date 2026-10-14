@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import type { Page } from "@playwright/test";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readBreadcrumb, readFormValue } from "../harness/ct-utils";
 import { TEST_RESOLVE_TYPE } from "../harness/fixtures";
 import { MultivariateFieldHarness } from "../harness/multivariate-field-harness";
+import { NEW_BLOCKS_EDITOR_KEY } from "../harness/stubs/use-new-blocks-editor";
 
 const MULTIVARIATE = "website/flags/multivariate/string.ts";
 const HOST_MATCHER = "website/matchers/host.ts";
@@ -66,21 +66,22 @@ const initialValue = {
   },
 };
 
-async function setLayout(page: Page, compactPageLayout: boolean | undefined) {
+async function setLayout(page: Page, newBlocksEditor: boolean | undefined) {
   await page.evaluate(
-    ({ key, compactPageLayout }) => {
-      localStorage.setItem(key, JSON.stringify({ compactPageLayout }));
+    ({ key, newBlocksEditor }) => {
+      if (newBlocksEditor === undefined) localStorage.removeItem(key);
+      else localStorage.setItem(key, String(newBlocksEditor));
     },
-    { key: LOCALSTORAGE_KEYS.preferences(), compactPageLayout },
+    { key: NEW_BLOCKS_EDITOR_KEY, newBlocksEditor },
   );
 }
 
-for (const compactPageLayout of [undefined, false]) {
-  test(`classic (${compactPageLayout === undefined ? "missing preference" : "disabled"}): variant values and rules remain editable inline`, async ({
+for (const newBlocksEditor of [undefined, false]) {
+  test(`classic (${newBlocksEditor === undefined ? "unset flag" : "disabled"}): variant values and rules remain editable inline`, async ({
     mount,
     page,
   }) => {
-    await setLayout(page, compactPageLayout);
+    await setLayout(page, newBlocksEditor);
     const component = await mount(
       <MultivariateFieldHarness
         meta={meta}

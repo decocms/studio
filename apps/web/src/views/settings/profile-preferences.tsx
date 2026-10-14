@@ -209,9 +209,9 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
-  const handleBlocksEditorChange = (checked: boolean) => {
-    track("preferences_blocks_editor_toggled", { enabled: checked });
-    setPreferences((prev) => ({ ...prev, compactPageLayout: checked }));
+  const handleProjectFirstNavChange = (checked: boolean) => {
+    track("preferences_project_first_nav_toggled", { enabled: checked });
+    setPreferences((prev) => ({ ...prev, projectFirstNav: checked }));
   };
 
   return (
@@ -354,16 +354,16 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title={t("settings.preferences.newBlocksEditor")}
-          description={t("settings.preferences.newBlocksEditorDescription")}
+          title={t("settings.preferences.projectFirstNav")}
+          description={t("settings.preferences.projectFirstNavDescription")}
           onClick={() =>
-            handleBlocksEditorChange(!preferences.compactPageLayout)
+            handleProjectFirstNavChange(!preferences.projectFirstNav)
           }
           action={
             <Switch
-              aria-label={t("settings.preferences.newBlocksEditor")}
-              checked={preferences.compactPageLayout}
-              onCheckedChange={handleBlocksEditorChange}
+              aria-label={t("settings.preferences.projectFirstNav")}
+              checked={preferences.projectFirstNav}
+              onCheckedChange={handleProjectFirstNavChange}
             />
           }
         />

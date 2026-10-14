@@ -1,11 +1,11 @@
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { resolveGithubAttachment } from "./github-repo";
+import { resolveRepositoryAttachment } from "./repository-binding";
 
 /**
  * True when the agent has source code we can check out into a per-branch
  * sandbox. Both Start Website agents (clone from a public template) and
- * GitHub-imported agents (clone the user's repo) populate
- * `metadata.githubRepo.url`. Decopilot-only agents have neither, so this
+ * Repository-imported agents (clone the user's repo) populate
+ * `metadata.repository.url`. Decopilot-only agents have neither, so this
  * returns false and they fall back to the cloud Decopilot harness.
  *
  * Kept loosely-typed (accepts `unknown`) because the metadata field
@@ -14,35 +14,23 @@ import { resolveGithubAttachment } from "./github-repo";
  */
 export function agentHasClonableSource(metadata: unknown): boolean {
   if (typeof metadata !== "object" || metadata === null) return false;
-  const meta = metadata as { githubRepo?: { url?: unknown } | null };
-  const url = meta.githubRepo?.url;
+  const meta = metadata as { repository?: { url?: unknown } | null };
+  const url = meta.repository?.url;
   return typeof url === "string" && url.length > 0;
 }
 
-/**
- * True only when the virtual MCP has a GitHub repo with an attached
- * connection (i.e. authenticated github identity, not a public-clone
- * template). Gate the git tab on this predicate.
- *
- * A `detached` repo (connection removed) is deliberately NOT connected here:
- * the git tab has nothing to operate on until the user reconnects.
- */
-export function agentHasConnectedGithub(
+/** A repository must have an attached credential source to expose git actions. */
+export function agentHasConnectedRepository(
   virtualMcp: VirtualMCPEntity | null | undefined,
 ): boolean {
-  return resolveGithubAttachment(virtualMcp).status === "attached";
+  return resolveRepositoryAttachment(virtualMcp).status === "attached";
 }
 
-/**
- * The top-right GitHub header actions operate on GitHub PR/check/review state,
- * so they require a GitHub-linked project. Public template clones are clonable
- * sources but not GitHub-linked, so they get no header. A `detached` repo still
- * shows the header — as a reconnect affordance — rather than silently vanishing.
- */
-export function agentShowsGithubHeaderActions(
+/** Detached bindings keep the header visible so the user can reconnect. */
+export function agentShowsRepositoryHeaderActions(
   virtualMcp: VirtualMCPEntity | null | undefined,
 ): boolean {
-  const status = resolveGithubAttachment(virtualMcp).status;
+  const status = resolveRepositoryAttachment(virtualMcp).status;
   return status === "attached" || status === "detached";
 }
 

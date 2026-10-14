@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import type { Page } from "@playwright/test";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
+import { NEW_BLOCKS_EDITOR_KEY } from "../harness/stubs/use-new-blocks-editor";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
 import {
   openRowActionsMenu,
@@ -195,6 +195,69 @@ test("add a boolean item appends the default false", async ({ mount }) => {
   await expect.poll(() => readFormValue(component)).toEqual({ flags: [false] });
 });
 
+test("opening the form saves @default values missing from existing items", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps({
+    links: {
+      type: "array",
+      title: "Links",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string", title: "Label" },
+          display: { type: "boolean", title: "Display", default: true },
+        },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ links: [{ label: "A" }, { label: "B", display: false }] }}
+    />,
+  );
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({
+      links: [
+        { label: "A", display: true },
+        { label: "B", display: false },
+      ],
+    });
+});
+
+test("add an object item saves its @default values", async ({ mount }) => {
+  const meta = sectionWithProps({
+    links: {
+      type: "array",
+      title: "Links",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string", title: "Label" },
+          display: { type: "boolean", title: "Display", default: true },
+        },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{}}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Add item" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ links: [{ display: true }] });
+});
+
 /**
  * The add control is the list's last row in the compact layout, so it has to be
  * as tall as the rows it follows — including the taller rows that carry a
@@ -203,8 +266,8 @@ test("add a boolean item appends the default false", async ({ mount }) => {
  */
 async function enableCompactLayout(page: Page) {
   await page.evaluate((key) => {
-    localStorage.setItem(key, JSON.stringify({ compactPageLayout: true }));
-  }, LOCALSTORAGE_KEYS.preferences());
+    localStorage.setItem(key, "true");
+  }, NEW_BLOCKS_EDITOR_KEY);
 }
 
 const BANNERS_WITH_THUMBNAILS = {

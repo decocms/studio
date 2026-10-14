@@ -5,6 +5,7 @@ import {
   REVIEWER_KINDS,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
+import { SPRINT_STATES } from "@decocms/shared/sprints";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
@@ -25,6 +26,16 @@ export const MAX_AUTOMATION_PROMPT_LENGTH = 50_000;
 
 /** A card's column, by key. */
 export const TaskBoardItemStatusSchema = z.enum(CANONICAL_COLUMN_KEYS);
+
+/** A sprint cards can be planned into. Mirrors `Sprint` in shared. */
+export const SprintSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  state: z.enum(SPRINT_STATES),
+  /** `YYYY-MM-DD`, or null for a sprint not scheduled yet. */
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
+});
 
 /**
  * What KIND of work a card is — its shape, not its area.
@@ -168,6 +179,10 @@ export const TaskBoardItemSchema = z.object({
    *  `TaskBoardItem`, so — like `retryAttempts` below — it MUST be modeled
    *  here or Ajv-revalidating MCP clients reject every response with `-32602`. */
   repositoryId: z.string().nullable(),
+  /** The sprint this card is planned into (see `TASK_BOARD_SPRINT_LIST`);
+   *  null = backlog. Present on every `TaskBoardItem`, so it MUST be modeled
+   *  here or Ajv-revalidating MCP clients reject every response. */
+  sprintId: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
@@ -210,6 +225,9 @@ export const TaskBoardItemSchema = z.object({
    *  `TaskBoardItem`, so — like `retryAttempts` above — it MUST be modeled here
    *  or Ajv-revalidating MCP clients reject every response with `-32602`. */
   reviewVerdicts: z.array(TaskBoardItemReviewVerdictSchema),
+  /** When the card entered its current status; null when the activity log
+   *  cannot say. Present on every `TaskBoardItem`, so it MUST be modeled here. */
+  statusSince: z.string().datetime().nullable(),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
@@ -241,6 +259,8 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "merge_failed",
   "type_changed",
   "duplicate_reported",
+  "finding_resolved",
+  "sprint_changed",
 ] as const;
 
 export type TaskBoardActivityAction =

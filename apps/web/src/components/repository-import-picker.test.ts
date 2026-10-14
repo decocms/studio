@@ -25,7 +25,7 @@ describe("agentPayload", () => {
   it("records the repository id on the binding", () => {
     expect(
       agentPayload({ id: "rep_1" }, repo, { description: "d" }).metadata
-        .githubRepo.repositoryId,
+        .repository.repositoryId,
     ).toBe("rep_1");
   });
 
@@ -34,12 +34,12 @@ describe("agentPayload", () => {
    * the URL is what names the provider — neither may be flattened away.
    */
   it("keeps a nested namespace and the provider-bearing URL", () => {
-    const { githubRepo } = agentPayload({ id: "rep_1" }, repo, {
+    const { repository } = agentPayload({ id: "rep_1" }, repo, {
       description: "d",
     }).metadata;
-    expect(githubRepo.owner).toBe("group/team");
-    expect(githubRepo.name).toBe("storefront");
-    expect(githubRepo.url).toBe("https://gitlab.com/group/team/storefront");
+    expect(repository.owner).toBe("group/team");
+    expect(repository.name).toBe("storefront");
+    expect(repository.url).toBe("https://gitlab.com/group/team/storefront");
   });
 
   /** Both providers open on the editor; the provider-gated default is gone. */

@@ -40,14 +40,14 @@ interface EditorResolveResult {
 
 /**
  * True when the agent is a code agent — it has a checked-out GitHub source
- * (`metadata.githubRepo.url`). Mirrors `agentHasClonableSource` in
+ * (`metadata.repository.url`). Mirrors `agentHasClonableSource` in
  * `apps/web/src/lib/agent-capabilities.ts`; the metadata bag isn't centrally
  * schematized, so this stays loosely typed.
  */
 function hasClonableSource(metadata: unknown): boolean {
   if (typeof metadata !== "object" || metadata === null) return false;
-  const meta = metadata as { githubRepo?: { url?: unknown } | null };
-  const url = meta.githubRepo?.url;
+  const meta = metadata as { repository?: { url?: unknown } | null };
+  const url = meta.repository?.url;
   return typeof url === "string" && url.length > 0;
 }
 

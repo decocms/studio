@@ -58,15 +58,16 @@ const NEVER_RECORD = new Set(["main", "master", "trunk", "develop", "HEAD"]);
  */
 export function pickRecordableHeadRef(args: {
   status: DaemonHeadStatus | null | undefined;
-  /** The ref Studio asked the daemon to check out for this sandbox. */
-  requestedRef: string | null;
+  /** The refs Studio may have asked the daemon to check out for this sandbox:
+   *  the derived ref in either of its forms (`syntheticBranchToGitRef`). */
+  requestedRefs: readonly string[];
 }): string | null {
   // Destructured (not `status.current`) so the daemon's field name doesn't trip
   // the React `ban-ref-current-assignment` lint on a plain JSON payload.
   const { current: head, detached, base } = args.status ?? {};
   if (typeof head !== "string" || head.length === 0) return null;
   if (detached === true) return null;
-  if (head === args.requestedRef) return null;
+  if (args.requestedRefs.includes(head)) return null;
   if (NEVER_RECORD.has(head)) return null;
   if (typeof base === "string" && base.length > 0 && head === base) return null;
   return head;

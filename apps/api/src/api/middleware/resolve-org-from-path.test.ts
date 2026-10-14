@@ -12,6 +12,9 @@ describe("isServiceTokenPath", () => {
     expect(isServiceTokenPath("/api/org_1/internal/task-board/import")).toBe(
       true,
     );
+    expect(isServiceTokenPath("/api/org_1/internal/task-board/resolve")).toBe(
+      true,
+    );
     expect(
       isServiceTokenPath(
         "/api/org_1/internal/commerce-diagnostic/share-invite",
@@ -56,6 +59,9 @@ describe("isServiceTokenPath", () => {
     ).toBe(false);
     expect(
       isServiceTokenPath("/api/org_1/internal/task-board/import/extra"),
+    ).toBe(false);
+    expect(
+      isServiceTokenPath("/api/org_1/internal/task-board/resolve/extra"),
     ).toBe(false);
     // The old suffix regex matched ANY path ending in a service suffix — a
     // deeper path (e.g. an MCP proxy echoing it) must NOT resolve by id.

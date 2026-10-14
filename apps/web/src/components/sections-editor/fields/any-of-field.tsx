@@ -50,7 +50,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { EditorRowActionsTrigger, EditorRowLink } from "../editor-list-row";
 import {
   HEADER_SELECT_TRIGGER_CLASS,

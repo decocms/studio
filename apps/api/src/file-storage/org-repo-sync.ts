@@ -22,7 +22,8 @@ import { isPublicVolume } from "./public-sets";
 import { syncRepoToVolume } from "./skill-set-sync";
 
 /** Volumes with fixed roles that a repo sync must never overwrite. `public`
- *  is reserved too: it would mount at `org/public`, the public sets' dir.
+ *  is reserved too: it would mount at `/app/org/public`, the public sets'
+ *  dir.
  *  `output`/`upload` are the daemon's per-run symlinks (links.go) — a real
  *  dir at those paths breaks share-files-back for every run in the org. */
 const RESERVED_VOLUMES = new Set([

@@ -3,7 +3,7 @@
  *  and falling back would put one project's rows under an organization header.
  *  Configurable rows share their presence gates with Layout and additionally
  *  require the project's sidebar selection. The main panel bar keeps
- *  contextual and per-thread views, such as Review changes or an open file,
+ *  per-thread views, such as an open file,
  *  which do not belong in durable navigation. */
 
 import type { ReactNode } from "react";
@@ -12,7 +12,6 @@ import {
   Beaker02,
   CheckDone01,
   Globe02,
-  Grid01,
   Image01,
   Lightning01,
   Lock01,
@@ -26,7 +25,10 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { keepAttachedPinnedViews } from "@/layouts/main-panel-tabs/attached-pinned-views";
+import {
+  keepAttachedPinnedViews,
+  pinnedViewsOf,
+} from "@/layouts/main-panel-tabs/attached-pinned-views";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
@@ -34,7 +36,6 @@ import {
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
 import { useTabLocked } from "./use-tab-locked";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { useLeafRoutePath } from "@/hooks/use-destination-route";
@@ -47,31 +48,9 @@ import {
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import { getDeterministicIcon } from "@/components/agent-icon";
 import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
 import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
-
-/** A project's curated app views. The metadata bag is `.loose()`, so this
- *  validates the shape rather than trusting it. */
-function pinnedViewsOf(project: VirtualMCPEntity): PinnedView[] {
-  const ui = (
-    project.metadata as { ui?: { pinnedViews?: unknown } } | undefined
-  )?.ui;
-  if (!Array.isArray(ui?.pinnedViews)) return [];
-  return ui.pinnedViews.filter(
-    (pv): pv is PinnedView =>
-      !!pv &&
-      typeof pv === "object" &&
-      typeof (pv as PinnedView).connectionId === "string" &&
-      typeof (pv as PinnedView).toolName === "string",
-  );
-}
-
-interface PinnedView {
-  connectionId: string;
-  toolName: string;
-  label?: string;
-  icon?: string | null;
-}
 
 interface ProjectView {
   key: string;
@@ -191,12 +170,14 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       iconUrl: pinned.icon,
       connections: [],
     });
+    const label = pinned.label || pinned.toolName;
+    const { IconComp: NameIcon } = getDeterministicIcon(label);
     views.push({
       key: `pinned:${pinned.connectionId}:${pinned.toolName}`,
-      label: pinned.label || pinned.toolName,
+      label,
       icon:
         icon.kind === "fallback" ? (
-          <Grid01 size={16} />
+          <NameIcon size={16} />
         ) : (
           <TabIconGlyph icon={icon} />
         ),

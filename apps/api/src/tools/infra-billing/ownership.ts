@@ -9,7 +9,7 @@ import type { StudioContext } from "../../core/studio-context";
 /**
  * Lowercases + dedupes the requested slugs, loads the org's owned slugs, and
  * throws if any requested slug isn't owned. Returns both lists so callers can
- * reuse `ownedSlugs` for team-scoped checks (e.g. `resolveOwnedTeam`).
+ * reuse `ownedSlugs` for team-scoped checks (e.g. `resolveTeamScopes`).
  */
 export async function resolveOwnedSlugs(
   ctx: StudioContext,

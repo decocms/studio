@@ -110,10 +110,10 @@ describe("reports-task guards", () => {
     }
     // Board interactions stay free: status/drag and due date.
     const moved = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: reportsTask.id, status: "todo", sortOrder: 1 },
+      { id: reportsTask.id, status: "in_progress", sortOrder: 1 },
       ctx,
     );
-    expect(moved.item.status).toBe("todo");
+    expect(moved.item.status).toBe("in_progress");
 
     const userTask = await taskBoard.create({
       organizationId: ORG,

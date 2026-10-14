@@ -329,7 +329,11 @@ describe("getValidDownstreamAccessToken", () => {
       tokenStorage,
     });
 
-    expect(result).toEqual({ state: "valid", accessToken: "valid" });
+    expect(result).toEqual({
+      state: "valid",
+      accessToken: "valid",
+      expiresAt: expect.any(Date),
+    });
     expect(mockRefreshAccessToken).not.toHaveBeenCalled();
   });
 
@@ -389,7 +393,11 @@ describe("getValidDownstreamAccessToken", () => {
       tokenStorage,
     });
 
-    expect(result).toEqual({ state: "refreshed", accessToken: "fresh" });
+    expect(result).toEqual({
+      state: "refreshed",
+      accessToken: "fresh",
+      expiresAt: expect.any(Date),
+    });
     expect(mockResolveOriginTokenEndpoint).toHaveBeenCalledWith(
       "https://sites-google-calendar.deco.site/mcp",
     );
@@ -461,7 +469,11 @@ describe("getValidDownstreamAccessToken", () => {
       force: true,
     });
 
-    expect(result).toEqual({ state: "refreshed", accessToken: "fresh" });
+    expect(result).toEqual({
+      state: "refreshed",
+      accessToken: "fresh",
+      expiresAt: expect.any(Date),
+    });
     expect((await tokenStorage.get(connectionId))?.accessToken).toBe("fresh");
   });
 
@@ -487,7 +499,11 @@ describe("getValidDownstreamAccessToken", () => {
       bufferMs: Number.MAX_SAFE_INTEGER,
     });
 
-    expect(result).toEqual({ state: "valid", accessToken: "revoked" });
+    expect(result).toEqual({
+      state: "valid",
+      accessToken: "revoked",
+      expiresAt: null,
+    });
     expect(mockRefreshAccessToken).not.toHaveBeenCalled();
   });
 
@@ -509,7 +525,11 @@ describe("getValidDownstreamAccessToken", () => {
       tokenStorage,
     });
 
-    expect(result).toEqual({ state: "valid", accessToken: "cached" });
+    expect(result).toEqual({
+      state: "valid",
+      accessToken: "cached",
+      expiresAt: null,
+    });
     expect(mockRefreshAccessToken).not.toHaveBeenCalled();
   });
 

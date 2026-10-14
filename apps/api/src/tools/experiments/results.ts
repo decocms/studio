@@ -41,38 +41,44 @@ export const EXPERIMENT_RESULTS = defineTool({
     idempotentHint: true,
     openWorldHint: true,
   },
-  inputSchema: z.object({
-    site: z
-      .string()
-      .min(1)
-      .max(60)
-      .refine(isValidSiteSlug)
-      .describe("Site slug the experiment belongs to."),
-    key: z
-      .string()
-      .min(1)
-      .describe(
-        "Analytics prop key the variants split on: `event:props:<key>` = 'true'/'false'. In the deco runtime this is the sticky segment matcher block's id (not the multivariate section name), so `key` must equal that matcher id for results to populate.",
-      ),
-    since: z
-      .string()
-      .regex(ISO_DATE)
-      .optional()
-      .describe("Window start (YYYY-MM-DD)."),
-    until: z
-      .string()
-      .regex(ISO_DATE)
-      .optional()
-      .describe("Window end (YYYY-MM-DD)."),
-    goals: z
-      .array(z.string())
-      .default([])
-      .describe("Custom goals to aggregate conversions for."),
-    goalOnDash: z
-      .string()
-      .default("visitors")
-      .describe("Goal plotted in the timeseries / used for the statistics."),
-  }),
+  inputSchema: z
+    .object({
+      site: z
+        .string()
+        .min(1)
+        .max(60)
+        .refine(isValidSiteSlug)
+        .describe("Site slug the experiment belongs to."),
+      key: z
+        .string()
+        .min(1)
+        .describe(
+          "Analytics prop key the variants split on: `event:props:<key>` = 'true'/'false'. In the deco runtime this is the sticky segment matcher block's id (not the multivariate section name), so `key` must equal that matcher id for results to populate.",
+        ),
+      since: z
+        .string()
+        .regex(ISO_DATE)
+        .optional()
+        .describe("Window start (YYYY-MM-DD)."),
+      until: z
+        .string()
+        .regex(ISO_DATE)
+        .optional()
+        .describe("Window end (YYYY-MM-DD)."),
+      goals: z
+        .array(z.string().min(1).max(200))
+        .max(20)
+        .default([])
+        .describe("Custom goals to aggregate conversions for."),
+      goalOnDash: z
+        .string()
+        .default("visitors")
+        .describe("Goal plotted in the timeseries / used for the statistics."),
+    })
+    .refine((v) => !v.since || !v.until || v.since <= v.until, {
+      message: "`since` must not be after `until`",
+      path: ["since"],
+    }),
   outputSchema: z.object({
     available: z.boolean(),
     /** Why `results` is null: the deployment has no analytics backend, or it

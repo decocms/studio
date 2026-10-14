@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
+import { findOrgByPreviousSlug } from "../../core/org-previous-slug";
 
 import {
   auditTaskBoardAdminAction,
@@ -10,18 +11,20 @@ import {
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
 /**
- * Public-share endpoints a non-member must still reach: the read proxy
- * (`GET .../fs/:volume/read`, serves public/password files) and the password
- * unlock (`POST .../fs/:volume/unlock`). The membership gate below defers to
- * these; the routes themselves serve only shared content and still gate
- * everything else on ORG_FS_READ (a non-member fails → 403). Every other
- * org-scoped route stays member-gated.
+ * Endpoints a non-member must still reach: the read proxy
+ * (`GET .../fs/:volume/read`, serves public/password files), the password
+ * unlock (`POST .../fs/:volume/unlock`), and uploads through a signed grant
+ * (`PUT .../fs/:volume/upload/:token`, the token is the authentication). The
+ * membership gate below defers to these; the routes themselves serve only
+ * shared content or the granted file and gate everything else (a non-member
+ * fails → 403). Every other org-scoped route stays member-gated.
  */
 function isPublicSharePath(c: Context): boolean {
   const p = c.req.path;
   return (
     (c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(p)) ||
-    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p))
+    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p)) ||
+    (c.req.method === "PUT" && /\/fs\/[^/]+\/upload\/[^/]+$/.test(p))
   );
 }
 
@@ -70,6 +73,7 @@ const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
   ["vault", "connections", "*", "access-token"],
   ["vault", "connections", "*", "configuration"],
   ["internal", "task-board", "import"],
+  ["internal", "task-board", "resolve"],
   ["internal", "commerce-diagnostic", "share-invite"],
   ["internal", "organization-notices"],
   ["internal", "repositories", "resolve"],
@@ -123,7 +127,8 @@ export const resolveOrgFromPath: MiddlewareHandler<{
         ? eb.or([eb("slug", "=", slug), eb("id", "=", slug)])
         : eb("slug", "=", slug),
     )
-    .executeTakeFirst();
+    .executeTakeFirst()
+    .then((found) => found ?? findOrgByPreviousSlug(db, slug));
 
   if (!org) {
     // Bounce browser navigations into the SPA so OrgAccessGate shows the

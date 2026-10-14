@@ -1,8 +1,9 @@
 /**
- * The QA reviewer writes screenshots to `org/output/…` and references them as
- * markdown images; `TASK_BOARD_COMMENT_CREATE` rewrites those refs to the org-fs
- * `outputs` read URL (scoped to the run's thread) so they render inline. It must
- * touch ONLY `org/output/…` image refs — never an external URL, never plain text.
+ * The QA reviewer writes screenshots to `/app/org/output/…` (older runs: the
+ * relative `org/output/…`) and references them as markdown images;
+ * `TASK_BOARD_COMMENT_CREATE` rewrites those refs to the org-fs `outputs` read
+ * URL (scoped to the run's thread) so they render inline. It must touch ONLY
+ * output image refs — never an external URL, never plain text.
  */
 import { describe, expect, it } from "bun:test";
 import { embedOrgOutputImages } from "./comments";
@@ -21,6 +22,40 @@ describe("embedOrgOutputImages", () => {
     ).toBe(
       "![before desktop](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fbefore-desktop.png)",
     );
+  });
+
+  it("rewrites an absolute /app/org/output image ref", () => {
+    expect(
+      embedOrgOutputImages(
+        "![before desktop](/app/org/output/qa/before-desktop.png)",
+        THREAD,
+        SLUG,
+      ),
+    ).toBe(
+      "![before desktop](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fbefore-desktop.png)",
+    );
+  });
+
+  it("rewrites absolute and legacy refs mixed in one body", () => {
+    const out = embedOrgOutputImages(
+      "![b](/app/org/output/qa/b.png) ![a](org/output/qa/a.png)",
+      THREAD,
+      SLUG,
+    );
+    expect(out).toBe(
+      "![b](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fb.png) ![a](/api/acme/fs/outputs/read?path=thrd_abc%2Fqa%2Fa.png)",
+    );
+  });
+
+  it("leaves other org dirs and repo paths untouched", () => {
+    for (const body of [
+      "![x](/app/org/home/x.png)",
+      "![x](org/upload/x.png)",
+      "![x](/app/repo/org/output/x.png)",
+      "![x](output/x.png)",
+    ]) {
+      expect(embedOrgOutputImages(body, THREAD, SLUG)).toBe(body);
+    }
   });
 
   it("rewrites every ref in a multi-line body", () => {
@@ -49,7 +84,7 @@ describe("embedOrgOutputImages", () => {
   });
 
   it("leaves a plain-text mention of a filename untouched (only markdown images)", () => {
-    const body = "see org/output/qa/before.png";
+    const body = "see /app/org/output/qa/before.png";
     expect(embedOrgOutputImages(body, THREAD, SLUG)).toBe(body);
   });
 

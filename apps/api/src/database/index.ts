@@ -42,11 +42,13 @@ const poolAcquireHistogram = () =>
 const SLOW_QUERY_TRESHOLD_MS = 400;
 const SLOW_ACQUIRE_THRESHOLD_MS = 100;
 
+/** No SQL text: each distinct statement would be a histogram series kept for the process lifetime. */
+export const queryDurationAttributes = (event: LogEvent) => ({
+  "db.status": event.level === "error" ? "error" : "success",
+});
+
 const createLog = (pool: Pool) => (event: LogEvent) => {
-  const attributes = {
-    "db.statement": event.query.sql,
-    "db.status": event.level === "error" ? "error" : "success",
-  };
+  const attributes = queryDurationAttributes(event);
 
   if (event.queryDurationMillis > SLOW_QUERY_TRESHOLD_MS) {
     // Kysely's queryDurationMillis is measured in JS: the timer starts when the

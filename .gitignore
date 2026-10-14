@@ -1,12 +1,6 @@
 # GSD workflow state
 .planning/
 
-# Local-only architecture diagram tooling (generates the standalone html
-# from architecture-model.ts; the committed docs use ArchitectureDiagram.astro).
-/architecture.html
-apps/docs/scripts/gen-architecture-html.ts
-apps/docs/scripts/architecture-runtime.js
-
 # Logs
 logs
 *.log
@@ -103,7 +97,7 @@ packages/e2e/screenshots/
 .github/screenshots/
 .github/pr-assets/
 
-# Generated docs (root-level only, not apps/docs/). Use /docs/* not /docs
+# Generated docs (root-level only). Use /docs/* not /docs
 # so we can un-ignore specific subdirs below — git won't traverse into an
 # ignored directory.
 /docs/*

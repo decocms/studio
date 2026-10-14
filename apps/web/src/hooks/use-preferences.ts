@@ -12,14 +12,17 @@ interface Preferences {
   enableSounds: boolean;
   theme: ThemeMode;
   language: Locale;
-  /** Blocks editor opt-in; retain the legacy storage key for existing preferences. */
-  compactPageLayout: boolean;
   /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
    * renamed lane can't resurrect the wrong column.
    */
   shownTaskBoardLanes: string[];
+  /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
+   *  the same reason as `shownTaskBoardLanes`. */
+  collapsedTaskBoardLanes: string[];
+  /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
+  projectFirstNav: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -28,8 +31,9 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  compactPageLayout: false,
   shownTaskBoardLanes: [],
+  collapsedTaskBoardLanes: [],
+  projectFirstNav: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -88,11 +92,13 @@ export function usePreferences() {
     LOCALSTORAGE_KEYS.preferences(),
     (existing) => {
       const merged = { ...DEFAULT_PREFERENCES, ...existing };
-      // Remove the retired shortcut from existing browser preferences.
+      // Remove retired settings (the blocks editor is now an org flag).
       if ("showProjectSettingsGear" in merged) {
         delete merged.showProjectSettingsGear;
       }
-      merged.compactPageLayout = merged.compactPageLayout === true;
+      if ("compactPageLayout" in merged) {
+        delete merged.compactPageLayout;
+      }
       if (!VALID_TOOL_APPROVAL_LEVELS.includes(merged.toolApprovalLevel)) {
         merged.toolApprovalLevel = "auto";
       }
@@ -105,12 +111,16 @@ export function usePreferences() {
       if (!Array.isArray(merged.shownTaskBoardLanes)) {
         merged.shownTaskBoardLanes = [];
       }
+      if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
+        merged.collapsedTaskBoardLanes = [];
+      }
+      merged.projectFirstNav = merged.projectFirstNav === true;
       return merged;
     },
   );
 }
 
-export function useNewBlocksEditor(): boolean {
+export function useProjectFirstNav(): boolean {
   const [preferences] = usePreferences();
-  return preferences.compactPageLayout;
+  return preferences.projectFirstNav;
 }

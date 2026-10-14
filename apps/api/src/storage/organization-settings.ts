@@ -19,6 +19,8 @@ function toJsonColumn(value: unknown): string | null {
 /** Map a raw `organization_settings` row (from a select or a RETURNING clause) to the parsed shape. */
 function mapRecord(record: {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: unknown;
   coding_agent_mcp_excluded: unknown;
   simple_mode: unknown;
@@ -30,6 +32,8 @@ function mapRecord(record: {
 }): OrganizationSettings {
   return {
     organizationId: record.organizationId,
+    voice_provider: record.voice_provider,
+    voice_model: record.voice_model,
     sidebar_items: parseJsonColumn<OrganizationSettings["sidebar_items"]>(
       record.sidebar_items,
     ),

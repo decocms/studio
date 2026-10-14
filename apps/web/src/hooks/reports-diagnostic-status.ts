@@ -5,10 +5,11 @@
  * task-board paywall banner (see use-commerce-diagnostic.ts).
  *
  * The tool is the single source of truth for run state:
+ * - `scanned_at` (= last_run_at) non-null means a finished report exists. It
+ *   stays readable while the engine refreshes it (daily), so it wins.
  * - `run_in_progress` is computed server-side (run_started_at > last_run_at,
- *   with a staleness cap) and means "the client must stay in the generating
- *   state" (see commerce-skills api/diagnostic/public-view.ts).
- * - `scanned_at` (= last_run_at) non-null means a completed deck exists.
+ *   with a staleness cap). Without a finished report it is the store's first
+ *   run, the only one that shows as generating.
  *
  * Anything else (no diagnostic, a claimed-but-never-run store, a stale/failed
  * run) derives to "none" so the banner never promises a report it can't show.
@@ -31,8 +32,8 @@ export function deriveReportBannerStatus(
   diagnostic: CommerceDiagnosticRunState | null | undefined,
 ): ReportBannerStatus {
   if (!diagnostic) return "none";
-  if (diagnostic.run_in_progress) return "generating";
   if (diagnostic.scanned_at) return "ready";
+  if (diagnostic.run_in_progress) return "generating";
   return "none";
 }
 

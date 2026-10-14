@@ -1,9 +1,9 @@
 /**
  * Screenshots in a Jira comment.
  *
- * A run writes images to `org/output/…` in its pod — the idiom the board's QA
- * reviewer already uses (`embedOrgOutputImages`) — and references them as
- * markdown images. That mount materializes into the org-fs `outputs` volume
+ * A run writes images to `/app/org/output/…` in its pod — the idiom the
+ * board's QA reviewer already uses (`embedOrgOutputImages`) — and references
+ * them as markdown images. That mount materializes into the org-fs `outputs` volume
  * under the run's thread id, so the bytes are readable here.
  *
  * Jira needs three steps per image: upload it to the issue, resolve the
@@ -12,15 +12,17 @@
  * the half that fills it.
  */
 
+import { orgRelativePath } from "@decocms/shared/organization/home-mount";
 import type { OrgFs } from "@/file-storage/org-fs";
 import type { JiraClient } from "./client";
 import { collectImageTargets, type AdfMedia } from "./markdown-adf";
 
-/** The volume `org/output/…` materializes into. */
+/** The volume `/app/org/output/…` materializes into. */
 const OUTPUTS_VOLUME = "outputs";
 
-/** Only this prefix is ours to upload — an external URL stays a link. */
-const ORG_OUTPUT_PREFIX = "org/output/";
+/** Only this org-relative prefix is ours to upload — an external URL stays a
+ *  link. */
+const OUTPUT_PREFIX = "output/";
 
 const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
@@ -35,10 +37,12 @@ function contentTypeFor(path: string): string {
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
 
-/** `org/output/qa/before.png` → `qa/before.png`, or null when not ours. */
+/** `/app/org/output/qa/before.png` (or legacy `org/output/…`) →
+ *  `qa/before.png`, or null when not ours. */
 export function outputSubpath(target: string): string | null {
-  if (!target.startsWith(ORG_OUTPUT_PREFIX)) return null;
-  const subpath = target.slice(ORG_OUTPUT_PREFIX.length).trim();
+  const rel = orgRelativePath(target);
+  if (!rel?.startsWith(OUTPUT_PREFIX)) return null;
+  const subpath = rel.slice(OUTPUT_PREFIX.length).trim();
   // No traversal out of the run's own prefix, and no empty ref.
   if (subpath === "" || subpath.includes("..")) return null;
   return subpath;
@@ -50,7 +54,7 @@ export function attachmentNameFor(subpath: string): string {
 }
 
 /**
- * Upload every `org/output/…` image the comment references and return the map
+ * Upload every `/app/org/output/…` image the comment references and return the map
  * `markdownToAdf` wants, keyed by the target exactly as written.
  *
  * Best-effort per image: one unreadable file or one refused upload leaves that

@@ -8,6 +8,14 @@ import { orgFlagEnabled } from "./organization/schema";
  */
 export const SUPER_AGENT_ASSIGNEE_ID = "super-agent";
 
+/**
+ * Who a task comment is written for. `internal` is handoff between agent runs;
+ * the task feed shows it only in the behind-the-scenes view. `human` is what a
+ * person reviewing the task reads.
+ */
+export const TASK_COMMENT_AUDIENCES = ["human", "internal"] as const;
+export type TaskCommentAudience = (typeof TASK_COMMENT_AUDIENCES)[number];
+
 /** Suggested colors a new tag cycles through, so consecutive tags are visually
  *  distinct without anyone having to choose. Any hex is valid — the picker's
  *  `<input type="color">` isn't limited to these, and neither is the reports
@@ -58,9 +66,9 @@ export function isReportsTask(item: { createdBy: string }): boolean {
  * — and one run after the implementer has that. Code review is a part of the
  * job, not a job.
  *
- * Review is SINGLE-PASS: the reviewer runs at most once per delegation, in a
- * fixed order — review, fix what it found on the PR's own branch, push, then
- * exercise the change on the preview of THAT push, then decide. A
+ * Review is SINGLE-PASS: the reviewer runs at most once per delegation. How it
+ * reviews is the In Review lane's editable rule; what it may never do —
+ * approve a change it did not exercise — is fixed in its prompt. A
  * `request_changes` verdict hands the card to a human instead of bouncing it
  * back to the Super Agent: the reviewer → fix → re-review loop had no natural
  * fixed point (one live board logged 179 change-requests against 68 approvals,
@@ -181,14 +189,7 @@ export function enabledReviewerKinds(
 }
 
 /**
- * The lanes a release process needs AFTER the pull request merges, sitting
- * between In Review and Done. A subset of both sides' status unions, so each
- * assigns these names with no cast. The lane TYPE is unconditional — every
- * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
- * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
- */
-/**
- * The board Studio ships with, in board order.
+ * Every status a card can hold, in board order.
  *
  * One ordering, read by both the rank guard (`LANE_RANK`) and the static
  * column set, so "left of" cannot come to mean two different things.
@@ -198,8 +199,9 @@ export const CANONICAL_COLUMN_KEYS = [
   "todo",
   "in_progress",
   "in_review",
-  "approved",
-  "merged",
+  "qa",
+  "customer_approval",
+  "ready_for_deployment",
   "post_deploy_validation",
   "done",
   "archived",
@@ -214,14 +216,22 @@ export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
  * (`LANES.review`) rather than repeating the literal at each site.
  */
 export const LANES = {
-  /** Where a card is born. */
+  /** Where a card is born, and where a run that failed for good leaves it. */
   intake: "triage",
-  /** Queued for the agent to pick up — the claim's starting line. */
-  queue: "todo",
-  /** Being worked on. */
+  /** The implementing agent (or a person) is working on it. */
   progress: "in_progress",
-  /** Waiting on review. */
+  /** The reviewing agent owns it; with no assignee, a person was handed it. */
   review: "in_review",
+  /** A person checks the change. */
+  qa: "qa",
+  /** The customer approves the change. */
+  customer: "customer_approval",
+  /** Approved and waiting to merge. The only lane a merge starts from. */
+  release: "ready_for_deployment",
+  /** Merged; someone confirms it works in production. */
+  shipped: "post_deploy_validation",
+  /** Finished. */
+  done: "done",
   /** Retired. */
   archive: "archived",
 } as const satisfies Record<string, CanonicalColumnKey>;
@@ -239,33 +249,6 @@ export interface BoardColumn {
 export const CANONICAL_COLUMNS: BoardColumn[] = CANONICAL_COLUMN_KEYS.map(
   (key, position) => ({ key, title: key, position }),
 );
-
-export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
-
-export const DELIVERY_LANES: DeliveryLane[] = [
-  "approved",
-  "merged",
-  "post_deploy_validation",
-];
-
-/** True when this org runs the delivery lanes. Off by default. */
-export function deliveryLanesEnabled(
-  flags: Record<string, unknown> | null | undefined,
-): boolean {
-  return orgFlagEnabled(flags, "delivery_lanes_enabled");
-}
-
-/**
- * The lane a merged/shipped pull request moves its task to. Every automatic
- * ship path reads this, so "flag off means no behaviour change" is one tested
- * function rather than five call sites agreeing by luck. Falsy flags of every
- * shape resolve to `done`; that default IS the safety property.
- */
-export function shippedLane(
-  flags: Record<string, unknown> | null | undefined,
-): "merged" | "done" {
-  return deliveryLanesEnabled(flags) ? "merged" : "done";
-}
 
 /** True when a thread title belongs to the given reviewer's run — including the
  *  two-reviewer era's titles, see {@link LEGACY_REVIEWER_LABELS}. */
@@ -347,6 +330,25 @@ export function reviewCycleStart(
     latest = Math.max(latest, new Date(a.occurredAt).getTime());
   }
   return latest;
+}
+
+/**
+ * When a card entered its current lane: the latest `status_changed` into
+ * `status`, or `createdAt` for a card that has never moved. Null when the
+ * latest move went elsewhere, since an unlogged move since then leaves the
+ * answer unknown. `activity` must be oldest first.
+ */
+export function statusEnteredAt(
+  activity: ReviewCycleActivity[],
+  status: string,
+  createdAt: string,
+): string | null {
+  const moves = activity.filter((a) => a.action === "status_changed");
+  const last = moves.at(-1);
+  if (!last) return createdAt;
+  return (last.data as { to?: unknown } | null | undefined)?.to === status
+    ? last.occurredAt
+    : null;
 }
 
 /**
@@ -480,11 +482,21 @@ export function outstandingReviewFeedback(
 
 /**
  * Org-scoped SSE event pushed on `sseHub` whenever a Super Agent run advances a
- * task board item's status (enqueued→todo, executing→in_progress, PR→in_review).
+ * task board item's status (delegated→in_progress, PR→in_review, approved→qa).
  * Its `data` is the full updated `TaskBoardItem`; the web board patches its
  * react-query cache from it, so the board is real-time with no polling.
  */
 export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
+
+/** Org-scoped SSE event: a board prompt scope or column automation changed; `data` is `{ columnKey }`. */
+export const TASK_BOARD_RULES_UPDATED_EVENT = "task-board.rules.updated";
+
+/**
+ * Org-scoped SSE event: a sprint was created, edited, started, completed or
+ * deleted. `data` is `{ sprintId }`. Completing or deleting one moves cards
+ * too, so the web board re-reads both its sprints and its cards.
+ */
+export const TASK_BOARD_SPRINTS_UPDATED_EVENT = "task-board.sprints.updated";
 
 /**
  * Org-scoped SSE event pushed on `sseHub` whenever a task board item is deleted.

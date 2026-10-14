@@ -1,3 +1,4 @@
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
@@ -36,7 +37,6 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { SoonOverlay } from "@/components/soon-overlay";
 import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
@@ -99,10 +99,13 @@ import {
   buildBlogBlock,
   emptyBlogPayload,
   generateBlogKey,
+  uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
-  listBlogPayloads,
+  listAllPostPayloads,
+  missingFieldsLabel,
   postIdOfKey,
+  buildPostBlock,
   removeCategoryFromPost,
   scanBlogEntries,
   stampPostModified,
@@ -112,7 +115,6 @@ import {
   rescheduleToDay,
   scheduledPostPayload,
 } from "./blog/post-calendar-data";
-import { useBlogSupport } from "./blog/use-blog-support";
 import { usePostStatusMove } from "./blog/use-post-status-move";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
@@ -122,6 +124,11 @@ import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
+import {
+  categoryAncestors,
+  type CategoryTreeRow,
+  orderCategoryTree,
+} from "./blog/category-tree";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -188,6 +195,22 @@ export type CollectionId =
   | "redirects"
   | "context"
   | BlogKind;
+
+/**
+ * The collection actually shown.
+ *
+ * `activeCollection` is local state and the context tab is reachable only by
+ * clicking its row, so no link can land on it — but someone already there when
+ * an admin turns the AI-blog flag off would be looking at a tab the menu no
+ * longer lists. Normalising once at the source spares every reader downstream
+ * a guard of its own.
+ */
+export function visibleCollection(
+  active: CollectionId,
+  blogAi: boolean,
+): CollectionId {
+  return active === "context" && !blogAi ? "posts" : active;
+}
 
 export type CollectionCounts = Record<
   | "pages"
@@ -354,13 +377,15 @@ function ContentBrowserReady({
   // navigation takes over afterwards, same one-shot shape as the storefront
   // "." deep-link below.
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
-  const [activeCollection, setActiveCollection] = useState<CollectionId>(
+  const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
       (contentDeepLink.contentCollection &&
         isBlogKind(contentDeepLink.contentCollection as CollectionId) &&
         (contentDeepLink.contentCollection as CollectionId)) ||
       "pages",
   );
+  const blogAi = useBlogAi();
+  const activeCollection = visibleCollection(storedCollection, blogAi);
   const [selection, setSelection] = useState<Selection>(() =>
     contentDeepLink.contentItem && isBlogKind(activeCollection)
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
@@ -388,7 +413,7 @@ function ContentBrowserReady({
   }
   const [searchQuery, setSearchQuery] = useState("");
   // Posts workspace view + grouping — lifted so they survive opening a post.
-  const [postsView, setPostsView] = useState<PostsView>("board");
+  const [postsView, setPostsView] = useState<PostsView>("list");
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
@@ -457,13 +482,6 @@ function ContentBrowserReady({
       enabled: activeCollection === "apps",
     });
 
-  const blogSupport = useBlogSupport({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    meta,
-  });
-
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
@@ -472,7 +490,6 @@ function ContentBrowserReady({
     virtualMcpId,
     branch,
     decofile: decofile ?? {},
-    support: blogSupport,
     onMoved: (fromKey: string, toKey: string) =>
       setSelection((current) =>
         current?.collection === "posts" && current.key === fromKey
@@ -866,10 +883,18 @@ function ContentBrowserReady({
     }
     const key = generateBlogKey(decofile, entry.kind);
     const labelKey = entry.kind === "posts" ? "title" : "name";
-    const payload = {
+    const payload: Record<string, unknown> = {
       ...structuredClone(getBlogPayload(source, entry.kind)),
       [labelKey]: `${entry.label} (copy)`,
     };
+    // A clone keeping the slug would answer for the original. Categories
+    // only: a duplicated post still carries the source slug.
+    if (entry.kind === "categories") {
+      const taken = allBlogEntries.categories
+        .map((c) => c.slug ?? "")
+        .filter(Boolean);
+      payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
+    }
     try {
       await saveBlock.mutateAsync({
         blockKey: key,
@@ -908,15 +933,16 @@ function ContentBrowserReady({
           ).slug;
           const slug = typeof slugValue === "string" ? slugValue : "";
           if (slug) {
-            for (const { key: postKey, payload } of listBlogPayloads(
+            // Both forms: a draft denormalizes the category too, and
+            // writing it back as a live block would publish it.
+            for (const { key: postKey, payload } of listAllPostPayloads(
               decofile,
-              "posts",
             )) {
               const next = removeCategoryFromPost(payload, slug);
               if (next === payload) continue;
               await saveBlock.mutateAsync({
                 blockKey: postKey,
-                data: buildBlogBlock(postKey, "posts", stampPostModified(next)),
+                data: buildPostBlock(postKey, stampPostModified(next)),
               });
             }
           }
@@ -952,6 +978,7 @@ function ContentBrowserReady({
         active={activeCollection}
         counts={counts}
         showBlog={showBlog}
+        showContext={blogAi}
         onSelect={(id) => {
           setActiveCollection(id);
           setSelection(null);
@@ -1052,7 +1079,6 @@ function ContentBrowserReady({
             ) : activeCollection === "post-schedule" ? (
               <PostCalendar
                 decofile={decofile}
-                support={blogSupport}
                 isCreating={saveBlock.isPending}
                 onCreate={(day) => void handleCreateScheduledPost(day)}
                 onReschedule={(key, day) => void handleReschedulePost(key, day)}
@@ -1088,31 +1114,13 @@ function ContentBrowserReady({
                 />
               )
             ) : activeCollection === "context" ? (
-              // Behind a veil until the brand context is good enough to ship.
-              <SoonOverlay
-                title={t("sandbox.blogContext.soonTitle")}
-                description={t("sandbox.blogContext.soonDescription")}
-              >
-                <BlogContext
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  decofile={decofile}
-                  meta={meta}
-                  onOpenPost={(key) => {
-                    setActiveCollection("posts");
-                    setPrevCollection("posts");
-                    setSelection({ collection: "posts", key });
-                    setOpenPageSeoKey(null);
-                  }}
-                  onManageCategoryPosts={() => {
-                    setActiveCollection("posts");
-                    setPrevCollection("posts");
-                    setSelection(null);
-                    setOpenPageSeoKey(null);
-                  }}
-                />
-              </SoonOverlay>
+              <BlogContext
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+                meta={meta}
+              />
             ) : activeCollection === "seo" ? (
               <SeoEditor
                 orgSlug={orgSlug}
@@ -1161,7 +1169,6 @@ function ContentBrowserReady({
                   setOpenPageSeoKey(null);
                 }}
                 move={postMove}
-                support={blogSupport}
                 meta={meta}
                 renderDetail={(key, controls) => (
                   <PostEditor
@@ -1231,6 +1238,8 @@ function ContentBrowserReady({
                   kind="authors"
                   blockKey={selection.key}
                   block={decofile[selection.key] as Record<string, unknown>}
+                  meta={meta}
+                  decofile={decofile}
                 />
               ) : selection.collection === "redirects" ? (
                 <RedirectEditor
@@ -1463,6 +1472,7 @@ function ItemList({
   onDuplicateBlog: (entry: BlogEntry) => void;
   onDeleteBlog: (entry: BlogEntry) => void;
 }) {
+  const t = useT();
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
     (p) =>
@@ -1505,6 +1515,11 @@ function ItemList({
       e.label.toLowerCase().includes(q) ||
       e.subtitle.toLowerCase().includes(q),
   );
+  // Flat while searching: a match under a filtered-out parent would hide.
+  const blogRows: CategoryTreeRow[] =
+    activeCollection === "categories" && !q
+      ? orderCategoryTree(filteredBlog)
+      : filteredBlog.map((entry) => ({ entry, depth: 0 }));
 
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
@@ -1768,33 +1783,50 @@ function ItemList({
               }.`}
             />
           ) : (
-            filteredBlog.map((entry) => {
+            blogRows.map(({ entry, depth }) => {
               const isActive =
                 selection?.collection === entry.kind &&
                 selection.key === entry.key;
               return (
-                <ItemRow
-                  key={entry.key}
-                  icon={
-                    entry.kind === "posts"
-                      ? File02
-                      : entry.kind === "authors"
-                        ? Users01
-                        : Tag01
-                  }
-                  title={entry.label}
-                  subtitle={entry.subtitle}
-                  active={isActive}
-                  onClick={() =>
-                    onSelect({ collection: entry.kind, key: entry.key })
-                  }
-                  menu={
-                    <ItemActions
-                      onDuplicate={() => onDuplicateBlog(entry)}
-                      onDelete={() => onDeleteBlog(entry)}
-                    />
-                  }
-                />
+                <div key={entry.key} style={{ paddingLeft: depth * 16 }}>
+                  <ItemRow
+                    icon={
+                      entry.kind === "posts"
+                        ? File02
+                        : entry.kind === "authors"
+                          ? Users01
+                          : Tag01
+                    }
+                    title={entry.label}
+                    invalid={entry.missing.length > 0}
+                    invalidReason={
+                      entry.missing.length > 0
+                        ? t("sandbox.itemRow.missingFields", {
+                            fields: missingFieldsLabel(entry.missing, t),
+                          })
+                        : undefined
+                    }
+                    warning={entry.duplicateName}
+                    warningReason={t("sandbox.itemRow.duplicateName")}
+                    subtitle={
+                      depth > 0
+                        ? categoryAncestors(entry.slug ?? "", filteredBlog)
+                            .map((c) => c.slug)
+                            .join(" / ")
+                        : entry.subtitle
+                    }
+                    active={isActive}
+                    onClick={() =>
+                      onSelect({ collection: entry.kind, key: entry.key })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicateBlog(entry)}
+                        onDelete={() => onDeleteBlog(entry)}
+                      />
+                    }
+                  />
+                </div>
               );
             })
           )}

@@ -29,7 +29,9 @@ export function extractDescriptionLinks(
   // with the URL after already being added with their link text.
   const bare = withoutImages.replace(/\[[^\]]*\]\([^)]*\)/g, "");
   for (const m of bare.matchAll(/https?:\/\/[^\s)]+/g)) {
-    add(m[0], m[0]);
+    // Trailing sentence punctuation is never part of the URL.
+    const url = m[0].replace(/[.,;:!?]+$/, "");
+    if (url) add(url, url);
   }
 
   return out;

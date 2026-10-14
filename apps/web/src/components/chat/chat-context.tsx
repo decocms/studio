@@ -28,6 +28,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { VoiceTranscript } from "@decocms/shared/voice";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -108,6 +109,10 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
+import {
+  useOrgFlag,
+  useSandboxOnlyChats,
+} from "@/hooks/use-organization-settings";
 import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -147,6 +152,12 @@ import {
 // ============================================================================
 
 export interface ChatStreamContextValue {
+  sendVoiceMessage?: (
+    messageId: string,
+    text: string,
+    transcript?: VoiceTranscript,
+  ) => Promise<boolean>;
+  voiceContext?: string;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
   sendMessage: (
@@ -686,6 +697,9 @@ export function ChatContextProvider({
   // Existing call sites still read `currentBranch` for create-task carry-over;
   // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
+  // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
+  const sandboxOnlyChats = useSandboxOnlyChats();
+  const carryOverBranch = sandboxOnlyChats ? null : currentBranch;
 
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
   // task's branch so the new thread lands on the same warm sandbox. The
@@ -697,7 +711,7 @@ export function ChatContextProvider({
   }): string => {
     const newId = crypto.randomUUID();
     // A caller-supplied branch wins over the active task's branch carry-over.
-    const branch = opts?.branch ?? currentBranch;
+    const branch = opts?.branch ?? carryOverBranch;
     // Parked for the route loader's create-on-404 fallback — see thread-intent.
     writeThreadIntent(sessionStorage, locator, newId, {
       ...(opts?.runtime ? { runtime: opts.runtime } : {}),
@@ -735,7 +749,7 @@ export function ChatContextProvider({
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
-    const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
+    const carryBranch = targetVmcp === virtualMcpId ? carryOverBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     if (carryBranch) {
       writeThreadIntent(sessionStorage, locator, newId, {
@@ -858,6 +872,8 @@ export function ActiveTaskProvider({
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
+  const voiceEnabled = useOrgFlag("voice_mode");
+  const sandboxOnlyChats = useSandboxOnlyChats();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
@@ -1055,7 +1071,7 @@ export function ActiveTaskProvider({
             chunk as unknown as {
               data: {
                 branch?: string | null;
-                githubRepo?: unknown;
+                repository?: unknown;
                 sandboxMap?: unknown;
               };
             }
@@ -1069,7 +1085,7 @@ export function ActiveTaskProvider({
               ...(data?.branch ? { branch: data.branch } : {}),
               metadata: {
                 ...(current?.metadata ?? {}),
-                ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
+                ...(data?.repository ? { repository: data.repository } : {}),
                 ...(data?.sandboxMap ? { sandboxMap: data.sandboxMap } : {}),
               } as Task["metadata"],
             });
@@ -1117,7 +1133,7 @@ export function ActiveTaskProvider({
           });
         }
         // Refresh download chips only when sandbox file work could have written
-        // into `org/output/`. AI SDK v5 surfaces tool invocations as
+        // into `/app/org/output/`. AI SDK v5 surfaces tool invocations as
         // `tool-<name>` parts; `output-available` skips denied/cancelled calls.
         const fileWork = message.parts?.some((p) => {
           const part = p as { type: string; state?: string };
@@ -1128,7 +1144,7 @@ export function ActiveTaskProvider({
         });
         if (cb.taskId && fileWork) {
           const key = KEYS.threadOutputs(cb.taskId);
-          // org/output files reach the manifest ~5s after the sandbox closes
+          // /app/org/output files reach the manifest ~5s after the sandbox closes
           // them (rclone write-back), so a file written in the turn's last
           // seconds misses an immediate refresh. Sweep a few times across a
           // generous flush window; each sweep is one indexed query.
@@ -1217,7 +1233,11 @@ export function ActiveTaskProvider({
   // rethrows) and resolves `false` on failure so edit-flow callers can react;
   // the immediate-submit branch still RETHROWS on failure — unchanged
   // plain-send behavior (sendMessageInternal ignores the return value).
-  async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
+  async function dispatchUserMessage(
+    message: ChatMessage,
+    voiceMode = false,
+    voiceTranscript?: VoiceTranscript,
+  ): Promise<boolean> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
@@ -1276,18 +1296,20 @@ export function ActiveTaskProvider({
     // into the store now so `findReusableNewChat` stops treating the
     // (now non-empty, often just-failed) thread as an empty "New chat" and
     // dropping the user back onto it. The hosted server always selects
-    // Decopilot for an unlocked thread.
+    // Decopilot for an unlocked thread (claude-code under sandbox-only chats).
     // LIST/GET is authoritative; this only keeps the live view correct while
     // its row refresh is still in flight.
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: "decopilot",
+        harness_id: sandboxOnlyChats ? "claude-code" : "decopilot",
         updated_at: new Date().toISOString(),
       });
     }
 
     const requestOptions: RequestOptions = {
+      ...(voiceMode || voiceEnabled ? { voiceMode } : {}),
+      ...(voiceMode && voiceTranscript ? { voiceTranscript } : {}),
       tier: activeTier,
       mode: modeToSend,
       toolApprovalLevel:
@@ -1531,6 +1553,37 @@ export function ActiveTaskProvider({
   // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
+    voiceContext: voiceEnabled
+      ? [
+          contextPrompt,
+          ...Object.entries(appContexts).map(
+            ([source, text]) => `${source}: ${text}`,
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : undefined,
+    sendVoiceMessage: async (messageId, text, transcript) => {
+      if (sendInFlight.has(taskId)) return false;
+      sendInFlight.add(taskId);
+      setChatError(null);
+      return dispatchUserMessage(
+        {
+          id: messageId,
+          role: "user",
+          parts: [{ type: "text", text }],
+          metadata: {
+            created_at: new Date().toISOString(),
+            user: {
+              name: user?.name ?? "you",
+              avatar: user?.image ?? undefined,
+            },
+          },
+        },
+        true,
+        transcript,
+      );
+    },
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
@@ -1545,6 +1598,44 @@ export function ActiveTaskProvider({
     submit: async (action, opts) => {
       if (hostedRuntimeBlocked) {
         reportHostedLegacyDispatchBlocked();
+        return;
+      }
+      // Claude Code cannot take an injected tool result; the server resolves the part.
+      if (
+        action.kind === "toolOutput" &&
+        activeTask?.harness_id === "claude-code"
+      ) {
+        const { response } = (action.output ?? {}) as { response?: unknown };
+        await conn.submit(
+          {
+            kind: "message",
+            message: {
+              id: crypto.randomUUID(),
+              role: "user",
+              parts: [
+                {
+                  type: "text",
+                  text:
+                    typeof response === "string"
+                      ? response
+                      : JSON.stringify(action.output),
+                },
+              ],
+              metadata: {
+                created_at: new Date().toISOString(),
+                user: {
+                  avatar: user?.image ?? undefined,
+                  name: user?.name ?? "you",
+                },
+                toolOutput: {
+                  toolCallId: action.toolCallId,
+                  output: action.output,
+                },
+              },
+            },
+          },
+          opts,
+        );
         return;
       }
       await conn.submit(action, opts);

@@ -30,6 +30,9 @@ const LIVE_PAGE_RESOLVE_TYPES = [
 
 const PAGE_BLOCK_RESOLVE_TYPES = new Set<string>(LIVE_PAGE_RESOLVE_TYPES);
 
+/** Page block of current deco runtimes — what {@link findLivePageResolveType} falls back to without a manifest. */
+export const DEFAULT_LIVE_PAGE_RESOLVE_TYPE = LIVE_PAGE_RESOLVE_TYPES[0];
+
 /** Theme sections belong in site settings, not the page section picker. */
 const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
   "site/sections/Theme/Theme.tsx",
@@ -51,7 +54,7 @@ export function findLivePageResolveType(meta: LiveMeta): string {
       }
     }
   }
-  return LIVE_PAGE_RESOLVE_TYPES[0];
+  return DEFAULT_LIVE_PAGE_RESOLVE_TYPE;
 }
 
 /** Collects block-ref variants from a resolved schema subtree (e.g. page `seo` or `sections`). */

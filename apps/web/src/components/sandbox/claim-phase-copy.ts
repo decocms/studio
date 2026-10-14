@@ -2,7 +2,7 @@ import type { ClaimPhase } from "./hooks/sandbox-events-context";
 
 /**
  * Shared copy for pre-daemon claim phases. The booting visual uses `long`
- * (overlay headline, room to breathe) and the thread/github header uses
+ * (overlay headline, room to breathe) and the thread/repository header uses
  * `short` (button-sized character budget). Keeping both variants on the
  * same record means adding a new `ClaimPhase["kind"]` is a single edit
  * and the type-system enforces that both surfaces stay in lock-step.

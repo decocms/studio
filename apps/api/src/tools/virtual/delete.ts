@@ -19,6 +19,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { deleteAgentPrompts } from "../../file-storage/agent-prompts";
+import { deleteProjectFolder } from "../../file-storage/project-folder";
 import { VirtualMCPEntitySchema } from "./schema";
 import { isUndeletableWellKnownVirtualMcp } from "./well-known-virtual-mcp";
 
@@ -88,9 +89,22 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     // connection), so its token is still readable below.
     await ctx.storage.virtualMcps.delete(input.id);
 
-    // Drop the agent's seeded kickstart prompts from org-fs (best-effort).
+    // Drop the agent's seeded kickstart prompts and its own project folder
+    // from org-fs (best-effort).
     if (ctx.orgFs) {
-      await deleteAgentPrompts(ctx.orgFs, input.id, getUserId(ctx) ?? "system");
+      const actor = getUserId(ctx) ?? "system";
+      await deleteAgentPrompts(ctx.orgFs, input.id, actor);
+      await deleteProjectFolder(
+        ctx.orgFs,
+        organization.id,
+        existing,
+        actor,
+      ).catch((err) =>
+        console.error("[project-folder] delete failed", {
+          projectId: input.id,
+          err,
+        }),
+      );
     }
 
     // Tear down this agent's repo-scoped mcp-github child connection, if the
@@ -100,8 +114,8 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     // self-expires within ~1h). Self-revoke the token first, then delete the
     // child (its downstream_tokens + now-unreferenced aggregation rows cascade).
     const childConnectionId = (
-      existing.metadata as { githubRepo?: { connectionId?: string } } | null
-    )?.githubRepo?.connectionId;
+      existing.metadata as { repository?: { connectionId?: string } } | null
+    )?.repository?.connectionId;
     if (childConnectionId) {
       try {
         const child = await ctx.storage.connections.findById(
@@ -119,7 +133,7 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
         // Both checks run BEFORE the revoke. Relying on the ON DELETE RESTRICT
         // FK to stop the delete is not enough: the token would already have
         // been revoked by then, leaving a live connection with a dead grant.
-        //  - a thread pinned to it (`metadata.githubRepo.connectionId`, set by
+        //  - a thread pinned to it (`metadata.repository.connectionId`, set by
         //    `load_repo` / the repo picker) keeps working long after the agent
         //    that minted the connection is gone. Deleting it stranded 152
         //    prod threads on a sandbox that can never boot again.

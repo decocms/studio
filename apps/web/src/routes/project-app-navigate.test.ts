@@ -6,14 +6,23 @@ function navigateBlock(uri: string): ContentBlock[] {
   return [{ type: "resource_link", name: "navigate", uri }];
 }
 
+/** The board target for `studio://navigate?main=board&task=<task>`. */
+function boardTask(task: string) {
+  return resolveAppNavigateTarget(
+    navigateBlock(
+      `studio://navigate?main=board&task=${encodeURIComponent(task)}`,
+    ),
+  );
+}
+
 describe("resolveAppNavigateTarget", () => {
   test("navigates to an allowlisted tab", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate?main=board")),
-    ).toEqual({ isNavigate: true, tab: "board", field: null });
+    ).toEqual({ isNavigate: true, tab: "board", field: null, task: null });
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate?main=files")),
-    ).toEqual({ isNavigate: true, tab: "files", field: null });
+    ).toEqual({ isNavigate: true, tab: "files", field: null, task: null });
   });
 
   test("drops the request instead of navigating when the tab isn't allowlisted", () => {
@@ -22,19 +31,19 @@ describe("resolveAppNavigateTarget", () => {
       resolveAppNavigateTarget(
         navigateBlock("studio://navigate?main=settings"),
       ),
-    ).toEqual({ isNavigate: true, tab: null, field: null });
+    ).toEqual({ isNavigate: true, tab: null, field: null, task: null });
   });
 
   test("drops the request when the URI is malformed", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate??main")),
-    ).toEqual({ isNavigate: true, tab: null, field: null });
+    ).toEqual({ isNavigate: true, tab: null, field: null, task: null });
   });
 
   test("drops the request when main is missing", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate")),
-    ).toEqual({ isNavigate: true, tab: null, field: null });
+    ).toEqual({ isNavigate: true, tab: null, field: null, task: null });
   });
 
   test("focuses an allowlisted companion field alongside connect-sources", () => {
@@ -42,7 +51,12 @@ describe("resolveAppNavigateTarget", () => {
       resolveAppNavigateTarget(
         navigateBlock("studio://navigate?main=connect-sources&field=github"),
       ),
-    ).toEqual({ isNavigate: true, tab: "connect-sources", field: "github" });
+    ).toEqual({
+      isNavigate: true,
+      tab: "connect-sources",
+      field: "github",
+      task: null,
+    });
   });
 
   test("drops a non-allowlisted field", () => {
@@ -50,7 +64,76 @@ describe("resolveAppNavigateTarget", () => {
       resolveAppNavigateTarget(
         navigateBlock("studio://navigate?main=connect-sources&field=hacked"),
       ),
-    ).toEqual({ isNavigate: true, tab: "connect-sources", field: null });
+    ).toEqual({
+      isNavigate: true,
+      tab: "connect-sources",
+      field: null,
+      task: null,
+    });
+  });
+
+  test("opens a card on the board by key, lowercase key, number or id", () => {
+    for (const task of [
+      "DECO-12",
+      "deco-12",
+      "12",
+      "board_V1StGXR8_Z5jdHi6B-myT",
+    ]) {
+      expect(boardTask(task)).toEqual({
+        isNavigate: true,
+        tab: "board",
+        field: null,
+        task,
+      });
+    }
+  });
+
+  test("drops an invalid task and still opens the board", () => {
+    for (const task of [
+      "../x",
+      "12abc",
+      "",
+      "1".repeat(65),
+      `board_${"a".repeat(59)}`,
+    ]) {
+      expect(boardTask(task)).toEqual({
+        isNavigate: true,
+        tab: "board",
+        field: null,
+        task: null,
+      });
+    }
+  });
+
+  test("honors task only with main=board", () => {
+    expect(
+      resolveAppNavigateTarget(
+        navigateBlock("studio://navigate?main=files&task=12"),
+      ),
+    ).toEqual({ isNavigate: true, tab: "files", field: null, task: null });
+    expect(
+      resolveAppNavigateTarget(navigateBlock("studio://navigate?task=12")),
+    ).toEqual({ isNavigate: true, tab: null, field: null, task: null });
+  });
+
+  test("keeps each companion with its own tab when task and field are combined", () => {
+    expect(
+      resolveAppNavigateTarget(
+        navigateBlock("studio://navigate?main=board&task=12&field=github"),
+      ),
+    ).toEqual({ isNavigate: true, tab: "board", field: null, task: "12" });
+    expect(
+      resolveAppNavigateTarget(
+        navigateBlock(
+          "studio://navigate?main=connect-sources&field=github&task=12",
+        ),
+      ),
+    ).toEqual({
+      isNavigate: true,
+      tab: "connect-sources",
+      field: "github",
+      task: null,
+    });
   });
 
   test("is not a navigate message for a different scheme", () => {

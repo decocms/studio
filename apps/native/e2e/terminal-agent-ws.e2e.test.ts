@@ -881,7 +881,7 @@ describeEmbeddedLocalApi("native terminal-agent WebSocket lifecycle", () => {
           title: "Terminal WS agent",
           metadata: {
             instructions: "Reply through the deterministic terminal fixture.",
-            githubRepo: { url: gitFixture.bareDir },
+            repository: { url: gitFixture.bareDir },
           },
         },
       },

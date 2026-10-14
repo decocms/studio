@@ -1,5 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import { buildDevCommand } from "./dev-worktree-command";
+import { buildDevCommand, worktreeHostSlug } from "./dev-worktree-command";
+
+describe("worktreeHostSlug", () => {
+  test("turns a workspace display name into a hostname label", () => {
+    expect(worktreeHostSlug("Publish modal decofile diff")).toBe(
+      "publish-modal-decofile-diff",
+    );
+  });
+
+  test("keeps an already valid slug", () => {
+    expect(worktreeHostSlug("delhi-v4")).toBe("delhi-v4");
+  });
+
+  test("drops punctuation and edge dashes", () => {
+    expect(worktreeHostSlug("  Fix: login/SSO (v2)! ")).toBe(
+      "fix-login-sso-v2",
+    );
+  });
+
+  test("caps the label at 63 characters without a trailing dash", () => {
+    const slug = worktreeHostSlug(`${"a".repeat(62)} b`);
+    expect(slug.length).toBeLessThanOrEqual(63);
+    expect(slug.endsWith("-")).toBe(false);
+  });
+
+  test("empty when nothing usable remains", () => {
+    expect(worktreeHostSlug(" !! ")).toBe("");
+    expect(worktreeHostSlug("")).toBe("");
+  });
+});
 
 describe("buildDevCommand", () => {
   test("defaults dev home outside the repo for worktree runs", () => {

@@ -8,7 +8,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import {
   extractSectionCatalog,

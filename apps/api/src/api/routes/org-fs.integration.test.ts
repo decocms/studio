@@ -32,8 +32,16 @@ import {
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
 import { ForbiddenError } from "../../core/access-control";
+import {
+  mintOrgFsUploadToken,
+  type OrgFsUploadGrant,
+} from "../../file-storage/upload-grant";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
 import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
+import {
+  OrgScopedThreadStorage,
+  SqlThreadStorage,
+} from "../../storage/threads";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import { createOrgFsRoutes } from "./org-fs";
 
@@ -52,6 +60,7 @@ function buildApp(
     accessCheck?: () => Promise<void>;
     /** Mimic app.ts's global handler that 500s every *thrown* error. */
     swallowOnError?: boolean;
+    userId?: string;
   } = {},
 ) {
   const app = new Hono<{ Variables: Variables }>();
@@ -65,7 +74,7 @@ function buildApp(
   }
   app.use("*", async (c, next) => {
     c.set("studioContext", {
-      auth: authed ? { user: { id: USER } } : {},
+      auth: authed ? { user: { id: opts.userId ?? USER } } : {},
       db: db.db,
       baseUrl: "http://test",
       access: {
@@ -74,7 +83,7 @@ function buildApp(
         check: opts.accessCheck ?? (async () => {}),
       },
       storage: {
-        threads: { setOrganizationId: () => {} },
+        threads: new OrgScopedThreadStorage(new SqlThreadStorage(db.db), ORG),
         asyncResearchJobs: { setOrganizationId: () => {} },
         orgFsEntries: new OrgFsEntryStorage(db.db),
         // Real storage, not a stub: the write guard queries it, and a `as
@@ -94,20 +103,25 @@ function buildApp(
   return app;
 }
 
+async function addMember(db: StudioDatabase, userId: string, role: string) {
+  const now = new Date().toISOString();
+  await sql`
+    INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
+    VALUES (${userId}, ${userId + "@test.com"}, 'U', false, ${now}, ${now})
+  `.execute(db.db);
+  await sql`
+    INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+    VALUES (${`mem_${userId}`}, ${userId}, ${ORG}, ${role}, ${now})
+  `.execute(db.db);
+}
+
 async function seed(db: StudioDatabase) {
   const now = new Date().toISOString();
   await sql`
     INSERT INTO "organization" (id, name, slug, "createdAt")
     VALUES (${ORG}, ${ORG}, ${SLUG}, ${now})
   `.execute(db.db);
-  await sql`
-    INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
-    VALUES (${USER}, ${USER + "@test.com"}, 'U', false, ${now}, ${now})
-  `.execute(db.db);
-  await sql`
-    INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
-    VALUES ('mem_fs_api', ${USER}, ${ORG}, 'member', ${now})
-  `.execute(db.db);
+  await addMember(db, USER, "member");
 }
 
 describe("org-fs HTTP routes (integration)", () => {
@@ -163,6 +177,63 @@ describe("org-fs HTTP routes (integration)", () => {
 
     const missing = await app.request(`${BASE}/skills/stat?path=nope.txt`);
     expect(missing.status).toBe(404);
+  });
+
+  it("lists a volume's files at any depth, newest first, extensionless included", async () => {
+    await put("t1/report.md", "a");
+    await put("t2/Makefile", "b");
+    await put("root.txt", "c");
+    const res = await app.request(`${BASE}/skills/files?limit=2`);
+    expect(res.status).toBe(200);
+    const { entries, next } = await res.json();
+    expect(entries.map((e: { path: string }) => e.path)).toEqual([
+      "root.txt",
+      "t2/Makefile",
+    ]);
+
+    const rest = await (
+      await app.request(`${BASE}/skills/files?limit=2&before=${next}`)
+    ).json();
+    expect(rest.entries.map((e: { path: string }) => e.path)).toEqual([
+      "t1/report.md",
+    ]);
+    expect(rest.next).toBeNull();
+    expect(
+      (await app.request(`${BASE}/skills/files?before=1;drop`)).status,
+    ).toBe(400);
+  });
+
+  it("names the chat each file came from, by its thread-id folder", async () => {
+    const thread = "0b6c3f5e-6f1d-4c2a-9d3e-1a2b3c4d5e6f";
+    const stranger = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
+    await new SqlThreadStorage(db.db).create({
+      id: thread,
+      organization_id: ORG,
+      created_by: USER,
+      title: "Quarterly report",
+      virtual_mcp_id: "vir_reports",
+    });
+    await put(`${thread}/report.md`, "a");
+    await put(`${stranger}/notes.md`, "b");
+    await put("loose.md", "c");
+
+    const { entries, threads } = await (
+      await app.request(`${BASE}/skills/files`)
+    ).json();
+    const sources = Object.fromEntries(
+      entries.map((e: { path: string; sourceThreadId: string | null }) => [
+        e.path,
+        e.sourceThreadId,
+      ]),
+    );
+    expect(sources).toEqual({
+      [`${thread}/report.md`]: thread,
+      [`${stranger}/notes.md`]: stranger,
+      "loose.md": null,
+    });
+    expect(threads).toEqual({
+      [thread]: { title: "Quarterly report", agentId: "vir_reports" },
+    });
   });
 
   it("returns a presigned URL when ?presign=1", async () => {
@@ -234,6 +305,151 @@ describe("org-fs HTTP routes (integration)", () => {
 
     const usage = await (await app.request(`${BASE}/skills/usage`)).json();
     expect(usage).toEqual({ files: 2, bytes: 3 });
+  });
+
+  describe("personal home folders", () => {
+    const OTHER = "user_fs_teammate";
+    const mine = `users/${USER}/MEMORY.md`;
+    const theirs = `users/${OTHER}/MEMORY.md`;
+    const homeUrl = (op: string, path: string) =>
+      `${BASE}/home/${op}?path=${encodeURIComponent(path)}`;
+    const putHome = (
+      a: Hono<{ Variables: Variables }>,
+      path: string,
+      headers?: Record<string, string>,
+    ) =>
+      a.request(homeUrl("file", path), {
+        method: "PUT",
+        body: "note",
+        headers,
+      });
+    const as = (userId: string) => buildApp(db, true, { userId });
+
+    beforeEach(async () => {
+      await addMember(db, OTHER, "member");
+      await addMember(db, "user_fs_admin", "admin");
+      await addMember(db, "user_fs_owner", "owner");
+      expect((await putHome(as(OTHER), theirs)).status).toBe(200);
+    });
+
+    it("lets a member write their own folder but not a teammate's", async () => {
+      expect((await putHome(app, mine)).status).toBe(200);
+      expect((await putHome(app, theirs)).status).toBe(403);
+      const del = await app.request(homeUrl("file", `users/${OTHER}`), {
+        method: "DELETE",
+      });
+      expect(del.status).toBe(403);
+      const move = await app.request(`${BASE}/home/move`, {
+        method: "POST",
+        body: JSON.stringify({ from: theirs, to: "stolen.md" }),
+      });
+      expect(move.status).toBe(403);
+    });
+
+    it("hides a teammate's folder from everyone else, admins included", async () => {
+      for (const op of ["read", "stat"]) {
+        expect((await app.request(homeUrl(op, theirs))).status).toBe(403);
+      }
+      const listed = await (await app.request(homeUrl("list", "users"))).json();
+      expect(listed.entries).toEqual([]);
+      const search = await (
+        await app.request(`${BASE}/search?q=MEMORY`)
+      ).json();
+      expect(search.entries).toEqual([]);
+      const files = await (await app.request(`${BASE}/home/files`)).json();
+      expect(files.entries).toEqual([]);
+
+      const admin = as("user_fs_admin");
+      expect((await admin.request(homeUrl("read", theirs))).status).toBe(403);
+      expect((await putHome(admin, theirs)).status).toBe(403);
+    });
+
+    it("refuses to remove the users folder itself", async () => {
+      const del = await as("user_fs_owner").request(homeUrl("file", "users"), {
+        method: "DELETE",
+      });
+      expect(del.status).toBe(403);
+    });
+  });
+
+  it("writes conditionally on If-Match / If-None-Match", async () => {
+    const first = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v1",
+      headers: { "if-none-match": "*" },
+    });
+    expect(first.status).toBe(200);
+    const { entry } = await first.json();
+    const again = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v1b",
+      headers: { "if-none-match": "*" },
+    });
+    expect(again.status).toBe(412);
+
+    const stale = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v2",
+      headers: { "if-match": '"not-the-hash"' },
+    });
+    expect(stale.status).toBe(412);
+    const ok = await app.request(`${BASE}/skills/file?path=c.md`, {
+      method: "PUT",
+      body: "v2",
+      headers: { "if-match": `"${entry.contentHash}"` },
+    });
+    expect(ok.status).toBe(200);
+    const read = await app.request(`${BASE}/skills/read?path=c.md`);
+    expect(await read.text()).toBe("v2");
+  });
+
+  describe("uploads through a PUT_PRESIGNED_URL grant", () => {
+    const grantFor = (overrides: Partial<OrgFsUploadGrant> = {}) =>
+      mintOrgFsUploadToken({
+        organizationId: ORG,
+        volume: "home",
+        path: "pages/a.html",
+        userId: USER,
+        expiresAt: Date.now() + 60_000,
+        ...overrides,
+      });
+    const upload = (volume: string, token: string) =>
+      buildApp(db, false).request(`${BASE}/${volume}/upload/${token}`, {
+        method: "PUT",
+        headers: { "content-type": "text/html" },
+        body: "<h1>hi</h1>",
+      });
+
+    it("writes the granted file without a session and indexes it", async () => {
+      const res = await upload("home", grantFor());
+      expect(res.status).toBe(200);
+      const { entry } = await res.json();
+      expect(entry.path).toBe("pages/a.html");
+      expect(entry.updatedBy).toBe(USER);
+
+      const stat = await app.request(`${BASE}/home/stat?path=pages/a.html`);
+      expect(stat.status).toBe(200);
+    });
+
+    it("404s a grant that is expired, for another org, or for another volume", async () => {
+      const refused = [
+        upload("home", grantFor({ expiresAt: Date.now() - 1 })),
+        upload("home", grantFor({ organizationId: "org_other" })),
+        upload("outputs", grantFor()),
+        upload("home", `${grantFor()}x`),
+      ];
+      for (const res of await Promise.all(refused)) {
+        expect(res.status).toBe(404);
+      }
+    });
+
+    it("403s a grant for another member's personal folder", async () => {
+      const res = await upload(
+        "home",
+        grantFor({ path: "users/someone_else/notes.md" }),
+      );
+      expect(res.status).toBe(403);
+    });
   });
 
   it("rejects writing to the volume root with 400", async () => {

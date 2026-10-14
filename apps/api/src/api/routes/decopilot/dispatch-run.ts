@@ -30,6 +30,12 @@
  */
 
 import {
+  VOICE_MODE_PROMPT,
+  voiceRequestContext,
+  type VoiceTranscript,
+} from "@decocms/shared/voice";
+import { withVoiceResponseStyle } from "@/voice/prompt";
+import {
   applySubsidizedBilling,
   resolveSubsidizedPayer,
 } from "@/billing/subsidized-runs";
@@ -38,16 +44,21 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { NoResultError } from "kysely";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
+import {
+  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+  TASK_RUN_INSTRUCTIONS_KEY,
+} from "@/harnesses/claude-code-env";
 import {
   harnessRunsInSandbox,
   isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
+import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
+import { markTurn } from "@/harnesses/turn-latency";
+import { withRunTitle } from "@/harnesses/sandbox-run-title";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
@@ -58,6 +69,7 @@ import type {
 } from "@/harnesses/lib/types";
 import { createSecretModelSource } from "@/harnesses/lib/types";
 import { streamDecopilot } from "@/harnesses/decopilot/stream";
+import { withHtmlArtifactPreviews } from "@/harnesses/html-artifact-watcher";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -78,6 +90,7 @@ import { type ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 export type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
+import { sandboxWireUserMessage } from "./wire-user-message";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
@@ -346,6 +359,8 @@ export interface AgentConfig {
 }
 
 export interface DispatchRunInput {
+  voiceMode?: boolean;
+  voiceTranscript?: VoiceTranscript;
   messages: ChatMessage[];
   /** CLIENT request shape (root credentialId). `prepareRun` normalizes it
    *  into the per-slot harness/wire `ModelsConfig` before dispatch. */
@@ -404,6 +419,9 @@ export interface DispatchRunInput {
 }
 
 export interface FrozenRunSnapshot {
+  voiceMode?: boolean;
+  /** Spoken turns before this request. Model-only, like `systemContext`. */
+  voiceTranscript?: VoiceTranscript;
   models: ClientModelsConfig;
   agent: AgentConfig;
   temperature: number;
@@ -433,6 +451,9 @@ export interface FrozenRunSnapshot {
    * server-built base system prompt for this run only.
    */
   systemContext?: string;
+  /** Prior turns of a Decopilot thread on its first claude-code turn (see
+   *  `buildHistoryPrefix`). Prepended to the prompt; never persisted. */
+  historyPrefix?: string;
 }
 
 export interface DurableDispatchRunInput extends FrozenRunSnapshot {
@@ -488,6 +509,7 @@ export function buildDurableDispatchInput(
     messageId: string;
     runFenceToken?: string;
     branch?: string | null;
+    historyPrefix?: string;
   },
 ): DurableDispatchRunInput {
   if (!input.taskId) {
@@ -527,6 +549,10 @@ export function buildDurableDispatchInput(
       ? { resumedFromBackground: input.resumedFromBackground }
       : {}),
     mode: input.mode,
+    ...(input.voiceMode !== undefined ? { voiceMode: input.voiceMode } : {}),
+    ...(input.voiceTranscript !== undefined
+      ? { voiceTranscript: input.voiceTranscript }
+      : {}),
     ...(input.windowSize !== undefined ? { windowSize: input.windowSize } : {}),
     ...(input.triggerId !== undefined ? { triggerId: input.triggerId } : {}),
     ...(input.runMetadata !== undefined
@@ -543,6 +569,7 @@ export function buildDurableDispatchInput(
       : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
     ...(systemContext ? { systemContext } : {}),
+    ...(options.historyPrefix ? { historyPrefix: options.historyPrefix } : {}),
   };
 }
 
@@ -624,6 +651,7 @@ export async function dispatchRunAndWait(
   return traced(
     "decopilot.dispatchRunAndWait",
     async (rootSpan) => {
+      if (input.taskId) markTurn(input.taskId, "gate-dispatch");
       const { taskId, uiStream, registrySignal } = await prepareRun(
         input,
         ctx,
@@ -810,25 +838,6 @@ export function resolveAgentInstructions(
   return [resolved, agent.appendInstructions].filter(Boolean).join("\n\n");
 }
 
-async function resolveEffectiveVirtualMcpForHarness({
-  virtualMcp,
-  agentId,
-  organizationId,
-  ctx,
-}: {
-  virtualMcp: VirtualMCPEntity;
-  agentId: string;
-  organizationId: string;
-  ctx: StudioContext;
-}): Promise<VirtualMCPEntity> {
-  return resolveEffectiveStudioPackVirtualMcp({
-    virtualMcp,
-    agentId,
-    organizationId,
-    ctx,
-  });
-}
-
 /**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, assembles the wire harness input, and constructs a
@@ -943,8 +952,10 @@ async function prepareRun(
       input.organizationId,
       ctx.metadata?.runMetadata,
     );
+    // The subscription is the user's, not an org key: `claudeSubscriptionToken`
+    // below carries it to the sandbox.
     const resolveSlot = (slot?: ModelSelection) =>
-      slot
+      slot && slot.credentialId !== CLAUDE_SUBSCRIPTION_PROVIDER_ID
         ? resolveSecretModelSource(
             ctx,
             input.organizationId,
@@ -1073,12 +1084,10 @@ async function prepareRun(
     if (!virtualMcp) {
       throw new PermanentRunError("agent_not_found", "Agent not found");
     }
-    const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
+    const effectiveVirtualMcp = resolveEffectiveStudioPackVirtualMcp(
       virtualMcp,
-      agentId: input.agent.id,
-      organizationId: input.organizationId,
-      ctx,
-    });
+      input.agent.id,
+    );
 
     // 3. Dispatch START or RESUME
     if (input.isResume) {
@@ -1297,9 +1306,20 @@ async function prepareRun(
 
     // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only.
-    const wireUserMessage = materializedRequestMessage
+    const resolvedUserMessage = materializedRequestMessage
       ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
       : undefined;
+    const historyPrefix =
+      sandboxHosted && isDurableDispatchRunInput(input)
+        ? input.historyPrefix
+        : undefined;
+    const wireUserMessage =
+      resolvedUserMessage && sandboxHosted
+        ? sandboxWireUserMessage(resolvedUserMessage, {
+            historyPrefix,
+            turnContext: systemMessages,
+          })
+        : resolvedUserMessage;
 
     if (!wireUserMessage || !materializedRequestMessage) {
       throw new PermanentRunError(
@@ -1309,6 +1329,24 @@ async function prepareRun(
     }
 
     ensureModelCompatibility(input.models, [wireUserMessage]);
+    const voiceContext =
+      input.voiceMode && input.voiceTranscript
+        ? voiceRequestContext(input.voiceTranscript)
+        : undefined;
+    if (input.voiceMode) {
+      systemMessages.push({
+        id: `voice-${materializedRequestMessage.id}`,
+        role: "system",
+        parts: [
+          {
+            type: "text",
+            text: voiceContext
+              ? `${VOICE_MODE_PROMPT}\n\n${voiceContext}`
+              : VOICE_MODE_PROMPT,
+          },
+        ],
+      });
+    }
     const decopilotMessages = await loadDecopilotContext({
       ctx,
       threadId: mem.thread.id,
@@ -1340,8 +1378,17 @@ async function prepareRun(
     // The dispatcher's override wins over the agent's own instructions: a
     // reviewer run borrows the org agent (for its model + MCP surface) but is
     // not that agent.
+    // A later turn on a task-run thread (a nudge, a person typing) carries no
+    // append of its own, and the resumed Claude Code session keeps no system
+    // prompt — so the one the thread was started with is reused.
+    const storedAppend = mem.thread.metadata?.[TASK_RUN_INSTRUCTIONS_KEY];
     const agentInstructions = resolveAgentInstructions(
-      input.agent,
+      {
+        ...input.agent,
+        appendInstructions:
+          input.agent.appendInstructions ??
+          (typeof storedAppend === "string" ? storedAppend : undefined),
+      },
       effectiveVirtualMcp.metadata,
     );
     const decopilotRunContext = {
@@ -1360,7 +1407,14 @@ async function prepareRun(
 
     const wireHarnessInput: WireHarnessInput = {
       threadId: mem.thread.id,
-      userMessage: wireUserMessage,
+      userMessage:
+        sandboxHosted && input.voiceMode !== undefined
+          ? withVoiceResponseStyle(
+              wireUserMessage,
+              input.voiceMode === true,
+              voiceContext,
+            )
+          : wireUserMessage,
       harness: { sessionId: undefined },
       workspace,
       models,
@@ -1374,7 +1428,21 @@ async function prepareRun(
       organizationId: input.organizationId,
       agent: {
         id: input.agent.id,
-        instructions: agentInstructions,
+        // Decopilot renders user context and mode from its run context instead.
+        instructions: sandboxHosted
+          ? [
+              agentInstructions,
+              sandboxRunPrompt({
+                mode: input.mode,
+                threadId: mem.thread.id,
+                agentId: input.agent.id,
+                userEmail: ctx.auth.user?.email,
+                userContext,
+              }),
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : agentInstructions,
         ...(input.agent.disallowedTools
           ? { disallowedTools: input.agent.disallowedTools }
           : {}),
@@ -1440,7 +1508,9 @@ async function prepareRun(
         const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
+              harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
+              fenceToken: runFenceToken,
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.
               streamBuffer,
@@ -1449,9 +1519,9 @@ async function prepareRun(
               interactive: Boolean(
                 (
                   effectiveVirtualMcp.metadata as {
-                    githubRepo?: GithubRepo | null;
+                    repository?: RepositoryBinding | null;
                   } | null
-                )?.githubRepo?.url,
+                )?.repository?.url,
               ),
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
@@ -1470,9 +1540,9 @@ async function prepareRun(
                 threadId: mem.thread.id,
                 agentRepo: (
                   effectiveVirtualMcp.metadata as {
-                    githubRepo?: GithubRepo | null;
+                    repository?: RepositoryBinding | null;
                   } | null
-                )?.githubRepo,
+                )?.repository,
                 runBranch: input.branch,
               }),
               // The already-resolved thinking-slot credential becomes the
@@ -1493,7 +1563,34 @@ async function prepareRun(
                   : null,
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
-        yield* rawHarnessChunks;
+        if (!sandboxHosted) {
+          yield* rawHarnessChunks;
+          return;
+        }
+        // Decopilot titles inside its own loop; a sandbox harness has no such step.
+        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+          currentThreadTitle: mem.thread.title,
+          isSubagent: input.isSubagent === true,
+          userText: materializedRequestMessage.parts
+            .flatMap((part) =>
+              part.type === "text" && typeof part.text === "string"
+                ? [part.text]
+                : [],
+            )
+            .join("\n"),
+          slots: [
+            fastSource && models.fast
+              ? { selection: models.fast, source: fastSource }
+              : undefined,
+            smartSource && models.smart
+              ? { selection: models.smart, source: smartSource }
+              : undefined,
+            thinkingSource
+              ? { selection: models.thinking, source: thinkingSource }
+              : undefined,
+          ],
+          signal: registrySignal,
+        });
       };
 
     // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream

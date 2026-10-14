@@ -58,14 +58,6 @@ test("existing agent replies share the single task composer", async ({
   await expect(component.getByText(/^On it\./)).toBeVisible();
 });
 
-test("the composer offers no attach control until attachments exist", async ({
-  mount,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-
-  await expect(component.getByLabel("Attach")).toHaveCount(0);
-});
-
 test("the send button still submits, despite the card-wide focus click", async ({
   mount,
 }) => {
@@ -143,12 +135,16 @@ for (const resolved of [false, true]) {
     await expect(
       component.getByRole("button", { name: "Collapse", exact: true }),
     ).toHaveCount(0);
-    for (const entry of [0, 1]) {
+    // Your own comment can also be edited; the agent's only deleted.
+    for (const [entry, items] of [
+      [0, 2],
+      [1, 1],
+    ] as const) {
       await component.getByLabel("Comment actions").nth(entry).click();
       await expect(
         page.getByRole("menuitem", { name: "Delete", exact: true }),
       ).toBeVisible();
-      await expect(page.getByRole("menuitem")).toHaveCount(1);
+      await expect(page.getByRole("menuitem")).toHaveCount(items);
       await expect(
         page.getByRole("menuitem", { name: /resolve/i }),
       ).toHaveCount(0);

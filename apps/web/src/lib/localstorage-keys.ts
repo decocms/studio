@@ -26,6 +26,20 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:draft:${locator}:${taskKey}`,
   /** One entry per locator holding that org's recently-viewed task PR cards. */
   taskBoardPrs: (locator: ProjectLocator) => `studio:task-board-prs:${locator}`,
+  /** Whether the task feed shows agent-to-agent handoff and run posts. */
+  taskFeedBehindTheScenes: () => `studio:task-feed:behind-the-scenes`,
+  /** The assignee filter the org's task board opens on for this user. */
+  taskBoardAssignee: (orgId: string, userId: string) =>
+    `studio:task-board-assignee:${orgId}:${userId}`,
+  /** One entry per org holding the apps last opened in it — see
+   *  `lib/recent-apps.ts`. */
+  recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,
+  /** Every app opened in the org, newest first, as `appOpenKey`s — the org
+   *  home's tile order. Longer than `recentApps`, which is the rail's four. */
+  appOpens: (orgSlug: string) => `studio:app-opens:${orgSlug}`,
+  /** Not scoped to an org — this is the list of orgs themselves. */
+  recentOrgs: () => `studio:recent-orgs`,
+  railOrgPrefs: () => `studio:rail-org-prefs`,
   sidePanelWidth: () => `studio:side-panel:width`,
   sidebarOpen: () => `studio:sidebar-open`,
   preferences: () => `studio:user:preferences`,
@@ -36,10 +50,12 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:task-last-viewed:${locator}`,
   sidebarGroupOrder: (orgId: string, userId: string) =>
     `sidebar.group-order.${orgId}.${userId}`,
+  /** Whether a sidebar project section (`folderId`, or "loose") is unfolded. */
+  sidebarSectionOpen: (locator: ProjectLocator, folderId: string) =>
+    `studio:sidebar:section-open:${locator}:${folderId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
   cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
-  blogBoardCollapsedLanes: () => `studio:blog-board:collapsed-lanes`,
   /** Per-project "Local" preview override — a tunnel URL the CMS + preview point
    *  at instead of the managed sandbox/production. Per-browser: a tunnel to a
    *  dev server only this machine can reach, so it never belongs on shared

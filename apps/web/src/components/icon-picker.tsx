@@ -119,7 +119,7 @@ export function IconPicker({
         <button
           type="button"
           data-testid="icon-picker-trigger"
-          aria-label="Change icon"
+          aria-label={t("common.iconPicker.changeIcon")}
           disabled={disabled}
           className={cn(
             "relative group overflow-hidden",

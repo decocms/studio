@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoRef } from "./types";
 import {
+  changeRequestNumberLabel,
   changeRequestUrl,
   findChangeRequestUrl,
   parseChangeRequestUrl,
@@ -26,6 +27,14 @@ describe("changeRequestUrl", () => {
         7,
       ),
     ).toBe("https://bitbucket.org/acme/site/pull-requests/7");
+  });
+});
+
+describe("changeRequestNumberLabel", () => {
+  test("GitLab writes !, GitHub and Bitbucket write #", () => {
+    expect(changeRequestNumberLabel("gitlab", 12)).toBe("!12");
+    expect(changeRequestNumberLabel("github", 12)).toBe("#12");
+    expect(changeRequestNumberLabel("bitbucket", 12)).toBe("#12");
   });
 });
 
@@ -67,6 +76,33 @@ describe("parseChangeRequestUrl", () => {
       path: "team/store",
     });
     expect(ref?.number).toBe(3);
+  });
+
+  test("a self-hosted GitLab whose host does not say so", () => {
+    const ref = parseChangeRequestUrl(
+      "https://git.example.net/team/store/-/merge_requests/3",
+    );
+    expect(ref).toEqual({
+      repo: { provider: "gitlab", host: "git.example.net", path: "team/store" },
+      number: 3,
+      url: "https://git.example.net/team/store/-/merge_requests/3",
+    });
+    expect(
+      parseChangeRequestUrl(
+        "https://git.example.net/api/v4/projects/team%2Fstore/merge_requests/3",
+      )?.repo.provider,
+    ).toBe("gitlab");
+  });
+
+  test("an unknown host with a pull path names no provider", () => {
+    expect(
+      parseChangeRequestUrl("https://git.example.net/acme/site/pull/7"),
+    ).toBeNull();
+    expect(
+      parseChangeRequestUrl(
+        "https://git.example.net/acme/site/pull-requests/7",
+      ),
+    ).toBeNull();
   });
 
   test("the API forms map back to the browser URL", () => {

@@ -4,7 +4,11 @@ import {
   secondaryRepoDirNames,
 } from "./secondary-repo-dirs.ts";
 
-const r = (owner: string, name: string) => ({ owner, name });
+const r = (owner: string, name: string) => ({
+  owner,
+  name,
+  url: `https://github.com/${owner}/${name}`,
+});
 
 describe("secondaryRepoDirNames", () => {
   it("uses the repo's own name, never the owner/name label", () => {
@@ -44,6 +48,31 @@ describe("secondaryRepoDirNames", () => {
     ])) {
       expect(name).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
     }
+  });
+
+  it("keeps identical namespaces on separate providers in separate directories", () => {
+    const github = r("example", "site");
+    const gitlab = { ...github, url: "https://gitlab.com/example/site" };
+    const names = secondaryRepoDirNames([github, gitlab]);
+    expect(new Set(names).size).toBe(2);
+    expect(secondaryRepoDirName([github, gitlab], gitlab)).toBe(names[1]!);
+    expect(secondaryRepoDirName([github, gitlab], github)).toBe(names[0]!);
+  });
+
+  it("disambiguates a host-qualified directory from a sibling's bare name", () => {
+    const repos = [
+      r("team", "site"),
+      { ...r("team", "site"), url: "https://gitlab.com/team/site" },
+      r("third", "github.com-team-site"),
+    ];
+    const names = secondaryRepoDirNames(repos);
+    expect(new Set(names.map((name) => name.toLowerCase())).size).toBe(
+      repos.length,
+    );
+    for (const repo of repos)
+      expect(secondaryRepoDirName(repos, repo)).toBe(
+        secondaryRepoDirName([...repos].reverse(), repo),
+      );
   });
 
   it("has nothing to name for no repos", () => {

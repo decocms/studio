@@ -221,6 +221,9 @@ export function resolveConfig(
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
 
+  const voiceProvider =
+    envVars.VOICE_CONVERSATION_PROVIDER?.trim() || "elevenlabs";
+
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
     nodeEnv,
@@ -239,6 +242,18 @@ export function resolveConfig(
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
+    voiceConversationProvider:
+      voiceProvider === "elevenlabs" || voiceProvider === "openai"
+        ? voiceProvider
+        : null,
+    openaiLiveApiKey: envVars.OPENAI_LIVE_API_KEY,
+    openaiLiveModel: envVars.OPENAI_LIVE_MODEL?.trim() || "gpt-live-1",
+    openaiLiveVoice: envVars.OPENAI_LIVE_VOICE?.trim() || "marin",
+    elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
+    elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
+    elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",
+    elevenlabsConversationModel:
+      envVars.ELEVENLABS_CONVERSATION_MODEL?.trim() || "gemini-2.5-flash",
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
@@ -263,6 +278,12 @@ export function resolveConfig(
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
+    jiraSettleSeconds: toPositiveIntegerOrDefault(
+      "JIRA_SETTLE_SECONDS",
+      envVars.JIRA_SETTLE_SECONDS,
+      60,
+      3600,
+    ),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
     deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
       .split(",")
@@ -352,6 +373,12 @@ export function resolveConfig(
       envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
       true,
     ),
+    boardTransitionSettleSeconds: toPositiveIntegerOrDefault(
+      "BOARD_TRANSITION_SETTLE_SECONDS",
+      envVars.BOARD_TRANSITION_SETTLE_SECONDS,
+      20,
+      3600,
+    ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
       envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,
@@ -402,6 +429,10 @@ export function resolveConfig(
       true,
     ),
     sandboxReleaseOnRunEndEnabled: toBool(envVars.SANDBOX_RELEASE_ON_RUN_END),
+    sandboxPrewarmOnThreadCreateEnabled: toBool(
+      envVars.SANDBOX_PREWARM_ON_THREAD_CREATE,
+    ),
+    sandboxPersistentHarnessEnabled: toBool(envVars.SANDBOX_PERSISTENT_HARNESS),
     sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
       "SANDBOX_RELEASE_GRACE_MS",
       envVars.SANDBOX_RELEASE_GRACE_MS,
@@ -411,7 +442,6 @@ export function resolveConfig(
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
-    firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
     controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
     controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
     analyticsDataUrl: envVars.ANALYTICS_URL,

@@ -65,7 +65,7 @@ const KNOWLEDGE_MAX = 100;
 
 /** Cap on releases (named branches) per agent. Exported so the UI can gate
  * creation at the cap instead of letting the write 400 on the server. */
-export const RELEASES_MAX = 50;
+export const RELEASES_MAX = 300;
 
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
@@ -455,10 +455,10 @@ const RuntimeMetadataSchema = z.object({
 export type RuntimeMetadata = z.infer<typeof RuntimeMetadataSchema>;
 
 /**
- * GitHub repository linked to a virtual MCP
+ * Repository linked to a project or thread, across git providers.
  */
-const GithubRepoSchema = z.object({
-  url: z.string().describe("GitHub repository URL"),
+export const RepositoryBindingSchema = z.object({
+  url: z.string().describe("Repository URL, including its provider host"),
   owner: z.string().describe("Repository owner"),
   name: z.string().describe("Repository name"),
   installationId: z
@@ -481,7 +481,7 @@ const GithubRepoSchema = z.object({
     ),
 });
 
-export type GithubRepo = z.infer<typeof GithubRepoSchema>;
+export type RepositoryBinding = z.infer<typeof RepositoryBindingSchema>;
 
 const SandboxMapOwnerKindSchema = z.enum(["agent-sandbox", "local-api"]);
 
@@ -830,9 +830,9 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
     ),
-  githubRepo: GithubRepoSchema.nullable()
+  repository: RepositoryBindingSchema.nullable()
     .optional()
-    .describe("Linked GitHub repository"),
+    .describe("Linked repository"),
   runtime: RuntimeMetadataSchema.nullable()
     .optional()
     .describe(
@@ -843,7 +843,9 @@ const VirtualMcpMetadataFields = {
     .string()
     .nullable()
     .optional()
-    .describe("Linked asset site slug (managed storage tenancy)"),
+    .describe(
+      "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
+    ),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z

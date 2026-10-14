@@ -54,6 +54,13 @@ function getManifestBlockType(
   return null;
 }
 
+export function isManifestBlockResolveType(
+  meta: LiveMeta,
+  resolveType: string,
+): boolean {
+  return getManifestBlockType(meta, resolveType) !== null;
+}
+
 export function isManifestSectionResolveType(
   meta: LiveMeta,
   resolveType: string,

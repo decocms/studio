@@ -19,6 +19,17 @@ export interface Settings {
   publicUrl: string | undefined;
   dataDir: string;
 
+  // Voice
+  // Invalid deployment defaults disable voice creation, not API startup.
+  voiceConversationProvider: "elevenlabs" | "openai" | null;
+  openaiLiveApiKey: string | undefined;
+  openaiLiveModel: string;
+  openaiLiveVoice: string;
+  elevenlabsApiKey: string | undefined;
+  elevenlabsVoiceId: string;
+  elevenlabsVoiceModel: string;
+  elevenlabsConversationModel: string;
+
   // Database
   databaseUrl: string;
   databasePgSsl: boolean;
@@ -37,6 +48,9 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
+  /** How long a Jira card must stay in a status before a rule runs on it
+   *  (`JIRA_SETTLE_SECONDS`, default 60). Shortened only by e2e. */
+  jiraSettleSeconds: number;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
@@ -97,11 +111,11 @@ export interface Settings {
   stripeOrgPriceId: string | undefined;
   /**
    * Which gateway plan each subscription Price grants, parsed from
-   * STRIPE_PLAN_PRICE_IDS (`price_abc=pro,price_def=ultra`).
+   * STRIPE_PLAN_PRICE_IDS (`price_abc=starter,price_def=business`).
    *
    * This is the join between money and entitlement, and without it a plan is
    * something a user simply asks for: `AI_PLAN_SET` takes no payment, so an
-   * org admin could hand itself Ultra by clicking it. A price in this map is
+   * org admin could hand itself Business by clicking it. A price in this map is
    * the only thing that can grant a paid tier, and a subscription leaving
    * `active` takes it away again — see `planIdForStripe`.
    *
@@ -189,6 +203,10 @@ export interface Settings {
    *  reviewer runs for every org on a timer, so it needs one way to stop it that
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
+  /** How long a card must stay in a column before a `board_column_transition`
+   *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
+   *  Shortened only by e2e. */
+  boardTransitionSettleSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap
@@ -245,6 +263,15 @@ export interface Settings {
    *  (SANDBOX_RELEASE_ON_RUN_END). Own flag because it changes the dispatch hot
    *  path; off by default. */
   sandboxReleaseOnRunEndEnabled: boolean;
+  /** Start a sandbox-only chat's sandbox when the chat is created, before its
+   *  first message (SANDBOX_PREWARM_ON_THREAD_CREATE). Off by default: it
+   *  provisions for chats that may never send. */
+  sandboxPrewarmOnThreadCreateEnabled: boolean;
+  /** Keep a chat's Claude Code process alive between its turns in the sandbox,
+   *  so a follow-up skips the CLI start and MCP connect
+   *  (SANDBOX_PERSISTENT_HARNESS). Off by default: it changes the dispatch hot
+   *  path, and the process holds its model credential while it idles. */
+  sandboxPersistentHarnessEnabled: boolean;
   /** Grace before that release takes effect, in ms
    *  (SANDBOX_RELEASE_GRACE_MS, default 120000). Long enough that an immediate
    *  follow-up turn adopts the warm pod rather than paying a cold clone. */
@@ -253,7 +280,6 @@ export interface Settings {
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
-  firecrawlApiKey: string | undefined;
   /** Deco control-plane REST base URL (e.g.
    *  https://control-plane.infra.deco.cx/api/v1). Read by the per-site Hosting
    *  tab's BFF proxy. Unset ⇒ the Hosting tab is hidden and the proxy 503s. */

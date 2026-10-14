@@ -174,6 +174,13 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ---
 
+## Documentation
+
+[Studio documentation](https://docs.decocms.com/studio) lives in
+[docs-tanstack](https://github.com/deco-sites/docs-tanstack), alongside the
+Storefront documentation. Update public product guides and architecture there.
+Workspace READMEs and engineering plans stay here with the implementation.
+
 ## Project Structure
 
 ### Applications
@@ -181,7 +188,6 @@ Every tool call gets input/output validation, access control, audit logging, and
 | Workspace | Purpose |
 | --- | --- |
 | [`apps/api`](./apps/api/README.md) | Hono API, authentication, tools, storage, migrations, and the `deco` CLI |
-| [`apps/docs`](./apps/docs/README.md) | Astro documentation site |
 | [`apps/native`](./apps/native/README.md) | Tauri desktop app and local Rust runtime |
 | [`apps/web`](./apps/web/README.md) | Vite and React 19 administration interface |
 
@@ -196,6 +202,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 | [`packages/mcp-utils`](./packages/mcp-utils/README.md) | MCP proxy, gateway, aggregation, and sandbox primitives |
 | [`packages/runtime`](./packages/runtime/README.md) | Runtime helpers for MCP servers, OAuth, tools, and triggers |
 | [`packages/sandbox`](./packages/sandbox/README.md) | Agent sandbox lifecycle, daemon, dispatch, and proxy implementation |
+| [`packages/sandbox-controller`](./packages/sandbox-controller/README.md) | Sandbox provider bundled for a remote host such as the control plane |
 | [`packages/shared`](./packages/shared/README.md) | Private isomorphic contracts, SDK utilities, and async primitives |
 | [`packages/typegen`](./packages/typegen/README.md) | Typed client generator for Studio Virtual MCPs |
 | [`packages/ui`](./packages/ui/README.md) | Internal React design system |

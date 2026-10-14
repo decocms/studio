@@ -16,11 +16,11 @@ import { Editor, type OnMount } from "@/components/monaco/editor";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
-import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
+import { saveChangesDebug } from "../../../thread/repository/save-changes-debug.ts";
 import {
   fetchGitStatus,
   sandboxGitStatusQueryKey,
-} from "../../../thread/github/sandbox-git-api.ts";
+} from "../../../thread/repository/sandbox-git-api.ts";
 import type { FileBuffer, TreeNode } from "./types";
 import {
   FileExplorerNameDialog,

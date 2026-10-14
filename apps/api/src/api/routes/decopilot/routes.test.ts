@@ -333,6 +333,38 @@ describe("applyThreadLock", () => {
     expect(result.branch).toBe("feature-x");
   });
 
+  test("sandbox-only chats: an unlocked thread takes claude-code", () => {
+    for (const thread of [null, { harness_id: null, branch: null }]) {
+      const result = applyThreadLock({
+        taskIdInput: "thread-abc",
+        thread,
+        requestedBranch: undefined,
+        sandboxOnlyChats: true,
+      });
+      expect(result.locked).toBe(false);
+      expect(result.harnessId).toBe("claude-code");
+    }
+    expect(
+      applyThreadLock({
+        taskIdInput: "thread-abc",
+        thread: { harness_id: null, branch: null },
+        requestedBranch: undefined,
+        sandboxOnlyChats: false,
+      }).harnessId,
+    ).toBe("decopilot");
+  });
+
+  test("sandbox-only chats: a locked thread keeps its pin", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: makeLockedThread({ harness_id: "decopilot" }),
+      requestedBranch: "feature-x",
+      sandboxOnlyChats: true,
+    });
+    expect(result.locked).toBe(true);
+    expect(result.harnessId).toBe("decopilot");
+  });
+
   test("no taskIdInput (legacy callers): never touches the thread row", () => {
     const result = applyThreadLock({
       taskIdInput: undefined,
@@ -422,7 +454,7 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
 });
 
 describe("defaultHarnessForAgent", () => {
-  const repo = { githubRepo: { url: "https://github.com/acme/site" } };
+  const repo = { repository: { url: "https://github.com/acme/site" } };
 
   test("keeps a repo-backed agent on decopilot while the flag is off", () => {
     expect(
@@ -441,8 +473,8 @@ describe("defaultHarnessForAgent", () => {
       null,
       undefined,
       {},
-      { githubRepo: null },
-      { githubRepo: { url: "" } },
+      { repository: null },
+      { repository: { url: "" } },
     ]) {
       expect(defaultHarnessForAgent({ flagEnabled: true, agentMetadata })).toBe(
         "decopilot",

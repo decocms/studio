@@ -36,7 +36,7 @@ const ConfigurationStateSchema = z
  */
 export function resolveRunRepository(configurationState: unknown): {
   repository: ReportsRepositoryRef | undefined;
-  githubRepo: string | undefined;
+  githubRepositoryPath: string | undefined;
 } {
   const parsed = ConfigurationStateSchema.safeParse(configurationState);
   const state = parsed.success ? parsed.data : undefined;
@@ -52,7 +52,7 @@ export function resolveRunRepository(configurationState: unknown): {
 
   return {
     repository: repository ?? undefined,
-    githubRepo:
+    githubRepositoryPath:
       (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
   };
 }
@@ -115,7 +115,7 @@ export const REPORTS_RUN = defineTool({
       organization.id,
     );
 
-    const { repository, githubRepo } = resolveRunRepository(
+    const { repository, githubRepositoryPath } = resolveRunRepository(
       cdConnection?.configuration_state,
     );
 
@@ -123,7 +123,7 @@ export const REPORTS_RUN = defineTool({
       siteUrl: normalized.value,
       orgId: organization.id,
       repository,
-      githubRepo,
+      githubRepositoryPath,
     });
   },
 });

@@ -192,7 +192,7 @@ values, so a rerun is reproducible. Gitignore it; never inline secret material i
 For the value shapes (managed vs in-cluster deps, secrets with and without ESO,
 ingress, sandbox posture, compute sizing) read
 [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production)
-and the [Kubernetes guide](https://docs.decocms.com/deco-studio/en/studio/self-hosting/deploy/kubernetes).
+and the [Kubernetes guide](https://docs.decocms.com/studio/self-hosting/deploy/kubernetes).
 
 ## 1. Pick a tier
 

@@ -33,6 +33,8 @@
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
  *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
+ *   GET   /repos/{o}/{r}/commits                      -> [ { sha } ] (default-branch head)
+ *   POST  /repos/{o}/{r}/generate                     -> 201 new repo from this template (422 name taken)
  *
  * GitHub App endpoints (the git-provider account suite):
  *   GET   /user/installations                          -> { installations }
@@ -74,8 +76,6 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
-  /** Committer date (ISO); the branch head's drives the CMS staleness check. */
-  committedAt: string;
 }
 
 interface PullRecord {
@@ -125,10 +125,7 @@ interface SeedRepoBody {
    * (i.e. ahead-by-1). A branch entry WITHOUT a `files` key aliases the
    * default head instead (ahead-by-0) — handy for drift/status tests.
    */
-  branches?: Record<
-    string,
-    { files?: Record<string, string>; committedAt?: string } | null
-  >;
+  branches?: Record<string, { files?: Record<string, string> } | null>;
   mergeMode?: MergeMode;
   /** Make recursive tree reads return `truncated: true`, simulating a repo too
    *  large for GitHub's recursive listing. */
@@ -179,14 +176,13 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
-  committedAt: string = new Date().toISOString(),
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message, committedAt });
+  repo.commits.set(sha, { sha, treeSha, parents, message });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -292,13 +288,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
       ]),
     ),
   );
-  const defaultHead = putCommit(
-    repo,
-    defaultTree,
-    [],
-    `seed ${defaultBranch}`,
-    branches[defaultBranch]?.committedAt,
-  );
+  const defaultHead = putCommit(repo, defaultTree, [], `seed ${defaultBranch}`);
   repo.refs.set(defaultBranch, defaultHead);
 
   for (const [branch, spec] of Object.entries(branches)) {
@@ -318,7 +308,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     );
     repo.refs.set(
       branch,
-      putCommit(repo, tree, [defaultHead], `seed ${branch}`, spec.committedAt),
+      putCommit(repo, tree, [defaultHead], `seed ${branch}`),
     );
   }
   repos.set(repoKey(body.owner, body.repo), repo);
@@ -459,22 +449,59 @@ async function handleRepos(
     return;
   }
 
+  // POST /repos/{o}/{r}/generate — a repo-scoped token already 404'd above.
+  if (req.method === "POST" && rest.length === 1 && rest[0] === "generate") {
+    const body = JSON.parse((await readBody(req)) || "{}") as {
+      owner?: string;
+      name?: string;
+      private?: boolean;
+    };
+    if (!body.owner || !body.name) {
+      json(res, 422, { message: "owner and name are required" });
+      return;
+    }
+    if (repos.has(repoKey(body.owner, body.name))) {
+      json(res, 422, {
+        message: "Could not clone: Name already exists on this account",
+      });
+      return;
+    }
+    const head = repo.refs.get(repo.defaultBranch);
+    const created = seedRepo({
+      owner: body.owner,
+      repo: body.name,
+      branches: {
+        main: { files: head ? filesAtCommit(repo, head) : {} },
+      },
+    });
+    json(res, 201, {
+      id: created.id,
+      name: created.name,
+      full_name: repoKey(created.owner, created.name),
+      private: body.private ?? false,
+      html_url: `https://github.com/${repoKey(created.owner, created.name)}`,
+      default_branch: created.defaultBranch,
+      owner: { login: created.owner },
+    });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/commits
+  if (req.method === "GET" && rest.length === 1 && rest[0] === "commits") {
+    const head = repo.refs.get(repo.defaultBranch);
+    json(res, 200, head ? [{ sha: head }] : []);
+    return;
+  }
+
   // GET /repos/{o}/{r}/branches/{branch...}
   if (req.method === "GET" && rest[0] === "branches" && rest.length >= 2) {
     const branch = rest.slice(1).join("/");
     const sha = repo.refs.get(branch);
-    const commit = sha ? repo.commits.get(sha) : undefined;
-    if (!sha || !commit) {
+    if (!sha) {
       notFound(res);
       return;
     }
-    json(res, 200, {
-      name: branch,
-      commit: {
-        sha,
-        commit: { committer: { date: commit.committedAt } },
-      },
-    });
+    json(res, 200, { name: branch, commit: { sha } });
     return;
   }
 

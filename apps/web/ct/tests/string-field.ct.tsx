@@ -21,17 +21,22 @@ test("plain string renders a textbox and round-trips typed value", async ({
   await expect.poll(() => readFormValue(component)).toEqual({ title: "Hello" });
 });
 
-test("default value is used as the input placeholder", async ({ mount }) => {
+test("a missing default is saved and shown as the value", async ({ mount }) => {
   const meta = sectionWithProps({
-    title: { type: "string", title: "Title", default: "placeholder text" },
+    title: { type: "string", title: "Title", default: "default text" },
   });
   const component = await mount(
-    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{}}
+    />,
   );
 
-  const input = component.getByLabel("Title");
-  await expect(input).toBeVisible();
-  await expect(input).toHaveAttribute("placeholder", "placeholder text");
+  await expect(component.getByLabel("Title")).toHaveValue("default text");
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ title: "default text" });
 });
 
 test("url format renders input[type=url] and round-trips typed value", async ({

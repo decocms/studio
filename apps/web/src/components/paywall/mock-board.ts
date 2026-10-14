@@ -28,6 +28,7 @@ function card(
     title,
     description: null,
     repositoryId: null,
+    sprintId: null,
     status,
     priority,
     type,
@@ -45,6 +46,7 @@ function card(
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "preview",
     createdAt: AT,
     updatedBy: "preview",
@@ -55,16 +57,16 @@ function card(
 export function mockBoardAnswer(): BoardAnswer {
   return {
     items: [
-      card("p1", "Fix checkout shipping estimate", "todo", "bug", "high", 1),
+      card("p1", "Fix checkout shipping estimate", "triage", "bug", "high", 1),
       card(
         "p2",
         "Add size guide to product page",
-        "todo",
+        "triage",
         "feature",
         "medium",
         2,
       ),
-      card("p3", "Compress hero images", "todo", "chore", "low", 3),
+      card("p3", "Compress hero images", "triage", "chore", "low", 3),
       card(
         "p4",
         "Rewrite category descriptions",
@@ -82,7 +84,7 @@ export function mockBoardAnswer(): BoardAnswer {
         "high",
         6,
       ),
-      card("p7", "Speed up search results", "done", "chore", "medium", 7),
+      card("p7", "Speed up search results", "qa", "chore", "medium", 7),
       card("p8", "Black Friday banner", "done", "feature", "urgent", 8),
     ],
     repos: [],

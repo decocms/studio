@@ -320,22 +320,12 @@ export class GitlabContentClient implements RepoContentClient {
     return this.defaultBranch;
   }
 
-  async getBranch(
-    branch: string,
-  ): Promise<{ sha: string; committedAt: string } | null> {
-    const json = await this.json<{
-      commit?: { id?: string; committed_date?: string };
-    }>(`${this.projectBase}/repository/branches/${encodeRef(branch)}`);
-    const commit = json?.commit;
-    if (!commit?.id) return null;
-    if (!commit.committed_date) {
-      throw new GitProviderError({
-        provider: "gitlab",
-        status: 502,
-        message: `GitLab branch ${branch} came back without a commit date`,
-      });
-    }
-    return { sha: commit.id, committedAt: commit.committed_date };
+  async getBranch(branch: string): Promise<{ sha: string } | null> {
+    const json = await this.json<{ commit?: { id?: string } }>(
+      `${this.projectBase}/repository/branches/${encodeRef(branch)}`,
+    );
+    const id = json?.commit?.id;
+    return id ? { sha: id } : null;
   }
 
   /**

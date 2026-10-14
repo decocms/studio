@@ -1,6 +1,7 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
 import { deriveModalityCapabilities } from "./model-capabilities";
@@ -13,19 +14,6 @@ import type {
 } from "../types";
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
-
-/**
- * Parse a 2xx response body as JSON, degrading a malformed body into a
- * labeled error instead of a bare SyntaxError with no request context.
- */
-async function parseJsonResponse<T>(label: string, res: Response): Promise<T> {
-  const text = await res.text();
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error(`${label} returned malformed JSON: ${text.slice(0, 200)}`);
-  }
-}
 
 function fetchModelsWithRetry(
   headers: Record<string, string>,

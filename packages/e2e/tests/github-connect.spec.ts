@@ -185,7 +185,8 @@ test("choose one account, show its Studio connector, and manage that installatio
   await expect(
     page.getByText(unselected.account.login, { exact: true }),
   ).toHaveCount(0);
-  const manage = page.getByRole("link", {
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  const manage = page.getByRole("menuitem", {
     name: "Manage repository access",
     exact: true,
   });
@@ -223,14 +224,21 @@ test("choose one account, show its Studio connector, and manage that installatio
     path: testInfo.outputPath("github-connected-account.png"),
     animations: "disabled",
   });
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
+  const moreActions = page.getByRole("button", {
+    name: "More actions",
+    exact: true,
+  });
+  const rightEdge = async (control: typeof manage) => {
+    const bounds = await control.boundingBox();
+    return bounds ? bounds.x + bounds.width : Infinity;
+  };
+  await expect.poll(() => rightEdge(moreActions)).toBeLessThanOrEqual(390);
+  await moreActions.click();
   await expect(manage).toBeVisible();
-  await expect
-    .poll(async () => {
-      const bounds = await manage.boundingBox();
-      return bounds ? bounds.x + bounds.width : Infinity;
-    })
-    .toBeLessThanOrEqual(390);
+  await expect.poll(() => rightEdge(manage)).toBeLessThanOrEqual(390);
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("heading", { name: "Connected accounts" }),
   ).toBeVisible();
@@ -313,7 +321,10 @@ test("check access recovers when GitHub stays on its settings page", async ({
   await page
     .getByRole("button", { name: "Authorize 1 repository", exact: true })
     .click();
-  const manage = page.getByRole("link", { name: "Manage repository access" });
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  const manage = page.getByRole("menuitem", {
+    name: "Manage repository access",
+  });
   await expect(manage).toBeVisible();
   const response = await page.request.get(
     (await manage.getAttribute("href"))!,
@@ -505,12 +516,19 @@ for (const { status, accessIssue, label, action } of [
       accounts: Array<{ accessIssue: string; servable: boolean }>;
     }>(page.request, orgSlug, "GIT_ACCOUNT_LIST", {});
     expect(listed.accounts).toMatchObject([{ accessIssue, servable: false }]);
+    await accounts
+      .getByRole("button", { name: "More actions", exact: true })
+      .click();
     await expect(
-      accounts.getByRole("link", { name: "Change workspace access" }),
+      page.getByRole("menuitem", { name: "Disconnect", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Change workspace access" }),
     ).toHaveCount(0);
     await expect(
-      accounts.getByRole("link", { name: "Manage repository access" }),
+      page.getByRole("menuitem", { name: "Manage repository access" }),
     ).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await page.screenshot({
       path: testInfo.outputPath("github-needs-reconnect.png"),
       animations: "disabled",
@@ -551,11 +569,14 @@ for (const { status, accessIssue, label, action } of [
     );
     await expect(reconnect).toHaveCount(0);
     await expect(accounts.getByText(label, { exact: true })).toHaveCount(0);
+    await accounts
+      .getByRole("button", { name: "More actions", exact: true })
+      .click();
     await expect(
-      accounts.getByRole("link", { name: "Change workspace access" }),
+      page.getByRole("menuitem", { name: "Change workspace access" }),
     ).toBeVisible();
     await expect(
-      accounts.getByRole("link", { name: "Manage repository access" }),
+      page.getByRole("menuitem", { name: "Manage repository access" }),
     ).toBeVisible();
   });
 }

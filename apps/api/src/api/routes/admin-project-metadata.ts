@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import {
+  isValidSiteSlug,
+  resolveAgentSiteSlug,
+} from "@decocms/shared/site-slug";
 
 /** What a field's authorization may consult about the target organization. */
 export interface ProjectMetadataAuthContext {
@@ -22,7 +25,7 @@ const defineField = <T>(field: ProjectMetadataField<T>) =>
 /**
  * Project metadata keys a deployment admin may edit, for settings no
  * org-facing UI exposes. Keys with invariants a single-key write can't keep —
- * `siteSlug` (asset tenancy), `sandboxMap`, `githubRepo` (dual-written with
+ * `siteSlug` (asset tenancy), `sandboxMap`, `repository` (dual-written with
  * `repository_id`), `runtime` (secret references) — must never be listed.
  */
 const ADMIN_PROJECT_METADATA_FIELDS = {
@@ -94,4 +97,34 @@ export function pickProjectMetadata(
   return Object.fromEntries(
     FIELD_ENTRIES.map(([key]) => [key, metadata?.[key] ?? null]),
   ) as Record<ProjectMetadataKey, unknown>;
+}
+
+/**
+ * The org's site projects: those whose resolved slug it owns, the same test
+ * experiments use. A migrated project often carries its slug only as its title.
+ * A slug linked to a project (`ownedSites` maps slug → linked project id) lists
+ * only that project, not look-alikes naming the same slug.
+ */
+export function listSiteProjects(
+  projects: {
+    id: string;
+    title: string;
+    metadata?: (Record<string, unknown> & { siteSlug?: string | null }) | null;
+  }[],
+  ownedSites: ReadonlyMap<string, string | null>,
+) {
+  return projects.flatMap((project) => {
+    const siteSlug = resolveAgentSiteSlug(project);
+    if (!siteSlug || !ownedSites.has(siteSlug)) return [];
+    const linkedProjectId = ownedSites.get(siteSlug);
+    if (linkedProjectId && linkedProjectId !== project.id) return [];
+    return [
+      {
+        id: project.id,
+        title: project.title,
+        siteSlug,
+        metadata: pickProjectMetadata(project.metadata),
+      },
+    ];
+  });
 }

@@ -17,6 +17,7 @@ import {
   test as base,
 } from "@playwright/test";
 import { signUpViaApi, type SignUpResult } from "./auth-api";
+import { callSelfMcpTool } from "./mcp-tools";
 
 export interface AuthedPage {
   page: Page;
@@ -26,33 +27,26 @@ export interface AuthedPage {
 
 interface Fixtures {
   authedPage: AuthedPage;
+  /** Turns the `new_blocks_editor` org flag on for `authedPage`'s org. */
   newBlocksEditor: boolean;
-  editorPreferences: void;
 }
 
 export const test = base.extend<Fixtures>({
   newBlocksEditor: [false, { option: true }],
-  editorPreferences: [
-    async ({ page, newBlocksEditor }, use) => {
-      if (newBlocksEditor) {
-        await page.addInitScript(() => {
-          const key = "studio:user:preferences";
-          const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");
-          localStorage.setItem(
-            key,
-            JSON.stringify({ ...preferences, compactPageLayout: true }),
-          );
-        });
-      }
-      await use();
-    },
-    { auto: true },
-  ],
-  authedPage: async ({ page }, use) => {
+  authedPage: async ({ page, newBlocksEditor }, use) => {
     // page.context().request shares cookies with the page, so the session
     // cookie set by sign-up is automatically applied to subsequent
     // page.goto() calls — no manual context.addCookies() round-trip.
-    const user = await signUpViaApi(page.context().request);
+    const request = page.context().request;
+    const user = await signUpViaApi(request);
+    if (newBlocksEditor) {
+      await callSelfMcpTool(
+        request,
+        user.orgSlug,
+        "ORGANIZATION_BLOCKS_EDITOR_SET",
+        { enabled: true },
+      );
+    }
     await use({ page, user, orgSlug: user.orgSlug });
   },
 });

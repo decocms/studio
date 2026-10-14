@@ -160,7 +160,7 @@ function OrgHomeBody({ canManageAgents }: { canManageAgents: boolean }) {
 
   return (
     <div className="flex flex-col gap-12">
-      <ProjectRoster projects={agents} action={false} />
+      <ProjectRoster projects={agents} />
       {hasActivity && <ProjectFeed projects={agents} tasks={tasks} />}
     </div>
   );
@@ -208,7 +208,7 @@ export function OrgAgentsTab() {
             wider page stapled to the first. */}
         <Page.Container width="reading" className="flex flex-col gap-12">
           <div className="flex flex-col items-center gap-12 text-center">
-            <ConnectPill />
+            <ConnectPill dense={false} />
             {/* Shown only for orgs that own a legacy site — the training is about
                 that CMS. Self-hides via useOrgHasSite, so it costs nothing here. */}
             <TrainingCard />

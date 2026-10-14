@@ -287,6 +287,8 @@ export interface RepoCloneInfo {
   cloneUrl: string;
   gitUserName: string;
   gitUserEmail: string;
+  /** When the token in `cloneUrl` expires; null when it never does, absent without one. */
+  expiresAt?: Date | null;
 }
 
 /**
@@ -323,6 +325,7 @@ export async function cloneInfoForRepository(
       : await client.identity().catch(() => null);
   return {
     cloneUrl: cloneUrlFor(ref, token.token),
+    expiresAt: token.expiresAt,
     gitUserName: identity?.name ?? DECOBOT_GIT_IDENTITY.name,
     gitUserEmail: identity?.email ?? DECOBOT_GIT_IDENTITY.email,
   };

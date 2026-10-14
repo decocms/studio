@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "bun:test";
 import {
   AgentKickstartPromptSchema,
+  RELEASES_MAX,
   SandboxMapSchema,
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
@@ -467,7 +468,7 @@ test("VirtualMCPEntitySchema rejects more than 200 subAgents", () => {
   expect(result.success).toBe(false);
 });
 
-test("VirtualMCPEntitySchema rejects more than 50 releases", () => {
+test("VirtualMCPEntitySchema rejects more than RELEASES_MAX releases", () => {
   const result = VirtualMCPEntitySchema.safeParse({
     id: "x",
     title: "x",
@@ -481,7 +482,7 @@ test("VirtualMCPEntitySchema rejects more than 50 releases", () => {
     pinned: false,
     metadata: {
       instructions: null,
-      releases: Array.from({ length: 51 }, (_, i) => ({
+      releases: Array.from({ length: RELEASES_MAX + 1 }, (_, i) => ({
         branch: `release-${i}`,
         name: `Release ${i}`,
         color: "#000000",

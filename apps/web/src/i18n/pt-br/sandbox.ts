@@ -46,9 +46,58 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
+  "sandbox.blogBrand.addKeyword": "Adicionar palavra-chave",
+  "sandbox.blogBrand.addPolicy": "Adicionar política",
+  "sandbox.blogBrand.addSpecialDate": "Adicionar data",
+  "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
+  "sandbox.blogBrand.keywordsHint":
+    "Os termos pelos quais a marca quer ser encontrada — o que alguém digita procurando o que ela vende. Enter ou vírgula adiciona.",
+  "sandbox.blogBrand.keywordsLabel": "Palavras-chave da marca",
+  "sandbox.blogBrand.keywordsPlaceholder": "Escreva um termo e tecle Enter",
+  "sandbox.blogBrand.removeKeyword": "Remover termo",
+  "sandbox.blogBrand.phaseResearching": "Pesquisando a marca na web…",
+  "sandbox.blogBrand.policiesBodyPlaceholder":
+    "Os termos, com os números e condições reais",
+  "sandbox.blogBrand.policiesHint":
+    "Trocas, frete, garantia. Fatos que um post pode precisar afirmar — copie os números exatamente.",
+  "sandbox.blogBrand.policiesLabel": "Políticas comerciais",
+  "sandbox.blogBrand.policiesNamePlaceholder": "Qual política",
+  "sandbox.blogBrand.specialDatesBodyPlaceholder":
+    "O que esta data significa para esta marca — o que ela vende, o que ela diz",
+  "sandbox.blogBrand.specialDatesHint":
+    "Os momentos comerciais em torno dos quais o ano da marca gira — os próprios e o calendário do varejo. Não é um pin no calendário: as datas mudam a cada ano.",
+  "sandbox.blogBrand.specialDatesLabel": "Datas especiais",
+  "sandbox.blogBrand.specialDatesNamePlaceholder": "O nome da data",
+  "sandbox.blogBrand.vocabularyBodyPlaceholder":
+    "O que ela nomeia, e qual palavra ela substitui",
+  "sandbox.blogBrand.vocabularyHint":
+    "As palavras próprias da marca, e as comuns que elas substituem. Um post usando a palavra substituída soa como impostor.",
+  "sandbox.blogBrand.vocabularyLabel": "Vocabulário",
+  "sandbox.blogBrand.vocabularyNamePlaceholder": "A palavra a usar",
+  "sandbox.blogBrand.extractReplaced": "{count} campo(s) reescrito(s)",
+  "sandbox.blogBrand.fillDialogDescription":
+    "Parte disso já está escrita. Escolha no que o preenchimento pode mexer.",
+  "sandbox.blogBrand.fillDialogTitle": "Preencher o contexto",
+  "sandbox.blogBrand.fillOnlyEmpty": "Só o que está vazio",
+  "sandbox.blogBrand.fillOnlyEmptyHint":
+    "Mantém tudo o que você escreveu exatamente como está, e preenche os campos em branco ao redor.",
+  "sandbox.blogBrand.fillReplace": "Começar do zero",
+  "sandbox.blogBrand.fillReplaceHint":
+    "Reescreve todo campo para o qual o modelo tiver resposta. O que você escreveu ali se perde; um campo que ele não souber responder mantém o valor atual.",
+  "sandbox.blogBrand.addVoiceExample": "Adicionar frase",
+  "sandbox.blogBrand.voiceExamplesDoesNotSound": "Não soa como a marca",
+  "sandbox.blogBrand.voiceExamplesHint":
+    "Uma voz se mostra mais rápido do que se descreve. Cole frases reais e marque cada uma: as que soam como a marca são o que um post gerado deve acompanhar, e as que não soam são o que delimita até onde as primeiras vão.",
+  "sandbox.blogBrand.voiceExamplesLabel": "Frases-exemplo",
+  "sandbox.blogBrand.voiceExamplesPlaceholder": "Cole uma frase",
+  "sandbox.blogBrand.voiceExamplesSounds": "Soa como a marca",
   "sandbox.blogBrand.extractButton": "Preencher",
   "sandbox.blogBrand.extractFailed":
     "Não foi possível ler a marca a partir do conteúdo deste site",
+  "sandbox.blogBrand.extractAllDiscarded":
+    "Nada foi preenchido — tudo o que foi encontrado ficou abaixo da barra de confiança. A evidência são as páginas do próprio site; páginas rasas dão respostas rasas.",
+  "sandbox.blogBrand.extractDiscarded":
+    "{count} informação(ões) descartada(s) por baixa confiança ou relevância",
   "sandbox.blogBrand.extractFilled": "{count} campo(s) vazio(s) preenchido(s)",
   "sandbox.blogBrand.extractHint":
     "Lê {count} bloco(s) deste site — posts existentes primeiro, porque é a marca escrevendo post de verdade.",
@@ -61,7 +110,6 @@ export const sandbox = {
     "Nenhum concorrente encontrado. Adicione à mão, ou configure um modelo de busca na web para esta organização.",
   "sandbox.blogBrand.phaseInferring": "Inferindo a voz e as regras…",
   "sandbox.blogBrand.phaseReading": "Lendo o conteúdo deste site…",
-  "sandbox.blogBrand.phaseSearching": "Buscando concorrentes na web…",
   "sandbox.blogBrand.removeItem": "Remover item",
   "sandbox.blogBrand.tabBasics": "Dados básicos",
   "sandbox.blogBrand.tabDos": "Instruções de geração",
@@ -70,36 +118,270 @@ export const sandbox = {
   "sandbox.blogBrand.toneLabel": "Tom de voz",
   "sandbox.blogBrand.toneHint":
     "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
+  "sandbox.blogBrand.storeUrlHint":
+    "O domínio público, como o leitor digitaria. É dele que saem os links de produto e categoria — sem ele, eles vêm com o endereço interno da plataforma.",
+  "sandbox.blogBrand.storeUrlInvalid":
+    "Endereço inválido. Precisa começar com http:// ou https://.",
+  "sandbox.blogBrand.storeUrlLabel": "Endereço da loja",
   "sandbox.blogBrand.untitledRule": "Sem título",
   "sandbox.blogBrand.valuesBodyPlaceholder":
     "O que a marca afirma, e a evidência disso",
   "sandbox.blogBrand.valuesLabel": "Valores da marca",
   "sandbox.blogBrand.valuesNamePlaceholder": "O valor",
+  "sandbox.blockRegistry.backToFields": "Voltar para a lista de campos",
+  "sandbox.blockRegistry.breadcrumbLabel": "Trilha de campos",
   "sandbox.blockRegistry.unknownBlockType":
     'Tipo de bloco desconhecido{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Escreva algo…",
   "sandbox.blockRow.deleteBlock": "Deletar bloco",
   "sandbox.blockRow.dragToReorder": "Arraste para reordenar",
   "sandbox.blockRow.duplicateBlock": "Duplicar bloco",
-  "sandbox.blogContext.addAuthor": "Adicionar autor",
-  "sandbox.blogContext.addCategory": "Adicionar categoria",
-  "sandbox.blogContext.authorsEmpty": "Nenhum autor ainda.",
-  "sandbox.blogContext.authorsHint":
-    "As pessoas a quem seus posts são atribuídos. Adicione uma e abra para editar.",
-  "sandbox.blogContext.categoriesEmpty": "Nenhuma categoria ainda.",
-  "sandbox.blogContext.categoriesHint":
-    "Os temas sob os quais seus posts são classificados. Adicione um e abra para editar.",
+  "sandbox.blogCustomFields.backToFields": "Voltar para a lista de campos",
+  "sandbox.blogCustomFields.breadcrumbLabel": "Trilha de campos",
+  "sandbox.blogCustomFields.title": "Outros campos",
+  "sandbox.blogCustomFields.description":
+    "Campos que o tipo de conteúdo deste site declara, além dos acima.",
+  "sandbox.campaigns.addProduct": "Adicionar à mão",
+  "sandbox.campaigns.objectiveHelpLabel": "Quando usar cada objetivo",
+  "sandbox.campaigns.pickCategory": "Buscar na loja",
+  "sandbox.campaigns.pickProducts": "Buscar na loja",
+  "sandbox.campaigns.productCategoryPlaceholder": "Categoria principal",
+  "sandbox.campaigns.productDescriptionPlaceholder": "Descrição curta",
+  "sandbox.campaigns.productIdPlaceholder": "ID",
+  "sandbox.campaigns.productNamePlaceholder": "Nome do produto",
+  "sandbox.campaigns.productUrlPlaceholder": "https://…",
+  "sandbox.campaigns.productsHint":
+    "Os produtos que o texto pode citar pelo nome. Valem para qualquer alvo — e ficam salvos aqui, não buscados na hora.",
+  "sandbox.campaigns.productsLabel": "Produtos em destaque",
+  "sandbox.campaigns.removeProduct": "Remover produto",
+  "sandbox.campaigns.targetDescriptionPlaceholder":
+    "O que entra neste recorte, e para quem",
+  "sandbox.campaigns.targetCollectionIdPlaceholder":
+    "ID da coleção na loja — é ele que identifica",
+  "sandbox.campaigns.targetIdPlaceholder": "ID na loja (opcional)",
+  "sandbox.campaigns.targetNamePlaceholder": "Nome da categoria ou coleção",
+  "sandbox.campaigns.triggerHelpLabel": "Quando usar cada gatilho",
+  "sandbox.campaigns.triggerInventoryHelp":
+    "Tem estoque parado que precisa girar.",
+  "sandbox.campaigns.triggerLaunchHelp":
+    "Entrou algo novo no catálogo — produto, linha ou coleção.",
+  "sandbox.campaigns.triggerPartnershipHelp":
+    "Uma collab, um co-marketing ou um embaixador para apresentar.",
+  "sandbox.campaigns.triggerReputationHelp":
+    "Existe uma percepção sobre a marca que precisa de resposta.",
+  "sandbox.campaigns.triggerSeasonalHelp":
+    "Uma data que volta todo ano e que o cliente já espera.",
+  "sandbox.campaigns.triggerSeoGapHelp":
+    "Tem gente buscando por isso e a marca não aparece.",
+  "sandbox.campaigns.triggerTrendHelp":
+    "Algo está acontecendo no mercado ou na cultura agora, e passa.",
+  "sandbox.campaigns.addImage": "Adicionar imagem",
+  "sandbox.campaigns.removeImage": "Remover imagem",
+  "sandbox.campaigns.untitledProduct": "Produto sem nome",
+  "sandbox.campaigns.untitledTarget": "Alvo sem nome",
+  "sandbox.campaigns.facetContent": "Conteúdo",
+  "sandbox.campaigns.facetCta": "CTA",
+  "sandbox.campaigns.facetMetric": "Métrica",
+  "sandbox.campaigns.facetProduct": "Produto",
+  "sandbox.campaigns.objectiveAwarenessContent":
+    "Temas amplos, do universo da marca e não do produto. Ex: “Como começar a correr depois dos 40”.",
+  "sandbox.campaigns.objectiveAwarenessCta":
+    "Leve — ler outro post, assinar a newsletter, seguir a marca.",
+  "sandbox.campaigns.objectiveAwarenessHelp":
+    "Fazer mais gente conhecer a marca. O leitor ainda não pensa em comprar — talvez nem saiba que precisa.",
+  "sandbox.campaigns.objectiveAwarenessMetric":
+    "Tráfego, novos visitantes, alcance.",
+  "sandbox.campaigns.objectiveAwarenessProduct":
+    "Aparece pouco, como menção natural.",
+  "sandbox.campaigns.objectiveConversionContent":
+    "Comparativos, “melhores X para Y”, respostas a objeções. Ex: “Glide 4 ou Speed 3: qual comprar para a meia maratona”.",
+  "sandbox.campaigns.objectiveConversionCta":
+    "Forte e repetido, direto para o produto ou a coleção.",
+  "sandbox.campaigns.objectiveConversionHelp":
+    "Vender. O leitor já está decidindo e precisa de um empurrão, ou de ajuda para escolher.",
+  "sandbox.campaigns.objectiveConversionMetric":
+    "Cliques para o produto, conversões, receita atribuída.",
+  "sandbox.campaigns.objectiveConversionNote":
+    "O objetivo típico de campanhas sazonais e de estoque.",
+  "sandbox.campaigns.objectiveConversionProduct":
+    "É o centro do texto, com dados concretos — preço, atributos, link.",
+  "sandbox.campaigns.objectiveEducationContent":
+    "Guias e explicações — como funciona, como escolher. Ex: “Drop do tênis: o que é e por que importa”.",
+  "sandbox.campaigns.objectiveEducationCta":
+    "Moderado — ver a categoria, abrir o guia de tamanhos.",
+  "sandbox.campaigns.objectiveEducationHelp":
+    "Ensinar algo que deixa o leitor mais preparado para decidir. Ele já tem o interesse e quer entender melhor.",
+  "sandbox.campaigns.objectiveEducationMetric":
+    "Tempo na página, posts por sessão, ranqueamento orgânico.",
+  "sandbox.campaigns.objectiveEducationNote":
+    "O objetivo mais comum em campanhas de gap de SEO.",
+  "sandbox.campaigns.objectiveEducationProduct":
+    "Aparece como exemplo ou aplicação do que foi explicado.",
+  "sandbox.campaigns.objectiveRepositioningContent":
+    "Posts que demonstram a nova identidade — opinião, bastidores, expertise.",
+  "sandbox.campaigns.objectiveRepositioningCta": "Leve a moderado.",
+  "sandbox.campaigns.objectiveRepositioningHelp":
+    "Mudar como o público enxerga a marca: outro segmento, outra faixa de preço, outra imagem. Ex: uma loja vista como barata que quer ser vista como especialista.",
+  "sandbox.campaigns.objectiveRepositioningMetric":
+    "Mais difícil. Engajamento, mudança no perfil de quem chega, menções.",
+  "sandbox.campaigns.objectiveRepositioningProduct":
+    "Seletivo: só o que reforça a nova imagem.",
+  "sandbox.campaigns.objectiveRetentionContent":
+    "Uso, cuidado e o que vem depois da compra. Ex: “Como lavar o tênis sem estragar a entressola”.",
+  "sandbox.campaigns.objectiveRetentionCta":
+    "Leve — recompra, acessório, suporte.",
+  "sandbox.campaigns.objectiveRetentionHelp":
+    "Fazer quem já comprou tirar mais da compra e voltar. O leitor já é cliente.",
+  "sandbox.campaigns.objectiveRetentionMetric":
+    "Recompra, frequência, retorno de clientes.",
+  "sandbox.campaigns.objectiveRetentionProduct":
+    "O que ele já tem — e o que acompanha bem.",
+  "sandbox.campaigns.productImageLabel": "Imagem do produto",
+  "sandbox.campaignGen.back": "Voltar",
+  "sandbox.campaignGen.cardSummary":
+    "{targets} alvo(s) · {products} produto(s)",
+  "sandbox.campaignGen.countHint":
+    "No máximo. Se o ponto de partida já for direto, vem uma só — e isso é uma boa resposta.",
+  "sandbox.campaignGen.countLabel": "Quantas propostas",
+  "sandbox.campaignGen.create": "Criar {count} campanha(s)",
+  "sandbox.campaignGen.failed": "Não foi possível gerar as campanhas",
+  "sandbox.campaignGen.gapNoSite":
+    "Este site não tem conexões para consultar, então nada aqui foi conferido com a loja: alvos, produtos e qualquer número vêm só do contexto da marca.",
+  "sandbox.campaignGen.gapNoTools":
+    "Os sistemas conectados não oferecem nenhuma ferramenta de leitura, então nenhum pôde ser consultado. Nada aqui foi conferido com a loja.",
+  "sandbox.campaignGen.gapTimeoutPartial":
+    "A loja ainda estava respondendo quando a busca estourou o tempo — {count} chamada(s) voltaram, mas os achados foram descartados. Tente de novo, ou estreite o ponto de partida.",
+  "sandbox.campaignGen.gapTimeoutEmpty":
+    "A busca por dados da loja estourou o tempo antes de qualquer coisa voltar.",
+  "sandbox.campaignGen.gapFailed":
+    "A busca por dados da loja não pôde ser concluída, então nada aqui foi conferido com ela.",
+  "sandbox.campaignGen.gapNothingUseful":
+    "Os sistemas conectados responderam, mas não trouxeram nada de útil para este ponto de partida.",
+  "sandbox.campaignGen.gapTargetsDropped":
+    "{count} alvo(s) propostos foram descartados: nada nos dados da loja os sustentava.",
+  "sandbox.campaignGen.gapProductsDropped":
+    "{count} produto(s) propostos foram descartados: nada nos dados da loja os sustentava.",
+  "sandbox.campaignGen.generate": "Gerar",
+  "sandbox.campaignGen.keywordsHint":
+    "Os termos que essa campanha deve mirar. Enter ou vírgula adiciona.",
+  "sandbox.campaignGen.keywordsLabel": "Palavras-chave",
+  "sandbox.campaignGen.keywordsPlaceholder": "Escreva um termo e tecle Enter",
+  "sandbox.campaignGen.noCandidates":
+    "Nenhuma proposta veio. Tente um ponto de partida mais específico.",
+  "sandbox.campaignGen.open": "Gerar campanhas",
+  "sandbox.campaignGen.phaseReading": "Lendo os sistemas conectados",
+  "sandbox.campaignGen.phaseReviewing": "Revisando cada uma",
+  "sandbox.campaignGen.phaseWriting": "Escrevendo as propostas",
+  "sandbox.campaignGen.promptHint":
+    "Em suas palavras: que momento é esse e por que vale escrever sobre ele agora.",
+  "sandbox.campaignGen.promptLabel": "O que está acontecendo",
+  "sandbox.campaignGen.promptPlaceholder":
+    "ex: o verão começa em dezembro e queremos chegar antes dos concorrentes na busca por protetor solar",
+  "sandbox.campaignGen.removeKeyword": "Remover termo",
+  "sandbox.campaignGen.savedSeeds": "Pontos de partida salvos",
+  "sandbox.campaignGen.seedNameLabel": "Nome",
+  "sandbox.campaignGen.seedNamePlaceholder": "ex: Verão 2027",
+  "sandbox.campaignGen.stepPick": "Escolher",
+  "sandbox.campaignGen.stepRunning": "Gerando",
+  "sandbox.campaignGen.stepSeed": "Ponto de partida",
+  "sandbox.campaignGen.subtitle":
+    "Escreva o ponto de partida. A geração consulta os sistemas conectados ao site para descobrir o resto.",
+  "sandbox.campaignGen.title": "Gerar campanhas",
+  "sandbox.campaignGen.untitledSeed": "Sem nome",
+  "sandbox.campaignGen.verdictStrong": "Pronta",
+  "sandbox.campaignGen.verdictWeak": "Fraca",
+  "sandbox.campaignGen.verdictWorkable": "Dá para trabalhar",
+  "sandbox.campaigns.add": "Nova campanha",
+  "sandbox.campaigns.addAvoid": "Adicionar guardrail",
+  "sandbox.campaigns.addTarget": "Adicionar alvo",
+  "sandbox.campaigns.avoidBodyPlaceholder":
+    "O que não pode acontecer, e por que esta campanha em especial precisa disso dito",
+  "sandbox.campaigns.avoidHint":
+    "Soma aos guardrails da marca só nesta campanha — nunca os substitui.",
+  "sandbox.campaigns.avoidLabel": "Guardrails extras",
+  "sandbox.campaigns.avoidNamePlaceholder": "Sobre o que é este guardrail",
+  "sandbox.campaigns.close": "Fechar",
+  "sandbox.campaigns.collapseLane": "Recolher {lane}",
+  "sandbox.campaigns.deleteCancel": "Cancelar",
+  "sandbox.campaigns.deleteConfirm": "Excluir",
+  "sandbox.campaigns.deleteDescription":
+    "“{name}” será apagada de vez, com os alvos, produtos e guardrails dentro dela. Os posts já escritos a partir dela continuam existindo.",
+  "sandbox.campaigns.deleteTitle": "Excluir esta campanha?",
+  "sandbox.campaigns.empty":
+    "Nenhuma campanha ainda. Campanha é um momento que vale escrever — um lançamento, uma data, uma busca que você não responde.",
+  "sandbox.campaigns.expandLane": "Expandir {lane}",
+  "sandbox.campaigns.keywordsHint":
+    "Os termos pelos quais esta campanha quer ser encontrada. Enter ou vírgula adiciona.",
+  "sandbox.campaigns.keywordsLabel": "Palavras-chave",
+  "sandbox.campaigns.keywordsPlaceholder": "Escreva um termo e tecle Enter",
+  "sandbox.campaigns.laneEmpty": "Nada aqui",
+  "sandbox.campaigns.moveFailed": "Não foi possível mover a campanha",
+  "sandbox.campaigns.nameLabel": "Nome",
+  "sandbox.campaigns.namePlaceholder": "ex: Black Friday 2026",
+  "sandbox.campaigns.noMatches": "Nenhuma campanha corresponde a isso.",
+  "sandbox.campaigns.objectiveAwareness": "Awareness",
+  "sandbox.campaigns.objectiveConversion": "Conversão",
+  "sandbox.campaigns.objectiveEducation": "Educação",
+  "sandbox.campaigns.objectiveHint":
+    "O que um post escrito para esta campanha quer alcançar.",
+  "sandbox.campaigns.objectiveLabel": "Objetivo",
+  "sandbox.campaigns.objectiveRepositioning": "Reposicionamento",
+  "sandbox.campaigns.objectiveRetention": "Retenção",
+  "sandbox.campaigns.periodClear": "Limpar o período",
+  "sandbox.campaigns.periodEmpty": "Sem datas",
+  "sandbox.campaigns.periodLabel": "Período",
+  "sandbox.campaigns.remove": "Excluir campanha",
+  "sandbox.campaigns.removeKeyword": "Remover termo",
+  "sandbox.campaigns.removeTarget": "Remover alvo",
+  "sandbox.campaigns.searchPlaceholder": "Buscar campanhas",
+  "sandbox.campaigns.selectPrompt": "Escolha uma campanha para editar.",
+  "sandbox.campaigns.statusActive": "Ativas",
+  "sandbox.campaigns.statusDraft": "Rascunhos",
+  "sandbox.campaigns.statusFinished": "Finalizadas",
+  "sandbox.campaigns.statusLabel": "Status",
+  "sandbox.campaigns.statusPaused": "Pausadas",
+  "sandbox.campaigns.targetCategory": "Categoria",
+  "sandbox.campaigns.targetCollection": "Coleção",
+  "sandbox.campaigns.targetUrlPlaceholder": "https://…",
+  "sandbox.campaigns.targetUrlRequired":
+    "Um alvo precisa da URL — é para ela que o post vai linkar.",
+  "sandbox.campaigns.targetsHint":
+    "O que esta campanha vende. Qualquer loja: a URL é o que identifica.",
+  "sandbox.campaigns.targetsLabel": "Alvos",
+  "sandbox.campaigns.toneHint":
+    "Substitui o tom da marca enquanto a campanha roda. Deixe vazio para manter.",
+  "sandbox.campaigns.toneLabel": "Tom sobrescrito",
+  "sandbox.campaigns.tonePlaceholder":
+    "ex: frases mais curtas, mais urgência, sem piadas",
+  "sandbox.campaigns.triggerHint":
+    "Por que esta campanha existe. A nota é o que um escritor lê para entender o momento.",
+  "sandbox.campaigns.triggerInventory": "Estoque",
+  "sandbox.campaigns.triggerLabel": "Gatilho",
+  "sandbox.campaigns.triggerLaunch": "Lançamento",
+  "sandbox.campaigns.triggerNotePlaceholder":
+    "O que está acontecendo, e por que vale escrever sobre isso agora",
+  "sandbox.campaigns.triggerPartnership": "Parceria",
+  "sandbox.campaigns.triggerReputation": "Reputação",
+  "sandbox.campaigns.triggerSeasonal": "Sazonal",
+  "sandbox.campaigns.triggerSeoGap": "Gap de SEO",
+  "sandbox.campaigns.triggerTrend": "Trend",
+  "sandbox.campaigns.untitled": "Campanha sem título",
+  "sandbox.campaigns.viewBoard": "Quadro",
+  "sandbox.campaigns.viewList": "Lista",
   "sandbox.blogContext.removeEntry": "Remover",
-  "sandbox.blogContext.soonDescription": "E muito mais…",
-  "sandbox.blogContext.soonTitle": "O contexto da sua marca chega em breve!",
   "sandbox.blogContext.subtitle":
-    "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
-  "sandbox.blogContext.tabAuthors": "Autores",
+    "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
+  "sandbox.blogContext.tabAutomations": "Automações",
   "sandbox.blogContext.tabBrand": "Marca",
-  "sandbox.blogContext.tabCategories": "Categorias",
   "sandbox.blogContext.tabFormats": "Formatos",
-  "sandbox.blogContext.tabPillars": "Pilares de conteúdo",
+  "sandbox.blogContext.tabCampaigns": "Campanhas",
   "sandbox.blogContext.title": "Contexto",
+  "sandbox.blogField.title": "Título",
+  "sandbox.blogField.slug": "Slug",
+  "sandbox.blogField.category": "Categoria",
+  "sandbox.blogField.excerpt": "Resumo",
+  "sandbox.blogField.image": "Imagem de capa",
+  "sandbox.blogField.name": "Nome",
   "sandbox.bootingVisual.phaseCloning": "Clonando seu repositório",
   "sandbox.bootingVisual.phaseDev": "Iniciando seu preview",
   "sandbox.bootingVisual.phaseInstall": "Instalando pacotes",
@@ -109,10 +391,16 @@ export const sandbox = {
   "sandbox.categoryEditor.categoryNamePlaceholder": "Nome da categoria",
   "sandbox.categoryEditor.contentTitle": "Conteúdo",
   "sandbox.categoryEditor.descriptionLabel": "Descrição",
+  "sandbox.categoryEditor.duplicateNameWarning":
+    "Já existe outra categoria com esse nome. Nomes duplicados ficam difíceis de distinguir na hora de marcar um post.",
   "sandbox.categoryEditor.descriptionPlaceholder":
     "Descrição breve desta categoria",
   "sandbox.categoryEditor.noContentEmpty":
     "Esta categoria ainda não possui conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
+  "sandbox.categoryEditor.parentDescription":
+    "Aninhe esta categoria sob outra. Deixe vazio para uma categoria raiz.",
+  "sandbox.categoryEditor.parentLabel": "Categoria pai",
+  "sandbox.categoryEditor.parentNone": "Nenhuma (categoria raiz)",
   "sandbox.categoryEditor.pickPostsTooltip":
     "Selecione posts para adicionar nesta categoria",
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) nesta categoria",
@@ -121,8 +409,12 @@ export const sandbox = {
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
     'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
+  "sandbox.categoryEditor.renameDialogChildren":
+    "{count} subcategoria(s) passarão a apontar para o novo slug.",
   "sandbox.categoryEditor.renameDialogTitle": "Renomear slug da categoria?",
   "sandbox.categoryEditor.renameFailed": "Falha ao renomear",
+  "sandbox.categoryEditor.renameNameSuccess":
+    "Nome da categoria atualizado em {count} post(s)",
   "sandbox.categoryEditor.renameSuccessNoPosts": "Slug renomeado",
   "sandbox.categoryEditor.renameSuccessWithPosts":
     "Slug renomeado e {count} post(s) atualizado(s)",
@@ -130,6 +422,8 @@ export const sandbox = {
   "sandbox.categoryEditor.seeCategoryPreview": "Ver visualização da categoria",
   "sandbox.categoryEditor.setSlugTooltip":
     "Defina um slug para adicionar posts nesta categoria",
+  "sandbox.categoryEditor.slugDeduped":
+    "Esse slug já estava em uso — salvamos como \u201c{slug}\u201d.",
   "sandbox.categoryEditor.slugLabel": "Slug",
   "sandbox.categoryEditor.slugPlaceholder": "minha-categoria",
   "sandbox.categoryEditor.untitledCategory": "Categoria sem título",
@@ -315,6 +609,12 @@ export const sandbox = {
   "sandbox.formats.add": "Novo formato",
   "sandbox.formats.bodyPlaceholder":
     "Quando usar, como abre e fecha, mais ou menos o tamanho, e quais sections sustentam ele…",
+  "sandbox.formats.countLabel": "Quantos",
+  "sandbox.formats.guidanceHint":
+    "Opcional. O que estes formatos devem cobrir — uma campanha, uma época, um tipo de post que o blog vive precisando.",
+  "sandbox.formats.guidanceLabel": "Instruções extras",
+  "sandbox.formats.guidancePlaceholder":
+    "ex: um formato para lançamento de produto",
   "sandbox.formats.hint":
     "Um formato orienta a geração, não dita — descreva a intenção e deixe o modelo decidir a ordem. Digite @ para citar uma das suas sections.",
   "sandbox.formats.mentionEmpty": "Nenhuma section corresponde",
@@ -341,16 +641,41 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
   "sandbox.formats.unknownCitations":
     "Este formato cita sections que o site não tem: {names}",
-  "sandbox.generatePost.authorLabel": "Autor",
+  "sandbox.generatePost.stepCampaign": "Campanha",
+  "sandbox.generatePost.campaignHint":
+    "Um post é escrito para uma campanha: é ela que carrega o momento, os produtos que podem ser citados e os links deles.",
+  "sandbox.generatePost.noCampaigns":
+    "Nenhuma campanha para escrever ainda. Crie uma em Contexto → Campanhas.",
+  "sandbox.generatePost.campaignProducts": "{count} produto(s)",
+  "sandbox.generatePost.campaignNoProducts": "Sem produtos",
+  "sandbox.generatePost.formatBlocksHint":
+    "Os blocos que este formato cita são os únicos que o post pode usar, e cada um é preenchido conforme o schema dele.",
+  "sandbox.generatePost.countLabel": "Quantos rascunhos",
+  "sandbox.generatePost.countHint":
+    "Cada um pega um ângulo diferente da mesma campanha. Caem como cartões separados.",
+  "sandbox.generatePost.coverHint":
+    "Todo rascunho ganha uma imagem de capa, gerada e enviada para o seu bucket.",
+  "sandbox.generatePost.gapNoStoreData":
+    "Nenhum sistema conectado respondeu, então nada nestes posts foi conferido com a loja.",
+  "sandbox.generatePost.gapSectionsDropped":
+    "{count} seção(ões) foram descartadas: os props não bateram com o bloco que as renderiza.",
+  "sandbox.generatePost.gapNoBucket":
+    "Nenhum bucket para enviar imagens, então os posts estão sem capa. Configure um em Configurações → Buckets.",
+  "sandbox.generatePost.gapNoImageModel":
+    "Esta organização não tem modelo de imagem configurado, então os posts estão sem capa.",
+  "sandbox.generatePost.gapImagesFailed":
+    "As imagens de capa não puderam ser geradas. Os posts estão completos no resto.",
+  "sandbox.generatePost.gapDraftsFailed":
+    "{count} rascunho(s) não puderam ser escritos e os cartões ficaram vazios.",
   "sandbox.generatePost.back": "Voltar",
   "sandbox.generatePost.blockedBrand":
     "Preencha {fields} na aba Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
-  "sandbox.generatePost.categoryLabel": "Categoria",
-  "sandbox.generatePost.done": '"{title}" escrito — pronto para revisão',
+  "sandbox.generatePost.done":
+    "Escrevi {count} rascunho(s) — prontos para revisão",
   "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
   "sandbox.generatePost.extraPlaceholder":
     "O que você quer além de tudo isso, nas suas palavras.",
-  "sandbox.generatePost.failed": "Não foi possível escrever este post",
+  "sandbox.generatePost.failed": "Não consegui escrever estes posts",
   "sandbox.generatePost.formatHint":
     "Escolha um formato que a marca já usa, ou descreva um novo.",
   "sandbox.generatePost.formatNameLabel": "Nome do formato",
@@ -359,31 +684,13 @@ export const sandbox = {
   "sandbox.generatePost.formatValueLabel": "Como um post assim é construído",
   "sandbox.generatePost.formatValuePlaceholder":
     "Como ele abre, desenvolve e fecha.",
-  "sandbox.generatePost.generate": "Gerar",
-  "sandbox.generatePost.ideaBodyLabel": "O ângulo",
-  "sandbox.generatePost.ideaBodyPlaceholder":
-    "Para quem é e o que deve cobrir. Opcional.",
-  "sandbox.generatePost.ideaHint":
-    "Um ângulo só, específico o bastante para virar um post.",
-  "sandbox.generatePost.ideaHintInPillar":
-    'Um ângulo dentro de "{pillar}" — específico o bastante para virar um post, não o território inteiro.',
-  "sandbox.generatePost.ideaTitleLabel": "Sobre o que é o post?",
-  "sandbox.generatePost.ideaTitlePlaceholder": "ex.: Por que o linho amassa",
-  "sandbox.generatePost.inferHint":
-    "Deixe categoria ou autor em branco e o modelo escolhe entre os que o seu blog já tem.",
-  "sandbox.generatePost.inferIt": "Deixar a IA escolher",
+  "sandbox.generatePost.generate": "Gerar {count} rascunho(s)",
   "sandbox.generatePost.next": "Avançar",
-  "sandbox.generatePost.stepExtra": "Detalhes",
+  "sandbox.generatePost.stepExtra": "Instruções",
   "sandbox.generatePost.stepFormat": "Formato",
-  "sandbox.generatePost.stepIdea": "Ideia",
   "sandbox.generatePost.subtitle":
-    "Uma ideia, o pilar a que ela pertence, o formato que ela segue — e o que mais você quiser definir.",
-  "sandbox.generatePost.suggestFailed": "Não foi possível sugerir",
-  "sandbox.generatePost.suggestIdeas": "Sugerir ideias",
-  "sandbox.generatePost.suggestIdeasHint":
-    "Propor ideias a partir do seu contexto de marca.",
-  "sandbox.generatePost.title": "Gerar um post",
-  "sandbox.generatePost.writeAnIdea": "Escrever uma nova",
+    "Escolha a campanha e o formato. Os posts caem no quadro como rascunhos.",
+  "sandbox.generatePost.title": "Gerar posts",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -391,6 +698,8 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "Mais ações",
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
+  "sandbox.itemRow.duplicateName": "Outro registro usa esse nome",
+  "sandbox.itemRow.missingFields": "Faltando: {fields}",
   "sandbox.itemRow.selectItem": "Selecionar {title}",
   "sandbox.itemRow.variantCount": "{count} variantes",
   "sandbox.listBlocks.addCard": "Adicionar card",
@@ -416,6 +725,7 @@ export const sandbox = {
   "sandbox.listBlocks.stepsTitle": "Título dos passos (opcional)",
   "sandbox.mediaBlocks.addCaption": "Adicione uma legenda…",
   "sandbox.mediaBlocks.altText": "Texto alternativo (acessibilidade)",
+  "sandbox.mediaBlocks.altLabel": "Alt",
   "sandbox.mediaBlocks.buttonLabel": "Rótulo do botão",
   "sandbox.mediaBlocks.calloutText": "Texto do destaque…",
   "sandbox.mediaBlocks.calloutTitle": "Título do destaque",
@@ -441,6 +751,9 @@ export const sandbox = {
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
   "sandbox.mediaBlocks.image": "Imagem",
+  "sandbox.mediaBlocks.highPriority": "Prioridade",
+  "sandbox.mediaBlocks.highPriorityHint":
+    "Carrega de imediato e com prioridade alta. Use em imagens acima da dobra.",
   "sandbox.mediaBlocks.label": "Rótulo",
   "sandbox.mediaBlocks.normal": "Normal",
   "sandbox.mediaBlocks.optionalDescription": "Descrição opcional",
@@ -481,34 +794,12 @@ export const sandbox = {
     "Procurar {options} ou digite um valor…",
   "sandbox.pathParamPickerChip.useRawValue":
     'Usar "{rawTerm}" como {paramLabel}',
-  "sandbox.pillars.add": "Adicionar pilar",
-  "sandbox.pillars.bodyPlaceholder":
-    "O que esse território cobre e por que sua marca sempre volta a ele.",
-  "sandbox.pillars.empty": "Nenhum pilar de conteúdo ainda.",
-  "sandbox.pillars.guidanceHint":
-    "Sobre o que os pilares devem ser, nas suas palavras. Opcional.",
-  "sandbox.pillars.guidanceLabel": "Algo específico?",
-  "sandbox.pillars.guidancePlaceholder": "ex.: foco em educação pós-compra",
-  "sandbox.pillars.hint":
-    "Pilares são os territórios recorrentes aos quais seu blog volta — novidades de produto, casos de clientes, tendências. Cada um pode ser escrito em vários formatos.",
-  "sandbox.pillars.namePlaceholder":
-    "Nomeie o território — ex.: Casos de clientes",
-  "sandbox.pillars.noNew": "Nenhum pilar novo para adicionar",
-  "sandbox.pillars.phaseReading": "Lendo seu contexto de marca…",
-  "sandbox.pillars.phaseWriting": "Nomeando os territórios…",
-  "sandbox.pillars.remove": "Remover pilar",
-  "sandbox.pillars.suggest": "Sugerir pilares",
-  "sandbox.pillars.suggestFailed": "Não foi possível sugerir pilares",
-  "sandbox.pillars.suggestHint":
-    "Propor pilares a partir do seu contexto de marca.",
-  "sandbox.pillars.suggestNoBrand": "Preencha a aba Marca primeiro.",
-  "sandbox.pillars.suggested": "{count} pilar(es) adicionado(s)",
-  "sandbox.pillars.untitled": "Pilar sem título",
   "sandbox.plainBlocks.bulletedLabel": "Com marcadores",
   "sandbox.plainBlocks.codePlaceholder": "Código",
   "sandbox.plainBlocks.headingLevel1": "Título 1",
   "sandbox.plainBlocks.headingLevel2": "Título 2",
   "sandbox.plainBlocks.headingLevel3": "Título 3",
+  "sandbox.plainBlocks.headingLevel4": "Título 4",
   "sandbox.plainBlocks.headingPlaceholder": "Título",
   "sandbox.plainBlocks.languagePlaceholder": "linguagem",
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",
@@ -519,25 +810,12 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.collapseLane": "Recolher {lane}",
   "sandbox.postBoard.delete": "Excluir",
-  "sandbox.postBoard.deleteIdea": "Excluir ideia",
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
+  "sandbox.postBoard.duplicateTitle": "Título duplicado",
   "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.expandLane": "Expandir {lane}",
-  "sandbox.postBoard.generateIdeas": "Gerar ideias",
-  "sandbox.postBoard.generatingLabel": "Gerando…",
-  "sandbox.postBoard.ideaCount": "Quantas",
-  "sandbox.postBoard.ideaGuidanceLabel": "Ideias soltas ou um foco",
-  "sandbox.postBoard.ideaGuidancePlaceholder":
-    "ex.: um texto sobre escolher a gramatura do tecido",
-  "sandbox.postBoard.ideaNoPillar": "Qualquer pilar",
-  "sandbox.postBoard.ideaPillarLabel": "Pilar",
-  "sandbox.postBoard.ideasAdded": "{count} ideia(s) adicionada(s)",
-  "sandbox.postBoard.ideasEmpty":
-    "Nenhuma ideia ainda. Gere algumas, ou escreva uma direto num post.",
-  "sandbox.postBoard.ideasFailed": "Não foi possível gerar ideias",
-  "sandbox.postBoard.ideasTray": "Ideias",
   "sandbox.postBoard.laneEmpty": "Nada aqui ainda",
   "sandbox.postBoard.laneArchived": "Arquivado",
   "sandbox.postBoard.laneGenerating": "Gerando",
@@ -549,14 +827,8 @@ export const sandbox = {
     "Este post está sem campos obrigatórios — abra-o para concluir antes de agendar.",
   "sandbox.postBoard.moveFailed": "Não foi possível mover este post",
   "sandbox.postBoard.moveInFlight": "Ainda movendo este post…",
-  "sandbox.postBoard.moveUnknownApp":
-    "Ainda lendo a versão do app de blog deste site.",
-  "sandbox.postBoard.moveNoBlogApp":
-    "Este site não roda o app de blog do deco, então nada aqui consegue colocar um post no ar.",
   "sandbox.postBoard.moveNotATarget":
     "Gerando é definido pela geração, não à mão.",
-  "sandbox.postBoard.moveUnsupported":
-    "O blog app deste site é anterior à {required} — rode `{command}` para habilitar.",
   "sandbox.postBoard.nIssues": "{count} a corrigir antes de agendar",
   "sandbox.postBoard.newPost": "Novo post",
   "sandbox.postBoard.newPostGenerate": "Gerar",
@@ -578,11 +850,10 @@ export const sandbox = {
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
   "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
   "sandbox.postBoard.untitled": "Post sem título",
-  "sandbox.postBoard.untitledIdea": "Ideia sem título",
+  "sandbox.postBoard.generatingLabel": "Gerando…",
   "sandbox.postBoard.usesCredits": "Usa créditos de IA",
   "sandbox.postBoard.viewBoard": "Quadro",
   "sandbox.postBoard.viewList": "Lista",
-  "sandbox.postBoard.writeFromIdea": "Escrever um post",
   "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",
   "sandbox.postCalendar.couldNotReschedule": "Não foi possível reagendar",
   "sandbox.postCalendar.createdScheduledPost": "Post agendado criado",
@@ -591,23 +862,12 @@ export const sandbox = {
   "sandbox.postCalendar.next": "Próximo mês",
   "sandbox.postCalendar.onlyScheduledCanMove":
     "Apenas posts agendados podem ser movidos.",
-  "sandbox.postCalendar.outdatedAppsDescription":
-    "Agendamento precisa do deco apps {required} ou mais novo. Atualize o pin deste site rodando:",
-  "sandbox.postCalendar.outdatedAppsTitle":
-    "Atualize a versão do apps deste site",
   "sandbox.postCalendar.previous": "Mês anterior",
   "sandbox.postCalendar.schedulePostOn": "Agendar um post em {date}",
   "sandbox.postCalendar.today": "Hoje",
   "sandbox.postCalendar.unscheduledHint":
     "Posts tracejados não estão agendados — estão na data de exibição deles, e nada vai publicá-los.",
   "sandbox.postCalendar.undatedEmpty": "Todos os posts têm data.",
-  "sandbox.postCalendar.unknownAppDescription":
-    "O calendário fica somente leitura até dar para ler os manifestos do repo — o sandbox pode ainda estar subindo.",
-  "sandbox.postCalendar.unknownAppTitle":
-    "Ainda lendo o app de blog deste site",
-  "sandbox.postCalendar.unsupportedRuntimeDescription":
-    "Este site não instala o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
-  "sandbox.postCalendar.unsupportedRuntimeTitle": "Sem app de blog neste site",
   "sandbox.postCalendar.undatedLabel": "Sem data · {count}",
   "sandbox.postEditor.addPropLabel": "Adicionar propriedade",
   "sandbox.postEditor.authorsLabel": "Autores",
@@ -618,6 +878,16 @@ export const sandbox = {
   "sandbox.postEditor.coverAltLabel": "Texto alternativo da capa",
   "sandbox.postEditor.coverImageLabel": "Imagem de capa",
   "sandbox.postEditor.dateLabel": "Data",
+  "sandbox.postEditor.deletePost": "Excluir post",
+  "sandbox.postEditor.deletePostCancel": "Cancelar",
+  "sandbox.postEditor.deletePostConfirmBody":
+    '"{title}" será removido permanentemente. Isso não pode ser desfeito.',
+  "sandbox.postEditor.deletePostConfirmTitle": "Excluir este post?",
+  "sandbox.postEditor.deletePostFailed": "Falha ao excluir",
+  "sandbox.postEditor.deletePostSuccess": '"{title}" excluído',
+  "sandbox.postEditor.deletingPost": "Excluindo…",
+  "sandbox.postEditor.duplicateTitleWarning":
+    "Já existe outro post com esse título. Títulos duplicados competem entre si na busca.",
   "sandbox.postEditor.excerptLabel": "Resumo",
   "sandbox.postEditor.extraPropsLabel": "Propriedades extras",
   "sandbox.postEditor.issuePlural": "problemas",
@@ -659,9 +929,13 @@ export const sandbox = {
   "sandbox.postEditor.seoTitleLabel": "Título de SEO",
   "sandbox.postEditor.settingsTab": "Configurações",
   "sandbox.postEditor.statusLabel": "Status",
+  "sandbox.postEditor.slugDeduped":
+    "Esse slug já estava em uso — salvamos como “{slug}”.",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "meu-post",
   "sandbox.postEditor.valuePlaceholder": "valor",
+  "sandbox.postList.noMatches":
+    "Nenhum post corresponde à busca ou aos filtros.",
   "sandbox.postToolbar.allPosts": "Todos os posts",
   "sandbox.postToolbar.archiveSelected": "Arquivar selecionados",
   "sandbox.postToolbar.archiveSelectedPosts": "Arquivar posts selecionados",
@@ -674,6 +948,9 @@ export const sandbox = {
   "sandbox.postToolbar.filterBy": "Filtrar por",
   "sandbox.postToolbar.filterLabel": "Filtro",
   "sandbox.postToolbar.itemsSelected": "Selecionados: {count}",
+  "sandbox.postToolbar.clearSearch": "Limpar busca",
+  "sandbox.postToolbar.searchAriaLabel": "Buscar posts",
+  "sandbox.postToolbar.searchPlaceholder": "Buscar posts",
   "sandbox.postToolbar.selectAll": "Selecionar tudo",
   "sandbox.postToolbar.selectAllPosts": "Selecionar todos os posts",
   "sandbox.postToolbar.sortAZ": "A–Z",
@@ -795,9 +1072,11 @@ export const sandbox = {
   "sandbox.recordEditor.fieldJobTitle": "Cargo",
   "sandbox.recordEditor.fieldName": "Nome",
   "sandbox.recordEditor.fieldType": "Tipo",
+  "sandbox.recordEditor.fieldUrl": "Site",
   "sandbox.recordEditor.optionOrganization": "Organização",
   "sandbox.recordEditor.optionPerson": "Pessoa",
   "sandbox.recordEditor.placeholderEmail": "autor@exemplo.com",
+  "sandbox.recordEditor.placeholderUrl": "https://exemplo.com",
   "sandbox.recordEditor.titleAuthor": "Autor",
   "sandbox.redirectFormDialog.title": "Criar redirecionamento",
   "sandbox.redirectFormDialog.submit": "Criar",

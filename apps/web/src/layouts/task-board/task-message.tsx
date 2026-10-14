@@ -17,6 +17,8 @@ export function TaskMessage({
   onOpenThread,
   isReply,
   commentId,
+  muted,
+  editor,
 }: {
   id: string;
   author: string;
@@ -28,13 +30,22 @@ export function TaskMessage({
   onOpenThread?: () => void;
   isReply?: boolean;
   commentId?: string;
+  /** Agent handoff, shown only behind the scenes: dimmed so the messages
+   *  written for people stand out. */
+  muted?: boolean;
+  /** Takes the body's place while the message is being edited. */
+  editor?: ReactNode;
 }) {
   const t = useT();
   return (
     <article
       data-comment-id={commentId}
       data-testid="task-message"
-      className="group flex min-w-0 flex-col gap-1.5 py-3"
+      data-muted={muted || undefined}
+      className={cn(
+        "group flex min-w-0 flex-col gap-1.5 py-3",
+        muted && "opacity-60 transition-opacity hover:opacity-100",
+      )}
     >
       <div className="flex flex-wrap items-center gap-2">
         {avatar}
@@ -42,6 +53,11 @@ export function TaskMessage({
         <time dateTime={createdAt} className="text-sm text-muted-foreground">
           {formatTimeAgo(new Date(createdAt))}
         </time>
+        {muted && (
+          <span className="text-xs text-muted-foreground">
+            {t("taskBoard.conversation.behindTheScenesLabel")}
+          </span>
+        )}
         {metadata}
         <div className="ml-auto flex items-center gap-1">
           {onOpenThread && (
@@ -57,14 +73,16 @@ export function TaskMessage({
           {actions}
         </div>
       </div>
-      {body && (
+      {(editor || body) && (
         <div
           className={cn(
             "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
+            // A thumbnail: a tall screenshot would take over the conversation, and a click opens it whole.
+            "[&_img]:max-h-80",
             isReply && "ml-3 border-l border-border pl-5",
           )}
         >
-          <MemoizedMarkdown id={id} text={body} />
+          {editor ?? <MemoizedMarkdown id={id} text={body} imageGallery />}
         </div>
       )}
     </article>

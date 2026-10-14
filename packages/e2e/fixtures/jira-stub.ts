@@ -2,9 +2,9 @@
  * A stand-in Jira Cloud, in memory.
  *
  * Enough of the REST surface for the run trigger to work end to end: the
- * credential check, the board and its columns, one issue with a comment and an
- * attachment, the transitions that issue can take, and the writes the run's
- * tools make. State lives per process and is reset by `/__reset`, so a spec can
+ * credential check, the board and its columns, one issue with a comment, an
+ * attachment and a status history, the transitions that issue can take, and
+ * the writes the run's tools make. State lives per process and is reset by `/__reset`, so a spec can
  * assert on what the server actually received.
  *
  * Studio reaches it because the integration's `siteUrl` points here and the
@@ -38,15 +38,25 @@ const adf = (text: string) => ({
   content: [{ type: "paragraph", content: [{ type: "text", text }] }],
 });
 
+interface StatusChange {
+  id: string;
+  at: number;
+  from: string;
+  to: string;
+}
+
 interface StubState {
   status: string;
   comments: Array<{ id: string; body: unknown; created: string }>;
   transitions: string[];
+  /** The issue's status history, oldest first — what the trigger settles on. */
+  changes: StatusChange[];
 }
 
 function freshState(): StubState {
   return {
     status: "Backlog",
+    changes: [],
     comments: [
       {
         id: "c1",
@@ -58,8 +68,16 @@ function freshState(): StubState {
   };
 }
 
+const statusIdOf = (name: string) =>
+  COLUMNS.find((c) => c.status === name)?.statusId ?? name;
+
 export function createJiraStubServer(): Server {
   let state = freshState();
+  let nextChangeId = 50_000;
+  const move = (to: string, id = String(nextChangeId++), at = Date.now()) => {
+    state.changes.push({ id, at, from: state.status, to });
+    state.status = to;
+  };
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -83,6 +101,18 @@ export function createJiraStubServer(): Server {
     if (path === "/health") return json({ ok: true });
     if (path === "/__reset") {
       state = freshState();
+      return json({ ok: true });
+    }
+    // A person moving the card: Jira records it, then sends the webhook the
+    // spec posts itself. `at` backdates a move the card has long rested in.
+    if (path === "/__move" && req.method === "POST") {
+      const posted = (await body()) as {
+        changelogId?: string;
+        to?: string;
+        at?: number;
+      };
+      if (!posted.to) return json({ error: "to is required" }, 400);
+      move(posted.to, posted.changelogId, posted.at);
       return json({ ok: true });
     }
     if (path === "/__state") {
@@ -134,6 +164,31 @@ export function createJiraStubServer(): Server {
     if (path === "/rest/api/3/search/jql") {
       return json({ issues: [], nextPageToken: null });
     }
+    // Newest first with epoch-ms `created`, as the real endpoint answers.
+    if (path === "/rest/api/3/changelog/bulkfetch" && req.method === "POST") {
+      return json({
+        issueChangeLogs: [
+          {
+            issueId: ISSUE_ID,
+            changeHistories: [...state.changes].reverse().map((c) => ({
+              id: c.id,
+              created: c.at,
+              author: { accountId: "acc-ana", displayName: "Ana" },
+              items: [
+                {
+                  field: "status",
+                  fieldId: "status",
+                  from: statusIdOf(c.from),
+                  fromString: c.from,
+                  to: statusIdOf(c.to),
+                  toString: c.to,
+                },
+              ],
+            })),
+          },
+        ],
+      });
+    }
 
     if (path === `/rest/api/3/issue/${ISSUE_ID}` && req.method === "GET") {
       return json({
@@ -176,7 +231,7 @@ export function createJiraStubServer(): Server {
           (c) => c.statusId === posted.transition?.id,
         );
         if (target) {
-          state.status = target.status;
+          move(target.status);
           state.transitions.push(target.status);
         }
         res.writeHead(204);

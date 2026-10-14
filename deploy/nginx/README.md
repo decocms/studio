@@ -1,7 +1,7 @@
 # Studio nginx front door
 
 Studio ships a companion nginx image for the Helm chart. The image contains the
-built SPA assets and the baked proxy configuration used by the main API pod.
+built SPA assets and the proxy configuration template used by the main API pod.
 There is no separate web Deployment, initContainer bundle copy, PVC handoff, or
 ConfigMap-mounted nginx template.
 
@@ -18,9 +18,11 @@ container:
   with `no-store` to avoid negative-cache poisoning.
 
 The config is `deploy/helm/studio/files/api-nginx.conf`. It is copied into the
-image by `apps/web/Dockerfile` as `/etc/nginx/conf.d/default.conf`, so the
-runtime keeps the base `nginxinc/nginx-unprivileged` entrypoint and global
-settings.
+image by `apps/web/Dockerfile` as `/etc/nginx/templates/default.conf.template`.
+The base `nginxinc/nginx-unprivileged` entrypoint renders it to
+`/etc/nginx/conf.d/default.conf` with envsubst at container start, limited to
+`STUDIO_NGINX_*` variables (`STUDIO_NGINX_API_MAX_CONNS`, default 128, set by the
+chart's `nginx.apiMaxConns`). The global nginx settings stay the image defaults.
 
 ## Image release
 

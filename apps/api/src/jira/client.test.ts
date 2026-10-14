@@ -353,10 +353,10 @@ describe("jiraBodyToText mentions", () => {
     content: [{ type: "paragraph", content: [{ type: "mention", attrs }] }],
   });
 
-  it("uses the name ADF already carries, stripping its @", () => {
+  it("uses the name ADF already carries, with the id to mention them back", () => {
     expect(
       jiraBodyToText(mention({ id: "557058:abc-123", text: "@Ana Souza" })),
-    ).toBe("@Ana Souza");
+    ).toBe("@[Ana Souza](accountid:557058:abc-123)");
   });
 
   it("falls back to the resolved name when ADF carries none", () => {
@@ -365,12 +365,15 @@ describe("jiraBodyToText mentions", () => {
         mention({ id: "557058:abc-123" }),
         new Map([["557058:abc-123", "Ana Souza"]]),
       ),
-    ).toBe("@Ana Souza");
+    ).toBe("@[Ana Souza](accountid:557058:abc-123)");
   });
 
-  it("renders an unresolvable mention as @unknown", () => {
-    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe("@unknown");
+  it("keeps the id when the name is unknown, and says @unknown with neither", () => {
+    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe(
+      "@[unknown](accountid:557058:abc-123)",
+    );
     expect(jiraBodyToText(mention({ text: "  @  " }))).toBe("@unknown");
+    expect(jiraBodyToText(mention({ text: "@Ana" }))).toBe("@Ana");
   });
 
   it("collects only the account ids that need a lookup", () => {
@@ -841,6 +844,53 @@ describe("JiraClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  // A site with more boards than the first pages hold reaches the rest by name.
+  it("lists boards page by page, filtered by name when searching", async () => {
+    const urls: URL[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string) => {
+      const parsed = new URL(url);
+      urls.push(parsed);
+      const startAt = Number(parsed.searchParams.get("startAt"));
+      return new Response(
+        JSON.stringify({
+          values: [
+            {
+              id: startAt + 1,
+              name: `Board ${startAt + 1}`,
+              type: "kanban",
+              location: { projectKey: "EX", projectName: "Example" },
+            },
+          ],
+          isLast: startAt > 0,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      const all = await client.listBoards();
+      expect(all.map((board) => board.id)).toEqual([1, 2]);
+      expect(urls.map((url) => url.searchParams.has("name"))).toEqual([
+        false,
+        false,
+      ]);
+
+      urls.length = 0;
+      await client.listBoards("Team & Ops");
+      expect(urls[0]?.pathname).toBe("/rest/agile/1.0/board");
+      expect(urls[0]?.searchParams.get("name")).toBe("Team & Ops");
+      expect(urls[0]?.searchParams.get("startAt")).toBe("0");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("JiraClient issue reads", () => {
@@ -1135,5 +1185,133 @@ describe("JiraClient.isOnBoard", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("JiraClient.listStatusChanges", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withPages<T>(
+    pages: unknown[],
+    body: (requests: Array<Record<string, unknown>>) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://acme.atlassian.net/rest/api/3/changelog/bulkfetch",
+      );
+      requests.push(JSON.parse(String(init?.body)));
+      const page = pages[requests.length - 1];
+      return new Response(JSON.stringify(page ?? {}), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      return await body(requests);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  const history = (
+    id: string | number,
+    created: number | string,
+    from: string,
+    to: string,
+  ) => ({
+    id,
+    created,
+    author: { accountId: "acc-ana", displayName: "Ana" },
+    items: [
+      {
+        fieldId: "status",
+        from: `s-${from}`,
+        fromString: from,
+        to: `s-${to}`,
+        toString: to,
+      },
+    ],
+  });
+
+  it("asks for status only, follows pages and returns the moves oldest first", async () => {
+    await withPages(
+      [
+        {
+          issueChangeLogs: [
+            { changeHistories: [history("12", 2_000, "Doing", "Review")] },
+          ],
+          nextPageToken: "p2",
+        },
+        {
+          issueChangeLogs: [
+            {
+              changeHistories: [
+                history(11, "1970-01-01T00:00:01.000Z", "Backlog", "Doing"),
+              ],
+            },
+          ],
+        },
+      ],
+      async (requests) => {
+        const changes = await client().listStatusChanges("10001");
+        expect(requests).toEqual([
+          {
+            issueIdsOrKeys: ["10001"],
+            fieldIds: ["status"],
+            maxResults: 1000,
+          },
+          {
+            issueIdsOrKeys: ["10001"],
+            fieldIds: ["status"],
+            maxResults: 1000,
+            nextPageToken: "p2",
+          },
+        ]);
+        expect(changes).toEqual([
+          {
+            id: "11",
+            at: 1_000,
+            by: { accountId: "acc-ana", displayName: "Ana" },
+            fromId: "s-Backlog",
+            from: "Backlog",
+            toId: "s-Doing",
+            to: "Doing",
+          },
+          {
+            id: "12",
+            at: 2_000,
+            by: { accountId: "acc-ana", displayName: "Ana" },
+            fromId: "s-Doing",
+            from: "Doing",
+            toId: "s-Review",
+            to: "Review",
+          },
+        ]);
+      },
+    );
+  });
+
+  it("drops entries that record no readable status move", async () => {
+    await withPages(
+      [
+        {
+          issueChangeLogs: [
+            {
+              changeHistories: [
+                { id: "1", created: 1, items: [{ fieldId: "assignee" }] },
+                { ...history("2", "not a date", "A", "B") },
+                { ...history("3", 3, "A", "B"), author: { displayName: "x" } },
+                { id: "4", created: 4, items: [{ fieldId: "status" }] },
+              ],
+            },
+          ],
+        },
+      ],
+      async () => {
+        const changes = await client().listStatusChanges("EX-1");
+        expect(changes).toHaveLength(1);
+        expect(changes[0]).toMatchObject({ id: "3", by: null, to: "B" });
+      },
+    );
   });
 });

@@ -21,8 +21,6 @@ import {
 import type { StudioContext } from "@/core/studio-context";
 import { isGithubConnection } from "@/oauth/github-mint";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import type { RepositoryRecord } from "@/storage/repositories";
-import type { GitProviderStoragePorts } from "../credentials";
 
 /**
  * Pick the connection that can reach `repo`, pure so the fallback ladder is
@@ -167,31 +165,4 @@ export async function listLegacyRepoChoices(
     slug: "mcp-github",
   });
   return legacyRepoChoices(items);
-}
-
-/**
- * The repository row a legacy `metadata.githubRepo` binding refers to, if the
- * org has one — by explicit `repositoryId` when the binding carries it, else
- * by identity. Null keeps the caller on the legacy path.
- *
- * The identity fallback assumes `github.com`, which is why it lives here: a
- * binding written before repositories existed could only ever have been a
- * github.com repo.
- */
-export async function findRepositoryForLegacyBinding(
-  storage: Pick<GitProviderStoragePorts, "repositories">,
-  organizationId: string,
-  binding: { owner: string; name: string; repositoryId?: string | null },
-): Promise<RepositoryRecord | null> {
-  if (binding.repositoryId) {
-    const byId = await storage.repositories.get(
-      binding.repositoryId,
-      organizationId,
-    );
-    if (byId) return byId;
-  }
-  return storage.repositories.findByRef(
-    organizationId,
-    repoRefFromOwnerName(binding.owner, binding.name),
-  );
 }

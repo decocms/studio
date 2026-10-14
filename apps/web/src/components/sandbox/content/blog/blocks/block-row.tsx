@@ -3,7 +3,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
+import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { useT } from "@/i18n/use-t.ts";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
@@ -26,6 +27,8 @@ export function BlockRow({
   onDuplicate,
   decofile,
   sandboxRef,
+  previewBaseUrl,
+  onSaveReferencedBlock,
 }: {
   id: string;
   block: RawBlock;
@@ -34,7 +37,9 @@ export function BlockRow({
   onDelete: () => void;
   onDuplicate: () => void;
   decofile?: Record<string, unknown>;
-  sandboxRef?: PreviewProxyRef | null;
+  sandboxRef?: SandboxConfig | null;
+  previewBaseUrl?: string | null;
+  onSaveReferencedBlock?: ReferencedBlockSaveFn;
 }) {
   const t = useT();
   const {
@@ -91,6 +96,8 @@ export function BlockRow({
         onChange={onChange}
         decofile={decofile}
         sandboxRef={sandboxRef}
+        previewBaseUrl={previewBaseUrl}
+        onSaveReferencedBlock={onSaveReferencedBlock}
       />
     </div>
   );

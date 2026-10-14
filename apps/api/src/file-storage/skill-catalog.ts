@@ -2,8 +2,8 @@
  * Skill catalog — enumerates the skills available to an org's agents so they
  * can be surfaced up front (the `<available-skills>` block) for Claude-Code
  * style progressive discovery. Reads the same `SKILL.md` folders the sandbox
- * mounts: the shared read-only public sets (`org/public/<set>/`) plus the
- * org's own home volume (`org/home/`).
+ * mounts: the shared read-only public sets (`/app/org/public/<set>/`) plus
+ * the org's own home volume (`/app/org/home/`).
  *
  * Each entry carries a collision-free `id` (`<set>/<dir>` for public,
  * `home/<dir>` for home) that doubles as the `skill` tool's argument and maps
@@ -47,7 +47,7 @@ export interface SkillCatalogEntry {
    * menu, which IS a person picking one, reads the same list.
    */
   disableModelInvocation: boolean;
-  /** Sandbox path of the skill folder (e.g. `org/public/core/slides`). */
+  /** Sandbox path of the skill folder (e.g. `/app/org/public/core/slides`). */
   sandboxPath: string;
   /** OrgFs volume the skill lives on (`home` or `public-<set>`). */
   volume: string;

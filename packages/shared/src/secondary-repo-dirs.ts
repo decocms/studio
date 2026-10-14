@@ -14,9 +14,15 @@
  * and the paths the agent had been using would stop resolving.
  */
 
+import {
+  repositoryBindingKey,
+  sameRepositoryBinding,
+} from "./repository-binding";
 export interface SecondaryRepoRef {
   owner: string;
   name: string;
+  url: string;
+  repositoryId?: string;
 }
 
 /**
@@ -59,9 +65,48 @@ export function secondaryRepoDirNames(repos: SecondaryRepoRef[]): string[] {
     if (!changed) break;
   }
 
-  return repos.map((r, i) =>
+  const names = repos.map((r, i) =>
     sanitize(useOwner[i] ? `${r.owner}-${r.name}` : r.name),
   );
+  // Identical namespaces on different hosts are distinct checkouts.
+  const counts = new Map<string, number>();
+  for (const name of names)
+    counts.set(name.toLowerCase(), (counts.get(name.toLowerCase()) ?? 0) + 1);
+  const qualified = names.map((name, i) => {
+    if (counts.get(name.toLowerCase()) === 1) return name;
+    const host = new URL(repos[i]!.url).host;
+    return sanitize(`${host}-${name}`);
+  });
+  // A host-qualified name can also be another checkout's bare name. Reserve
+  // non-colliding destinations first, then allocate deterministic suffixes.
+  const occurrences = new Map<string, number>();
+  for (const name of qualified)
+    occurrences.set(
+      name.toLowerCase(),
+      (occurrences.get(name.toLowerCase()) ?? 0) + 1,
+    );
+  const used = new Set(
+    qualified
+      .filter((name) => occurrences.get(name.toLowerCase()) === 1)
+      .map((name) => name.toLowerCase()),
+  );
+  const collisions = qualified
+    .map((_, index) => index)
+    .filter((index) => occurrences.get(qualified[index]!.toLowerCase()) !== 1)
+    .sort((left, right) =>
+      (repositoryBindingKey(repos[left]!) ?? "").localeCompare(
+        repositoryBindingKey(repos[right]!) ?? "",
+      ),
+    );
+  for (const index of collisions) {
+    const base = qualified[index]!;
+    let suffix = 1;
+    let name = `${base}-${suffix}`;
+    while (used.has(name.toLowerCase())) name = `${base}-${++suffix}`;
+    used.add(name.toLowerCase());
+    qualified[index] = name;
+  }
+  return qualified;
 }
 
 /** This repo's directory name within `all`, or null when it is not in the set. */
@@ -69,9 +114,8 @@ export function secondaryRepoDirName(
   all: SecondaryRepoRef[],
   repo: SecondaryRepoRef,
 ): string | null {
-  const key = `${repo.owner}/${repo.name}`.toLowerCase();
-  const index = all.findIndex(
-    (r) => `${r.owner}/${r.name}`.toLowerCase() === key,
+  const index = all.findIndex((candidate) =>
+    sameRepositoryBinding(candidate, repo),
   );
   return index === -1 ? null : (secondaryRepoDirNames(all)[index] ?? null);
 }

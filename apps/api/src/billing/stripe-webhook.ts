@@ -407,7 +407,17 @@ export async function applyStripeEvent(
       // Delayed-notification methods fire checkout.session.completed while
       // payment_status is still "unpaid" — service starts when the payment
       // confirms (async_payment_succeeded re-enters here with "paid").
-      if (s(obj.payment_status) !== "paid") {
+      //
+      // The one exception is Starter's free month: a trial session completes
+      // as `no_payment_required` with the card saved, and there is no first
+      // payment to wait for — its $0 invoice is skipped by `planIdForPrices`,
+      // so this event is the only grant the trial gets. Only OUR checkout
+      // creator writes `trial`, and only for an eligible org.
+      const paymentStatus = s(obj.payment_status);
+      const isTrial =
+        s(rec(obj.metadata)?.trial) === "1" &&
+        paymentStatus === "no_payment_required";
+      if (paymentStatus !== "paid" && !isTrial) {
         return { handled: false, reason: "payment not confirmed" };
       }
       // Self-heal the row rather than refuse. A paid subscription checkout for

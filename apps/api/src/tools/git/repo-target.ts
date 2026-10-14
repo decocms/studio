@@ -36,14 +36,15 @@ export interface RepoTargetInput {
 }
 
 export function repoTargetOf(input: RepoTargetInput): RepoTarget {
-  let ref = null;
-  if (input.repoUrl) {
-    ref = parseRepoUrl(input.repoUrl);
-    if (!ref) {
-      throw new Error(
-        `Could not recognise the repository URL: ${input.repoUrl}`,
-      );
-    }
+  const ref = input.repoUrl ? parseRepoUrl(input.repoUrl) : null;
+  /**
+   * A self-hosted GitLab whose host has no `gitlab` label parses to null, but
+   * its repository row records the provider. An unparseable URL is an error
+   * only when no repositoryId comes with it. A connectionId does not count,
+   * since the resolver cannot use one without a ref.
+   */
+  if (input.repoUrl && !ref && !input.repositoryId) {
+    throw new Error(`Could not recognise the repository URL: ${input.repoUrl}`);
   }
   return {
     repositoryId: input.repositoryId,

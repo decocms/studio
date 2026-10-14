@@ -99,6 +99,10 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { ElevenLabsConversationAdapter } from "@/ai-providers/voice/elevenlabs-conversation";
+import { OpenAIConversationAdapter } from "@/ai-providers/voice/openai";
+import { ElevenLabsSpeechAdapter } from "@/ai-providers/voice/elevenlabs";
+import { VoiceSessions } from "@/voice/sessions";
 import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
@@ -126,6 +130,7 @@ import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { registerSandboxCredentialPushWorkflow } from "@/sandbox/dbos-credential-push";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
@@ -147,6 +152,7 @@ import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
 } from "../nats/connection";
+import pkg from "../../package.json" with { type: "json" };
 import {
   JetStreamKVMcpListCache,
   setMcpListCache,
@@ -157,6 +163,7 @@ import {
   setSkillCatalogCache,
   type SkillCatalogCache,
 } from "../file-storage/skill-catalog-cache";
+import { setOrgFsNotifyConnection } from "../file-storage/org-fs-notify";
 import {
   JetStreamKVPrCache,
   PR_CARDS_CACHE,
@@ -194,11 +201,16 @@ import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
-import { TaskBoardStorage } from "../storage/task-board";
+import { setBoardMoveListener, TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
+import {
+  onBoardMove,
+  registerBoardTransitionWorkflows,
+  setBoardTransitionRuntime,
+} from "../automations/board-column-transition-workflows";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -222,7 +234,10 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
+import {
+  BOARD_TRANSITIONS_QUEUE,
+  GITHUB_READS_QUEUE,
+} from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -1074,6 +1089,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     const tlc = isMcpCacheEnabled()
       ? new JetStreamKVMcpListCache({
           getJetStream: () => natsProvider!.getJetStream(),
+          selfListVersion: pkg.version,
         })
       : null;
     tlc?.init().catch(() => {});
@@ -1153,6 +1169,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
   setSkillCatalogCache(skillCatalogCache);
+  setOrgFsNotifyConnection(() => natsProvider?.getConnection() ?? null);
   setPrCaches(prCaches);
   setConnectionCircuitStore(connectionCircuitStore);
 
@@ -1253,6 +1270,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setSkillCatalogCache(null);
+    setOrgFsNotifyConnection(null);
     setPrCaches(null);
     setConnectionCircuitStore(null);
   };
@@ -1470,7 +1488,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // report data and scan operations behind this proxy require a user session.
   app.route("/api/_reports", reportsRoutes);
 
-  // Stripe webhook (per-seat billing): signature-authed, no session — the
+  // Stripe webhook (plan subscriptions): signature-authed, no session — the
   // caller is Stripe. Instance-level namespace, before the /api/:org catch-all.
   app.route("/api/_stripe", stripeWebhookRoutes);
 
@@ -1645,7 +1663,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
-  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  // Every 5 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
@@ -1749,6 +1767,20 @@ export async function createApp(options: CreateAppOptions = {}) {
       taskBoardReviewSweeper.dispose();
     };
   }
+  // Fires `board_column_transition` automation triggers when a card settles
+  // in a column: every logged lane move is offered to the settle wait, and a
+  // 5-minute sweep catches what it missed.
+  setBoardTransitionRuntime({
+    automations: automationsStorage,
+    taskBoard: projectorTaskBoard,
+    contextFactory: automationContextFactory,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+    settleMs: getSettings().boardTransitionSettleSeconds * 1000,
+  });
+  setBoardMoveListener(onBoardMove);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1928,9 +1960,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardArchiveSweepWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
+  registerBoardTransitionWorkflows();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
+  registerSandboxCredentialPushWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2302,7 +2336,38 @@ export async function createApp(options: CreateAppOptions = {}) {
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
+  const voiceSettings = getSettings();
+  const speechAdapter = voiceSettings.elevenlabsApiKey
+    ? new ElevenLabsSpeechAdapter({
+        apiKey: voiceSettings.elevenlabsApiKey,
+        model: voiceSettings.elevenlabsVoiceModel,
+        conversationModel: voiceSettings.elevenlabsConversationModel,
+        voiceId: voiceSettings.elevenlabsVoiceId,
+      })
+    : null;
+  const conversationAdapters = {
+    openai: voiceSettings.openaiLiveApiKey
+      ? new OpenAIConversationAdapter({
+          apiKey: voiceSettings.openaiLiveApiKey,
+          voice: voiceSettings.openaiLiveVoice,
+        })
+      : null,
+    elevenlabs: speechAdapter
+      ? new ElevenLabsConversationAdapter(
+          speechAdapter,
+          () => natsProvider?.getConnection() ?? null,
+        )
+      : null,
+  };
+  const voiceSessions = new VoiceSessions({
+    adapter: speechAdapter,
+    conversationAdapters,
+    defaults: voiceSettings,
+    secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
+    getConnection: () => natsProvider?.getConnection() ?? null,
+  });
   const orgScopedApi = createOrgScopedApi({
+    voiceSessions,
     kvStorage,
     runRegistry,
     streamBuffer,
@@ -2429,6 +2494,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
+    await DBOS.registerQueue(BOARD_TRANSITIONS_QUEUE);
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

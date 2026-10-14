@@ -488,17 +488,37 @@ const orgHomeRoute = createRoute({
     /** Reports onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
+    /** The org's OTHER destination, on this route rather than `/$org/agents`
+     *  for the reason `projectsIndexRoute` documents below. */
+    view: z.enum(["agents"]).optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
 
-/** Bare `/projects` promotes a search-carried legacy identity or lands on the
- *  organization Home. It is an entry point, never a second project list. */
+/**
+ * Bare `/projects` promotes a legacy identity or lands on the org Home; it is
+ * an entry point, never a second project list.
+ *
+ * `?project=` names a project WITHOUT narrowing the shell, since `useScopeId`
+ * reads `$agentId` and `?virtualmcpid=` and this is neither. It rides here
+ * because one more child pushes TanStack's `to: "."` search inference past its
+ * limit, turning `prev` into `any` at every caller in the app.
+ */
 const projectsIndexRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/projects",
-  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  staticData: { pageTitle: "projects.settings.title", defaultMain: "board" },
+  /** `files` is this screen's own — the topbar toggle between a project and
+   *  its files. Extended here rather than added to the shared payload, since no
+   *  other route owns it. */
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema.extend({
+    files: z.coerce.boolean().optional().catch(undefined),
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/flat-project.tsx"),
+  ),
   beforeLoad: ({ params, search }) => {
+    if (search.project?.trim()) return;
     const agentId = search.virtualmcpid?.trim();
     if (!agentId) {
       throw redirect({
@@ -724,6 +744,23 @@ const agentSettingsRoute = createRoute({
   ),
 });
 
+/** A project's files — the same Library, rooted at the project's folder. */
+const agentLibraryRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/library",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.library",
+    defaultMain: "files",
+    mainView: "files",
+  },
+  validateSearch: z.object(librarySearchShape),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-library.tsx"),
+  ),
+});
+
 const agentAssetsRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -736,21 +773,6 @@ const agentAssetsRoute = createRoute({
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-assets.tsx"),
-  ),
-});
-
-const agentGitRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
-  getParentRoute: () => agentWorkspaceRoute,
-  path: "/git",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.reviewChanges",
-    defaultMain: "git",
-    mainView: "git",
-  },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-git.tsx"),
   ),
 });
 
@@ -809,7 +831,7 @@ const agentExperimentsRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
   staticData: {
-    pageTitle: "experiments.title",
+    pageTitle: "common.mainPanelTabs.experiments",
     defaultMain: "experiments",
     mainView: "experiments",
   },
@@ -1250,8 +1272,8 @@ const monitoringRoute = createRoute({
     z.object({
       tab: z
         .enum(["overview", "audit", "dashboards", "threads", "automations"])
-        .default("overview"),
-      from: z.string().default("now-30m"),
+        .default("threads"),
+      from: z.string().default("now-24h"),
       to: z.string().default("now"),
       connectionId: z.array(z.string()).optional().default([]),
       virtualMcpId: z.array(z.string()).optional().default([]),
@@ -1401,6 +1423,16 @@ const settingsTasksRoute = createRoute({
   },
 });
 
+/** Settings › Projects — the index into per-project settings. */
+const settingsProjectsRoute = createRoute({
+  staticData: { pageTitle: "projects.settings.title" },
+  getParentRoute: () => settingsRoute,
+  path: "/projects",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/projects.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   staticData: { pageTitle: "settings.nav.members" },
   getParentRoute: () => settingsRoute,
@@ -1472,6 +1504,18 @@ const settingsSkillsRoute = createRoute({
   ),
 });
 
+const settingsMemoryRoute = createRoute({
+  staticData: { pageTitle: "settings.nav.memory" },
+  getParentRoute: () => settingsRoute,
+  path: "/memory",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/memory.tsx"),
+  ),
+  validateSearch: z.lazy(() =>
+    z.object({ scope: z.enum(["user"]).optional() }),
+  ),
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -1484,6 +1528,7 @@ const settingsWithChildren = settingsRoute.addChildren([
   settingsAgentsRoute,
   settingsAutomationsRoute,
   settingsSkillsRoute,
+  settingsMemoryRoute,
   monitoringRoute,
   settingsGeneralRoute,
   settingsConnectRoute,
@@ -1497,6 +1542,7 @@ const settingsWithChildren = settingsRoute.addChildren([
   settingsSyncedReposRoute,
   settingsTaskBoardRoute,
   settingsTasksRoute,
+  settingsProjectsRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,
@@ -1517,8 +1563,8 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentAutomationsRoute,
   agentAutomationRoute,
   agentSettingsRoute,
+  agentLibraryRoute,
   agentAssetsRoute,
-  agentGitRoute,
   agentHostingRoute,
   agentE2eRoute,
   agentAnalyticsRoute,
@@ -1597,7 +1643,7 @@ function DefaultNotFoundComponent() {
           onClick={() => window.history.back()}
           className="text-sm text-primary hover:underline"
         >
-          {t("common.index.goBack")}
+          {t("common.goBack")}
         </button>
       </div>
     </div>

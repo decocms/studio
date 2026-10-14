@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
 import {
   MAX_UNCOLLAPSED_ITEMS,
   collapseBreadcrumbs,
+  documentTitle,
   resolveBreadcrumbs,
   type BreadcrumbExtension,
   type BreadcrumbItem,
@@ -197,5 +199,36 @@ describe("breadcrumb collapse", () => {
     expect(collapseBreadcrumbs(items)).toEqual(
       collapseBreadcrumbs(items, false, MAX_UNCOLLAPSED_ITEMS),
     );
+  });
+});
+
+describe("document title", () => {
+  test("names the leaf first and the scope last", () => {
+    expect(
+      documentTitle(
+        [
+          { key: "settings", label: "Settings" },
+          { key: "page", label: "Monitoring" },
+        ],
+        "Acme",
+      ),
+    ).toBe("Monitoring · Settings · Acme");
+  });
+
+  test("skips component and blank labels", () => {
+    expect(
+      documentTitle(
+        [
+          { key: "project", label: createElement("span", null, "Fila") },
+          { key: "page", label: "  " },
+          { key: "file", label: " notes.md " },
+        ],
+        "",
+      ),
+    ).toBe("notes.md");
+  });
+
+  test("is empty with nothing to name", () => {
+    expect(documentTitle([])).toBe("");
   });
 });

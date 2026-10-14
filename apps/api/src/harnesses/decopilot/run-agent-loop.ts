@@ -28,7 +28,7 @@ import {
 } from "ai";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { ToolApprovalLevel } from "@/harnesses/lib/decopilot/mcp-tools";
-import type { GithubRepo, UsageStats } from "@decocms/shared/sdk";
+import type { RepositoryBinding, UsageStats } from "@decocms/shared/sdk";
 import { createLanguageModel } from "@/harnesses/lib/decopilot/studio-provider";
 import {
   resolveMaxOutputTokens,
@@ -62,7 +62,7 @@ export interface RunAgentLoopOptions {
   virtualMcp: {
     id: string;
     instructions?: string;
-    repo?: GithubRepo;
+    repo?: RepositoryBinding;
     delegationTargetIds?: string[] | null;
   };
   mcpClient: Client;

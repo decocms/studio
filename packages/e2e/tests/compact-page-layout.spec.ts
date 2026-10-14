@@ -367,7 +367,7 @@ test.describe("compact page layout", () => {
           async () =>
             (await page.getByTestId("main-panel").boundingBox())!.width,
         )
-        .toBeGreaterThan(width + 150);
+        .toBeGreaterThan(width + 100);
       await threadToggle.click();
       await expect(page.getByTestId("chat-panel")).toBeVisible();
       await expect(threadToggle).toHaveAttribute("aria-pressed", "true");
@@ -458,7 +458,7 @@ test.describe("compact page layout", () => {
     }
   });
 
-  test("Library shares page actions and filters Documents and Media without losing the folder", async ({
+  test("Library shares page actions and filters by type without losing the folder", async ({
     authedPage: { page, orgSlug },
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -513,13 +513,20 @@ test.describe("compact page layout", () => {
       animations: "disabled",
       path: testInfo.outputPath("compact-library-files.png"),
     });
-    await views.getByRole("button", { name: "Documents", exact: true }).click();
+    /** Type is a menu in the filter bar; its pill names the current choice. */
+    const pickType = async (current: string, next: string) => {
+      await views.getByRole("button", { name: current, exact: true }).click();
+      await page
+        .getByRole("menuitemradio", { name: next, exact: true })
+        .click();
+    };
+    await pickType("Type", "Documents");
     await expect(
       page.getByText("Launch notes.md", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Palette.svg", { exact: true })).toHaveCount(0);
     await expect(page.getByText("site.json", { exact: true })).toHaveCount(0);
-    await views.getByRole("button", { name: "Media", exact: true }).click();
+    await pickType("Documents", "Media");
     await expect(page.getByText("Palette.svg", { exact: true })).toBeVisible();
     await expect(
       page.getByText("Launch notes.md", { exact: true }),
@@ -537,7 +544,7 @@ test.describe("compact page layout", () => {
     await expect(
       page.getByText('No files match "Launch".', { exact: true }),
     ).toBeVisible();
-    await views.getByRole("button", { name: "Documents", exact: true }).click();
+    await pickType("Media", "Documents");
     await expect(
       page.getByText("Launch notes.md", { exact: true }),
     ).toBeVisible();

@@ -110,14 +110,8 @@ export interface RepoContentClient {
   readonly repo: RepoRef;
 
   getDefaultBranch(): Promise<string>;
-  /**
-   * Branch head sha + the head commit's date, or null when the branch does not
-   * exist. Git stores no ref-creation time, so that date is the branch's
-   * last-activity signal and what the CMS staleness check reads.
-   */
-  getBranch(
-    branch: string,
-  ): Promise<{ sha: string; committedAt: string } | null>;
+  /** Branch head sha, or null when the branch does not exist. */
+  getBranch(branch: string): Promise<{ sha: string } | null>;
   /**
    * Branches whose name contains `query`, case-insensitively, filtered by the
    * PROVIDER rather than locally — a repository with hundreds of branches

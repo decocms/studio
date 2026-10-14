@@ -135,6 +135,9 @@ test("agent summaries and reports share a message layout and open their source c
   await page.goto(`/${orgSlug}/tasks`);
   await page.getByText("Linked run messages", { exact: true }).click();
   const messages = page.getByTestId("task-message");
+  // The run's own post is agent work, shown behind the scenes.
+  await expect(messages).toHaveCount(1);
+  await page.getByRole("button", { name: "Behind the scenes (1)" }).click();
   await expect(messages).toHaveCount(2);
   await expect(messages.getByRole("button", { name: "Open chat" })).toHaveCount(
     2,
@@ -153,4 +156,63 @@ test("agent summaries and reports share a message layout and open their source c
     .click();
   await expect(page.getByTestId("task-thread-sheet")).toBeVisible();
   await expect(page).toHaveURL(taskUrl);
+});
+
+test("agent handoff stays behind the scenes until the reader opens it", async ({
+  authedPage,
+}) => {
+  test.setTimeout(180_000);
+  const { page, orgSlug } = authedPage;
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const call = <T>(name: string, args: unknown) =>
+    callSelfMcpTool<T>(page.context().request, orgSlug, name, args);
+  const { item } = await call<{ item: { id: string } }>(
+    "TASK_BOARD_ITEM_CREATE",
+    { title: "Handoff visibility" },
+  );
+  const { comment: handoff } = await call<{ comment: { id: string } }>(
+    "TASK_BOARD_COMMENT_CREATE",
+    {
+      taskBoardItemId: item.id,
+      body: "Refactored the feed loader; reviewer should check the cursor math.",
+      audience: "internal",
+    },
+  );
+  await call("TASK_BOARD_COMMENT_CREATE", {
+    taskBoardItemId: item.id,
+    parentId: handoff.id,
+    body: "Cursor math checked.",
+  });
+  await call("TASK_BOARD_COMMENT_CREATE", {
+    taskBoardItemId: item.id,
+    body: "The product page now keeps loading similar products as you scroll.",
+    audience: "human",
+  });
+
+  await page.goto(`/${orgSlug}/tasks`);
+  await page.getByText("Handoff visibility", { exact: true }).click();
+  const detail = page.getByTestId("task-detail");
+  const posts = detail.locator("[data-comment-id]");
+  await expect(posts).toHaveCount(1);
+  await expect(posts.first()).toContainText("keeps loading similar products");
+  await expect(detail.getByText("Cursor math checked.")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Behind the scenes (2)" }).click();
+  await expect(posts).toHaveCount(3);
+  await expect(detail.getByText("Cursor math checked.")).toBeVisible();
+  // Handoff that was already there is not news.
+  await expect(page.getByRole("button", { name: /^New replies/ })).toHaveCount(
+    0,
+  );
+  // Handoff reads as secondary next to the message written for people.
+  await expect(detail.locator("[data-comment-id][data-muted]")).toHaveCount(2);
+  await expect(
+    posts.filter({ hasText: "keeps loading similar products" }),
+  ).not.toHaveAttribute("data-muted");
+
+  // The choice holds for the next task the reader opens.
+  await page.reload();
+  await expect(posts).toHaveCount(3);
+  await page.getByRole("button", { name: "Hide behind the scenes" }).click();
+  await expect(posts).toHaveCount(1);
 });

@@ -17,7 +17,9 @@ import {
   splitOwnerName,
 } from "@decocms/shared/git-providers";
 import { GITHUB_SCOPED_PERMISSIONS } from "@decocms/shared/github-repo-scope";
+import { retry } from "@decocms/shared/std";
 import {
+  type CreateFromTemplateParams,
   type GitAccessToken,
   type GitIdentity,
   type GitProviderClient,
@@ -28,11 +30,13 @@ import {
   type TokenOptions,
   type TokenSource,
 } from "../types";
-import type { GithubAppAuth } from "./app-auth";
+import { type GithubAppAuth, MAX_TOKEN_REPOSITORIES } from "./app-auth";
 import {
   githubApiBaseUrl,
   type GithubFetchInit,
+  githubErrorMessage,
   githubFailure,
+  githubFailureFromBody,
   githubFetch,
   githubJson,
 } from "./http";
@@ -55,6 +59,20 @@ const ACCOUNT_READ_PERMISSIONS: Record<string, string> = {
   metadata: "read",
   contents: "read",
 };
+
+/** Generate a repository, then read it back while GitHub copies the template. */
+const CREATE_REPO_PERMISSIONS: Record<string, string> = {
+  administration: "write",
+  contents: "read",
+  metadata: "read",
+};
+
+/** GitHub copies a template asynchronously; how long to wait for the first commit. */
+const TEMPLATE_COPY_ATTEMPTS = 8;
+const TEMPLATE_COPY_MIN_WAIT_MS = 500;
+const TEMPLATE_COPY_MAX_WAIT_MS = 4_000;
+
+class TemplateStillCopying extends Error {}
 
 const DEFAULT_PER_PAGE = 30;
 const MAX_PER_PAGE = 100;
@@ -145,6 +163,20 @@ export function githubTarballPath(repo: RepoRef, ref?: string): string {
   const { owner, name } = splitOwnerName(repo);
   const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tarball`;
   return ref ? `${base}/${encodeURIComponent(ref)}` : base;
+}
+
+function cannotCreateIn(
+  owner: string,
+  status: number,
+  viaApp: boolean,
+): GitProviderError {
+  return new GitProviderError({
+    provider: "github",
+    status,
+    message: viaApp
+      ? `Studio cannot create repositories in ${owner}. The GitHub App needs the Administration permission there; ask an owner of ${owner} to accept it.`
+      : `The connected GitHub account cannot create repositories in ${owner}.`,
+  });
 }
 
 export class GithubProviderClient implements GitProviderClient {
@@ -281,6 +313,111 @@ export class GithubProviderClient implements GitProviderClient {
       if (Number.isSafeInteger(id) && granted.includes(id)) ids.push(id);
     }
     return ids;
+  }
+
+  async createRepoFromTemplate(
+    params: CreateFromTemplateParams,
+  ): Promise<RepoSummary> {
+    const operation = "create_repo_from_template";
+    const { template, owner, name } = params;
+    const token = await this.creationToken(owner);
+    const res = await githubFetch(
+      `${this.apiBaseUrl}/repos/${encodeURIComponent(template.owner)}/${encodeURIComponent(template.name)}/generate`,
+      {
+        method: "POST",
+        token,
+        operation,
+        body: {
+          owner,
+          name,
+          private: params.private,
+          include_all_branches: false,
+        },
+      },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (
+        res.status === 422 &&
+        /already exists/i.test(githubErrorMessage(text))
+      ) {
+        throw new GitProviderError({
+          provider: "github",
+          status: 409,
+          message: `${owner}/${name} already exists on GitHub. Choose another name.`,
+        });
+      }
+      if (res.status === 403 || res.status === 404) {
+        throw cannotCreateIn(owner, res.status, "appAuth" in this.options);
+      }
+      throw githubFailureFromBody(res.status, text, operation);
+    }
+    const summary = mapGithubRepo(
+      await githubJson<GithubRepoJson>(res, operation),
+      this.host,
+    );
+    // Best effort: throwing here would strand a repo whose name can't be reused.
+    await this.waitForTemplateCopy(summary.ref, token).catch(() => {});
+    return summary;
+  }
+
+  /**
+   * A token that may create a repository under `owner`. A partial grant
+   * restricts tokens by repository id, and the new repository has none yet, so
+   * this one spans the installation. It serves the generate call and its
+   * read-back only and never leaves the client.
+   */
+  private async creationToken(owner: string): Promise<string> {
+    const options = this.options;
+    if (!("appAuth" in options)) {
+      return (await this.sourceToken(options.tokenSource, {})).token;
+    }
+    // The new repository joins the grant, which could then no longer be minted.
+    if ((options.repositoryIds?.length ?? 0) >= MAX_TOKEN_REPOSITORIES) {
+      throw new GitProviderError({
+        provider: "github",
+        status: 409,
+        message: `This GitHub account already grants Studio ${MAX_TOKEN_REPOSITORIES} repositories, the most one account can. Create the site with another account.`,
+      });
+    }
+    try {
+      const minted = await options.appAuth.installationToken(
+        options.installationId,
+        { permissions: CREATE_REPO_PERMISSIONS },
+      );
+      return minted.token;
+    } catch (err) {
+      // 422: the installation has not accepted the Administration permission.
+      if (err instanceof GitProviderError && err.status === 422) {
+        throw cannotCreateIn(owner, 403, true);
+      }
+      throw err;
+    }
+  }
+
+  /** Until the template's first commit lands, the repository answers 409 (empty). */
+  private async waitForTemplateCopy(
+    repo: RepoRef,
+    token: string,
+  ): Promise<void> {
+    const { owner, name } = splitOwnerName(repo);
+    const url = `${this.apiBaseUrl}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?per_page=1`;
+    await retry(
+      async () => {
+        const res = await githubFetch(url, {
+          token,
+          operation: "wait_template_copy",
+        });
+        await res.body?.cancel().catch(() => {});
+        if (!res.ok) throw new TemplateStillCopying();
+      },
+      {
+        maxAttempts: TEMPLATE_COPY_ATTEMPTS,
+        minTimeout: TEMPLATE_COPY_MIN_WAIT_MS,
+        maxTimeout: TEMPLATE_COPY_MAX_WAIT_MS,
+        isRetriable: (err) => err instanceof TemplateStillCopying,
+      },
+    );
   }
 
   private async sourceToken(

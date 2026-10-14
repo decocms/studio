@@ -37,7 +37,7 @@ export interface MentionAttrs<T = unknown> {
  * null for a chip that can't say.
  *
  * The chip carries its own `volume` + `path` rather than being parsed back out
- * of `sandboxPath`: a skill on a synced-repo volume mounts at `org/<volume>/…`,
+ * of `sandboxPath`: a skill on a synced-repo volume mounts at `/app/org/<volume>/…`,
  * which is indistinguishable from an org-slug-prefixed path by reading alone.
  * A chip in a draft saved before those fields existed returns null and stays
  * inert, which is exactly what it did before.

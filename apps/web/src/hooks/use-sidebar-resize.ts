@@ -6,7 +6,7 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 
 const SIDEBAR_MAX_WIDTH = 400;
 const KEYBOARD_STEP = 16;
-const STORAGE_KEY = "sidebar.width";
+const STORAGE_KEY = "sidebar.width.v2";
 
 export interface SidebarResize {
   width: number;
@@ -26,7 +26,7 @@ export interface SidebarResize {
  * (and localStorage).
  */
 export function useSidebarResize(): SidebarResize {
-  const minWidth = 224;
+  const minWidth = 192;
   const clamp = (w: number) =>
     Math.max(minWidth, Math.min(SIDEBAR_MAX_WIDTH, w));
   const [width, setWidth] = useLocalStorage<number>(STORAGE_KEY, (existing) =>

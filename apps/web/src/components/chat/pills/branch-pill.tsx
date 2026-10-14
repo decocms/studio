@@ -1,6 +1,6 @@
 import type { SandboxMap } from "@/sdk";
-import type { RepoToolTarget } from "@/lib/github-repo.ts";
-import { BranchPicker } from "../../thread/github/branch-picker";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
+import { BranchPicker } from "../../thread/repository/branch-picker";
 
 interface Props {
   virtualMcpId: string;

@@ -12,6 +12,7 @@ import {
   projectsForTask,
   stampableEntries,
   taskMatchesProjectFilter,
+  tasksForProject,
   type AttributableTask,
 } from "./project-index";
 
@@ -27,7 +28,7 @@ function project(
     created_at: createdAt,
     metadata: repo
       ? {
-          githubRepo: {
+          repository: {
             url: `https://github.com/${repo}`,
             owner: repo.split("/")[0],
             name: repo.split("/")[1],
@@ -67,6 +68,50 @@ describe("normalizeRepo", () => {
 });
 
 describe("buildProjectIndex", () => {
+  test("attributes a task stamped with a repository-free project id", () => {
+    const card = task({ repo: BARE.id });
+    const feedIndex = buildProjectIndex([BARE]);
+    const boardIndex = buildProjectIndex([BARE], [card.repo]);
+
+    expect(projectForTask(card, feedIndex)?.id).toBe(BARE.id);
+    expect(projectForTask(card, boardIndex)?.id).toBe(BARE.id);
+    expect(taskMatchesProjectFilter(card, BARE.id, boardIndex)).toBe(true);
+    expect(boardIndex.entries).toHaveLength(1);
+    expect(entryForFilter(BARE.id, boardIndex)?.title).toBe(BARE.title);
+    expect(taskMatchesProjectFilter(task(), BARE.id, boardIndex)).toBe(false);
+    expect(taskMatchesProjectFilter(card, NO_PROJECT_FILTER, boardIndex)).toBe(
+      false,
+    );
+  });
+
+  test("keeps project-id stamps after a repository is attached", () => {
+    const index = buildProjectIndex([ALPHA], [ALPHA.id, "acme/alpha"]);
+    const card = task({ repo: ALPHA.id });
+    expect(index.entries).toHaveLength(1);
+    expect(projectForTask(card, index)?.id).toBe(ALPHA.id);
+    expect(taskMatchesProjectFilter(card, ALPHA.id, index)).toBe(true);
+    expect(taskMatchesProjectFilter(card, "acme/alpha", index)).toBe(true);
+  });
+
+  test("preserves exact project ids and thread precedence", () => {
+    const index = buildProjectIndex([BARE, ALPHA]);
+    expect(
+      projectForTask(task({ repo: BARE.id.toUpperCase() }), index),
+    ).toBeNull();
+    expect(
+      projectForTask(task({ repo: BARE.id, virtualMcpId: ALPHA.id }), index)
+        ?.id,
+    ).toBe(ALPHA.id);
+  });
+
+  test("a project-id stamp identifies one project sharing a repository", () => {
+    const index = buildProjectIndex([MONO_1, MONO_2], [MONO_2.id]);
+    expect(projectForTask(task({ repo: MONO_2.id }), index)?.id).toBe(
+      MONO_2.id,
+    );
+    expect(index.entries).toHaveLength(1);
+  });
+
   test("a project with a repository is one bucket, named after the project", () => {
     const index = buildProjectIndex([ALPHA]);
     expect(index.entries).toHaveLength(1);
@@ -194,7 +239,7 @@ describe("entryForTask", () => {
     );
   });
 
-  test("reaches a repo-less project only through its thread", () => {
+  test("reaches a repo-less project through its thread", () => {
     expect(entryForTask(task({ virtualMcpId: "vir_bare" }), index)?.id).toBe(
       "vir_bare",
     );
@@ -289,7 +334,7 @@ describe("taskMatchesProjectFilter", () => {
     ).toBe(true);
   });
 
-  test("a repo-less project's bucket matches by thread only", () => {
+  test("a repo-less project's bucket matches by thread", () => {
     expect(
       taskMatchesProjectFilter(
         task({ virtualMcpId: "vir_bare" }),
@@ -573,7 +618,7 @@ describe("stampableEntries", () => {
       title: "Detached",
       created_at: "2026-01-01T00:00:00Z",
       metadata: {
-        githubRepo: {
+        repository: {
           url: "https://github.com/acme/gone",
           owner: "acme",
           name: "gone",
@@ -601,5 +646,52 @@ describe("stampableEntries", () => {
   test("offers a repository no project claims", () => {
     const index = buildProjectIndex([], ["acme/orphan"]);
     expect(stampableEntries(index).map((e) => e.id)).toEqual(["acme/orphan"]);
+  });
+});
+
+/**
+ * Scope is a narrowing of the INPUT, not a value in the board's filter. The
+ * filter is an exact string match, and scoping through it hid every repo-less
+ * card the moment a project was picked — see `task-board/filters-search.test.ts`
+ * for the inverted form of that bug.
+ */
+describe("tasksForProject", () => {
+  const index = buildProjectIndex([
+    project("p1", "Store", "acme/store"),
+    project("p2", "App", "acme/app"),
+  ]);
+
+  test("keeps only the cards attributed to the project", () => {
+    const store = task({ repo: "acme/store" });
+    const app = task({ repo: "acme/app" });
+    expect(tasksForProject([store, app], index, "p1")).toEqual([store]);
+  });
+
+  test("a project with no cards gets none rather than everything", () => {
+    expect(
+      tasksForProject([task({ repo: "acme/store" })], index, "p9"),
+    ).toEqual([]);
+  });
+
+  /** The reason this cannot be the `?repo=` filter: a repo-less project has no
+   *  string to match on and is reached through its runs. */
+  test("a repo-less project keeps the cards its runs claim", () => {
+    const repoless = buildProjectIndex([project("p3", "Ops")]);
+    const linked = task({ virtualMcpId: "p3" });
+    expect(
+      tasksForProject([linked, task({ repo: "acme/store" })], repoless, "p3"),
+    ).toEqual([linked]);
+  });
+
+  /** Two projects over one monorepo both claim the card, the same answer the
+   *  sidebar and the home already give. */
+  test("a shared repository counts for every project pinning it", () => {
+    const shared = buildProjectIndex([
+      project("a", "A", "acme/mono"),
+      project("b", "B", "acme/mono"),
+    ]);
+    const card = task({ repo: "acme/mono" });
+    expect(tasksForProject([card], shared, "a")).toEqual([card]);
+    expect(tasksForProject([card], shared, "b")).toEqual([card]);
   });
 });

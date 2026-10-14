@@ -18,6 +18,7 @@ import {
   priceIdForPlan,
   retrieveSubscription,
   StripeApiError,
+  TRIAL_PLAN_ID,
 } from "../../billing/stripe-api";
 import { orgSettingsPath } from "@decocms/shared/organization-paths";
 import { getPublicUrl } from "../../core/server-constants";
@@ -96,11 +97,18 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
       );
     }
 
+    // Starter's first month is free, once per org. A customer id is only
+    // ever written when a subscription binds (top-ups never set one), so its
+    // presence means this org has subscribed before — a cancel-and-resubscribe
+    // pays from day one.
+    const trial = input.planId === TRIAL_PLAN_ID && !billing?.stripeCustomerId;
+
     const { url } = await createOrgCheckoutSession({
       organizationId,
       successUrl: `${membersUrl}?checkout=success`,
       cancelUrl: `${membersUrl}?checkout=canceled`,
       ...(input.planId ? { planId: input.planId } : {}),
+      ...(trial ? { trial } : {}),
       // Salts the idempotency key that collapses concurrent clicks into one
       // session — the org's Stripe situation changing is what should mint a
       // genuinely new checkout.
@@ -110,7 +118,7 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
     captureOrgEvent({
       event: "subscription_checkout_started",
       organizationId,
-      ...(input.planId ? { properties: { plan_id: input.planId } } : {}),
+      ...(input.planId ? { properties: { plan_id: input.planId, trial } } : {}),
       ...(ctx.auth?.user?.id ? { userId: ctx.auth.user.id } : {}),
     });
     return { url };
@@ -141,6 +149,15 @@ async function startPlanChange(input: {
     );
   }
   const subscription = await retrieveSubscription(input.subscriptionId);
+  // A swap during Starter's free month invoices $0, and only a PAID invoice
+  // grants a tier — so the org would sit on Starter until the trial ended, or,
+  // were that loosened, get Business free for the rest of it.
+  // ponytail: refuse; ending the trial early needs its own anchor story.
+  if (subscription.status === "trialing") {
+    throw new Error(
+      "Your free month is still running — you can change plans once it ends.",
+    );
+  }
   // The PLAN line, not item [0]. Stripe does not promise item ordering, and
   // `planIdForPrices` already contemplates a subscription carrying add-on
   // prices beside the plan — pinning the confirm flow to whichever item came

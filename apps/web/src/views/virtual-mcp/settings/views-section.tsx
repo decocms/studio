@@ -29,7 +29,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ChevronRight, Lightning01 } from "@untitledui/icons";
-import { SimpleIconPicker } from "@/components/simple-icon-picker";
+import { IconPicker } from "@/components/icon-picker";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -166,8 +166,11 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
                     pinned ? (
                       // A control, not the row: it must not also open.
                       <span onClick={stopRowClick}>
-                        <SimpleIconPicker
+                        <IconPicker
                           value={pinnedView.icon ?? null}
+                          name={pinnedView.label || tool.name}
+                          size="xs"
+                          showHoverOverlay={false}
                           onChange={(icon) =>
                             views.setAppViewIcon(conn.id, tool.name, icon)
                           }

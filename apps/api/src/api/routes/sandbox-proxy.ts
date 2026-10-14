@@ -17,7 +17,7 @@ import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type {
-  AgentSandboxProvider,
+  SandboxProvider,
   ClaimPhase,
 } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
@@ -50,8 +50,7 @@ import {
   type GitDiffLike,
   type GitStatusLike,
   isGitStatusLike,
-  suggestCommitMessageWithLlm,
-} from "../../lib/suggest-commit-message";
+} from "../../lib/git-change-context";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
 import {
   RepoWriteConflict,
@@ -74,7 +73,7 @@ import {
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import {
   GitPushAuthError,
-  parseGithubRepoFromMetadata,
+  parseRepositoryBinding,
   refreshSandboxGitCredentials,
 } from "../../tools/sandbox/sync-git-credentials";
 
@@ -88,7 +87,7 @@ interface VmClaim {
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance — or
    *  when the session is sandbox-less (`runtime` below). */
-  runner: AgentSandboxProvider | null;
+  runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -130,7 +129,7 @@ function assertSandboxBranchParam(branch: string): void {
   }
 }
 
-const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
+const JUDGE_REVIEW_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -245,7 +244,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     return next();
   }
 
-  let runner: AgentSandboxProvider | null;
+  let runner: SandboxProvider | null;
   try {
     runner = await getAgentSandboxProvider(ctx);
   } catch {
@@ -355,7 +354,7 @@ async function resolveClaimRuntime(
  */
 async function resolveBranchRunner(
   c: Context<VmEnv>,
-): Promise<AgentSandboxProvider | null> {
+): Promise<SandboxProvider | null> {
   const claim = c.get("vmClaim");
   if (claim.runner) return claim.runner;
   try {
@@ -366,7 +365,7 @@ async function resolveBranchRunner(
 }
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
-function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
+function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
   const { runner } = c.get("vmClaim");
   if (!runner) {
     return c.json({ error: "No sandbox runner configured" }, 503);
@@ -382,19 +381,16 @@ function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
 async function fastPreviewGitClient(c: Context<VmEnv>) {
   const { virtualMcpMetadata, connectionIds } = c.get("vmClaim");
   const ctx = c.var.studioContext;
-  const githubRepo = parseGithubRepoFromMetadata(
-    virtualMcpMetadata,
-    connectionIds,
-  );
-  if (!githubRepo) {
+  const repository = parseRepositoryBinding(virtualMcpMetadata, connectionIds);
+  if (!repository) {
     throw new GitProviderError({
       provider: "github",
       status: 404,
-      message: "Project has no GitHub repository",
+      message: "Project has no repository",
     });
   }
   const organization = requireOrganization(ctx);
-  return contentClientForProjectRepo(ctx, organization.id, githubRepo);
+  return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
@@ -522,7 +518,7 @@ async function proxyDaemon(
     /** Null out the hosted daemon's container-internal `repoDir`. */
     redactRepoDir?: boolean;
     /** Pod-addressed route: act on this runner whatever the session's runtime is. */
-    runner?: AgentSandboxProvider;
+    runner?: SandboxProvider;
   },
 ) {
   // Sandbox-less Fast Preview: daemon-backed routes have no daemon, ever.
@@ -681,8 +677,8 @@ export function redactRepoDir(text: string): string {
 
 export async function fetchDaemonJson<T>(
   runner: {
-    proxyDaemonRequest: AgentSandboxProvider["proxyDaemonRequest"];
-    adoptLiveClaim: AgentSandboxProvider["adoptLiveClaim"];
+    proxyDaemonRequest: SandboxProvider["proxyDaemonRequest"];
+    adoptLiveClaim: SandboxProvider["adoptLiveClaim"];
   },
   claimName: string,
   daemonPath: string,
@@ -995,16 +991,16 @@ export const createSandboxRoutes = () => {
     return withClaimGitLock(claimName, async () => {
       try {
         await patchSandboxOperator(ctx, runner, claimName);
-        const githubRepo = parseGithubRepoFromMetadata(
+        const repository = parseRepositoryBinding(
           virtualMcpMetadata,
           connectionIds,
         );
-        if (githubRepo) {
+        if (repository) {
           await refreshSandboxGitCredentials(
             ctx,
             runner,
             claimName,
-            githubRepo,
+            repository,
           );
         }
       } catch (err) {
@@ -1105,10 +1101,15 @@ export const createSandboxRoutes = () => {
       });
     });
   });
+  // Smart-review judge: the client sends the full publish payload (status +
+  // combined diff) and the cheap "fast" model tier decides whether the changes
+  // need PR review. Backfills status/diff from the daemon when omitted. On any
+  // failure the lib returns a permissive verdict (requiresReview: false) so the
+  // AI's absence never blocks publish.
   app.post(
-    "/:virtualMcpId/:branch/git/suggest-commit",
+    "/:virtualMcpId/:branch/git/judge-review",
     bodyLimit({
-      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
+      maxSize: JUDGE_REVIEW_MAX_BODY_BYTES,
       onError: (c) =>
         c.json(
           { error: "Payload too large" },
@@ -1120,109 +1121,7 @@ export const createSandboxRoutes = () => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
       // only admits a null runner for that mode).
-      let runner: AgentSandboxProvider | null = null;
-      if (claim.runtime !== "cms") {
-        const required = requireRunner(c);
-        if (required instanceof Response) return required;
-        runner = required;
-      }
-
-      const { claimName, userId, projectRef } = claim;
-      const ctx = c.var.studioContext;
-
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          status?: GitStatusLike;
-          diff?: GitDiffLike;
-        };
-
-        const clientStatus = body.status;
-        const clientDiff = body.diff;
-        const hasClientDiff =
-          clientDiff != null &&
-          typeof clientDiff.diffs === "object" &&
-          clientDiff.diffs !== null;
-
-        const [status, diff] =
-          isGitStatusLike(clientStatus) && hasClientDiff
-            ? [clientStatus, clientDiff]
-            : runner
-              ? await Promise.all([
-                  fetchDaemonJson<GitStatusLike>(
-                    runner,
-                    claimName,
-                    "/_sandbox/git/status",
-                    "GET",
-                    { userId, projectRef },
-                  ),
-                  fetchDaemonJson<GitDiffLike>(
-                    runner,
-                    claimName,
-                    "/_sandbox/git/diff",
-                    "GET",
-                    { userId, projectRef },
-                  ),
-                ])
-              : // Sandbox-less backfill: same GitHub-backed shapes the /git
-                // routes serve (no daemon exists to ask).
-                await (async () => {
-                  const client = await fastPreviewGitClient(c);
-                  return Promise.all([
-                    repoGitStatus(client, claim.branch),
-                    repoGitDiff(client, claim.branch),
-                  ]);
-                })();
-        // These two routes are the only ones under /sandbox that spend real
-        // money: each is one `generateText` on the org's gateway credential,
-        // with a prompt the caller sizes (up to the body limit above). They
-        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
-        // them and an org whose bar reads `exhausted` could loop either one.
-        // Fails OPEN when the gateway has no answer, like every other gate.
-        await assertAiBudget(
-          ctx,
-          requireOrganization(ctx).id,
-          "suggesting a commit message",
-        );
-
-        const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
-        return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message === "SANDBOX_GONE") {
-          return c.json(
-            {
-              error:
-                "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
-            },
-            410,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-    },
-  );
-
-  // Smart-review judge: the client sends the full publish payload (status +
-  // combined diff) and the cheap "fast" model tier decides whether the changes
-  // need PR review. Backfills status/diff from the daemon when omitted, mirrors
-  // the suggest-commit handler. On any failure the lib returns a permissive
-  // verdict (requiresReview: false) so the AI's absence never blocks publish.
-  app.post(
-    "/:virtualMcpId/:branch/git/judge-review",
-    bodyLimit({
-      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
-      onError: (c) =>
-        c.json(
-          { error: "Payload too large" },
-          413,
-          SANDBOX_PROXY_CACHE_HEADERS,
-        ),
-    }),
-    async (c) => {
-      const claim = c.get("vmClaim");
-      // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
-      let runner: AgentSandboxProvider | null = null;
+      let runner: SandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
@@ -1266,18 +1165,20 @@ export const createSandboxRoutes = () => {
                     { userId, projectRef },
                   ),
                 ])
-              : await (async () => {
+              : // Sandbox-less backfill: same GitHub-backed shapes the /git
+                // routes serve (no daemon exists to ask).
+                await (async () => {
                   const client = await fastPreviewGitClient(c);
                   return Promise.all([
                     repoGitStatus(client, claim.branch),
                     repoGitDiff(client, claim.branch),
                   ]);
                 })();
-        // These two routes are the only ones under /sandbox that spend real
-        // money: each is one `generateText` on the org's gateway credential,
-        // with a prompt the caller sizes (up to the body limit above). They
-        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
-        // them and an org whose bar reads `exhausted` could loop either one.
+        // The only route under /sandbox that spends real money: one model call
+        // on the org's gateway credential, with a prompt the caller sizes (up
+        // to the body limit above). It is a plain BFF route, so `defineTool`'s
+        // `requiresAiBudget` never sees it and an org whose bar reads
+        // `exhausted` could loop it.
         // Fails OPEN when the gateway has no answer, like every other gate.
         await assertAiBudget(
           ctx,

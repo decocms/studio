@@ -259,7 +259,7 @@ impl WriterLease {
         let _gate = self.mutation_gate.clone().lock_owned().await;
         let generation = self
             .next_generation
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
                 current.checked_add(1)
             })
             .map_err(|_| "terminal writer lease generation is exhausted")?
