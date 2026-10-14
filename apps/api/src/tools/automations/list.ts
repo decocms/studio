@@ -35,10 +35,13 @@ export const AUTOMATION_LIST = defineTool({
         nearest_next_run_at: z.string().nullable(),
         virtual_mcp_id: z.string(),
         system_key: z.string().nullable(),
-        /** The board columns its "card enters a column" starters watch. */
-        board_columns: z.array(z.string()),
-        /** Has the "pull request ready for review" starter (In Review). */
-        reviews_prs: z.boolean(),
+        /** Its board starters: each one's column and type. */
+        board_triggers: z.array(
+          z.object({
+            type: z.enum(["board_column_transition", "board_pr_ready"]),
+            column_key: z.string(),
+          }),
+        ),
       }),
     ),
   }),
@@ -66,8 +69,7 @@ export const AUTOMATION_LIST = defineTool({
       nearest_next_run_at: automation.nearest_next_run_at,
       virtual_mcp_id: automation.virtual_mcp_id,
       system_key: automation.system_key,
-      board_columns: automation.board_columns,
-      reviews_prs: automation.reviews_prs,
+      board_triggers: automation.board_triggers,
     }));
 
     return { automations: results };

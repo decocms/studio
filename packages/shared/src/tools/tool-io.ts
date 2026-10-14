@@ -6445,8 +6445,10 @@ export interface StudioToolIO {
         nearest_next_run_at: string | null;
         virtual_mcp_id: string;
         system_key: string | null;
-        board_columns: string[];
-        reviews_prs: boolean;
+        board_triggers: {
+          type: "board_column_transition" | "board_pr_ready";
+          column_key: string;
+        }[];
       }[];
     };
   };

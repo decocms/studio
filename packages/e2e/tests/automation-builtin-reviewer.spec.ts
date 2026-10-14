@@ -19,7 +19,7 @@ interface ListedAutomation {
   name: string;
   active: boolean;
   system_key: string | null;
-  reviews_prs: boolean;
+  board_triggers: { type: string; column_key: string }[];
 }
 interface Trigger {
   id: string;
@@ -46,7 +46,7 @@ test.describe("built-in reviewer", () => {
     expect(await reviewer()).toMatchObject({
       name: "Reviewer",
       active: true,
-      reviews_prs: true,
+      board_triggers: [{ type: "board_pr_ready", column_key: "in_review" }],
     });
     const { id } = (await reviewer())!;
     const { automation } = await call<{

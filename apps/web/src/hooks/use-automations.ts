@@ -116,10 +116,11 @@ export interface AutomationListItem {
   nearest_next_run_at: string | null;
   /** Set on a built-in, which can only be turned on or off. */
   system_key: string | null;
-  /** The board columns its "card enters a column" starters watch. */
-  board_columns: string[];
-  /** Has the "pull request ready for review" starter (In Review). */
-  reviews_prs: boolean;
+  /** Its board starters: each one's column and type. */
+  board_triggers: {
+    type: "board_column_transition" | "board_pr_ready";
+    column_key: string;
+  }[];
 }
 
 export interface AutomationTrigger {
