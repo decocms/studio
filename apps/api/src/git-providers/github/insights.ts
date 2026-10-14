@@ -79,6 +79,7 @@ export interface GithubCommitNode {
   oid: string;
   committedDate: string;
   messageHeadline?: string | null;
+  messageBody?: string | null;
   author: {
     name?: string | null;
     email?: string | null;
@@ -197,6 +198,7 @@ query RepoCommits($owner: String!, $name: String!, $since: GitTimestamp!, $limit
               oid
               committedDate
               messageHeadline
+              messageBody
               author { name email user { login } }
             }
           }
@@ -253,6 +255,7 @@ export function mapCommit(node: GithubCommitNode): RepoCommit {
     sha: node.oid,
     date: node.committedDate,
     message: node.messageHeadline ?? "",
+    ...(node.messageBody ? { body: node.messageBody } : {}),
     author: {
       name: node.author?.name ?? null,
       email: node.author?.email ?? null,

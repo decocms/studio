@@ -205,8 +205,16 @@ export function mapCommit(row: BitbucketCommitRow): RepoCommit {
     sha: row.hash ?? "",
     date: row.date ?? "",
     message: firstLine(row.message ?? ""),
+    ...bodyOf(row.message),
     author: { name, email, login: row.author?.user?.nickname ?? null },
   };
+}
+
+/** The message after its subject line, when there is any. */
+function bodyOf(message = ""): { body?: string } {
+  const end = message.indexOf("\n");
+  const body = end === -1 ? "" : message.slice(end + 1).trim();
+  return body ? { body } : {};
 }
 
 function firstLine(message: string): string {
