@@ -228,6 +228,14 @@ export interface OrganizationSettings {
   updatedAt: Date | string;
 }
 
+/** A `url_slug` a connection used to have, kept so old links resolve. */
+export interface ConnectionSlugAliasTable {
+  organization_id: string;
+  slug: string;
+  connection_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * MCP Connection table definition
  * Uses snake_case column names to align with ConnectionEntitySchema
@@ -243,6 +251,7 @@ export interface MCPConnectionTable {
   app_name: string | null;
   app_id: string | null;
   slug: string | null;
+  url_slug: string | null; // Unique per org; names the row in Studio URLs
 
   // Connection details
   connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
@@ -2478,6 +2487,7 @@ export interface Database {
 
   // Connection aggregations (for VIRTUAL connections / agents)
   connection_aggregations: ConnectionAggregationTable;
+  connection_slug_aliases: ConnectionSlugAliasTable;
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;

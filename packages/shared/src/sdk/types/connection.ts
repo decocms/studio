@@ -5,6 +5,7 @@
  * Uses snake_case field names matching the database schema directly.
  */
 
+import { UrlSlugSchema } from "../../url-slug";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
@@ -131,6 +132,13 @@ export const ConnectionEntitySchema = z.object({
     .nullable()
     .optional()
     .describe("URL-safe slug derived from app_name, connection_url, or title"),
+  url_slug: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Name of the connection in Studio URLs, unique in the organization. Set it to rename the URL; the old one keeps redirecting.",
+    ),
 
   connection_type: z
     .enum(["HTTP", "SSE", "Websocket", "STDIO", "VIRTUAL"])
@@ -217,7 +225,11 @@ export type ConnectionCreateData = z.infer<typeof ConnectionCreateDataSchema>;
 /**
  * Input schema for updating connections
  */
-export const ConnectionUpdateDataSchema = ConnectionEntitySchema.partial();
+export const ConnectionUpdateDataSchema =
+  ConnectionEntitySchema.partial().extend({
+    // null keeps the current slug, so a fetched entity can be sent back as is.
+    url_slug: UrlSlugSchema.nullish(),
+  });
 
 export type ConnectionUpdateData = z.infer<typeof ConnectionUpdateDataSchema>;
 

@@ -7,6 +7,8 @@
  * the connection_aggregations table.
  */
 
+import { urlSlugBase } from "@decocms/shared/url-slug";
+import { changeUrlSlug, withAllocatedUrlSlug } from "./url-slug";
 import {
   readRepositoryMetadata,
   writeRepositoryMetadata,
@@ -34,6 +36,7 @@ type RawConnectionRow = {
   id: string;
   organization_id: string;
   title: string;
+  url_slug: string | null;
   description: string | null;
   icon: string | null;
   status: "active" | "inactive" | "error";
@@ -128,64 +131,68 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const id = options?.id ?? generatePrefixedId("vir");
     const now = new Date().toISOString();
 
-    await this.db.transaction().execute(async (trx) => {
-      // Insert as a VIRTUAL connection
-      await trx
-        .insertInto("connections")
-        .values({
-          id,
-          organization_id: organizationId,
-          created_by: userId,
-          updated_by: userId,
-          title: data.title,
-          description: data.description ?? null,
-          icon: data.icon ?? null,
-          app_name: null,
-          app_id: null,
-          connection_type: "VIRTUAL",
-          pinned: data.pinned ?? false,
-          connection_url: `virtual://${id}`,
-          connection_token: null,
-          connection_headers: null,
-          oauth_config: null,
-          configuration_state: null,
-          configuration_scopes: null,
-          metadata: data.metadata
-            ? JSON.stringify(writeRepositoryMetadata(data.metadata))
-            : null,
-          repository_id: boundRepositoryId(data.metadata),
-          bindings: null,
-          status: data.status ?? "active",
-          created_at: now,
-          updated_at: now,
-        })
-        .execute();
-
-      // Insert connection aggregations (all explicit connections are 'direct' dependencies)
-      if (data.connections.length > 0) {
+    const slugBase = urlSlugBase(data.title, "project");
+    await withAllocatedUrlSlug(this.db, organizationId, slugBase, (urlSlug) =>
+      this.db.transaction().execute(async (trx) => {
+        // Insert as a VIRTUAL connection
         await trx
-          .insertInto("connection_aggregations")
-          .values(
-            data.connections.map((conn) => ({
-              id: generatePrefixedId("agg"),
-              parent_connection_id: id,
-              child_connection_id: conn.connection_id,
-              selected_tools: conn.selected_tools
-                ? JSON.stringify(conn.selected_tools)
-                : null,
-              selected_resources: conn.selected_resources
-                ? JSON.stringify(conn.selected_resources)
-                : null,
-              selected_prompts: conn.selected_prompts
-                ? JSON.stringify(conn.selected_prompts)
-                : null,
-              dependency_mode: "direct" as DependencyMode,
-              created_at: now,
-            })),
-          )
+          .insertInto("connections")
+          .values({
+            id,
+            organization_id: organizationId,
+            url_slug: urlSlug,
+            created_by: userId,
+            updated_by: userId,
+            title: data.title,
+            description: data.description ?? null,
+            icon: data.icon ?? null,
+            app_name: null,
+            app_id: null,
+            connection_type: "VIRTUAL",
+            pinned: data.pinned ?? false,
+            connection_url: `virtual://${id}`,
+            connection_token: null,
+            connection_headers: null,
+            oauth_config: null,
+            configuration_state: null,
+            configuration_scopes: null,
+            metadata: data.metadata
+              ? JSON.stringify(writeRepositoryMetadata(data.metadata))
+              : null,
+            repository_id: boundRepositoryId(data.metadata),
+            bindings: null,
+            status: data.status ?? "active",
+            created_at: now,
+            updated_at: now,
+          })
           .execute();
-      }
-    });
+
+        // Insert connection aggregations (all explicit connections are 'direct' dependencies)
+        if (data.connections.length > 0) {
+          await trx
+            .insertInto("connection_aggregations")
+            .values(
+              data.connections.map((conn) => ({
+                id: generatePrefixedId("agg"),
+                parent_connection_id: id,
+                child_connection_id: conn.connection_id,
+                selected_tools: conn.selected_tools
+                  ? JSON.stringify(conn.selected_tools)
+                  : null,
+                selected_resources: conn.selected_resources
+                  ? JSON.stringify(conn.selected_resources)
+                  : null,
+                selected_prompts: conn.selected_prompts
+                  ? JSON.stringify(conn.selected_prompts)
+                  : null,
+                dependency_mode: "direct" as DependencyMode,
+                created_at: now,
+              })),
+            )
+            .execute();
+        }
+      }),
+    );
 
     const virtualMcp = await this.findById(id);
     if (!virtualMcp) {
@@ -575,6 +582,10 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         : null;
     }
 
+    if (data.url_slug) {
+      await changeUrlSlug(this.db, id, data.url_slug);
+    }
+
     const removedConnectionIds: string[] = [];
 
     await this.db.transaction().execute(async (trx) => {
@@ -854,6 +865,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       id: row.id,
       organization_id: row.organization_id,
       title: row.title,
+      url_slug: row.url_slug,
       description: row.description,
       icon: row.icon,
       status,
