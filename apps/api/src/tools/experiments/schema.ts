@@ -23,6 +23,14 @@ export const experimentSchema = z.object({
   variants: z.array(experimentVariantSchema),
   startedAt: z.string().nullable(),
   endedAt: z.string().nullable(),
+  /** The task board card implementing this experiment's frontend, when it has
+   *  been delegated. `taskKey` is that card's human address (`DECO-07`) — what
+   *  the Experiments screen deep-links to so the operator can keep talking to
+   *  the Super Agent about the pull request it opened. Null before delegation,
+   *  and `taskKey` alone is null when the org has no slug or the card predates
+   *  the key backfill. */
+  taskBoardItemId: z.string().nullable(),
+  taskKey: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),

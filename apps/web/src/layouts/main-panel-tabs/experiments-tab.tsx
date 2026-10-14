@@ -1,5 +1,7 @@
 import { type CSSProperties, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { Cell, Pie, PieChart } from "recharts";
 import {
   ArrowUpRight,
@@ -9,6 +11,7 @@ import {
   DotsHorizontal,
   Image03,
   FilterLines,
+  MessageChatCircle,
   Monitor01,
   PauseCircle,
   Pencil01,
@@ -66,10 +69,12 @@ import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useT } from "@/i18n/use-t.ts";
+import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import {
   type Experiment,
   type ExperimentStatus,
   type SuggestedExperiment,
+  useCreateAndImplementExperiment,
   useCreateExperiment,
   useDeleteExperiment,
   useImplementExperiment,
@@ -568,41 +573,59 @@ function SplitCard({
 /**
  * The "New experiment" entry point: a free-text prompt ("Valentine's Day
  * banner shows to 50% of users...") that `EXPERIMENT_SUGGEST` turns into a
- * structured proposal — the operator reviews and edits it in `ReviewPanel`
- * before anything is created. Nothing here persists anything.
+ * structured proposal, then creates it and delegates it to the Super Agent.
  */
 function PromptDialog({
   site,
   open,
   onOpenChange,
-  onGenerated,
+  onCreated,
+  onManual,
 }: {
   site: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** Called with the accepted proposal (or `null` for "write it manually")
-   *  once the operator is ready to move to the review step. */
-  onGenerated: (suggestion: SuggestedExperiment | null) => void;
+  /** The experiment was created and its implementation delegated — called with
+   *  its key so the caller can open it and follow the pull request. */
+  onCreated: (key: string) => void;
+  /** "Write it manually": move to the review step with nothing created. */
+  onManual: (suggestion: SuggestedExperiment | null) => void;
 }) {
   const t = useT();
   const suggest = useSuggestExperiment(site);
+  const createAndImplement = useCreateAndImplementExperiment(site);
   const [prompt, setPrompt] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const busy = suggest.isPending || createAndImplement.isPending;
 
   const close = (v: boolean) => {
     onOpenChange(v);
     if (!v) {
       setPrompt("");
       suggest.reset();
+      createAndImplement.reset();
     }
   };
 
+  /** One action, three steps: propose, create, delegate. The operator asked for
+   *  a test, not for a form — editing stays available on the detail screen. */
   const generate = () => {
-    if (!prompt.trim() || suggest.isPending) return;
+    if (!prompt.trim() || busy) return;
     suggest.mutate(prompt.trim(), {
-      onSuccess: (result) => {
-        close(false);
-        onGenerated(result);
+      onSuccess: (suggestion) => {
+        createAndImplement.mutate(
+          {
+            key: suggestion.key,
+            name: suggestion.name,
+            variants: suggestion.variants,
+          },
+          {
+            onSuccess: (experiment) => {
+              close(false);
+              onCreated(experiment.key);
+            },
+          },
+        );
       },
     });
   };
@@ -637,7 +660,7 @@ function PromptDialog({
               }}
               placeholder={t("experiments.prompt.placeholder")}
               aria-label={t("experiments.prompt.title")}
-              readOnly={suggest.isPending}
+              readOnly={busy}
               rows={4}
               // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog exists to take this one input
               autoFocus
@@ -645,20 +668,18 @@ function PromptDialog({
             />
             <div className="flex items-center justify-end gap-2 px-3 pb-3">
               <span className="text-xs text-muted-foreground">
-                {suggest.isPending
-                  ? t("experiments.prompt.generating")
-                  : t("experiments.prompt.shortcut")}
+                {createAndImplement.isPending
+                  ? t("experiments.prompt.creating")
+                  : suggest.isPending
+                    ? t("experiments.prompt.generating")
+                    : t("experiments.prompt.shortcut")}
               </span>
               <Button
                 size="sm"
                 onClick={generate}
-                disabled={suggest.isPending || !prompt.trim()}
+                disabled={busy || !prompt.trim()}
               >
-                {suggest.isPending ? (
-                  <Spinner size="2xs" />
-                ) : (
-                  <Stars02 size={14} />
-                )}
+                {busy ? <Spinner size="2xs" /> : <Stars02 size={14} />}
                 {t("experiments.prompt.generate")}
               </Button>
             </div>
@@ -678,7 +699,7 @@ function PromptDialog({
                     setPrompt(text);
                     inputRef.current?.focus();
                   }}
-                  disabled={suggest.isPending}
+                  disabled={busy}
                 >
                   <Icon size={14} />
                   {text}
@@ -703,7 +724,7 @@ function PromptDialog({
             size="sm"
             onClick={() => {
               close(false);
-              onGenerated(null);
+              onManual(null);
             }}
           >
             <Pencil01 size={14} />
@@ -753,11 +774,16 @@ type CompareMode = "control" | "compare" | "treatment";
  */
 function CompareCard({
   baseUrl,
+  treatmentUrl,
   testKey,
   arms,
   reloadNonce = 0,
 }: {
   baseUrl: string;
+  /** Where the treatment arms are rendered from, when that is not the same
+   *  deployment as the control: the implementation PR's deploy preview, which
+   *  is the only place the new code runs before the PR is merged. */
+  treatmentUrl?: string | null;
   testKey: string;
   arms: { id: string; role?: string | null }[];
   reloadNonce?: number;
@@ -780,7 +806,11 @@ function CompareCard({
   const colorOf = (arm: { id: string }) =>
     colors[arms.findIndex((a) => a.id === arm.id)] ?? CONTROL_COLOR;
   const urlOf = (arm: { id: string }) =>
-    buildForcedVariantUrl(baseUrl, testKey, arm.id);
+    buildForcedVariantUrl(
+      arm.id === control.id ? baseUrl : (treatmentUrl ?? baseUrl),
+      testKey,
+      arm.id,
+    );
   const reveal = mode === "control" ? 100 : mode === "treatment" ? 0 : position;
 
   const moveTo = (clientX: number) => {
@@ -1031,6 +1061,99 @@ type ExperimentActions = {
   onDelete: () => void;
 };
 
+/**
+ * Where the experiment's code is: the Super Agent's card, the pull request it
+ * opened, and that PR's deploy preview — which is the only deployment running
+ * the treatment before the PR merges, and therefore the "after" side of the
+ * comparison below.
+ */
+function useImplementation(experiment: Experiment) {
+  const { data: prs } = useTaskBoardItemPrs(
+    experiment.taskBoardItemId ?? undefined,
+  );
+  const pr = prs?.[0] ?? null;
+  const previewUrl = pr?.merged ? null : (pr?.previewUrl ?? null);
+  const stage = !experiment.taskBoardItemId
+    ? ("none" as const)
+    : !pr
+      ? ("writing" as const)
+      : pr.merged
+        ? ("merged" as const)
+        : previewUrl
+          ? ("ready" as const)
+          : ("deploying" as const);
+  return { pr, previewUrl, stage };
+}
+
+function ImplementationCard({
+  experiment,
+  org,
+  implementation,
+  onImplement,
+}: {
+  experiment: Experiment;
+  org: string;
+  implementation: ReturnType<typeof useImplementation>;
+  onImplement: () => void;
+}) {
+  const t = useT();
+  const { pr, stage } = implementation;
+  const number = pr?.number ?? 0;
+  const message =
+    stage === "none"
+      ? t("experiments.implementation.notDelegated")
+      : stage === "writing"
+        ? t("experiments.implementation.writing")
+        : stage === "merged"
+          ? t("experiments.implementation.merged", { number })
+          : stage === "ready"
+            ? t("experiments.implementation.ready", { number })
+            : t("experiments.implementation.deploying", { number });
+
+  return (
+    <Card className="flex-row flex-wrap items-center justify-between gap-3 p-4">
+      <div className="flex min-w-0 items-center gap-2.5">
+        {stage === "writing" || stage === "deploying" ? (
+          <Spinner size="2xs" />
+        ) : (
+          <CodeBrowser size={16} className="text-muted-foreground" />
+        )}
+        <span className="text-sm text-muted-foreground">{message}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {stage === "none" ? (
+          <Button variant="secondary" size="sm" onClick={onImplement}>
+            <CodeBrowser size={14} />
+            {t("experiments.implementation.delegate")}
+          </Button>
+        ) : (
+          <>
+            {pr && (
+              <Button variant="secondary" size="sm" asChild>
+                <a href={pr.url} target="_blank" rel="noopener noreferrer">
+                  <ArrowUpRight size={14} />
+                  {t("experiments.implementation.viewPr")}
+                </a>
+              </Button>
+            )}
+            {experiment.taskKey && (
+              <Button variant="secondary" size="sm" asChild>
+                <Link
+                  to="/$org/tasks/{-$taskKey}"
+                  params={{ org, taskKey: experiment.taskKey }}
+                >
+                  <MessageChatCircle size={14} />
+                  {t("experiments.implementation.openChat")}
+                </Link>
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function sameArms(a: ArmDraft[], b: ArmDraft[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -1057,6 +1180,7 @@ function ExperimentDetail({
 }) {
   const t = useT();
   const update = useUpdateExperiment(site);
+  const implementation = useImplementation(experiment);
   const lifecycle = useLifecycleLabel();
   const [primary, ...secondaryStatus] = useStatusActions()(experiment.status);
   const saved = toDrafts(experiment.variants);
@@ -1206,17 +1330,29 @@ function ExperimentDetail({
             onChange={setArms}
             structureEditable={experiment.status === "draft"}
           />
-          {baseUrl ? (
-            <CompareCard
-              baseUrl={baseUrl}
-              testKey={experiment.key}
-              arms={experiment.variants}
-            />
-          ) : (
+          <ImplementationCard
+            experiment={experiment}
+            org={org}
+            implementation={implementation}
+            onImplement={actions.onImplement}
+          />
+          {!baseUrl ? (
             <EmptyState
               title={t("experiments.preview.noUrlTitle")}
               description={t("experiments.preview.noUrlDesc")}
             />
+          ) : (
+            /* No deployment runs the treatment yet, so both sides would be the
+               same page — two identical frames read as "the test does nothing". */
+            implementation.stage !== "writing" &&
+            implementation.stage !== "deploying" && (
+              <CompareCard
+                baseUrl={baseUrl}
+                treatmentUrl={implementation.previewUrl}
+                testKey={experiment.key}
+                arms={experiment.variants}
+              />
+            )
           )}
         </Page.Container>
       </Page.Content>
@@ -1243,6 +1379,7 @@ function ReviewPanel({
   const t = useT();
   const create = useCreateExperiment(site);
   const implementLocal = useImplementExperimentLocal(site);
+  const implement = useImplementExperiment(site, { openCard: false });
   const suggest = useSuggestExperiment(site);
   const sync = useSyncExperimentPreviewLocal(site);
   const [confirming, setConfirming] = useState(false);
@@ -1310,6 +1447,10 @@ function ReviewPanel({
         onSuccess: (experiment) => {
           if (canImplement && !implementedInSource) {
             implementLocal.mutate(implementPayload(experiment.key));
+          }
+          // Creating starts the real code; the experiment exists either way.
+          if (canImplement) {
+            implement.mutate(experiment.key);
           }
           sync.mutate({
             key: experiment.key,
@@ -1524,7 +1665,7 @@ function ExperimentRow({
 
 type PendingConfirm = { kind: "delete" | "implement"; key: string } | null;
 
-export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
+function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const statusLabel = useStatusLabel();
   const entity = useVirtualMCP(virtualMcpId);
@@ -1749,11 +1890,25 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
         site={siteSlug}
         open={promptOpen}
         onOpenChange={setPromptOpen}
-        onGenerated={(suggestion) =>
+        onCreated={setOpenKey}
+        onManual={(suggestion) =>
           setReview({ open: true, initial: suggestion })
         }
       />
       {confirmDialog}
     </Page>
+  );
+}
+
+/**
+ * Picks which Experiments tab an org gets. `experiments_enabled` already
+ * decided the tab is reachable; this only chooses between the rebuilt
+ * experience and the one main shipped.
+ */
+export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
+  return useOrgFlag("experiments_v2_enabled") ? (
+    <ExperimentsTabV2 virtualMcpId={virtualMcpId} />
+  ) : (
+    <LegacyExperimentsTab virtualMcpId={virtualMcpId} />
   );
 }

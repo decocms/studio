@@ -4,6 +4,7 @@ import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { resolveTier } from "../../core/resolve-tier";
 import { retryGenerateObject } from "../blog/generate-object";
 import { assertOwnsSite } from "./ownership";
+import { assertExperimentsV2 } from "./v2-gate";
 
 const MAX_PROMPT_CHARS = 2_000;
 
@@ -82,6 +83,7 @@ export const EXPERIMENT_SUGGEST = defineTool({
     await ctx.access.check();
     const organization = requireOrganization(ctx);
     await assertOwnsSite(ctx, organization.id, input.site);
+    await assertExperimentsV2(ctx, organization.id);
 
     const tier = await resolveTier(ctx, "smart");
     const provider = await ctx.aiProviders.activate(
@@ -94,7 +96,7 @@ export const EXPERIMENT_SUGGEST = defineTool({
       schema: SuggestExperimentOutputSchema,
       system: `You turn a plain-language A/B test description into a structured proposal for this store's experiment tool.
 
-The tool this feeds resolves each visitor's arm client-side (a per-visitor traffic split, not a server-side content swap) — so weights are the actual live percentage of visitors, and each arm's description must be concrete enough for an engineer to implement it as a small conditional in the site's existing code. You are not writing the implementation, only specifying what each arm should do.
+The tool this feeds resolves each visitor's arm client-side (a per-visitor traffic split, not a server-side content swap) — so weights are the actual live percentage of visitors. Downstream, each arm is implemented against the deco-ab-testing SDK, which exposes the assignment as a \`data-ab-<key>\` attribute on <html>: most arms become a single CSS rule. Name the specific element each arm affects and the visible difference, so that rule can be written from your description alone. You are not writing the implementation, only specifying what each arm should do.
 
 RULES:
 - Reply in the same language the operator used in their prompt.

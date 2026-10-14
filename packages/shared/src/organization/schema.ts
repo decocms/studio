@@ -252,6 +252,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Per-site Experiments tab (A/B tests + variant results). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org.",
     ),
+  experiments_v2_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Rebuilt Experiments tab: describe the test in prose and an agent drafts it, plus inline editing and the implement/preview tools that write the split into the site. Off by default — an org without it keeps the table-and-dialog tab, which only records experiment metadata. Requires `experiments_enabled`, which still decides whether the tab exists at all.",
+    ),
   monitor_enabled: z
     .boolean()
     .optional()

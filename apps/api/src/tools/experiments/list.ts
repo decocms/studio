@@ -3,6 +3,7 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { experimentSchema } from "./schema";
 import { assertOwnsSite } from "./ownership";
+import { withTaskKeys } from "./task-key";
 
 export const EXPERIMENT_LIST = defineTool({
   name: "EXPERIMENT_LIST",
@@ -27,6 +28,13 @@ export const EXPERIMENT_LIST = defineTool({
       organization.id,
       input.site,
     );
-    return { experiments };
+    return {
+      experiments: await withTaskKeys(
+        ctx,
+        organization.id,
+        organization.slug,
+        experiments,
+      ),
+    };
   },
 });

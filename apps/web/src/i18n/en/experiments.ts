@@ -19,6 +19,7 @@ export const experiments = {
   "experiments.prompt.willGenerate": "We draft the name, variants and split.",
   "experiments.prompt.generate": "Generate",
   "experiments.prompt.generating": "Generating…",
+  "experiments.prompt.creating": "Creating and opening the PR…",
   "experiments.prompt.editManually": "Write it manually",
   "experiments.prompt.hypothesis": "Hypothesis",
   "experiments.prompt.regenerate": "Try a different prompt",
@@ -38,14 +39,28 @@ export const experiments = {
     "This project has no preview/production URL set, so variants can't be rendered here.",
   "experiments.preview.saveChanges": "Save changes",
   "experiments.preview.control": "Control",
+  "experiments.implementation.title": "Implementation",
+  "experiments.implementation.notDelegated":
+    "No code has been written for this experiment yet.",
+  "experiments.implementation.delegate": "Write the code",
+  "experiments.implementation.writing":
+    "The Super Agent is writing the code. It opens a pull request when it's done.",
+  "experiments.implementation.deploying":
+    "Pull request #{number} is open — waiting for its preview deploy to compare before and after.",
+  "experiments.implementation.ready":
+    "Comparing production (control) with pull request #{number}'s preview (treatment).",
+  "experiments.implementation.merged":
+    "Pull request #{number} is merged — the change is on the site itself.",
+  "experiments.implementation.openChat": "Open chat",
+  "experiments.implementation.viewPr": "View pull request",
   "experiments.preview.openPage": "Open page",
-  "experiments.confirm.title": 'Create "{key}" and proceed?',
+  "experiments.confirm.title": 'Create "{key}" and start implementing?',
   "experiments.confirm.withImplement":
-    "This will also write the useExperiment() hook and its gate directly into the local site's code — no sandbox, no PR. Best-effort: if it can't confidently find the right spot, it leaves the code untouched and you'll see that below.",
+    "The Super Agent starts writing the code on the site now and opens a PR — no further review before that PR. The experiment is created either way, even if implementation can't start (a site with no linked repository, for instance).",
   "experiments.confirm.withoutImplement":
     "No variant has a description to implement from, so this only creates the draft — nothing on the frontend changes yet.",
   "experiments.confirm.proceed": "Yes, create",
-  "experiments.confirm.proceedWithImplement": "Yes, create and implement",
+  "experiments.confirm.proceedWithImplement": "Create and implement",
   "experiments.action.delete": "Delete",
   "experiments.action.implement": "Open a PR with the code",
   "experiments.implementConfirm":
@@ -89,4 +104,31 @@ export const experiments = {
   "experiments.compare.openArm": "Open {arm} in a new tab",
   "experiments.prompt.shortcut": "⌘ Enter",
   "experiments.prompt.tryOne": "Or start from an idea",
+
+  // Read only by experiments-tab-legacy.tsx; both go when the flag does.
+  "experiments.subtitle":
+    "A/B tests for this site. The traffic split lives in the site's content; results come from analytics.",
+  "experiments.col.name": "Name",
+  "experiments.col.key": "Key",
+  "experiments.col.status": "Status",
+  "experiments.col.variants": "Variants",
+  "experiments.dialog.newTitle": "New experiment",
+  "experiments.legacy.dialog.key": "Matcher block name",
+  "experiments.dialog.variants": "Variants",
+  "experiments.dialog.weightSum": "Weights must sum to 100 (now {sum})",
+  "experiments.dialog.addVariant": "Add variant",
+  "experiments.action.back": "Back to list",
+  "experiments.results.title": "Results",
+  "experiments.results.unavailable":
+    "Analytics isn't configured for this deployment, so results are unavailable here.",
+  "experiments.results.noSiteData":
+    "No analytics traffic found for {site}. The site may not be sending analytics events yet, or its traffic is reported under another site.",
+  "experiments.results.empty": "No participants yet for this experiment.",
+  "experiments.results.control": "Control",
+  "experiments.results.variant": "Variant",
+  "experiments.results.visitors": "Visitors",
+  "experiments.results.participants": "Participants",
+  "experiments.results.sampleSize": "Target sample size",
+  "experiments.results.probBest": "Probability variant best",
+  "experiments.results.goal": "Goal",
 } as const;

@@ -24,6 +24,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { assertOwnsSite } from "./ownership";
+import { assertExperimentsV2 } from "./v2-gate";
 
 const VariantInput = z.object({
   id: z.string().min(1),
@@ -52,48 +53,61 @@ export const EXPERIMENT_PREVIEW_SYNC_LOCAL = defineTool({
     await ctx.access.check();
     const organization = requireOrganization(ctx);
     await assertOwnsSite(ctx, organization.id, input.site);
+    await assertExperimentsV2(ctx, organization.id);
 
+    let synced = false;
+
+    // A site reading its manifest from the Worker has no file to gate on.
     const manifestPath = process.env.AB_TESTING_LOCAL_MANIFEST_PATH;
-    if (!manifestPath) return { synced: false };
-
-    let manifest: Record<string, unknown> = {};
-    try {
-      manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    } catch {
-      // Missing or invalid file — start fresh rather than fail the preview.
+    if (manifestPath) {
+      let manifest: Record<string, unknown> = {};
+      try {
+        manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      } catch {
+        // Missing or invalid file — start fresh rather than fail the preview.
+      }
+      manifest[input.key] = {
+        variants: input.variants.map((v) => v.id),
+        active: true,
+      };
+      await writeFile(
+        manifestPath,
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        "utf8",
+      );
+      synced = true;
     }
-    manifest[input.key] = {
-      variants: input.variants.map((v) => v.id),
-      active: true,
-    };
-    await writeFile(
-      manifestPath,
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      "utf8",
-    );
 
     const adminUrl = process.env.AB_TESTING_LOCAL_ADMIN_URL;
     const adminToken = process.env.AB_TESTING_LOCAL_ADMIN_TOKEN;
     const host = process.env.AB_TESTING_LOCAL_HOST;
     if (adminUrl && adminToken && host) {
       try {
-        await fetch(`${adminUrl}/tests?host=${encodeURIComponent(host)}`, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-            "Content-Type": "application/json",
+        const res = await fetch(
+          `${adminUrl}/tests?host=${encodeURIComponent(host)}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${adminToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: input.key,
+              enabled: true,
+              variants: input.variants,
+            }),
           },
-          body: JSON.stringify({
-            name: input.key,
-            enabled: true,
-            variants: input.variants,
-          }),
-        });
+        );
+        // A silent 4xx here renders control under a forced-arm URL.
+        if (res.ok) {
+          synced = true;
+        } else {
+          console.warn(
+            `[EXPERIMENT_PREVIEW_SYNC_LOCAL] admin worker PUT ${res.status}:`,
+            await res.text().catch(() => ""),
+          );
+        }
       } catch (err) {
-        // Preview still works via the manifest gate for tests the SDK
-        // doesn't need to resolve a forced arm for (inactive/unknown short-
-        // circuit) — only the forced-variant path needs this to have
-        // succeeded, so don't fail the whole preview over it.
         console.warn(
           "[EXPERIMENT_PREVIEW_SYNC_LOCAL] admin worker PUT failed:",
           err,
@@ -101,6 +115,6 @@ export const EXPERIMENT_PREVIEW_SYNC_LOCAL = defineTool({
       }
     }
 
-    return { synced: true };
+    return { synced };
   },
 });

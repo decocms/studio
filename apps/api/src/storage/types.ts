@@ -2360,6 +2360,9 @@ export interface ExperimentTable {
     Date | string | null
   >;
   ended_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  /** The task board card the frontend implementation was delegated to, so the
+   *  tab can follow its pull request and deploy preview. NULL until delegated. */
+  task_board_item_id: string | null;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -2376,6 +2379,8 @@ export interface Experiment {
   variants: ExperimentVariant[];
   startedAt: string | null;
   endedAt: string | null;
+  /** @see ExperimentTable.task_board_item_id */
+  taskBoardItemId: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

@@ -1,8 +1,5 @@
 /**
- * Experiment Tools — per-site A/B experiment management (metadata). Traffic
- * assignment happens client-side, resolved by `useExperiment` against the
- * deco-ab-testing Worker (see `@decocms/blocks`); these tools own the
- * definition + tracking record the Studio Experiments tab reads.
+ * Experiment Tools — metadata only; the deco-ab-testing SDK owns assignment.
  *
  * Publish (writing the site's `.deco/TestesAB.json` manifest and registering
  * the test with the Worker's admin API) is not yet wired here — these tools

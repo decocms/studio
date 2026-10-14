@@ -22,6 +22,7 @@ export const experiments = {
     "A gente rascunha o nome, as variantes e o split.",
   "experiments.prompt.generate": "Gerar",
   "experiments.prompt.generating": "Gerando…",
+  "experiments.prompt.creating": "Criando e abrindo a PR…",
   "experiments.prompt.editManually": "Escrever manualmente",
   "experiments.prompt.hypothesis": "Hipótese",
   "experiments.prompt.regenerate": "Tentar outro prompt",
@@ -41,14 +42,28 @@ export const experiments = {
     "Esse projeto não tem URL de preview/produção configurada, então não dá pra renderizar as variantes aqui.",
   "experiments.preview.saveChanges": "Salvar alterações",
   "experiments.preview.control": "Controle",
+  "experiments.implementation.title": "Implementação",
+  "experiments.implementation.notDelegated":
+    "Ainda não foi escrito código para este experimento.",
+  "experiments.implementation.delegate": "Escrever o código",
+  "experiments.implementation.writing":
+    "O Super Agent está escrevendo o código. Ele abre um pull request quando terminar.",
+  "experiments.implementation.deploying":
+    "O pull request #{number} está aberto — esperando o deploy de preview para comparar antes e depois.",
+  "experiments.implementation.ready":
+    "Comparando a produção (controle) com o preview do pull request #{number} (tratamento).",
+  "experiments.implementation.merged":
+    "O pull request #{number} foi mergeado — a mudança já está no site.",
+  "experiments.implementation.openChat": "Abrir chat",
+  "experiments.implementation.viewPr": "Ver pull request",
   "experiments.preview.openPage": "Abrir página",
-  "experiments.confirm.title": 'Criar "{key}" e prosseguir?',
+  "experiments.confirm.title": 'Criar "{key}" e começar a implementar?',
   "experiments.confirm.withImplement":
-    "Isso também escreve o hook useExperiment() e o gate direto no código do site local — sem sandbox, sem PR. Best-effort: se não achar o lugar certo com confiança, não mexe em nada e isso aparece abaixo.",
+    "O Super Agent começa agora a escrever o código no site e abre um PR — sem revisão antes desse PR. O experimento é criado de qualquer forma, mesmo que a implementação não comece (site sem repositório conectado, por exemplo).",
   "experiments.confirm.withoutImplement":
     "Nenhuma variante tem descrição pra implementar, então isso só cria o rascunho — nada muda no front ainda.",
   "experiments.confirm.proceed": "Sim, criar",
-  "experiments.confirm.proceedWithImplement": "Sim, criar e implementar",
+  "experiments.confirm.proceedWithImplement": "Criar e implementar",
   "experiments.action.delete": "Excluir",
   "experiments.action.implement": "Abrir PR com o código",
   "experiments.implementConfirm":
@@ -92,4 +107,31 @@ export const experiments = {
   "experiments.compare.openArm": "Abrir {arm} em nova aba",
   "experiments.prompt.shortcut": "⌘ Enter",
   "experiments.prompt.tryOne": "Ou comece por uma ideia",
+
+  // Read only by experiments-tab-legacy.tsx; both go when the flag does.
+  "experiments.subtitle":
+    "Testes A/B deste site. O sorteio de tráfego vive no conteúdo do site; os resultados vêm do analytics.",
+  "experiments.col.name": "Nome",
+  "experiments.col.key": "Chave",
+  "experiments.col.status": "Status",
+  "experiments.col.variants": "Variantes",
+  "experiments.dialog.newTitle": "Novo experimento",
+  "experiments.legacy.dialog.key": "Nome do bloco matcher",
+  "experiments.dialog.variants": "Variantes",
+  "experiments.dialog.weightSum": "Os pesos devem somar 100 (agora {sum})",
+  "experiments.dialog.addVariant": "Adicionar variante",
+  "experiments.action.back": "Voltar para a lista",
+  "experiments.results.title": "Resultados",
+  "experiments.results.unavailable":
+    "O analytics não está configurado neste ambiente, então os resultados não aparecem aqui.",
+  "experiments.results.noSiteData":
+    "Nenhum tráfego de analytics encontrado para {site}. O site pode ainda não estar enviando eventos de analytics, ou o tráfego dele é registrado sob outro site.",
+  "experiments.results.empty": "Ainda sem participantes neste experimento.",
+  "experiments.results.control": "Controle",
+  "experiments.results.variant": "Variante",
+  "experiments.results.visitors": "Visitantes",
+  "experiments.results.participants": "Participantes",
+  "experiments.results.sampleSize": "Amostra alvo",
+  "experiments.results.probBest": "Probabilidade da variante ser melhor",
+  "experiments.results.goal": "Objetivo",
 } satisfies Record<keyof typeof enExperiments, string>;
