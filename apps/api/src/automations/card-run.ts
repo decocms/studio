@@ -87,6 +87,16 @@ export type CardRunOutcome =
   | { threadId: string }
   | { skipped: CardRunSkip; error?: RunError };
 
+/** A run already going on this card — a second dispatch would collide with
+ *  it (same branch, same thread). */
+export function hasLiveThread(item: TaskBoardItem): boolean {
+  return item.threads.some(
+    (t) =>
+      t.hasMessages &&
+      (t.status === "in_progress" || t.status === "requires_action"),
+  );
+}
+
 /**
  * Run `automation` on the target card. It skips a card that left the column
  * since, one with a run still going (runs on a card take turns), and one a
@@ -112,15 +122,7 @@ export async function runAutomationOnCard(
     return await runManuallyOnCard(ctx, automation, item, triggerId, target);
   }
   if (item.status !== target.columnKey) return { skipped: "moved_on" };
-  if (
-    item.threads.some(
-      (t) =>
-        t.hasMessages &&
-        (t.status === "in_progress" || t.status === "requires_action"),
-    )
-  ) {
-    return { skipped: "busy" };
-  }
+  if (hasLiveThread(item)) return { skipped: "busy" };
   if (item.assigneeId && item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) {
     return { skipped: "owned" };
   }
@@ -193,7 +195,11 @@ export async function runAutomationOnCard(
 }
 
 /** A run someone asked for on a card the caller already put in place: the
- *  card is the agent's and in its column, so no gate or claim applies. */
+ *  card is the agent's and in its column, so no column or ownership gate
+ *  applies. The live-thread check still does — the caller's own claim (or
+ *  the superseded-run cleanup before it) only covers its own race; a
+ *  resubmitted request isn't deduped by `eventKey`, which is random per
+ *  call, so without this a double-click dispatches two runs on one card. */
 async function runManuallyOnCard(
   ctx: StudioContext,
   automation: Automation,
@@ -201,6 +207,7 @@ async function runManuallyOnCard(
   triggerId: string,
   target: CardTarget,
 ): Promise<CardRunOutcome> {
+  if (hasLiveThread(item)) return { skipped: "busy" };
   const fence = cardFireFence(triggerId, target.eventKey);
   try {
     await enqueueSuperAgentForTask(ctx, item, {
