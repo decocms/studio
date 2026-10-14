@@ -582,7 +582,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         : null;
     }
 
-    if (data.url_slug !== undefined) {
+    if (data.url_slug) {
       await changeUrlSlug(this.db, id, data.url_slug);
     }
 

@@ -997,8 +997,8 @@ export type VirtualMCPCreateData = z.infer<typeof VirtualMCPCreateDataSchema>;
  */
 export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
-  url_slug: UrlSlugSchema.optional().describe(
-    "New URL slug. The old one keeps redirecting. Renaming does not change it.",
+  url_slug: UrlSlugSchema.nullish().describe(
+    "New URL slug. The old one keeps redirecting. Renaming does not change it. null keeps the current slug.",
   ),
   description: z
     .string()

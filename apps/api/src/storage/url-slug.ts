@@ -7,7 +7,9 @@ import { type Kysely, sql } from "kysely";
 import type { Database } from "./types";
 
 const URL_SLUG_INDEX = "idx_connections_org_url_slug";
-const ALLOCATE_ATTEMPTS = 5;
+// Suffixing truncates `base`, but every candidate up to `-99999999999999`
+// still starts with this many of its characters.
+const CANDIDATE_PREFIX = URL_SLUG_MAX - 16;
 
 export class UrlSlugTakenError extends Error {
   constructor(slug: string) {
@@ -29,7 +31,7 @@ async function nextFreeUrlSlug(
   organizationId: string,
   base: string,
 ): Promise<string> {
-  const prefix = base.slice(0, URL_SLUG_MAX - 4);
+  const prefix = base.slice(0, CANDIDATE_PREFIX);
   const pattern = `${prefix.replace(/[%_\\]/g, "\\$&")}%`;
   const [current, aliases] = await Promise.all([
     db
@@ -53,7 +55,9 @@ async function nextFreeUrlSlug(
 
 /**
  * Run `insert` with a free slug derived from `base`, retrying when a
- * concurrent insert claims the same slug first.
+ * concurrent insert claims the same slug first. Each conflict means another
+ * row took that slug, so the next attempt picks a later one; getting the
+ * same slug back means no progress and fails.
  */
 export async function withAllocatedUrlSlug<T>(
   db: Kysely<Database>,
@@ -61,14 +65,17 @@ export async function withAllocatedUrlSlug<T>(
   base: string,
   insert: (urlSlug: string) => Promise<T>,
 ): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
+  let conflicted: string | undefined;
+  for (;;) {
     const urlSlug = await nextFreeUrlSlug(db, organizationId, base);
+    if (urlSlug === conflicted) {
+      throw new UrlSlugTakenError(urlSlug);
+    }
     try {
       return await insert(urlSlug);
     } catch (error) {
-      if (!isUrlSlugConflict(error) || attempt >= ALLOCATE_ATTEMPTS) {
-        throw error;
-      }
+      if (!isUrlSlugConflict(error)) throw error;
+      conflicted = urlSlug;
     }
   }
 }

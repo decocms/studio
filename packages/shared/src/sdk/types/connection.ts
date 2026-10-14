@@ -227,7 +227,8 @@ export type ConnectionCreateData = z.infer<typeof ConnectionCreateDataSchema>;
  */
 export const ConnectionUpdateDataSchema =
   ConnectionEntitySchema.partial().extend({
-    url_slug: UrlSlugSchema.optional(),
+    // null keeps the current slug, so a fetched entity can be sent back as is.
+    url_slug: UrlSlugSchema.nullish(),
   });
 
 export type ConnectionUpdateData = z.infer<typeof ConnectionUpdateDataSchema>;

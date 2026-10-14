@@ -10,8 +10,8 @@ import { type Kysely, sql } from "kysely";
  *
  * Backfill derives the slug from the title, oldest row first, suffixing
  * `-2`, `-3`… on collision. Rows written by older code while this deploys
- * keep a NULL slug, which the unique index permits and the UI falls back to
- * the id for.
+ * keep a NULL slug, which the unique index permits; a migration in a later
+ * release reruns `backfillUrlSlugs` for them.
  *
  * `connection_slug_aliases` keeps slugs a row used to have, so links made
  * before a slug edit still resolve. Aliases go with their row.
@@ -58,33 +58,48 @@ type Row = {
   organization_id: string;
   title: string | null;
   connection_type: string;
+  url_slug: string | null;
 };
 
-export async function up(db: Kysely<unknown>): Promise<void> {
-  await sql`ALTER TABLE connections ADD COLUMN url_slug text`.execute(db);
-
+/**
+ * Give every row without a slug one, treating current slugs and aliases as
+ * taken. Idempotent, so a later migration reruns it for rows that pods on the
+ * previous release inserted while this one rolled out.
+ */
+export async function backfillUrlSlugs(db: Kysely<unknown>): Promise<void> {
   const { rows } = await sql<Row>`
-    SELECT id, organization_id, title, connection_type
+    SELECT id, organization_id, title, connection_type, url_slug
     FROM connections
     ORDER BY organization_id, created_at, id
   `.execute(db);
+  const { rows: aliases } = await sql<{
+    organization_id: string;
+    slug: string;
+  }>`SELECT organization_id, slug FROM connection_slug_aliases`.execute(db);
+
+  const taken = new Map<string, Set<string>>();
+  const takenIn = (org: string) => {
+    let set = taken.get(org);
+    if (!set) taken.set(org, (set = new Set()));
+    return set;
+  };
+  for (const row of rows) {
+    if (row.url_slug) takenIn(row.organization_id).add(row.url_slug);
+  }
+  for (const alias of aliases) takenIn(alias.organization_id).add(alias.slug);
 
   const assigned: Array<{ id: string; slug: string }> = [];
-  let org: string | null = null;
-  let taken = new Set<string>();
   for (const row of rows) {
-    if (row.organization_id !== org) {
-      org = row.organization_id;
-      taken = new Set();
-    }
+    if (row.url_slug) continue;
+    const orgTaken = takenIn(row.organization_id);
     const root = base(
       row.title,
       row.connection_type === "VIRTUAL" ? "project" : "app",
     );
     let attempt = 1;
-    while (taken.has(candidate(root, attempt))) attempt++;
+    while (orgTaken.has(candidate(root, attempt))) attempt++;
     const slug = candidate(root, attempt);
-    taken.add(slug);
+    orgTaken.add(slug);
     assigned.push({ id: row.id, slug });
   }
 
@@ -97,14 +112,13 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         ${sql.val(chunk.map((a) => a.id))}::text[],
         ${sql.val(chunk.map((a) => a.slug))}::text[]
       ) AS v(id, slug)
-      WHERE c.id = v.id
+      WHERE c.id = v.id AND c.url_slug IS NULL
     `.execute(db);
   }
+}
 
-  await sql`
-    CREATE UNIQUE INDEX idx_connections_org_url_slug
-      ON connections (organization_id, url_slug)
-  `.execute(db);
+export async function up(db: Kysely<unknown>): Promise<void> {
+  await sql`ALTER TABLE connections ADD COLUMN url_slug text`.execute(db);
 
   await sql`
     CREATE TABLE connection_slug_aliases (
@@ -119,6 +133,13 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
     CREATE INDEX idx_connection_slug_aliases_connection
       ON connection_slug_aliases (connection_id)
+  `.execute(db);
+
+  await backfillUrlSlugs(db);
+
+  await sql`
+    CREATE UNIQUE INDEX idx_connections_org_url_slug
+      ON connections (organization_id, url_slug)
   `.execute(db);
 }
 

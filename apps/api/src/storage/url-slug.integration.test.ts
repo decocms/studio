@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import type { Kysely } from "kysely";
+import { backfillUrlSlugs } from "../../migrations/242-connection-url-slug";
 import type { StudioDatabase } from "../database";
 import {
   closeTestPgDatabase,
@@ -64,10 +66,10 @@ describe("connection url_slug", () => {
 
   it("allocates distinct slugs for concurrent creates", async () => {
     const created = await Promise.all(
-      Array.from({ length: 4 }, () => createConnection("org_123", "Rituals")),
+      Array.from({ length: 12 }, () => createConnection("org_123", "Rituals")),
     );
     const slugs = created.map((c) => c.url_slug);
-    expect(new Set(slugs).size).toBe(4);
+    expect(new Set(slugs).size).toBe(12);
     expect(slugs).toContain("rituals");
   });
 
@@ -127,6 +129,45 @@ describe("connection url_slug", () => {
         connections.update(a.id, { url_slug: bad }),
       ).rejects.toThrow();
     }
+  });
+
+  it("keeps the slug when an update sends it back as null", async () => {
+    const project = await createProject("org_123", "Null Round Trip");
+    const updated = await projects.update(project.id, "user_123", {
+      title: "Null Round Trip Renamed",
+      url_slug: null,
+    });
+    expect(updated.url_slug).toBe("null-round-trip");
+    const connection = await createConnection("org_123", "Null Conn");
+    const updatedConnection = await connections.update(connection.id, {
+      url_slug: null,
+    });
+    expect(updatedConnection.url_slug).toBe("null-conn");
+  });
+
+  it("backfills rows inserted without a slug, avoiding current slugs and aliases", async () => {
+    const existing = await createProject("org_123", "Window Row");
+    await projects.update(existing.id, "user_123", {
+      url_slug: "window-row-moved",
+    });
+    await createProject("org_123", "Window Row");
+    const orphan = await createProject("org_123", "Window Row");
+    await database.db
+      .updateTable("connections")
+      .set({ url_slug: null })
+      .where("id", "=", orphan.id)
+      .execute();
+
+    await backfillUrlSlugs(database.db as unknown as Kysely<unknown>);
+    await backfillUrlSlugs(database.db as unknown as Kysely<unknown>);
+
+    // "window-row" is an alias and "window-row-2" the second row's slug.
+    const [refilled, kept] = await Promise.all([
+      projects.findById(orphan.id),
+      projects.findById(existing.id),
+    ]);
+    expect(refilled?.url_slug).toBe("window-row-3");
+    expect(kept?.url_slug).toBe("window-row-moved");
   });
 
   it("deletes aliases with their row", async () => {
