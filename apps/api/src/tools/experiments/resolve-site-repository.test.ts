@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
-import { resolveSiteRepositoryId } from "./resolve-site-repository";
+import {
+  resolveRepositoryIdForProject,
+  resolveSiteRepositoryId,
+} from "./resolve-site-repository";
 
 const repository = {
   url: "https://github.com/example-org/example-site",
@@ -105,5 +108,27 @@ describe("resolveSiteRepositoryId", () => {
     await expect(
       resolveSiteRepositoryId(ctx, "org-1", "example-site"),
     ).rejects.toThrow("Site not found in organization");
+  });
+});
+
+describe("resolveRepositoryIdForProject", () => {
+  it("resolves the binding's repository row for an already-resolved project", async () => {
+    const ctx = contextWith([], {
+      byId: { "repo-1": "repo-1" },
+    });
+
+    await expect(
+      resolveRepositoryIdForProject(ctx, "org-1", {
+        metadata: { repository: { ...repository, repositoryId: "repo-1" } },
+      }),
+    ).resolves.toBe("repo-1");
+  });
+
+  it("returns null for a project with no repository binding", async () => {
+    const ctx = contextWith([]);
+
+    await expect(
+      resolveRepositoryIdForProject(ctx, "org-1", { metadata: null }),
+    ).resolves.toBeNull();
   });
 });
