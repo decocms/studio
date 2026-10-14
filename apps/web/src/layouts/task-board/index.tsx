@@ -261,8 +261,10 @@ const META =
   "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
 
 /** A lane's own controls: revealed on hover, focus, or an open menu. */
+/** Shown on lane hover, and on the lane a drag is over: the dragged card
+ *  holds the pointer then, so the lane itself never reads as hovered. */
 const LANE_ACTION =
-  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -2748,6 +2750,7 @@ function Lane({
         ref={setNodeRef}
         data-lane={status}
         data-lane-collapsed=""
+        data-drop-target={isTarget || undefined}
         className="group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1"
       >
         <div
@@ -2796,6 +2799,7 @@ function Lane({
       // Stable hook for e2e drag specs — lane columns are otherwise only
       // identifiable by their localized label or utility classes.
       data-lane={status}
+      data-drop-target={isTarget || undefined}
       className={cn(
         // min-h-0: a grid item's minimum height is its content, so without it
         // every lane grows to the longest one instead of scrolling on its own.

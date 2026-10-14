@@ -2,7 +2,8 @@
  * Dragging a card over a lane says, before the drop, whether the lane's
  * automations will pick it up: an unowned card over In Progress names the
  * built-in Implementer, and a card a person owns, or a lane with nothing on
- * it, says nothing.
+ * it, says nothing. The lane under the drag also shows its header actions, as
+ * on a plain hover.
  *
  * A real pointer drag (dnd-kit's PointerSensor ignores Playwright's
  * `dragTo`), held over the lane so the hint can be read, then cancelled.
@@ -66,6 +67,11 @@ test.describe("task board drop hint", () => {
 
     await holdOver(page, unowned, inProgress);
     await expect(hint).toHaveText("Implementer will pick this card up");
+    // The lane's actions show as on a plain hover, though the dragged card
+    // holds the pointer.
+    await expect(
+      inProgress.getByRole("button", { name: "New task in In Progress" }),
+    ).toHaveCSS("opacity", "1");
     // Nothing runs on QA.
     await page.mouse.move(
       ...(await centerOf(page.locator('[data-lane="qa"]'))),
