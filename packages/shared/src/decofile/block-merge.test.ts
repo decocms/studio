@@ -78,3 +78,62 @@ describe("mergeBlockJson", () => {
     });
   });
 });
+
+describe("mergeBlockJson conflict reporting", () => {
+  it("reports nothing when the two sides changed different values", () => {
+    const conflicts: string[] = [];
+    mergeBlockJson(
+      { a: 1, b: 1 },
+      { a: 2, b: 1 },
+      { a: 1, b: 2 },
+      { conflicts },
+    );
+    expect(conflicts).toEqual([]);
+  });
+
+  it("names each value both sides changed, as a JSON pointer", () => {
+    const conflicts: string[] = [];
+    mergeBlockJson(
+      { title: "a", slides: [{ "a/b": 1 }] },
+      { title: "mine", slides: [{ "a/b": 2 }] },
+      { title: "theirs", slides: [{ "a/b": 3 }] },
+      { conflicts },
+    );
+    expect(conflicts).toEqual(["/title", "/slides"]);
+  });
+
+  it("keeps the stored value where asked to, and the rest of the edit", () => {
+    expect(
+      mergeBlockJson(
+        { title: "a", subtitle: "a" },
+        { title: "mine", subtitle: "mine" },
+        { title: "theirs", subtitle: "a" },
+        { prefer: "theirs" },
+      ),
+    ).toEqual({ title: "theirs", subtitle: "mine" });
+  });
+
+  it("keeps the preferred side's whole array when positions collide", () => {
+    const conflicts: string[] = [];
+    expect(
+      mergeBlockJson(
+        { menu: ["a", "b"] },
+        { menu: ["a2", "b"] },
+        { menu: ["b", "a"] },
+        { prefer: "theirs", conflicts },
+      ),
+    ).toEqual({ menu: ["b", "a"] });
+    expect(conflicts).toEqual(["/menu"]);
+  });
+
+  it("escapes slashes and tildes in keys", () => {
+    const conflicts: string[] = [];
+    mergeBlockJson(
+      { "x/y~z": 1 },
+      { "x/y~z": 2 },
+      { "x/y~z": 3 },
+      { conflicts },
+    );
+    expect(conflicts).toEqual(["/x~1y~0z"]);
+  });
+});

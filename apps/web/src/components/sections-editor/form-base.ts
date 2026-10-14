@@ -87,3 +87,33 @@ export function formSourceMovedOn(
     current !== null && canonicalBlockJson(base) !== canonicalBlockJson(current)
   );
 }
+
+/**
+ * True when the stored value at the form's position is a different kind of
+ * section than the one the form opened. Its edits can't be applied there.
+ */
+export function sectionTypeChanged(
+  base: Record<string, unknown>,
+  stored: Record<string, unknown>,
+): boolean {
+  return base.__resolveType !== stored.__resolveType;
+}
+
+/**
+ * Where the section the form opened sits now, when one was inserted, removed,
+ * or moved above it: the position whose stored value is exactly what the form
+ * started from. `-1` when it is not found unchanged anywhere else.
+ */
+export function findSectionMovedTo(
+  base: Record<string, unknown>,
+  sections: Array<Record<string, unknown> | null>,
+  formIndex: number,
+): number {
+  const started = canonicalBlockJson(base);
+  return sections.findIndex(
+    (section, i) =>
+      i !== formIndex &&
+      section !== null &&
+      canonicalBlockJson(section) === started,
+  );
+}

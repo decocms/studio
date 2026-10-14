@@ -21,4 +21,4 @@ export {
   SECRET_LOADER_RESOLVE_TYPE,
 } from "./secret";
 export { canonicalBlockJson, decoBlockFingerprint } from "./fingerprint";
-export { mergeBlockJson } from "./block-merge";
+export { mergeBlockJson, type BlockMergeOptions } from "./block-merge";

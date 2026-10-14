@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   formSourceMovedOn,
+  sectionTypeChanged,
+  findSectionMovedTo,
   sectionFormSource,
   trackFormChange,
 } from "./form-base";
@@ -132,5 +134,34 @@ describe("sectionFormSource", () => {
 
   it("returns null for a section that is not there", () => {
     expect(sectionFormSource(undefined, undefined, 0, {})).toBeNull();
+  });
+});
+
+describe("sectionTypeChanged", () => {
+  const hero = { __resolveType: "site/sections/Hero.tsx", title: "a" };
+
+  it("is false for the same section edited elsewhere", () => {
+    expect(sectionTypeChanged(hero, { ...hero, title: "b" })).toBe(false);
+  });
+
+  it("is true when another type now sits at the form's position", () => {
+    expect(
+      sectionTypeChanged(hero, { __resolveType: "site/sections/Banner.tsx" }),
+    ).toBe(true);
+  });
+});
+
+describe("findSectionMovedTo", () => {
+  const hero = { __resolveType: "site/sections/Hero.tsx", title: "a" };
+  const inserted = { __resolveType: "site/sections/Hero.tsx", title: "new" };
+
+  it("finds the section the form opened at its new position", () => {
+    expect(findSectionMovedTo(hero, [inserted, hero], 0)).toBe(1);
+  });
+
+  it("ignores the form's own position and edited copies", () => {
+    expect(findSectionMovedTo(hero, [hero, { ...hero, title: "b" }], 0)).toBe(
+      -1,
+    );
   });
 });

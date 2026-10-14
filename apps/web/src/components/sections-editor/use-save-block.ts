@@ -7,6 +7,7 @@ import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import {
   decoBlockFingerprint,
+  mergeBlockJson,
   sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -24,6 +25,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
+import { describeConflictFields } from "./conflict-fields";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -37,6 +39,8 @@ interface UseSaveBlockParams {
 /** The block a write was built from; `value: undefined` when there was none. */
 interface SaveBlockBase {
   value: unknown;
+  /** Taken from the cache by default rather than handed in by the caller. */
+  fromCache?: boolean;
 }
 
 interface SaveBlockVariables {
@@ -49,8 +53,15 @@ interface SaveBlockVariables {
    * block at call time, which is right for writes derived from the cache. An
    * editor that holds its own copy, like an open form, must pass the copy it
    * started from.
+   *
+   * When the server refuses a write built from the cache, the save re-reads
+   * the block and replays this edit on top of it, as long as the two changed
+   * different values; otherwise it fails naming the values both changed. A
+   * caller that resolves conflicts itself turns that off with
+   * `rebaseOnConflict: false`.
    */
   base?: SaveBlockBase;
+  rebaseOnConflict?: boolean;
 }
 
 async function blockExpectation(
@@ -98,30 +109,79 @@ export function useSaveBlock({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
-    mutationFn: async ({ blockKey, data, base }: SaveBlockVariables) => {
+    mutationFn: async ({
+      blockKey,
+      data,
+      base,
+      rebaseOnConflict = true,
+    }: SaveBlockVariables) => {
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };
       if (fastPreviewActive) {
-        const expect = await blockExpectation(blockKey, base);
+        const write = async (
+          value: unknown,
+          from: SaveBlockBase | undefined,
+        ) => {
+          const expect = await blockExpectation(blockKey, from);
+          return patchDecofile(
+            { orgSlug, virtualMcpId, branch },
+            { set: { [blockKey]: value }, ...(expect ? { expect } : {}) },
+          );
+        };
+        let written = data;
         let draft;
         try {
-          draft = await patchDecofile(
-            { orgSlug, virtualMcpId, branch },
-            { set: { [blockKey]: data }, ...(expect ? { expect } : {}) },
-          );
+          draft = await write(data, base);
         } catch (err) {
           if (!(err instanceof BlockConflictError)) throw err;
-          // Re-read before failing, so whatever reacts to the error sees the
-          // branch's current copy rather than the one this edit was built on.
+          // Re-read before anything else, so whatever reacts to the outcome
+          // sees the branch's current copy rather than the one this edit was
+          // built on.
           await queryClient.invalidateQueries({
             queryKey: KEYS.decofile(cacheKey),
           });
-          throw new BlockConflictError(
-            err.blocks,
-            t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
-          );
+          const stored = queryClient.getQueryData<Record<string, unknown>>(
+            KEYS.decofile(cacheKey),
+          )?.[blockKey];
+          const fields: string[] = [];
+          const rebased =
+            rebaseOnConflict && base?.fromCache
+              ? mergeBlockJson(base.value, data, stored, {
+                  prefer: "theirs",
+                  conflicts: fields,
+                })
+              : undefined;
+          if (rebased === undefined || fields.length > 0) {
+            throw new BlockConflictError(
+              err.blocks,
+              fields.length > 0
+                ? t(
+                    "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere",
+                    {
+                      fields: describeConflictFields(fields),
+                    },
+                  )
+                : t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+              fields,
+            );
+          }
+          // The two edits touched different values: the result is the same as
+          // if this one had been made after the other.
+          written = sanitizeSecretsForPersistence(rebased);
+          try {
+            draft = await write(written, { value: stored });
+          } catch (retryErr) {
+            if (!(retryErr instanceof BlockConflictError)) throw retryErr;
+            await queryClient.invalidateQueries({
+              queryKey: KEYS.decofile(cacheKey),
+            });
+            throw new BlockConflictError(
+              retryErr.blocks,
+              t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+            );
+          }
         }
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
         /**
@@ -142,7 +202,7 @@ export function useSaveBlock({
             threadId,
           }),
         });
-        return draft;
+        return { ...draft, written };
       }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const content = JSON.stringify(data, null, 2);
@@ -189,12 +249,17 @@ export function useSaveBlock({
         },
       );
     },
-    onSuccess: (_result, { blockKey, data }) => {
+    onSuccess: (result, { blockKey, data }) => {
+      // A save replayed on a newer copy stored more than this edit's `data`.
+      const stored =
+        result && typeof result === "object" && "written" in result
+          ? result.written
+          : data;
       queryClient.setQueryData(
         KEYS.decofile(cacheKey),
         (current: Record<string, unknown> | undefined) => ({
           ...(current ?? {}),
-          [blockKey]: data,
+          [blockKey]: stored,
         }),
       );
     },
@@ -206,7 +271,10 @@ export function useSaveBlock({
       KEYS.decofile(cacheKey),
     );
     return cached
-      ? { ...variables, base: { value: cached[variables.blockKey] } }
+      ? {
+          ...variables,
+          base: { value: cached[variables.blockKey], fromCache: true },
+        }
       : variables;
   };
 

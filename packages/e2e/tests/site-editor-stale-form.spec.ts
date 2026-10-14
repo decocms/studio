@@ -6,7 +6,10 @@
  * published to the branch, a sync moved it), saving that copy silently put
  * the old values back. The save now names the version it was made against;
  * the server refuses a stale one, and the editor applies the form's edits on
- * top of the stored version, so both editors' changes are kept.
+ * top of the stored version: edits to different values are both kept, a value
+ * both changed keeps the stored one (and the user is told), a section pushed
+ * to another position is followed there, and a page save outside the form is
+ * replayed on the fresh page.
  *
  * Wire-contract strings (labels, toast copy) are inlined on purpose — this
  * suite owns its contract (see ban-e2e-app-imports).
@@ -25,6 +28,7 @@ import { expect, test } from "../fixtures/test";
 test.use({ newBlocksEditor: true });
 
 const MERGED = "This block was updated while you were editing";
+const KEPT_STORED = "Changed while you were editing: headline.";
 
 const hero = {
   __resolveType: "site/sections/HeroSlideShow.tsx",
@@ -68,7 +72,8 @@ const meta = {
   },
 };
 
-async function openEditor(
+/** Seed a project whose Home page holds `homeSection`, and open the Site Editor on `branch`. */
+async function loadEditor(
   page: Page,
   orgSlug: string,
   previewServerUrl: string,
@@ -115,6 +120,25 @@ async function openEditor(
     `/${orgSlug}/projects/${project.vmcpId}/site-editor?thread=${thread.id}&sidepanel=false`,
   );
   const blocks = page.getByTestId("blocks-panel");
+  const url = `/api/${orgSlug}/decofile/${project.vmcpId}/${branch}`;
+  return { blocks, url, vmcpId: project.vmcpId };
+}
+
+/** {@link loadEditor}, then open the Home page's hero section form. */
+async function openEditor(
+  page: Page,
+  orgSlug: string,
+  previewServerUrl: string,
+  homeSection: unknown,
+  branch = "main",
+) {
+  const { blocks, url, vmcpId } = await loadEditor(
+    page,
+    orgSlug,
+    previewServerUrl,
+    homeSection,
+    branch,
+  );
   await blocks
     .getByRole("button", { name: /HeroSlideShow|SharedHero/ })
     .first()
@@ -127,8 +151,8 @@ async function openEditor(
   return {
     blocks,
     headline,
-    vmcpId: project.vmcpId,
-    url: `/api/${orgSlug}/decofile/${project.vmcpId}/${branch}`,
+    vmcpId,
+    url,
   };
 }
 
@@ -310,6 +334,118 @@ test.describe("Site Editor stale section form", () => {
       // Caught by the editor before writing: no save had to be refused.
       expect(saves.length).toBeGreaterThan(0);
       expect(saves).not.toContain(409);
+    } finally {
+      await previewSite.close();
+    }
+  });
+  test("an edit to a value someone else also changed keeps the stored value and says so", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      await headline.fill("Draft headline");
+      await expect(page.getByText(KEPT_STORED)).toBeVisible();
+      await expect(headline).toHaveValue("Published headline");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual(published);
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("a form follows its section when one is inserted above it", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        hero,
+      );
+      const home = (await storedBlock(page.request, url, "home")) as Record<
+        string,
+        unknown
+      >;
+      const inserted = { ...hero, headline: "Inserted above" };
+      await writeElsewhere(page.request, url, "home", {
+        ...home,
+        sections: [inserted, hero],
+      });
+
+      await headline.fill("Draft headline");
+      // The edit lands on the section the form opened, not on the one that
+      // now sits at its old position.
+      await expect
+        .poll(() => storedBlock(page.request, url, "home"))
+        .toEqual({
+          ...home,
+          sections: [inserted, { ...hero, headline: "Draft headline" }],
+        });
+      await expect(headline).toHaveValue("Draft headline");
+    } finally {
+      await previewSite.close();
+    }
+  });
+});
+
+test.describe("Site Editor stale page fields", () => {
+  test.use({ newBlocksEditor: false });
+  test.setTimeout(120_000);
+
+  test("renaming a page someone else changed keeps their change", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { blocks, url } = await loadEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        hero,
+      );
+      const pageName = blocks.getByPlaceholder("Page name", { exact: true });
+      await expect(pageName).toHaveValue("Home", { timeout: 60_000 });
+      const home = (await storedBlock(page.request, url, "home")) as Record<
+        string,
+        unknown
+      >;
+      const published = {
+        ...home,
+        sections: [{ ...hero, headline: "Published headline" }],
+      };
+      await writeElsewhere(page.request, url, "home", published);
+
+      const saves: number[] = [];
+      page.on("response", (r) => {
+        if (
+          r.request().method() === "PATCH" &&
+          r.url().includes("/decofile/")
+        ) {
+          saves.push(r.status());
+        }
+      });
+      await pageName.fill("Home page");
+      await expect
+        .poll(() => storedBlock(page.request, url, "home"))
+        .toEqual({ ...published, name: "Home page" });
+      // The stale save was refused once, then replayed on the fresh page.
+      expect(saves).toEqual([409, 200]);
+      await expect(page.getByText("Not saved")).toHaveCount(0);
     } finally {
       await previewSite.close();
     }

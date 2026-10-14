@@ -47,6 +47,8 @@ export class BlockConflictError extends Error {
   constructor(
     readonly blocks: string[],
     message: string,
+    /** JSON pointers of the values the edit and the stored block both changed, when known. */
+    readonly fields: string[] = [],
   ) {
     super(message);
     this.name = "BlockConflictError";
