@@ -281,10 +281,12 @@ const NOT_AN_ERROR = sql.raw(
   "('superseded','ended_after_delivery','cancelled','abandoned','credits')",
 );
 
-/** A `status_changed` row (aliased `t`) moving the card to an earlier lane. */
+/** A `status_changed` row (aliased `t`) moving the card to an earlier lane.
+ *  Archive sorts last, so leaving it isn't a move back. */
 const movedBack = (t: "a" | "b") => sql`coalesce(
   array_position(${[...CANONICAL_COLUMN_KEYS]}::text[], ${sql.raw(t)}.data->>'to')
-    < array_position(${[...CANONICAL_COLUMN_KEYS]}::text[], ${sql.raw(t)}.data->>'from'), false)`;
+    < array_position(${[...CANONICAL_COLUMN_KEYS]}::text[], ${sql.raw(t)}.data->>'from')
+    and ${sql.raw(t)}.data->>'from' <> 'archived', false)`;
 const MOVED_BACK = movedBack("a");
 
 /**
@@ -325,28 +327,32 @@ const TOUCH_CLASSES = [
 const operationFacts = (
   q: AnalyticsQuery,
   cohort: "ran" | "sprints" = "ran",
-) => sql`
+  /** Ignore activity after this, so an earlier period is judged at the same age. */
+  asOf?: string,
+) => {
+  const seen = asOf ? sql`and a.occurred_at <= ${asOf}::timestamptz` : sql``;
+  return sql`
   select i.id as item_id, r.first_run_at, coalesce(r.errored, false) as errored,
          i.title, i.status, i.type, i.priority, i.sprint_id, i.created_by,
          exists (select 1 from task_board_activity a
-                 where a.task_board_item_id = i.id
+                 where a.task_board_item_id = i.id ${seen}
                    and ((a.action = 'status_changed' and a.data->>'to' = 'in_review')
                         or a.action in ('review_approved','review_changes_requested'))) as reached_qa,
          (select count(*) from task_board_activity a
-          where a.task_board_item_id = i.id
+          where a.task_board_item_id = i.id ${seen}
             and a.action = 'review_changes_requested') as qa_failures,
          exists (select 1 from task_board_activity a
-                 where a.task_board_item_id = i.id
+                 where a.task_board_item_id = i.id ${seen}
                    and a.action = 'review_changes_requested') as failed_qa,
          exists (select 1 from task_board_activity a
-                 where a.task_board_item_id = i.id
+                 where a.task_board_item_id = i.id ${seen}
                    and a.action = 'status_changed' and a.data->>'to' in ${SHIPPED_LANES}) as shipped,
          exists (select 1 from task_board_activity a
-                 where a.task_board_item_id = i.id and a.occurred_at > r.first_run_at
+                 where a.task_board_item_id = i.id ${seen} and a.occurred_at > r.first_run_at
                    and ${RETURNED} and ${RETURN_SOURCE} <> 'QA Agent') as returned,
          -- Rounds: a send-back within a day of the last one is the same round.
          (select count(*) from task_board_activity a
-          where a.task_board_item_id = i.id and a.occurred_at > r.first_run_at
+          where a.task_board_item_id = i.id ${seen} and a.occurred_at > r.first_run_at
             and ${RETURNED}
             and not exists (select 1 from task_board_activity b
                             where b.task_board_item_id = i.id and b.occurred_at > r.first_run_at
@@ -354,10 +360,10 @@ const operationFacts = (
                               and b.occurred_at >= a.occurred_at - interval '1 day'
                               and ${isReturn("b")})) as returns,
          exists (select 1 from task_board_activity a
-                 where a.task_board_item_id = i.id and a.occurred_at > r.first_run_at
+                 where a.task_board_item_id = i.id ${seen} and a.occurred_at > r.first_run_at
                    and ${RETURNED} and ${RETURN_SOURCE} = 'Customer') as customer_returned,
          exists (select 1 from task_board_activity a
-                 where a.task_board_item_id = i.id
+                 where a.task_board_item_id = i.id ${seen}
                    and a.action = 'status_changed' and a.data->>'to' = 'customer_approval') as reached_customer
   from task_board_items i
   left join (
@@ -373,6 +379,7 @@ const operationFacts = (
   where ${scoped(q)}
     and ${cohort === "sprints" ? sql`i.sprint_id is not null` : inRange("r.first_run_at", q)}
 `;
+};
 
 /** Each operation cohort, as a filter over `operationFacts`' columns. */
 const OPERATION_COHORTS = {
@@ -502,6 +509,7 @@ const humanTouches = () => sql`
              when a.action = 'status_changed' and a.data->>'reason' = 'rerun' then 'Re-ran'
              when a.action = 'status_changed' and ${MOVED_BACK} then 'Moved back'
              when a.action = 'status_changed' and a.data->>'to' in ${SHIPPED_LANES} then 'Shipped by hand'
+             when a.action = 'status_changed' and 'archived' in (a.data->>'to', a.data->>'from') then 'Archived'
              when a.action = 'status_changed' then 'Moved forward'
              when a.action = 'review_changes_requested' then 'Requested changes'
              when a.action = 'review_approved' then 'Approved by hand'
@@ -1440,16 +1448,21 @@ export class TaskBoardAnalyticsStorage {
    */
   async operation(q: AnalyticsQuery): Promise<Section[]> {
     const span = Date.parse(q.to) - Date.parse(q.from);
+    // Exclusive of `from`, which the current window already counts.
     const previous = {
       ...q,
       from: new Date(Date.parse(q.from) - span).toISOString(),
-      to: q.from,
+      to: new Date(Date.parse(q.from) - 1).toISOString(),
     };
+    // Its cards get as long to ship as this window's had.
+    const previousAsOf = new Date(
+      Date.parse(q.from) + Math.max(0, Date.now() - Date.parse(q.to)),
+    ).toISOString();
     const bucket = span <= 14 * 86_400_000 ? "day" : "week";
 
-    const summary = async (w: AnalyticsQuery) => {
+    const summary = async (w: AnalyticsQuery, asOf?: string) => {
       const [row] = await this.rows(sql`
-        with f as (${operationFacts(w)})
+        with f as (${operationFacts(w, "ran", asOf)})
         select ${sql.join(
           Object.entries(OPERATION_COHORTS).map(
             ([key, filter]) =>
@@ -1464,7 +1477,10 @@ export class TaskBoardAnalyticsStorage {
       `);
       return row ?? {};
     };
-    const [now, before] = await Promise.all([summary(q), summary(previous)]);
+    const [now, before] = await Promise.all([
+      summary(q),
+      summary(previous, previousAsOf),
+    ]);
 
     const trend = await this.rows(sql`
       with f as (${operationFacts(q)})
@@ -1886,8 +1902,8 @@ export class TaskBoardAnalyticsStorage {
       from f
       join task_board_sprints s on s.id = f.sprint_id
       where s.state = 'active'
-         or (coalesce(s.start_date, '9999-12-31') <= ${q.to.slice(0, 10)}
-             and coalesce(s.end_date, s.start_date, '0001-01-01') >= ${q.from.slice(0, 10)})
+         or (coalesce(s.start_date, '9999-12-31') <= ${new Date(q.to).toISOString().slice(0, 10)}
+             and coalesce(s.end_date, s.start_date, '0001-01-01') >= ${new Date(q.from).toISOString().slice(0, 10)})
       group by 1, 2, 3, 4, 5
       order by 4 desc nulls first, 2
       limit 26

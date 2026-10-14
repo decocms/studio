@@ -441,6 +441,39 @@ describe("TaskBoardAnalyticsStorage.operation (real Postgres)", () => {
     expect(funnel(sections)[0]).toBe(6);
   });
 
+  it("judges the previous window at the same age, and archiving is no send-back", async () => {
+    const org = "org_board_analytics_c";
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: org,
+        name: org,
+        slug: "board-analytics-c",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    // Ran in the previous window but shipped only after it closed.
+    const late = await card(org, PROJECT_REPO);
+    await run(org, late, -120);
+    await act(late, "status_changed", null, 0, {
+      from: "in_review",
+      to: "done",
+    });
+    const shelved = await card(org, PROJECT_REPO);
+    await run(org, shelved, 5);
+    await act(shelved, "status_changed", USER, 30, {
+      from: "in_review",
+      to: "archived",
+    });
+    await act(shelved, "status_changed", USER, 40, {
+      from: "archived",
+      to: "todo",
+    });
+    const sections = await analytics.operation({ ...range(), orgIds: [org] });
+    expect(stat(sections, "Shipped")?.previous).toBe(0);
+    expect(stat(sections, "Sent back by a person")?.value).toBe(0);
+  });
+
   it("scopes the other reports to the project too", async () => {
     const delivery = await analytics.delivery(project());
     expect(stat(delivery, "Tasks completed")?.value).toBe(2);

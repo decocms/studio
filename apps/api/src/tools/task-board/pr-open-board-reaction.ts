@@ -210,6 +210,8 @@ export async function applyBoardDecision(
       taskBoardItemId: item.id,
       organizationId: orgId,
       authorId: userId,
+      // The model wrote it, not the user: mark it as the run's.
+      threadId,
       body: decision.comment.trim(),
     });
   }
