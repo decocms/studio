@@ -21,7 +21,10 @@
  *
  * A discard ({@link runContentDiscard}) runs in the editor's own write queue:
  * the autosaves armed for the discarded blocks are dropped, and the discard
- * waits for the writes already queued or in flight, so it lands last.
+ * waits for the writes already queued or in flight, so it lands last. On a v8
+ * site it removes those blocks from the draft (the draft is a sparse map of
+ * changed blocks over main, layered over main's current version when read),
+ * so the editor and the preview show main as it is then, and as it moves.
  */
 
 import { notifyManager, type QueryClient } from "@tanstack/react-query";
@@ -29,11 +32,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useMinimumDuration } from "@/hooks/use-minimum-duration";
 import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
-import {
-  type DecofilePatchBody,
-  decofileWriteMutationKey,
-  decofileWriteScope,
-} from "./decofile-api";
+import { decofileWriteMutationKey, decofileWriteScope } from "./decofile-api";
 import { sandboxGitStatusQueryPrefix } from "../thread/repository/sandbox-git-api";
 import { cmsPublishBodiesQueryPrefix } from "../thread/repository/use-cms-publish-state";
 
@@ -209,36 +208,17 @@ export interface ContentSyncTarget {
 
 export interface ContentChange {
   kind: ContentChangeKind;
-  /** What the write set and deleted: applied to the editor's blocks. */
-  patch?: DecofilePatchBody;
-  /** Re-read the blocks: the write changed them in ways `patch` can't say. */
+  /** Re-read the blocks: the write changed them (not the form's own save). */
   reread?: boolean;
 }
-
-/** What only the write itself knows (a discard reads main when it runs). */
-type ChangeOutcome = Pick<ContentChange, "patch" | "reread">;
 
 type ContentWrite<T> = ContentChange & {
   write: () => Promise<T>;
   refreshOnError?: boolean;
-  /** The refresh's `patch`/`reread`, decided from the write's result. */
-  outcome?: (result: T) => ChangeOutcome;
 };
 
 function isHosted(backend: ContentBackend | null): boolean {
   return backend?.kind === "protocol" && backend.source === "github";
-}
-
-function applyPatch(
-  current: Record<string, unknown> | undefined,
-  patch: DecofilePatchBody,
-): Record<string, unknown> | undefined {
-  if (!current) return current;
-  const next = { ...current, ...(patch.set ?? {}) };
-  for (const key of patch.delete ?? []) {
-    if (!(key in (patch.set ?? {}))) delete next[key];
-  }
-  return next;
 }
 
 /**
@@ -262,12 +242,6 @@ async function contentChanged(
   if (backend?.kind !== "protocol") {
     await releases;
     return { navigates: false };
-  }
-  if (cacheKey && change.patch) {
-    queryClient.setQueryData<Record<string, unknown>>(
-      KEYS.decofile(cacheKey),
-      (current) => applyPatch(current, change.patch!),
-    );
   }
   const pointerKey = branch
     ? KEYS.protocolDraftRead(orgSlug, virtualMcpId, branch)
@@ -350,10 +324,7 @@ async function runBegun<T>(
   }
   let navigates = false;
   try {
-    ({ navigates } = await contentChanged(target, {
-      ...change,
-      ...change.outcome?.(result),
-    }));
+    ({ navigates } = await contentChanged(target, change));
   } catch {
     // The write landed; a failed re-read only leaves a list stale.
   } finally {
@@ -369,15 +340,17 @@ async function runBegun<T>(
  * editors drop their armed autosaves of those blocks, which would otherwise
  * fire after the discard and bring the edit back; then the discard waits for
  * the writes already queued or in flight, and runs as a content change. So
- * the last write to land is the discard's, and `write` (which reads main's
- * version when it runs) sees every earlier save.
+ * the last write to land is the discard's: `write` removes the blocks from
+ * the draft after every earlier save of them, and the refresh re-reads the
+ * blocks (main's version now shows through), the draft pointer (the preview
+ * reloads), the publish status and the change list; the open form re-reads
+ * its block.
  */
 export function runContentDiscard<T>(
   target: ContentSyncTarget,
   change: {
     blockKeys: readonly string[];
     write: () => Promise<T>;
-    outcome?: (result: T) => ChangeOutcome;
   },
 ): Promise<T> {
   const { queryClient, orgSlug, virtualMcpId, branch } = target;
@@ -391,8 +364,8 @@ export function runContentDiscard<T>(
     started = true;
     return runBegun(target, {
       kind: "discard",
+      reread: true,
       write: change.write,
-      outcome: change.outcome,
     });
   };
   if (!branch) return run();

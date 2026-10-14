@@ -5,6 +5,7 @@ import {
   applyAttemptToDraft,
   createDraftContentStorage,
 } from "./draft-content-storage";
+import { draftGitDiscard } from "./draft-publish-status";
 import { createDraftStore, type HostedDraftRef } from "./draft-store";
 import {
   fakeRepo,
@@ -114,6 +115,40 @@ describe("createDraftContentStorage", () => {
       delete: [],
       expected: {},
     });
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+  });
+
+  it("a discard removes the entry: the read is main as it is now, and follows main when it moves", async () => {
+    const { repo, drafts, storage } = setup();
+    await storage.commit({
+      base: await storage.snapshot(),
+      put: { "Home.json": serializeBlock({ path: "/", title: "draft" }) },
+      delete: [],
+      expected: {},
+    });
+    const edited = await storage.snapshot();
+    const etag = (await drafts.load(REF))?.etag;
+
+    await draftGitDiscard(drafts, REF, [".deco/blocks/Home.json"]);
+    const discarded = await drafts.load(REF);
+    expect(discarded?.body).toEqual({ set: {}, delete: [] });
+    // A new draft object: a new ETag, so a new pointer and revision.
+    expect(discarded?.etag).not.toBe(etag);
+    const after = await storage.snapshot();
+    expect(after.revision).not.toBe(edited.revision);
+    const read = async () =>
+      JSON.parse(
+        (await storage.readFiles(await storage.snapshot(), ["Home.json"]))[
+          "Home.json"
+        ]!.text,
+      );
+    expect(await read()).toEqual({ path: "/", title: "main" });
+
+    // main moves after the discard (a publish from elsewhere).
+    repo.pushDirect({
+      ".deco/blocks/Home.json": serializeBlock({ path: "/", title: "main v2" }),
+    });
+    expect(await read()).toEqual({ path: "/", title: "main v2" });
     expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
   });
 

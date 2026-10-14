@@ -23,9 +23,15 @@ import {
   useContentDiscardListener,
   type ContentSyncTarget,
 } from "@/components/sections-editor/content-sync";
-import { applyProtocolPatch } from "@/components/sections-editor/content-protocol-api";
+import {
+  applyProtocolPatch,
+  pollProtocolContent,
+} from "@/components/sections-editor/content-protocol-api";
 import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
-import type { PublishChange } from "./publish-change-summary";
+import {
+  blockKeyFromDiffPath,
+  type PublishChange,
+} from "./publish-change-summary";
 import type { PublishTarget } from "./publish-flow";
 import * as realGit from "./sandbox-git-api";
 
@@ -36,12 +42,54 @@ const CACHE_KEY = `${ORG}/${VM}/${BRANCH}`;
 const SCOPE = contentSyncScope(ORG, VM);
 const HOME = ".deco/blocks/pages-home.json";
 
-const discardGitFiles = mock(async (..._args: unknown[]) => {});
-/** main's version as the server diffs it when the discard runs. */
-let mainDiff: () => Promise<realGit.GitDiffResult> = async () => ({
-  diffs: {},
-});
-const fetchGitDiff = mock((..._args: unknown[]) => mainDiff());
+/**
+ * The hosted draft as the server keeps it: a sparse map of changed blocks over
+ * main (`set`/`delete`), read layered over main's CURRENT blocks; each write
+ * is a new draft object (a new ETag, so a new draft pointer). A put of main's
+ * own value leaves no entry; `/git/discard` removes the entries.
+ */
+const server = {
+  main: {} as Record<string, unknown>,
+  draft: { set: {} as Record<string, unknown>, delete: [] as string[] },
+  etag: 1,
+  /** main's head: it moves when someone publishes. */
+  head: 1,
+  discards: [] as string[][],
+  failDiscard: false,
+};
+
+function resetServer() {
+  server.main = { "pages-home": { title: "main" } };
+  server.draft = { set: {}, delete: [] };
+  server.etag = 1;
+  server.head = 1;
+  server.discards = [];
+  server.failDiscard = false;
+}
+
+const revision = () => `${server.head}~e${server.etag}`;
+
+/** What the editor and the preview read: the draft over main as it is now. */
+function layered(): Record<string, unknown> {
+  const blocks = { ...server.main, ...server.draft.set };
+  for (const key of server.draft.delete) delete blocks[key];
+  return blocks;
+}
+
+async function discardFromDraft(_target: unknown, paths: string[]) {
+  if (server.failDiscard) throw new Error("nope");
+  const keys = new Set(paths.flatMap((p) => blockKeyFromDiffPath(p) ?? []));
+  server.discards.push([...keys]);
+  server.draft = {
+    set: Object.fromEntries(
+      Object.entries(server.draft.set).filter(([key]) => !keys.has(key)),
+    ),
+    delete: server.draft.delete.filter((key) => !keys.has(key)),
+  };
+  server.etag++;
+}
+const discardGitFiles = mock(discardFromDraft);
+const fetchGitDiff = mock(async (..._args: unknown[]) => ({ diffs: {} }));
 mock.module("./sandbox-git-api", () => ({
   ...realGit,
   discardGitFiles,
@@ -58,11 +106,37 @@ function hostedBackend() {
   const applied: unknown[] = [];
   let gate: Promise<void> | null = null;
   const client = {
-    blocksApply: async (patch: unknown) => {
+    blocksApply: async (patch: { set?: Record<string, unknown> }) => {
       applied.push(patch);
       if (gate) await gate;
-      return { revision: `r${applied.length + 1}`, versions: {} };
+      for (const [key, value] of Object.entries(patch.set ?? {})) {
+        const sameAsMain =
+          JSON.stringify(server.main[key]) === JSON.stringify(value);
+        const { [key]: _, ...rest } = server.draft.set;
+        server.draft.set = sameAsMain ? rest : { ...rest, [key]: value };
+      }
+      server.etag++;
+      return { revision: revision(), versions: {} };
     },
+    // The content poll: blocks.list (layered) and schema.get.
+    batch: async (calls: Array<{ method: string }>) =>
+      calls.map((call) =>
+        call.method === "blocks.list"
+          ? {
+              ok: true,
+              result: {
+                notModified: false,
+                revision: revision(),
+                resolvedRef: null,
+                blocks: layered(),
+                versions: {},
+              },
+            }
+          : {
+              ok: true,
+              result: { notModified: false, version: "s1", schema: {} },
+            },
+      ),
   } as unknown as ContentClient;
   const backend: ProtocolBackend = {
     kind: "protocol",
@@ -105,8 +179,8 @@ const homeChange = {
 
 let queryClient: QueryClient;
 let reads: { pointer: number; status: number; releases: number };
-const pointer = { version: "e1" };
 
+/** The editor's queries; the pointer's version is the draft's ETag. */
 function mountEditorQueries() {
   reads = { pointer: 0, status: 0, releases: 0 };
   const watch = (queryKey: readonly unknown[], count: keyof typeof reads) =>
@@ -115,7 +189,7 @@ function mountEditorQueries() {
       queryFn: async () => {
         reads[count]++;
         return count === "pointer"
-          ? { draft: "d", version: pointer.version }
+          ? { draft: "d", version: `e${server.etag}` }
           : {};
       },
       staleTime: Number.POSITIVE_INFINITY,
@@ -124,6 +198,19 @@ function mountEditorQueries() {
   watch(realGit.sandboxGitStatusQueryKey({ ...publishTarget }), "status");
   watch(KEYS.hostedReleases(ORG, VM), "releases");
 }
+
+/** The editor's blocks, read the way the editor reads them (layered). */
+async function mountBlocks() {
+  new QueryObserver(queryClient, {
+    queryKey: KEYS.decofile(CACHE_KEY),
+    queryFn: async () => layered(),
+    staleTime: Number.POSITIVE_INFINITY,
+  }).subscribe(() => {});
+  await settle();
+}
+
+const editorBlocks = () =>
+  queryClient.getQueryData<Record<string, unknown>>(KEYS.decofile(CACHE_KEY));
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -170,8 +257,7 @@ beforeEach(async () => {
   queryClient = new QueryClient();
   discardGitFiles.mockClear();
   fetchGitDiff.mockClear();
-  mainDiff = async () => ({ diffs: {} });
-  pointer.version = "e1";
+  resetServer();
   mountEditorQueries();
   await settle();
 });
@@ -182,44 +268,37 @@ afterEach(() => {
 });
 
 describe("useCmsPublishActions on a hosted v8 site", () => {
-  it("a discard writes main's version back, refreshes the editor and reloads the preview, driving both indicators", async () => {
-    const { backend, applied, hold } = hostedBackend();
-    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
-      "pages-home": { title: "Discard me" },
-    });
+  it("a discard removes the block from the draft, refreshes the editor and reloads the preview, driving both indicators", async () => {
+    const { backend, applied } = hostedBackend();
+    server.draft.set = { "pages-home": { title: "Discard me" } };
+    await mountBlocks();
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "Discard me" } });
     const unregister = registerContentPreview(SCOPE);
-    const release = hold();
-    pointer.version = "e2";
-    mainDiff = async () => ({
-      diffs: {
-        [HOME]: { from: '{"title":"main"}', to: '{"title":"Discard me"}' },
-      },
-    });
     const { result } = render(backend, { hosted: true });
     const before = { ...reads };
+    const pointerBefore = queryClient.getQueryData(
+      KEYS.protocolDraftRead(ORG, VM, BRANCH),
+    );
 
     let done!: Promise<void>;
     act(() => {
       done = result.current.discardChange(homeChange);
     });
     expect(getContentSyncState(SCOPE).phase).toBe("saving");
-    release();
     await act(() => done);
 
-    expect(fetchGitDiff).toHaveBeenCalledWith(
-      publishTarget,
-      { base: "main" },
-      { fastPreview: true },
-    );
-    expect(applied).toEqual([{ set: { "pages-home": { title: "main" } } }]);
-    expect(discardGitFiles).not.toHaveBeenCalled();
-    expect(
-      queryClient.getQueryData<Record<string, unknown>>(
-        KEYS.decofile(CACHE_KEY),
-      ),
-    ).toEqual({
-      "pages-home": { title: "main" },
+    expect(discardGitFiles).toHaveBeenCalledWith(publishTarget, [HOME], {
+      fastPreview: true,
     });
+    // No main sync: nothing read from main, nothing written over the draft.
+    expect(fetchGitDiff).not.toHaveBeenCalled();
+    expect(applied).toEqual([]);
+    expect(server.draft).toEqual({ set: {}, delete: [] });
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
+    // A new draft object: a new pointer, which the preview navigates to.
+    expect(
+      queryClient.getQueryData(KEYS.protocolDraftRead(ORG, VM, BRANCH)),
+    ).not.toEqual(pointerBefore);
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(reads.status).toBe(before.status + 1);
     expect(getContentSyncState(SCOPE)).toMatchObject({
@@ -232,48 +311,80 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     unregister();
   });
 
-  it("main moved since the dialog loaded: the discard writes main's version as it is now", async () => {
-    const { backend, applied } = hostedBackend();
+  it("discard all removes every changed block from the draft", async () => {
+    const { backend } = hostedBackend();
+    server.draft = {
+      set: { "pages-home": { title: "Discard me" } },
+      delete: [],
+    };
+    await mountBlocks();
     const { result } = render(backend, { hosted: true });
-    // The dialog showed `{"title":"main v1"}`; main has moved on since.
-    mainDiff = async () => ({
-      diffs: {
-        [HOME]: { from: '{"title":"main v2"}', to: '{"title":"Discard me"}' },
-      },
-    });
-    await act(() => result.current.discardChange(homeChange));
-    expect(fetchGitDiff).toHaveBeenCalledTimes(1);
-    expect(applied).toEqual([{ set: { "pages-home": { title: "main v2" } } }]);
-    expect(discardGitFiles).not.toHaveBeenCalled();
+    await act(() => result.current.discardAll());
+    expect(server.discards).toEqual([["pages-home"]]);
+    expect(server.draft).toEqual({ set: {}, delete: [] });
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
   });
 
-  it("main moved to the draft's body: the discard only drops the draft's entry", async () => {
-    const { backend, applied } = hostedBackend();
-    let blockReads = 0;
-    new QueryObserver(queryClient, {
-      queryKey: KEYS.decofile(CACHE_KEY),
-      queryFn: async () => {
-        blockReads++;
-        return { "pages-home": { title: "Discard me" } };
-      },
-      staleTime: Number.POSITIVE_INFINITY,
-    }).subscribe(() => {});
-    await settle();
-    const before = blockReads;
+  it("discard, then main moves: the editor shows main's new version", async () => {
+    const { backend } = hostedBackend();
+    server.draft.set = { "pages-home": { title: "Discard me" } };
+    await mountBlocks();
+    const poll = () =>
+      act(async () => {
+        await pollProtocolContent(
+          queryClient,
+          backend,
+          publishTarget,
+          CACHE_KEY,
+        );
+        await settle();
+      });
+    await poll();
     const { result } = render(backend, { hosted: true });
     await act(() => result.current.discardChange(homeChange));
-    expect(applied).toEqual([]);
-    expect(discardGitFiles).toHaveBeenCalledWith(publishTarget, [HOME], {
-      fastPreview: true,
-    });
-    expect(blockReads).toBe(before + 1);
-    expect(getContentSyncState(SCOPE).epoch).toBe(1);
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
+    await poll();
+
+    // Someone publishes to main; the editor's content poll sees a new revision.
+    server.main = { "pages-home": { title: "main v2" } };
+    server.head++;
+    const epoch = getContentSyncState(SCOPE).epoch;
+    const pointerReads = reads.pointer;
+    await poll();
+    // The draft holds nothing for the block: main's new version shows through.
+    expect(server.draft).toEqual({ set: {}, delete: [] });
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "main v2" } });
+    // Someone else's change: the open form re-reads, the preview reloads.
+    expect(getContentSyncState(SCOPE).epoch).toBe(epoch + 1);
+    expect(reads.pointer).toBe(pointerReads + 1);
   });
 
-  it("a discard lands after the editor's save in flight, and reads main only then", async () => {
+  it("edit, then discard at once: the save in flight lands first, the armed one is dropped, and the block ends at main", async () => {
     const { backend, applied, hold } = hostedBackend();
+    await mountBlocks();
     const release = hold();
     const order: string[] = [];
+    const dropped: string[][] = [];
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    // The form's next autosave, armed (debounced) but not sent.
+    let armed: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      order.push("armed save");
+      void applyProtocolPatch(queryClient, backend, publishTarget, CACHE_KEY, {
+        set: { "pages-home": { title: "edited again" } },
+      });
+    }, 5);
+    renderHook(
+      () =>
+        useContentDiscardListener(ORG, VM, (keys) => {
+          dropped.push([...keys]);
+          if (armed && keys.has("pages-home")) clearTimeout(armed);
+          armed = null;
+        }),
+      { wrapper },
+    );
+    // The previous autosave, in the draft's write queue, still in flight.
     const save = queryClient
       .getMutationCache()
       .build(queryClient, {
@@ -290,82 +401,31 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
         },
       })
       .execute(undefined);
-    mainDiff = async () => {
-      order.push("read main");
-      return {
-        diffs: {
-          [HOME]: { from: '{"title":"main"}', to: '{"title":"edited"}' },
-        },
-      };
-    };
+    discardGitFiles.mockImplementationOnce(async (target, paths) => {
+      order.push("discard");
+      await discardFromDraft(target, paths);
+    });
     const { result } = render(backend, { hosted: true });
     let done!: Promise<void>;
     act(() => {
       done = result.current.discardChange(homeChange);
     });
+    expect(dropped).toEqual([["pages-home"]]);
     await settle();
+    // Queued behind the save: nothing discarded yet.
     expect(order).toEqual([]);
     release();
     await act(() => Promise.all([save, done]).then(() => {}));
-    expect(order).toEqual(["save", "read main"]);
-    expect(applied).toEqual([
-      { set: { "pages-home": { title: "edited" } } },
-      { set: { "pages-home": { title: "main" } } },
-    ]);
-  });
-
-  it("a discard drops the editors' armed autosaves of its blocks before it writes", async () => {
-    const { backend, applied } = hostedBackend();
-    const dropped: string[][] = [];
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
-    renderHook(
-      () =>
-        useContentDiscardListener(ORG, VM, (keys) => {
-          dropped.push([...keys]);
-          expect(applied).toEqual([]);
-        }),
-      { wrapper },
-    );
-    mainDiff = async () => ({
-      diffs: {
-        [HOME]: { from: '{"title":"main"}', to: '{"title":"Discard me"}' },
-      },
-    });
-    const { result } = render(backend, { hosted: true });
-    await act(() => result.current.discardChange(homeChange));
-    expect(dropped).toEqual([["pages-home"]]);
-    expect(applied).toHaveLength(1);
-  });
-
-  it("without main's version (the read failed), a discard asks the server to drop the entries, through the same refresh", async () => {
-    const { backend, applied } = hostedBackend();
-    mainDiff = async () => {
-      throw new Error("offline");
-    };
-    const { result } = render(backend, { hosted: true });
-    const before = { ...reads };
-    await act(() => result.current.discardChange(homeChange));
-    expect(applied).toEqual([]);
-    expect(discardGitFiles).toHaveBeenCalledWith(publishTarget, [HOME], {
-      fastPreview: true,
-    });
-    expect(reads.pointer).toBe(before.pointer + 1);
-    expect(getContentSyncState(SCOPE)).toMatchObject({
-      phase: "idle",
-      epoch: 1,
-    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(order).toEqual(["save", "discard"]);
+    expect(applied).toEqual([{ set: { "pages-home": { title: "edited" } } }]);
+    expect(server.draft).toEqual({ set: {}, delete: [] });
+    expect(editorBlocks()).toEqual({ "pages-home": { title: "main" } });
   });
 
   it("a failed discard clears the pending state", async () => {
     const { backend } = hostedBackend();
-    discardGitFiles.mockImplementationOnce(async () => {
-      throw new Error("nope");
-    });
-    mainDiff = async () => {
-      throw new Error("offline");
-    };
+    server.failDiscard = true;
     const { result } = render(backend, { hosted: true });
     await act(() => result.current.discardChange(homeChange));
     expect(getContentSyncState(SCOPE)).toMatchObject({

@@ -5,10 +5,10 @@
  * sandbox runtime and lives in {@link ./publish-flow.ts}.
  *
  * On a hosted v8 site every write here is a content change (content-sync.ts):
- * a discard writes main's version back through `blocks.apply` (read when it
- * runs, in the editor's own write queue), and a publish
- * or "Try again" refreshes the editor, the preview and the releases the same
- * way an edit does. The other sites keep their git paths.
+ * a discard removes the blocks from the draft (in the editor's own write
+ * queue), and a publish or "Try again" refreshes the editor, the preview and
+ * the releases the same way an edit does. The other sites keep their git
+ * paths.
  */
 
 import type { MutableRefObject } from "react";
@@ -16,13 +16,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import { protocolApply } from "@/components/sections-editor/content-protocol-api.ts";
 import {
   runContentChange,
   runContentDiscard,
 } from "@/components/sections-editor/content-sync.ts";
 import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync.ts";
-import { discardPlan } from "./discard-patch.ts";
 import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
 import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
 import {
@@ -37,7 +35,7 @@ import {
   runSubmitForReviewFlow,
   type PublishTarget,
 } from "./publish-flow.ts";
-import { discardGitFiles, fetchGitDiff } from "./sandbox-git-api.ts";
+import { discardGitFiles } from "./sandbox-git-api.ts";
 import {
   HostedPublishError,
   type HostedPublishResult,
@@ -270,55 +268,19 @@ export function useCmsPublishActions(
   };
 
   /**
-   * A hosted v8 discard writes main's version back (`blocks.apply`). It runs
-   * in the editor's write queue (content-sync.ts `runContentDiscard`): armed
+   * A hosted v8 discard removes the blocks from the draft (`/git/discard`):
+   * the draft only holds the blocks that differ from main, layered over
+   * main's current version when read, so without them the editor and the
+   * preview show main as it is now, and follow it when it moves. It runs in
+   * the editor's write queue (content-sync.ts `runContentDiscard`): armed
    * autosaves of these blocks are dropped and the ones in flight land first.
-   * Then main's version is read (one fresh diff; main may have moved since
-   * the dialog loaded, and the in-flight saves are in it now): a block that
-   * still differs gets main's body back, one that already equals main only
-   * loses its draft entry. Without that read it asks the server to drop the
-   * draft's entries. Either way the editor, the preview and this list refresh
-   * as after an edit.
+   * Then the editor, the preview and this list refresh as after an edit.
    */
-  const discardHosted = (filepaths: string[]) => {
-    const backend = content.backend;
-    const call = { fastPreview: true };
-    return runContentDiscard(content, {
+  const discardHosted = (filepaths: string[]) =>
+    runContentDiscard(content, {
       blockKeys: filepaths.flatMap((path) => blockKeyFromDiffPath(path) ?? []),
-      write: async () => {
-        const main =
-          backend?.kind === "protocol"
-            ? await fetchGitDiff(
-                target,
-                { base: target.baseBranch },
-                call,
-              ).catch(() => null)
-            : null;
-        const plan = discardPlan(filepaths, main);
-        if (!plan || backend?.kind !== "protocol") {
-          await discardGitFiles(target, filepaths, call);
-          return { reread: true };
-        }
-        if (plan.patch) {
-          await protocolApply(
-            queryClient,
-            backend,
-            target,
-            content.cacheKey ?? "",
-            plan.patch,
-          );
-        }
-        if (plan.drop.length > 0) {
-          await discardGitFiles(target, plan.drop, call);
-        }
-        return {
-          patch: plan.patch ?? undefined,
-          reread: plan.drop.length > 0,
-        };
-      },
-      outcome: (refresh) => refresh,
+      write: () => discardGitFiles(target, filepaths, { fastPreview: true }),
     });
-  };
 
   const discardFiles = async (filepaths: string[], success: string) => {
     try {
