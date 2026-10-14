@@ -36,6 +36,25 @@ export function buildDownloadFilename(src: string, alt: string): string {
 }
 
 /**
+ * The `download` attribute is silently ignored by browsers for a
+ * cross-origin href, so clicking it just navigates the tab away to the
+ * image instead of saving it. Model-written markdown can embed an
+ * arbitrary external image URL, so that cross-origin case is real, not
+ * hypothetical.
+ */
+export function canForceDownload(
+  src: string,
+  currentOrigin: string = window.location.origin,
+): boolean {
+  if (src.startsWith("data:") || src.startsWith("blob:")) return true;
+  try {
+    return new URL(src, currentOrigin).origin === currentOrigin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Clamp pan so the image edge never goes past the container edge.
  * maxPan = (scaledSize - containerSize) / 2  (in screen pixels).
  * When zoom=1, maxPan=0 so no panning is possible.
@@ -76,6 +95,10 @@ export function ImageLightbox({
   } | null>(null);
 
   const handleDownload = () => {
+    if (!canForceDownload(src)) {
+      window.open(src, "_blank", "noopener,noreferrer");
+      return;
+    }
     const a = document.createElement("a");
     a.href = src;
     a.download = buildDownloadFilename(src, alt);
