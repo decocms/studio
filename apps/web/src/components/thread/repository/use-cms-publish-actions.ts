@@ -155,7 +155,7 @@ export function useContentDiscard(args: {
       toast.success(success);
     } catch (error) {
       if (isChangedMeanwhile(error)) {
-        toast(t("siteEditor.discard.changedMeanwhile"));
+        toast.info(t("siteEditor.discard.changedMeanwhile"));
         await args.refresh().catch(() => {});
         return;
       }

@@ -1,6 +1,16 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
+import { toast } from "sonner";
 import { act, renderHook } from "@testing-library/react";
 import {
   QueryClient,
@@ -118,15 +128,17 @@ mock.module("./sandbox-git-api", () => ({
   discardGitFiles,
   fetchGitDiff,
 }));
+// What the user is told: one toast per action (spied, restored after).
 const toasts: Array<{ kind: string; message: string }> = [];
-const toast = Object.assign(
-  (message: string) => toasts.push({ kind: "info", message }),
-  {
-    success: (message: string) => toasts.push({ kind: "success", message }),
-    error: (message: string) => toasts.push({ kind: "error", message }),
-  },
+const toastSpies = (["success", "error", "info"] as const).map((kind) =>
+  spyOn(toast, kind).mockImplementation(((message: unknown) => {
+    toasts.push({ kind, message: String(message) });
+    return 0;
+  }) as never),
 );
-mock.module("sonner", () => ({ toast }));
+afterAll(() => {
+  for (const spy of toastSpies) spy.mockRestore();
+});
 let currentTarget: ContentSyncTarget | null = null;
 mock.module("@/components/sections-editor/use-content-sync", () => ({
   useContentSyncTarget: () => currentTarget,
