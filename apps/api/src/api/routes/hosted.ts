@@ -3,8 +3,11 @@
  * passes `isV8Schema`):
  *
  *   GET    /api/:org/hosted/:virtualMcpId/releases?cursor=   Releases screen
- *   POST   /api/:org/hosted/:virtualMcpId/releases/current   Make current { sha, confirm? }
- *                                                            or { head: true }: main's head,
+ *   POST   /api/:org/hosted/:virtualMcpId/releases/:sha/republish
+ *                                                            Republish { confirm? }: a new
+ *                                                            release with that one's content
+ *   POST   /api/:org/hosted/:virtualMcpId/releases/current   { head: true }: Publish's "Try
+ *                                                            again", main's head made current,
  *                                                            its release written if missing
  *   GET    /api/:org/hosted/:virtualMcpId/site-tokens        list
  *   POST   /api/:org/hosted/:virtualMcpId/site-tokens        issue (shown once)
@@ -13,8 +16,8 @@
  * Studio-internal routes; nothing outside Studio calls them.
  */
 
-// OPEN: O-S4 — Releases and Make current have no existing route to
-// reuse, so they are these Studio-internal routes (with site tokens beside them).
+// OPEN: O-S4 — Releases and Republish have no existing route to reuse, so
+// they are these Studio-internal routes (with site tokens beside them).
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { Hono, type Context } from "hono";
@@ -27,17 +30,25 @@ import {
   repoErrorStatus,
   type RepoContentClient,
 } from "@/git-providers";
-import { deliveryStore } from "@/hosted/delivery-store";
-import { deliveryPurge } from "@/hosted/delivery-purge";
-import { type HostedRepo, LatestUpdateError } from "@/hosted/publish";
-import { NotV8Site } from "@/hosted/release-objects";
+import { type DeliveryStore, deliveryStore } from "@/hosted/delivery-store";
+import { type DeliveryPurge, deliveryPurge } from "@/hosted/delivery-purge";
 import {
-  listReleases,
-  makeCurrent,
-  makeHeadCurrent,
+  type HostedRepo,
+  LatestUpdateError,
+  MainMovedError,
+} from "@/hosted/publish";
+import { NotV8Site } from "@/hosted/release-objects";
+import { listReleases, makeHeadCurrent } from "@/hosted/releases";
+import {
   NotPublishedError,
+  republishRelease,
   SchemaMismatchError,
-} from "@/hosted/releases";
+} from "@/hosted/republish";
+import {
+  defaultServedLabelsReader,
+  type ServedLabelsReader,
+} from "@/hosted/serving";
+import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
 import {
   projectMainIsV8,
   projectPackagePath,
@@ -67,6 +78,7 @@ type HostedEnv = Env & {
   Variables: Env["Variables"] & {
     hostedProject: HostedProject;
     repoClientFor: RepoClientFor;
+    delivery: () => Delivery | null;
   };
 };
 
@@ -105,7 +117,7 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
   }
   // Only a Blocks v8 site has these screens: `isV8Schema` on main's schema
   // (`projectMainIsV8`, at most one head read per minute), never the marker
-  // alone. Releases and Make current also check each commit's schema.
+  // alone. Republish also compares the release's schema with main's.
   try {
     const client = await c.var.repoClientFor(ctx, organization.id, repository);
     const isV8 = await projectMainIsV8({
@@ -138,9 +150,19 @@ const resolveHostedProject = createMiddleware<HostedEnv>(async (c, next) => {
 
 const NOT_CONFIGURED = { error: "hosted delivery not configured" } as const;
 
-async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
+interface Delivery {
+  store: DeliveryStore;
+  purge: DeliveryPurge;
+}
+
+function defaultDelivery(): Delivery | null {
   const store = deliveryStore();
-  if (!store) return null;
+  return store ? { store, purge: deliveryPurge() } : null;
+}
+
+async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
+  const delivery = c.var.delivery();
+  if (!delivery) return null;
   const project = c.get("hostedProject");
   const client: RepoContentClient = await c.var.repoClientFor(
     c.var.studioContext,
@@ -151,8 +173,8 @@ async function hostedRepo(c: Context<HostedEnv>): Promise<HostedRepo | null> {
     client,
     packagePath: project.packagePath,
     mainBranch: await client.getDefaultBranch(),
-    store,
-    purge: deliveryPurge(),
+    store: delivery.store,
+    purge: delivery.purge,
     site: project.site,
   };
 }
@@ -184,12 +206,24 @@ function hostedError(c: Context<HostedEnv>, err: unknown) {
 }
 
 export function createHostedRoutes(
-  options: { repoClientFor?: RepoClientFor } = {},
+  options: {
+    repoClientFor?: RepoClientFor;
+    /** What the site reports serving (tests pass a fake). */
+    servedLabels?: () => ServedLabelsReader | null;
+    /** The delivery bucket and edge purge (tests pass in-memory ones). */
+    delivery?: () => Delivery | null;
+    /** The project repository's history (tests pass a fake). */
+    insightsFor?: typeof insightsClientForProjectRepo;
+  } = {},
 ) {
   const app = new Hono<HostedEnv>();
   const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
+  const servedLabels = options.servedLabels ?? defaultServedLabelsReader;
+  const insightsFor = options.insightsFor ?? insightsClientForProjectRepo;
+  const delivery = options.delivery ?? defaultDelivery;
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
+    c.set("delivery", delivery);
     await next();
   });
   app.use("/:virtualMcpId/*", resolveHostedProject);
@@ -199,13 +233,18 @@ export function createHostedRoutes(
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
       const project = c.get("hostedProject");
-      const insights = await insightsClientForProjectRepo(
+      const insights = await insightsFor(
         c.var.studioContext,
         project.organizationId,
         project.repository,
       );
       return c.json(
-        await listReleases(repo, insights, c.req.query("cursor") ?? null),
+        await listReleases(
+          repo,
+          insights,
+          c.req.query("cursor") ?? null,
+          servedLabels(),
+        ),
         200,
         { "Cache-Control": "no-store" },
       );
@@ -214,27 +253,36 @@ export function createHostedRoutes(
     }
   });
 
+  // Publish's "Try again" when its changes were committed but didn't go
+  // live (no companion release, or latest.json not written): main's head.
   app.post("/:virtualMcpId/releases/current", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      sha?: unknown;
-      confirm?: unknown;
-      head?: unknown;
-    };
-    const head = body.head === true;
-    if (!head && typeof body.sha !== "string") {
-      return c.json({ error: "sha is required" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as { head?: unknown };
+    if (body.head !== true) {
+      return c.json({ error: "head: true is required" }, 400);
     }
     try {
       const repo = await hostedRepo(c);
       if (!repo) return c.json(NOT_CONFIGURED, 503);
-      // `head`: Publish's "Try again" when its changes were committed but
-      // didn't go live (no companion release, or latest.json not written).
-      const current = head
-        ? await makeHeadCurrent(repo)
-        : await makeCurrent(repo, body.sha as string, {
-            confirm: body.confirm === true,
-          });
-      return c.json({ current });
+      return c.json({ current: await makeHeadCurrent(repo) });
+    } catch (err) {
+      return hostedError(c, err);
+    }
+  });
+
+  // Republish: a new release (a commit on main) with that release's
+  // content, then Publish's release path. Answers like Publish.
+  app.post("/:virtualMcpId/releases/:sha/republish", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      confirm?: unknown;
+    };
+    try {
+      const repo = await hostedRepo(c);
+      if (!repo) return c.json(NOT_CONFIGURED, 503);
+      const result = await republishRelease(repo, c.req.param("sha"), {
+        confirm: body.confirm === true,
+        coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+      });
+      return c.json(result);
     } catch (err) {
       if (err instanceof NotPublishedError) {
         return c.json({ error: err.message }, 404);
@@ -244,6 +292,9 @@ export function createHostedRoutes(
           { error: "schema-mismatch", target: err.target, head: err.head },
           409,
         );
+      }
+      if (err instanceof MainMovedError) {
+        return c.json({ error: "main-moved" }, 409);
       }
       return hostedError(c, err);
     }

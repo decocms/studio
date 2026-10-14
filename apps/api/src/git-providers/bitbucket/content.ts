@@ -439,6 +439,16 @@ export class BitbucketContentClient implements RepoContentClient {
     return content;
   }
 
+  async readCommit(
+    sha: string,
+  ): Promise<{ message: string; date: string } | null> {
+    const json = await this.json<{ message?: string; date?: string }>(
+      `${this.repoBase}/commit/${encodeRef(sha)}`,
+    );
+    if (typeof json?.message !== "string") return null;
+    return { message: json.message, date: json.date ?? "" };
+  }
+
   async readFileAtRef(ref: string, path: string): Promise<string | null> {
     const res = await this.call(
       `${this.repoBase}/src/${encodeRef(ref)}/${encodeSrcPath(path)}`,
