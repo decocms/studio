@@ -733,7 +733,7 @@ export function SectionsEditor({
 
   const savePageSections = (
     updatedSections: RawSection[],
-    options?: { onSuccess?: () => void },
+    options?: { onSuccess?: () => void; onError?: () => void },
   ) => {
     if (!activePageKey) return;
     // Cancel pending field/rule autosave timers — they capture a section index
@@ -768,12 +768,14 @@ export function SectionsEditor({
       { blockKey: activePageKey, data: fullPageData },
       {
         onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
-        onError: (err) =>
+        onError: (err) => {
+          options?.onError?.();
           toast.error(
             t("sectionsEditor.sectionsEditor.saveFailed", {
               error: err.message,
             }),
-          ),
+          );
+        },
       },
     );
   };
@@ -1146,38 +1148,43 @@ export function SectionsEditor({
     ];
     const newIndex = updatedSections.length - 1;
 
+    // The save updates the decofile cache optimistically; no need to await it.
     savePageSections(updatedSections, {
-      onSuccess: () => {
-        setAddSectionOpen(false);
-        setSelectedSectionIndex(newIndex);
-        setActiveSectionVariantIndex(0);
-        setFieldBreadcrumbs([]);
-        setFormResetKey((key) => key + 1);
-
-        const rawSection = updatedSections[newIndex];
-        const parsed = parseSections(updatedSections, decofile)[newIndex];
-        if (!rawSection || !parsed) return;
-
-        if (parsed.isMultivariate) {
-          applySectionVariant(rawSection, parsed, 0);
-          return;
+      onError: () => {
+        if (latestRef.current.selectedSectionIndex === newIndex) {
+          clearSectionEditing();
         }
-
-        const unwrapped = unwrapSection(rawSection, parsed, decofile);
-        if (!unwrapped) {
-          setFormValue(null);
-          setActiveResolveType(null);
-          setSectionRuleResolveType(null);
-          setSectionRuleFormValue(null);
-          return;
-        }
-
-        setFormValue(unwrapped.data);
-        setActiveResolveType(unwrapped.resolveType);
-        setSectionRuleResolveType(null);
-        setSectionRuleFormValue(null);
       },
     });
+
+    setAddSectionOpen(false);
+    setSelectedSectionIndex(newIndex);
+    setActiveSectionVariantIndex(0);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+
+    const rawSection = updatedSections[newIndex];
+    const parsed = parseSections(updatedSections, decofile)[newIndex];
+    if (!rawSection || !parsed) return;
+
+    if (parsed.isMultivariate) {
+      applySectionVariant(rawSection, parsed, 0);
+      return;
+    }
+
+    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    if (!unwrapped) {
+      setFormValue(null);
+      setActiveResolveType(null);
+      setSectionRuleResolveType(null);
+      setSectionRuleFormValue(null);
+      return;
+    }
+
+    setFormValue(unwrapped.data);
+    setActiveResolveType(unwrapped.resolveType);
+    setSectionRuleResolveType(null);
+    setSectionRuleFormValue(null);
   };
 
   // An array-of-sections field asks to open the picker; stash its `append`
