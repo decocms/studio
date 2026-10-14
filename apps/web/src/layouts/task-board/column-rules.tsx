@@ -35,22 +35,11 @@ import { getDecopilotId, useProjectContext } from "@/sdk";
 import { useAutomationActions, useAutomations } from "@/hooks/use-automations";
 import { useT } from "@/i18n/use-t.ts";
 
-/** A column's saved rules and a one-line summary of them, for the lane header icon. */
-export function useColumnRules(columnKey: string) {
-  const t = useT();
+/** A column's saved instructions and skills, and the board-wide skills. */
+function useColumnRules(columnKey: string) {
   const prompts = useTaskBoardPrompts();
-  const automations = useColumnAutomations(columnKey);
-  const scope = prompts.data?.find((p) => p.columnKey === columnKey);
-  const skillCount = scope?.skills.length ?? 0;
-  const running = automations.filter((a) => a.active).map((a) => a.name);
-  const summary =
-    scope?.prompt ||
-    running.join(", ") ||
-    t("taskBoard.columnRules.skillsOnly", { count: skillCount });
   return {
-    scope,
-    configured: !!scope || running.length > 0,
-    summary,
+    scope: prompts.data?.find((p) => p.columnKey === columnKey),
     boardSkills: prompts.data?.find((p) => p.columnKey === null)?.skills ?? [],
   };
 }

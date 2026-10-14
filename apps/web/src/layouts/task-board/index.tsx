@@ -38,11 +38,7 @@ import {
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import {
-  ColumnRulesSheet,
-  useColumnAutomations,
-  useColumnRules,
-} from "./column-rules";
+import { ColumnRulesSheet, useColumnAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -2731,7 +2727,6 @@ function Lane({
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const rules = useColumnRules(status);
   const takers = useColumnAutomations(status)
     .filter((automation) => automation.active)
     .map((automation) => automation.name);
@@ -2862,6 +2857,10 @@ function Lane({
               </TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setRulesOpen(true)}>
+                <Stars02 size={14} />
+                {t("taskBoard.columnRules.menuItem")}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
                 {t("taskBoard.taskBoard.selectAllInLane")}
               </DropdownMenuItem>
@@ -2887,33 +2886,6 @@ function Lane({
             </TooltipTrigger>
             <TooltipContent side="top">
               {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={t(
-                  rules.configured
-                    ? "taskBoard.columnRules.editAriaLabel"
-                    : "taskBoard.columnRules.add",
-                  { lane: label },
-                )}
-                onClick={() => setRulesOpen(true)}
-                className={cn(LANE_ACTION, rules.configured && "opacity-100")}
-              >
-                <Stars02
-                  size={15}
-                  className={cn(rules.configured && "text-special")}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-64">
-              <span className="line-clamp-4">
-                {rules.configured
-                  ? rules.summary
-                  : t("taskBoard.columnRules.add")}
-              </span>
             </TooltipContent>
           </Tooltip>
           <Tooltip>

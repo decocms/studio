@@ -372,11 +372,13 @@ test.describe("automation board column trigger", () => {
     });
 
     await page.goto(`/${orgSlug}/tasks`);
-    const rules = page.getByRole("button", {
-      name: "Edit rules for In Progress",
+    // The column's rules open from its "…" menu.
+    const menu = page.getByRole("button", {
+      name: "More actions for In Progress",
     });
-    await rules.waitFor({ state: "attached" });
-    await rules.click({ force: true });
+    await menu.waitFor({ state: "attached", timeout: 30_000 });
+    await menu.click({ force: true });
+    await page.getByRole("menuitem", { name: "Rules and automations" }).click();
     const toggle = page.getByRole("switch", {
       name: "Run Implementer on cards that land here",
     });
