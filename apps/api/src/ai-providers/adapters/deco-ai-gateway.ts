@@ -1,6 +1,6 @@
 import type { PlanEntitlements, ProviderAdapter } from "../types";
 import { openrouterAdapter } from "./openrouter";
-import { throwResponseError } from "./fetch-transient-retry";
+import { parseJsonResponse, throwResponseError } from "./fetch-transient-retry";
 import { getSettings } from "../../settings";
 
 function getBase(): string {
@@ -176,7 +176,10 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     if (!res.ok) {
       await throwResponseError("Failed to create top-up checkout", res);
     }
-    const data = (await res.json()) as { url: string };
+    const data = await parseJsonResponse<{ url: string }>(
+      "Deco AI Gateway top-up checkout",
+      res,
+    );
     return data.url;
   },
 
@@ -200,7 +203,10 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     if (!res.ok) {
       await throwResponseError("Failed to fetch credits balance", res);
     }
-    const data = (await res.json()) as { balance_cents: number };
+    const data = await parseJsonResponse<{ balance_cents: number }>(
+      "Deco AI Gateway credits balance",
+      res,
+    );
     return { balanceCents: data.balance_cents };
   },
 
@@ -233,7 +239,12 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
         typeof body?.code === "string" ? body.code : null,
       );
     }
-    return toPlanEntitlements((await res.json()) as EntitlementsWire);
+    return toPlanEntitlements(
+      await parseJsonResponse<EntitlementsWire>(
+        "Deco AI Gateway entitlements",
+        res,
+      ),
+    );
   },
 
   async listPlans(studioJwt: string, organizationId: string) {
@@ -254,9 +265,9 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw await refusal(res, "Failed to fetch plans");
-    const data = (await res.json()) as {
+    const data = await parseJsonResponse<{
       plans: { id: string; name: string; features: Record<string, boolean> }[];
-    };
+    }>("Deco AI Gateway plans", res);
     return data.plans;
   },
 
@@ -280,7 +291,12 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw await refusal(res, "Failed to change plan");
-    return toPlanEntitlements((await res.json()) as EntitlementsWire);
+    return toPlanEntitlements(
+      await parseJsonResponse<EntitlementsWire>(
+        "Deco AI Gateway set plan",
+        res,
+      ),
+    );
   },
 
   async provisionKey(studioJwt: string, organizationId: string) {
@@ -302,7 +318,10 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     if (!res.ok) {
       await throwResponseError("Deco AI Gateway key provisioning failed", res);
     }
-    const data = (await res.json()) as { key: string };
+    const data = await parseJsonResponse<{ key: string }>(
+      "Deco AI Gateway key provisioning",
+      res,
+    );
     return data.key;
   },
 
