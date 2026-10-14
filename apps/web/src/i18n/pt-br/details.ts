@@ -103,6 +103,11 @@ export const details = {
     "Falha ao conectar MCP: {message}",
   "details.mcpConfigurationForm.noConnectionsFound":
     "Nenhuma conexão encontrada",
+  "details.mcpConfigurationForm.notAuthenticated": "Não autenticado",
+  "details.mcpConfigurationForm.registryItemNotFound":
+    "Servidor MCP não encontrado no registro: {bindingType}",
+  "details.mcpConfigurationForm.registryItemNotConnectable":
+    "Este servidor MCP não pode ser conectado: nenhum método de conexão disponível",
   "details.mcpConfigurationForm.selectPlaceholder": "Selecionar {title}...",
   "details.prompt.bodyPlaceholder": "Escreva a mensagem do prompt…",
   "details.prompt.description": "Descrição",
