@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
 import { resolveSiteRepositoryId } from "./resolve-site-repository";
 
