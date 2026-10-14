@@ -1,130 +1,27 @@
 /**
- * Fires `board_column_transition` triggers (see `board-column-transition.ts`)
- * on settled moves: one move once its settle wait ends, or every recent move
- * in the safety-net sweep (`board-column-transition-workflows.ts`).
+ * Decides which `board_column_transition` triggers (see
+ * `board-column-transition.ts`) fire on settled moves: one move once its
+ * settle wait ends, or every recent move in the safety-net sweep
+ * (`board-column-transition-workflows.ts`). A fire is handed to the
+ * automation fire workflow with the card as its target, which runs it there
+ * (`card-run.ts`).
  *
  * Both paths can see the same move, and so can two replicas; each fire is
- * claimed in `automation_trigger_fires` before it starts, which is what lets
- * exactly one of them run it.
+ * claimed in `automation_trigger_fires` before it is handed over, which is
+ * what lets exactly one of them run it.
  */
 
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
-import type { StudioContextFactory } from "@/automations/fire";
-import type { StudioContext } from "@/core/studio-context";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import type {
-  Automation,
-  AutomationTrigger,
-  TaskBoardItem,
-} from "@/storage/types";
-import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
-import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
+import type { Automation, AutomationTrigger } from "@/storage/types";
 import {
-  automationInstruction,
-  cardFireFence,
   restedOrigin,
   SETTLE_MS,
   transitionMatches,
 } from "./board-column-transition";
+import type { FireAutomationContext } from "./dbos-workflow";
 
 type BoardColumnTrigger = AutomationTrigger & { automation: Automation };
-
-type CardFireOutcome =
-  | { fired: true }
-  | {
-      fired: false;
-      reason: "moved_on" | "busy" | "owned" | "lost_claim" | "rejected";
-    };
-
-/**
- * Run `automation` on the card that entered its trigger's column.
- *
- * The run is a board run (`enqueueSuperAgentForTask`): linked to the card,
- * on the card's repository and pull request, with the board's tools. It
- * skips a card that moved on since, one with a run still going (runs on a
- * card take turns), and one a person owns. An unassigned card is claimed for
- * the agent in the same conditional write that checks its column, so two
- * fires can never both start a run.
- */
-async function fireAutomationOnCard(
-  ctx: StudioContext,
-  trigger: BoardColumnTrigger,
-  item: TaskBoardItem,
-  eventKey: string,
-): Promise<CardFireOutcome> {
-  const { automation } = trigger;
-  if (item.status !== trigger.column_key) {
-    return { fired: false, reason: "moved_on" };
-  }
-  if (
-    item.threads.some(
-      (t) =>
-        t.hasMessages &&
-        (t.status === "in_progress" || t.status === "requires_action"),
-    )
-  ) {
-    return { fired: false, reason: "busy" };
-  }
-  if (item.assigneeId && item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) {
-    return { fired: false, reason: "owned" };
-  }
-
-  let card = item;
-  let claimed = false;
-  if (!item.assigneeId) {
-    const won = await ctx.storage.taskBoard.claimUnassignedForSuperAgent(
-      item.id,
-      item.organizationId,
-      automation.created_by,
-      automation.created_by,
-      trigger.column_key,
-    );
-    if (!won) return { fired: false, reason: "lost_claim" };
-    card = won;
-    claimed = true;
-    await ctx.storage.taskBoard
-      .recordActivity({
-        taskBoardItemId: item.id,
-        action: "assignee_changed",
-        actorId: null,
-        data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
-      })
-      .catch(() => {});
-    emitTaskBoardUpdated(item.organizationId, won);
-  }
-
-  try {
-    await enqueueSuperAgentForTask(ctx, card, {
-      instruction: automationInstruction(automation.messages) || undefined,
-      column: trigger.column_key,
-      automation: {
-        name: automation.name,
-        agentId: automation.virtual_mcp_id,
-        triggerId: trigger.id,
-        fence: cardFireFence(trigger.id, eventKey),
-      },
-    });
-  } catch (err) {
-    console.warn(
-      `[automations] "${automation.name}" on card ${item.id} was not dispatched:`,
-      err instanceof Error ? err.message : err,
-    );
-    if (claimed) {
-      const released = await ctx.storage.taskBoard.unassignSuperAgent(
-        item.id,
-        item.organizationId,
-        automation.created_by,
-      );
-      if (released) emitTaskBoardUpdated(item.organizationId, released);
-    }
-    return { fired: false, reason: "rejected" };
-  }
-  await ctx.storage.automations
-    .updateTriggerLastRunAt(trigger.id, new Date().toISOString())
-    .catch(() => {});
-  return { fired: true };
-}
 
 /** How far back the sweep reads. Covers a few missed ticks; a move older
  *  than this that never fired is left alone. */
@@ -135,7 +32,11 @@ const BATCH_SIZE = 200;
 export interface BoardTransitionDeps {
   automations: AutomationsStorage;
   taskBoard: TaskBoardStorage;
-  contextFactory: StudioContextFactory;
+  /** Hand a fire to the automation fire workflow (`enqueueAutomationFire`). */
+  fire: (
+    ctx: FireAutomationContext,
+    opts: { idempotencyKey: string },
+  ) => Promise<void>;
 }
 
 type SettledMove = Awaited<
@@ -143,7 +44,7 @@ type SettledMove = Awaited<
 >[number];
 
 /** Fire the triggers every recent settled move matches. Returns how many
- *  runs it started. */
+ *  fires it handed over. */
 export async function sweepSettledMoves(
   deps: BoardTransitionDeps,
   now: number,
@@ -153,7 +54,7 @@ export async function sweepSettledMoves(
 }
 
 /** Fire the triggers one move matches, when it is still the card's latest
- *  and has settled. Returns how many runs it started. */
+ *  and has settled. Returns how many fires it handed over. */
 export async function settleBoardMove(
   deps: BoardTransitionDeps,
   activityId: string,
@@ -206,7 +107,21 @@ async function fireSettledMoves(
         ) {
           continue;
         }
-        if (await fire(deps, trigger, move)) fired++;
+        await deps.fire(
+          {
+            automationId: trigger.automation_id,
+            organizationId: move.organizationId,
+            triggerId: trigger.id,
+            target: {
+              kind: "card",
+              itemId: move.itemId,
+              columnKey: move.to,
+              eventKey: move.activityId,
+            },
+          },
+          { idempotencyKey: `board:${trigger.id}:${move.activityId}` },
+        );
+        fired++;
       }
     } catch (err) {
       console.error(
@@ -240,35 +155,4 @@ async function originOf(
       : [{ from, to: data.to, occurredAt: entry.occurredAt }];
   });
   return moves.length > 0 ? restedOrigin(moves, settleMs) : move.from;
-}
-
-async function fire(
-  deps: BoardTransitionDeps,
-  trigger: BoardColumnTrigger,
-  move: SettledMove,
-): Promise<boolean> {
-  const ctx = await deps.contextFactory(
-    move.organizationId,
-    trigger.automation.created_by,
-  );
-  if (!ctx) {
-    console.warn(
-      `[automations] "${trigger.automation.name}" skipped: its creator left the org`,
-    );
-    return false;
-  }
-  const item = await deps.taskBoard.getById(move.itemId, move.organizationId);
-  if (!item) return false;
-  const outcome = await fireAutomationOnCard(
-    ctx,
-    trigger,
-    item,
-    move.activityId,
-  );
-  if (!outcome.fired) {
-    console.log(
-      `[automations] "${trigger.automation.name}" skipped card ${item.id}: ${outcome.reason}`,
-    );
-  }
-  return outcome.fired;
 }

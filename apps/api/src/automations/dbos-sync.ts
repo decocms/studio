@@ -9,12 +9,14 @@
  * bounded by reboot cadence; `dbos-reconciler.ts` re-syncs at boot.
  */
 
-import { DBOS } from "@dbos-inc/dbos-sdk";
+import { DBOS, DBOSClient } from "@dbos-inc/dbos-sdk";
 import type { Automation, AutomationTrigger } from "@/storage/types";
 import {
   AUTOMATIONS_QUEUE,
+  automationSystemDatabaseUrl,
   cronEntryWorkflow,
   fireAutomationWorkflow,
+  type fireAutomationWorkflowFn,
   type FireAutomationContext,
   type FireAutomationOutcome,
 } from "./dbos-workflow";
@@ -136,9 +138,43 @@ export async function enqueueAutomationFire(
   opts?: { idempotencyKey?: string },
 ): Promise<void> {
   const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
+  // Inside a workflow or step the in-process API refuses (or records a child
+  // in the caller's journal); the queue row is written through a client.
+  if (DBOS.isWithinWorkflow()) {
+    await enqueueFromWorkflow(ctx, workflowID);
+    return;
+  }
   await DBOS.startWorkflow(fireAutomationWorkflow, {
     workflowID,
     queueName: AUTOMATIONS_QUEUE,
     enqueueOptions: { queuePartitionKey: ctx.organizationId },
   })(ctx);
+}
+
+async function enqueueFromWorkflow(
+  ctx: FireAutomationContext,
+  workflowID: string | undefined,
+): Promise<void> {
+  const systemDatabaseUrl = automationSystemDatabaseUrl();
+  if (!systemDatabaseUrl) {
+    throw new Error("Automation fires can't be enqueued from a workflow here");
+  }
+  const client = await DBOSClient.create({
+    systemDatabaseUrl,
+    systemDatabaseSchemaName: "dbos",
+    systemDatabasePoolSize: 1,
+  });
+  try {
+    await client.enqueue<typeof fireAutomationWorkflowFn>(
+      {
+        workflowName: "fireAutomationWorkflow",
+        queueName: AUTOMATIONS_QUEUE,
+        queuePartitionKey: ctx.organizationId,
+        ...(workflowID ? { workflowID } : {}),
+      },
+      ctx,
+    );
+  } finally {
+    await client.destroy();
+  }
 }

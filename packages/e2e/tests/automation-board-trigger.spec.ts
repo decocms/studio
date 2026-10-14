@@ -6,7 +6,7 @@
  * starts no settle wait.
  *
  * The run itself needs a model and a sandbox this tier does not have, so the
- * fire is asserted by its claim. Which moves fire is covered at the
+ * fire is asserted by its claim and by the fire workflow that ran it. Which moves fire is covered at the
  * integration tier (`board-column-transition-fire.integration.test.ts`).
  */
 
@@ -160,6 +160,19 @@ test.describe("automation board column trigger", () => {
       expect(waits.rows.map((r) => r.workflow_uuid)).toEqual([
         `board-settle:${watchedMove}`,
       ]);
+
+      // The fire runs through the automation fire workflow, like any other
+      // trigger's, which then runs it on the card.
+      const fireOf = async () =>
+        (
+          await db.query<{ name: string; status: string }>(
+            "select name, status from dbos.workflow_status where workflow_uuid = $1",
+            [`auto:${id}:board:${trigger.id}:${watchedMove}`],
+          )
+        ).rows;
+      await expect
+        .poll(fireOf, { timeout: SETTLED_MS })
+        .toEqual([{ name: "fireAutomationWorkflow", status: "SUCCESS" }]);
     } finally {
       await db.end();
     }

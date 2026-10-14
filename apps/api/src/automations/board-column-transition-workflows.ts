@@ -91,7 +91,7 @@ async function boardTransitionSweepWorkflowFn(
   });
   if (fired > 0) {
     console.log(
-      `[automations] board transition sweep started ${fired} run(s) the settle wait missed`,
+      `[automations] board transition sweep fired ${fired} trigger(s) the settle wait missed`,
     );
   }
 }

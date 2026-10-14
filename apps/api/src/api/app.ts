@@ -1697,6 +1697,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   setAutomationRuntime({
     storage: automationsStorage,
     studioContextFactory: automationContextFactory,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
   });
 
   // The per-thread gate starts the hosted run and lets the consume step write
@@ -1773,7 +1777,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   setBoardTransitionRuntime({
     automations: automationsStorage,
     taskBoard: projectorTaskBoard,
-    contextFactory: automationContextFactory,
+    fire: enqueueAutomationFire,
     systemDatabaseUrl: withSslmode(
       getSettings().databaseUrl,
       getSettings().databasePgSsl,

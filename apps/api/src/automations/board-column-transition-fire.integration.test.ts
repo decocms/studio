@@ -39,6 +39,8 @@ import {
   settleBoardMove,
   sweepSettledMoves,
 } from "./board-column-transition-fire";
+import { runAutomationOnCard } from "./card-run";
+import type { FireAutomationContext } from "./dbos-workflow";
 
 const ORG = "org_test";
 const USER = "user_test";
@@ -49,6 +51,10 @@ describe("board column transition trigger (real Postgres)", () => {
   let taskBoard: TaskBoardStorage;
   let automations: ReturnType<typeof createAutomationsStorage>;
   let deps: BoardTransitionDeps;
+  let handed: {
+    fire: FireAutomationContext;
+    idempotencyKey: string;
+  }[];
   /** The sweep's clock: every move below is placed relative to it. */
   const NOW = Date.now();
 
@@ -66,7 +72,27 @@ describe("board column transition trigger (real Postgres)", () => {
       auth: { user: { id: USER } },
       storage: { taskBoard, automations },
     } as unknown as StudioContext;
-    deps = { automations, taskBoard, contextFactory: async () => ctx };
+    handed = [];
+    // What the fire workflow does with a card target, minus the queue.
+    deps = {
+      automations,
+      taskBoard,
+      fire: async (fire, opts) => {
+        handed.push({ fire, ...opts });
+        const automation = await automations.findById(
+          fire.automationId,
+          fire.organizationId,
+        );
+        if (automation && fire.triggerId && fire.target) {
+          await runAutomationOnCard(
+            ctx,
+            automation,
+            fire.triggerId,
+            fire.target,
+          );
+        }
+      },
+    };
   });
 
   afterAll(async () => {
@@ -323,5 +349,33 @@ describe("board column transition trigger (real Postgres)", () => {
     } finally {
       setBoardMoveListener(null);
     }
+  });
+
+  it("hands a fire to the automation workflow with the card as its target", async () => {
+    const trigger = await triggerOn("in_progress");
+    const moved = await card([
+      { from: "triage", to: "in_progress", secondsAgo: 30 },
+    ]);
+    const [move] = await activityIds(moved.id);
+
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
+
+    expect(handed).toEqual([
+      {
+        fire: {
+          automationId: trigger.automation_id,
+          organizationId: ORG,
+          triggerId: trigger.id,
+          target: {
+            kind: "card",
+            itemId: moved.id,
+            columnKey: "in_progress",
+            eventKey: move!,
+          },
+        },
+        // One workflow per (trigger, move), however many times it is handed over.
+        idempotencyKey: `board:${trigger.id}:${move}`,
+      },
+    ]);
   });
 });
