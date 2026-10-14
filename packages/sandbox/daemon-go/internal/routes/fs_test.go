@@ -187,6 +187,31 @@ func TestReadDecofileFallbackRefusesAbsolute(t *testing.T) {
 	}
 }
 
+// Every fs mutation route confines an absolute path with paths.SafePath;
+// /read must too. A secret file outside AppRoot — reachable by the daemon
+// process but never meant to be exposed over this API — must not be
+// readable just because the caller used an absolute path.
+func TestReadRefusesAbsolutePathOutsideRoot(t *testing.T) {
+	outsideDir, err := os.MkdirTemp("", "fs-read-outside-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(outsideDir) })
+	secretPath := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(secretPath, []byte("top secret"), 0o644); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+
+	deps := seedBlocks(t)
+	rec := readReq(t, deps, secretPath)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "top secret") {
+		t.Fatalf("leaked file content outside AppRoot: %s", rec.Body.String())
+	}
+}
+
 // The 400 an out-of-root write returns must name the root it wants. A model
 // that guessed `/tmp` (writable from its own bash tool, not from here) has to
 // be able to correct itself from the message alone — prod thread 38147122
