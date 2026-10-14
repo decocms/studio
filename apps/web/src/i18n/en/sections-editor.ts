@@ -265,6 +265,8 @@ export const sectionsEditor = {
     "No editable fields for this variant.",
   "sectionsEditor.sectionsEditor.noPageFound":
     "No page found for {currentPath}",
+  "sectionsEditor.sectionsEditor.blockChangedElsewhere":
+    "Someone else changed this block after you opened it. The latest version is loaded; redo your last change.",
   "sectionsEditor.sectionsEditor.saveFailed": "Save failed: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Saved global block "{blockId}"',

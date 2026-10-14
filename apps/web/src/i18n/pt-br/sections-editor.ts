@@ -277,6 +277,8 @@ export const sectionsEditor = {
     "Nenhum campo editável para esta variante.",
   "sectionsEditor.sectionsEditor.noPageFound":
     "Nenhuma página encontrada para {currentPath}",
+  "sectionsEditor.sectionsEditor.blockChangedElsewhere":
+    "Outra pessoa alterou este bloco depois que você o abriu. A versão mais recente foi carregada; refaça sua última alteração.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',

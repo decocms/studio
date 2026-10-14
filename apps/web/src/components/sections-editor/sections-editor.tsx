@@ -37,6 +37,13 @@ import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
+import {
+  formSourceMovedOn,
+  sectionFormSource,
+  trackFormChange,
+  type FormBase,
+} from "./form-base";
+import { BlockConflictError } from "./decofile-api";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
@@ -387,6 +394,8 @@ export function SectionsEditor({
   );
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
+  // What the open section form's edits are relative to (see trackFormChange).
+  const formBaseRef = useRef<FormBase | null>(null);
 
   // Keep a ref to the latest render-scope values so debounced callbacks
   // always read fresh data instead of a stale closure.
@@ -409,6 +418,10 @@ export function SectionsEditor({
     sectionVariantIndex: 0,
     selectedSectionIndex: null,
   });
+
+  // A request to re-seed the open form from the stored section (see reloadStaleForm).
+  const [formReloadRequest, setFormReloadRequest] = useState(0);
+  const [formReloadHandled, setFormReloadHandled] = useState(0);
 
   // Declared above the early returns below: a hook after a conditional return
   // is skipped on the loading render, so the next render calls one more hook
@@ -719,6 +732,32 @@ export function SectionsEditor({
     }
   }
 
+  if (formReloadRequest !== formReloadHandled) {
+    setFormReloadHandled(formReloadRequest);
+    const rawSection =
+      selectedSectionIndex !== null ? rawSections[selectedSectionIndex] : null;
+    const parsed =
+      selectedSectionIndex !== null
+        ? parsedSections[selectedSectionIndex]
+        : null;
+    if (rawSection && parsed && selectedSectionIndex !== null) {
+      setFieldBreadcrumbs([]);
+      setFormResetKey((key) => key + 1);
+      if (parsed.isMultivariate) {
+        applySectionVariant(
+          rawSection,
+          parsed,
+          activeSectionVariantIndex,
+          selectedSectionIndex,
+        );
+      } else {
+        const unwrapped = unwrapSection(rawSection, parsed, decofile ?? {});
+        setFormValue(unwrapped?.data ?? null);
+        setActiveResolveType(unwrapped?.resolveType ?? null);
+      }
+    }
+  }
+
   const sandbox = {
     orgSlug,
     virtualMcpId,
@@ -791,11 +830,33 @@ export function SectionsEditor({
     setFormResetKey((key) => key + 1);
   };
 
+  /**
+   * The open form's copy of a section went stale: another editor's change is
+   * now stored (a sync, a publish, a reload). Writing the form would revert
+   * that change, so drop the pending edit and re-seed the form from the
+   * stored section instead.
+   */
+  const reloadStaleForm = () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    pendingSectionSaveRef.current = null;
+    toast.error(t("sectionsEditor.sectionsEditor.blockChangedElsewhere"));
+    setFormReloadRequest((n) => n + 1);
+  };
+
   const scheduleAutoSave = (
     nextValue: Record<string, unknown>,
     sectionIndex: number,
   ) => {
     const targetSectionVariantIndex = latestRef.current.sectionVariantIndex;
+    const tracked = formBaseRef.current;
+    const formBase =
+      tracked?.sectionIndex === sectionIndex &&
+      tracked.variantIndex === targetSectionVariantIndex
+        ? tracked
+        : null;
     const pending = pendingSectionSaveRef.current;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -824,21 +885,53 @@ export function SectionsEditor({
       const parsed = latestParsedSections[sectionIndex];
       if (!parsed) return;
 
+      const startedFrom = formBase?.base;
+      if (
+        startedFrom &&
+        formSourceMovedOn(
+          startedFrom,
+          sectionFormSource(
+            rawSection,
+            parsed,
+            targetSectionVariantIndex,
+            latestDecofile,
+          ),
+        )
+      ) {
+        reloadStaleForm();
+        return;
+      }
+      // The stored copy becomes this value; a failed write puts it back.
+      if (formBase) formBase.base = nextValue;
+      const saveCallbacks = {
+        onSuccess: () => onSaved?.(),
+        onError: (err: Error) => {
+          if (err instanceof BlockConflictError) {
+            reloadStaleForm();
+            return;
+          }
+          if (formBase?.base === nextValue && startedFrom) {
+            formBase.base = startedFrom;
+          }
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          );
+        },
+      };
+
       // Saved block: write the block entry directly (savedBlockKey unwraps hidden wrappers).
       if (parsed.isSavedBlock) {
         const blockKey = savedBlockKey(rawSection, parsed);
         if (!blockKey) return;
         saveBlock.mutate(
-          { blockKey, data: nextValue },
           {
-            onSuccess: () => onSaved?.(),
-            onError: (err) =>
-              toast.error(
-                t("sectionsEditor.sectionsEditor.saveFailed", {
-                  error: err.message,
-                }),
-              ),
+            blockKey,
+            data: nextValue,
+            ...(startedFrom ? { base: { value: startedFrom } } : {}),
           },
+          saveCallbacks,
         );
         return;
       }
@@ -918,15 +1011,7 @@ export function SectionsEditor({
       }
       saveBlock.mutate(
         { blockKey: latestPageKey, data: fullPageData },
-        {
-          onSuccess: () => onSaved?.(),
-          onError: (err) =>
-            toast.error(
-              t("sectionsEditor.sectionsEditor.saveFailed", {
-                error: err.message,
-              }),
-            ),
-        },
+        saveCallbacks,
       );
     };
     pendingSectionSaveRef.current = {
@@ -977,6 +1062,14 @@ export function SectionsEditor({
 
   const handleFormChange = (val: unknown) => {
     const next = val as Record<string, unknown>;
+    if (selectedSectionIndex !== null) {
+      formBaseRef.current = trackFormChange(formBaseRef.current, {
+        sectionIndex: selectedSectionIndex,
+        variantIndex: latestRef.current.sectionVariantIndex,
+        shown: formValue,
+        next,
+      });
+    }
     setFormValue(next);
     if (selectedSectionIndex !== null) {
       scheduleAutoSave(next, selectedSectionIndex);

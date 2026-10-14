@@ -5,10 +5,14 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
-import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
+import {
+  decoBlockFingerprint,
+  sanitizeSecretsForPersistence,
+} from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
+  BlockConflictError,
   decofileWriteMutationKey,
   decofileWriteScope,
   patchDecofile,
@@ -30,12 +34,46 @@ interface UseSaveBlockParams {
   branch: string;
 }
 
+/** The block a write was built from; `value: undefined` when there was none. */
+interface SaveBlockBase {
+  value: unknown;
+}
+
+interface SaveBlockVariables {
+  blockKey: string;
+  data: unknown;
+  /**
+   * Every save replaces the whole block, so the server refuses one built from
+   * a version the branch no longer has (another draft published, a sync moved
+   * the branch) rather than reverting those changes. Defaults to the cached
+   * block at call time, which is right for writes derived from the cache. An
+   * editor that holds its own copy, like an open form, must pass the copy it
+   * started from.
+   */
+  base?: SaveBlockBase;
+}
+
+async function blockExpectation(
+  blockKey: string,
+  base: SaveBlockBase | undefined,
+): Promise<Record<string, string | null> | undefined> {
+  if (!base) return undefined;
+  if (base.value === undefined) return { [blockKey]: null };
+  try {
+    return { [blockKey]: await decoBlockFingerprint(base.value) };
+  } catch {
+    // A base that could never be persisted has no version to compare against.
+    return undefined;
+  }
+}
+
 export function useSaveBlock({
   orgSlug,
   virtualMcpId,
   branch,
 }: UseSaveBlockParams) {
   const queryClient = useQueryClient();
+  const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // Prefixes the daemon path: the daemon resolves against the repo root.
   const packagePath = usePackagePath(virtualMcpId);
@@ -56,26 +94,35 @@ export function useSaveBlock({
     localPreviewUrl,
   });
 
-  return useMutation({
+  const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
-    mutationFn: async ({
-      blockKey,
-      data,
-    }: {
-      blockKey: string;
-      data: unknown;
-    }) => {
+    mutationFn: async ({ blockKey, data, base }: SaveBlockVariables) => {
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };
       if (fastPreviewActive) {
-        const draft = await patchDecofile(
-          { orgSlug, virtualMcpId, branch },
-          { set: { [blockKey]: data } },
-        );
+        const expect = await blockExpectation(blockKey, base);
+        let draft;
+        try {
+          draft = await patchDecofile(
+            { orgSlug, virtualMcpId, branch },
+            { set: { [blockKey]: data }, ...(expect ? { expect } : {}) },
+          );
+        } catch (err) {
+          if (!(err instanceof BlockConflictError)) throw err;
+          // Re-read before failing, so whatever reacts to the error sees the
+          // branch's current copy rather than the one this edit was built on.
+          await queryClient.invalidateQueries({
+            queryKey: KEYS.decofile(cacheKey),
+          });
+          throw new BlockConflictError(
+            err.blocks,
+            t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+          );
+        }
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
         /**
          * The landed commit moved the branch head — refresh the header's
@@ -127,8 +174,9 @@ export function useSaveBlock({
       return { queryKey, blockKey, hadKey, previousValue };
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
-    onError: (_error, _variables, context) => {
-      if (!context) return;
+    // A conflict already re-read the block; restoring would put the stale copy back.
+    onError: (error, _variables, context) => {
+      if (!context || error instanceof BlockConflictError) return;
       queryClient.setQueryData(
         context.queryKey,
         (current: Record<string, unknown> | undefined) => {
@@ -151,6 +199,28 @@ export function useSaveBlock({
       );
     },
   });
+
+  const withBase = (variables: SaveBlockVariables): SaveBlockVariables => {
+    if (variables.base) return variables;
+    const cached = queryClient.getQueryData<Record<string, unknown>>(
+      KEYS.decofile(cacheKey),
+    );
+    return cached
+      ? { ...variables, base: { value: cached[variables.blockKey] } }
+      : variables;
+  };
+
+  return {
+    ...mutation,
+    mutate: (
+      variables: SaveBlockVariables,
+      options?: Parameters<typeof mutation.mutate>[1],
+    ) => mutation.mutate(withBase(variables), options),
+    mutateAsync: (
+      variables: SaveBlockVariables,
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync(withBase(variables), options),
+  };
 }
 
 /**

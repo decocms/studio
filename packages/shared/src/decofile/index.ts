@@ -20,3 +20,4 @@ export {
   SECRET_ENCRYPT_ACTION_KEYS,
   SECRET_LOADER_RESOLVE_TYPE,
 } from "./secret";
+export { canonicalBlockJson, decoBlockFingerprint } from "./fingerprint";
