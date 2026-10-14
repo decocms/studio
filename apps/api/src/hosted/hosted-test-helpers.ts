@@ -128,9 +128,16 @@ export function fakeRepo(files: Record<string, string>) {
     }),
     getArchive: async () => null,
     listDecofileEntries: async (treeish, packagePath) => {
-      const prefix = packagePath ? `${packagePath}/.deco/` : ".deco/";
+      // As the real providers: `.deco/blocks.gen.json` and the direct
+      // children of `.deco/blocks/`, nothing else (no schema.gen.json).
+      const deco = packagePath ? `${packagePath}/.deco/` : ".deco/";
       return [...treeAt(treeish)]
-        .filter(([path]) => path.startsWith(prefix))
+        .filter(
+          ([path]) =>
+            path === `${deco}blocks.gen.json` ||
+            (path.startsWith(`${deco}blocks/`) &&
+              !path.slice(`${deco}blocks/`.length).includes("/")),
+        )
         .map(
           ([path, content]): TreeEntry => ({
             path,
