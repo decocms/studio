@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { AI_PROVIDER_CREDITS } from "./credits";
-import { AI_PROVIDER_KEY_CREATE } from "./key-create";
+import {
+  AI_PROVIDER_KEY_CREATE,
+  rejectPrivateOpenAiCompatibleBaseUrl,
+} from "./key-create";
 import { AI_PROVIDER_KEY_LIST } from "./key-list";
 import { AI_PROVIDER_OAUTH_EXCHANGE } from "./oauth-exchange";
 import { AI_PROVIDER_OAUTH_URL } from "./oauth-url";
@@ -84,6 +87,42 @@ describe("hosted AI provider schemas", () => {
         apiKey: "a".repeat(4097),
       }).success,
     ).toBeFalse();
+  });
+
+  test("rejects an openai-compatible baseUrl targeting a private network", () => {
+    expect(() =>
+      rejectPrivateOpenAiCompatibleBaseUrl(
+        "openai-compatible",
+        JSON.stringify({
+          baseUrl: "http://169.254.169.254/latest",
+          apiKey: "x",
+        }),
+      ),
+    ).toThrow();
+    expect(() =>
+      rejectPrivateOpenAiCompatibleBaseUrl(
+        "openai-compatible",
+        JSON.stringify({ baseUrl: "http://10.0.0.5", apiKey: "x" }),
+      ),
+    ).toThrow();
+  });
+
+  test("allows an openai-compatible baseUrl targeting a public host", () => {
+    expect(() =>
+      rejectPrivateOpenAiCompatibleBaseUrl(
+        "openai-compatible",
+        JSON.stringify({ baseUrl: "https://api.example.com", apiKey: "x" }),
+      ),
+    ).not.toThrow();
+  });
+
+  test("ignores other providers and malformed credentials", () => {
+    expect(() =>
+      rejectPrivateOpenAiCompatibleBaseUrl("deco", "plain-api-key"),
+    ).not.toThrow();
+    expect(() =>
+      rejectPrivateOpenAiCompatibleBaseUrl("openai-compatible", "not-json"),
+    ).not.toThrow();
   });
 
   test("keeps historical native-only keys listable", () => {
