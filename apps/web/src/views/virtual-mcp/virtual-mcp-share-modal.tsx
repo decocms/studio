@@ -201,6 +201,12 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
   );
 }
 
+/** Typegen keys are a one-off local dev credential pasted into a shell command
+ *  and easily forgotten — unlike the user-managed Settings > API Keys list,
+ *  this modal never lists or lets the user revoke it, so it should not be a
+ *  permanent `*`-scoped credential. */
+const TYPEGEN_KEY_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 /**
  * Typegen section inner — calls builtin tools via useStudioTools
  */
@@ -223,6 +229,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       const { key } = await studio.call("API_KEY_CREATE", {
         name: `typegen-${agentName}`,
         permissions: { [mcpId]: ["*"] },
+        expiresIn: TYPEGEN_KEY_TTL_SECONDS,
       });
       if (!key) throw new Error("No key in response");
       setApiKey(key);
