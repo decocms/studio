@@ -32,6 +32,7 @@ import {
   createFastPreviewProject,
   type FastPreviewProject,
   inspectStubRepo,
+  moveStubMain,
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
@@ -1235,6 +1236,73 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       // Nothing is left to publish, and the draft holds no copy of main.
       const left = Object.values(await deliveryObjects(page.request, drafts));
       expect(left.some((o) => o.text.includes("Discard me"))).toBe(false);
+    } finally {
+      await preview.close();
+    }
+  });
+
+  test("a discard after main moved puts main's current value back, not the one the dialog loaded", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const preview = await startPreviewSite();
+    try {
+      const schema = JSON.stringify({ ...v7Meta, blocksMajor: 8 });
+      const { url, project } = await openEditor(
+        page.request,
+        orgSlug,
+        preview.url,
+        {
+          ".deco/schema.gen.json": schema,
+          ".deco/blocks/home.json": homePage,
+        },
+      );
+      await page.goto(url);
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 60_000,
+      });
+      const blocks = page.getByTestId("blocks-panel");
+      await blocks.getByText("Hero", { exact: true }).first().click();
+      const title = page.getByLabel("Title", { exact: true });
+      await expect(title).toHaveValue("Hello", { timeout: 30_000 });
+
+      await title.fill("Discard me");
+      const drafts = `sites/${project.owner}/drafts/`;
+      await expect
+        .poll(
+          async () =>
+            Object.values(await deliveryObjects(page.request, drafts)).some(
+              (o) => o.text.includes("Discard me"),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+
+      await page.getByRole("button", { name: "Review & Publish" }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.locator('[data-publish-state="ready"]')).toBeVisible({
+        timeout: 60_000,
+      });
+      // The dialog has main's "Hello"; main moves on before the discard.
+      await moveStubMain(page.request, project.owner, "site", {
+        ".deco/schema.gen.json": schema,
+        ".deco/blocks/home.json": homePage.replace("Hello", "Hello again"),
+      });
+      await dialog.getByRole("button", { name: "Discard" }).first().click();
+      await dialog
+        .getByRole("button", { name: "Discard", exact: true })
+        .click();
+      await expect(dialog.getByText("Everything is published")).toBeVisible({
+        timeout: 30_000,
+      });
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+
+      // main's value as it is now, not the one the dialog showed.
+      await expect(title).toHaveValue("Hello again", { timeout: 10_000 });
+      const left = Object.values(await deliveryObjects(page.request, drafts));
+      expect(left.some((o) => o.text.includes("Discard me"))).toBe(false);
+      // The draft carries no old main over the new one.
+      expect(left.some((o) => /"title":\s*"Hello"/.test(o.text))).toBe(false);
     } finally {
       await preview.close();
     }

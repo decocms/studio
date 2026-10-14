@@ -18,14 +18,22 @@
  *
  * One store per project (org + project), not per draft: a publish ends on a
  * new draft, and its reload is still the publish's.
+ *
+ * A discard ({@link runContentDiscard}) runs in the editor's own write queue:
+ * the autosaves armed for the discarded blocks are dropped, and the discard
+ * waits for the writes already queued or in flight, so it lands last.
  */
 
 import { notifyManager, type QueryClient } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useMinimumDuration } from "@/hooks/use-minimum-duration";
 import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
-import type { DecofilePatchBody } from "./decofile-api";
+import {
+  type DecofilePatchBody,
+  decofileWriteMutationKey,
+  decofileWriteScope,
+} from "./decofile-api";
 import { sandboxGitStatusQueryPrefix } from "../thread/repository/sandbox-git-api";
 import { cmsPublishBodiesQueryPrefix } from "../thread/repository/use-cms-publish-state";
 
@@ -71,7 +79,12 @@ interface Store {
   /** Mounted previews that confirm a reload (hosted v8 frames). */
   previews: number;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Editors' armed autosaves, dropped for the blocks a discard reverts. */
+  discardListeners: Set<DiscardListener>;
 }
+
+/** Drops the caller's armed (not yet sent) autosaves of these blocks. */
+export type DiscardListener = (blockKeys: ReadonlySet<string>) => void;
 
 const stores = new Map<string, Store>();
 
@@ -82,7 +95,13 @@ export function contentSyncScope(orgSlug: string, virtualMcpId: string) {
 function storeOf(scope: string): Store {
   let store = stores.get(scope);
   if (!store) {
-    store = { state: IDLE, listeners: new Set(), previews: 0, timer: null };
+    store = {
+      state: IDLE,
+      listeners: new Set(),
+      previews: 0,
+      timer: null,
+      discardListeners: new Set(),
+    };
     stores.set(scope, store);
   }
   return store;
@@ -196,6 +215,16 @@ export interface ContentChange {
   reread?: boolean;
 }
 
+/** What only the write itself knows (a discard reads main when it runs). */
+type ChangeOutcome = Pick<ContentChange, "patch" | "reread">;
+
+type ContentWrite<T> = ContentChange & {
+  write: () => Promise<T>;
+  refreshOnError?: boolean;
+  /** The refresh's `patch`/`reread`, decided from the write's result. */
+  outcome?: (result: T) => ChangeOutcome;
+};
+
 function isHosted(backend: ContentBackend | null): boolean {
   return backend?.kind === "protocol" && backend.source === "github";
 }
@@ -295,13 +324,18 @@ async function contentChanged(
  */
 export async function runContentChange<T>(
   target: ContentSyncTarget,
-  change: ContentChange & {
-    write: () => Promise<T>;
-    refreshOnError?: boolean;
-  },
+  change: ContentWrite<T>,
+): Promise<T> {
+  begin(contentSyncScope(target.orgSlug, target.virtualMcpId));
+  return runBegun(target, change);
+}
+
+/** {@link runContentChange} once its pending state has begun. */
+async function runBegun<T>(
+  target: ContentSyncTarget,
+  change: ContentWrite<T>,
 ): Promise<T> {
   const scope = contentSyncScope(target.orgSlug, target.virtualMcpId);
-  begin(scope);
   let result: T;
   try {
     result = await change.write();
@@ -316,7 +350,10 @@ export async function runContentChange<T>(
   }
   let navigates = false;
   try {
-    ({ navigates } = await contentChanged(target, change));
+    ({ navigates } = await contentChanged(target, {
+      ...change,
+      ...change.outcome?.(result),
+    }));
   } catch {
     // The write landed; a failed re-read only leaves a list stale.
   } finally {
@@ -324,6 +361,74 @@ export async function runContentChange<T>(
     end(scope, { ok: true, navigates });
   }
   return result;
+}
+
+/**
+ * A discard of `blockKeys`, in the same write queue as the editor's saves
+ * (`decofileWriteScope`: one write of a draft at a time, in order). First the
+ * editors drop their armed autosaves of those blocks, which would otherwise
+ * fire after the discard and bring the edit back; then the discard waits for
+ * the writes already queued or in flight, and runs as a content change. So
+ * the last write to land is the discard's, and `write` (which reads main's
+ * version when it runs) sees every earlier save.
+ */
+export function runContentDiscard<T>(
+  target: ContentSyncTarget,
+  change: {
+    blockKeys: readonly string[];
+    write: () => Promise<T>;
+    outcome?: (result: T) => ChangeOutcome;
+  },
+): Promise<T> {
+  const { queryClient, orgSlug, virtualMcpId, branch } = target;
+  const scope = contentSyncScope(orgSlug, virtualMcpId);
+  const keys: ReadonlySet<string> = new Set(change.blockKeys);
+  for (const listener of [...storeOf(scope).discardListeners]) listener(keys);
+  // Pending from the click, while it waits its turn too.
+  begin(scope);
+  let started = false;
+  const run = () => {
+    started = true;
+    return runBegun(target, {
+      kind: "discard",
+      write: change.write,
+      outcome: change.outcome,
+    });
+  };
+  if (!branch) return run();
+  return queryClient
+    .getMutationCache()
+    .build<T, Error, void, unknown>(queryClient, {
+      mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
+      scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
+      mutationFn: run,
+    })
+    .execute(undefined)
+    .catch((error: unknown) => {
+      if (!started) end(scope, { ok: false, navigates: false });
+      throw error;
+    });
+}
+
+/**
+ * Registers an editor's armed autosaves with {@link runContentDiscard}. The
+ * listener is read once (at mount): it must read refs, not render values.
+ */
+export function useContentDiscardListener(
+  orgSlug: string,
+  virtualMcpId: string,
+  listener: DiscardListener,
+) {
+  const scope = contentSyncScope(orgSlug, virtualMcpId);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- subscribes to an external store for the component's lifetime
+  useEffect(() => {
+    const listeners = storeOf(scope).discardListeners;
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- the listener reads refs only (see above)
+  }, [scope]);
 }
 
 /**

@@ -15,7 +15,9 @@ import type { ContentBackend, ProtocolBackend } from "./content-backend";
 import {
   applyProtocolPatch,
   pollProtocolContent,
+  protocolApply,
 } from "./content-protocol-api";
+import { decofileWriteScope } from "./decofile-api";
 import {
   confirmPreviewReloaded,
   contentSyncScope,
@@ -23,6 +25,7 @@ import {
   registerContentPreview,
   resetContentSync,
   runContentChange,
+  runContentDiscard,
   type ContentSyncTarget,
 } from "./content-sync";
 
@@ -296,15 +299,13 @@ describe("content-sync refresh (contentChanged)", () => {
     });
     pointer.version = "e3";
 
-    await applyProtocolPatch(
-      queryClient,
-      backend,
-      params,
-      CACHE_KEY,
-      { set: { Home: { title: "main" } }, delete: ["Promo"] },
-      undefined,
-      "discard",
-    );
+    const patch = { set: { Home: { title: "main" } }, delete: ["Promo"] };
+    await runContentDiscard(target(queryClient, backend), {
+      blockKeys: ["Home", "Promo"],
+      write: () =>
+        protocolApply(queryClient, backend, params, CACHE_KEY, patch),
+      outcome: () => ({ patch }),
+    });
 
     expect(state.applied).toEqual([
       { set: { Home: { title: "main" } }, delete: ["Promo"] },
@@ -322,6 +323,91 @@ describe("content-sync refresh (contentChanged)", () => {
     expect(reads.releases).toBe(before.releases);
     // The open form re-reads the block it shows.
     expect(getContentSyncState(SCOPE).epoch).toBe(1);
+  });
+
+  it("a discard waits for the editor's save in flight and lands after it", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = fakeBackend();
+    const order: string[] = [];
+    // The editor's autosave, as useSaveBlock runs it: in the draft's write
+    // queue, still in flight (its blocks.apply hasn't answered).
+    const gate = deferred<void>();
+    state.gate = gate.promise;
+    const save = queryClient
+      .getMutationCache()
+      .build(queryClient, {
+        scope: decofileWriteScope(ORG, VM, BRANCH),
+        mutationFn: async () => {
+          await applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
+            set: { Home: { title: "edited" } },
+          });
+          order.push("save");
+        },
+      })
+      .execute(undefined);
+    await settle();
+    expect(state.applied).toHaveLength(1);
+
+    const discard = runContentDiscard(target(queryClient, backend), {
+      blockKeys: ["Home"],
+      write: async () => {
+        order.push("discard");
+        state.gate = null;
+        return protocolApply(queryClient, backend, params, CACHE_KEY, {
+          set: { Home: { title: "main" } },
+        });
+      },
+    });
+    await settle();
+    // Queued behind the save: nothing written yet.
+    expect(order).toEqual([]);
+    gate.resolve();
+    await Promise.all([save, discard]);
+    expect(order).toEqual(["save", "discard"]);
+    expect(state.applied).toEqual([
+      { set: { Home: { title: "edited" } } },
+      { set: { Home: { title: "main" } } },
+    ]);
+    expect(getContentSyncState(SCOPE)).toMatchObject({
+      phase: "idle",
+      inFlight: 0,
+      epoch: 1,
+    });
+  });
+
+  it("a save made after a discard queues behind it (the newer edit wins)", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = fakeBackend();
+    const gate = deferred<void>();
+    state.gate = gate.promise;
+    const discard = runContentDiscard(target(queryClient, backend), {
+      blockKeys: ["Home"],
+      write: () =>
+        protocolApply(queryClient, backend, params, CACHE_KEY, {
+          set: { Home: { title: "main" } },
+        }),
+    });
+    await settle();
+    const save = queryClient
+      .getMutationCache()
+      .build(queryClient, {
+        scope: decofileWriteScope(ORG, VM, BRANCH),
+        mutationFn: () => {
+          state.gate = null;
+          return applyProtocolPatch(queryClient, backend, params, CACHE_KEY, {
+            set: { Home: { title: "after" } },
+          });
+        },
+      })
+      .execute(undefined);
+    await settle();
+    expect(state.applied).toHaveLength(1);
+    gate.resolve();
+    await Promise.all([discard, save]);
+    expect(state.applied).toEqual([
+      { set: { Home: { title: "main" } } },
+      { set: { Home: { title: "after" } } },
+    ]);
   });
 
   it("a publish or rollback re-reads the releases and the blocks", async () => {

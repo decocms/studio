@@ -20,8 +20,11 @@ import {
   getContentSyncState,
   registerContentPreview,
   resetContentSync,
+  useContentDiscardListener,
   type ContentSyncTarget,
 } from "@/components/sections-editor/content-sync";
+import { applyProtocolPatch } from "@/components/sections-editor/content-protocol-api";
+import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
 import type { PublishChange } from "./publish-change-summary";
 import type { PublishTarget } from "./publish-flow";
 import * as realGit from "./sandbox-git-api";
@@ -34,7 +37,16 @@ const SCOPE = contentSyncScope(ORG, VM);
 const HOME = ".deco/blocks/pages-home.json";
 
 const discardGitFiles = mock(async (..._args: unknown[]) => {});
-mock.module("./sandbox-git-api", () => ({ ...realGit, discardGitFiles }));
+/** main's version as the server diffs it when the discard runs. */
+let mainDiff: () => Promise<realGit.GitDiffResult> = async () => ({
+  diffs: {},
+});
+const fetchGitDiff = mock((..._args: unknown[]) => mainDiff());
+mock.module("./sandbox-git-api", () => ({
+  ...realGit,
+  discardGitFiles,
+  fetchGitDiff,
+}));
 let currentTarget: ContentSyncTarget | null = null;
 mock.module("@/components/sections-editor/use-content-sync", () => ({
   useContentSyncTarget: () => currentTarget,
@@ -119,7 +131,6 @@ function render(
   backend: ContentBackend,
   options: {
     hosted: boolean;
-    diff?: realGit.GitDiffResult | null;
     refresh?: () => Promise<unknown>;
     onPublished?: () => void;
   },
@@ -142,7 +153,6 @@ function render(
         target: publishTarget,
         note: "",
         allPaths: [HOME],
-        diff: options.diff ?? null,
         destinationHost: null,
         publishLockRef: { current: false },
         onOpenChange: () => {},
@@ -159,6 +169,8 @@ const realFetch = globalThis.fetch;
 beforeEach(async () => {
   queryClient = new QueryClient();
   discardGitFiles.mockClear();
+  fetchGitDiff.mockClear();
+  mainDiff = async () => ({ diffs: {} });
   pointer.version = "e1";
   mountEditorQueries();
   await settle();
@@ -178,14 +190,12 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     const unregister = registerContentPreview(SCOPE);
     const release = hold();
     pointer.version = "e2";
-    const { result } = render(backend, {
-      hosted: true,
-      diff: {
-        diffs: {
-          [HOME]: { from: '{"title":"main"}', to: '{"title":"Discard me"}' },
-        },
+    mainDiff = async () => ({
+      diffs: {
+        [HOME]: { from: '{"title":"main"}', to: '{"title":"Discard me"}' },
       },
     });
+    const { result } = render(backend, { hosted: true });
     const before = { ...reads };
 
     let done!: Promise<void>;
@@ -196,6 +206,11 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     release();
     await act(() => done);
 
+    expect(fetchGitDiff).toHaveBeenCalledWith(
+      publishTarget,
+      { base: "main" },
+      { fastPreview: true },
+    );
     expect(applied).toEqual([{ set: { "pages-home": { title: "main" } } }]);
     expect(discardGitFiles).not.toHaveBeenCalled();
     expect(
@@ -217,9 +232,119 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     unregister();
   });
 
-  it("without the bodies, a discard asks the server to drop the entries, through the same refresh", async () => {
+  it("main moved since the dialog loaded: the discard writes main's version as it is now", async () => {
     const { backend, applied } = hostedBackend();
-    const { result } = render(backend, { hosted: true, diff: null });
+    const { result } = render(backend, { hosted: true });
+    // The dialog showed `{"title":"main v1"}`; main has moved on since.
+    mainDiff = async () => ({
+      diffs: {
+        [HOME]: { from: '{"title":"main v2"}', to: '{"title":"Discard me"}' },
+      },
+    });
+    await act(() => result.current.discardChange(homeChange));
+    expect(fetchGitDiff).toHaveBeenCalledTimes(1);
+    expect(applied).toEqual([{ set: { "pages-home": { title: "main v2" } } }]);
+    expect(discardGitFiles).not.toHaveBeenCalled();
+  });
+
+  it("main moved to the draft's body: the discard only drops the draft's entry", async () => {
+    const { backend, applied } = hostedBackend();
+    let blockReads = 0;
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => {
+        blockReads++;
+        return { "pages-home": { title: "Discard me" } };
+      },
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
+    const before = blockReads;
+    const { result } = render(backend, { hosted: true });
+    await act(() => result.current.discardChange(homeChange));
+    expect(applied).toEqual([]);
+    expect(discardGitFiles).toHaveBeenCalledWith(publishTarget, [HOME], {
+      fastPreview: true,
+    });
+    expect(blockReads).toBe(before + 1);
+    expect(getContentSyncState(SCOPE).epoch).toBe(1);
+  });
+
+  it("a discard lands after the editor's save in flight, and reads main only then", async () => {
+    const { backend, applied, hold } = hostedBackend();
+    const release = hold();
+    const order: string[] = [];
+    const save = queryClient
+      .getMutationCache()
+      .build(queryClient, {
+        scope: decofileWriteScope(ORG, VM, BRANCH),
+        mutationFn: async () => {
+          await applyProtocolPatch(
+            queryClient,
+            backend,
+            publishTarget,
+            CACHE_KEY,
+            { set: { "pages-home": { title: "edited" } } },
+          );
+          order.push("save");
+        },
+      })
+      .execute(undefined);
+    mainDiff = async () => {
+      order.push("read main");
+      return {
+        diffs: {
+          [HOME]: { from: '{"title":"main"}', to: '{"title":"edited"}' },
+        },
+      };
+    };
+    const { result } = render(backend, { hosted: true });
+    let done!: Promise<void>;
+    act(() => {
+      done = result.current.discardChange(homeChange);
+    });
+    await settle();
+    expect(order).toEqual([]);
+    release();
+    await act(() => Promise.all([save, done]).then(() => {}));
+    expect(order).toEqual(["save", "read main"]);
+    expect(applied).toEqual([
+      { set: { "pages-home": { title: "edited" } } },
+      { set: { "pages-home": { title: "main" } } },
+    ]);
+  });
+
+  it("a discard drops the editors' armed autosaves of its blocks before it writes", async () => {
+    const { backend, applied } = hostedBackend();
+    const dropped: string[][] = [];
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    renderHook(
+      () =>
+        useContentDiscardListener(ORG, VM, (keys) => {
+          dropped.push([...keys]);
+          expect(applied).toEqual([]);
+        }),
+      { wrapper },
+    );
+    mainDiff = async () => ({
+      diffs: {
+        [HOME]: { from: '{"title":"main"}', to: '{"title":"Discard me"}' },
+      },
+    });
+    const { result } = render(backend, { hosted: true });
+    await act(() => result.current.discardChange(homeChange));
+    expect(dropped).toEqual([["pages-home"]]);
+    expect(applied).toHaveLength(1);
+  });
+
+  it("without main's version (the read failed), a discard asks the server to drop the entries, through the same refresh", async () => {
+    const { backend, applied } = hostedBackend();
+    mainDiff = async () => {
+      throw new Error("offline");
+    };
+    const { result } = render(backend, { hosted: true });
     const before = { ...reads };
     await act(() => result.current.discardChange(homeChange));
     expect(applied).toEqual([]);
@@ -238,7 +363,10 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     discardGitFiles.mockImplementationOnce(async () => {
       throw new Error("nope");
     });
-    const { result } = render(backend, { hosted: true, diff: null });
+    mainDiff = async () => {
+      throw new Error("offline");
+    };
+    const { result } = render(backend, { hosted: true });
     await act(() => result.current.discardChange(homeChange));
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "idle",
@@ -293,10 +421,7 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
 describe("useCmsPublishActions on a v7 site", () => {
   it("discard keeps its git path and re-reads the dialog, as on main", async () => {
     const refresh = mock(async () => {});
-    const { result } = render(
-      { kind: "legacy" },
-      { hosted: false, refresh, diff: { diffs: {} } },
-    );
+    const { result } = render({ kind: "legacy" }, { hosted: false, refresh });
     const before = { ...reads };
     await act(() => result.current.discardChange(homeChange));
     expect(discardGitFiles).toHaveBeenCalledWith(

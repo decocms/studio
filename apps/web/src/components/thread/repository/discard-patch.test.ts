@@ -1,39 +1,53 @@
 import { describe, expect, it } from "bun:test";
-import { discardPatch } from "./discard-patch";
+import { discardPlan } from "./discard-patch";
 
 const home = ".deco/blocks/pages-home.json";
 const promo = ".deco/blocks/Promo.json";
 
-describe("discardPatch", () => {
+describe("discardPlan", () => {
   it("writes main's body back, and deletes a block only the draft has", () => {
     expect(
-      discardPatch([home, promo], {
+      discardPlan([home, promo], {
         diffs: {
           [home]: { from: '{"title":"main"}', to: '{"title":"edited"}' },
           [promo]: { from: null, to: '{"title":"new"}' },
         },
       }),
-    ).toEqual({ set: { "pages-home": { title: "main" } }, delete: ["Promo"] });
+    ).toEqual({
+      patch: { set: { "pages-home": { title: "main" } }, delete: ["Promo"] },
+      drop: [],
+    });
   });
 
   it("restores a block the draft deleted", () => {
     expect(
-      discardPatch([promo], {
+      discardPlan([promo], {
         diffs: { [promo]: { from: '{"title":"main"}', to: null } },
       }),
-    ).toEqual({ set: { Promo: { title: "main" } } });
+    ).toEqual({ patch: { set: { Promo: { title: "main" } } }, drop: [] });
   });
 
-  it("is null without the bodies, for a path that isn't a block, or for a body that isn't one", () => {
-    expect(discardPatch([home], null)).toBeNull();
-    expect(discardPatch([home], { diffs: {} })).toBeNull();
+  it("only drops the draft's entry where the draft already equals main", () => {
+    expect(discardPlan([home], { diffs: {} })).toEqual({
+      patch: null,
+      drop: [home],
+    });
     expect(
-      discardPatch(["README.md"], {
+      discardPlan([home, promo], {
+        diffs: { [promo]: { from: '{"title":"main"}', to: '{"a":1}' } },
+      }),
+    ).toEqual({ patch: { set: { Promo: { title: "main" } } }, drop: [home] });
+  });
+
+  it("is null without a diff, for a path that isn't a block, or for a body that isn't one", () => {
+    expect(discardPlan([home], null)).toBeNull();
+    expect(
+      discardPlan(["README.md"], {
         diffs: { "README.md": { from: "a", to: "b" } },
       }),
     ).toBeNull();
     expect(
-      discardPatch([home], { diffs: { [home]: { from: "[1]", to: "{}" } } }),
+      discardPlan([home], { diffs: { [home]: { from: "[1]", to: "{}" } } }),
     ).toBeNull();
   });
 });

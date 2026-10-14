@@ -28,6 +28,8 @@ export async function seedStubRepo(
   params: {
     owner: string;
     repo: string;
+    /** Keep a re-seeded repo's id (tokens are scoped by it). */
+    id?: number;
     defaultBranch?: string;
     branches?: Record<string, { files?: Record<string, string> } | null>;
     mergeMode?: "merge" | "conflict" | "blocked";
@@ -38,6 +40,30 @@ export async function seedStubRepo(
     data: params,
   });
   expect(res.ok()).toBe(true);
+}
+
+/**
+ * Moves a seeded repo's `main` to `files` (a new head), as a merge from
+ * elsewhere would: the repo is re-seeded with its own id.
+ */
+export async function moveStubMain(
+  ctx: APIRequestContext,
+  owner: string,
+  repo: string,
+  files: Record<string, string>,
+): Promise<void> {
+  const res = await ctx.get(`${GITHUB_STUB_ORIGIN}/repos/${owner}/${repo}`, {
+    headers: { authorization: "token e2e-admin" },
+  });
+  expect(res.ok()).toBe(true);
+  const { id } = (await res.json()) as { id: number };
+  await seedStubRepo(ctx, {
+    owner,
+    repo,
+    id,
+    defaultBranch: "main",
+    branches: { main: { files } },
+  });
 }
 
 export async function inspectStubRepo(

@@ -5,7 +5,8 @@
  * sandbox runtime and lives in {@link ./publish-flow.ts}.
  *
  * On a hosted v8 site every write here is a content change (content-sync.ts):
- * a discard writes main's version back through `blocks.apply`, and a publish
+ * a discard writes main's version back through `blocks.apply` (read when it
+ * runs, in the editor's own write queue), and a publish
  * or "Try again" refreshes the editor, the preview and the releases the same
  * way an edit does. The other sites keep their git paths.
  */
@@ -15,13 +16,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import { applyProtocolPatch } from "@/components/sections-editor/content-protocol-api.ts";
-import { runContentChange } from "@/components/sections-editor/content-sync.ts";
+import { protocolApply } from "@/components/sections-editor/content-protocol-api.ts";
+import {
+  runContentChange,
+  runContentDiscard,
+} from "@/components/sections-editor/content-sync.ts";
 import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync.ts";
-import { discardPatch } from "./discard-patch.ts";
+import { discardPlan } from "./discard-patch.ts";
 import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
 import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
-import type { PublishChange } from "./publish-change-summary.ts";
+import {
+  blockKeyFromDiffPath,
+  type PublishChange,
+} from "./publish-change-summary.ts";
 import {
   describePublishFailure,
   notifySubmittedForReview,
@@ -30,7 +37,7 @@ import {
   runSubmitForReviewFlow,
   type PublishTarget,
 } from "./publish-flow.ts";
-import { discardGitFiles, type GitDiffResult } from "./sandbox-git-api.ts";
+import { discardGitFiles, fetchGitDiff } from "./sandbox-git-api.ts";
 import {
   HostedPublishError,
   type HostedPublishResult,
@@ -58,8 +65,6 @@ interface CmsPublishActionsArgs {
   note: string;
   /** Every changed path, from the manifest — what "discard all" reverts. */
   allPaths: string[];
-  /** The changes' bodies: a hosted discard writes their `from` side back. */
-  diff: GitDiffResult | null;
   /** Named in the success toast when publishing goes to a custom domain. */
   destinationHost: string | null;
   /** Held while a flow runs, so an outside click can't dismiss its progress. */
@@ -97,7 +102,6 @@ export function useCmsPublishActions(
     target,
     note,
     allPaths,
-    diff,
     destinationHost,
     publishLockRef,
     onOpenChange,
@@ -266,30 +270,53 @@ export function useCmsPublishActions(
   };
 
   /**
-   * A hosted v8 discard writes main's version back (`blocks.apply`); without
-   * the bodies to do that it asks the server to drop the draft's entries.
-   * Either way it is a content change: the editor, the preview and this list
-   * refresh as after an edit.
+   * A hosted v8 discard writes main's version back (`blocks.apply`). It runs
+   * in the editor's write queue (content-sync.ts `runContentDiscard`): armed
+   * autosaves of these blocks are dropped and the ones in flight land first.
+   * Then main's version is read (one fresh diff; main may have moved since
+   * the dialog loaded, and the in-flight saves are in it now): a block that
+   * still differs gets main's body back, one that already equals main only
+   * loses its draft entry. Without that read it asks the server to drop the
+   * draft's entries. Either way the editor, the preview and this list refresh
+   * as after an edit.
    */
-  const discardHosted = async (filepaths: string[]) => {
-    const patch = discardPatch(filepaths, diff);
+  const discardHosted = (filepaths: string[]) => {
     const backend = content.backend;
-    if (patch && backend?.kind === "protocol") {
-      await applyProtocolPatch(
-        queryClient,
-        backend,
-        target,
-        content.cacheKey ?? "",
-        patch,
-        undefined,
-        "discard",
-      );
-      return;
-    }
-    await runContentChange(content, {
-      kind: "discard",
-      reread: true,
-      write: () => discardGitFiles(target, filepaths, { fastPreview: true }),
+    const call = { fastPreview: true };
+    return runContentDiscard(content, {
+      blockKeys: filepaths.flatMap((path) => blockKeyFromDiffPath(path) ?? []),
+      write: async () => {
+        const main =
+          backend?.kind === "protocol"
+            ? await fetchGitDiff(
+                target,
+                { base: target.baseBranch },
+                call,
+              ).catch(() => null)
+            : null;
+        const plan = discardPlan(filepaths, main);
+        if (!plan || backend?.kind !== "protocol") {
+          await discardGitFiles(target, filepaths, call);
+          return { reread: true };
+        }
+        if (plan.patch) {
+          await protocolApply(
+            queryClient,
+            backend,
+            target,
+            content.cacheKey ?? "",
+            plan.patch,
+          );
+        }
+        if (plan.drop.length > 0) {
+          await discardGitFiles(target, plan.drop, call);
+        }
+        return {
+          patch: plan.patch ?? undefined,
+          reread: plan.drop.length > 0,
+        };
+      },
+      outcome: (refresh) => refresh,
     });
   };
 

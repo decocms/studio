@@ -520,7 +520,6 @@ function CmsPublishContent({
     target,
     note,
     allPaths,
-    diff: gitDiff,
     destinationHost,
     publishLockRef,
     onOpenChange,
