@@ -22,8 +22,8 @@ import {
   type RepoContentClient,
   type TreeEntry,
 } from "@/git-providers";
+import { mergeBlockJson } from "@decocms/shared/decofile";
 import { mapBounded } from "@decocms/shared/std";
-import { mergeBlockJson } from "./block-merge";
 import { resolveOrCreateHead } from "./read-decofile";
 
 const DIFF_MAX_FILES = 200;

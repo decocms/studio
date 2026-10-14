@@ -1,12 +1,12 @@
-import { canonicalBlockJson } from "@decocms/shared/decofile";
+import { canonicalBlockJson } from "./fingerprint";
 
 /**
- * Three-way merge of one block's JSON for a sync whose git merge conflicted.
- * `ours` is the draft branch, `theirs` the base it is syncing with, `ancestor`
- * their merge base. A change made on only one side survives; where both sides
- * changed the same value, the branch wins for that value alone instead of for
- * the whole file, so a conflict elsewhere in the block can no longer revert
- * what another draft already published.
+ * Three-way merge of one block's JSON: `ours` and `theirs` are two edits of
+ * `ancestor`. A change made on only one side survives; where both sides
+ * changed the same value, `ours` wins for that value alone instead of for the
+ * whole block. A draft sync passes the draft as `ours` and the base it syncs
+ * with as `theirs`; an editor passes its form as `ours` and the stored block,
+ * which someone else changed meanwhile, as `theirs`.
  *
  * Object keys are stable identities, so objects merge key by key. Array
  * positions are not: a reorder on one side and an edit on the other would

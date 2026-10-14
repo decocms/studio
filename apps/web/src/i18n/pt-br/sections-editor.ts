@@ -278,7 +278,9 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.noPageFound":
     "Nenhuma página encontrada para {currentPath}",
   "sectionsEditor.sectionsEditor.blockChangedElsewhere":
-    "Outra pessoa alterou este bloco depois que você o abriu. A versão mais recente foi carregada; refaça sua última alteração.",
+    "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
+  "sectionsEditor.sectionsEditor.blockMergedWithOthers":
+    "Outra pessoa também editou este bloco. As alterações dela foram mantidas junto com as suas.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',

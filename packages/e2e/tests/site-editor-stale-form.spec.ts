@@ -5,8 +5,8 @@
  * When another editor changes the same block in the meantime (a draft
  * published to the branch, a sync moved it), saving that copy silently put
  * the old values back. The save now names the version it was made against;
- * the server refuses a stale one, and the editor reloads the form with what
- * is stored so the user can redo the edit on top of it.
+ * the server refuses a stale one, and the editor applies the form's edits on
+ * top of the stored version, so both editors' changes are kept.
  *
  * Wire-contract strings (labels, toast copy) are inlined on purpose — this
  * suite owns its contract (see ban-e2e-app-imports).
@@ -24,7 +24,7 @@ import { expect, test } from "../fixtures/test";
 
 test.use({ newBlocksEditor: true });
 
-const CHANGED_ELSEWHERE = "Someone else changed this block after you opened it";
+const MERGED = "Someone else also edited this block";
 
 const hero = {
   __resolveType: "site/sections/HeroSlideShow.tsx",
@@ -148,13 +148,13 @@ async function storedBlock(api: APIRequestContext, url: string, key: string) {
 test.describe("Site Editor stale section form", () => {
   test.setTimeout(120_000);
 
-  test("a saved block's form reloads instead of reverting another editor's change", async ({
+  test("a saved block's form keeps another editor's change and its own edit", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const previewSite = await startPreviewSite();
     try {
-      const { headline, url } = await openEditor(
+      const { blocks, headline, url } = await openEditor(
         page,
         orgSlug,
         previewSite.url,
@@ -166,25 +166,30 @@ test.describe("Site Editor stale section form", () => {
       };
       await writeElsewhere(page.request, url, "SharedHero", published);
 
-      // The form still holds the copy it loaded; this edit must not land.
+      // The form still holds the copy it loaded; its edit lands on top of
+      // the other editor's change instead of reverting it.
       await headline.fill("Draft headline");
-      await expect(page.getByText(CHANGED_ELSEWHERE)).toBeVisible();
-      await expect(headline).toHaveValue("Original headline");
-      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
-        published,
-      );
-
-      // Redone on the reloaded form, the edit lands on top of the other one.
-      await headline.fill("Draft headline");
+      await expect(page.getByText(MERGED)).toBeVisible();
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual({ ...published, headline: "Draft headline" });
+      await expect(headline).toHaveValue("Draft headline");
+
+      // The form now shows the merged block, so a further edit keeps it too.
+      await headline.fill("Second edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual({ ...published, headline: "Second edit" });
+      await blocks.getByRole("button", { name: /^First slide/ }).click();
+      await expect(
+        blocks.getByRole("textbox", { name: "Description", exact: true }),
+      ).toHaveValue("Published elsewhere");
     } finally {
       await previewSite.close();
     }
   });
 
-  test("an inline section's form reloads instead of reverting another editor's change", async ({
+  test("an inline section's form keeps another editor's change and its own edit", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -214,11 +219,7 @@ test.describe("Site Editor stale section form", () => {
       await writeElsewhere(page.request, url, "home", published);
 
       await headline.fill("Draft headline");
-      await expect(page.getByText(CHANGED_ELSEWHERE)).toBeVisible();
-      await expect(headline).toHaveValue("Original headline");
-      expect(await storedBlock(page.request, url, "home")).toEqual(published);
-
-      await headline.fill("Draft headline");
+      await expect(page.getByText(MERGED)).toBeVisible();
       await expect
         .poll(() => storedBlock(page.request, url, "home"))
         .toEqual({
