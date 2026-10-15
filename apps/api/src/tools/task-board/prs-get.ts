@@ -11,7 +11,7 @@ import {
   type CheckRun,
   type ChecksSummary,
 } from "@/git-providers";
-import type { TaskBoardItemPrRef } from "@/storage/types";
+import type { TaskBoardItem, TaskBoardItemPrRef } from "@/storage/types";
 import {
   isCardNotReady,
   LANES,
@@ -772,6 +772,70 @@ export async function refreshItemPrCards(
   }
 }
 
+/** How long a branch lookup for one card is remembered, so a card nobody can
+ *  link costs at most two provider calls per minute per pod no matter how many
+ *  viewers poll it. Matches the dialog's idle poll. */
+const UNLINKED_LOOKUP_THROTTLE_MS = 60_000;
+
+/** Cards this pod already looked up, and when. A card that links stops
+ *  qualifying, so this only holds the ones still waiting. */
+const unlinkedLookupAt = new Map<string, number>();
+const UNLINKED_LOOKUP_CAPACITY = 2_000;
+
+export function claimUnlinkedLookup(key: string): boolean {
+  const now = Date.now();
+  const last = unlinkedLookupAt.get(key);
+  if (last !== undefined && now - last < UNLINKED_LOOKUP_THROTTLE_MS) {
+    return false;
+  }
+  for (const [k, at] of unlinkedLookupAt) {
+    if (now - at >= UNLINKED_LOOKUP_THROTTLE_MS) unlinkedLookupAt.delete(k);
+  }
+  // Dropping live claims costs one extra lookup each, never unbounded memory.
+  if (unlinkedLookupAt.size >= UNLINKED_LOOKUP_CAPACITY) {
+    unlinkedLookupAt.clear();
+  }
+  unlinkedLookupAt.set(key, now);
+  return true;
+}
+
+/**
+ * A Super Agent card with nothing linked: ask the provider for the change
+ * request open on the run's branch before answering "no pull request".
+ *
+ * The link is normally written the instant the run opens the PR
+ * (`capturePrForRun`), and `linkPrFromRunBranch` is the floor underneath it —
+ * but the sweeper only reaches for that floor once the RUN HAS FINISHED
+ * (`settleFinishedRunsWithoutPr`). A run that opens its pull request and keeps
+ * working therefore answers "still writing the code" for as long as it runs,
+ * with the pull request already open, and the experiments view — which derives
+ * its whole stage from this tool — renders a spinner that never resolves and
+ * keeps the before/after comparison hidden behind it.
+ *
+ * Doing the lookup here closes that window for every viewer of the card, from
+ * data the card already loads. Best-effort and throttled per card: a lookup
+ * that finds nothing must not turn every poll into a provider round-trip.
+ *
+ * `pr-by-branch` is imported lazily: it imports `invalidatePrCards` from this
+ * module, so a static edge back would close the cycle.
+ */
+export async function recoverUnlinkedPr(
+  ctx: StudioContext,
+  organizationId: string,
+  item: TaskBoardItem | null,
+  opts: { linked: TaskBoardItemPrRef[]; taskBoardItemId: string },
+): Promise<TaskBoardItemPrRef[]> {
+  const { linked, taskBoardItemId } = opts;
+  if (linked.length > 0) return linked;
+  if (!item || item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return linked;
+  if (!claimUnlinkedLookup(`${organizationId}:${taskBoardItemId}`)) {
+    return linked;
+  }
+  const { linkPrFromRunBranch } = await import("./pr-by-branch");
+  if (!(await linkPrFromRunBranch(ctx, item))) return linked;
+  return ctx.storage.taskBoard.listPrs(taskBoardItemId, organizationId);
+}
+
 const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
@@ -805,10 +869,13 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
       organizationId,
     );
 
-    const linked = await ctx.storage.taskBoard.listPrs(
+    const linked = await recoverUnlinkedPr(ctx, organizationId, item, {
+      linked: await ctx.storage.taskBoard.listPrs(
+        taskBoardItemId,
+        organizationId,
+      ),
       taskBoardItemId,
-      organizationId,
-    );
+    });
     const assemble = () => assemblePrCards(ctx, organizationId, linked);
 
     /**
