@@ -101,9 +101,11 @@ export const googleAdapter: ProviderAdapter = {
       },
 
       async listModels(): Promise<ModelInfo[]> {
-        // Google paginates at 50 models/page by default; follow nextPageToken so a large catalog isn't silently truncated.
+        // Follow nextPageToken (50/page default), capped so a cyclical token can't loop forever.
+        const MAX_PAGES = 50;
         const models: GoogleModel[] = [];
         let pageToken: string | undefined;
+        let pageCount = 0;
         do {
           const url = new URL(
             "https://generativelanguage.googleapis.com/v1beta/models",
@@ -122,7 +124,8 @@ export const googleAdapter: ProviderAdapter = {
           // Google omits `models` on an empty page instead of `models: []`.
           models.push(...(data.models ?? []));
           pageToken = data.nextPageToken;
-        } while (pageToken);
+          pageCount += 1;
+        } while (pageToken && pageCount < MAX_PAGES);
         return models
           .filter((m: GoogleModel) => m.lifecycleState !== "DEPRECATED")
           .map((m: GoogleModel) => {

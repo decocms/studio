@@ -89,6 +89,31 @@ describe("googleAdapter.listModels", () => {
     expect(models.map((m) => m.modelId)).toEqual(["gemini-a", "gemini-b"]);
   });
 
+  test("stops following a nextPageToken that never ends", async () => {
+    let requestCount = 0;
+    globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({
+          models: [
+            {
+              name: `models/gemini-${requestCount}`,
+              supportedGenerationMethods: ["generateContent"],
+            },
+          ],
+          nextPageToken: "same-token-forever",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+    const models = await provider.listModels();
+
+    expect(requestCount).toBe(50);
+    expect(models.length).toBe(50);
+  });
+
   test("doesn't crash when a page omits `models` entirely", async () => {
     globalThis.fetch = (async (): Promise<Response> => {
       return new Response(JSON.stringify({}), {
