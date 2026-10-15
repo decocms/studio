@@ -13,6 +13,8 @@ export const automations = {
   "automations.addStarterPopover.webhook": "Webhook",
   "automations.addStarterPopover.cardEntersColumn":
     "Quando um card entra numa coluna",
+  "automations.addStarterPopover.jiraIssueEntersStatus":
+    "Quando uma issue do Jira entra num status",
   "automations.addStarterPopover.webhookStarterAdded":
     "Gatilho webhook adicionado",
   "automations.automationConfig.all": "Todos",
@@ -214,6 +216,24 @@ export const automations = {
     "Roda num card sem dono, ou que já é do agente, depois que ele fica 20 segundos na coluna; um card de uma pessoa fica de fora. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
   "automations.columnTransitionDialog.cancel": "Cancelar",
   "automations.columnTransitionDialog.add": "Adicionar gatilho",
+  "automations.jiraTransitionDialog.title":
+    "Quando uma issue do Jira entra num status",
+  "automations.jiraTransitionDialog.description":
+    "Roda esta automação em cada issue que entra no status, no board que a integração com o Jira acompanha.",
+  "automations.jiraTransitionDialog.status": "Status",
+  "automations.jiraTransitionDialog.noStatuses":
+    "Não foi possível ler os status do board do Jira. Confira a integração em Configurações.",
+  "automations.jiraTransitionDialog.origin": "Vindo de",
+  "automations.jiraTransitionDialog.fromAny": "Qualquer status",
+  "automations.jiraTransitionDialog.fromEarlier": "Um status anterior",
+  "automations.jiraTransitionDialog.fromLater":
+    "Um status posterior (devolvida)",
+  "automations.jiraTransitionDialog.fromStatuses": "Status específicos",
+  "automations.jiraTransitionDialog.statusesPlaceholder": "Escolha os status",
+  "automations.jiraTransitionDialog.help":
+    "Roda quando a issue fica no status por 20 segundos, na própria issue; nada é copiado para o quadro. Um status pode ter um gatilho por origem. De onde ela veio é o último status em que ficou parada, não um pelo qual foi arrastada.",
+  "automations.jiraTransitionDialog.cancel": "Cancelar",
+  "automations.jiraTransitionDialog.add": "Adicionar gatilho",
   "automations.triggerCard.prReady":
     "Quando o pull request de um card fica pronto para review",
   "automations.triggerCard.unownedOnly": "Só cards sem dono",

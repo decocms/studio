@@ -11,6 +11,8 @@ export const automations = {
   "automations.addStarterPopover.webhook": "Webhook",
   "automations.addStarterPopover.cardEntersColumn":
     "When a card enters a column",
+  "automations.addStarterPopover.jiraIssueEntersStatus":
+    "When a Jira issue enters a status",
   "automations.addStarterPopover.webhookStarterAdded": "Webhook starter added",
   "automations.automationConfig.all": "All",
   "automations.automationConfig.allTools": "All tools",
@@ -202,6 +204,22 @@ export const automations = {
     "It runs on a card nobody owns, or one the agent already owns, once it has stayed in the column for 20 seconds; a card a person owns is left alone. Where it came from is the column it last stayed in, not one it was dragged through.",
   "automations.columnTransitionDialog.cancel": "Cancel",
   "automations.columnTransitionDialog.add": "Add starter",
+  "automations.jiraTransitionDialog.title": "When a Jira issue enters a status",
+  "automations.jiraTransitionDialog.description":
+    "Run this automation on each issue that enters the status, on the board your Jira integration watches.",
+  "automations.jiraTransitionDialog.status": "Status",
+  "automations.jiraTransitionDialog.noStatuses":
+    "Could not read the statuses of the Jira board. Check the integration in Settings.",
+  "automations.jiraTransitionDialog.origin": "Coming from",
+  "automations.jiraTransitionDialog.fromAny": "Any status",
+  "automations.jiraTransitionDialog.fromEarlier": "An earlier status",
+  "automations.jiraTransitionDialog.fromLater": "A later status (sent back)",
+  "automations.jiraTransitionDialog.fromStatuses": "Specific statuses",
+  "automations.jiraTransitionDialog.statusesPlaceholder": "Pick statuses",
+  "automations.jiraTransitionDialog.help":
+    "It runs once the issue has stayed in the status for 20 seconds, on the issue itself; nothing is copied to the board. A status can have one starter per origin. Where it came from is the status it last stayed in, not one it was dragged through.",
+  "automations.jiraTransitionDialog.cancel": "Cancel",
+  "automations.jiraTransitionDialog.add": "Add starter",
   "automations.triggerCard.prReady":
     "When a card's pull request is ready for review",
   "automations.triggerCard.unownedOnly": "Only cards nobody owns",

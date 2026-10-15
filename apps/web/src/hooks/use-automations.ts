@@ -292,8 +292,12 @@ export function useAutomationActions() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
 
+  // The Jira settings list automations by their Jira starter.
   const invalidateAll = () =>
-    queryClient.invalidateQueries({ queryKey: KEYS.automationsAll(org.id) });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: KEYS.automationsAll(org.id) }),
+      queryClient.invalidateQueries({ queryKey: KEYS.jiraAutomations(org.id) }),
+    ]);
 
   const invalidateOne = (id: string) =>
     queryClient.invalidateQueries({ queryKey: KEYS.automation(org.id, id) });

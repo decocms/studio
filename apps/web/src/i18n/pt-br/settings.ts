@@ -74,14 +74,9 @@ export const settings = {
   "settings.jira.automationsLabel":
     "Rodar o agente quando uma issue entrar em…",
   "settings.jira.automationsDescription":
-    "Quando uma issue entra em um destes status e fica nele por 20 segundos, o Studio inicia um run do agente nela. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. Uma issue que tem um pull request aberto linkado continua nele. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+    "As automações que rodam quando uma issue entra num destes status e fica nele por 20 segundos. Abra uma para mudar o prompt, ou dê a qualquer automação um gatilho “Quando uma issue do Jira entra num status”. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. Uma issue que tem um pull request aberto linkado continua nele. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+  "settings.jira.toggleAutomation": "Ligar ou desligar {name}",
   "settings.jira.addAutomation": "Adicionar automação",
-  "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
-  "settings.jira.promptHelp":
-    "Esta é a instrução inteira que o run recebe — não existe um padrão. Digite “/” para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
-  "settings.jira.promptSave": "Salvar",
-  "settings.jira.promptDiscard": "Descartar",
-  "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
   "settings.jira.fromAny": "Vindo de qualquer coluna",
   "settings.jira.fromEarlier": "Vindo de uma coluna anterior",
   "settings.jira.fromLater": "Vindo de uma coluna posterior (devolvido)",
@@ -90,7 +85,7 @@ export const settings = {
   "settings.jira.originStatusesPlaceholder": "Escolha os status",
   "settings.jira.originHelp":
     "Um movimento inicia uma regra só: a que nomeia de onde o card veio, senão a da direção dele no board, senão a de qualquer coluna. De onde ele veio é o último status em que ficou parado, não um pelo qual foi arrastado.",
-  "settings.jira.createRule": "Criar regra",
+  "settings.jira.createRule": "Criar automação",
   "settings.jira.cancelRule": "Cancelar",
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":

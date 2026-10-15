@@ -70,14 +70,9 @@ export const settings = {
     "Save. An issue entering an automated status now starts its run once it has stayed there for 20 seconds.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses and stays there for 20 seconds, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. An issue that links an open pull request has it continued. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "The automations that run when an issue enters one of these statuses and stays there for 20 seconds. Open one to change its prompt, or give any automation a “When a Jira issue enters a status” starter. A card dragged through a status, or into the wrong one and straight back, starts nothing. An issue that links an open pull request has it continued. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+  "settings.jira.toggleAutomation": "Turn {name} on or off",
   "settings.jira.addAutomation": "Add automation",
-  "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
-  "settings.jira.promptHelp":
-    "This is the whole instruction the run gets — there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
-  "settings.jira.promptSave": "Save",
-  "settings.jira.promptDiscard": "Discard",
-  "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
   "settings.jira.fromAny": "From any column",
   "settings.jira.fromEarlier": "From an earlier column",
   "settings.jira.fromLater": "From a later column (sent back)",
@@ -86,7 +81,7 @@ export const settings = {
   "settings.jira.originStatusesPlaceholder": "Pick statuses",
   "settings.jira.originHelp":
     "A move starts one rule: the one naming where the card came from, else the one for its direction on the board, else the one for any column. Where it came from is the status it last stayed in, not one it was dragged through.",
-  "settings.jira.createRule": "Create rule",
+  "settings.jira.createRule": "Create automation",
   "settings.jira.cancelRule": "Cancel",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
