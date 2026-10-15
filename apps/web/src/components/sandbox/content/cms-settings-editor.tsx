@@ -104,6 +104,9 @@ export function CmsSettingsEditor({
       meta={meta}
       title={t("sandbox.collectionsSidebar.settings")}
       saveGuard={guard}
+      // Opening Settings with no CMS block shows the defaults without saving
+      // them: CMS.json is created by the first change, not by looking.
+      persistDefaults={target.kind !== "absent"}
       notice={
         <div className="mb-6 flex flex-col gap-2 text-xs text-muted-foreground">
           <p>{t("sandbox.cmsSettingsBlock.description")}</p>
