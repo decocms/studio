@@ -42,6 +42,46 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { laneHeader } from "@/layouts/task-board/config";
 
+// Rolls the new schedule back if removing the old one fails, so a failed swap never leaves two live schedules.
+export async function swapCronTrigger({
+  cronExpression,
+  automationId,
+  oldTriggerId,
+  addTrigger,
+  removeTrigger,
+}: {
+  cronExpression: string;
+  automationId: string;
+  oldTriggerId: string;
+  addTrigger: (input: {
+    automation_id: string;
+    type: "cron";
+    cron_expression: string;
+  }) => Promise<{ id: string }>;
+  removeTrigger: (input: {
+    trigger_id: string;
+    automation_id: string;
+  }) => Promise<unknown>;
+}) {
+  const { id: newTriggerId } = await addTrigger({
+    automation_id: automationId,
+    type: "cron",
+    cron_expression: cronExpression,
+  });
+  try {
+    await removeTrigger({
+      trigger_id: oldTriggerId,
+      automation_id: automationId,
+    });
+  } catch (err) {
+    await removeTrigger({
+      trigger_id: newTriggerId,
+      automation_id: automationId,
+    }).catch(() => {});
+    throw err;
+  }
+}
+
 export function TriggerCard({
   trigger,
   automationId,
@@ -97,17 +137,14 @@ export function TriggerCard({
 
   // Cron triggers have no update endpoint: a new schedule is added, then the
   // old trigger row is removed.
-  const replaceCronTrigger = async (cronExpression: string) => {
-    await addTrigger.mutateAsync({
-      automation_id: automationId,
-      type: "cron",
-      cron_expression: cronExpression,
+  const replaceCronTrigger = async (cronExpression: string) =>
+    swapCronTrigger({
+      cronExpression,
+      automationId,
+      oldTriggerId: trigger.id,
+      addTrigger: (input) => addTrigger.mutateAsync(input),
+      removeTrigger: (input) => removeTrigger.mutateAsync(input),
     });
-    await removeTrigger.mutateAsync({
-      trigger_id: trigger.id,
-      automation_id: automationId,
-    });
-  };
 
   const handleEditSave = async () => {
     const val = editValue.trim();
