@@ -239,10 +239,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
 
 /**
  * The authority (host[:port]) the editor should bake into the `?__draft=`
- * pointer. `window.location.host` is wrong in the native app — the webview's
- * origin is the tauri-local server, which requires the app session and is
- * unreachable from a deployed preview server. This request reached the API
- * itself, so its Host (or the proxy's X-Forwarded-Host) is an authority the
+ * pointer. This request reached the API itself, so its Host (or the proxy's X-Forwarded-Host) is an authority the
  * preview server can pull the draft from anonymously.
  */
 function requestApiHost(c: Context<DecofileEnv>): string {

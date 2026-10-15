@@ -14,8 +14,6 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:selectedDeepResearchModel:${locator}`,
   chatSimpleModeTier: (locator: ProjectLocator) =>
     `studio:chat:simpleModeTier:${locator}`,
-  chatLastAgentOption: (locator: ProjectLocator) =>
-    `studio:chat:lastAgentOption:${locator}`,
   chatAutosend: (locator: ProjectLocator | string, taskId: string) =>
     `studio:chat:autosend:${locator}:${taskId}`,
   chatThreadIntent: (locator: ProjectLocator | string, taskId: string) =>

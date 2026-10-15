@@ -11,7 +11,6 @@ from the repository root:
 | --- | --- |
 | API tools, routes, storage, or realtime delivery | [apps/api/AGENTS.md](apps/api/AGENTS.md) |
 | Web UI, localization, or experiments | [apps/web/AGENTS.md](apps/web/AGENTS.md) |
-| Native app, signing, or credential storage | [apps/native/AGENTS.md](apps/native/AGENTS.md) |
 | Shared contracts, organization flags, or async utilities | [packages/shared/AGENTS.md](packages/shared/AGENTS.md) |
 | Sandbox provisioning, dispatch, caching, or daemon | [packages/sandbox/AGENTS.md](packages/sandbox/AGENTS.md) |
 | Lint rules, lint configuration, or oxlint version | [plugins/AGENTS.md](plugins/AGENTS.md) |

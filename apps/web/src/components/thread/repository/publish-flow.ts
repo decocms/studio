@@ -186,10 +186,7 @@ async function runStep<T>(
 async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
   const { expectedHeadSha, expectedDiffSignature } = target;
   if (!expectedHeadSha && !expectedDiffSignature) return;
-  const status = await fetchGitStatus(
-    sandboxRef(target),
-    sandboxCall(target),
-  ).catch(() => null);
+  const status = await fetchGitStatus(sandboxRef(target)).catch(() => null);
   if (!status) return;
   if (expectedHeadSha && status.headSha && status.headSha !== expectedHeadSha) {
     throw new PublishHeadMovedError();
@@ -207,7 +204,7 @@ async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
 }
 
 function pushChanges(target: PublishTarget, message: string): Promise<void> {
-  return publishGitChanges(sandboxRef(target), message, sandboxCall(target));
+  return publishGitChanges(sandboxRef(target), message);
 }
 
 function openPullRequest(
@@ -238,7 +235,7 @@ export async function runPublishFlow(
     pushChanges(target, parts.message),
   );
   await runStep("sync", t("thread.publishDialog.failedRebase"), () =>
-    rebaseGitBranch(sandboxRef(target), target.baseBranch, sandboxCall(target)),
+    rebaseGitBranch(sandboxRef(target), target.baseBranch),
   );
   const pr = await runStep(
     "open-pr",

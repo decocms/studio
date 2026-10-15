@@ -62,9 +62,8 @@ const DRAFT_PARAM = "__draft";
 export function buildDraftPointer(input: {
   /**
    * Studio API authority (host[:port]) serving /api — reported by the
-   * decofile API itself (DecofileDraft.apiHost). Not window.location.host:
-   * in the native app that is the session-gated tauri-local server, which
-   * the preview server cannot pull the draft from.
+   * decofile API itself (DecofileDraft.apiHost). Not window.location.host,
+   * which is not guaranteed to be reachable from the preview server.
    */
   apiHost: string;
   orgSlug: string;

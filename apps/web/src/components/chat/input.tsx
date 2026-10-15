@@ -85,7 +85,6 @@ import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { VoiceModeToggle } from "./voice";
 import { resolveComposerAction } from "./composer-action";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 
 // ============================================================================
@@ -492,11 +491,7 @@ export function ChatInput({
   ).find((m) => m.userId === ownerId);
   const ownerName =
     owner?.user?.name ?? owner?.user?.email?.split("@")[0] ?? null;
-  const isDesktopApp = useIsDesktopApp();
-  const hostedRuntimeBlocked = shouldBlockHostedRuntime({
-    isDesktopApp,
-    harnessId: task?.harness_id,
-  });
+  const hostedRuntimeBlocked = shouldBlockHostedRuntime(task?.harness_id);
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
@@ -695,7 +690,7 @@ export function ChatInput({
   if (hostedRuntimeBlocked) {
     return (
       <ChatInputDisabledState
-        message={t("chat.input.codingAgentRequiresDesktop")}
+        message={t("chat.input.codingAgentUnavailable")}
       />
     );
   }

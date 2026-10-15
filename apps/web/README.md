@@ -74,10 +74,9 @@ See [Layout, ChatLayout, Panel, and Page](docs/component-architecture.md) for la
 ownership, compound component APIs, naming conventions, and annotated screenshots.
 
 `src/router.tsx` creates the TanStack Router tree and mounts the top-level
-providers; `src/index.web.tsx` is the browser entry that renders it (the Tauri
-desktop build has its own entry, `src/index.native.tsx`). Route components load
-lazily, TanStack Query manages remote state, and shared UI primitives come from
-`@decocms/ui`.
+providers; `src/index.web.tsx` is the browser entry that renders it. Route
+components load lazily, TanStack Query manages remote state, and shared UI
+primitives come from `@decocms/ui`.
 
 ```text
 TanStack Router
@@ -101,7 +100,6 @@ Key paths:
 | Path | Purpose |
 | --- | --- |
 | `src/index.web.tsx` | Web application entry point |
-| `src/index.native.tsx` | Tauri desktop application entry point |
 | `src/router.tsx` | TanStack Router route tree |
 | `src/routes/` | Route components and route-specific logic |
 | `src/layouts/` | Authenticated shell and shared page layouts |

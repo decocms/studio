@@ -1,9 +1,7 @@
 /**
  * Brand marks for the MCP clients the Connect surfaces hand install snippets
- * to. They are not native coding-agent harnesses, so they do not belong in
- * `chat/agent-icons.tsx` — that file is scoped to the harness picker, and
- * Claude Code / Codex already live there because the harness picker draws them
- * too. Only Cursor is exclusive to Connect, so only Cursor is defined here.
+ * to. Claude Code / Codex marks live in `chat/agent-icons.tsx`; only Cursor is
+ * exclusive to Connect, so only Cursor is defined here.
  */
 
 /** Cursor's isometric mark (simple-icons, CC0), flattened to `currentColor`. */

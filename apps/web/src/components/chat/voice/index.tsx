@@ -11,7 +11,6 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { useProjectContext } from "@/sdk";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
   resolveMobileSurface,
@@ -60,9 +59,8 @@ function VoiceProvider({
 }: PropsWithChildren<{ visible: boolean }>) {
   const { org } = useProjectContext();
   const { taskId, createTask, activeTask } = useChatTask();
-  const isDesktopApp = useIsDesktopApp();
   const flag = useOrgFlag("voice_mode");
-  const enabled = flag && !isDesktopApp && !activeTask?.metadata?.read_only;
+  const enabled = flag && !activeTask?.metadata?.read_only;
   const [session] = useState(
     () =>
       new VoiceSession(

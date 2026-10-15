@@ -7,7 +7,6 @@ on:
     paths:
       - "apps/api/**"
       - "apps/web/**"
-      - "apps/native/**"
       - "package.json"
       - "scripts/build-studio.ts"
       - "scripts/release-changes.ts"
@@ -288,9 +287,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Same identity as release-native.yaml's cask bump: both pushes
-          # already authenticate as the release bot App, so main's history
-          # shows ONE bot, not github-actions[bot] + decocms-release[bot].
           git config user.name "decocms-release[bot]"
           git config user.email "decocms-release[bot]@users.noreply.github.com"
           git add ${{ steps.update_versions.outputs.changed_paths }}

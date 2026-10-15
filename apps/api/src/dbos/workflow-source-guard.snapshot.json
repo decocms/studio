@@ -4,7 +4,7 @@
   "automations/dbos-workflow.ts": "1422b336a55baf2f7711bbd0347e8226ec54ee5b74e53ee598e2a83e925f851a",
   "billing/dbos-subscription-sweep.ts": "d5d90cb91f31146226c0b583e6e6af7a68504d28c256b05d9e564e985a37f4ca",
   "dispatch-queue/hosted-harness-workflow.ts": "e4e718f64ba189fe2b8daf04bf3f1eef3e788a73e24fec08ba078db2a9b82275",
-  "dispatch-queue/thread-gate-workflow.ts": "3cf393a6336fe5a083398e06ea25a30cf6d1dd2b85f29dcf2731319262f6ca62",
+  "dispatch-queue/thread-gate-workflow.ts": "2d778d4f178f8fc0517c6f7fb3bf145f765de3d1c8bae66e63d533fbfd840698",
   "file-storage/dbos-org-repo-sync.ts": "32c606976916fde2be7abe3084f7388744bdb610c178e9c2a07a8080f764904e",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
   "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",

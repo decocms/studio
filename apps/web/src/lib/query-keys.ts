@@ -783,27 +783,9 @@ export const KEYS = {
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
-  // `threadId` is part of the key because it is part of the URL: two sessions
-  // on one branch get different answers from `/config`, and with staleTime
-  // Infinity a shared entry would hand one session the other's repoDir.
-  sandboxRepoDir: (
-    orgSlug: string,
-    virtualMcpId: string,
-    branch: string,
-    threadId: string | null,
-  ) => ["sandbox-repo-dir", orgSlug, virtualMcpId, branch, threadId] as const,
   // icon-select previews: the site's /sprites.svg, fetched via the preview proxy
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,
-
-  // Native-only coding-agent availability; process-wide, not org-scoped.
-  localAgentCapabilities: () => ["local-agent-capabilities"] as const,
-
-  // Desktop app (Tauri) only — the Keychain auth-status gate read by
-  // `apps/web/src/desktop/use-desktop-auth.ts`. Lives here because
-  // `plugins/enforce-query-key-constants.ts` requires every query key to be a
-  // constant in this registry; it never appears in the web build's cache.
-  desktopAuthStatus: () => ["desktop", "auth-status"] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(

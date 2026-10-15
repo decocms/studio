@@ -44,13 +44,6 @@ import {
   type ThreadObserver,
 } from "./store/thread-connection";
 import { deriveTerminalThreadStatus } from "./store/thread-status";
-import {
-  AGENT_OPTION_HARNESSES,
-  resolveNativeAgentOption,
-  type LocalAgentOption,
-  type NativeHarnessId,
-} from "./pills/agent-options";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
@@ -267,14 +260,6 @@ export interface ChatPrefsContextValue {
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
   setSimpleModeTier: (tier: SimpleTier) => void;
-  /**
-   * Effective native terminal-agent option. Persisted per org so a choice
-   * survives reloads.
-   */
-  pendingAgentOption: LocalAgentOption | null;
-  setPendingAgentOption: (option: LocalAgentOption | null) => void;
-  /** Derived from `pendingAgentOption`. Read-only. */
-  pendingHarnessId: NativeHarnessId | null;
 }
 
 /** `sendMessage` takes either shape; both providers normalize it through here. */
@@ -314,20 +299,6 @@ const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
 
 /** Internal context for passing TaskProvider internals to ActiveTaskProvider */
 const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
-
-/**
- * Installs a stream-compatible value without constructing ThreadConnection.
- * Native uses this bridge for shared preview/file actions while its actual
- * transport is an interactive terminal session.
- */
-export function ChatStreamValueProvider({
-  value,
-  children,
-}: PropsWithChildren<{ value: ChatStreamContextValue }>) {
-  return (
-    <ChatStreamCtx.Provider value={value}>{children}</ChatStreamCtx.Provider>
-  );
-}
 
 /**
  * Blanks the stream and task contexts for a subtree.
@@ -561,34 +532,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     });
   };
 
-  // Pending agent — native's pre-launch coding-agent choice. Persisted to
-  // localStorage so the native choice survives reloads.
-  //
-  // Scoped per `locator` (like the image-model and tier prefs) so a native
-  // choice made in one org doesn't leak into another. A fresh org starts with
-  // no pick and waits for an explicit coding-agent selection.
-  const [pendingAgentOption, setPendingAgentOption] =
-    useLocalStorage<LocalAgentOption | null>(
-      LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
-      (existing) =>
-        existing && existing in AGENT_OPTION_HARNESSES ? existing : null,
-    );
-
-  // Read the active native thread's lock when this provider is mounted inside
-  // ChatTaskCtx. Standalone composers have no task context and use the stored
-  // local choice.
-  const taskCtxForLock = useOptionalChatTask();
-  const effectiveAgentOption = resolveNativeAgentOption({
-    pendingOption: pendingAgentOption,
-    lockedHarness: taskCtxForLock?.isThreadLocked
-      ? taskCtxForLock.lockedHarness
-      : null,
-  });
-
-  const pendingHarnessId = effectiveAgentOption
-    ? AGENT_OPTION_HARNESSES[effectiveAgentOption]
-    : null;
-
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
@@ -632,9 +575,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     resetInteraction: () => {},
     simpleModeTier: activeTier,
     setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
-    pendingAgentOption: effectiveAgentOption,
-    setPendingAgentOption,
-    pendingHarnessId,
   };
 
   return (
@@ -823,7 +763,7 @@ export function ChatContextProvider({
 const NO_MESSAGES: ChatMessage[] = [];
 
 /** `ready` for a stream with nothing to load. */
-export const STREAM_READY: Promise<void> = Promise.resolve();
+const STREAM_READY: Promise<void> = Promise.resolve();
 
 /**
  * Chat context for a route with no thread — every destination (`/$org/home`,
@@ -866,7 +806,7 @@ export function ThreadlessChatProvider({ children }: PropsWithChildren) {
   };
 
   return (
-    <ChatStreamValueProvider value={value}>{children}</ChatStreamValueProvider>
+    <ChatStreamCtx.Provider value={value}>{children}</ChatStreamCtx.Provider>
   );
 }
 
@@ -879,17 +819,11 @@ export function ActiveTaskProvider({
   children,
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
-  const isDesktopApp = useIsDesktopApp();
   const voiceEnabled = useOrgFlag("voice_mode");
   const sandboxOnlyChats = useSandboxOnlyChats();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
-  const hostedRuntimeBlocked = shouldBlockHostedRuntime({
-    isDesktopApp,
-    harnessId: activeTask?.harness_id,
-  });
-  const hostedRuntimeBlockedMessage = t(
-    "chat.input.codingAgentRequiresDesktop",
-  );
+  const hostedRuntimeBlocked = shouldBlockHostedRuntime(activeTask?.harness_id);
+  const hostedRuntimeBlockedMessage = t("chat.input.codingAgentUnavailable");
 
   /**
    * Fire chat_opened once per (page session × taskId). Runs during render, but
@@ -1245,7 +1179,7 @@ export function ActiveTaskProvider({
     const capturedVirtualMcpId = virtualMcpId;
 
     // Coding-agent harnesses have no hosted AI SDK/headless dispatch contract.
-    // A native row can still reach this shared provider, so fail closed before
+    // A persisted row can still reach this shared provider, so fail closed before
     // enqueue or submit and release any caller-owned latch without touching
     // the wire.
     if (hostedRuntimeBlocked) {

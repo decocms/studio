@@ -965,8 +965,6 @@ export const sandbox = {
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
   "sandbox.preview.noServerRunning": "No server running",
-  "sandbox.preview.openInBrowser": "Open in browser",
-  "sandbox.preview.failedToOpenInBrowser": "Couldn't open your browser",
   "sandbox.preview.openInNewTab": "Open in new tab",
   "sandbox.preview.pageAlreadyExists":
     'A page with path "{path}" already exists.',

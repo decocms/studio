@@ -113,65 +113,36 @@ async function parseJson<T>(res: Response): Promise<T> {
   return body;
 }
 
-/**
- * Tells the desktop app not to answer this call from a local sandbox.
- *
- * Fast Preview is sandbox-less, so `/sandbox/*` must reach the API that serves
- * it from GitHub. The desktop interceptor keys its worktree handle off the
- * repository, so a sandbox left over from a coding session on the same repo
- * would otherwise claim the route. This is only a routing hint: the API
- * re-derives the runtime from the thread and vMCP before serving the request.
- */
-const FAST_PREVIEW_HEADER = "x-deco-fast-preview";
-
 export interface SandboxGitCallOptions {
   fastPreview?: boolean;
 }
 
 /** Never cache sandbox git/fs calls — 410 Gone must not stick in disk cache. */
-function sandboxFetch(
-  url: string,
-  init?: RequestInit,
-  call?: SandboxGitCallOptions,
-): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  if (call?.fastPreview) headers.set(FAST_PREVIEW_HEADER, "1");
-  return fetch(url, { cache: "no-store", ...init, headers });
+function sandboxFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, { cache: "no-store", ...init });
 }
 
-export async function fetchGitStatus(
-  ref: SandboxProxyRef,
-  call?: SandboxGitCallOptions,
-): Promise<GitStatus> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(ref, "status"),
-    undefined,
-    call,
-  );
+export async function fetchGitStatus(ref: SandboxProxyRef): Promise<GitStatus> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "status"), undefined);
   return parseJson<GitStatus>(res);
 }
 
 export async function fetchGitDiff(
   ref: SandboxProxyRef,
   options?: { base?: string; headSha?: string },
-  call?: SandboxGitCallOptions,
 ): Promise<GitDiffResult> {
   // Always send a body, even when every field is absent (the working-tree
   // diff). A bodyless POST is what broke the publish dialog: the Go daemon fed
   // "" to json.Unmarshal and 400'd with "unexpected end of JSON input", which
   // the dialog rendered raw. Every other call in this file already sends JSON.
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(ref, "diff"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        ...(options?.base ? { base: options.base } : {}),
-        ...(options?.headSha ? { headSha: options.headSha } : {}),
-      }),
-    },
-    call,
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "diff"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...(options?.base ? { base: options.base } : {}),
+      ...(options?.headSha ? { headSha: options.headSha } : {}),
+    }),
+  });
   return parseJson<GitDiffResult>(res);
 }
 
@@ -195,17 +166,12 @@ export function stripGeneratedFilesFromDiff(
 export async function publishGitChanges(
   ref: SandboxProxyRef,
   message: string,
-  call?: SandboxGitCallOptions,
 ): Promise<void> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(ref, "publish"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message }),
-    },
-    call,
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "publish"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
   await parseJson(res);
 }
 
@@ -219,17 +185,12 @@ export async function publishGitChanges(
 export async function rebaseGitBranch(
   ref: SandboxProxyRef,
   base: string,
-  call?: SandboxGitCallOptions,
 ): Promise<void> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(ref, "rebase"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ base }),
-    },
-    call,
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "rebase"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ base }),
+  });
   await parseJson(res);
 }
 
@@ -385,41 +346,31 @@ export function reviewDiffSignature(diff: GitDiffResult): string {
 export async function fetchReviewVerdict(
   ref: SandboxProxyRef,
   payload: { status: GitStatus; diff: GitDiffResult; language?: string },
-  call?: SandboxGitCallOptions,
 ): Promise<ReviewVerdict> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(ref, "judge-review"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        status: payload.status,
-        diff: stripGeneratedFilesFromDiff(payload.diff),
-        // The `reason` is shown to the user, so ask the model to write it in
-        // the UI language. This is a deliberate exception to "don't thread
-        // locale to the server" — it applies only to this displayed AI text.
-        ...(payload.language ? { language: payload.language } : {}),
-      }),
-    },
-    call,
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "judge-review"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      status: payload.status,
+      diff: stripGeneratedFilesFromDiff(payload.diff),
+      // The `reason` is shown to the user, so ask the model to write it in
+      // the UI language. This is a deliberate exception to "don't thread
+      // locale to the server" — it applies only to this displayed AI text.
+      ...(payload.language ? { language: payload.language } : {}),
+    }),
+  });
   return parseJson<ReviewVerdict>(res);
 }
 
 export async function discardGitFiles(
   ref: SandboxProxyRef,
   filepaths: string[],
-  call?: SandboxGitCallOptions,
 ): Promise<void> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(ref, "discard"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ filepaths }),
-    },
-    call,
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "discard"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ filepaths }),
+  });
   await parseJson(res);
 }
 
@@ -455,13 +406,10 @@ const GIT_STATUS_STALE_MS = 5_000;
  * header already fetched — spread this into both rather than restating the key.
  * Deliberately without `enabled`: `useSuspenseQuery` has no such option.
  */
-export function sandboxGitStatusQueryOptions(
-  ref: SandboxProxyRef,
-  call?: SandboxGitCallOptions,
-) {
+export function sandboxGitStatusQueryOptions(ref: SandboxProxyRef) {
   return {
     queryKey: sandboxGitStatusQueryKey(ref),
-    queryFn: () => fetchGitStatus(ref, call),
+    queryFn: () => fetchGitStatus(ref),
     staleTime: GIT_STATUS_STALE_MS,
     retry: retryGitRequest,
   };
@@ -571,15 +519,13 @@ export async function fetchPublishDiff(
   base: string,
   call?: SandboxGitCallOptions,
 ): Promise<GitDiffResult> {
-  if (call?.fastPreview) return fetchGitDiff(ref, { base }, call);
+  if (call?.fastPreview) return fetchGitDiff(ref, { base });
   const baseOptions = status.headSha
     ? { base, headSha: status.headSha }
     : { base };
   const [baseDiff, workingDiff] = await Promise.all([
-    mayHaveCommitsToPublish(status)
-      ? fetchGitDiff(ref, baseOptions, call)
-      : null,
-    hasGitLocalWork(status) ? fetchGitDiff(ref, undefined, call) : null,
+    mayHaveCommitsToPublish(status) ? fetchGitDiff(ref, baseOptions) : null,
+    hasGitLocalWork(status) ? fetchGitDiff(ref) : null,
   ]);
   return combinePublishDiffs(baseDiff, workingDiff);
 }

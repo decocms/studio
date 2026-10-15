@@ -1,50 +1,20 @@
-# The Homebrew cask for the deco desktop app. This repository doubles as the
-# tap:
-#
-#   brew tap decocms/studio https://github.com/decocms/studio
-#   brew install --cask deco-studio
-#
-# `version` and `sha256` are maintained by .github/workflows/release-native.yaml,
-# which rewrites them after each desktop release's assets are published —
-# never edit them by hand.
-#
-# `sha256 :no_check` is the NOT-YET-RELEASED sentinel: while it is set, the
-# `version` below is a placeholder and its download URL does not exist, so
-# `brew install` will 404. The first desktop release (which cuts automatically
-# once a version bump lands on main) rewrites both to real values and the tap
-# becomes installable. Until then this file only reserves the cask name.
+# Kept so brew explains the discontinuation and `brew uninstall --zap` still works.
 cask "deco-studio" do
   version "4.490.1"
   sha256 "787cc682118cef4506293ae70f1d2d3a32466a0a11f8b64e29846092c8906e55"
 
   url "https://github.com/decocms/studio/releases/download/native-v#{version}/deco-#{version}-aarch64.zip"
   name "deco studio"
-  desc "Open-source control plane for MCP traffic — desktop app"
-  homepage "https://github.com/decocms/studio"
+  desc "Discontinued desktop app for deco studio"
+  homepage "https://studio.decocms.com/"
+
+  disable! date:    "2026-10-15",
+           because: "is discontinued; use deco studio in your browser at https://studio.decocms.com"
 
   depends_on arch: :arm64
-  depends_on macos: :big_sur
-  depends_on formula: "git"
-  depends_on formula: "ripgrep"
-
-  # The app updates itself (Tauri updater — see
-  # apps/native/docs/native-updater-plan.md). Without this, `brew upgrade`
-  # compares the tap version against its install receipt and REINSTALLS
-  # (downgrades) over a self-updated app. `--greedy` still overwrites, which
-  # is fine (the app self-updates back) and is the documented break-glass
-  # recovery path if the updater signing key is ever lost.
-  auto_updates true
+  depends_on :macos
 
   app "deco.app"
-
-  # Drop this block once releases are signed + notarized (the six APPLE_*
-  # secrets in release-native.yaml) — at that point Gatekeeper passes and
-  # the quarantine flag no longer needs clearing.
-  caveats <<~EOS
-    deco studio is not yet signed/notarized, so macOS reports the app as
-    "damaged" on first launch. Clear the quarantine flag and relaunch:
-      xattr -dr com.apple.quarantine "#{appdir}/deco.app"
-  EOS
 
   zap trash: [
     "~/Library/Application Support/com.decocms.studio",

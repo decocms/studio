@@ -35,23 +35,8 @@ export const common = {
   "common.blockedOrgScreen.switchOrg": "Switch organization",
   "common.authEntry.autoLoginFailed": "Auto-login failed",
   "common.authEntry.autoLoginFailedWithError": "Auto-login failed: {error}",
-  "common.authEntry.browserOnlyCta": "Continue in your browser",
-  "common.authEntry.browserOnlyDescription":
-    "This organization signs in with an emailed link, which can't be opened inside the app. Continue in your browser to finish signing in.",
-  "common.authEntry.browserOnlyTitle": "Welcome to deco",
-  "common.authEntry.finishSignInInBrowser":
-    "Finish signing in in your browser…",
-  "common.authEntry.finishingSignIn": "Finishing sign-in…",
   "common.authEntry.noLoginOptions": "No login options available",
   "common.authEntry.tryRestartingServer": "Try restarting the server.",
-  "common.desktopKeychainUnavailable.description":
-    "deco studio could not access macOS Keychain. Dismiss any pending Keychain dialogs, then try again.",
-  "common.desktopKeychainUnavailable.descriptionLinux":
-    "deco studio could not access your system keyring. Make sure a secret service such as GNOME Keyring or KWallet is running and unlocked, then try again.",
-  "common.desktopKeychainUnavailable.retry": "Try again",
-  "common.desktopKeychainUnavailable.retrying": "Trying again…",
-  "common.desktopKeychainUnavailable.title":
-    "Unable to access your saved session",
   "common.autoDomainJoinScreen.enterOrg": "Enter {orgName}",
   "common.autoDomainJoinScreen.joinDescription":
     "Anyone with an @{domain} email can join this organization.",
@@ -236,8 +221,6 @@ export const common = {
   "common.requestToJoinScreen.requestButton": "Request to join",
   "common.requestToJoinScreen.requesting": "Requesting…",
   "common.requestToJoinScreen.title": "Request to join {orgName}?",
-  "common.signInScreen.configLoadFailed": "Couldn't load sign-in options.",
-  "common.signInScreen.tryAgain": "Try again",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "This organization requires SSO authentication to access.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requires SSO authentication",
@@ -277,7 +260,6 @@ export const common = {
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
   "common.taskBoard.feedView": "Feed",
-  "common.openExternalFailed": "Could not open this link in your browser.",
   "common.taskStatus.requiresAction": "Needs review",
   "common.taskStatus.failed": "Failed",
   "common.taskStatus.expired": "Timed out",

@@ -156,8 +156,8 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
   };
 
   const statusQuery = useSuspenseQuery({
-    ...sandboxGitStatusQueryOptions(sandboxRef, call),
-    queryFn: () => withRecovery(() => fetchGitStatus(sandboxRef, call)),
+    ...sandboxGitStatusQueryOptions(sandboxRef),
+    queryFn: () => withRecovery(() => fetchGitStatus(sandboxRef)),
   });
   const status = statusQuery.data;
   const manifest = status.changedFiles ?? null;

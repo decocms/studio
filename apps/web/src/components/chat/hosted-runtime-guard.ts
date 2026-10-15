@@ -11,19 +11,14 @@ const HOSTED_HARNESS_IDS = new Set(["decopilot", "claude-code"]);
 
 /**
  * Hosted chat runs a fixed set of harnesses. Coding-agent ids can still appear
- * in persisted native thread rows consumed by shared UI code, but the hosted AI
- * SDK dispatcher has no wire contract for them.
+ * in persisted thread rows created by the retired desktop app, but the hosted
+ * AI SDK dispatcher has no wire contract for them.
  *
  * Gate on the persisted harness. An unpinned thread is available; once pinned,
- * hosted web accepts only harnesses the hosted dispatcher can run.
+ * only harnesses the hosted dispatcher can run are accepted.
  */
-export function shouldBlockHostedRuntime({
-  isDesktopApp,
-  harnessId,
-}: {
-  isDesktopApp: boolean;
-  harnessId: string | null | undefined;
-}): boolean {
-  if (isDesktopApp) return false;
+export function shouldBlockHostedRuntime(
+  harnessId: string | null | undefined,
+): boolean {
   return harnessId != null && !HOSTED_HARNESS_IDS.has(harnessId);
 }

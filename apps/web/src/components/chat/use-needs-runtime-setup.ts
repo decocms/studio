@@ -17,8 +17,7 @@ import {
  * Read only by the web chat side panel, which shows the provider setup empty
  * state for a fresh thread when the organization has no cloud provider key —
  * or, under `chat_harness_sandbox_only`, no key claude-code can run on and no
- * linked Claude or GitHub Copilot plan. Native coding agents use the terminal runtime
- * adapter and never reach this structured-chat gate.
+ * linked Claude or GitHub Copilot plan.
  */
 export function useNeedsRuntimeSetup(): RuntimeSetupNeed {
   const allKeys = useHostedAiProviderKeys();

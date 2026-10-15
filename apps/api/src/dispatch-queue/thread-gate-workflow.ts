@@ -55,9 +55,8 @@ export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
  * Guard: only harnesses hosted by the cluster may use this gate.
  *
  * `decopilot` runs in-process; `claude-code` runs inside the managed sandbox
- * (and is additionally gated per-org in `prepareRun`). Desktop-only coding
- * agents run in the Tauri app, which owns its Rust `local-api` and never
- * enqueues here. This stays a positive allowlist so an unknown or future
+ * (and is additionally gated per-org in `prepareRun`). This stays a positive
+ * allowlist so an unknown or future
  * harness cannot silently fall through to whichever loop runs first.
  */
 export function assertHarnessRunsInCluster(harnessId?: string | null): void {

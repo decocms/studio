@@ -111,7 +111,6 @@ export function ThreadsMenu() {
         </PopoverContent>
       </Popover>
       {panel.searchDialog}
-      {panel.reclaimDialog}
     </>
   );
 }

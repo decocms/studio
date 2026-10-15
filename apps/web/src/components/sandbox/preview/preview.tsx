@@ -83,11 +83,6 @@ import {
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { toast } from "sonner";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import {
-  openExternalUrlInSystemBrowser,
-  registerPreviewOrigin,
-} from "@/lib/desktop/tauri-bridge";
 import {
   VISUAL_EDITOR_SCRIPT,
   VisualEditorPayloadSchema,
@@ -344,7 +339,6 @@ function reloadIframeOrFallback(
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
-  const isDesktopApp = useIsDesktopApp();
   const isMobile = useIsMobile();
   // Page tools share the toolbar on every screen; standalone views render them inline.
   const {
@@ -404,12 +398,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     });
   // Live canvas size, used to scale the fixed-width frame to fit.
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  /** Origin most recently confirmed registered with the native shell via
-   *  `registerPreviewOrigin` — see the effect below that sets it. `null`
-   *  until the very first desktop-app production-mode registration lands. */
-  const [registeredPreviewOrigin, setRegisteredPreviewOrigin] = useState<
-    string | null
-  >(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -720,31 +708,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewSurfaceActive = display.mode !== "none";
 
   // Origin of the "production" mode's base — an external, org-owned domain
-  // (the published site), unlike "sandbox" mode's `iframeBase`, which is
-  // always this app's own local sandbox-preview-proxy origin (already
-  // allowed natively, no registration needed). `null` outside production
-  // mode, or once no `iframeBase` is available yet.
+  // (the published site). `null` outside production mode, or once no
+  // `iframeBase` is available yet.
   const productionOrigin =
     display.mode === "production" && display.iframeBase
       ? previewOrigin(display.iframeBase)
       : null;
-  /**
-   * The external origin the iframe will load and that the desktop shell must
-   * register before navigating there: the published site under Fast Preview, or
-   * the Local tunnel (a "sandbox"-display external origin, unlike the normal
-   * sandbox proxy which is this app's own already-allowed origin). `null` for
-   * the normal sandbox proxy. Plain browser tabs have no such gate (no-op).
-   */
-  const externalPreviewOrigin =
-    productionOrigin ??
-    (localPreviewUrl && display.mode === "sandbox" && display.iframeBase
-      ? previewOrigin(display.iframeBase)
-      : null);
-  const externalOriginReady =
-    !isDesktopApp ||
-    !externalPreviewOrigin ||
-    registeredPreviewOrigin === externalPreviewOrigin;
-
   // Origin of the in-iframe editor bridge — sandbox proxy / Local tunnel, or the site's own origin under Fast Preview.
   const editorBridgeOrigin =
     display.mode === "production"
@@ -785,7 +754,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
   const iframeSrc = withDecoFBT(
-    display.mode === "sandbox" && externalOriginReady
+    display.mode === "sandbox"
       ? withVariantMatcherOverride(
           withDeviceHint(
             directPreviewUrl ??
@@ -795,7 +764,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ),
           workspace.state.variantOverride ?? [],
         )
-      : display.mode === "production" && externalOriginReady
+      : display.mode === "production"
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
@@ -813,35 +782,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           )
         : null,
   );
-
-  /** Registers `externalPreviewOrigin` with the native shell before the iframe navigates there (see `externalOriginReady`). */
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
-  useEffect(() => {
-    if (!isDesktopApp || !externalPreviewOrigin) return;
-    if (registeredPreviewOrigin === externalPreviewOrigin) return;
-    let cancelled = false;
-    registerPreviewOrigin(externalPreviewOrigin)
-      .then(() => {
-        if (!cancelled) setRegisteredPreviewOrigin(externalPreviewOrigin);
-      })
-      .catch((error) => {
-        console.error(
-          "Failed to register preview origin",
-          externalPreviewOrigin,
-          error,
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isDesktopApp, externalPreviewOrigin, registeredPreviewOrigin]);
-
-  // "Open outside the preview pane". In a browser that's a new tab; inside the
-  // Tauri webview there is no tab strip to open into, so `window.open` cannot
-  // serve it — hand the URL to the OS default browser instead, and say so.
-  const openPreviewLabelKey = isDesktopApp
-    ? ("sandbox.preview.openInBrowser" as const)
-    : ("sandbox.preview.openInNewTab" as const);
 
   /**
    * URL for "open in new tab" — the same page, minus Studio's viewport hint.
@@ -866,18 +806,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         : null
       : (iframeSrc ?? display.iframeBase);
 
-  const handleOpenPreview = async () => {
+  const handleOpenPreview = () => {
     const url = openInNewTabUrl;
     if (!url) return;
-    if (!isDesktopApp) {
-      window.open(url, "_blank", "noopener");
-      return;
-    }
-    try {
-      await openExternalUrlInSystemBrowser(url);
-    } catch {
-      toast.error(t("sandbox.preview.failedToOpenInBrowser"));
-    }
+    window.open(url, "_blank", "noopener");
   };
 
   // Last visited page (incl. `:param` values), persisted per project+branch.
@@ -1722,8 +1654,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
-            onClick={() => void handleOpenPreview()}
-            aria-label={t(openPreviewLabelKey)}
+            onClick={handleOpenPreview}
+            aria-label={t("sandbox.preview.openInNewTab")}
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>

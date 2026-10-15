@@ -438,8 +438,8 @@ export function SandboxLifecycleProvider({
   threadId,
   children,
 }: {
-  /** False for native terminal threads viewed on hosted web. Keeps previews
-   *  readable without adopting branches or mutating hosted sandboxes. */
+  /** False for coding-agent threads the hosted dispatcher cannot run. Keeps
+   *  previews readable without adopting branches or mutating hosted sandboxes. */
   executionEnabled: boolean;
   virtualMcpId: string | null;
   branch: string | null;

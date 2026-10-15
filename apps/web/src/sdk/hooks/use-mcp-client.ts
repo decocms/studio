@@ -24,14 +24,6 @@ export interface CreateMcpClientOptions {
   studioUrl?: string;
   /** @deprecated Use `studioUrl` instead. */
   meshUrl?: string;
-  /**
-   * Absolute MCP endpoint URL override. When set, the client connects directly
-   * to this URL instead of the org-scoped `/api/:org/mcp/:connectionId` route.
-   * Used to reach a co-located sandbox dev server straight from the browser
-   * (loopback `http://<handle>.localhost/api/mcp`), bypassing the cloud proxy —
-   * which cannot reach a desktop sandbox's loopback. Never the self/REST client.
-   */
-  mcpUrl?: string;
 }
 
 export type UseMcpClientOptions = CreateMcpClientOptions;
@@ -75,21 +67,19 @@ export async function createMCPClient({
   token,
   studioUrl,
   meshUrl,
-  mcpUrl,
 }: CreateMcpClientOptions): Promise<Client> {
   const studioServerUrl = resolveStudioUrl({ studioUrl, meshUrl });
   const queryKey = KEYS.mcpClient(
     orgId,
     connectionId ?? "self",
     token ?? "",
-    mcpUrl ?? studioServerUrl ?? "",
+    studioServerUrl ?? "",
   );
 
   // Self/management connection → REST-backed client. The browser no longer
   // speaks MCP to the Studio server for builtin tools; they're called over plain
   // REST (`/api/:org/tools/:name`). The MCP SDK stays for outbound connections.
-  // A direct `mcpUrl` override is never the self client (it targets a dev server).
-  if (!mcpUrl && (!connectionId || connectionId === SELF_MCP_ALIAS_ID)) {
+  if (!connectionId || connectionId === SELF_MCP_ALIAS_ID) {
     return createRestSelfClient({
       orgSlug,
       token,
@@ -98,7 +88,7 @@ export async function createMCPClient({
     });
   }
 
-  const url = mcpUrl ?? buildMcpUrl(connectionId, orgSlug, studioServerUrl);
+  const url = buildMcpUrl(connectionId, orgSlug, studioServerUrl);
 
   const client = new Client(DEFAULT_CLIENT_INFO, {
     capabilities: {
@@ -142,14 +132,14 @@ export async function createMCPClient({
  * cache entry — the key cannot drift between them.
  */
 export function mcpClientQueryOptions(options: UseMcpClientOptions) {
-  const { connectionId, token, studioUrl, meshUrl, mcpUrl, orgId } = options;
+  const { connectionId, token, studioUrl, meshUrl, orgId } = options;
   const studioServerUrl = resolveStudioUrl({ studioUrl, meshUrl });
   return {
     queryKey: KEYS.mcpClient(
       orgId,
       connectionId ?? "self",
       token ?? "",
-      mcpUrl ?? studioServerUrl ?? "",
+      studioServerUrl ?? "",
     ),
     queryFn: () => createMCPClient(options),
     staleTime: Infinity, // Keep client alive while query is active

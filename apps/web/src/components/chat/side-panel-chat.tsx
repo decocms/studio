@@ -39,8 +39,7 @@ function ChatSidePanelBody() {
   const deco = useDecoCredits();
   const t = useT();
 
-  // The structured chat side panel is web-only. Native uses the terminal
-  // runtime adapter instead, so cloud provider setup is the only gate here.
+  // Cloud provider setup is the only gate here.
   const needsRuntimeSetup = useNeedsRuntimeSetup();
   const { runtime } = useSessionRuntime(taskCtx?.virtualMcpId);
   // A CMS session never talks to a model, so neither an unconfigured AI

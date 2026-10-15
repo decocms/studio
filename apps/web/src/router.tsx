@@ -34,8 +34,8 @@ import {
 } from "@/lib/legacy-workspace-search";
 
 const rootRoute = createRootRoute({
-  /** No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
-   *  wraps `<RouterProvider>` in it instead, so router-level code can reach the
+  /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
+   *  `<RouterProvider>` in it instead, so router-level code can reach the
    *  providers too. Wrapping in both places would mount them twice.
    *
    *  No `Suspense` of its own either: the app's ONE splash boundary is in

@@ -144,15 +144,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    *  this key. Shared verbatim with the publish popover, which reads the
    *  changed-file manifest off the same entry — hence one options factory. */
   const statusQuery = useQuery({
-    ...sandboxGitStatusQueryOptions(
-      {
-        orgSlug: org.slug,
-        virtualMcpId,
-        branch: branch ?? "",
-        threadId: taskId ?? null,
-      },
-      { fastPreview: true },
-    ),
+    ...sandboxGitStatusQueryOptions({
+      orgSlug: org.slug,
+      virtualMcpId,
+      branch: branch ?? "",
+      threadId: taskId ?? null,
+    }),
     enabled: !!branch,
   });
   const status = statusQuery.data ?? null;
@@ -266,7 +263,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           threadId: taskId ?? null,
         },
         target.base,
-        { fastPreview: true },
       );
       return target;
     },

@@ -22,7 +22,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
   Copy01,
-  Download01,
   File06,
   Globe01,
   LinkExternal01,
@@ -46,12 +45,6 @@ import { track } from "@/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/lib/query-persist";
 import { usePreferences, type ThemeMode } from "@/hooks/use-preferences.ts";
 import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app.ts";
-import {
-  DownloadAppDialog,
-  isLinuxDesktopBrowser,
-  isMacDesktopBrowser,
-} from "@/components/download-app-dialog";
 import { toast } from "@decocms/ui/components/sonner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -363,10 +356,8 @@ export function AccountPopover() {
   const [preferences, setPreferences] = usePreferences();
   const isMobile = useIsMobile();
   const { isAdmin: isDeploymentAdmin } = useDeploymentAdmin();
-  const isDesktopApp = useIsDesktopApp();
 
   const [open, setOpen] = useState(false);
-  const [downloadAppOpen, setDownloadAppOpen] = useState(false);
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
@@ -403,21 +394,6 @@ export function AccountPopover() {
                 params: { org: currentOrg.slug },
               });
             },
-          } satisfies MenuItem,
-        ]
-      : []),
-    // Same gate as the other DownloadAppDialog triggers: a desktop build only
-    // exists for Mac and Linux desktop browsers, and offering it is pointless
-    // inside the desktop app itself.
-    ...((isMacDesktopBrowser() || isLinuxDesktopBrowser()) && !isDesktopApp
-      ? [
-          {
-            key: "install-desktop-app",
-            label: isLinuxDesktopBrowser()
-              ? t("downloadApp.installOnLinux")
-              : t("downloadApp.installOnMac"),
-            icon: <Download01 size={16} />,
-            onClick: () => setDownloadAppOpen(true),
           } satisfies MenuItem,
         ]
       : []),
@@ -542,79 +518,69 @@ export function AccountPopover() {
     isMobile,
   };
 
-  return (
-    <>
-      {isMobile ? (
-        <Drawer open={open} onOpenChange={setOpen} direction="bottom">
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className={cn(
-              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-              isImpersonating && "border-2 border-dashed border-warning",
-            )}
-          >
+  return isMobile ? (
+    <Drawer open={open} onOpenChange={setOpen} direction="bottom">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={cn(
+          "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+          isImpersonating && "border-2 border-dashed border-warning",
+        )}
+      >
+        <Avatar
+          url={userImage}
+          fallback={user?.name ?? "U"}
+          shape="circle"
+          size="2xs"
+          className="shrink-0"
+        />
+        <span className="truncate">
+          {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
+        </span>
+      </button>
+      <DrawerContent className="h-[80dvh] p-0">
+        <DrawerTitle className="sr-only">
+          {t("common.accountPopover.account")}
+        </DrawerTitle>
+        <AccountPopoverContent {...sharedProps} />
+      </DrawerContent>
+    </Drawer>
+  ) : (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <SidebarMenuButton
+          data-tour={LAYOUT_TOUR_ANCHORS.account}
+          tooltip={user?.name ?? t("common.accountPopover.defaultAccountLabel")}
+          className={cn(
+            isImpersonating && "border-2 border-dashed border-warning",
+          )}
+        >
+          <SidebarFooterIcon>
             <Avatar
               url={userImage}
               fallback={user?.name ?? "U"}
               shape="circle"
               size="2xs"
-              className="shrink-0"
+              className="size-[18px] shrink-0"
             />
-            <span className="truncate">
-              {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
-            </span>
-          </button>
-          <DrawerContent className="h-[80dvh] p-0">
-            <DrawerTitle className="sr-only">
-              {t("common.accountPopover.account")}
-            </DrawerTitle>
-            <AccountPopoverContent {...sharedProps} />
-          </DrawerContent>
-        </Drawer>
-      ) : (
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <SidebarMenuButton
-              data-tour={LAYOUT_TOUR_ANCHORS.account}
-              tooltip={
-                user?.name ?? t("common.accountPopover.defaultAccountLabel")
-              }
-              className={cn(
-                isImpersonating && "border-2 border-dashed border-warning",
-              )}
-            >
-              <SidebarFooterIcon>
-                <Avatar
-                  url={userImage}
-                  fallback={user?.name ?? "U"}
-                  shape="circle"
-                  size="2xs"
-                  className="size-[18px] shrink-0"
-                />
-              </SidebarFooterIcon>
-              <span className="truncate">
-                {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
-              </span>
-            </SidebarMenuButton>
-          </PopoverTrigger>
+          </SidebarFooterIcon>
+          <span className="truncate">
+            {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
+          </span>
+        </SidebarMenuButton>
+      </PopoverTrigger>
 
-          <PopoverContent
-            side="right"
-            align="end"
-            sideOffset={18}
-            collisionPadding={16}
-            className="w-[280px] p-0 flex flex-col max-h-[520px]"
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            <AccountPopoverContent {...sharedProps} />
-          </PopoverContent>
-        </Popover>
-      )}
-      <DownloadAppDialog
-        open={downloadAppOpen}
-        onOpenChange={setDownloadAppOpen}
-      />
-    </>
+      <PopoverContent
+        side="right"
+        align="end"
+        sideOffset={18}
+        collisionPadding={16}
+        className="w-[280px] p-0 flex flex-col max-h-[520px]"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        <AccountPopoverContent {...sharedProps} />
+      </PopoverContent>
+    </Popover>
   );
 }

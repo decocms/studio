@@ -75,7 +75,6 @@ export function useSmartReviewVerdict(args: {
       fetchReviewVerdict(
         { orgSlug, virtualMcpId, branch, threadId },
         { status: status!, diff: diff!, language },
-        fastPreview ? { fastPreview: true } : undefined,
       ),
     enabled: canRun,
     staleTime: Infinity,

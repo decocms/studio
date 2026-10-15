@@ -379,16 +379,19 @@ async function resolveDefaultHarness(
   }
 }
 
+const DESKTOP_ONLY_THREAD_MESSAGE =
+  "This coding-agent chat ran in the discontinued Studio desktop app and can't continue here";
+
 /**
- * The hosted messages endpoint is Decopilot-only. Native coding-agent ids can
- * remain on persisted thread rows so the desktop app can resume them, but the
- * cloud route must reject those rows before model resolution or any write.
+ * The hosted messages endpoint is Decopilot-only. Coding-agent ids from the
+ * discontinued desktop app remain on persisted thread rows, and the cloud
+ * route must reject those rows before model resolution or any write.
  */
 function assertHostedRuntime(harnessId: string | null | undefined): void {
   assertHostedHarness(harnessId);
   if (harnessId !== "decopilot") {
     throw new HTTPException(409, {
-      message: "This coding-agent chat can only run in the Studio desktop app",
+      message: DESKTOP_ONLY_THREAD_MESSAGE,
     });
   }
 }
@@ -400,8 +403,8 @@ function assertHostedRuntime(harnessId: string | null | undefined): void {
  * Wider than `assertHostedRuntime` on purpose. A `claude-code` run happens in
  * the sandbox pod, which makes it hosted data this API owns — its queue is read
  * on every thread mount, and (since a claude-code thread accepts follow-up
- * messages) its dispatch is ours to accept too. Gating either like a native
- * desktop runtime 409'd them both.
+ * messages) its dispatch is ours to accept too. Gating either like a
+ * desktop-only runtime 409'd them both.
  *
  * `/stream` uses it unmodified: a sandbox-hosted turn's chunks reach the
  * thread's JetStream subject through the same ingest path as Decopilot's, so
@@ -422,7 +425,7 @@ export function assertHostedHarness(
     return;
   }
   throw new HTTPException(409, {
-    message: "This coding-agent chat can only run in the Studio desktop app",
+    message: DESKTOP_ONLY_THREAD_MESSAGE,
   });
 }
 

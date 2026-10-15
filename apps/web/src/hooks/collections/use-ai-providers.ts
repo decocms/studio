@@ -71,7 +71,7 @@ export function useAiProviderKeys() {
 
 /** Provider keys that can power hosted Decopilot runs.
  *
- * Native coding-agent credentials belong to their CLI processes and must
+ * Keys for non-hosted providers (e.g. coding-agent CLI credentials) must
  * never participate in hosted model selection. The raw hook remains available
  * for provider-inventory code; the server API retains legacy list/delete
  * compatibility independently.

@@ -272,7 +272,7 @@ test.describe("decofile API", () => {
       expect(body.version).toMatch(/^[0-9a-f]{40}$/);
       expect(typeof body.token).toBe("string");
       // The API reports the authority it is reachable on, so the editor can
-      // build a draft pointer that works from the native app too.
+      // build a draft pointer the preview server can pull from.
       expect(body.apiHost).toMatch(/^[\w.-]+(:\d+)?$/);
       expect(body.decofile["Hero"]).toEqual(heroBlock);
       // Double-encoded stem → single-decode key keeps the `%20` (the runtime's form).

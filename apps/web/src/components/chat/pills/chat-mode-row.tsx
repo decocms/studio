@@ -24,11 +24,7 @@ interface PureProps {
 /**
  * Pure layout — used by tests. Renders the branch pill (when present) in the
  * parent flex flow. Returns null when there is nothing to show.
- *
- * The runtime choice (Cloud sandbox vs This device) is NOT surfaced here — it
- * lives in the "Smart" model selector's Cloud ⟷ This device toggle, which
- * writes through the same `pendingAgentOption`. A standalone pill here was
- * redundant, so this row only carries the branch pill.
+
  */
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;

@@ -28,7 +28,6 @@ import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/util
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useChatTask } from "@/components/chat/index";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
-import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import type { ThreadExpandedTool } from "@decocms/shared/entities";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import {
@@ -56,7 +55,6 @@ import {
 } from "./source-system-tabs";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
-import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -109,7 +107,6 @@ export function useMainPanelTabs(ctx: {
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
   const { currentBranch, activeTask } = useChatTask();
-  const isDesktopApp = useIsDesktopApp();
 
   const entityLayout = entity?.metadata.ui?.layout ?? null;
   const layoutTabs: AgentTabDef[] = entityLayout?.tabs ?? [];
@@ -138,7 +135,6 @@ export function useMainPanelTabs(ctx: {
    *  below; needs SandboxEventsProvider, which the desktop tab bar sits inside
    *  via VmEventsBridge. */
   const vmEvents = useSandboxEvents();
-  const { vmEntry, previewUrl } = useSandboxLifecycle();
   // What Preview / Code can actually show for THIS thread — see preview-source:
   // a sandbox task run dispatched with no repo (bare `thread:<id>` sandbox key)
   // never checks out the agent's repo, so it gets no Preview / Code tab instead
@@ -160,17 +156,6 @@ export function useMainPanelTabs(ctx: {
     ctx.virtualMcpId,
   );
 
-  // A local-api sandbox serves its dev server on a loopback previewUrl
-  // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
-  // `dev_<id>` route resolves to a connection the pod can't fetch. The browser
-  // IS co-located with the daemon, so point the dev MCP client straight at the
-  // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
-  // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
-  const devMcpUrl =
-    isDesktopApp && vmEntry && previewUrl
-      ? `${previewUrl.replace(/\/+$/, "")}/api/mcp`
-      : undefined;
-
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
   // every tool that declares a `ui://` resource is a view, rendered against the
   // ephemeral dev connection (`dev_<id>`). No pairing / curated pinnedViews
@@ -183,7 +168,6 @@ export function useMainPanelTabs(ctx: {
       connectionId: devConnId,
       orgId: org.id,
       orgSlug: org.slug,
-      mcpUrl: devMcpUrl,
     },
     { enabled: !!devConnId && devServerReady },
   );

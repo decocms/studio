@@ -1,8 +1,9 @@
 /**
  * Public surface. `agent-sandbox` sits behind its own subpath export
  * (./provider/agent-sandbox) because its SDK is heavy and not every deploy
- * needs it. `local-api` remains in shared persisted/native contracts but
- * has no server-side provider implementation.
+ * needs it. `local-api` remains in shared persisted contracts for records left
+ * by the discontinued desktop app but has no server-side provider
+ * implementation.
  */
 
 export type {

@@ -10,8 +10,6 @@
 export {
   ChatContextProvider as ChatProvider,
   ChatPrefsProvider,
-  ChatStreamValueProvider,
-  STREAM_READY,
   DetachedChatContext,
   ActiveTaskProvider,
   ThreadlessChatProvider,

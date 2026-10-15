@@ -29,8 +29,7 @@ export interface DecofileDraft {
   /**
    * Authority (host[:port]) the preview server should pull the draft from —
    * the API tells us where IT is reachable, because `window.location.host` is
-   * the tauri-local server in the native app (session-gated, unreachable from
-   * a deployed site).
+   * not guaranteed to be an origin a deployed site can reach.
    */
   apiHost: string;
 }

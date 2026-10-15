@@ -1,14 +1,5 @@
 export const sidebar = {
   "sidebar.projects.addProject": "Add project",
-  "sidebar.archiveWorktreeDialog.cancel": "Cancel",
-  "sidebar.archiveWorktreeDialog.confirm": "Continue",
-  "sidebar.archiveWorktreeDialog.reclaimFailed":
-    "Chat archived, but the files for {branch} could not be deleted.",
-  "sidebar.archiveWorktreeDialog.stopsAndDeletesAfter":
-    "and delete its files from this computer.",
-  "sidebar.archiveWorktreeDialog.stopsAndDeletesBefore":
-    "This will stop everything running on",
-  "sidebar.archiveWorktreeDialog.title": "Archive this chat?",
   "sidebar.agentsSection.codeAgents": "Code Projects",
   "sidebar.header.closeSidebar": "Close sidebar",
   "sidebar.header.toggleSidebar": "Toggle sidebar",

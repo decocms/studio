@@ -152,14 +152,13 @@ export async function startDaemon(
   return { port, proc, appDir, stderr, stdout };
 }
 
-export function buildDaemonEnv(
+function buildDaemonEnv(
   appDir: string,
   port: number,
-  extraEnv: Record<string, string> = {},
-  inheritedEnv: NodeJS.ProcessEnv = process.env,
+  extraEnv: Record<string, string>,
 ): NodeJS.ProcessEnv {
   return {
-    ...inheritedEnv,
+    ...process.env,
     // The daemon's documented startup contract — a reimplementation must
     // honor exactly these. (Dead vars DEV_PORT / DAEMON_NO_AUTOSTART /
     // DAEMON_DROP_PRIVILEGES from the pre-state-machine daemon are gone.)
@@ -168,9 +167,6 @@ export function buildDaemonEnv(
     APP_ROOT: appDir,
     PROXY_PORT: String(port),
     ...extraEnv,
-    // Conformance children are headless and must never touch a developer's
-    // real credential store. The sandbox daemon ignores this local-api setting.
-    LOCAL_API_TOKEN_STORE: "memory",
   };
 }
 

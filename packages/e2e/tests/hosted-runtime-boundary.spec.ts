@@ -158,7 +158,7 @@ test.describe("hosted runtime boundary", () => {
         expect(response.status()).toBe(409);
         expect(await response.json()).toEqual({
           error:
-            "This coding-agent chat can only run in the Studio desktop app",
+            "This coding-agent chat ran in the discontinued Studio desktop app and can't continue here",
         });
 
         const row = await db.query(
@@ -514,7 +514,8 @@ test.describe("hosted runtime boundary", () => {
       const response = await responsePromise;
       expect(response.status()).toBe(409);
       expect(await response.json()).toEqual({
-        error: "This coding-agent chat can only run in the Studio desktop app",
+        error:
+          "This coding-agent chat ran in the discontinued Studio desktop app and can't continue here",
       });
 
       const row = await db.query(

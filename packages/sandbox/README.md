@@ -168,8 +168,8 @@ bun run lint
 
 Production deployments enable AgentSandbox with
 `STUDIO_AGENT_SANDBOX_ENABLED=true`. Hosted provisioning is disabled when the
-flag is absent or false. Native Studio uses `local-api` as its persisted
-runtime ownership marker and handles lifecycle locally.
+flag is absent or false. `local-api` records left by the discontinued desktop
+app remain readable but have no provider.
 
 Hosted routes run `AgentSandboxProvider` in-process by default. With
 `STUDIO_SANDBOX_CONTROL_PLANE_URL` and `STUDIO_SANDBOX_CONTROL_PLANE_TOKEN`

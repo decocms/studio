@@ -987,9 +987,6 @@ export const sandbox = {
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
-  "sandbox.preview.openInBrowser": "Abrir no navegador",
-  "sandbox.preview.failedToOpenInBrowser":
-    "Não foi possível abrir seu navegador",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
   "sandbox.preview.pageAlreadyExists":
     'Uma página com o caminho "{path}" já existe.',

@@ -317,10 +317,7 @@ function useTierModelNames(
   };
 }
 
-/**
- * Hosted Decopilot tier picker used by `Chat.Input`. Native coding agents own
- * their full-screen xterm surface and never render the hosted composer.
- */
+/** Hosted Decopilot tier picker used by `Chat.Input`. */
 export function TierTrigger() {
   const t = useT();
   const { simpleModeTier: tier, setSimpleModeTier: setTier } = useChatPrefs();

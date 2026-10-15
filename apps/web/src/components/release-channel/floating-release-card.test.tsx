@@ -16,7 +16,6 @@ const OLD_DATE = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
 
 type Cta =
   | { label: string; href: string }
-  | { label: string; action: "download-app" }
   | { label: string; action: "start-tour" };
 
 function makeRelease(

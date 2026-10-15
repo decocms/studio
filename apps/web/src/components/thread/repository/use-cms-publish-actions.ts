@@ -138,7 +138,6 @@ export function useCmsPublishActions(
           threadId: target.threadId,
         },
         filepaths,
-        target.fastPreview ? { fastPreview: true } : undefined,
       );
       toast.success(success);
       await refresh();

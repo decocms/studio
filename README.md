@@ -186,7 +186,6 @@ Workspace READMEs and engineering plans stay here with the implementation.
 | Workspace | Purpose |
 | --- | --- |
 | [`apps/api`](./apps/api/README.md) | Hono API, authentication, tools, storage, migrations, and the `deco` CLI |
-| [`apps/native`](./apps/native/README.md) | Tauri desktop app and local Rust runtime |
 | [`apps/web`](./apps/web/README.md) | Vite and React 19 administration interface |
 
 ### Packages

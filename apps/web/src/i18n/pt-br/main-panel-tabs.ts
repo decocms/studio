@@ -23,8 +23,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.codeTab.noSandboxToBrowse": "Nenhuma sandbox para navegar",
   "mainPanelTabs.codeTab.noSandboxToBrowseDescription":
     "Inicie uma sessão de código neste projeto para navegar pelos arquivos.",
-  "mainPanelTabs.codeTab.openInCursor": "Abrir no Cursor",
-  "mainPanelTabs.codeTab.openInVscode": "Abrir no VSCode",
   "mainPanelTabs.contentTab.connectGithubDescription":
     "Conecte um repositório do GitHub para editar o conteúdo deste site.",
   "mainPanelTabs.contentTab.noContentToEdit": "Nenhum conteúdo para editar",

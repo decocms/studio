@@ -22,8 +22,7 @@
  * (pre-stream) and `chat_message_aborted` (user cancel) posthog events are
  * the only ones still emitted from here, since neither has a projector
  * equivalent. The actual streamText loop + tool assembly + system-prompt
- * construction is delegated to the hosted Decopilot harness. Native coding
- * agents never enter this module; the Tauri app owns their PTY lifecycle.
+ * construction is delegated to the hosted Decopilot harness.
  * Decopilot chunks are published to JetStream via `ingestRun` (see
  * `buildAgentSandboxUiStream`) — the only consume-side stream layer for the
  * hosted live path.

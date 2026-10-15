@@ -496,8 +496,8 @@ type SandboxMapOwnerKind = z.infer<typeof SandboxMapOwnerKindSchema>;
  *  - agent-sandbox: hosted Studio reaches the daemon through its proxy; the
  *    preview URL is a per-claim HTTPRoute host or a local-development
  *    port-forward.
- *  - local-api: the native app's local-api owns lifecycle, filesystem, and
- *    preview routing on the user's machine.
+ *  - local-api: owned by the discontinued desktop app's local runtime;
+ *    existing records are preserved but no longer created.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing

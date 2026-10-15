@@ -37,22 +37,8 @@ export const common = {
   "common.blockedOrgScreen.switchOrg": "Trocar de organização",
   "common.authEntry.autoLoginFailed": "Falha no auto-login",
   "common.authEntry.autoLoginFailedWithError": "Falha no auto-login: {error}",
-  "common.authEntry.browserOnlyCta": "Continuar no seu navegador",
-  "common.authEntry.browserOnlyDescription":
-    "Esta organização faz login com um link enviado por e-mail, que não pode ser aberto dentro do app. Continue no seu navegador para concluir o login.",
-  "common.authEntry.browserOnlyTitle": "Bem-vindo ao deco",
-  "common.authEntry.finishSignInInBrowser": "Conclua o login no seu navegador…",
-  "common.authEntry.finishingSignIn": "Concluindo login…",
   "common.authEntry.noLoginOptions": "Nenhuma opção de login disponível",
   "common.authEntry.tryRestartingServer": "Tente reiniciar o servidor.",
-  "common.desktopKeychainUnavailable.description":
-    "O deco studio não conseguiu acessar as Chaves do macOS. Feche qualquer diálogo pendente das Chaves e tente novamente.",
-  "common.desktopKeychainUnavailable.descriptionLinux":
-    "O deco studio não conseguiu acessar o chaveiro do sistema. Verifique se um serviço de segredos como o GNOME Keyring ou o KWallet está em execução e desbloqueado e tente novamente.",
-  "common.desktopKeychainUnavailable.retry": "Tentar novamente",
-  "common.desktopKeychainUnavailable.retrying": "Tentando novamente…",
-  "common.desktopKeychainUnavailable.title":
-    "Não foi possível acessar sua sessão salva",
   "common.autoDomainJoinScreen.enterOrg": "Entrar em {orgName}",
   "common.autoDomainJoinScreen.joinDescription":
     "Qualquer pessoa com um e-mail @{domain} pode entrar nesta organização.",
@@ -245,9 +231,6 @@ export const common = {
   "common.requestToJoinScreen.requestButton": "Solicitar acesso",
   "common.requestToJoinScreen.requesting": "Solicitando…",
   "common.requestToJoinScreen.title": "Solicitar acesso a {orgName}?",
-  "common.signInScreen.configLoadFailed":
-    "Não foi possível carregar as opções de login.",
-  "common.signInScreen.tryAgain": "Tentar novamente",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "Esta organização requer autenticação SSO para acessar.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requer autenticação SSO",
@@ -288,7 +271,6 @@ export const common = {
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
   "common.taskBoard.feedView": "Feed",
-  "common.openExternalFailed": "Não foi possível abrir este link no navegador.",
   "common.taskStatus.requiresAction": "Requer revisão",
   "common.taskStatus.failed": "Falhou",
   "common.taskStatus.expired": "Expirou",
