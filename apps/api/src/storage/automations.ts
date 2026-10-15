@@ -304,6 +304,10 @@ function automationFromAliasedRow(row: {
   });
 }
 
+/** `automation_trigger_fires` rows are otherwise never deleted — a trigger
+ *  fired repeatedly over months would accumulate one row per event forever. */
+const TRIGGER_FIRE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 // ============================================================================
 // KyselyAutomationsStorage Implementation
 // ============================================================================
@@ -753,6 +757,17 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     triggerId: string,
     eventKey: string,
   ): Promise<boolean> {
+    // Prune-on-write: the only deletion path for this table.
+    await this.db
+      .deleteFrom("automation_trigger_fires")
+      .where("trigger_id", "=", triggerId)
+      .where(
+        "created_at",
+        "<",
+        new Date(Date.now() - TRIGGER_FIRE_RETENTION_MS),
+      )
+      .execute();
+
     const row = await this.db
       .insertInto("automation_trigger_fires")
       .values({ trigger_id: triggerId, event_key: eventKey })
