@@ -149,6 +149,33 @@ const schemaWithSettings = {
   },
 };
 
+/** The same schema with the built-in page type, so a page lists its sections. */
+const schemaWithPages = {
+  ...schema,
+  manifest: {
+    blocks: {
+      ...schema.manifest.blocks,
+      pages: { page: { $ref: "#/definitions/cGFnZQ==" } },
+    },
+  },
+  schema: {
+    definitions: {
+      ...schema.schema.definitions,
+      "cGFnZQ==": {
+        title: "page",
+        type: "object",
+        required: ["__resolveType"],
+        properties: {
+          __resolveType: { type: "string", enum: ["page"], default: "page" },
+          name: { type: "string", title: "Name" },
+          path: { type: "string", title: "Path" },
+          sections: { type: "array", title: "Sections", items: {} },
+        },
+      },
+    },
+  },
+};
+
 const HERO = "home-hero";
 const heroFile = (value: object) => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -306,6 +333,8 @@ async function startStub(
   publicKey: string,
   port?: number,
   siteSchema: object = schema,
+  /** More saved block files, by file name. */
+  files: Record<string, string> = {},
 ): Promise<DecoServeStub & { previewUrl: string }> {
   const app = await startPreviewApp();
   const stub = await startDecoServeStub({
@@ -319,6 +348,7 @@ async function startStub(
         title: "Hello",
         teaser: { __resolveType: "lazy", value: "Soon" },
       }),
+      ...files,
     },
   });
   return {
@@ -519,6 +549,96 @@ test.describe("site editor over deco serve", () => {
       });
       expect((await stub.readFiles())["CMS.json"]).toBe(theirs);
     } finally {
+      await stub.close();
+    }
+  });
+
+  test("a section form saved over another writer's change keeps that change", async ({
+    page,
+  }) => {
+    const stub = await startStub(
+      (await generateKeyPair()).publicKey,
+      undefined,
+      schemaWithPages,
+      {
+        "pages-home.json": heroFile({
+          __resolveType: "page",
+          name: "Home",
+          path: "/",
+          sections: [{ __resolveType: HERO }],
+        }),
+      },
+    );
+    // Holds the editor's polls once armed, until its next save goes out, so
+    // that save is made from the copy the form loaded: only the version
+    // guard (`ifMatch`) can tell it is outdated.
+    let holdPolls = false;
+    let releasePolls = () => {};
+    const polls = new Promise<void>((resolve) => {
+      releasePolls = resolve;
+    });
+    await page.route(stub.endpoint, async (route) => {
+      const body = route.request().postData() ?? "";
+      if (body.includes('"blocks.apply"')) releasePolls();
+      else if (holdPolls && body.includes('"blocks.list"')) await polls;
+      await route.continue();
+    });
+    try {
+      await page.goto(linkOf(stub));
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 30_000,
+      });
+      const blocks = page.getByTestId("blocks-panel");
+      await blocks
+        .getByRole("button", { name: /home.?hero/i })
+        .first()
+        .click({ timeout: 60_000 });
+      const title = blocks.getByLabel("Title", { exact: true });
+      await expect(title).toHaveValue("Hello", { timeout: 30_000 });
+
+      // Another writer (a code editor, an agent) changes the teaser.
+      holdPolls = true;
+      const theirs = { __resolveType: "lazy", value: "Changed on disk" };
+      await stub.writeFile(
+        `${HERO}.json`,
+        heroFile({ __resolveType: "hero", title: "Hello", teaser: theirs }),
+      );
+      // The form, still on its loaded copy, changes the title.
+      await title.fill("Hello from Studio");
+
+      // The outdated save is refused; the form's edit lands on top of the
+      // stored block, and the other writer's change survives.
+      await expect(
+        page.getByText("This block was updated while you were editing"),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect
+        .poll(async () => (await heroOf(stub)).title, { timeout: 15_000 })
+        .toBe("Hello from Studio");
+      expect((await heroOf(stub)).teaser).toEqual(theirs);
+      await expect(blocks.getByLabel("Teaser", { exact: true })).toHaveValue(
+        "Changed on disk",
+      );
+
+      const applies = stub.requestBodies.flatMap((body) => {
+        try {
+          const parsed = JSON.parse(body) as unknown;
+          return (Array.isArray(parsed) ? parsed : [parsed]).filter(
+            (call) => (call as { method?: string }).method === "blocks.apply",
+          ) as Array<{ params: { ifMatch?: Record<string, unknown> } }>;
+        } catch {
+          return [];
+        }
+      });
+      // Every form save names the version it was made from.
+      expect(applies.length).toBeGreaterThanOrEqual(2);
+      for (const apply of applies) {
+        expect(Object.keys(apply.params.ifMatch ?? {})).toEqual([HERO]);
+      }
+      expect(applies[0]!.params.ifMatch![HERO]).not.toBe(
+        applies.at(-1)!.params.ifMatch![HERO],
+      );
+    } finally {
+      releasePolls();
       await stub.close();
     }
   });

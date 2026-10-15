@@ -27,6 +27,7 @@ import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
   type BlocksListResult,
+  type ChangesGetResult,
   type ChangesListResult,
   type SchemaGetResult,
 } from "@decocms/blocks/protocol";
@@ -78,6 +79,50 @@ export function protocolMetaQueryKey(
     params.branch,
     `protocol${backend.cacheKeySuffix}`,
     "",
+  );
+}
+
+/**
+ * Per block, the version (`blocks.list`'s, opaque) of the copy in the
+ * editor's blocks cache, as last read or written: what a `blocks.apply`
+ * guard (`ifMatch`) built on that copy expects. A block an in-flight write
+ * holds keeps the version of its last landed copy. `null`: the content has
+ * no such block. Undefined when unknown (before the first full read).
+ */
+export function protocolBlockVersion(
+  queryClient: QueryClient,
+  cacheKey: string,
+  blockKey: string,
+): string | null | undefined {
+  const versions = queryClient.getQueryData<Record<string, string>>(
+    KEYS.contentVersions(cacheKey),
+  );
+  if (!versions) return undefined;
+  if (Object.hasOwn(versions, blockKey)) return versions[blockKey];
+  // Absent from the versions: absent from the content (`null`), unless the
+  // cache holds the block anyway (a write of it not yet answered): unknown.
+  const blocks = queryClient.getQueryData<Record<string, unknown>>(
+    KEYS.decofile(cacheKey),
+  );
+  return blocks && Object.hasOwn(blocks, blockKey) ? undefined : null;
+}
+
+/** Records versions a write or read answered (`null`: the block is gone). */
+function adoptBlockVersions(
+  queryClient: QueryClient,
+  cacheKey: string,
+  versions: Record<string, string | null>,
+) {
+  queryClient.setQueryData<Record<string, string>>(
+    KEYS.contentVersions(cacheKey),
+    (current) => {
+      const next = { ...current };
+      for (const [name, version] of Object.entries(versions)) {
+        if (version === null) delete next[name];
+        else next[name] = version;
+      }
+      return next;
+    },
   );
 }
 
@@ -245,13 +290,12 @@ async function readContent(
     return readContent(queryClient, backend, params, cacheKey, false);
   }
 
+  const saving = list.notModified
+    ? new Set<string>()
+    : savingBlockKeys(queryClient, params);
   const blocks = list.notModified
     ? currentBlocks!
-    : mergePolledBlocks(
-        list.blocks,
-        currentBlocks,
-        savingBlockKeys(queryClient, params),
-      );
+    : mergePolledBlocks(list.blocks, currentBlocks, saving);
   const meta: LiveMeta | ContentProtocolError = absent
     ? noSchemaMeta()
     : !read
@@ -278,6 +322,20 @@ async function readContent(
         : (read.version ?? undefined),
   });
   queryClient.setQueryData(blocksKey, blocks);
+  if (!list.notModified) {
+    // Versions follow the copies kept: a block being saved keeps the
+    // version of its last landed copy until its write answers.
+    const versionsKey = KEYS.contentVersions(cacheKey);
+    const previous =
+      queryClient.getQueryData<Record<string, string>>(versionsKey);
+    const versions: Record<string, string> = { ...list.versions };
+    for (const key of saving) {
+      const kept = previous?.[key];
+      if (kept !== undefined) versions[key] = kept;
+      else delete versions[key];
+    }
+    queryClient.setQueryData(versionsKey, versions);
+  }
   if (!(meta instanceof ContentProtocolError)) {
     queryClient.setQueryData(metaKey, meta);
   }
@@ -319,7 +377,7 @@ export async function applyProtocolPatch(
   cacheKey: string,
   patch: DecofilePatchBody,
   ifMatch?: Record<string, string | null>,
-): Promise<{ revision: string }> {
+): Promise<{ revision: string; versions: Record<string, string | null> }> {
   return runContentChange(
     {
       queryClient,
@@ -345,10 +403,61 @@ export async function applyProtocolPatch(
           KEYS.contentRevision(cacheKey),
           (seen) => ({ ...seen, revision: result.revision }),
         );
-        return { revision: result.revision };
+        const versions = result.versions ?? {};
+        adoptBlockVersions(queryClient, cacheKey, versions);
+        return { revision: result.revision, versions };
       },
     },
   );
+}
+
+/**
+ * After a save refused for an outdated `ifMatch`: reads the content again and
+ * puts the block's stored copy (and its version) in the cache, in place of
+ * the refused edit. The poll keeps a block that is being saved as the editor
+ * holds it, so the block itself comes from `changes.get` (or, on a server
+ * without it, an unconditional `blocks.list`).
+ */
+export async function reloadProtocolBlock(
+  queryClient: QueryClient,
+  backend: ProtocolBackend,
+  params: DecofileScopeParams,
+  cacheKey: string,
+  blockKey: string,
+): Promise<void> {
+  await queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) });
+  let stored: { value: Record<string, unknown> | null; version: string | null };
+  try {
+    const read: ChangesGetResult = await guarded(
+      queryClient,
+      backend,
+      params,
+      () => backend.client.changesGet({ names: [blockKey] }),
+    );
+    const entry = read.entries[blockKey];
+    // Present but unreadable now: nothing better to show than the cache.
+    if (entry && entry.after === null && entry.version !== null) return;
+    stored = { value: entry?.after ?? null, version: entry?.version ?? null };
+  } catch {
+    const list = await guarded(queryClient, backend, params, () =>
+      backend.client.blocksList({}),
+    );
+    if (list.notModified) return;
+    stored = {
+      value: list.blocks[blockKey] ?? null,
+      version: list.versions[blockKey] ?? null,
+    };
+  }
+  queryClient.setQueryData(
+    KEYS.decofile(cacheKey),
+    (current: Record<string, unknown> | undefined) => {
+      const next = { ...current };
+      if (stored.value === null) delete next[blockKey];
+      else next[blockKey] = stored.value;
+      return next;
+    },
+  );
+  adoptBlockVersions(queryClient, cacheKey, { [blockKey]: stored.version });
 }
 
 /** What the session read answers for a hosted v8 project. */
