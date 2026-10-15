@@ -34,6 +34,15 @@ describe("decofile patchBodySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("rejects a block that is both set and deleted in the same patch", () => {
+    // Before the fix: the delete silently won, discarding the set.
+    const result = patchBodySchema.safeParse({
+      set: { "pages/home": {} },
+      delete: ["pages/home"],
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("decofile patchBodyLimit", () => {

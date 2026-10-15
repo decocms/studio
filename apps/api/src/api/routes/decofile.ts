@@ -142,6 +142,11 @@ export const patchBodySchema = z
         (key) => key in (b.set ?? {}) || (b.delete ?? []).includes(key),
       ),
     { message: "Each expected block must be one the patch sets or deletes" },
+  )
+  .refine(
+    (b) =>
+      Object.keys(b.set ?? {}).every((key) => !(b.delete ?? []).includes(key)),
+    { message: "A block cannot be both set and deleted in the same patch" },
   );
 
 /**
