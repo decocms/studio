@@ -474,6 +474,13 @@ interface SchemaFormProps {
   schema: SchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
+  /**
+   * Outermost form only: whether missing `@default`s are written back through
+   * `onChange` as soon as the form opens (the default). With `false` they are
+   * shown, and saved with the first real change, so opening a block that
+   * isn't saved yet never creates it.
+   */
+  persistDefaults?: boolean;
   basePath: string;
   breadcrumbPath?: Crumb[];
   onBreadcrumbChange?: (path: Crumb[]) => void;
@@ -508,13 +515,36 @@ export function SchemaForm(props: SchemaFormProps) {
   return <RootSchemaForm {...props} />;
 }
 
-function RootSchemaForm(props: SchemaFormProps) {
-  const { schema, value, onChange, meta } = props;
+/**
+ * The value the outermost form shows: `value` with its missing `@default`s
+ * filled in. With `persist` (the default) they are also written back through
+ * `onChange` when the form opens, as the old admin's form did; without it they
+ * reach `onChange` only with the first real change.
+ */
+export function useSeededFormValue(
+  schema: SchemaProperty,
+  value: unknown,
+  onChange: (value: unknown) => void,
+  meta: LiveMeta | undefined,
+  persist = true,
+): unknown {
   const seeded = applySchemaDefaults(schema, value, meta);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- persists missing @defaults to the stored block when the form opens, as the old admin's form did
   useEffect(() => {
-    if (seeded !== value) onChange(seeded);
-  }, [seeded, value, onChange]);
+    if (persist && seeded !== value) onChange(seeded);
+  }, [persist, seeded, value, onChange]);
+  return seeded;
+}
+
+function RootSchemaForm(props: SchemaFormProps) {
+  const { schema, value, onChange, meta, persistDefaults } = props;
+  const seeded = useSeededFormValue(
+    schema,
+    value,
+    onChange,
+    meta,
+    persistDefaults,
+  );
   return (
     <ObjectFieldExpansionProvider>
       <SchemaFormBody {...props} value={seeded} />

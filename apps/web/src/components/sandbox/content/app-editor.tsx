@@ -41,6 +41,7 @@ export function AppEditor({
   previewBaseUrl = null,
   notice,
   saveGuard,
+  persistDefaults,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -58,6 +59,8 @@ export function AppEditor({
   notice?: ReactNode;
   /** A version guard for this block's autosaves (e.g. create-only on the first save). */
   saveGuard?: SaveGuard;
+  /** `false`: the form's `@default`s are saved with the first change, not when it opens. */
+  persistDefaults?: boolean;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -237,6 +240,7 @@ export function AppEditor({
                 schema={schema!}
                 value={effectiveValue}
                 onChange={handleChange}
+                persistDefaults={persistDefaults}
                 basePath=""
                 breadcrumbPath={breadcrumbs}
                 onBreadcrumbChange={handleBreadcrumbChange}
