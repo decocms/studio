@@ -1,6 +1,7 @@
 /** A column's rules, edited from the icon in its lane header. */
 
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Plus, XClose } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
@@ -28,32 +29,95 @@ import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
 import { useOrgFsSkillCatalog } from "@/hooks/use-org-fs";
 import {
   useSaveColumnRules,
-  useTaskBoardColumnAutomations,
   useTaskBoardPrompts,
 } from "@/hooks/use-task-board-prompts";
+import { getDecopilotId, useProjectContext } from "@/sdk";
+import { useAutomationActions, useAutomations } from "@/hooks/use-automations";
 import { useT } from "@/i18n/use-t.ts";
 
-/** A column's saved rules and a one-line summary of them, for the lane header icon. */
-export function useColumnRules(columnKey: string) {
-  const t = useT();
+/** A column's saved instructions and skills, and the board-wide skills. */
+function useColumnRules(columnKey: string) {
   const prompts = useTaskBoardPrompts();
-  const automations = useTaskBoardColumnAutomations();
-  const scope = prompts.data?.find((p) => p.columnKey === columnKey);
-  const automation = automations.data?.find((a) => a.columnKey === columnKey);
-  const skillCount = scope?.skills.length ?? 0;
-  const summary =
-    automation?.prompt ||
-    scope?.prompt ||
-    (automation
-      ? t("taskBoard.columnRules.defaultRun")
-      : t("taskBoard.columnRules.skillsOnly", { count: skillCount }));
   return {
-    scope,
-    automation,
-    configured: !!automation || !!scope,
-    summary,
+    scope: prompts.data?.find((p) => p.columnKey === columnKey),
     boardSkills: prompts.data?.find((p) => p.columnKey === null)?.skills ?? [],
   };
+}
+
+/** The automations a card dropped in `columnKey` starts: the ones with a
+ *  "card enters a column" starter there. */
+export function useEntryAutomations(columnKey: string) {
+  const { data } = useAutomations();
+  return (data ?? []).filter((a) =>
+    a.board_triggers.some(
+      (t) => t.type === "board_column_transition" && t.column_key === columnKey,
+    ),
+  );
+}
+
+/** Every automation with a board starter on `columnKey`, whatever starts it. */
+function useColumnAutomations(columnKey: string) {
+  const { data } = useAutomations();
+  return (data ?? []).filter((a) =>
+    a.board_triggers.some((t) => t.column_key === columnKey),
+  );
+}
+
+/** Each automation that runs on cards landing in the column, with its switch. */
+function ColumnAutomations({ columnKey }: { columnKey: string }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const automations = useColumnAutomations(columnKey);
+  const { update } = useAutomationActions();
+
+  return (
+    <section className="flex flex-col gap-2">
+      <SectionTitle>{t("taskBoard.columnRules.automationsLabel")}</SectionTitle>
+      {automations.map((automation) => (
+        <div
+          key={automation.id}
+          className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
+        >
+          <Link
+            to="/$org/projects/$agentId/automations/$automationId"
+            params={{
+              org: org.slug,
+              agentId: automation.virtual_mcp_id,
+              automationId: automation.id,
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2 text-sm text-foreground hover:underline"
+          >
+            <span className="truncate">{automation.name}</span>
+            {automation.system_key && (
+              <Badge variant="muted">{t("automations.builtin.badge")}</Badge>
+            )}
+          </Link>
+          <Switch
+            checked={automation.active}
+            disabled={update.isPending}
+            onCheckedChange={(active) =>
+              update.mutate({ id: automation.id, active })
+            }
+            aria-label={t("taskBoard.columnRules.toggleAutomation", {
+              name: automation.name,
+            })}
+          />
+        </div>
+      ))}
+      <p className="text-meta">
+        {automations.length === 0 && (
+          <>{t("taskBoard.columnRules.noAutomations")} </>
+        )}
+        <Link
+          to="/$org/projects/$agentId/automations"
+          params={{ org: org.slug, agentId: getDecopilotId(org.id) }}
+          className="text-foreground underline underline-offset-2"
+        >
+          {t("taskBoard.columnRules.addAutomation")}
+        </Link>
+      </p>
+    </section>
+  );
 }
 
 export function ColumnRulesSheet({
@@ -67,7 +131,7 @@ export function ColumnRulesSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { scope, automation, boardSkills } = useColumnRules(columnKey);
+  const { scope, boardSkills } = useColumnRules(columnKey);
 
   return (
     <>
@@ -82,8 +146,6 @@ export function ColumnRulesSheet({
           <ColumnRulesForm
             columnKey={columnKey}
             initial={{
-              run: !!automation,
-              automation: automation?.prompt ?? "",
               prompt: scope?.prompt ?? "",
               skills: scope?.skills ?? [],
             }}
@@ -105,8 +167,6 @@ function ColumnRulesForm({
 }: {
   columnKey: string;
   initial: {
-    run: boolean;
-    automation: string;
     prompt: string;
     skills: string[];
   };
@@ -115,13 +175,9 @@ function ColumnRulesForm({
 }) {
   const t = useT();
   const save = useSaveColumnRules();
-  const [run, setRun] = useState(initial.run);
-  const [automation, setAutomation] = useState(initial.automation);
   const [prompt, setPrompt] = useState(initial.prompt);
   const [skills, setSkills] = useState(initial.skills);
 
-  const nextAutomation = run ? automation : null;
-  const initialAutomation = initial.run ? initial.automation : null;
   const submit = () =>
     save.mutate(
       {
@@ -129,9 +185,6 @@ function ColumnRulesForm({
         ...(prompt !== initial.prompt ||
         skills.join("\n") !== initial.skills.join("\n")
           ? { rules: { prompt, skills } }
-          : {}),
-        ...(nextAutomation !== initialAutomation
-          ? { automation: nextAutomation }
           : {}),
       },
       {
@@ -151,28 +204,7 @@ function ColumnRulesForm({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
-        <section className="flex flex-col gap-2">
-          <label className="flex items-start gap-3">
-            <span className="flex-1">
-              <span className="block text-sm font-medium text-foreground">
-                {t("taskBoard.columnRules.runLabel")}
-              </span>
-              <span className="text-meta mt-0.5 block">
-                {t("taskBoard.columnRules.runHint")}
-              </span>
-            </span>
-            <Switch checked={run} onCheckedChange={setRun} />
-          </label>
-          {run && (
-            <Textarea
-              value={automation}
-              rows={5}
-              onChange={(e) => setAutomation(e.target.value)}
-              placeholder={t("taskBoard.columnRules.automationPlaceholder")}
-              aria-label={t("taskBoard.columnRules.automationLabel")}
-            />
-          )}
-        </section>
+        <ColumnAutomations columnKey={columnKey} />
         <section className="flex flex-col gap-2">
           <SectionTitle>{t("taskBoard.columnRules.promptLabel")}</SectionTitle>
           <Textarea

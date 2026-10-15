@@ -5,7 +5,7 @@ import {
   PromptEditorError,
 } from "./admin-prompts";
 
-const REVIEWER_PATH = "apps/api/src/tools/task-board/enqueue-reviewer.ts";
+const REVIEWER_PATH = "apps/api/src/tools/task-board/reviewer-run.ts";
 const SUPER_AGENT_PATH =
   "apps/api/src/tools/task-board/claude-code-task-run.ts";
 

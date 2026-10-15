@@ -317,6 +317,7 @@ const plugins = [
       owner,
     },
     sendInvitationEmail,
+    invitationExpiresIn: 7 * 24 * 60 * 60, // 7 days (Better Auth default is 48h)
   }),
 
   // MCP plugin for OAuth 2.1 server

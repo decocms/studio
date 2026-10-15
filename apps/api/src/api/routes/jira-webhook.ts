@@ -3,8 +3,9 @@
  *
  * The trigger behind the integration: an `issue_updated` event whose changelog
  * carries a status change starts a durable wait for the card to settle; once it
- * has, the status it rests in is checked against the org's rules and, when one
- * matches, an agent run starts on the issue (`jira/trigger.ts`). Everything
+ * has, the status it rests in is checked against the org's `jira_transition`
+ * triggers and, when one matches, its automation fires on the issue
+ * (`jira/trigger.ts`). Everything
  * else is acknowledged and dropped.
  *
  * Jira admin webhooks carry no HMAC signature, so the per-org secret in the
@@ -23,6 +24,7 @@ import type { Kysely } from "kysely";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { enqueueJiraSettle } from "@/jira/dbos-jira-trigger-sweep";
 import { parseWebhookTransition } from "@/jira/trigger";
+import { createAutomationsStorage } from "@/storage/automations";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import type { Database } from "@/storage/types";
 
@@ -37,6 +39,7 @@ export function createJiraWebhookRoutes(deps: {
     deps.db,
     new CredentialVault(deps.encryptionKey),
   );
+  const automations = createAutomationsStorage(deps.db);
 
   async function run(secret: string, payload: unknown): Promise<void> {
     const transition = parseWebhookTransition(payload);
@@ -44,9 +47,12 @@ export function createJiraWebhookRoutes(deps: {
     // Re-fetched here rather than trusted from the ack: config may have changed.
     const integration = await storage.getByWebhookSecret(secret);
     if (!integration?.enabled) return;
-    // Any rule, not this status's: the card may settle somewhere else.
-    const rules = await storage.listAutomations(integration.organizationId);
-    if (rules.length === 0) return;
+    // Any status's trigger, not this one's: the card may settle somewhere else.
+    const triggers = await automations.listJiraTransitionTriggers(
+      integration.organizationId,
+      { activeOnly: true },
+    );
+    if (triggers.length === 0) return;
     await enqueueJiraSettle(integration.id, transition);
   }
 

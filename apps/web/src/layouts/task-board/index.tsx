@@ -30,11 +30,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
+import {
+  TaskBoardAdminBanner,
+  TaskBoardAdminControls,
+  TaskBoardAnalyticsButton,
+} from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import { ColumnRulesSheet, useColumnRules } from "./column-rules";
+import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -253,8 +257,10 @@ const META =
   "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
 
 /** A lane's own controls: revealed on hover, focus, or an open menu. */
+/** Shown on lane hover, and on the lane a drag is over: the dragged card
+ *  holds the pointer then, so the lane itself never reads as hovered. */
 const LANE_ACTION =
-  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -1517,6 +1523,7 @@ function TaskBoardBody({
             }
           >
             <TaskBoardAdminControls />
+            <TaskBoardAnalyticsButton project={scopeId} />
             <AgenticSetupButton />
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
@@ -1891,7 +1898,7 @@ function TaskBoardBody({
               const item = items.find((i) => i.id === id);
               return (
                 item &&
-                item.status === "triage" &&
+                (item.status === "triage" || item.status === "todo") &&
                 item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
               );
             })
@@ -2454,6 +2461,16 @@ function Lanes({
     ? placed.find((item) => item.id === activeId)
     : null;
   const activeGroup = activeId ? groupOf(activeId) : [];
+  // Dropping here starts the lane's automations when the drag brings in cards
+  // nobody owns from another lane: a person's card is never taken over, and a
+  // card staying in its lane is no move. Read from the saved cards, not the
+  // preview, which already shows them in the lane under the cursor.
+  const dropBringsUnownedCards = (lane: string) =>
+    activeGroup.length > 0 &&
+    activeGroup.every((id) => {
+      const saved = items.find((item) => item.id === id);
+      return !!saved && !saved.assigneeId && saved.status !== lane;
+    });
 
   return (
     <DndContext
@@ -2506,6 +2523,10 @@ function Lanes({
               // whenever a card (not the lane) is the drop target and would
               // strobe the background.
               isTarget={activeItem?.status === status}
+              firesOnDrop={
+                activeItem?.status === status && dropBringsUnownedCards(status)
+              }
+              draggedCount={activeGroup.length}
               hiddenIds={activeGroup}
               landedIds={landedIds}
               onToggleSelect={onToggleSelect}
@@ -2655,6 +2676,8 @@ function Lane({
   memberByUserId,
   selectedIds,
   isTarget,
+  firesOnDrop,
+  draggedCount,
   hiddenIds,
   landedIds,
   onToggleSelect,
@@ -2677,6 +2700,9 @@ function Lane({
   memberByUserId: Map<string, Member>;
   selectedIds: Set<string>;
   isTarget: boolean;
+  /** Dropping the dragged cards here would start this lane's automations. */
+  firesOnDrop: boolean;
+  draggedCount: number;
   /** Cards riding in the DragOverlay — held in the layout as gaps. */
   hiddenIds: string[];
   /** Cards that just landed from a drop — they play the settle animation. */
@@ -2701,7 +2727,10 @@ function Lane({
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const rules = useColumnRules(status);
+  const takers = useEntryAutomations(status)
+    .filter((automation) => automation.active)
+    .map((automation) => automation.name);
+  const announce = firesOnDrop && takers.length > 0;
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
@@ -2716,6 +2745,7 @@ function Lane({
         ref={setNodeRef}
         data-lane={status}
         data-lane-collapsed=""
+        data-drop-target={isTarget || undefined}
         className="group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1"
       >
         <div
@@ -2764,11 +2794,14 @@ function Lane({
       // Stable hook for e2e drag specs — lane columns are otherwise only
       // identifiable by their localized label or utility classes.
       data-lane={status}
+      data-drop-target={isTarget || undefined}
       className={cn(
         // min-h-0: a grid item's minimum height is its content, so without it
         // every lane grows to the longest one instead of scrolling on its own.
         "group/lane flex h-full min-h-0 min-w-0 flex-col rounded-xl py-1 transition-colors",
-        isTarget && "bg-muted/50",
+        announce
+          ? "bg-special/15 ring-1 ring-inset ring-special/30"
+          : isTarget && "bg-muted/50",
       )}
     >
       <ColumnRulesSheet
@@ -2782,117 +2815,113 @@ function Lane({
           under cards, so it tracks the lane's own highlight color (solid,
           since bg-muted/50 would let cards show through) rather than a fixed
           one that'd seam against it while a drag is over the lane. */}
+      {/* Sticky together, so the drop hint stays in view above the dragged card. */}
       <div
         className={cn(
-          "sticky top-0 z-10 flex items-center gap-2 px-2 py-1.5 transition-colors",
+          "sticky top-0 z-10 flex flex-col transition-colors",
           isTarget ? "bg-muted" : "bg-background",
         )}
       >
-        {/* Static in the header — unlike the card's own status icon, this
-            one isn't tied to a specific task, so spinning it reads as the
-            whole lane being "busy" rather than as in-progress work. */}
-        <LaneIcon
-          size={15}
-          className={cn(
-            "shrink-0",
-            visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
-          )}
-        />
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
-          {items.length}
-        </span>
-        <DropdownMenu>
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          {/* Static in the header — unlike the card's own status icon, this
+              one isn't tied to a specific task, so spinning it reads as the
+              whole lane being "busy" rather than as in-progress work. */}
+          <LaneIcon
+            size={15}
+            className={cn(
+              "shrink-0",
+              visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            )}
+          />
+          <span className="text-sm font-medium text-foreground">{label}</span>
+          <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+            {items.length}
+          </span>
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                      lane: label,
+                    })}
+                    className={cn(LANE_ACTION, "ml-auto")}
+                  >
+                    <DotsHorizontal size={15} />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setRulesOpen(true)}>
+                <Stars02 size={14} />
+                {t("taskBoard.columnRules.menuItem")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
+                {t("taskBoard.taskBoard.selectAllInLane")}
+              </DropdownMenuItem>
+              {onHide && (
+                <DropdownMenuItem onClick={onHide}>
+                  {t("taskBoard.taskBoard.hideColumn")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                    lane: label,
-                  })}
-                  className={cn(LANE_ACTION, "ml-auto")}
-                >
-                  <DotsHorizontal size={15} />
-                </button>
-              </DropdownMenuTrigger>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                  lane: label,
+                })}
+                onClick={() => onCreate(status)}
+                className={LANE_ACTION}
+              >
+                <Plus size={15} />
+              </button>
             </TooltipTrigger>
             <TooltipContent side="top">
-              {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+              {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
-              {t("taskBoard.taskBoard.selectAllInLane")}
-            </DropdownMenuItem>
-            {onHide && (
-              <DropdownMenuItem onClick={onHide}>
-                {t("taskBoard.taskBoard.hideColumn")}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-                lane: label,
-              })}
-              onClick={() => onCreate(status)}
-              className={LANE_ACTION}
-            >
-              <Plus size={15} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t(
-                rules.configured
-                  ? "taskBoard.columnRules.editAriaLabel"
-                  : "taskBoard.columnRules.add",
-                { lane: label },
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
+                  lane: label,
+                })}
+                onClick={onToggleCollapsed}
+                className={LANE_ACTION}
+              >
+                <Minimize2 size={15} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t("taskBoard.taskBoard.collapseColumn")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        {announce && (
+          <div
+            role="status"
+            className="mx-1 mb-1.5 flex items-center gap-2 rounded-lg border border-special/30 bg-background px-3 py-2 text-xs text-special"
+          >
+            <Stars02 size={14} className="shrink-0" />
+            <span>
+              {t(
+                draggedCount > 1
+                  ? "taskBoard.dropHint.pickUpMany"
+                  : "taskBoard.dropHint.pickUp",
+                { names: takers.join(", ") },
               )}
-              onClick={() => setRulesOpen(true)}
-              className={cn(LANE_ACTION, rules.configured && "opacity-100")}
-            >
-              <Stars02
-                size={15}
-                className={cn(rules.configured && "text-special")}
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-64">
-            <span className="line-clamp-4">
-              {rules.configured
-                ? rules.summary
-                : t("taskBoard.columnRules.add")}
             </span>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
-                lane: label,
-              })}
-              onClick={onToggleCollapsed}
-              className={LANE_ACTION}
-            >
-              <Minimize2 size={15} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {t("taskBoard.taskBoard.collapseColumn")}
-          </TooltipContent>
-        </Tooltip>
+          </div>
+        )}
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-
@@ -3061,7 +3090,7 @@ function TaskCard({
 
   const showAutoFix =
     onAutoFix &&
-    item.status === "triage" &&
+    (item.status === "triage" || item.status === "todo") &&
     item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
 
   // The counterpart for a card the Super Agent already owns. Auto-fix hides
@@ -3643,7 +3672,9 @@ function FeedView({
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col",
-        project ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+        project
+          ? "mx-auto w-full max-w-[1680px] px-4 pt-4 md:px-8"
+          : "px-4 pt-6 sm:px-8",
       )}
     >
       <div

@@ -49,7 +49,7 @@ const PROMPTS = [
   {
     id: "reviewer",
     label: "Reviewer",
-    path: "apps/api/src/tools/task-board/enqueue-reviewer.ts",
+    path: "apps/api/src/tools/task-board/reviewer-run.ts",
   },
   {
     id: "super-agent-sandbox",

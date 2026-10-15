@@ -1,8 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { SETTLE_MS } from "@/automations/board-column-transition";
 import type { JiraStatusChange } from "./client";
 import { settle } from "./settle";
-
-const SETTLE_MS = 60_000;
 
 const T0 = Date.parse("2026-09-29T12:00:00Z");
 const MIN = 60_000;

@@ -14,7 +14,7 @@ import {
  * Known gap, kept for v7 compatibility: an unlinked slug owned by another org
  * still matches this org's look-alike project.
  */
-async function findOwnedProject(
+export async function findOwnedProject(
   ctx: StudioContext,
   organizationId: string,
   site: string,

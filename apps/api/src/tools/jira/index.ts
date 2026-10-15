@@ -185,8 +185,16 @@ export const JIRA_BOARDS_LIST = defineTool({
   name: "JIRA_BOARDS_LIST",
   description:
     "List the Jira boards visible to the connected credentials — for picking " +
-    "which board the integration watches.",
-  inputSchema: z.object({}),
+    "which board the integration watches. Returns at most 200; pass `query` " +
+    "to search board names past them.",
+  inputSchema: z.object({
+    query: z
+      .string()
+      .trim()
+      .max(255)
+      .optional()
+      .describe("Case-insensitive substring of the board's name"),
+  }),
   outputSchema: z.object({
     boards: z.array(
       z.object({
@@ -198,7 +206,7 @@ export const JIRA_BOARDS_LIST = defineTool({
       }),
     ),
   }),
-  handler: async (_input, ctx) => {
+  handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
@@ -208,7 +216,7 @@ export const JIRA_BOARDS_LIST = defineTool({
       integration.email,
       integration.apiToken,
     );
-    return { boards: await client.listBoards() };
+    return { boards: await client.listBoards(input.query || undefined) };
   },
 });
 

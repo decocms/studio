@@ -424,11 +424,20 @@ export class JiraClient {
     return users;
   }
 
-  /** Boards visible to the credentials — the board picker. */
-  async listBoards(): Promise<JiraBoard[]> {
+  /**
+   * Boards visible to the credentials — the board picker. Capped at 200: a
+   * large site holds thousands, so past the first pages the picker finds a
+   * board by `name`, which Jira matches as a case-insensitive substring.
+   */
+  async listBoards(name?: string): Promise<JiraBoard[]> {
     const boards: JiraBoard[] = [];
     let startAt = 0;
     while (boards.length < 200) {
+      const query = new URLSearchParams({
+        startAt: String(startAt),
+        maxResults: "50",
+      });
+      if (name) query.set("name", name);
       const page = await this.request<{
         values: Array<{
           id: number;
@@ -437,7 +446,7 @@ export class JiraClient {
           location?: { projectKey?: string; projectName?: string };
         }>;
         isLast: boolean;
-      }>(`/rest/agile/1.0/board?startAt=${startAt}&maxResults=50`);
+      }>(`/rest/agile/1.0/board?${query}`);
       boards.push(
         ...page.values.map((board) => ({
           id: board.id,

@@ -67,6 +67,7 @@ import {
   RequiredFieldProvider,
   useRequiredField,
 } from "./required-field-context";
+import { expandRecursiveSchema } from "./resolved-schema-cache";
 import {
   resolveSchema,
   type LiveMeta,
@@ -151,7 +152,7 @@ export function ArrayField({
   const { required: requiredProp, invalid: requiredInvalid } =
     useRequiredField();
   const items = Array.isArray(value) ? value : [];
-  const itemSchema = schema.items;
+  const itemSchema = expandRecursiveSchema(schema.items, meta);
   const arrayFieldKey = arrayFieldKeyFromPath(path);
   // Options that let buildArrayDrillDownBreadcrumb decide whether this array's
   // own label must stay in the trail to keep the item uniquely addressable.

@@ -81,12 +81,10 @@ describe("resolveThreadToolNames", () => {
   });
 
   // Decopilot only ran these behind an approval, which this path lacks.
-  test("a chat cannot rewrite the board's prompts or automations", () => {
+  test("a chat cannot rewrite the board's prompts", () => {
     for (const name of [
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",
-      "TASK_BOARD_AUTOMATION_UPSERT",
-      "TASK_BOARD_AUTOMATION_DELETE",
     ] as const) {
       expect(THREAD_TOOL_NAMES).not.toContain(name);
     }
@@ -109,7 +107,7 @@ describe("resolveThreadToolNames", () => {
     for (const name of [...JIRA_RUN_TOOL_NAMES, "JIRA_BOARDS_LIST"] as const) {
       expect(THREAD_TOOL_NAMES).toContain(name);
     }
-    expect(THREAD_TOOL_NAMES.length).toBe(TOOL_BY_NAME.size - 6);
+    expect(THREAD_TOOL_NAMES.length).toBe(TOOL_BY_NAME.size - 4);
   });
 
   test("a chat's run-scoped tools are only its task-run ones", () => {

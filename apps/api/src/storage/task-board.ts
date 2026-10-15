@@ -45,6 +45,48 @@ import { escapeLikePattern } from "./threads";
 /** Activity actions that also earn an inbox row and an email. */
 const NOTIFIED_ACTIONS = new Set<string>(NOTIFICATION_TYPES);
 
+/** A card's move into another lane, as logged. */
+export interface BoardMove {
+  activityId: string;
+  taskBoardItemId: string;
+  to: string;
+}
+
+let boardMoveListener: ((move: BoardMove) => Promise<void>) | null = null;
+
+/** Hear every lane move this process logs, after its row is written. Set at
+ *  boot by the board transition triggers; never awaited by the write, so a
+ *  slow or failing listener costs the move nothing. */
+export function setBoardMoveListener(
+  listener: ((move: BoardMove) => Promise<void>) | null,
+): void {
+  boardMoveListener = listener;
+}
+
+function announceBoardMoves(
+  rows: {
+    id: string;
+    taskBoardItemId: string;
+    action: string;
+    data?: Record<string, unknown>;
+  }[],
+): void {
+  const listener = boardMoveListener;
+  if (!listener) return;
+  for (const row of rows) {
+    const to = row.data?.to;
+    if (row.action !== "status_changed" || typeof to !== "string") continue;
+    if (row.data?.from === to) continue;
+    listener({
+      activityId: row.id,
+      taskBoardItemId: row.taskBoardItemId,
+      to,
+    }).catch((err) =>
+      console.error("[task-board] board move listener failed", err),
+    );
+  }
+}
+
 function notifiedType(action: string): NotificationType | null {
   return NOTIFIED_ACTIONS.has(action) ? (action as NotificationType) : null;
 }
@@ -736,6 +778,7 @@ export class TaskBoardStorage {
         isReportsTask({ createdBy: card.created_by }) &&
         card.status === LANES.intake;
       const now = new Date().toISOString();
+      const moveId = generatePrefixedId("act");
       if (closes) {
         await trx
           .updateTable("task_board_items")
@@ -758,7 +801,7 @@ export class TaskBoardStorage {
           ...(closes
             ? [
                 {
-                  id: generatePrefixedId("act"),
+                  id: moveId,
                   task_board_item_id: id,
                   action: "status_changed" as const,
                   actor_id: null,
@@ -774,14 +817,22 @@ export class TaskBoardStorage {
         ])
         .execute();
       const outcome = closes ? "closed" : "noted";
-      return { outcome, replayed: false, wrote: true } as const;
+      return { outcome, replayed: false, wrote: true, moveId } as const;
     });
 
     const { outcome, replayed } = result;
     if (!result.wrote) return { outcome, replayed, item: null };
     // Followers hear about this move like any other machine move. After the
     // commit, as `notify` expects.
-    if (outcome === "closed") {
+    if (outcome === "closed" && "moveId" in result) {
+      announceBoardMoves([
+        {
+          id: result.moveId,
+          taskBoardItemId: id,
+          action: "status_changed",
+          data: { to: "done" },
+        },
+      ]);
       await this.fanOut([
         { taskBoardItemId: id, action: "status_changed", actorId: null },
       ]);
@@ -972,6 +1023,87 @@ export class TaskBoardStorage {
         row.updated_at instanceof Date
           ? row.updated_at.toISOString()
           : String(row.updated_at),
+    }));
+  }
+
+  /**
+   * Lane changes that have settled: each card's newest move into another lane,
+   * made between `since` and `settledBefore`, with the card still sitting in
+   * that lane. The board transition sweep's work list, for `organizationIds`
+   * only (the orgs with a trigger that could fire).
+   *
+   * A same-lane entry (a retry is logged as `in_progress → in_progress`) is
+   * neither a move nor a reason to call an earlier move stale.
+   *
+   * `activityId` narrows it to one move: empty when that move was superseded.
+   */
+  async listSettledTransitions(params: {
+    organizationIds: string[];
+    since: Date;
+    settledBefore: Date;
+    limit: number;
+    activityId?: string;
+  }): Promise<
+    {
+      activityId: string;
+      itemId: string;
+      organizationId: string;
+      from: string | null;
+      to: string;
+      occurredAt: string;
+      /** Who moved the card; null for a machine move. */
+      actorId: string | null;
+    }[]
+  > {
+    if (params.organizationIds.length === 0) return [];
+    const moved = sql<boolean>`a.data->>'from' is distinct from a.data->>'to'`;
+    let query = this.db
+      .selectFrom("task_board_activity as a")
+      .innerJoin("task_board_items as i", "i.id", "a.task_board_item_id")
+      .select([
+        "a.id as activityId",
+        "a.task_board_item_id as itemId",
+        "i.organization_id as organizationId",
+        sql<string | null>`a.data->>'from'`.as("from"),
+        sql<string>`a.data->>'to'`.as("to"),
+        "a.occurred_at as occurredAt",
+        "a.actor_id as actorId",
+      ])
+      .where("a.action", "=", "status_changed")
+      .where("a.occurred_at", ">", params.since)
+      .where("a.occurred_at", "<=", params.settledBefore)
+      .where(moved)
+      .where("i.organization_id", "in", params.organizationIds)
+      .where("i.dismissed_at", "is", null)
+      .where("i.source", "is", null)
+      .where(sql<boolean>`i.status = a.data->>'to'`)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_activity as b")
+              .select("b.id")
+              .whereRef("b.task_board_item_id", "=", "a.task_board_item_id")
+              .where("b.action", "=", "status_changed")
+              .where(
+                sql<boolean>`b.data->>'from' is distinct from b.data->>'to'`,
+              )
+              .where(
+                sql<boolean>`(b.occurred_at, b.id) > (a.occurred_at, a.id)`,
+              ),
+          ),
+        ),
+      )
+      .orderBy("a.occurred_at", "asc")
+      .limit(params.limit);
+    if (params.activityId) query = query.where("a.id", "=", params.activityId);
+    const rows = await query.execute();
+    return rows.map((row) => ({
+      ...row,
+      occurredAt:
+        row.occurredAt instanceof Date
+          ? row.occurredAt.toISOString()
+          : String(row.occurredAt),
     }));
   }
 
@@ -2439,10 +2571,11 @@ export class TaskBoardStorage {
     /** Users this event enrolls as followers (see `notify`). */
     alsoSubscribe?: (string | null | undefined)[];
   }): Promise<void> {
+    const id = generatePrefixedId("act");
     await this.db
       .insertInto("task_board_activity")
       .values({
-        id: generatePrefixedId("act"),
+        id,
         task_board_item_id: params.taskBoardItemId,
         action: params.action,
         actor_id: params.actorId,
@@ -2450,6 +2583,7 @@ export class TaskBoardStorage {
         occurred_at: new Date().toISOString(),
       })
       .execute();
+    announceBoardMoves([{ ...params, id }]);
     await this.fanOut([params]);
   }
 
@@ -2519,11 +2653,15 @@ export class TaskBoardStorage {
       if (!coalesced) fresh.push(entry);
     }
     if (fresh.length === 0) return;
+    const rows = fresh.map((params) => ({
+      ...params,
+      id: generatePrefixedId("act"),
+    }));
     await this.db
       .insertInto("task_board_activity")
       .values(
-        fresh.map((params) => ({
-          id: generatePrefixedId("act"),
+        rows.map((params) => ({
+          id: params.id,
           task_board_item_id: params.taskBoardItemId,
           action: params.action,
           actor_id: params.actorId,
@@ -2532,6 +2670,7 @@ export class TaskBoardStorage {
         })),
       )
       .execute();
+    announceBoardMoves(rows);
     await this.fanOut(fresh);
   }
 

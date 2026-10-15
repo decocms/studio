@@ -355,7 +355,12 @@ export async function ensureSandbox(
   const repository =
     threadRepo ?? (metadata as RepositoryMetadata).repository ?? null;
   // Past the resume fast path: this call is a real boot, so tell the caller.
-  await input.onColdStart?.().catch(() => {});
+  await input.onColdStart?.().catch((err) => {
+    console.warn(
+      "[ensureSandbox] onColdStart callback failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
   const { entry, warmPoolAdopted } = await provisionSandbox({
     ctx,
     userId,

@@ -61,11 +61,11 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
   "BLOG_BRAND_EXTRACT",
-  "BLOG_PILLAR_SUGGEST",
-  "BLOG_THEME_SUGGEST",
+  "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
   "BLOG_LINK_SUGGEST",
+  "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -144,6 +144,10 @@ const ALL_TOOL_NAMES = [
   "EXPERIMENT_LIST",
   "EXPERIMENT_GET",
   "EXPERIMENT_CREATE",
+  "EXPERIMENT_SUGGEST",
+  "EXPERIMENT_IMPLEMENT",
+  "EXPERIMENT_IMPLEMENT_LOCAL",
+  "EXPERIMENT_PREVIEW_SYNC_LOCAL",
   "EXPERIMENT_UPDATE",
   "EXPERIMENT_DELETE",
   "EXPERIMENT_RESULTS",
@@ -282,9 +286,6 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
-  "TASK_BOARD_AUTOMATION_LIST",
-  "TASK_BOARD_AUTOMATION_UPSERT",
-  "TASK_BOARD_AUTOMATION_DELETE",
   "TASK_BOARD_PROMPT_LIST",
   "TASK_BOARD_PROMPT_UPSERT",
   "TASK_BOARD_PROMPT_DELETE",
@@ -310,6 +311,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_SPRINT_DELETE",
   "TASK_BOARD_ADMIN_ORG_LIST",
   "TASK_BOARD_DELIVERY",
+  "TASK_BOARD_OPERATION",
+  "TASK_BOARD_OPERATION_TASKS",
+  "TASK_BOARD_REWORK",
+  "TASK_BOARD_SPRINTS",
   "TASK_BOARD_STUCK",
   "TASK_BOARD_COST",
   "TASK_BOARD_QUALITY",
@@ -400,22 +405,24 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_BRAND_EXTRACT",
     description:
-      "Infer editorial brand context (tone, dos and don'ts) from a site",
+      "Infer a brand's identity (name, audience, values, competitors) from a site",
     category: "Blog",
   },
   {
-    name: "BLOG_PILLAR_SUGGEST",
-    description: "Propose content pillars from a brand's editorial context",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_THEME_SUGGEST",
-    description: "Propose blog post ideas from a brand's editorial context",
+    name: "BLOG_CONTEXT_EXTRACT",
+    description:
+      "Infer a blog's writing context (tone, dos and don'ts) from a site",
     category: "Blog",
   },
   {
     name: "BLOG_FORMAT_SUGGEST",
     description: "Name the post formats a blog writes in",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CAMPAIGN_SUGGEST",
+    description:
+      "Propose campaigns from a seed, grounded in the site's systems",
     category: "Blog",
   },
   {
@@ -779,6 +786,28 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Experiments",
   },
   {
+    name: "EXPERIMENT_SUGGEST",
+    description: "Suggest an A/B experiment from a plain-language prompt",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_IMPLEMENT",
+    description:
+      "Delegate an experiment's frontend implementation to the Super Agent",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_PREVIEW_SYNC_LOCAL",
+    description: "[local dev only] Preview a draft experiment on a local site",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_IMPLEMENT_LOCAL",
+    description:
+      "[local dev only] Write an experiment's hook + gate directly into a local site's source",
+    category: "Experiments",
+  },
+  {
     name: "EXPERIMENT_UPDATE",
     description: "Update an A/B experiment",
     category: "Experiments",
@@ -1054,22 +1083,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_AUTOMATION_LIST",
-    description: "List which Jira statuses start an agent run",
+    description: "List the automations Jira status changes fire",
     category: "Jira",
   },
   {
     name: "JIRA_AUTOMATION_UPSERT",
-    description: "Run the agent on issues entering a Jira status",
+    description: "Fire an automation on issues entering a Jira status",
     category: "Jira",
   },
   {
     name: "JIRA_AUTOMATION_DELETE",
-    description: "Stop running the agent on issues entering a Jira status",
+    description: "Stop firing on issues entering a Jira status",
     category: "Jira",
   },
   {
     name: "JIRA_RUN_START",
-    description: "Run the agent on Jira issues now, to try a rule out",
+    description: "Fire an automation on Jira issues now",
     category: "Jira",
   },
   {
@@ -1346,21 +1375,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
-    name: "TASK_BOARD_AUTOMATION_LIST",
-    description: "List what the board runs when a card lands in each column",
-    category: "Task Board",
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_UPSERT",
-    description: "Run the agent on cards landing in a board column",
-    category: "Task Board",
-  },
-  {
-    name: "TASK_BOARD_AUTOMATION_DELETE",
-    description: "Stop running the agent on cards landing in a board column",
-    category: "Task Board",
-  },
-  {
     name: "TASK_BOARD_PROMPT_LIST",
     description:
       "List the instructions appended to the system prompt of the board's runs",
@@ -1522,6 +1536,29 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "TASK_BOARD_DELIVERY",
     description:
       "Task board throughput and flow — completions, PR rate, lead vs cycle time, dwell by lane",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_OPERATION",
+    description:
+      "How autonomously the agent delivers — run to production funnel, no-human rate, failed-QA rate, and where people stepped in",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_OPERATION_TASKS",
+    description: "The cards behind one task board operation figure",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_REWORK",
+    description:
+      "Why tasks come back — failed-QA and needed-a-person rates by type, priority, tag, sprint and author",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SPRINTS",
+    description:
+      "Sprint velocity — committed, completed, and completed with no human",
     category: "Task Board",
   },
   {
@@ -1737,9 +1774,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
-      "TASK_BOARD_AUTOMATION_LIST",
-      "TASK_BOARD_AUTOMATION_UPSERT",
-      "TASK_BOARD_AUTOMATION_DELETE",
       "TASK_BOARD_PROMPT_LIST",
       "TASK_BOARD_PROMPT_UPSERT",
       "TASK_BOARD_PROMPT_DELETE",
@@ -1764,6 +1798,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_SPRINT_DELETE",
       "TASK_BOARD_ADMIN_ORG_LIST",
       "TASK_BOARD_DELIVERY",
+      "TASK_BOARD_OPERATION",
+      "TASK_BOARD_OPERATION_TASKS",
+      "TASK_BOARD_REWORK",
+      "TASK_BOARD_SPRINTS",
       "TASK_BOARD_STUCK",
       "TASK_BOARD_COST",
       "TASK_BOARD_QUALITY",
@@ -1983,6 +2021,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "EXPERIMENT_LIST",
       "EXPERIMENT_GET",
       "EXPERIMENT_CREATE",
+      "EXPERIMENT_SUGGEST",
+      "EXPERIMENT_IMPLEMENT",
+      "EXPERIMENT_IMPLEMENT_LOCAL",
+      "EXPERIMENT_PREVIEW_SYNC_LOCAL",
       "EXPERIMENT_UPDATE",
       "EXPERIMENT_DELETE",
       "EXPERIMENT_RESULTS",

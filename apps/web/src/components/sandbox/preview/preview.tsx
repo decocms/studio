@@ -414,6 +414,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
   const [pagesSearch, setPagesSearch] = useState("");
+  const pagesListRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
   const [createPageError, setCreatePageError] = useState<string | undefined>();
   const [activeGlobalSection, setActiveGlobalSection] =
@@ -1557,10 +1558,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <Command shouldFilter={false} defaultValue={currentPickerValue}>
             <CommandInput
               value={pagesSearch}
-              onValueChange={setPagesSearch}
+              onValueChange={(value) => {
+                setPagesSearch(value);
+                // cmdk skips scrolling when the highlighted item is unchanged.
+                pagesListRef.current?.scrollTo({ top: 0 });
+              }}
               placeholder={t("sandbox.preview.searchPagesAndComponents")}
             />
-            <CommandList className="max-h-80">
+            <CommandList ref={pagesListRef} className="max-h-80">
               <CommandEmpty>
                 {pages.length === 0 &&
                 globalSections.length === 0 &&

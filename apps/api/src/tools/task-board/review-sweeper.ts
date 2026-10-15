@@ -69,7 +69,7 @@ import {
 } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { linkPrFromRunBranch } from "./pr-by-branch";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { fireImplementer } from "@/automations/fire-implementer";
 import { moveFinishedReviewToQa } from "./merge-pr";
 import { inReviewPhase } from "./lanes";
 import { shipIfMerged } from "./reconcile-merged";
@@ -383,7 +383,7 @@ export class TaskBoardReviewSweeper {
    * It belongs on this timer for the same reason the reviewer dispatch does: the
    * failure hook that schedules a retry runs inside the projector's DBOS step,
    * where `DBOS.startWorkflow` is rejected. Out here it is legal, and
-   * `enqueueSuperAgentForTask` puts the run on the durable thread-gate queue, so
+   * the Implementer's run goes on the durable thread-gate queue, so
    * DBOS owns the retry from that point on.
    *
    * `claimDueRetry` is a conditional clear of `retry_at`, so exactly one replica
@@ -416,7 +416,7 @@ export class TaskBoardReviewSweeper {
         if (!ctx) continue;
         // A retry is work that already failed once and has a budget — it
         // outranks a brand-new task for the next slot.
-        await enqueueSuperAgentForTask(ctx, item, { runClass: "retry" });
+        await fireImplementer(ctx, item, { runClass: "retry" });
         count++;
         console.warn(
           `[task-board-review-sweeper] re-dispatched ${id} after a failure ` +

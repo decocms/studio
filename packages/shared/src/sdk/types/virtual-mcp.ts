@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { UrlSlugSchema } from "../../url-slug";
 
 /**
  * Virtual MCP connection schema - defines which connection and tools/resources/prompts are included
@@ -65,7 +66,7 @@ const KNOWLEDGE_MAX = 100;
 
 /** Cap on releases (named branches) per agent. Exported so the UI can gate
  * creation at the cap instead of letting the write 400 on the server. */
-export const RELEASES_MAX = 50;
+export const RELEASES_MAX = 300;
 
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
@@ -875,6 +876,11 @@ export const VirtualMCPEntitySchema = z.object({
   // Base collection entity fields
   id: z.string().describe("Unique identifier"),
   title: z.string().describe("Human-readable name"),
+  url_slug: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Name of the project in Studio URLs, unique in the organization"),
   description: z.string().nullable().describe("Description"),
   icon: z.string().nullable().describe("Icon URL"),
   created_at: z.string().describe("Creation timestamp"),
@@ -991,6 +997,9 @@ export type VirtualMCPCreateData = z.infer<typeof VirtualMCPCreateDataSchema>;
  */
 export const VirtualMCPUpdateDataSchema = z.object({
   title: z.string().min(1).max(255).optional().describe("New name"),
+  url_slug: UrlSlugSchema.nullish().describe(
+    "New URL slug. The old one keeps redirecting. Renaming does not change it. null keeps the current slug.",
+  ),
   description: z
     .string()
     .max(500)

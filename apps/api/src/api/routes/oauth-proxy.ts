@@ -193,6 +193,19 @@ export async function fetchProtectedResourceMetadata(
 }
 
 /**
+ * Picks the first `authorization_servers` entry out of protected-resource
+ * metadata JSON, which is untrusted origin-controlled data.
+ */
+export function firstAuthorizationServer(data: unknown): string | undefined {
+  const servers =
+    typeof data === "object" && data !== null
+      ? (data as { authorization_servers?: unknown }).authorization_servers
+      : undefined;
+  const candidate = Array.isArray(servers) ? servers[0] : undefined;
+  return typeof candidate === "string" ? candidate : undefined;
+}
+
+/**
  * Get the origin authorization server URL from connection's protected resource metadata.
  * Falls back to the origin server's root if Protected Resource Metadata doesn't exist,
  * since many servers (like Apify) expose /.well-known/oauth-authorization-server at the root.
@@ -211,14 +224,8 @@ export async function getOriginAuthServer(
   try {
     const response = await fetchProtectedResourceMetadata(connectionUrl);
     if (response.ok) {
-      const data = (await response.json()) as {
-        authorization_servers?: unknown;
-      };
-      const candidate = Array.isArray(data.authorization_servers)
-        ? data.authorization_servers[0]
-        : undefined;
-      // authorization_servers is untrusted origin JSON — verify the shape.
-      if (typeof candidate === "string") {
+      const candidate = firstAuthorizationServer(await response.json());
+      if (candidate) {
         return candidate;
       }
     }

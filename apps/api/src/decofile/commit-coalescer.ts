@@ -1,5 +1,8 @@
 import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
-import { blockKeyToFileStem } from "@decocms/shared/decofile";
+import {
+  blockKeyToFileStem,
+  decoBlockFingerprint,
+} from "@decocms/shared/decofile";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
 import {
   type FileChange,
@@ -11,6 +14,7 @@ import {
   blockEntriesInTree,
   blocksDirPath,
   primeBlobCache,
+  resolveBlockContents,
   resolveOrCreateHead,
 } from "./read-decofile";
 import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
@@ -26,6 +30,11 @@ import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
  * the head the batch was built against, so a concurrent writer (another
  * replica, a dev pushing code) makes it fail with `RepoWriteConflict` and the
  * flush rebuilds on the fresh head and retries.
+ *
+ * Every write replaces a whole block, so a patch built from an outdated copy
+ * would silently revert whatever changed since. A patch can therefore name the
+ * version each block had when its edit was made (`expect`); one whose blocks
+ * moved on is rejected with {@link BlockConflictError} instead of committed.
  */
 
 const MAX_CAS_ATTEMPTS = 3;
@@ -33,6 +42,20 @@ const MAX_CAS_ATTEMPTS = 3;
 export interface DecofilePatch {
   set?: Record<string, unknown>;
   delete?: string[];
+  /**
+   * Per block key: the {@link decoBlockFingerprint} of the content the edit
+   * was made against, or `null` when the writer saw no such block. Keys left
+   * out are written unconditionally.
+   */
+  expect?: Record<string, string | null>;
+}
+
+/** The patch was made against a version of `blocks` the branch no longer has. */
+export class BlockConflictError extends Error {
+  constructor(readonly blocks: string[]) {
+    super(`Blocks changed since they were loaded: ${blocks.join(", ")}`);
+    this.name = "BlockConflictError";
+  }
 }
 
 export interface CommitDeps {
@@ -43,12 +66,22 @@ export interface CommitDeps {
   coAuthor?: CoAuthorIdentity | null;
 }
 
+interface QueuedPatch {
+  patch: DecofilePatch;
+  resolve: (sha: string) => void;
+  reject: (err: unknown) => void;
+}
+
 interface Batch {
-  set: Map<string, unknown>;
-  del: Set<string>;
+  /** In arrival order: a later patch's expectations see earlier patches' writes. */
+  patches: QueuedPatch[];
   deps: CommitDeps;
-  resolvers: Array<(sha: string) => void>;
-  rejecters: Array<(err: unknown) => void>;
+}
+
+interface BatchOutcome {
+  sha: string;
+  accepted: QueuedPatch[];
+  conflicts: Array<{ queued: QueuedPatch; blocks: string[] }>;
 }
 
 interface QueueState {
@@ -61,7 +94,8 @@ const queues = new Map<string, QueueState>();
 /**
  * Enqueue a patch; resolves with the sha of the commit that carried it (the
  * branch head when the patch turned out to be a no-op, e.g. deleting an
- * already-absent block).
+ * already-absent block). Rejects with {@link BlockConflictError}, writing
+ * nothing of this patch, when one of its `expect`ed blocks has moved on.
  */
 export function enqueueDecofilePatch(
   queueKey: string,
@@ -74,27 +108,12 @@ export function enqueueDecofilePatch(
     queues.set(queueKey, state);
   }
   if (!state.pending) {
-    state.pending = {
-      set: new Map(),
-      del: new Set(),
-      deps,
-      resolvers: [],
-      rejecters: [],
-    };
+    state.pending = { patches: [], deps };
   }
   const batch = state.pending;
   batch.deps = deps; // freshest token/identity wins for the whole batch
-  for (const [key, value] of Object.entries(patch.set ?? {})) {
-    batch.set.set(key, value);
-    batch.del.delete(key);
-  }
-  for (const key of patch.delete ?? []) {
-    batch.del.add(key);
-    batch.set.delete(key);
-  }
   const done = new Promise<string>((resolve, reject) => {
-    batch.resolvers.push(resolve);
-    batch.rejecters.push(reject);
+    batch.patches.push({ patch, resolve, reject });
   });
   if (!state.running) void runQueue(queueKey, state);
   return done;
@@ -107,10 +126,13 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
       const batch = state.pending;
       state.pending = null;
       try {
-        const sha = await commitBatch(batch);
-        for (const resolve of batch.resolvers) resolve(sha);
+        const { sha, accepted, conflicts } = await commitBatch(batch);
+        for (const queued of accepted) queued.resolve(sha);
+        for (const { queued, blocks } of conflicts) {
+          queued.reject(new BlockConflictError(blocks));
+        }
       } catch (err) {
-        for (const reject of batch.rejecters) reject(err);
+        for (const queued of batch.patches) queued.reject(err);
       }
     }
   } finally {
@@ -119,7 +141,78 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
   }
 }
 
-async function commitBatch(batch: Batch): Promise<string> {
+/** The head's block could not be read as JSON, so no expectation can hold against it. */
+const UNREADABLE = Symbol("unreadable");
+
+type HeadFingerprint = string | null | typeof UNREADABLE;
+
+/**
+ * Fingerprint, at the head being built on, of every block some patch in the
+ * batch has an expectation for. Reads only those blocks.
+ */
+async function headFingerprints(
+  client: RepoContentClient,
+  entries: Array<{ stem: string; sha: string; path: string }>,
+  keys: Set<string>,
+  blobMemo: Map<string, string>,
+): Promise<Map<string, HeadFingerprint>> {
+  const out = new Map<string, HeadFingerprint>();
+  const sources: Array<{ key: string; stem: string; sha: string }> = [];
+  for (const key of keys) {
+    // The first alias is the one the merged read serves and the write lands on.
+    const path = aliasPathsForKey(entries, key)[0];
+    const entry = path ? entries.find((e) => e.path === path) : undefined;
+    if (!entry) out.set(key, null);
+    else sources.push({ key, stem: entry.stem, sha: entry.sha });
+  }
+  const contents = await resolveBlockContents(client, sources, blobMemo);
+  for (const [i, { content }] of contents.entries()) {
+    const key = (sources[i] as { key: string }).key;
+    try {
+      out.set(key, await decoBlockFingerprint(JSON.parse(content)));
+    } catch {
+      out.set(key, UNREADABLE);
+    }
+  }
+  return out;
+}
+
+/**
+ * Split the batch into patches whose expectations hold and patches that would
+ * overwrite a newer version, replaying accepted writes in order so a later
+ * patch is checked against what the earlier ones in this commit leave behind.
+ */
+async function screenPatches(
+  patches: QueuedPatch[],
+  head: Map<string, HeadFingerprint>,
+): Promise<Pick<BatchOutcome, "accepted" | "conflicts">> {
+  const current = new Map(head);
+  const accepted: QueuedPatch[] = [];
+  const conflicts: BatchOutcome["conflicts"] = [];
+  for (const queued of patches) {
+    const { patch } = queued;
+    const stale = Object.entries(patch.expect ?? {})
+      .filter(([key, expected]) => {
+        const actual = current.get(key);
+        return actual !== UNREADABLE && actual !== expected;
+      })
+      .map(([key]) => key);
+    if (stale.length > 0) {
+      conflicts.push({ queued, blocks: stale });
+      continue;
+    }
+    accepted.push(queued);
+    for (const [key, value] of Object.entries(patch.set ?? {})) {
+      if (current.has(key)) current.set(key, await decoBlockFingerprint(value));
+    }
+    for (const key of patch.delete ?? []) {
+      if (current.has(key)) current.set(key, null);
+    }
+  }
+  return { accepted, conflicts };
+}
+
+async function commitBatch(batch: Batch): Promise<BatchOutcome> {
   const { client, branch, packagePath } = batch.deps;
   /** blob sha -> text, shared across CAS attempts. A blob sha is immutable, so
    *  a retry that rebuilds on a fresh head re-reads only blocks it has not
@@ -132,6 +225,29 @@ async function commitBatch(batch: Batch): Promise<string> {
     const tree = await client.listDecofileEntries(headSha, packagePath);
     const entries = blockEntriesInTree(tree, packagePath);
 
+    const expectedKeys = new Set(
+      batch.patches.flatMap(({ patch }) => Object.keys(patch.expect ?? {})),
+    );
+    const { accepted, conflicts } = await screenPatches(
+      batch.patches,
+      expectedKeys.size > 0
+        ? await headFingerprints(client, entries, expectedKeys, blobMemo)
+        : new Map(),
+    );
+    // Accepted patches collapse in order: the last write to a key wins.
+    const set = new Map<string, unknown>();
+    const del = new Set<string>();
+    for (const { patch } of accepted) {
+      for (const [key, value] of Object.entries(patch.set ?? {})) {
+        set.set(key, value);
+        del.delete(key);
+      }
+      for (const key of patch.delete ?? []) {
+        del.add(key);
+        set.delete(key);
+      }
+    }
+
     const writes: FileChange[] = [];
     // Post-patch view of the blocks dir, for blocks.gen.json regeneration.
     const nextBlocks = new Map<
@@ -139,7 +255,7 @@ async function commitBatch(batch: Batch): Promise<string> {
       { stem: string; sha: string } | { stem: string; content: string }
     >(entries.map((e) => [e.path, { stem: e.stem, sha: e.sha }]));
 
-    for (const [key, value] of batch.set) {
+    for (const [key, value] of set) {
       const aliases = aliasPathsForKey(entries, key);
       const content = `${JSON.stringify(value, null, 2)}\n`;
       // Write-through to the disk store (fail-open) so the read after this
@@ -161,14 +277,14 @@ async function commitBatch(batch: Batch): Promise<string> {
         nextBlocks.delete(extra);
       }
     }
-    for (const key of batch.del) {
+    for (const key of del) {
       for (const alias of aliasPathsForKey(entries, key)) {
         writes.push({ path: alias, deleted: true });
         nextBlocks.delete(alias);
       }
     }
 
-    if (writes.length === 0) return headSha;
+    if (writes.length === 0) return { sha: headSha, accepted, conflicts };
 
     const gen = await regenerateGenArtifact({
       client,
@@ -184,14 +300,14 @@ async function commitBatch(batch: Batch): Promise<string> {
       const { sha } = await client.commitFiles({
         branch,
         message: decofileCommitMessage(
-          [...batch.set.keys()],
-          [...batch.del],
+          [...set.keys()],
+          [...del],
           batch.deps.coAuthor,
         ),
         expectedHead: headSha,
         changes: writes,
       });
-      return sha;
+      return { sha, accepted, conflicts };
     } catch (err) {
       // Someone else advanced the branch between our head read and the write.
       if (

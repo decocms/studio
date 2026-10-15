@@ -16,6 +16,14 @@ import * as migration236taskboardsprints from "./236-task-board-sprints";
 import * as migration237orgsitesprojectlink from "./237-org-sites-project-link";
 import * as migration238taskboarddefaultlanes from "./238-task-board-default-lanes";
 import * as migration239taskboardretireoldlanes from "./239-task-board-retire-old-lanes";
+import * as migration240taskboardrestoretodo from "./240-task-board-restore-todo";
+import * as migration241automationboardcolumntransition from "./241-automation-board-column-transition";
+import * as migration242connectionurlslug from "./242-connection-url-slug";
+import * as migration243experimenttaskboarditem from "./243-experiment-task-board-item";
+import * as migration244connectionurlslugrolloutbackfill from "./244-connection-url-slug-rollout-backfill";
+import * as migration245automationsystemkey from "./245-automation-system-key";
+import * as migration246automationprreadytrigger from "./246-automation-pr-ready-trigger";
+import * as migration247automationjiratransition from "./247-automation-jira-transition";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -516,6 +524,16 @@ const migrations: Record<string, Migration> = {
   "237-org-sites-project-link": migration237orgsitesprojectlink,
   "238-task-board-default-lanes": migration238taskboarddefaultlanes,
   "239-task-board-retire-old-lanes": migration239taskboardretireoldlanes,
+  "240-task-board-restore-todo": migration240taskboardrestoretodo,
+  "241-automation-board-column-transition":
+    migration241automationboardcolumntransition,
+  "242-connection-url-slug": migration242connectionurlslug,
+  "243-experiment-task-board-item": migration243experimenttaskboarditem,
+  "244-connection-url-slug-rollout-backfill":
+    migration244connectionurlslugrolloutbackfill,
+  "245-automation-system-key": migration245automationsystemkey,
+  "246-automation-pr-ready-trigger": migration246automationprreadytrigger,
+  "247-automation-jira-transition": migration247automationjiratransition,
 };
 
 export default migrations;

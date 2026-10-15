@@ -228,6 +228,14 @@ export interface OrganizationSettings {
   updatedAt: Date | string;
 }
 
+/** A `url_slug` a connection used to have, kept so old links resolve. */
+export interface ConnectionSlugAliasTable {
+  organization_id: string;
+  slug: string;
+  connection_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * MCP Connection table definition
  * Uses snake_case column names to align with ConnectionEntitySchema
@@ -243,6 +251,7 @@ export interface MCPConnectionTable {
   app_name: string | null;
   app_id: string | null;
   slug: string | null;
+  url_slug: string | null; // Unique per org; names the row in Studio URLs
 
   // Connection details
   connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
@@ -1390,6 +1399,9 @@ export interface AutomationTable {
   // Parent agent-loop step cap (AI SDK stopWhen). null = PARENT_STEP_LIMIT.
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  /** Set on a built-in automation Studio seeds in every org (see
+   *  `automations/builtin.ts`); null on the ones people create. */
+  system_key: ColumnType<string | null, string | null | undefined, never>;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -1409,6 +1421,7 @@ export interface Automation {
   temperature: number;
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  system_key: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1438,7 +1451,24 @@ export interface AutomationTriggerTable {
   // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
   // Null for cron/event triggers.
   api_key_id: string | null;
+  // For board_column_transition triggers: the column a card entered; for
+  // jira_transition triggers: the Jira status an issue entered. Both say
+  // which moves count by where it came from. Null / '{}' for the others.
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Which moves into a column a `board_column_transition` trigger answers, by
+ *  where the card came from. */
+export type BoardTransitionFromKind = "any" | "earlier" | "later" | "statuses";
+
+/** One fire claimed per (trigger, event) — see migration 241. */
+export interface AutomationTriggerFireTable {
+  trigger_id: string;
+  event_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -1447,7 +1477,7 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -1455,8 +1485,19 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: string[];
   created_at: string;
 }
+
+export type AutomationTriggerType =
+  | "cron"
+  | "event"
+  | "webhook"
+  | "board_column_transition"
+  | "board_pr_ready"
+  | "jira_transition";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks
@@ -1698,6 +1739,7 @@ export interface OrgRepoSync {
 
 export type TaskBoardItemStatus =
   | "triage"
+  | "todo"
   | "in_progress"
   | "in_review"
   | "qa"
@@ -2370,6 +2412,10 @@ export interface ExperimentVariant {
   id: string;
   weight: number;
   role?: "control" | "treatment" | null;
+  /** One sentence, from EXPERIMENT_SUGGEST or typed by the operator: what
+   *  this arm specifically shows/does. Optional — manually-created rows
+   *  before this field existed have none. */
+  description?: string | null;
 }
 
 export interface ExperimentTable {
@@ -2390,6 +2436,9 @@ export interface ExperimentTable {
     Date | string | null
   >;
   ended_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  /** The task board card the frontend implementation was delegated to, so the
+   *  tab can follow its pull request and deploy preview. NULL until delegated. */
+  task_board_item_id: string | null;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -2406,6 +2455,8 @@ export interface Experiment {
   variants: ExperimentVariant[];
   startedAt: string | null;
   endedAt: string | null;
+  /** @see ExperimentTable.task_board_item_id */
+  taskBoardItemId: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -2443,6 +2494,7 @@ export interface Database {
 
   // Connection aggregations (for VIRTUAL connections / agents)
   connection_aggregations: ConnectionAggregationTable;
+  connection_slug_aliases: ConnectionSlugAliasTable;
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
@@ -2479,6 +2531,7 @@ export interface Database {
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+  automation_trigger_fires: AutomationTriggerFireTable;
 
   // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
