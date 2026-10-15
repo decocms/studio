@@ -43,17 +43,6 @@ import {
 
 const MAX_CAS_ATTEMPTS = 3;
 
-/**
- * Repository files to write alongside the blocks. Pass a function when the
- * content is a read-modify-write of what is already in the tree (a
- * `package.json` gaining a dependency): it is called with the head each commit
- * attempt is built against, so a CAS retry recomputes against the branch as it
- * now is instead of replaying bytes derived from the head it lost to.
- */
-export type DecofileFileSource =
-  | FileChange[]
-  | ((headSha: string) => Promise<FileChange[]>);
-
 export interface DecofilePatch {
   set?: Record<string, unknown>;
   delete?: string[];
@@ -63,17 +52,6 @@ export interface DecofilePatch {
    * out are written unconditionally.
    */
   expect?: Record<string, string | null>;
-  /**
-   * Repo-root-relative files written in the SAME commit as the blocks — the
-   * caller prefixes the package path itself.
-   *
-   * Installing an app is the case this exists for: the block is useless
-   * without the module that resolves it (and, on TanStack, the dependency and
-   * the registry entry), so landing them separately leaves the branch broken
-   * in between. Not reachable from the HTTP PATCH surface — a browser must
-   * never name a repository path.
-   */
-  files?: DecofileFileSource;
 }
 
 /** The patch was made against a version of `blocks` the branch no longer has. */
@@ -238,23 +216,6 @@ async function screenPatches(
   return { accepted, conflicts };
 }
 
-/** The accepted patches' extra files at `headSha`, deduped by path, last wins. */
-async function resolveFiles(
-  accepted: QueuedPatch[],
-  headSha: string,
-): Promise<FileChange[]> {
-  const byPath = new Map<string, FileChange>();
-  for (const { patch } of accepted) {
-    if (!patch.files) continue;
-    const files =
-      typeof patch.files === "function"
-        ? await patch.files(headSha)
-        : patch.files;
-    for (const file of files) byPath.set(file.path, file);
-  }
-  return [...byPath.values()];
-}
-
 async function commitBatch(batch: Batch): Promise<BatchOutcome> {
   const { client, branch, packagePath } = batch.deps;
   /** blob sha -> text, shared across CAS attempts. A blob sha is immutable, so
@@ -291,10 +252,7 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
       }
     }
 
-    // Only accepted patches contribute files: one rejected for a stale block
-    // must land nothing, not just lose its blocks.
-    const extraFiles = await resolveFiles(accepted, headSha);
-    const writes: FileChange[] = [...extraFiles];
+    const writes: FileChange[] = [];
     // Post-patch view of the blocks dir, for blocks.gen.json regeneration.
     const nextBlocks = new Map<
       string,
@@ -358,12 +316,7 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
     try {
       const { sha } = await client.commitFiles({
         branch,
-        message: commitMessage(
-          set,
-          del,
-          extraFiles.map((file) => file.path),
-          batch.deps.coAuthor,
-        ),
+        message: commitMessage(set, del, batch.deps.coAuthor),
         expectedHead: headSha,
         changes: writes,
       });
@@ -384,7 +337,6 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
 function commitMessage(
   set: Map<string, unknown>,
   del: Set<string>,
-  filePaths: string[],
   coAuthor: CoAuthorIdentity | null | undefined,
 ): string {
   const summarize = (keys: string[]): string => {
@@ -394,7 +346,6 @@ function commitMessage(
   const parts: string[] = [];
   if (set.size > 0) parts.push(`update ${summarize([...set.keys()])}`);
   if (del.size > 0) parts.push(`delete ${summarize([...del])}`);
-  if (filePaths.length > 0) parts.push(`write ${summarize(filePaths)}`);
   const subject = `chore(decofile): ${parts.join("; ")}`;
   return appendCoAuthorTrailer(subject, coAuthor);
 }

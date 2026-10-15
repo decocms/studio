@@ -4,6 +4,8 @@ export const sandbox = {
   "sandbox.appEditor.failedAddSection": "Could not add section",
   "sandbox.appEditor.schemaAwaitsBuild":
     "Installed. Its settings appear once the site is built with this app — the schema is generated from the app's own module.",
+  "sandbox.appEditor.installNeedsCodingSession":
+    "Installing an app writes code, which a Fast Preview session can't do.",
   "sandbox.appEditor.loadingSchema": "Loading app schema…",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",

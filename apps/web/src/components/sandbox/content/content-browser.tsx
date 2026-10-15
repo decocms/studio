@@ -480,6 +480,14 @@ function ContentBrowserReady({
     !hasEditableAppEditorSchema(resolveType, meta, excludeFields) &&
     (metaLoading || metaFetching);
 
+  const { createTask } = useChatTask();
+  /**
+   * Installing writes code; a Fast Preview session only edits content, so the
+   * app's schema would never reach the manifest and it could never be
+   * configured. `resolved` gates the read: until the project row lands,
+   * `runtime` is the shape of an answer rather than one.
+   */
+  const session = useSessionRuntime(virtualMcpId);
   const siteTechnology = useSiteTechnology(virtualMcpId, meta ?? undefined);
   /**
    * Installing writes to the repository, so it needs a stack to write FOR.
@@ -1030,7 +1038,17 @@ function ContentBrowserReady({
                 ? (installApp.variables?.blockKey ?? null)
                 : null
             }
-            onInstallApp={(entry) =>
+            onInstallApp={(entry) => {
+              if (!session.resolved) return;
+              if (session.runtime === "cms") {
+                toast.error(t("sandbox.appEditor.installNeedsCodingSession"), {
+                  action: {
+                    label: t("chat.fastPreview.startCodingSession"),
+                    onClick: () => createTask({ runtime: "sandbox" }),
+                  },
+                });
+                return;
+              }
               installApp.mutate(
                 { blockKey: entry.id },
                 {
@@ -1039,8 +1057,8 @@ function ContentBrowserReady({
                     selectItem({ collection: "apps", key: block.key }),
                   onError: (err) => toast.error(err.message),
                 },
-              )
-            }
+              );
+            }}
             blogEntries={blogEntries}
             decofile={decofile}
             searchQuery={searchQuery}

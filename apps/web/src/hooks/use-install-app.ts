@@ -12,14 +12,11 @@ import { decoRepoPath } from "@/components/sections-editor/deco-repo-path";
 import {
   decofileWriteMutationKey,
   decofileWriteScope,
-  installDecofileApp,
-  setDecofileDraft,
   throwResponseError,
 } from "@/components/sections-editor/decofile-api";
 import { decofileCacheKey } from "@/components/sections-editor/use-decofile";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { readCommittedText } from "@/components/sections-editor/read-committed-file";
-import { sandboxGitStatusQueryKey } from "@/components/thread/repository/sandbox-git-api";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
@@ -136,21 +133,9 @@ export function useInstallApp({
       }
 
       if (fastPreviewActive) {
-        const { draft, block } = await installDecofileApp(
-          { orgSlug, virtualMcpId, branch },
-          blockKey,
+        throw new SiteAppInstallError(
+          "Installing an app writes code, which a Fast Preview session cannot do",
         );
-        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        // Refresh the branch meta before releasing observers, as useSaveBlock does.
-        await queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey({
-            orgSlug,
-            virtualMcpId,
-            branch,
-            threadId,
-          }),
-        });
-        return block;
       }
 
       const ref: SandboxRef = { orgSlug, virtualMcpId, branch, threadId };
