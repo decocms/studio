@@ -15,15 +15,12 @@ _deco_completion() {
   _init_completion || return
 
   case $prev in
-    -p|--port)
-      return 0
-      ;;
     --home)
       _filedir -d
       return 0
       ;;
     *)
-      COMPREPLY=($(compgen -W "init completion --help --version --port --home --skip-migrations --no-tui --no-local-mode" -- "$cur"))
+      COMPREPLY=($(compgen -W "init auth api tools orgs backfill-assets completion --help --version --home --target --org --json" -- "$cur"))
       ;;
   esac
 }
@@ -42,12 +39,7 @@ _deco() {
 
   _arguments -C \\
     '1: :_deco_commands' \\
-    '-p[Server port]:port:' \\
-    '--port[Server port]:port:' \\
     '--home[Data directory]:directory:_directories' \\
-    '--skip-migrations[Skip database migrations]' \\
-    '--no-tui[Disable Ink UI]' \\
-    '--no-local-mode[Disable auto-login]' \\
     '-h[Show help]' \\
     '--help[Show help]' \\
     '-v[Show version]' \\
@@ -59,6 +51,11 @@ _deco_commands() {
   local commands
   commands=(
     'init:Scaffold a new MCP app'
+    'auth:Manage CLI authentication'
+    'api:Make an authenticated API request'
+    'tools:List, inspect, and call tools'
+    'orgs:List organizations'
+    'backfill-assets:Hoist legacy inline media'
     'completion:Install shell completion'
   )
   _describe 'commands' commands

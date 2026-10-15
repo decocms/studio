@@ -16,8 +16,7 @@ image:
   command:
     - bun
     - run
-    - deco
-    - --no-local-mode
+    - node_modules/decocms/dist/server/server.js
 
 # Optional Ingress in front of the Service. OFF by default: clusters differ in
 # controller, class, TLS issuer, and annotations, and deployments that front
@@ -61,9 +60,8 @@ ingress:
 # Job; it does NOT change the pod topology, which stays identical to production
 # on purpose so previews exercise the same nginx → API serving path.
 #
-# Pods MUST run with --skip-migrations (image.command) when this is on: the
-# migration Job is the single writer. See templates/_helpers.tpl
-# validatePreview, which fails the render otherwise.
+# Pods run the server directly; the migration Job owns schema changes.
+# Preview validation rejects commands that bypass the server entrypoint.
 preview:
   enabled: false
   # PR number. Only used to label/name things; the database is per-namespace.

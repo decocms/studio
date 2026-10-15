@@ -19,8 +19,8 @@
     "dist/**/*"
   ],
   "scripts": {
-    "dev": "bun run migrate && bun run dev:server",
-    "dev:server": "bun run --cwd=../../packages/sandbox build && NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
+    "dev": "bun run dev:server",
+    "dev:server": "NODE_ENV=development bun --env-file=.env --watch run src/index.ts",
     "build": "bun run build:server",
     "build:server": "bun run scripts/bundle-server-script.ts --dist ./dist/server",
     "generate:tool-contracts": "bun run scripts/generate-tool-contracts.ts",
@@ -48,19 +48,14 @@
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@clickhouse/client": "^1.8.1",
     "@dbos-inc/dbos-sdk": "^4.21.6",
-    "@inkjs/ui": "^2.0.0",
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/kv": "3.4.0",
     "@nats-io/nats-core": "3.4.0",
     "@nats-io/transport-node": "3.4.0",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "@opentelemetry/core": "^2.6.0",
-    "embedded-postgres": "^18.3.0-beta.16",
-    "ink": "^6.8.0",
     "kysely": "^0.28.12",
-    "posthog-node": "^5.0.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "posthog-node": "^5.0.0"
   },
   "devDependencies": {
     "@ai-sdk/provider": "^4.0.17",

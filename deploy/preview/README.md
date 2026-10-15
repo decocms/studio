@@ -87,17 +87,15 @@ extra minute) because a preview running a different topology than prod is a
 preview that can miss exactly the class of bug it exists to catch — the
 asset-serving and `api-nginx.conf` proxy path is the thing being exercised.
 
-**Migrations run in a Job, never in a pod.** The chart's default topology is
-two API containers plus a worker, which is three processes that would race
-`migrateToLatest` on a fresh database. Pods run with `--skip-migrations` and
-the PreSync Job is the single writer; `validatePreview` fails the render if
-that flag goes missing.
+**Migrations have explicit owners.** Application containers execute the
+packaged `server.js` directly; `validatePreview` rejects a different entry point.
+The migration Job runs application migrations followed by `migrate-dbos.js`.
+The API pod's migrate-on-boot init container also prepares replacement emptyDir
+databases, while the worker waits for the schema. Neither application process
+invokes the removed CLI runtime.
 
-`--skip-migrations` alone is **not** sufficient. It only skips studio's own
-migrations; DBOS still migrates its `dbos` schema on `DBOS.launch()`, and
-parallel boots crash on `dbos.dbos_migrations` unique-constraint violations
-(documented in `tests/multi-pod/docker-compose.yml`). That is what
-`apps/api/src/database/migrate-dbos.ts` exists for, and why the Job runs both.
+DBOS can still apply schema changes during `DBOS.launch()`. Launch and standalone
+DBOS migrations share a PostgreSQL advisory lock to serialize concurrent boots.
 
 **A Postgres per preview, not a shared server.** Each preview runs its own
 `postgres:16-alpine` pod on an emptyDir, created and destroyed with the
@@ -192,11 +190,10 @@ exactly match the host you loaded. `getTrustedOrigins()`
 (`apps/api/src/auth/index.ts`) returns a single exact origin with no wildcard
 support — scheme and host must match to the character.
 
-**The app came up with an empty database that is not the one you provisioned.**
-`externalUrlOrNull()` (`apps/api/src/settings/resolve-config.ts`) treats a
-`DATABASE_URL` pointing at `localhost` / `127.0.0.1` / `::1` as "not external"
-and the app self-provisions an embedded Postgres. Always use in-cluster service
-DNS. The same trap applies to `NATS_URL` and `S3_ENDPOINT`.
+**The app connects to the wrong backend, or cannot connect.** Check
+`DATABASE_URL`, `NATS_URL`, and `S3_ENDPOINT` in the Pod environment. These
+endpoints must use in-cluster Service DNS; `localhost` points to the Pod itself.
+Studio no longer provisions embedded backends when a URL is missing or wrong.
 
 **Pods CrashLoopBackOff on `dbos_migrations` unique-constraint violations.**
 The PreSync migrate Job did not run, or did not get as far as

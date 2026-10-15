@@ -16,7 +16,6 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { getSettings, setGlobalSettings } from "../settings";
 import { resolveConfig } from "../settings/resolve-config";
-import type { Settings } from "../settings/types";
 import { z } from "zod";
 import type { StudioContext } from "./studio-context";
 
@@ -24,7 +23,7 @@ let entitlements: unknown = { features: { cms: true } };
 let fail: Error | null = null;
 
 /**
- * Plans ON for this file, through the real settings pipeline and the real
+ * Plans ON for this file, through the real settings resolver and the real
  * setter — NOT `mock.module("@/settings")`.
  *
  * Both matter. Bun's module mocks are PROCESS-WIDE, so stubbing the settings
@@ -35,18 +34,12 @@ let fail: Error | null = null;
  * there afterwards.
  */
 function plansOnSettings() {
-  const { settings } = resolveConfig(
-    { port: "", home: "", localMode: false, skipMigrations: false },
-    {
-      STUDIO_PLANS_ENABLED: "true",
-      STUDIO_JWT_SECRET: "test-shared-secret",
-      STUDIO_PROVISION_SECRET_KEY: "test-service-key",
-      DECO_AI_GATEWAY_ENABLED: "true",
-    },
-  );
-  // resolveConfig omits the two fields the startup pipeline fills in later;
-  // nothing here reads them.
-  return { ...settings, databaseUrl: "", natsUrls: [] } as Settings;
+  return resolveConfig({
+    STUDIO_PLANS_ENABLED: "true",
+    STUDIO_JWT_SECRET: "test-shared-secret",
+    STUDIO_PROVISION_SECRET_KEY: "test-service-key",
+    DECO_AI_GATEWAY_ENABLED: "true",
+  });
 }
 
 const previousSettings = (() => {

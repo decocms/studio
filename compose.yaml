@@ -1,0 +1,144 @@
+x-development: &development
+  image: studio-dev:${COMPOSE_PROJECT_NAME:-studio}
+  build:
+    context: .
+    dockerfile: deploy/docker-compose/Dockerfile.dev
+  init: true
+
+x-local-environment: &local-environment
+  DATABASE_URL: postgresql://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio}@postgres:5432/${POSTGRES_DB:-studio}
+  NATS_URL: nats://nats:4222
+  S3_ENDPOINT: http://minio:9000
+
+services:
+  postgres:
+    extends:
+      file: deploy/docker-compose/docker-compose.postgres.yml
+      service: postgres
+  nats:
+    extends:
+      file: deploy/docker-compose/docker-compose.postgres.yml
+      service: nats
+  minio:
+    extends:
+      file: deploy/docker-compose/docker-compose.postgres.yml
+      service: minio
+    ports: !reset []
+  minio-init:
+    extends:
+      file: deploy/docker-compose/docker-compose.postgres.yml
+      service: minio-init
+    environment:
+      S3_ENDPOINT: http://minio:9000
+  migrate:
+    <<: *development
+    extends:
+      file: deploy/docker-compose/docker-compose.postgres.yml
+      service: migrate
+    working_dir: /app/apps/api
+    command: ["sh", "-ec", "bun run migrate && bun run migrate:dbos"]
+    environment: *local-environment
+  api:
+    <<: *development
+    extends:
+      file: deploy/docker-compose/docker-compose.postgres.yml
+      service: studio
+    command: ["bun", "run", "--cwd=apps/api", "dev:server"]
+    working_dir: /app
+    restart: "no"
+    ports: !reset []
+    networks: [studio-network, app]
+    environment:
+      <<: *local-environment
+      NODE_ENV: development
+      DECOCMS_LOCAL_MODE: "false"
+      BASE_URL: http://localhost:${WEB_PORT:-4000}
+      BETTER_AUTH_URL: http://localhost:${WEB_PORT:-4000}
+    develop:
+      watch:
+        - action: sync
+          path: apps/api
+          target: /app/apps/api
+          initial_sync: true
+          ignore: [node_modules/, dist/, data/, package.json]
+        - action: sync
+          path: packages
+          target: /app/packages
+          initial_sync: true
+          ignore: ["**/node_modules/", "**/dist/", "**/package.json", typegen/, harness-runner/]
+        - action: rebuild
+          path: packages/typegen
+          ignore: [node_modules/, dist/]
+        - action: rebuild
+          path: packages/harness-runner
+          ignore: [node_modules/, dist/]
+        - action: rebuild
+          path: bun.lock
+        - action: rebuild
+          path: package.json
+        - action: rebuild
+          path: deploy/docker-compose/Dockerfile.dev
+        - action: rebuild
+          path: apps/api/package.json
+        - action: rebuild
+          path: tsconfig.json
+        - action: rebuild
+          path: deploy/docker-compose/Dockerfile.dev.dockerignore
+        - action: rebuild
+          path: packages
+          ignore: ["**", "!**/", "!**/package.json"]
+  web:
+    <<: *development
+    command: ["bun", "run", "--cwd=apps/web", "dev"]
+    working_dir: /app
+    ports:
+      - "127.0.0.1:${WEB_PORT:-4000}:${WEB_PORT:-4000}"
+    environment:
+      HOST: 0.0.0.0
+      VITE_PORT: ${WEB_PORT:-4000}
+      STUDIO_LOCAL_API_TARGET: http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [app]
+    develop:
+      watch:
+        - action: sync
+          path: apps/web
+          target: /app/apps/web
+          initial_sync: true
+          ignore: [node_modules/, dist/, package.json]
+        - action: sync
+          path: packages
+          target: /app/packages
+          initial_sync: true
+          ignore: ["**/node_modules/", "**/dist/", "**/package.json"]
+        - action: rebuild
+          path: apps/web/package.json
+        - action: rebuild
+          path: apps/api/package.json
+        - action: rebuild
+          path: bun.lock
+        - action: rebuild
+          path: package.json
+        - action: rebuild
+          path: deploy/docker-compose/Dockerfile.dev
+        - action: rebuild
+          path: packages
+          ignore: ["**", "!**/", "!**/package.json"]
+        - action: rebuild
+          path: apps/native/package.json
+        - action: rebuild
+          path: tsconfig.json
+        - action: rebuild
+          path: deploy/docker-compose/Dockerfile.dev.dockerignore
+
+volumes:
+  studio-data:
+  postgres-data:
+  nats-data:
+  minio-data:
+
+networks:
+  studio-network:
+  app:

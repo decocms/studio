@@ -14,7 +14,7 @@ services:
   nats:
     # Keep the healthcheck independent of shell utilities: the default NATS
     # image is distroless, and even Alpine tags should not be required just for
-    # `up --wait`.
+    # container readiness checks.
     image: nats:2.14.2
     command: ["-c", "/etc/nats/nats.conf"]
     volumes:
@@ -57,10 +57,42 @@ services:
       retries: 10
       start_period: 10s
 
-  studio:
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        attempts=0
+        until mc alias set local http://minio:9000 minioadmin minioadmin && mc ready local; do
+          attempts=$$((attempts + 1))
+          [ "$$attempts" -lt 30 ] || exit 1
+          sleep 1
+        done
+        mc mb --ignore-existing local/studio-dev
+    depends_on:
+      minio:
+        condition: service_started
+
+  migrate:
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio
+    image: deco-resilience-studio:latest
+    command: ["sh", "-ec", "bun run migrate && bun run migrate:dbos"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  studio:
     image: deco-resilience-studio:latest
     restart: unless-stopped
     environment:
@@ -84,11 +116,19 @@ services:
       # expects org-fs (skips the wait) — see DISABLE_ORGFS_MOUNTS in start.ts.
       DISABLE_ORGFS_MOUNTS: "true"
       DATA_DIR: /app/data
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: studio-dev
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
     ports:
       - "127.0.0.1:13000:3000"
     depends_on:
       toxiproxy:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [

@@ -3,7 +3,7 @@
  * In Kubernetes, set POD_NAME via the downward API (metadata.name).
  * Outside Kubernetes, each process gets a unique random UUID.
  *
- * Uses getSettings() which must be called after buildSettings() completes,
+ * Uses getSettings() resolved from environment variables,
  * so this is exposed as a function rather than a module-level constant.
  */
 import { getSettings } from "../settings";

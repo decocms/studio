@@ -5,13 +5,54 @@ scoped instructions. This guide covers setup and contributions.
 
 ## Getting started
 
-Prerequisites: [Bun](https://bun.sh) and Node ≥ 24.
+Install Docker Desktop, or Docker Engine with Compose 2.32+. From the repository root:
+
+```bash
+docker compose up --build --watch   # dependencies, migrations, API, and web
+# open http://localhost:4000
+```
+
+Compose Watch syncs source changes; Bun/Vite reload inside the containers.
+Dependency and build outputs stay inside Linux. Manifest or lockfile changes
+rebuild the development image. `bun run dev` is an alias for the same command.
+
+```bash
+docker compose logs -f api web   # application logs
+docker compose down             # stop; preserve data
+docker compose build migrate   # include newly added migration source
+docker compose run --rm migrate # apply migrations, then restart API
+docker compose restart api
+```
+
+`docker compose down --volumes` deletes local databases, files, and other
+persisted development state. Existing CLI-managed data is not imported.
+
+For a separate worktree stack, choose a unique project name and web port:
+
+```bash
+COMPOSE_PROJECT_NAME=feature-a WEB_PORT=4001 docker compose up --build --watch
+```
+
+Keep that project name and environment for subsequent lifecycle commands.
+Each stack has isolated volumes and networking. Reusing infrastructure across
+worktrees also requires separate databases, NATS accounts, and storage buckets;
+a Compose project name alone does not isolate application state. See the
+[Compose configuration guide](deploy/docker-compose/README.md) for shared
+infrastructure and external-service overrides.
+
+Install [Bun](https://bun.sh) and Node ≥ 24 for host checks, hooks, or
+frontend-only work:
 
 ```bash
 bun install
-npx lefthook install   # staged-file checks from lefthook.yml
-bun run dev            # migrations + web app + API
+npx lefthook install
+STUDIO_API_TARGET=https://studio.example.test bun run dev:web
 ```
+
+For sandbox/operator work, use the [local Kubernetes hybrid
+workflow](selfhost/examples/dev-hybrid/README.md). Host API development uses
+`bun run dev:api` against explicitly configured dependencies and does not start
+services or migrate the database.
 
 ### Importing a GitHub repository locally
 
@@ -20,8 +61,9 @@ Install [GitHub CLI](https://cli.github.com/) and run
 the repository picker or Settings → Repositories, then choose
 **Connect with GitHub CLI**. Connect, then
 choose a repository to import. No GitHub App registration or OAuth secrets are
-needed. `bun run dev` enables local mode by default; `--no-local-mode` uses the
-GitHub App connection instead.
+needed. This workflow requires a host API with `DECOCMS_LOCAL_MODE=true`.
+Compose uses normal sign-up/sign-in; its container network cannot satisfy the
+loopback-only local-session check.
 
 Studio runs `gh` on the machine running the API. It saves the selected account
 identity and reads its token from the CLI when needed, without storing the

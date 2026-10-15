@@ -12,7 +12,9 @@ import { dirname, extname, join, resolve } from "node:path";
 import { shouldServeNativeEntryInDev } from "./src/lib/vite-native-entry-rules";
 import { MONACO_VS_PATH } from "./src/lib/monaco-vs-path";
 
-const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
+const bunServerTarget =
+  process.env.STUDIO_LOCAL_API_TARGET ||
+  `http://localhost:${process.env.PORT || "3000"}`;
 
 /**
  * Point the dev server's `/api` proxy at a REMOTE Studio instead of the local

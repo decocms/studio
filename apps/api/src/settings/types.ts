@@ -1,7 +1,7 @@
 /**
  * Settings type definition for Studio.
  *
- * Constructed once by the startup pipeline, frozen, and available
+ * Resolved once from environment variables, frozen, and available
  * via getSettings() for the lifetime of the process.
  */
 
@@ -86,11 +86,11 @@ export interface Settings {
   // NATS connectivity
   natsUrls: string[];
   /**
-   * Optional NATS credentials file for the Studio process. Managed local NATS
-   * accepts the loopback connection without credentials; externally configured
-   * NATS deployments may set `NATS_CREDS`.
+   * Optional NATS credentials file for the Studio process (`NATS_CREDS`).
    */
   natsCredsPath: string | undefined;
+  natsUser: string | undefined;
+  natsPassword: string | undefined;
 
   // Config files
   configPath: string;
@@ -241,9 +241,7 @@ export interface Settings {
   duckdbMemoryLimit: string | undefined;
   duckdbThreads: number | undefined;
 
-  // Runtime flags (set by CLI)
-  isCli: boolean;
-  noTui: boolean;
+  // Runtime
   podName: string;
   /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
   dispatchRole: DispatchRole;
@@ -341,45 +339,4 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
-}
-
-export interface CliFlags {
-  port: string;
-  home: string;
-  baseUrl?: string;
-  localMode: boolean;
-  skipMigrations: boolean;
-  noTui?: boolean;
-  vitePort?: string;
-  nodeEnv?: "production" | "development" | "test";
-}
-
-export interface ServiceInputs {
-  home: string;
-  externalDatabaseUrl: string | null;
-  externalNatsUrl: string | null;
-  /**
-   * When true, skip auto-provisioning MinIO (e.g. an external S3 store is
-   * already configured via S3_* env). Defaults to provisioning MinIO.
-   */
-  skipMinio?: boolean;
-}
-
-export interface ServiceOutputs {
-  databaseUrl: string;
-  natsUrls: string[];
-  /**
-   * S3 object-storage config for the managed/external store, if any. Null when
-   * object storage is not configured (no managed MinIO, no external S3 env).
-   * Threaded into the frozen Settings so the in-process serve path resolves the
-   * real S3Service; also mirrored into process.env for spawned child servers.
-   */
-  s3: {
-    endpoint: string;
-    bucket: string;
-    accessKeyId: string;
-    secretAccessKey: string;
-    /** true for managed MinIO; reflects operator's S3_FORCE_PATH_STYLE for external S3. */
-    forcePathStyle: boolean;
-  } | null;
 }

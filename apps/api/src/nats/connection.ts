@@ -13,6 +13,7 @@
 import {
   type Authenticator,
   credsAuthenticator,
+  usernamePasswordAuthenticator,
   type NatsConnection,
 } from "@nats-io/nats-core";
 import { connect } from "@nats-io/transport-node";
@@ -26,10 +27,11 @@ const CONNECT_TIMEOUT_MS = 3_000;
 export interface NatsInitOptions {
   /**
    * NATS creds file body (JWT + seed) for Studio's connection. Externally
-   * configured deployments may require it; managed local development binds an
-   * anonymous listener to loopback and leaves this absent.
+   * configured deployments may require it.
    */
   creds?: string;
+  user?: string;
+  password?: string;
 }
 
 export interface NatsConnectionProvider {
@@ -149,7 +151,9 @@ export function createNatsConnectionProvider(
       stopped = false;
       const authenticator = options?.creds
         ? credsAuthenticator(new TextEncoder().encode(options.creds))
-        : undefined;
+        : options?.user
+          ? usernamePasswordAuthenticator(options.user, options.password)
+          : undefined;
       connectWithRetry(url, authenticator).catch(() => {});
     },
 

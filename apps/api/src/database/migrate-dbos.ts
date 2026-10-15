@@ -5,13 +5,9 @@
  * database) as a standalone step, so it happens exactly once before any app
  * pod boots.
  *
- * Why this exists as its own entry point: studio's `--skip-migrations` flag
- * only skips studio's OWN migrations (see settings/pipeline.ts). DBOS still
- * runs its system-schema migrations on `DBOS.launch()`, so N pods booting
- * against a fresh database race on inserts into `dbos.dbos_migrations` and the
- * losers crash with unique-constraint violations — the failure documented in
- * tests/multi-pod/docker-compose.yml. Running this once, ahead of the pods,
- * removes the race.
+ * DBOS also applies its system migrations on DBOS.launch(). Running this step
+ * ahead of application startup makes migration failures explicit; the shared
+ * advisory lock serializes it against any concurrently starting application.
  *
  * Deliberately separate from migrate.ts rather than folded into it: the two
  * fail independently, and `bun run migrate` keeps its exact current behavior

@@ -12,6 +12,7 @@
     },
     "apps/api": {
       "entry": [
+        "src/cli.ts",
         "migrations/**/*.ts",
         "scripts/**/*.ts",
         // Dev-only module loaded via require() - needs explicit entry

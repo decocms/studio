@@ -247,15 +247,6 @@ await retry(
   },
 );
 
-// When running via CLI, the calling script handles its own banner/config output
-if (!settings.isCli) {
-  const { bannerLines } = await import("./cli/banner-art");
-  console.log("");
-  for (const line of bannerLines()) {
-    console.log(line);
-  }
-}
-
 const server = Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
   idleTimeout: 0,

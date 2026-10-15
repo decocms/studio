@@ -4,8 +4,6 @@ import { resolveConfig } from "../../settings/resolve-config";
 import { resolveVoiceConfig } from "../../voice/config";
 import { VoiceSessionSchema } from "@decocms/shared/voice";
 
-const flags = { port: "", home: "", localMode: false, skipMigrations: false };
-
 test("OpenAI Live delegates to the existing agent without registering Realtime tools", () => {
   const config = openAIConversationConfig({
     model: "gpt-live-1",
@@ -21,10 +19,8 @@ test("OpenAI Live delegates to the existing agent without registering Realtime t
 });
 
 test("invalid provider defaults reject voice creation without rejecting API configuration", () => {
-  expect(resolveConfig(flags, {}).settings.voiceConversationProvider).toBe(
-    "elevenlabs",
-  );
-  const { settings } = resolveConfig(flags, {
+  expect(resolveConfig({}).voiceConversationProvider).toBe("elevenlabs");
+  const settings = resolveConfig({
     VOICE_CONVERSATION_PROVIDER: "openai",
     OPENAI_LIVE_API_KEY: "synthetic-key",
     OPENAI_LIVE_MODEL: " model-example ",
@@ -34,9 +30,9 @@ test("invalid provider defaults reject voice creation without rejecting API conf
   expect(settings.openaiLiveModel).toBe("model-example");
   expect(settings.openaiLiveVoice).toBe("cedar");
   expect(settings.elevenlabsApiKey).toBeUndefined();
-  const invalid = resolveConfig(flags, {
+  const invalid = resolveConfig({
     VOICE_CONVERSATION_PROVIDER: "unknown",
-  }).settings;
+  });
   expect(invalid.voiceConversationProvider).toBeNull();
   expect(() => resolveVoiceConfig(invalid)).toThrow();
   expect(

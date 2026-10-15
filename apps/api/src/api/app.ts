@@ -1092,8 +1092,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    // External NATS deployments may require a credentials file. Managed local
-    // NATS accepts the loopback connection without one.
+    // Credentials files and username/password authentication are mutually exclusive.
     const credsPath = getSettings().natsCredsPath;
     let creds: string | undefined;
     if (credsPath) {
@@ -1106,7 +1105,11 @@ export async function createApp(options: CreateAppOptions = {}) {
         );
       }
     }
-    natsProvider.init(getSettings().natsUrls, creds ? { creds } : undefined);
+    natsProvider.init(getSettings().natsUrls, {
+      creds,
+      user: getSettings().natsUser,
+      password: getSettings().natsPassword,
+    });
 
     // Cross-pod MCP list cache is gated by the same flag as the read cache.
     // When disabled, leave mcpListCache null so getMcpListCache() callers fetch live.
@@ -1346,7 +1349,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
 
-  if (!getSettings().noTui) {
+  if (getSettings().nodeEnv === "development") {
     app.use("*", devLogger());
   }
 

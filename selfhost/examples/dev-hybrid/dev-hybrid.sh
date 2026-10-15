@@ -149,14 +149,7 @@ if [ ! -f "${ENV_FILE}" ]; then
   cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"
 fi
 
-# Run the RAW dev servers (Vite client + the real server src/index.ts), NOT
-# `bun run dev` / scripts/dev.ts — that one is the embedded orchestrator
-# (`deco dev`) which spins up its OWN Postgres/NATS, ignoring these targets.
-# src/index.ts instead honors
-# DATABASE_URL / NATS_URL / STUDIO_SANDBOX_* from the environment, so it connects
-# to the cluster (via the port-forwards) and the agent-sandbox provider.
-# We export ${ENV_FILE} into the environment; there's no apps/api/.env, so the
-# API dev server's own `--env-file=.env` is a no-op and these values win.
+# Export the cluster endpoints for the source API and Vite processes.
 echo "==> Config: ${ENV_FILE}"
 set -a
 # shellcheck disable=SC1090
@@ -178,18 +171,10 @@ if [ "${RESET_DB:-0}" = "1" ]; then
   fi
 fi
 
-# Apply the source tree's migrations to the cluster DB. Best-effort: if the DB
-# was migrated by a NEWER in-cluster image than this checkout, kysely reports
-# "corrupted migrations: ... is missing" — that only means the DB is already
-# ahead of the source, so there's nothing to apply; warn and proceed (the server
-# runs fine against the newer schema). It only truly matters the other way (your
-# source ADDED migrations), and then this succeeds.
-echo "==> Applying source migrations to the cluster DB (best-effort)"
-if ! bun run --cwd=apps/api migrate; then
-  echo "    NOTE: migrate skipped — the cluster DB was migrated by a newer/different"
-  echo "    Studio version than this checkout. Proceeding against the existing schema."
-  echo "    For a source-owned schema, reset it:  RESET_DB=1 re-run (see README)."
-fi
+# Apply both schemas explicitly and stop if this checkout cannot migrate the DB.
+echo "==> Applying source migrations to the cluster DB"
+bun run --cwd=apps/api migrate
+bun run --cwd=apps/api migrate:dbos
 echo "==> Starting Vite + server (src/index.ts) against the cluster"
 
 # Start each leg with THIS bun, not via `bun run dev:servers`.

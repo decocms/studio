@@ -284,7 +284,7 @@ const headSampler = new DebugSampler(new RatioSampler(HEAD_SAMPLER_RATIO));
  *
  * The tracer/meter/logger are available immediately (they use OTel API
  * no-ops until the SDK is started), but the NDJSON exporters and SDK
- * require Settings and must wait until after buildSettings() completes.
+ * require Settings and use the resolved deployment settings.
  */
 let monitoringLogExporter: NDJSONLogExporter | null = null;
 let monitoringTraceExporter: NDJSONTraceExporter | null = null;
@@ -299,7 +299,7 @@ let _initialized = false;
 /**
  * Initialize the OpenTelemetry SDK with settings-dependent configuration.
  *
- * Must be called after buildSettings() completes. Safe to call multiple
+ * Reads the resolved deployment settings. Safe to call multiple
  * times — subsequent calls are no-ops.
  */
 export function initObservability(): void {

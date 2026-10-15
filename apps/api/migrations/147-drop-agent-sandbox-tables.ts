@@ -14,8 +14,8 @@
  *
  * Must ship in a separate release from #5240: dropping in the same release lets
  * a not-yet-rolled pod hit `relation "agent_sandbox_sessions" does not exist` on
- * SANDBOX_START, and migrations run from the app CMD (`settings/pipeline.ts`), so
- * there is no natural barrier between the two.
+ * SANDBOX_START. At the time this shipped, migrations ran during app startup,
+ * so there was no natural barrier between the two.
  *
  * `ifExists` keeps this a no-op for installs that never provisioned the shared
  * tables, and makes a partial re-run safe.
