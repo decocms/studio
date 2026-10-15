@@ -16,10 +16,15 @@
  * later is a new fire.
  */
 
+import {
+  durableAwaitLiveRunThenFire,
+  itemHasLiveRun,
+} from "@/automations/await-live-run";
 import { enqueueAutomationFire } from "@/automations/dbos-sync";
+import type { FireAutomationContext } from "@/automations/dbos-workflow";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { JiraClient } from "./client";
+import { JiraClient, type JiraUser } from "./client";
 import {
   directionOf,
   needsDirection,
@@ -75,6 +80,20 @@ export function parseWebhookTransition(
     toStatus: status.toString,
     changelogId: String(changelogId),
   };
+}
+
+/** The integration's own account made the move: a run moved the issue on.
+ *  An account that cannot be read counts as a person. */
+export async function movedByIntegration(
+  client: Pick<JiraClient, "myself">,
+  by: JiraUser | null,
+): Promise<boolean> {
+  if (!by) return false;
+  try {
+    return by.accountId === (await client.myself()).accountId;
+  } catch {
+    return false;
+  }
 }
 
 export type TriggerOutcome =
@@ -138,24 +157,40 @@ export async function triggerRunForSettledMove(
     change.id,
   );
   if (!claimed) return "duplicate";
-  await enqueueAutomationFire(
-    {
-      automationId: trigger.automation_id,
-      organizationId: orgId,
-      triggerId: trigger.id,
-      target: {
-        kind: "jira",
-        issues: [target.issueId],
-        move: {
-          toStatus: change.to,
-          fromStatus: from.name,
-          movedBy: change.by,
-          movedAt: new Date(change.at).toISOString(),
-        },
-        eventKey: change.id,
+  const fire: FireAutomationContext = {
+    automationId: trigger.automation_id,
+    organizationId: orgId,
+    triggerId: trigger.id,
+    target: {
+      kind: "jira",
+      issues: [target.issueId],
+      move: {
+        toStatus: change.to,
+        fromStatus: from.name,
+        movedBy: change.by,
+        movedAt: new Date(change.at).toISOString(),
       },
+      eventKey: change.id,
     },
-    { idempotencyKey: `jira:${trigger.id}:${change.id}` },
+  };
+  const idempotencyKey = `jira:${trigger.id}:${change.id}`;
+  // A run moved the issue as its last step: let it finish rather than have
+  // the fire stop it. A person's move takes over at once.
+  const anchor = await ctx.storage.jiraIntegrations.getLinkByIssueId(
+    orgId,
+    target.issueId,
   );
+  if (
+    anchor &&
+    (await movedByIntegration(client, change.by)) &&
+    (await itemHasLiveRun(ctx.storage.taskBoard, anchor.itemId, orgId))
+  ) {
+    await durableAwaitLiveRunThenFire(fire, {
+      itemId: anchor.itemId,
+      idempotencyKey,
+    });
+  } else {
+    await enqueueAutomationFire(fire, { idempotencyKey });
+  }
   return "fired";
 }

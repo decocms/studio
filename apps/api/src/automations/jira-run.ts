@@ -12,7 +12,6 @@
  * together gets an anchor of its own and starts fresh.
  */
 
-import { sleep } from "@decocms/shared/std";
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { JiraClient } from "@/jira/client";
@@ -25,7 +24,6 @@ import {
   type StatusMove,
 } from "@/jira/issue-prompt";
 import { openPrForIssue } from "@/jira/open-pr";
-import type { TaskBoardStorage } from "@/storage/task-board";
 import { getSettings } from "@/settings";
 import type {
   Automation,
@@ -36,10 +34,7 @@ import {
   type ContinuedPullRequest,
   enqueueSuperAgentForTask,
 } from "@/tools/task-board/enqueue-super-agent";
-import {
-  supersedeLiveRuns,
-  threadsToSupersede,
-} from "@/tools/task-board/rerun";
+import { supersedeLiveRuns } from "@/tools/task-board/rerun";
 import {
   automationInstruction,
   cardFireFence,
@@ -112,9 +107,6 @@ export async function runAutomationOnJira(
   let run: Pick<JiraDispatch, "issueKeys" | "title" | "body" | "pr">;
   if (issues.length === 1) {
     item = await ensureAnchorItem(ctx, integration, first, actorId);
-    if (target.move && (await movedByIntegration(client, target.move))) {
-      item = await awaitHandoff(ctx, item);
-    }
     const pr = getSettings().taskBoardRerunReusesPrBranch
       ? await openPrForIssue(ctx, orgId, client, first.key)
       : null;
@@ -168,44 +160,6 @@ export async function runAutomationOnJira(
     return { skipped: "rejected", error: runErrorOf(err) };
   }
   return { threadId: fence.threadId };
-}
-
-/**
- * The integration's own Jira account made the move: a run moved the issue as
- * its last step, handing it to the next status. A person moving it does not
- * count, even onto the same status.
- */
-export async function movedByIntegration(
-  client: Pick<JiraClient, "myself">,
-  move: StatusMove,
-): Promise<boolean> {
-  if (!move.movedBy) return false;
-  try {
-    return move.movedBy.accountId === (await client.myself()).accountId;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Let the run that handed the issue over finish before taking it over, so it
- * ends as completed instead of stopped mid-report. Bounded: a run still live
- * after `timeoutMs` is stopped as on any other move.
- */
-export async function awaitHandoff(
-  ctx: { storage: { taskBoard: Pick<TaskBoardStorage, "getById"> } },
-  item: TaskBoardItem,
-  { timeoutMs = 5 * 60_000, pollMs = 5_000 } = {},
-): Promise<TaskBoardItem> {
-  const deadline = Date.now() + timeoutMs;
-  let current = item;
-  while (threadsToSupersede(current).length > 0 && Date.now() < deadline) {
-    await sleep(pollMs);
-    current =
-      (await ctx.storage.taskBoard.getById(item.id, item.organizationId)) ??
-      current;
-  }
-  return current;
 }
 
 /** `OS-1, OS-2, OS-3 (+11)` — enough of the batch to tell it apart. */
