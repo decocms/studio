@@ -9,6 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { sleep } from "@decocms/shared/std";
 import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
@@ -350,6 +351,29 @@ export function isSsoExemptPath(path: string): boolean {
  */
 function isNativeDesktopControlOrigin(hostname: string): boolean {
   return hostname === "local.studio.decocms.com";
+}
+
+/**
+ * Secret voice session grants (`voice/grant.ts`) are HMAC-signed and verified
+ * with. Every OTHER secret-derived signer in this codebase (`auth/jwt.ts`,
+ * `core/signing-key.ts`, `decofile/draft-token.ts`) falls back to a random,
+ * non-persistent secret when neither STUDIO_JWT_SECRET nor
+ * BETTER_AUTH_SECRET is configured. This call site passed them straight
+ * through instead: a non-local deployment that sets neither leaves
+ * `betterAuthSecret` as `""` (see `settings/pipeline.ts`), so `grant.ts`'s own
+ * `if (!secret) throw` fires on every sign/verify, 500ing every voice session
+ * instead of degrading like the rest of the app.
+ */
+export function resolveVoiceSigningSecret(settings: {
+  studioJwtSecret: string | undefined;
+  betterAuthSecret: string;
+}): string {
+  const configured = settings.studioJwtSecret || settings.betterAuthSecret;
+  if (configured) return configured;
+  console.warn(
+    "STUDIO_JWT_SECRET/BETTER_AUTH_SECRET not set - generating a random secret for voice sessions (not persistent across restarts)",
+  );
+  return randomBytes(32).toString("base64");
 }
 
 export function resolveCorsOrigin(
@@ -2369,7 +2393,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     adapter: speechAdapter,
     conversationAdapters,
     defaults: voiceSettings,
-    secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
+    secret: resolveVoiceSigningSecret(voiceSettings),
     getConnection: () => natsProvider?.getConnection() ?? null,
   });
   const orgScopedApi = createOrgScopedApi({

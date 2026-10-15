@@ -3,6 +3,7 @@ import {
   isAllowedOAuthRedirectUri,
   isSsoExemptPath,
   resolveCorsOrigin,
+  resolveVoiceSigningSecret,
 } from "./app";
 
 describe("isSsoExemptPath", () => {
@@ -159,5 +160,39 @@ describe("isAllowedOAuthRedirectUri", () => {
         allowedOrigin,
       ),
     ).toBe(false);
+  });
+});
+
+describe("resolveVoiceSigningSecret", () => {
+  test("prefers STUDIO_JWT_SECRET when set", () => {
+    expect(
+      resolveVoiceSigningSecret({
+        studioJwtSecret: "jwt-secret",
+        betterAuthSecret: "auth-secret",
+      }),
+    ).toBe("jwt-secret");
+  });
+
+  test("falls back to BETTER_AUTH_SECRET when unset", () => {
+    expect(
+      resolveVoiceSigningSecret({
+        studioJwtSecret: undefined,
+        betterAuthSecret: "auth-secret",
+      }),
+    ).toBe("auth-secret");
+  });
+
+  test("generates a non-empty random secret rather than returning '' when neither is set", () => {
+    const secret = resolveVoiceSigningSecret({
+      studioJwtSecret: undefined,
+      betterAuthSecret: "",
+    });
+    expect(secret.length).toBeGreaterThan(0);
+    // Two independent calls must not collide on a hardcoded fallback.
+    const other = resolveVoiceSigningSecret({
+      studioJwtSecret: undefined,
+      betterAuthSecret: "",
+    });
+    expect(secret).not.toBe(other);
   });
 });
