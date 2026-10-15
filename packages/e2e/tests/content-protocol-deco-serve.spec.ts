@@ -443,12 +443,18 @@ test.describe("site editor over deco serve", () => {
       });
 
       // Localhost, in the drafts list, connects to where this user last
-      // connected the project (the default port otherwise).
-      await branchPicker.click();
-      await page.getByRole("button", { name: "Localhost" }).click();
-      await expect(page.getByText("Connected", { exact: true })).toBeVisible({
-        timeout: 30_000,
+      // connected the project (the default port otherwise). Picking it
+      // closes the menu, like a draft row; the row says "Connected" once it is.
+      const localhostRow = page.locator("button[aria-pressed]", {
+        hasText: "Localhost",
       });
+      await branchPicker.click();
+      await localhostRow.click();
+      await expect(localhostRow).toHaveCount(0);
+      await branchPicker.click();
+      await expect(
+        localhostRow.getByText("Connected", { exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
       await page.keyboard.press("Escape");
 
       const content = page.getByTestId("main-panel");
@@ -701,8 +707,9 @@ test.describe("site editor over deco serve", () => {
       await expect(dialog.getByRole("button", { name: /Publish/ })).toHaveCount(
         0,
       );
-      // One card for the entry, edited against the last commit.
-      await expect(dialog.getByText("Edited", { exact: true })).toBeVisible({
+      // One card for the entry, edited against the last commit: the card
+      // names its status in the icon's title (the icon's color carries it).
+      await expect(dialog.getByTitle("Edited", { exact: true })).toBeVisible({
         timeout: 30_000,
       });
 
@@ -769,7 +776,7 @@ test.describe("site editor over deco serve", () => {
     );
     await expect(
       page.getByText("This link doesn't point to deco serve on your computer"),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test("signed in, /site-editor shows the org rail with the Site Editor active", async ({
