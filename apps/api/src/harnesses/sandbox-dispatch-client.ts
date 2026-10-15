@@ -32,7 +32,7 @@
 import { createHash } from "node:crypto";
 import type { UIMessageChunk } from "ai";
 import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
-import { sleep } from "@decocms/shared/std";
+import { RetryError, retry, sleep } from "@decocms/shared/std";
 import {
   harnessRunResultSchema,
   type HarnessDispatchEnvelope,
@@ -931,6 +931,14 @@ export function describeTermination(
 const PUSH_ENV_TIMEOUT_MS = 30_000;
 
 /**
+ * A paused Freestyle VM wakes on its first request, and its edge answers that
+ * request with a gateway error while the VM resumes. The env push is that first
+ * request on a turn, so it waits out the wake before calling the sandbox lost.
+ */
+const WAKING_STATUSES = new Set([502, 503, 504]);
+const PUSH_ENV_WAKE_ATTEMPTS = 6;
+
+/**
  * PUT the run's model env onto the daemon's config channel.
  *
  * ⚠️ SECURITY: `env` holds a model credential. Never log it, and never include
@@ -967,24 +975,49 @@ async function pushEnvIfChanged(
   pushedEnv.set(key, { hash, at: Date.now() });
 }
 
+class WakingResponse extends Error {
+  constructor(readonly response: Response) {
+    super(`sandbox answered ${response.status} while waking`);
+  }
+}
+
 export async function pushSandboxEnv(
   provider: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
   env: Record<string, string | null>,
+  wakeBackoffMs = 1_000,
 ): Promise<void> {
-  let res: Response;
-  try {
-    res = await provider.proxyDaemonRequest(handle, "/_sandbox/config", {
+  const put = async () => {
+    const res = await provider.proxyDaemonRequest(handle, "/_sandbox/config", {
       method: "PUT",
       headers: new Headers({ "content-type": "application/json" }),
       body: JSON.stringify({ env }),
       signal: AbortSignal.timeout(PUSH_ENV_TIMEOUT_MS),
     });
+    if (!WAKING_STATUSES.has(res.status)) return res;
+    await res.body?.cancel().catch(() => {});
+    throw new WakingResponse(res);
+  };
+  let res: Response;
+  try {
+    // The PUT deep-merges into the daemon's config, so repeating it is safe.
+    res = await retry(put, {
+      maxAttempts: PUSH_ENV_WAKE_ATTEMPTS,
+      minTimeout: wakeBackoffMs,
+      maxTimeout: 8 * wakeBackoffMs,
+      jitter: 0.5,
+      isRetriable: (err) => err instanceof WakingResponse,
+    });
   } catch (err) {
-    // A wedged or dead daemon here is exactly what dispatchToDaemon's own fetch already retries on a replacement.
-    throw new SandboxUnreachableError(
-      `could not push the model env to the sandbox: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    const waking = err instanceof RetryError ? err.cause : err;
+    if (waking instanceof WakingResponse) {
+      res = waking.response;
+    } else {
+      // A wedged or dead daemon here is exactly what dispatchToDaemon's own fetch already retries on a replacement.
+      throw new SandboxUnreachableError(
+        `could not push the model env to the sandbox: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
   if (!res.ok) {
     const summary = `failed to push model env to the sandbox (${res.status} ${res.statusText})`;

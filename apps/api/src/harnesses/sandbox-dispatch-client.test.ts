@@ -406,12 +406,51 @@ describe("pushSandboxEnv", () => {
       );
       let thrown: unknown;
       try {
-        await pushSandboxEnv(provider, "handle-1", { FOO: "bar" });
+        await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
       } catch (err) {
         thrown = err;
       }
       expect(thrown).toBeInstanceOf(SandboxUnreachableError);
     }
+  });
+
+  test("waits out a gateway error from a waking VM instead of failing the turn", async () => {
+    const statuses = [502, 503, 204];
+    let calls = 0;
+    const provider = fakeProvider(
+      async () => new Response(null, { status: statuses[calls++] }),
+    );
+    await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
+    expect(calls).toBe(3);
+  });
+
+  test("gives up on a VM that never wakes, with the last status", async () => {
+    let calls = 0;
+    const provider = fakeProvider(async () => {
+      calls++;
+      return new Response("bad gateway", { status: 502 });
+    });
+    let thrown: unknown;
+    try {
+      await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(SandboxUnreachableError);
+    expect(String(thrown)).toContain("502");
+    expect(calls).toBe(6);
+  });
+
+  test("a 404 is the sandbox gone, not waking — no wait", async () => {
+    let calls = 0;
+    const provider = fakeProvider(async () => {
+      calls++;
+      return new Response("gone", { status: 404 });
+    });
+    await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1).catch(
+      () => {},
+    );
+    expect(calls).toBe(1);
   });
 });
 

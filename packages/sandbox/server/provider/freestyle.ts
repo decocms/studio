@@ -697,14 +697,26 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.cancelRelease(handle);
     const timer = setTimeout(() => {
       this.releaseTimers.delete(handle);
-      void this.find(handle)
-        .then((f) => f?.vm.pause())
-        .catch((err) =>
-          console.warn(`[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`),
-        );
+      void this.pauseIfIdle(handle, graceMs).catch((err) =>
+        console.warn(`[${LOG_LABEL}] pause ${handle} failed: ${errMsg(err)}`),
+      );
     }, graceMs);
     timer.unref?.();
     this.releaseTimers.set(handle, timer);
+  }
+
+  /**
+   * `renewTtl` cancels only this process's timer, so a turn that started
+   * through another replica still has to be seen: the daemon's clock counts
+   * its requests and streaming runs. A daemon that won't say is left to the
+   * VM's idle timeout.
+   */
+  private async pauseIfIdle(handle: string, graceMs: number): Promise<void> {
+    const found = await this.find(handle);
+    if (!found) return;
+    const idleMs = await daemonIdleMs(found.daemon.url);
+    if (idleMs === null || idleMs < graceMs) return;
+    await found.vm.pause();
   }
 
   /** The VM's idle timeout already counts every request as activity. */

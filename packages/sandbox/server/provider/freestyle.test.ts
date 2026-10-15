@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type Freestyle, FreestyleApiError } from "freestyle";
+import { sleep } from "@decocms/shared/std";
 import { FreestyleSandboxProvider } from "./freestyle";
 
 const ID = { userId: "u1", projectRef: "agent:org:vmcp:feature-x" };
@@ -174,6 +175,45 @@ describe("pauseIdle", () => {
     } as unknown as Freestyle;
     const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
     expect(await provider.pauseIdle()).toEqual([]);
+    provider.close();
+  });
+});
+
+describe("releaseAfter", () => {
+  test("pauses only a daemon that stayed unused through the grace", async () => {
+    const idle: Record<string, number> = { quiet: 60_000, busy: 10 };
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        const host = new URL(String(input)).hostname.split(".")[0]!;
+        if (host === "silent") throw new Error("unreachable");
+        return Response.json({ idleMs: idle[host] });
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const pauses: string[] = [];
+    const client = {
+      vms: {
+        get: async (slug: string) => ({
+          id: `id-${slug}`,
+          metadata: { "studio-daemon-token": "t" },
+        }),
+        ref: (id: string) => ({
+          pause: async () => {
+            pauses.push(id);
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 0,
+    });
+    for (const handle of ["quiet", "busy", "silent"]) {
+      await provider.releaseAfter(handle, 50);
+    }
+    await sleep(150);
+    expect(pauses).toEqual(["id-quiet"]);
     provider.close();
   });
 });
