@@ -12,6 +12,10 @@ import {
 import type { StudioDatabase } from "../src/database";
 import { TaskBoardStorage } from "../src/storage/task-board";
 import { up as up239 } from "./239-task-board-retire-old-lanes";
+import {
+  down as restoreRuleTables,
+  up as dropRuleTables,
+} from "./248-drop-retired-rule-tables";
 
 const ORG = "org_test";
 
@@ -23,10 +27,14 @@ describe("migration 239 — retire the old lanes", () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     await seedCommonTestPgFixtures(database);
+    // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
+    await restoreRuleTables(database.db as any);
     storage = new TaskBoardStorage(database.db);
   });
 
   afterEach(async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
+    await dropRuleTables(database.db as any);
     await closeTestPgDatabase(database);
   });
 

@@ -7,6 +7,7 @@ import {
 } from "../src/database/test-db-pg";
 import type { StudioDatabase } from "../src/database";
 import { up } from "./247-automation-jira-transition";
+import { down as restoreRuleTables } from "./248-drop-retired-rule-tables";
 
 let database: StudioDatabase;
 beforeAll(async () => {
@@ -19,7 +20,10 @@ afterAll(async () => {
 
 test("copies each Jira status rule into an automation with a jira_transition trigger, once", async () => {
   const transaction = await database.db.startTransaction().execute();
+  const migrationDb = transaction as unknown as Kysely<unknown>;
   try {
+    // Dropped by 248; rolled back with the rest of the test.
+    await restoreRuleTables(migrationDb);
     await sql`INSERT INTO org_jira_integrations (organization_id, site_url, email, api_token, created_by)
       VALUES ('org_1', 'https://example.atlassian.net', 'bot@example.test', 'x', 'user_1')
     `.execute(transaction);
@@ -30,7 +34,6 @@ test("copies each Jira status rule into an automation with a jira_transition tri
       ('org_123', 'Doing', 'No integration, no creator.', false, 'any', '{}', 'any')
     `.execute(transaction);
 
-    const migrationDb = transaction as unknown as Kysely<unknown>;
     await up(migrationDb);
     await up(migrationDb);
 

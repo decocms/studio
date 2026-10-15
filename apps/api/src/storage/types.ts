@@ -1907,10 +1907,6 @@ export interface TaskBoardSprintTable {
  * Instructions appended to the system prompt of every agent run dispatched
  * from a board card (migration 197). `column_key` null is the org-wide row;
  * a non-null key scopes the text to one column.
- *
- * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
- * the opening USER instruction of the run a column rule fires, this one is
- * standing context every run carries.
  */
 export interface TaskBoardPromptTable {
   id: string;
@@ -1918,18 +1914,6 @@ export interface TaskBoardPromptTable {
   column_key: string | null;
   prompt: string;
   skills: ColumnType<string[], string[] | undefined, string[]>;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
-}
-
-/** A rule the board runs when a card lands in a column (migration 189). The
- *  row's existence is the switch; `prompt` null means the Super Agent's own
- *  instruction. */
-export interface TaskBoardColumnAutomationTable {
-  id: string;
-  organization_id: string;
-  column_key: string;
-  prompt: string | null;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -2233,29 +2217,6 @@ export interface TaskBoardItemJiraLinkTable {
   jira_issue_id: string;
   jira_issue_key: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
-/** A rule the Jira integration runs when an issue enters a status (migration
- *  200). Row existence is the switch; `prompt` null is the agent's own
- *  instruction. */
-export interface OrgJiraColumnAutomationTable {
-  organization_id: string;
-  jira_status: string;
-  prompt: string | null;
-  /** Continue the pull request the issue already carries instead of opening
-   *  a new one (migration 220). */
-  continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
-  /** Which origins the rule answers, and its identity within the status
-   *  (migration 229, `jira/rule-from.ts`). */
-  from_kind: ColumnType<
-    "any" | "earlier" | "later" | "statuses",
-    "any" | "earlier" | "later" | "statuses" | undefined,
-    "any" | "earlier" | "later" | "statuses"
-  >;
-  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
-  from_key: ColumnType<string, string | undefined, string>;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 /** One row per Jira transition a run was dispatched for — the fence between
@@ -2569,7 +2530,6 @@ export interface Database {
   repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
   task_board_sprints: TaskBoardSprintTable;
-  task_board_column_automations: TaskBoardColumnAutomationTable;
   task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
@@ -2582,7 +2542,6 @@ export interface Database {
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
-  org_jira_column_automations: OrgJiraColumnAutomationTable;
   jira_trigger_claims: JiraTriggerClaimTable;
 
   // Follow/inbox for the task board
