@@ -53,12 +53,18 @@ function denoAppFile(entry: SiteAppRegistryEntry): SiteAppFilePatch {
   };
 }
 
+/**
+ * Under the vendor directory, so the path agrees with the block's
+ * resolveType: the generator keys an app by its path below `src/`, and a site
+ * template that happens to keep its own apps flat (`src/apps/shopify.ts`)
+ * still generates nested ones — a Fresh-migrated site is wholly nested.
+ */
 function tanstackAppFile(
   entry: SiteAppRegistryEntry,
   pkg: string,
 ): SiteAppFilePatch {
   return {
-    path: `src/apps/${entry.app}.ts`,
+    path: `src/apps/${entry.vendor}/${entry.app}.ts`,
     content: `export * from "${pkg}/mod";\n`,
   };
 }

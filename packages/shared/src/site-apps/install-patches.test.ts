@@ -85,14 +85,14 @@ describe("makeInstallAppPatches — tanstack", () => {
 
     expect(patches.files.map((file) => file.path).sort()).toEqual([
       "package.json",
-      "src/apps/blog.ts",
+      "src/apps/deco/blog.ts",
       "src/setup.ts",
     ]);
     expect(patches.block).toEqual({
       key: "deco-blog",
       value: { __resolveType: "site/apps/deco/blog.ts" },
     });
-    expect(fileAt(patches, "src/apps/blog.ts")!.content).toBe(
+    expect(fileAt(patches, "src/apps/deco/blog.ts")!.content).toBe(
       'export * from "@decocms/apps-blog/mod";\n',
     );
   });
@@ -191,7 +191,9 @@ const APP_REGISTRY = [
       }),
     );
 
-    expect(second.files.map((file) => file.path)).toEqual(["src/apps/blog.ts"]);
+    expect(second.files.map((file) => file.path)).toEqual([
+      "src/apps/deco/blog.ts",
+    ]);
     expect(second.block).toEqual(first.block);
   });
 
@@ -234,5 +236,37 @@ autoconfigApps(generatedBlocks, APP_REGISTRY);
     expect(() =>
       makeInstallAppPatches(tanstackInput({ entry: denoOnly })),
     ).toThrow(/only available on Deno sites/);
+  });
+});
+
+describe("the module path and the block's resolveType", () => {
+  // The generator keys an app by its path below `src/` (TanStack) or the repo
+  // root (Deno); a pair that disagrees resolves to no schema at all.
+  const cases = [
+    {
+      technology: "deno" as const,
+      key: "deco-vtex",
+      file: "apps/deco/vtex.ts",
+    },
+    {
+      technology: "tanstack" as const,
+      key: "deco-blog",
+      file: "src/apps/deco/blog.ts",
+    },
+  ];
+
+  it.each(cases)("agree on $technology", ({ technology, key, file }) => {
+    const patches = makeInstallAppPatches({
+      technology,
+      entry: findSiteApp(technology, key)!,
+      decocmsVersion: "^7.77.1",
+      packageJson: PACKAGE_JSON,
+      setupTs: SETUP_TS,
+    });
+
+    const module = patches.files.find((f) => f.path === file);
+    expect(module).toBeDefined();
+    const fromPath = module!.path.replace(/^src\//, "").replace(/^/, "site/");
+    expect(patches.block.value.__resolveType).toBe(fromPath);
   });
 });
