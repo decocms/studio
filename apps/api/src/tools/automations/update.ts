@@ -13,6 +13,7 @@ import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { ChatTierSchema } from "@decocms/shared/organization/schema";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";
+import { ToolsAllowlistSchema } from "./trigger-schema";
 
 export const AUTOMATION_UPDATE = defineTool({
   name: "AUTOMATION_UPDATE",
@@ -52,7 +53,7 @@ export const AUTOMATION_UPDATE = defineTool({
       .optional(),
     // null clears the allowlist (= all tools); an array sets it; omitting
     // leaves the stored value untouched.
-    tools: z.array(z.string()).nullable().optional(),
+    tools: ToolsAllowlistSchema.nullable().optional(),
     // Parent agent-loop step cap. null resets to the platform default
     // (PARENT_STEP_LIMIT); a number sets it; omitting leaves it untouched.
     maxAgentSteps: z.number().int().min(1).max(100).nullable().optional(),

@@ -14,6 +14,7 @@ import {
 } from "../../core/studio-context";
 import { ChatTierSchema } from "@decocms/shared/organization/schema";
 import { normalizeMessages } from "./normalize-messages";
+import { ToolsAllowlistSchema } from "./trigger-schema";
 
 export const AUTOMATION_CREATE = defineTool({
   name: "AUTOMATION_CREATE",
@@ -52,7 +53,7 @@ export const AUTOMATION_CREATE = defineTool({
       .default({ tier: "smart" }),
     // Allowlist of model-facing tool names the run is restricted to.
     // null/omitted = all of the bound agent's tools (default behavior).
-    tools: z.array(z.string()).nullable().optional(),
+    tools: ToolsAllowlistSchema.nullable().optional(),
     // Parent agent-loop step cap. null/omitted = platform default
     // (PARENT_STEP_LIMIT). Raise it for automations that legitimately need
     // more reasoning/tool steps before stopping.
