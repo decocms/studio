@@ -269,10 +269,11 @@ const reviewedCompletedCte = (q: AnalyticsQuery) => sql`
   group by 1, 2, 3
 `;
 
-const reworkCte = sql`
+const reworkCte = (q: AnalyticsQuery) => sql`
   select a.task_board_item_id as item_id, count(*) as changes_requested
   from task_board_activity a
-  where a.action = 'review_changes_requested'
+  join task_board_items i on i.id = a.task_board_item_id
+  where a.action = 'review_changes_requested' and ${scoped(q)}
   group by 1
 `;
 
@@ -1109,7 +1110,7 @@ export class TaskBoardAnalyticsStorage {
     const moves = movesCte(q);
 
     const [yieldRow] = await this.rows(sql`
-      with completed as (${completed}), rework as (${reworkCte})
+      with completed as (${completed}), rework as (${reworkCte(q)})
       select round(100.0 * count(*) filter (where coalesce(r.changes_requested, 0) = 0)
                    / nullif(count(*), 0), 1) as clean_first_pass,
              round(avg(coalesce(r.changes_requested, 0))::numeric, 2) as changes_per_task
@@ -1133,7 +1134,7 @@ export class TaskBoardAnalyticsStorage {
     `);
 
     const reworkOverTime = await this.rows(sql`
-      with completed as (${completed}), rework as (${reworkCte})
+      with completed as (${completed}), rework as (${reworkCte(q)})
       select date_trunc('day', c.done_at) as t,
              round(avg(coalesce(r.changes_requested, 0))::numeric, 2) as "Changes requested / task",
              round(100.0 * count(*) filter (where coalesce(r.changes_requested, 0) = 0)
