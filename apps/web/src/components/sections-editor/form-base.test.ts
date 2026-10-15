@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
+  type FormBase,
+  formSaveGuard,
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
@@ -183,5 +185,90 @@ describe("findSectionMovedTo", () => {
     expect(
       findSectionMovedTo(hero, [inserted, { ...hero, title: "b" }], 0, 1),
     ).toBe("unknown");
+  });
+});
+
+describe("formSaveGuard (v8 section saves)", () => {
+  const base = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { title: "loaded" },
+    emitted: { title: "typed" },
+    sectionCount: 1,
+  });
+
+  it("guards a saved block with the version of the copy the form started from", () => {
+    const formBase = base();
+    const guard = formSaveGuard({
+      formBase,
+      rebased: false,
+      versionOf: () => "v1",
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: "v1" });
+    expect(guard.reloadOnConflict).toBe(true);
+    expect(formBase.version).toBe("v1");
+  });
+
+  it("a save queued behind the form's own landed save expects that save's version", () => {
+    const formBase = base();
+    let cached = "v1";
+    const versionOf = () => cached;
+    // Both saves are scheduled before either runs.
+    const first = formSaveGuard({ formBase, rebased: false, versionOf });
+    const second = formSaveGuard({ formBase, rebased: false, versionOf });
+    expect(first.ifMatch("Hero")).toEqual({ Hero: "v1" });
+    first.onApplied?.({ Hero: "v2" });
+    // Another writer's version reaching the cache must not move the form's.
+    cached = "v9";
+    expect(second.ifMatch("Hero")).toEqual({ Hero: "v2" });
+  });
+
+  it("takes the stored copy's version when the form's edits were rebased on it", () => {
+    const formBase = { ...base(), version: "v1" };
+    const guard = formSaveGuard({
+      formBase,
+      rebased: true,
+      versionOf: () => "v3",
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: "v3" });
+  });
+
+  it("keeps the form's version when another writer's copy reached the cache", () => {
+    const formBase = { ...base(), version: "v1" };
+    const guard = formSaveGuard({
+      formBase,
+      rebased: false,
+      versionOf: () => "v2",
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: "v1" });
+  });
+
+  it("guards a page with its cached version, read when the save runs", () => {
+    let cached = "p1";
+    const guard = formSaveGuard({
+      formBase: null,
+      rebased: false,
+      versionOf: () => cached,
+    });
+    cached = "p2";
+    expect(guard.ifMatch("pages-home")).toEqual({ "pages-home": "p2" });
+  });
+
+  it("guards a block the content does not have as create-only", () => {
+    const guard = formSaveGuard({
+      formBase: null,
+      rebased: false,
+      versionOf: () => null,
+    });
+    expect(guard.ifMatch("Hero")).toEqual({ Hero: null });
+  });
+
+  it("sends no guard while the version is unknown", () => {
+    const guard = formSaveGuard({
+      formBase: base(),
+      rebased: false,
+      versionOf: () => undefined,
+    });
+    expect(guard.ifMatch("Hero")).toBeUndefined();
   });
 });

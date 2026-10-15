@@ -4,7 +4,10 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
-import { applyProtocolPatch } from "./content-protocol-api";
+import {
+  applyProtocolPatch,
+  reloadProtocolBlock,
+} from "./content-protocol-api";
 import { runContentChange, useContentDiscardListener } from "./content-sync";
 import { usePackagePath } from "./use-package-path";
 import {
@@ -49,9 +52,17 @@ interface UseSaveBlockParams {
  */
 export interface SaveGuard {
   ifMatch: (blockKey: string) => Record<string, string | null> | undefined;
-  onApplied?: () => void;
+  /** `versions`: what `blocks.apply` answered, each written block's new version. */
+  onApplied?: (versions: Record<string, string | null>) => void;
   /** A save the guard refused (or any failed guarded save): re-read the content. */
   onRejected?: (error: unknown) => void;
+  /**
+   * A refused save means the editor's copy was outdated, as a legacy 409
+   * `block-conflict`: the save reads the block again, keeps what is stored
+   * (no optimistic rollback) and fails with a {@link BlockConflictError},
+   * which the section form handles the same way on every backend.
+   */
+  reloadOnConflict?: boolean;
 }
 
 /** The block a write was built from; `value: undefined` when there was none. */
@@ -244,20 +255,36 @@ export function useSaveBlock({
       // Fail closed before any write path: a raw secret must never be persisted.
       data = sanitizeSecretsForPersistence(data);
       if (protocol) {
+        const params = { orgSlug, virtualMcpId, branch };
         const ifMatch = guard?.ifMatch(blockKey);
         try {
           const result = await applyProtocolPatch(
             queryClient,
             protocol,
-            { orgSlug, virtualMcpId, branch },
+            params,
             cacheKey,
             { set: { [blockKey]: data } },
             ifMatch,
           );
-          if (ifMatch) guard?.onApplied?.();
+          if (ifMatch) guard?.onApplied?.(result.versions);
           return result;
         } catch (error) {
           if (ifMatch) guard?.onRejected?.(error);
+          if (ifMatch && guard?.reloadOnConflict && isSaveConflict(error)) {
+            // As a legacy 409: what is stored now replaces the outdated copy
+            // before anything reacts to the refusal.
+            await reloadProtocolBlock(
+              queryClient,
+              protocol,
+              params,
+              cacheKey,
+              blockKey,
+            );
+            throw new BlockConflictError(
+              [blockKey],
+              t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+            );
+          }
           throw error;
         }
       }
@@ -287,7 +314,7 @@ export function useSaveBlock({
       return { queryKey, blockKey, hadKey, previousValue };
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
-    // A conflict already re-read the block; restoring would put the stale copy back.
+    // A stale-copy refusal already re-read the block; restoring would put the stale copy back.
     onError: (error, _variables, context) => {
       if (!context || error instanceof BlockConflictError) return;
       // Refused because the content changed on disk: load what is there now.

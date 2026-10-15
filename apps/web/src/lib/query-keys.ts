@@ -788,6 +788,9 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
+  // Per block, the content-protocol version of the copy the editor holds.
+  contentVersions: (cacheKey: string) =>
+    ["content-versions", cacheKey] as const,
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
