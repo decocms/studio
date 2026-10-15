@@ -7,14 +7,16 @@
 
 import type { ConnectionEntity } from "@decocms/shared/sdk/types/connection";
 import { useProjectContext } from "../context/project-context";
+import { useQuery } from "@tanstack/react-query";
 import {
   type CollectionFilter,
+  collectionItemQueryOptions,
   useCollectionActions,
   useCollectionItem,
   useCollectionList,
   type UseCollectionListOptions,
 } from "./use-collections";
-import { useMCPClient } from "./use-mcp-client";
+import { useMCPClient, useMCPClientNonBlocking } from "./use-mcp-client";
 import { SELF_MCP_ALIAS_ID } from "@decocms/shared/sdk/lib/constants";
 
 /**
@@ -110,6 +112,30 @@ export function useConnection(connectionId: string | undefined) {
     connectionId,
     client,
   );
+}
+
+/** One connection, read WITHOUT suspending — `null` until it resolves. Shares
+ *  {@link useConnection}'s cache entry; for optional reads that must not blank
+ *  the surrounding form. */
+export function useConnectionNonBlocking(
+  connectionId: string | undefined,
+): ConnectionEntity | null {
+  const { org } = useProjectContext();
+  const client = useMCPClientNonBlocking({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const { data } = useQuery({
+    ...collectionItemQueryOptions<ConnectionEntity>(
+      org.id,
+      "CONNECTIONS",
+      connectionId,
+      client,
+    ),
+    enabled: !!client && !!connectionId,
+  });
+  return data?.item ?? null;
 }
 
 /**

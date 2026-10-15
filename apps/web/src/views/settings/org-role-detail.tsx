@@ -1791,13 +1791,21 @@ function RoleDetailPageInner({
             )}
           >
             {activeTab === "mcp" && !isOwnerBuiltin && (
-              <ToolSetSelector
-                toolSet={form.watch("toolSet")}
-                onToolSetChange={(newToolSet) =>
-                  form.setValue("toolSet", newToolSet, { shouldDirty: true })
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-full">
+                    <Spinner className="size-6 text-muted-foreground" />
+                  </div>
                 }
-                searchQuery={searchQuery}
-              />
+              >
+                <ToolSetSelector
+                  toolSet={form.watch("toolSet")}
+                  onToolSetChange={(newToolSet) =>
+                    form.setValue("toolSet", newToolSet, { shouldDirty: true })
+                  }
+                  searchQuery={searchQuery}
+                />
+              </Suspense>
             )}
             {activeTab === "org" && (
               <OrgPermissionsTab

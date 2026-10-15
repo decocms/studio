@@ -15,6 +15,7 @@ export {
 export {
   useConnections,
   useConnection,
+  useConnectionNonBlocking,
   useConnectionActions,
   type ConnectionFilter,
   type UseConnectionsOptions,
@@ -26,10 +27,8 @@ export {
   mcpClientQueryOptions,
   useMCPClient,
   useMCPClientNonBlocking,
-  useMCPClientOptional,
   type CreateMcpClientOptions,
   type UseMcpClientOptions,
-  type UseMcpClientOptionalOptions,
 } from "./use-mcp-client";
 
 // MCP tools hooks
@@ -73,6 +72,7 @@ export {
   useVirtualMCPNonBlocking,
   useVirtualMCPsNonBlocking,
   fetchVirtualMCPs,
+  prefetchVirtualMCP,
   useVirtualMCPsPage,
   useVirtualMCP,
   useVirtualMCPActions,

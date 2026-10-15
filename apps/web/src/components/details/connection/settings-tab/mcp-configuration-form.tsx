@@ -1,4 +1,8 @@
-import { useConnection, useConnections, useProjectContext } from "@/sdk";
+import {
+  useConnectionNonBlocking,
+  useConnections,
+  useProjectContext,
+} from "@/sdk";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { resolveBindingType } from "@/hooks/use-binding";
 import { useInstallFromRegistry } from "@/hooks/use-install-from-registry";
@@ -168,7 +172,7 @@ function BindingSelector({
 
   // Ensure the currently selected connection always appears in the dropdown,
   // even if the app_name filter didn't match it
-  const selectedConnection = useConnection(
+  const selectedConnection = useConnectionNonBlocking(
     value && !filteredConnections.some((c) => c.id === value)
       ? value
       : undefined,
