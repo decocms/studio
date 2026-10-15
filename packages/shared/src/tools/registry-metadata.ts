@@ -60,6 +60,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
+  "BLOG_SITE_GROUND",
   "BLOG_BRAND_EXTRACT",
   "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
@@ -400,6 +401,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "ORGANIZATION_BLOCKS_EDITOR_SET",
     description: "Switch the organization's blocks editor",
     category: "Organizations",
+  },
+  {
+    name: "BLOG_SITE_GROUND",
+    description:
+      "Read the site's connected systems once, for the generators that follow",
+    category: "Blog",
   },
   {
     name: "BLOG_BRAND_EXTRACT",

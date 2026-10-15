@@ -2153,6 +2153,22 @@ export interface StudioToolIO {
       )[];
     };
   };
+  BLOG_SITE_GROUND: {
+    input: {
+      purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
+      virtualMcpId?: string | undefined;
+      focus?: string | undefined;
+      language?: string | undefined;
+    };
+    output: {
+      report: string;
+      outcome: "ok" | "failed" | "no-site" | "no-tools" | "timeout";
+      toolNames: string[];
+      evidence: string;
+      evidenceUri: string | null;
+      evidenceChars: number;
+    };
+  };
   BLOG_BRAND_EXTRACT: {
     input: {
       blocks: { key: string; content: string }[];
@@ -2240,8 +2256,8 @@ export interface StudioToolIO {
     input: {
       brand: {
         description?: string | undefined;
-        companyName?: string | undefined;
         language?: string | undefined;
+        companyName?: string | undefined;
         storeUrl?: string | undefined;
         targetAudience?: string | undefined;
         tone?: string | undefined;

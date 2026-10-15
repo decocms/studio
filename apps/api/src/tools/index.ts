@@ -113,6 +113,7 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_QUALITY,
   TaskBoardTools.TASK_BOARD_ERRORS,
   TaskBoardTools.TASK_BOARD_TENANTS,
+  BlogTools.BLOG_SITE_GROUND,
   BlogTools.BLOG_BRAND_EXTRACT,
   BlogTools.BLOG_CONTEXT_EXTRACT,
   BlogTools.BLOG_FORMAT_SUGGEST,

@@ -5,6 +5,7 @@
  * `.deco/blocks/` files, never in Postgres.
  */
 
+export { BLOG_SITE_GROUND } from "./site-ground";
 export { BLOG_BRAND_EXTRACT } from "./brand-extract";
 export { BLOG_CONTEXT_EXTRACT } from "./context-extract";
 export { BLOG_FORMAT_SUGGEST } from "./format-suggest";
