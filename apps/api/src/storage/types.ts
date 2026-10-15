@@ -1910,6 +1910,13 @@ export interface TaskBoardSprintTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** One member's vote on a forum topic (migration 251). */
+export interface TaskBoardItemVoteTable {
+  task_board_item_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * Instructions appended to the system prompt of every agent run dispatched
  * from a board card (migration 197). `column_key` null is the org-wide row;
@@ -2549,6 +2556,7 @@ export interface Database {
   task_board_review_claims: TaskBoardReviewClaimTable;
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
+  task_board_item_votes: TaskBoardItemVoteTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
   // Jira integration

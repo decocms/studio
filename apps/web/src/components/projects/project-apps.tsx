@@ -255,8 +255,11 @@ function ProjectAppTilesBody({
   const hasSource = agentHasClonableSource(project.metadata);
   const apps = launchableApps(project, native ?? undefined).filter(
     (id) =>
-      /* Both need a repo, as in the sidebar's presence rules. */
-      ((id !== "site-editor" && id !== "experiments") || hasSource) &&
+      /* These need a repo, as in the sidebar's presence rules: Deco Score
+         diagnoses the site a repo deploys, so a repo-less project (a forum
+         channel) offers none of them. */
+      ((id !== "site-editor" && id !== "experiments" && id !== "reports") ||
+        hasSource) &&
       /* Every project has these two, so across an org they bury the apps
          someone actually chose. They stay on each project's own screen. */
       !(showProject && ORG_HIDDEN_APPS.has(id)),
