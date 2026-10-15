@@ -390,9 +390,12 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   private async resume(found: Found, opts: EnsureOptions): Promise<void> {
-    const { state } = await found.vm.data();
+    const { state, sourceSnapshotSlugAtCreate } = await found.vm.data();
     if (state !== "running") await found.vm.start();
     await this.waitForDaemon(found.daemon.url);
+    if (sourceSnapshotSlugAtCreate) {
+      await this.reclaim(found, sourceSnapshotSlugAtCreate, opts);
+    }
     // A rebooted VM lost its mounts with the tmpfs ctl dir. A mounted sidecar
     // ignores the rewrite, and the daemon takes the fresh token either way.
     if (opts.orgFsConfigJson) {
@@ -411,6 +414,41 @@ export class FreestyleSandboxProvider implements SandboxProvider {
           ),
       );
     }
+  }
+
+  /**
+   * The bearer this VM was claimed with lives in daemon memory. A cold boot
+   * (Freestyle restarts a guest it finds wedged) brings the daemon back on the
+   * snapshot's sentinel with no config, so every call signed with the VM's own
+   * token gets 401. Offer the claim again: a daemon that still holds its token
+   * refuses the sentinel. One whose writes hang, while /health still answers, is
+   * the wedged guest itself, so reboot it and claim the fresh daemon.
+   */
+  private async reclaim(
+    found: Found,
+    snapshotSlug: string,
+    opts: EnsureOptions,
+  ): Promise<void> {
+    const { url, token } = found.daemon;
+    const sentinel = this.sentinelToken(snapshotSlug);
+    const payload = this.configPayload(opts) ?? {};
+    try {
+      await postConfig(url, sentinel, payload, { rotateToken: token });
+      console.log(`[${LOG_LABEL}] reclaimed ${url} after a reboot`);
+      return;
+    } catch (err) {
+      if (err instanceof ConfigRequestError) {
+        if (err.status === 401) return;
+        throw err;
+      }
+    }
+    console.warn(
+      `[${LOG_LABEL}] ${url} answers /health but not writes; rebooting`,
+    );
+    await found.vm
+      .exec({ command: "reboot -f", timeoutMs: 10_000 })
+      .catch(() => {});
+    await this.claimDaemon(url, sentinel, token, payload);
   }
 
   private async create(handle: string, opts: EnsureOptions): Promise<void> {

@@ -399,8 +399,8 @@ describe("pushSandboxEnv", () => {
     expect(thrown).toBeInstanceOf(Error);
   });
 
-  test("a 404/410/5xx status from the daemon is retriable, not a hard failure", async () => {
-    for (const status of [404, 410, 503]) {
+  test("a 401/404/410/5xx status from the daemon is retriable, not a hard failure", async () => {
+    for (const status of [401, 404, 410, 503]) {
       const provider = fakeProvider(
         async () => new Response("gone", { status }),
       );

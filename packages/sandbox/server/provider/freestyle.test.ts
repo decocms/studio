@@ -217,3 +217,85 @@ describe("releaseAfter", () => {
     provider.close();
   });
 });
+
+describe("resume reclaims a daemon that lost its claim", () => {
+  const TOKEN = "vm-token";
+  function existingVm() {
+    const execs: string[] = [];
+    const client = {
+      vms: {
+        get: async (slug: string) => ({
+          id: `id-${slug}`,
+          metadata: { "studio-daemon-token": TOKEN },
+        }),
+        ref: () => ({
+          data: async () => ({
+            state: "running",
+            sourceSnapshotSlugAtCreate: "studio-sandbox-abc",
+          }),
+          exec: async ({ command }: { command: string }) => {
+            execs.push(command);
+            return { statusCode: 0, stdout: "" };
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    return { client, execs };
+  }
+
+  /** `config` answers each /_sandbox/config call in turn; /health is up. */
+  function daemon(config: ((auth: string) => Response)[]) {
+    const calls: { auth: string; body: Record<string, unknown> }[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).endsWith("/_sandbox/config")) {
+          return Response.json({});
+        }
+        const auth = new Headers(init?.headers).get("authorization") ?? "";
+        calls.push({ auth, body: JSON.parse(String(init?.body)) });
+        const answer = config[calls.length - 1];
+        if (!answer) throw new Error("no answer scripted");
+        return answer(auth);
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    return calls;
+  }
+
+  test("a daemon that still holds its token keeps it", async () => {
+    const { client, execs } = existingVm();
+    const calls = daemon([() => new Response("no", { status: 401 })]);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.auth).not.toBe(`Bearer ${TOKEN}`);
+    expect(execs).toEqual([]);
+    provider.close();
+  });
+
+  test("a rebooted daemon is claimed again with the VM's token", async () => {
+    const { client, execs } = existingVm();
+    const calls = daemon([() => Response.json({})]);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID);
+    expect(calls[0]!.body.auth).toEqual({ rotateToken: TOKEN });
+    expect(execs).toEqual([]);
+    provider.close();
+  });
+
+  test("a guest whose writes hang is rebooted, then claimed", async () => {
+    const { client, execs } = existingVm();
+    const calls = daemon([
+      () => {
+        throw new Error("The operation timed out.");
+      },
+      () => Response.json({}),
+    ]);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.ensure(ID);
+    expect(execs).toEqual(["reboot -f"]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.auth).toEqual({ rotateToken: TOKEN });
+    provider.close();
+  });
+});

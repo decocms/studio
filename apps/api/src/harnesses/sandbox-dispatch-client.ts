@@ -1022,7 +1022,8 @@ export async function pushSandboxEnv(
   if (!res.ok) {
     const summary = `failed to push model env to the sandbox (${res.status} ${res.statusText})`;
     // 404/410/5xx is the pod, not the envelope — retriable, same split as dispatchToDaemon.
-    if (isUnreachableStatus(res.status)) {
+    // A 401 is a daemon that rebooted and lost its claim; the retry's ensure reclaims it.
+    if (isUnreachableStatus(res.status) || res.status === 401) {
       throw new SandboxUnreachableError(summary);
     }
     throw new Error(summary);
