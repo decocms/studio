@@ -13,6 +13,8 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 )
 
+const previewCacheControl = "private, no-store"
+
 type Deps struct {
 	GetDevPort func() int
 	Log        func(msg string)
@@ -38,7 +40,7 @@ func New(deps Deps) *Handler {
 func htmlResponse(w http.ResponseWriter, status int, body string, extra map[string]string) {
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Cache-Control", "no-store")
+	h.Set("Cache-Control", previewCacheControl)
 	h.Set("Access-Control-Allow-Origin", "*")
 	for k, v := range extra {
 		h.Set(k, v)
@@ -70,6 +72,7 @@ func isConnError(err error) bool {
 }
 
 func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", previewCacheControl)
 	port := p.deps.GetDevPort()
 	if port == 0 {
 		htmlResponse(w, 503, NoUpstreamHTML, nil)
@@ -146,6 +149,9 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			respHeaders.Add(k, v)
 		}
 	}
+	// The sandbox boundary owns caching after upstream framework headers,
+	// including assets the unpublished application declares immutable.
+	respHeaders.Set("Cache-Control", previewCacheControl)
 	respHeaders.Set("Access-Control-Allow-Origin", "*")
 
 	if strings.Contains(ct, "text/html") {

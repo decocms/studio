@@ -54,6 +54,7 @@ describe("daemon e2e: reverse proxy", () => {
     d = await startDaemon();
     const res = await fetch(url(d, "/"));
     expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(await res.text()).toContain("No dev server running");
   });
@@ -62,6 +63,7 @@ describe("daemon e2e: reverse proxy", () => {
     await startWithDeadPort();
     const res = await fetch(url(d!, "/"));
     expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("retry-after")).toBe("1");
     expect(await res.text()).toContain("Server is starting");
   });
@@ -70,6 +72,7 @@ describe("daemon e2e: reverse proxy", () => {
     await startWithDeadPort();
     const res = await fetch(url(d!, "/api/thing"));
     expect(res.status).toBe(502);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("proxy error");
   });
@@ -82,6 +85,7 @@ describe("daemon e2e: reverse proxy", () => {
       headers: { Accept: "text/html,application/xhtml+xml" },
     });
     expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("retry-after")).toBe("1");
     expect(await res.text()).toContain("Server is starting");
   });
@@ -110,6 +114,7 @@ describe("daemon e2e: reverse proxy", () => {
     await startWithUpstream(() => Response.json({ ok: true }));
     const res = await fetch(url(d!, "/"));
     expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(await res.text()).toContain("No web page at this URL");
   });
 
@@ -184,4 +189,184 @@ describe("daemon e2e: reverse proxy", () => {
     expect(res.status).toBe(200);
     expect(seenAuth).toBeNull();
   });
+
+  it("keeps an editor entry and its plain relative navigation private after dev-server headers", async () => {
+    await startWithUpstream(
+      () =>
+        new Response(
+          '<html><body><h1>Draft</h1><a href="/catalog">Catalog</a></body></html>',
+          {
+            headers: {
+              "Content-Type": "text/html",
+              "Cache-Control": "no-cache, must-revalidate",
+            },
+          },
+        ),
+    );
+    const responses = [];
+    for (const path of ["/?__decoFBT=0&__deco_ssr=1", "/catalog"]) {
+      const response = await fetch(url(d!, path));
+      const body = await response.text();
+      responses.push(response.headers.get("cache-control"));
+      expect(response.status).toBe(200);
+      expect(body).toContain("<h1>Draft</h1>");
+      expect(body).toContain('href="/catalog"');
+      expect(body).toContain("<script");
+    }
+    expect(responses).toEqual(["private, no-store", "private, no-store"]);
+  });
+
+  const representations = [
+    {
+      name: "HTML",
+      path: "/page",
+      status: 200,
+      type: "text/html",
+      body: "<html><body>Preview</body></html>",
+      cache: "no-cache, must-revalidate",
+    },
+    {
+      name: "Flight",
+      path: "/page?_rsc=owned",
+      status: 200,
+      type: "text/x-component",
+      body: '0:{"preview":true}\n',
+      cache: "public, max-age=600",
+    },
+    {
+      name: "JSON",
+      path: "/api/data",
+      status: 200,
+      type: "application/json",
+      body: '{"preview":true}',
+      cache: "public, max-age=600",
+    },
+    {
+      name: "redirect",
+      path: "/redirect",
+      status: 307,
+      type: "text/plain",
+      body: "Redirecting",
+      cache: "public, max-age=600",
+      location: "/page?from=preview",
+    },
+    {
+      name: "HTML error",
+      path: "/error",
+      status: 503,
+      type: "text/html",
+      body: "<html><body>Unavailable</body></html>",
+      cache: "public, max-age=600",
+    },
+    {
+      name: "JSON error",
+      path: "/api/missing",
+      status: 404,
+      type: "application/json",
+      body: '{"error":"missing"}',
+      cache: "public, max-age=600",
+    },
+    {
+      name: "conditional response",
+      path: "/page",
+      status: 304,
+      type: "text/plain",
+      body: null,
+      cache: "public, max-age=600",
+    },
+    {
+      name: "empty response",
+      path: "/api/empty",
+      status: 204,
+      type: "text/plain",
+      body: null,
+      cache: "public, max-age=600",
+    },
+    {
+      name: "immutable JavaScript",
+      path: "/assets/owned.0123456789abcdef.js",
+      status: 200,
+      type: "text/javascript",
+      body: "export const preview = true;",
+      cache: "public, max-age=31536000, immutable",
+    },
+    {
+      name: "immutable CSS",
+      path: "/assets/owned.0123456789abcdef.css",
+      status: 200,
+      type: "text/css",
+      body: "body { color: red; }",
+      cache: "public, max-age=31536000, immutable",
+    },
+    {
+      name: "unclassified asset",
+      path: "/assets/data.bin",
+      status: 200,
+      type: "application/octet-stream",
+      body: "preview bytes",
+      cache: null,
+    },
+    {
+      name: "HEAD",
+      path: "/assets/head.txt",
+      status: 200,
+      type: "text/plain",
+      body: "preview",
+      cache: "public, max-age=600",
+      method: "HEAD",
+    },
+  ];
+
+  for (const representation of representations) {
+    it(`normalizes ${representation.name} caching without changing the upstream HTTP contract`, async () => {
+      const cookies = [
+        "preview-session=synthetic; HttpOnly",
+        "preview-state=owned; SameSite=Lax",
+      ];
+      await startWithUpstream(() => {
+        const headers = new Headers({
+          "Content-Type": representation.type,
+          Vary: "Cookie, rsc",
+          ETag: '"owned-version"',
+        });
+        if (representation.cache)
+          headers.set("Cache-Control", representation.cache);
+        if (representation.location)
+          headers.set("Location", representation.location);
+        for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+        return new Response(representation.body, {
+          status: representation.status,
+          headers,
+        });
+      });
+      const response = await fetch(url(d!, representation.path), {
+        method: representation.method ?? "GET",
+        redirect: "manual",
+        headers:
+          representation.status === 304
+            ? { "If-None-Match": '"owned-version"' }
+            : undefined,
+      });
+      const body = await response.text();
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.status).toBe(representation.status);
+      expect(response.headers.get("location")).toBe(
+        representation.location ?? null,
+      );
+      expect(response.headers.get("vary")).toBe("Cookie, rsc");
+      expect(response.headers.get("etag")).toBe('"owned-version"');
+      expect(response.headers.getSetCookie()).toEqual(cookies);
+      if (representation.type === "text/html") {
+        expect(body.startsWith(representation.body!.split("</body>")[0]!)).toBe(
+          true,
+        );
+        expect(body.endsWith("</body></html>")).toBe(true);
+        expect(body).toContain("<script");
+      } else {
+        expect(body).toBe(
+          representation.method === "HEAD" ? "" : (representation.body ?? ""),
+        );
+      }
+    });
+  }
 });
