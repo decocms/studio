@@ -4,6 +4,8 @@ export const sandbox = {
   "sandbox.appEditor.createdSection": 'Seção "{name}" criada',
   "sandbox.appEditor.editingBreadcrumb": "Trilha de navegação de edição",
   "sandbox.appEditor.failedAddSection": "Não foi possível adicionar a seção",
+  "sandbox.appEditor.schemaAwaitsBuild":
+    "Instalado. As configurações aparecem depois que o site for buildado com este app — o schema é gerado a partir do módulo do próprio app.",
   "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",

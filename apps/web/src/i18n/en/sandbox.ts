@@ -2,6 +2,8 @@ export const sandbox = {
   "sandbox.appEditor.createdSection": 'Created section "{name}"',
   "sandbox.appEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.appEditor.failedAddSection": "Could not add section",
+  "sandbox.appEditor.schemaAwaitsBuild":
+    "Installed. Its settings appear once the site is built with this app — the schema is generated from the app's own module.",
   "sandbox.appEditor.loadingSchema": "Loading app schema…",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
