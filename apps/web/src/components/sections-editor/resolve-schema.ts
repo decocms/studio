@@ -117,28 +117,15 @@ const MAX_BUILD_PROPERTY_DEPTH = 8;
 /**
  * Max recursion for plain structural descent — an object's `properties`, an
  * array's `items`, and inline plain-data unions (`A | B`). Unlike union-branch
- * materialization above, this path is bounded — a property or array item
- * whose `$ref` is already on the current path {@link MAX_RECURSIVE_REF_REPEATS}
- * times (e.g. commerce `Product.isRelatedTo: Product[]`, or
- * `Product.isVariantOf → ProductGroup.hasVariant → Product[]`) is emitted
- * without re-expanding its nested properties, and inline nesting is a finite
- * tree — so it gets a far higher cap. Without it, deeply-nested
+ * materialization above, this path is cycle-free (a `$ref` cycle is caught by
+ * `seen` regardless of depth; inline nesting is a finite tree) and linear in the
+ * schema's node count, so it gets a far higher cap. Without it, deeply-nested
  * data structures — e.g. a mega-menu of `departmentMenus → menu → submenuColumns
  * → submenuGroups → submenuGroupItems`, ~5 nested arrays with no `__resolveType`
  * boundary to reset depth — resolve their leaf `items`/`properties` to
  * `undefined` past depth 8, and the Content editor renders a blank form panel.
  */
 const MAX_STRUCTURE_DEPTH = 32;
-
-/**
- * How many times one `$ref` may be expanded along a single path. A
- * self-referencing type (a menu's `MenuItem.children: MenuItem[]`) keeps its
- * fields for this many levels; past it the nested form is left empty. Bounds
- * types with several recursive fields (commerce `Product`) to
- * `fields^MAX_RECURSIVE_REF_REPEATS` expansions instead of an exponential
- * descent to {@link MAX_STRUCTURE_DEPTH} that freezes the tab.
- */
-const MAX_RECURSIVE_REF_REPEATS = 3;
 
 /**
  * Above this branch count, a block-ref union (e.g. the `__SECTION_REF__`
@@ -531,8 +518,7 @@ export function resolveSchema(
   const buildProperty = (
     v: RawSchema,
     depth = 0,
-    /** How many times each `$ref` was expanded on the current path. */
-    seen: ReadonlyMap<string, number> = new Map(),
+    seen: Set<string> = new Set(),
   ): SchemaProperty => {
     let resolved = v;
     let vRefKey: string | undefined;
@@ -554,10 +540,9 @@ export function resolveSchema(
     // When we re-enter a union already on the current path, we still emit the
     // selector's option list but skip the per-branch nested schema — the UI
     // resolves the selected branch lazily via resolveSchema().
-    const refRepeats = vRefKey !== undefined ? (seen.get(vRefKey) ?? 0) : 0;
-    const cyclicUnion = refRepeats > 0;
+    const cyclicUnion = vRefKey !== undefined && seen.has(vRefKey);
     const unionSeen =
-      vRefKey !== undefined ? new Map(seen).set(vRefKey, refRepeats + 1) : seen;
+      vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
 
     /**
      * Build a union branch's nested schema, unless doing so would recurse into
@@ -1140,13 +1125,7 @@ export function resolveSchema(
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
     let lazyBlock = false;
-    // A `$ref` already on the current path is a recursive type (a menu's
-    // `MenuItem.children`, commerce `Product` → `isRelatedTo: Product[]`, …).
-    // It keeps its fields for MAX_RECURSIVE_REF_REPEATS levels; expanding it
-    // without a bound repeats the same subtree until MAX_STRUCTURE_DEPTH,
-    // which with several recursive fields per level is exponential and
-    // freezes the tab.
-    if (depth < MAX_STRUCTURE_DEPTH && refRepeats < MAX_RECURSIVE_REF_REPEATS) {
+    if (depth < MAX_STRUCTURE_DEPTH) {
       const nestedRaw = collectProps(resolved);
       const rtEnum = (nestedRaw.__resolveType as RawSchema | undefined)?.enum;
       lazyBlock =
@@ -1176,17 +1155,10 @@ export function resolveSchema(
     ) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
-        // Hand buildProperty the un-resolved `$ref` of an object type so it
-        // records the ref on the path — resolving it here first hid
-        // `Product[]` cycles from the guard above. A union item (a matcher
-        // inside Multi) stays resolved, as on main, so its branches keep
-        // their schema and defaults at every depth.
-        let itemsInput = rawItems;
         if (typeof rawItems.$ref === "string") {
           rawItems = resolveRef(rawItems.$ref);
-          if (Array.isArray(rawItems.anyOf)) itemsInput = rawItems;
         }
-        itemsSchema = buildProperty(itemsInput, depth + 1, unionSeen);
+        itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
         if (
           typeof rawItems.title === "string" &&
           rawItems.title.includes("{{")
