@@ -258,7 +258,7 @@ describe("runAgentLoop PR-open → task board thread-link resolution", () => {
     } as never);
 
     // linkedTaskIds is invoked synchronously (before the first await inside
-    // advanceTaskBoardForRun), so the record is present as soon as the step
+    // openReviewCycleForRun), so the record is present as soon as the step
     // callback returns — no timer needed.
     await onStepEnd?.({
       toolCalls: [{ toolName: "bash", input: { command } }],

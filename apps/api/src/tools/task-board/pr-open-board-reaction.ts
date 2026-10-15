@@ -2,7 +2,7 @@
  * Ad-hoc code agent opened a PR — put it on the board for review.
  *
  * A task-dispatched run (Super Agent) already has a linked card, and
- * `advanceTaskBoardForRun` + `capturePrForRun` move/link it. A plain chat with
+ * `capturePrForRun` links the PR to it. A plain chat with
  * a GitHub-imported agent has no card, so nothing happens. This reaction fills
  * that gap: one focused LLM call decides whether the work is already tracked,
  * then the action runs in code (create/update the card, link the PR + thread, claim it for the Super Agent so reviewers pick it up).

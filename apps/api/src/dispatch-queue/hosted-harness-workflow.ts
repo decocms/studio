@@ -101,10 +101,7 @@ import {
   HOSTED_HARNESS_SANDBOXED_QUEUE,
 } from "./queue-names";
 import { runPriority } from "./run-priority";
-import {
-  advanceTaskBoardForRun,
-  reopenTasksOnThreadRun,
-} from "@/tools/task-board/run-reactions";
+import { reopenTasksOnThreadRun } from "@/tools/task-board/run-reactions";
 
 // These types mirror the thread-gate runtime's shapes. They're defined locally
 // (rather than imported from `./thread-gate-workflow`) to avoid an import cycle
@@ -232,11 +229,9 @@ export async function runHostedHarness(
 
   // Fire-and-forget: moving the card must not delay the loop.
   try {
-    void advanceTaskBoardForRun(studioCtx, "progress", input.threadId);
-
     // If the user re-engaged a task that had moved to In Review, pull it back to
     // In Progress. Link-based (`task_board_item_threads`), so it fires for a
-    // re-prompt that carries no run metadata — unlike the forward advance above.
+    // re-prompt that carries no run metadata.
     //
     // Skipped when `runMetadata.taskBoardItemId` is set: that means this
     // execution IS the Super Agent's own task run (dispatched by

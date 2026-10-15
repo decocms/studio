@@ -9,6 +9,7 @@ import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
+import { IMPLEMENTER_SYSTEM_KEY } from "../automations/builtin";
 import { isReportsTask } from "../billing/task-quota";
 import type {
   Database,
@@ -1892,11 +1893,32 @@ export class TaskBoardStorage {
    *    is ever dispatched (that needs a PR), so the only thing left is a
    *    person reading it.
    */
+  /** The thread is a run of an automation other than the built-in
+   *  Implementer (a trigger it no longer finds counts as another's). */
+  private async isOtherAutomationRun(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("threads as t")
+      .leftJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
+      .leftJoin("automations as a", "a.id", "tr.automation_id")
+      .select(["t.trigger_id as triggerId", "a.system_key as systemKey"])
+      .where("t.id", "=", threadId)
+      .where("t.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row?.triggerId) return false;
+    return row.systemKey !== IMPLEMENTER_SYSTEM_KEY;
+  }
+
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
   ): Promise<TaskBoardItem[]> {
     const moved: TaskBoardItem[] = [];
+    // Handing a finished card on is the Implementer's step. Another
+    // automation's run works the card where it is.
+    if (await this.isOtherAutomationRun(threadId, organizationId)) return moved;
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;

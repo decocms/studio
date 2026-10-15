@@ -48,7 +48,7 @@ import {
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { LANE_RANK, inReviewPhase, laneRank, atOrBefore } from "./lanes";
+import { LANE_RANK, inReviewPhase, laneRank } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 
@@ -56,7 +56,7 @@ import type { TaskBoardItem } from "@/storage/types";
  *  actions with no acting user — org identity, person processing off.
  *  Fire-and-forget; posthog no-ops without POSTHOG_KEY. */
 function captureTaskRunEvent(
-  event: "task_run_started" | "task_run_completed" | "task_run_failed",
+  event: "task_run_completed" | "task_run_failed",
   orgId: string,
   item: Pick<TaskBoardItem, "id" | "createdBy">,
   properties?: Record<string, unknown>,
@@ -173,69 +173,6 @@ async function resolveRunTaskTargets(
     await resolveRunLinkedTaskIds(ctx, orgId, threadId),
     orgId,
   );
-}
-
-/**
- * Advance the run's linked task board item(s) forward to this board's `lane` and
- * broadcast each move. Resolves the linked item(s) from `runMetadata` first
- * (set at enqueue for the task's own run), falling back to the
- * `task_board_item_threads` link by `threadId` — the fallback is what makes
- * this fire for a re-prompted, repo-backed task's second PR, which carries no
- * run metadata. No-op when neither resolves, when this board has no column for
- * `lane`, when an item is gone, or when the target wouldn't move the card
- * forward. Best-effort: a failure
- * here never disturbs the agent run.
- */
-export async function advanceTaskBoardForRun(
-  ctx: StudioContext,
-  lane: keyof typeof LANES,
-  threadId?: string,
-): Promise<void> {
-  const orgId = ctx.organization?.id;
-  if (!orgId) return;
-  try {
-    const status = LANES[lane];
-    for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
-      const current = await ctx.storage.taskBoard.getById(itemId, orgId);
-      if (!current) continue;
-      // Read-then-write guard, by lane order. A single run's transitions are
-      // sequential, so the race window is negligible; it buys idempotency — a
-      // repeated PR tool call, or a run start re-fired on a DBOS retry, must
-      // not drag a card that is already further right back to this lane.
-      if (current.status === status || !atOrBefore(current.status, status)) {
-        continue;
-      }
-      const item = await ctx.storage.taskBoard.update(
-        itemId,
-        orgId,
-        { status },
-        ctx.auth?.user?.id ?? current.updatedBy,
-      );
-      // Timeline entry for the agent-driven move — no human actor, hence null.
-      // Best-effort.
-      await ctx.storage.taskBoard
-        .recordActivity({
-          taskBoardItemId: itemId,
-          action: "status_changed",
-          actorId: null,
-          data: { from: current.status, to: status },
-        })
-        .catch((err) =>
-          console.error("[task-board] activity log write failed", err),
-        );
-      emitTaskBoardUpdated(orgId, item);
-      // The PR-open hook no longer comes through here — it opens a review
-      // cycle instead (`openReviewCycleForRun`) and emits its own event — so
-      // the only advance left to report is the run starting.
-      if (lane === "progress") {
-        captureTaskRunEvent("task_run_started", orgId, item, {
-          from: current.status,
-        });
-      }
-    }
-  } catch (err) {
-    console.error("[task-board] run transition failed", err);
-  }
 }
 
 /**

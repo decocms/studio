@@ -28,6 +28,8 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
+import { ensureBuiltinAutomations } from "../automations/builtin";
+import { createAutomationsStorage } from "./automations";
 import { TaskBoardStorage } from "./task-board";
 import { SqlThreadStorage } from "./threads";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -128,6 +130,60 @@ describe("advanceFromProgress (real Postgres)", () => {
     );
 
     expect(advanced?.status).toBe("qa");
+  });
+
+  /** Mark `threadId` as a run fired by `triggerId`. */
+  const firedBy = async (threadId: string, triggerId: string) => {
+    await sql`update threads set trigger_id = ${triggerId} where id = ${threadId}`.execute(
+      database.db,
+    );
+  };
+
+  it("leaves a card where it is when another automation's run finishes", async () => {
+    const automations = createAutomationsStorage(database.db);
+    const automation = await automations.create({
+      organization_id: ORG,
+      name: "Triage",
+      created_by: USER,
+      messages: JSON.stringify([
+        { role: "user", parts: [{ type: "text", text: "Triage it." }] },
+      ]),
+      models: JSON.stringify({ tier: "smart" }),
+      virtual_mcp_id: `decopilot_${ORG}`,
+    });
+    const trigger = await automations.addTrigger({
+      automation_id: automation.id,
+      type: "board_column_transition",
+      column_key: "in_progress",
+      from_kind: "any",
+    });
+    const { task, thread } = await cardWithFinishedRun("triaged in place");
+    await firedBy(thread.id, trigger.id);
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
+  });
+
+  it("hands the card on when the Implementer's run finishes", async () => {
+    await ensureBuiltinAutomations(database.db, {
+      id: ORG,
+      createdBy: USER,
+    });
+    const { id: triggerId } = await database.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select("t.id")
+      .where("a.organization_id", "=", ORG)
+      .where("a.system_key", "=", "implementer")
+      .executeTakeFirstOrThrow();
+    const { task, thread } = await cardWithFinishedRun("implemented");
+    await firedBy(thread.id, triggerId);
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+
+    // No pull request: its answer is its deliverable, so it goes to QA.
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("qa");
   });
 
   it("returns null for a card that already left in_progress", async () => {
