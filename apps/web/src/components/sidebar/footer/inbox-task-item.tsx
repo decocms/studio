@@ -94,7 +94,7 @@ export function InboxTaskItem({
       <div className="min-w-0 flex-1">
         {/* Title and age share a line so the row has a right column to scan. */}
         <div className="flex items-baseline gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          <p className="min-w-0 flex-1 line-clamp-2 break-words text-sm font-medium text-foreground">
             {update.taskTitle}
           </p>
           <span className="shrink-0 text-xs text-muted-foreground/70">
