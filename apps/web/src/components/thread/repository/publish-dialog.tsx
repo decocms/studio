@@ -59,7 +59,7 @@ import {
   resolveVersionNote,
   type PublishChange,
 } from "./publish-change-summary.ts";
-import type { PublishTarget } from "./publish-flow.ts";
+import { MAX_TITLE_LENGTH, type PublishTarget } from "./publish-flow.ts";
 import {
   readGitHeadBranch,
   reviewDiffSignature,
@@ -773,6 +773,7 @@ function CmsPublishContent({
                       : t("thread.publishPopover.versionNotePlaceholder")
                   }
                   rows={2}
+                  maxLength={MAX_TITLE_LENGTH}
                   className="resize-none text-[13px]"
                   disabled={isPublishing}
                 />
