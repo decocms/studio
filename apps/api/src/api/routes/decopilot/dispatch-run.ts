@@ -80,6 +80,7 @@ import { createProviderFromSecret } from "@/harnesses/lib/decopilot/provider-fro
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { synthesizedErrorMessageId } from "./message-ids";
+import { buildUnansweredPrefix } from "./history-prefix";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
 import { foldedToUIMessage } from "./projector-seed";
@@ -1309,9 +1310,14 @@ async function prepareRun(
     const resolvedUserMessage = materializedRequestMessage
       ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
       : undefined;
+    // Read at dispatch, not at POST: a message queued behind a running turn
+    // must not count that turn's message as unanswered.
     const historyPrefix =
       sandboxHosted && isDurableDispatchRunInput(input)
-        ? input.historyPrefix
+        ? (input.historyPrefix ??
+          (durableHistory
+            ? buildUnansweredPrefix(durableHistory, input.messageId)
+            : null))
         : undefined;
     const wireUserMessage =
       resolvedUserMessage && sandboxHosted

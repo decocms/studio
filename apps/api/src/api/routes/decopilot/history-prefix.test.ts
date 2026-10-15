@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHistoryPrefix } from "./history-prefix";
+import { buildHistoryPrefix, buildUnansweredPrefix } from "./history-prefix";
 
 const text = (role: string, ...texts: string[]) => ({
   role,
@@ -64,5 +64,73 @@ describe("buildHistoryPrefix", () => {
     const prefix = buildHistoryPrefix([text("assistant", huge)], 10) ?? "";
     expect(prefix).toContain("THE END");
     expect(prefix).not.toContain("a".repeat(100));
+  });
+});
+
+describe("buildUnansweredPrefix", () => {
+  const msg = (
+    id: string,
+    role: string,
+    textValue: string,
+    metadata?: unknown,
+  ) => ({ id, role, parts: [{ type: "text", text: textValue }], metadata });
+  const completed = { usage: { inputTokens: 1, outputTokens: 1 } };
+
+  test("carries the messages whose turns failed or were cancelled", () => {
+    const prefix =
+      buildUnansweredPrefix(
+        [
+          msg("u1", "user", "propose an org design"),
+          msg("a1", "assistant", "Here is the proposal.", completed),
+          msg("u2", "user", "Nicacio left; Hugo leads Verify"),
+          msg("e2", "assistant", "Error: [SANDBOX_UNREACHABLE] 502"),
+          msg("u3", "user", "try again"),
+          msg("u4", "user", "try again"),
+          msg("u5", "user", "try again"),
+          msg("u6", "user", "queued after this turn"),
+        ],
+        "u5",
+      ) ?? "";
+    expect(prefix).toContain("Nicacio left; Hugo leads Verify");
+    expect(prefix.match(/User: try again/g)).toHaveLength(2);
+    expect(prefix).not.toContain("propose an org design");
+    expect(prefix).not.toContain("Here is the proposal.");
+    expect(prefix).not.toContain("SANDBOX_UNREACHABLE");
+    expect(prefix).not.toContain("queued after this turn");
+  });
+
+  test("nothing when the previous turn was answered", () => {
+    expect(
+      buildUnansweredPrefix(
+        [
+          msg("u1", "user", "hi"),
+          msg("a1", "assistant", "hello", completed),
+          msg("u2", "user", "next"),
+        ],
+        "u2",
+      ),
+    ).toBeNull();
+    expect(
+      buildUnansweredPrefix([msg("u1", "user", "first")], "u1"),
+    ).toBeNull();
+  });
+
+  test("a thread whose every turn failed carries all its messages", () => {
+    const prefix =
+      buildUnansweredPrefix(
+        [
+          msg("u1", "user", "first ask"),
+          msg("e1", "assistant", "Error: boom"),
+          msg("u2", "user", "again"),
+        ],
+        "u2",
+      ) ?? "";
+    expect(prefix).toContain("first ask");
+  });
+
+  test("a request outside the window is no prefix", () => {
+    expect(
+      buildUnansweredPrefix([msg("u1", "user", "lost")], "missing"),
+    ).toBeNull();
   });
 });
