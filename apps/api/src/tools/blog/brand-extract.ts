@@ -6,15 +6,7 @@ import { requireBlogAi } from "./feature-flag";
 import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogBrandSchema } from "./schema";
-import { researchBrand } from "./brand-research";
-import {
-  applyVerdicts,
-  type ClaimOrigin,
-  type FieldSpec,
-  flattenClaims,
-  judgeClaims,
-  logDiscarded,
-} from "./confidence";
+import type { ClaimOrigin, FieldSpec } from "./confidence";
 import {
   EvidenceBlocksSchema,
   EvidenceSeoSchema,
@@ -53,7 +45,7 @@ Three rules that override everything else:
  * What the blocks alone can answer — a site does not publish the commercial
  * calendar it plans around, so `specialDates` comes from `researchBrand`.
  */
-const BlockPassSchema = BlogBrandSchema.omit({ specialDates: true });
+export const BlockPassSchema = BlogBrandSchema.omit({ specialDates: true });
 
 /**
  * What the gate judges, and what relevance is asking of each field.
@@ -141,7 +133,7 @@ const BRAND_FIELD_SPECS: readonly FieldSpec[] = [
  * while research had supplied them, every competitor was scored against site
  * copy that never mentioned a rival and rejected at confidence 25.
  */
-function preferFilled<T>(
+export function preferFilled<T>(
   own: T[],
   researched: T[],
 ): { items: T[]; origin: ClaimOrigin } {
@@ -158,7 +150,7 @@ export function brandFieldSpecs(competitors: ClaimOrigin): FieldSpec[] {
 }
 
 /** The evidence plus the research prose, so web-derived claims are checkable. */
-function judgeEvidence(
+export function judgeEvidence(
   evidence: string,
   research: { text: string; sources: string[] },
 ): string {
@@ -172,7 +164,7 @@ function judgeEvidence(
 export const BLOG_BRAND_EXTRACT = defineTool({
   name: "BLOG_BRAND_EXTRACT",
   description:
-    "Infer who a site's brand is (name, what it sells, language, audience, values, competitors) by reading its own CMS blocks. The writing rules are a separate pass — see BLOG_CONTEXT_EXTRACT, which takes this as input. Does not persist — the caller saves the result to the site's blog-manager-brand.json block.",
+    "Infer who a site's brand is (name, what it sells, language, audience, values, competitors) by reading its own CMS blocks. Reading only: web research and the confidence gate are BLOG_BRAND_ENRICH, and the writing rules are BLOG_CONTEXT_EXTRACT. Does not persist — the caller saves the result to the site's blog-manager-brand.json block.",
   annotations: {
     title: "Extract Editorial Brand",
     readOnlyHint: true,
@@ -187,26 +179,8 @@ export const BLOG_BRAND_EXTRACT = defineTool({
     grounding: GroundingInputSchema,
   }),
 
-  outputSchema: BlogBrandSchema.extend({
+  outputSchema: BlockPassSchema.extend({
     sources: z.array(z.string()).describe("Block keys the inference read"),
-    researchSources: z
-      .array(z.string())
-      .describe(
-        "URLs the web research cited. Empty when the org has no web_search tier, or the search found nothing — a claim with no source here was read off the site itself.",
-      ),
-    searched: z
-      .boolean()
-      .describe("True when web research ran and returned something."),
-    discarded: z
-      .number()
-      .describe(
-        "Claims the confidence judge rejected, and that this result therefore omits. Their text and scores go to the server log, never on the wire.",
-      ),
-    judged: z
-      .boolean()
-      .describe(
-        "False when the judge was unavailable or answered incompletely — then nothing was filtered and every field is the raw extraction.",
-      ),
   }),
 
   // Every one of these is token spend, and a spent envelope has to stop it —
@@ -214,7 +188,7 @@ export const BLOG_BRAND_EXTRACT = defineTool({
   requiresAiBudget: true,
 
   modelSummary: (r) =>
-    `Brand inferred for ${r.companyName || "an unnamed brand"} from ${r.sources.length} block(s): ${r.language || "unknown"} language, ${r.values.length} values, ${r.competitors.length} competitors, ${r.specialDates.length} dates${r.searched ? ` (web research, ${r.researchSources.length} source(s))` : ""}. ${r.judged ? `${r.discarded} claim(s) fell below the confidence bar and were dropped` : "The confidence judge did not run, so nothing was filtered"}. Not yet saved; writing rules come from BLOG_CONTEXT_EXTRACT.`,
+    `Brand inferred for ${r.companyName || "an unnamed brand"} from ${r.sources.length} block(s): ${r.language || "unknown"} language, ${r.values.length} values, ${r.competitors.length} competitor(s). Not yet researched or judged — that is BLOG_BRAND_ENRICH; writing rules are BLOG_CONTEXT_EXTRACT.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -258,40 +232,6 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       prompt: evidence,
     });
 
-    // After the research, never before: `researchBrand` gives up on a blank
-    // `companyName`, so gating first could cost the whole web pass in silence.
-    const research = await researchBrand(ctx, organizationId, object);
-
-    // Research only fills what the site's own copy could not answer.
-    const competitors = preferFilled(object.competitors, research.competitors);
-    const profile: Record<string, unknown> = {
-      ...object,
-      competitors: competitors.items,
-      specialDates: research.specialDates,
-    };
-
-    const specs = brandFieldSpecs(competitors.origin);
-    const claims = flattenClaims(profile, specs);
-    const gate = applyVerdicts(
-      profile,
-      claims,
-      await judgeClaims(
-        ctx,
-        organizationId,
-        { evidence: judgeEvidence(evidence, research), claims, specs },
-        "BLOG_BRAND_EXTRACT",
-      ),
-      specs,
-    );
-    logDiscarded("BLOG_BRAND_EXTRACT", gate);
-
-    return {
-      ...(gate.kept as z.infer<typeof BlogBrandSchema>),
-      researchSources: research.sources,
-      searched: research.searched,
-      discarded: gate.discarded.length,
-      judged: gate.judged,
-      sources: input.blocks.map((b) => b.key),
-    };
+    return { ...object, sources: input.blocks.map((b) => b.key) };
   },
 });

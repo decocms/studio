@@ -2229,6 +2229,49 @@ export interface StudioToolIO {
         | undefined;
     };
     output: {
+      values: { name: string; value: string }[];
+      description: string;
+      language: string;
+      storeUrl: string;
+      companyName: string;
+      targetAudience: string;
+      competitors: { name: string; value: string }[];
+      keywords: string[];
+      commercialPolicies: { name: string; value: string }[];
+      sources: string[];
+    };
+  };
+  BLOG_BRAND_ENRICH: {
+    input: {
+      profile: {
+        values: { name: string; value: string }[];
+        description: string;
+        language: string;
+        storeUrl: string;
+        companyName: string;
+        targetAudience: string;
+        competitors: { name: string; value: string }[];
+        keywords: string[];
+        commercialPolicies: { name: string; value: string }[];
+      };
+      blocks: { key: string; content: string }[];
+      seo?: { key: string; content: string }[] | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+    };
+    output: {
       companyName: string;
       description: string;
       language: string;
@@ -2239,7 +2282,6 @@ export interface StudioToolIO {
       keywords: string[];
       commercialPolicies: { name: string; value: string }[];
       specialDates: { name: string; value: string }[];
-      sources: string[];
       researchSources: string[];
       searched: boolean;
       discarded: number;

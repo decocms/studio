@@ -268,15 +268,40 @@ export function BlogContext({
     if (evidence.blocks.length === 0) return;
     setIsExtracting(true);
     setPhase(PHASE_READING);
-    const timers = [
-      setTimeout(() => setPhase("sandbox.blogBrand.phaseResearching"), 15_000),
-    ];
     try {
-      const brandResult = await studio.call("BLOG_BRAND_EXTRACT", {
+      const extraction = await studio.call("BLOG_BRAND_EXTRACT", {
         virtualMcpId,
         blocks: evidence.blocks,
         seo: evidence.seo,
       });
+
+      /**
+       * Research and the confidence gate are their own call, so the label is
+       * the phase rather than a guess at one — it used to be a timer that
+       * said "researching" fifteen seconds in whether or not it was.
+       *
+       * Enrichment, so a failure keeps the extraction the person paid for: a
+       * profile that was never judged is the raw reading, which is exactly
+       * what this call started from.
+       */
+      setPhase("sandbox.blogBrand.phaseResearching");
+      const brandResult = await studio
+        .call("BLOG_BRAND_ENRICH", {
+          profile: extraction,
+          blocks: evidence.blocks,
+          seo: evidence.seo,
+        })
+        .catch((err) => {
+          console.warn("[blog] enriching the brand failed", err);
+          return {
+            ...extraction,
+            specialDates: [],
+            researchSources: [],
+            searched: false,
+            discarded: 0,
+            judged: false,
+          };
+        });
       // What the writing pass needs even when the gate blanked it — it is told
       // to write in `language`, so a missing one sets the whole pass adrift.
       const scalarFallback = {
@@ -299,8 +324,6 @@ export function BlogContext({
       });
       setBrand(nextBrand);
 
-      // The search belongs to the brand pass; don't relabel the next one.
-      for (const timer of timers) clearTimeout(timer);
       setPhase("sandbox.blogBrand.phaseInferring");
       const contextResult = await studio.call("BLOG_CONTEXT_EXTRACT", {
         // Only the form obeys the gate; the prompt chain falls back to what is
@@ -353,7 +376,6 @@ export function BlogContext({
           : t("sandbox.blogBrand.extractFailed"),
       );
     } finally {
-      for (const timer of timers) clearTimeout(timer);
       setIsExtracting(false);
     }
   };

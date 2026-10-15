@@ -63,6 +63,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
   "BLOG_BRAND_EXTRACT",
+  "BLOG_BRAND_ENRICH",
   "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
@@ -419,6 +420,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_BRAND_EXTRACT",
     description:
       "Infer a brand's identity (name, audience, values, competitors) from a site",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_BRAND_ENRICH",
+    description:
+      "Research a brand on the web and drop the claims its evidence does not support",
     category: "Blog",
   },
   {
