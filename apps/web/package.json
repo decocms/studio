@@ -7,8 +7,6 @@
     "dev": "vite dev",
     "preview": "vite preview",
     "build": "bun --bun vite build",
-    "build:web": "bun --bun vite build",
-    "build:client": "bun run build:web",
     "check": "tsc --noEmit",
     "test": "bun test src test",
     "test:ct": "playwright test -c playwright-ct.config.ts",

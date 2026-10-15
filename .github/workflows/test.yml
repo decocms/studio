@@ -182,7 +182,7 @@ jobs:
           test -f apps/api/dist/server/cli.js
 
       - name: Build web app
-        run: bun run --cwd=apps/web build:web
+        run: bun run --cwd=apps/web build
 
       - name: Verify web output
         run: test -f apps/web/dist/index.html
