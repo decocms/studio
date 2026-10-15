@@ -1,10 +1,7 @@
 import { arrayItemDisplayValue } from "./array-item-hidden";
+import { cachedResolveSchema } from "./fields/resolved-schema-cache";
 import { isEmptyFieldValue } from "./fields/required-field-context";
-import {
-  resolveSchema,
-  type LiveMeta,
-  type SchemaProperty,
-} from "./resolve-schema";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
 import { unwrapSection } from "./unwrap-section";
@@ -106,7 +103,7 @@ export function sectionHasMissingRequiredField(
   try {
     const unwrapped = unwrapSection(raw, parsed, decofile);
     if (!unwrapped) return false;
-    const schema = resolveSchema(unwrapped.resolveType, meta);
+    const schema = cachedResolveSchema(unwrapped.resolveType, meta);
     return hasMissingRequiredField(schema, unwrapped.data);
   } catch {
     return false;

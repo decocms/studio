@@ -85,6 +85,12 @@ export interface SchemaProperty {
    * the array editor when the stored value is a `{ __resolveType }` reference.
    */
   loaderRef?: SchemaProperty;
+  /**
+   * `$ref` of a recursive type whose nested schema was skipped because it
+   * re-entered itself (`Item.children: Item[]`). Expand it on demand with
+   * {@link resolveSchemaRef}.
+   */
+  recursiveRef?: string;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -117,28 +123,15 @@ const MAX_BUILD_PROPERTY_DEPTH = 8;
 /**
  * Max recursion for plain structural descent — an object's `properties`, an
  * array's `items`, and inline plain-data unions (`A | B`). Unlike union-branch
- * materialization above, this path is bounded — a property or array item
- * whose `$ref` is already on the current path {@link MAX_RECURSIVE_REF_REPEATS}
- * times (e.g. commerce `Product.isRelatedTo: Product[]`, or
- * `Product.isVariantOf → ProductGroup.hasVariant → Product[]`) is emitted
- * without re-expanding its nested properties, and inline nesting is a finite
- * tree — so it gets a far higher cap. Without it, deeply-nested
+ * materialization above, this path is cycle-free (a `$ref` cycle is caught by
+ * `seen` regardless of depth; inline nesting is a finite tree) and linear in the
+ * schema's node count, so it gets a far higher cap. Without it, deeply-nested
  * data structures — e.g. a mega-menu of `departmentMenus → menu → submenuColumns
  * → submenuGroups → submenuGroupItems`, ~5 nested arrays with no `__resolveType`
  * boundary to reset depth — resolve their leaf `items`/`properties` to
  * `undefined` past depth 8, and the Content editor renders a blank form panel.
  */
 const MAX_STRUCTURE_DEPTH = 32;
-
-/**
- * How many times one `$ref` may be expanded along a single path. A
- * self-referencing type (a menu's `MenuItem.children: MenuItem[]`) keeps its
- * fields for this many levels; past it the nested form is left empty. Bounds
- * types with several recursive fields (commerce `Product`) to
- * `fields^MAX_RECURSIVE_REF_REPEATS` expansions instead of an exponential
- * descent to {@link MAX_STRUCTURE_DEPTH} that freezes the tab.
- */
-const MAX_RECURSIVE_REF_REPEATS = 3;
 
 /**
  * Above this branch count, a block-ref union (e.g. the `__SECTION_REF__`
@@ -324,8 +317,28 @@ export function resolveSchema(
   resolveType: string,
   meta: LiveMeta,
 ): SchemaProperty | null {
+  return buildSchema(meta, { resolveType });
+}
+
+/** Build the schema of a definition `$ref` (see {@link SchemaProperty.recursiveRef}). */
+export function resolveSchemaRef(ref: string, meta: LiveMeta): SchemaProperty {
+  return buildSchema(meta, { ref });
+}
+
+function buildSchema(meta: LiveMeta, target: { ref: string }): SchemaProperty;
+function buildSchema(
+  meta: LiveMeta,
+  target: { resolveType: string },
+): SchemaProperty | null;
+function buildSchema(
+  meta: LiveMeta,
+  target: { resolveType: string } | { ref: string },
+): SchemaProperty | null {
   const globalSchema = meta.schema ?? {};
-  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
+  const blockSchema =
+    "resolveType" in target
+      ? lookupManifestBlockSchema(target.resolveType, meta)
+      : {};
   // Always read $defs/definitions from the global live schema. Manifest block
   // entries often carry `$ref` plus an empty `definitions` object; spreading
   // blockSchema over globalSchema clobbers the real defs and breaks $ref
@@ -531,8 +544,7 @@ export function resolveSchema(
   const buildProperty = (
     v: RawSchema,
     depth = 0,
-    /** How many times each `$ref` was expanded on the current path. */
-    seen: ReadonlyMap<string, number> = new Map(),
+    seen: Set<string> = new Set(),
   ): SchemaProperty => {
     let resolved = v;
     let vRefKey: string | undefined;
@@ -546,18 +558,10 @@ export function resolveSchema(
     }
     resolved = unwrapRefAliases(resolved);
 
-    // Cycle guard for recursive block-ref unions. The `__SECTION_REF__`
-    // "pick any section" selector lists every section, and 20+ of those
-    // sections themselves have a `Section` field pointing back at the same
-    // union. Without this guard, eagerly materializing each branch's nested
-    // `schema` recurses ~exponentially and blows up browser memory (multi-GB).
-    // When we re-enter a union already on the current path, we still emit the
-    // selector's option list but skip the per-branch nested schema — the UI
-    // resolves the selected branch lazily via resolveSchema().
-    const refRepeats = vRefKey !== undefined ? (seen.get(vRefKey) ?? 0) : 0;
-    const cyclicUnion = refRepeats > 0;
+    // Re-entered refs (Section unions, Product → hasVariant: Product[]) recurse exponentially; emit the node, skip its nested schema (expanded on demand via `recursiveRef`).
+    const cyclicRef = vRefKey !== undefined && seen.has(vRefKey);
     const unionSeen =
-      vRefKey !== undefined ? new Map(seen).set(vRefKey, refRepeats + 1) : seen;
+      vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
 
     /**
      * Build a union branch's nested schema, unless doing so would recurse into
@@ -577,7 +581,7 @@ export function resolveSchema(
       branchCount: number,
       lazilyResolvable = true,
     ): SchemaProperty | undefined =>
-      !cyclicUnion &&
+      !cyclicRef &&
       (!lazilyResolvable || branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES) &&
       branchDepth < MAX_BUILD_PROPERTY_DEPTH
         ? buildProperty(branch, branchDepth, unionSeen)
@@ -783,7 +787,7 @@ export function resolveSchema(
           );
           // Built directly (not eagerBranchSchema) so its depth cap can't null this leaf and demote the field to a block-ref picker at deep nesting.
           const plainSchema =
-            nonLoaderBranches.length === 1 && !cyclicUnion
+            nonLoaderBranches.length === 1 && !cyclicRef
               ? buildProperty(nonLoaderBranches[0]!, depth + 1, unionSeen)
               : undefined;
 
@@ -1140,13 +1144,7 @@ export function resolveSchema(
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
     let lazyBlock = false;
-    // A `$ref` already on the current path is a recursive type (a menu's
-    // `MenuItem.children`, commerce `Product` → `isRelatedTo: Product[]`, …).
-    // It keeps its fields for MAX_RECURSIVE_REF_REPEATS levels; expanding it
-    // without a bound repeats the same subtree until MAX_STRUCTURE_DEPTH,
-    // which with several recursive fields per level is exponential and
-    // freezes the tab.
-    if (depth < MAX_STRUCTURE_DEPTH && refRepeats < MAX_RECURSIVE_REF_REPEATS) {
+    if (depth < MAX_STRUCTURE_DEPTH && !cyclicRef) {
       const nestedRaw = collectProps(resolved);
       const rtEnum = (nestedRaw.__resolveType as RawSchema | undefined)?.enum;
       lazyBlock =
@@ -1172,26 +1170,19 @@ export function resolveSchema(
     let itemsSchema: SchemaProperty | undefined;
     if (
       (type === "array" || resolved.type === "array") &&
-      depth < MAX_STRUCTURE_DEPTH
+      depth < MAX_STRUCTURE_DEPTH &&
+      !cyclicRef
     ) {
-      let rawItems = resolved.items as RawSchema | undefined;
+      const rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
-        // Hand buildProperty the un-resolved `$ref` of an object type so it
-        // records the ref on the path — resolving it here first hid
-        // `Product[]` cycles from the guard above. A union item (a matcher
-        // inside Multi) stays resolved, as on main, so its branches keep
-        // their schema and defaults at every depth.
-        let itemsInput = rawItems;
-        if (typeof rawItems.$ref === "string") {
-          rawItems = resolveRef(rawItems.$ref);
-          if (Array.isArray(rawItems.anyOf)) itemsInput = rawItems;
-        }
-        itemsSchema = buildProperty(itemsInput, depth + 1, unionSeen);
+        // Pass the `$ref` itself so the cycle guard sees the item type.
+        itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
+        const itemsDef = resolveBranchDef(rawItems);
         if (
-          typeof rawItems.title === "string" &&
-          rawItems.title.includes("{{")
+          typeof itemsDef.title === "string" &&
+          itemsDef.title.includes("{{")
         ) {
-          itemsSchema.titleBy = rawItems.title;
+          itemsSchema.titleBy = itemsDef.title;
         }
       }
     }
@@ -1240,6 +1231,12 @@ export function resolveSchema(
       required: requiredKeys,
       items: itemsSchema,
       lazy: lazyBlock && !!nestedProperties?.value ? true : undefined,
+      recursiveRef:
+        cyclicRef &&
+        typeof v.$ref === "string" &&
+        (type === "object" || type === "array" || resolved.type === "array")
+          ? v.$ref
+          : undefined,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
         typeof resolved.titleBy === "string"
@@ -1257,6 +1254,8 @@ export function resolveSchema(
             : fromLeaf<string>("options"),
     };
   };
+
+  if ("ref" in target) return buildProperty({ $ref: target.ref });
 
   // deco wraps a block's config as
   //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},
