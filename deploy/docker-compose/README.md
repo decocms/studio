@@ -16,9 +16,8 @@ Existing managed-CLI data is not imported or deleted automatically.
 Use `WEB_PORT=4001 COMPOSE_PROJECT_NAME=branch-a docker compose up --build --watch` for
 an isolated second checkout. Keep the same project name/port for subsequent
 commands. There are no fixed container names or required infrastructure host ports.
-Development auth cookies use a project-specific prefix, so logging into another
-localhost port does not replace the first worktree's session. Native clients
-that require the default cookie names can set `BETTER_AUTH_COOKIE_PREFIX=better-auth`.
+Better Auth keeps its default cookie names across localhost ports. Sharing a login
+between instances requires the same auth database and `BETTER_AUTH_SECRET`.
 Compose does not provision agent sandboxes; configure an existing provider or use
 the [local Kubernetes workflow](../../selfhost/examples/dev-hybrid/README.md).
 
