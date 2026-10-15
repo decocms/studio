@@ -1,8 +1,18 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { experimentSchema, variantsInputSchema } from "./schema";
+import {
+  experimentSchema,
+  experimentStatusSchema,
+  variantsInputSchema,
+} from "./schema";
 import { assertOwnsSite } from "./ownership";
+import {
+  canTransition,
+  changesStructure,
+  structureEditable,
+  transitionError,
+} from "./lifecycle";
 import { withTaskKey } from "./task-key";
 
 export const EXPERIMENT_UPDATE = defineTool({
@@ -20,7 +30,11 @@ export const EXPERIMENT_UPDATE = defineTool({
     site: z.string().min(1),
     key: z.string().min(1),
     name: z.string().min(1).optional(),
-    status: z.enum(["draft", "running", "paused", "ended"]).optional(),
+    status: experimentStatusSchema
+      .optional()
+      .describe(
+        "The lifecycle move to make. A draft starts (`running`); a started experiment pauses, resumes and ends. It never goes back to `draft`, and an `ended` one is final.",
+      ),
     goals: z.array(z.string()).optional(),
     variants: variantsInputSchema.optional(),
   }),
@@ -30,6 +44,27 @@ export const EXPERIMENT_UPDATE = defineTool({
     await ctx.access.check();
     const organization = requireOrganization(ctx);
     await assertOwnsSite(ctx, organization.id, input.site);
+
+    const current = await ctx.storage.experiments.getByKey(
+      organization.id,
+      input.site,
+      input.key,
+    );
+    if (!current) {
+      throw new Error(`No experiment "${input.key}" on ${input.site}.`);
+    }
+    if (input.status && !canTransition(current.status, input.status)) {
+      throw new Error(transitionError(current.status, input.status));
+    }
+    if (
+      input.variants &&
+      !structureEditable(current.status) &&
+      changesStructure(current.variants, input.variants)
+    ) {
+      throw new Error(
+        `This experiment is ${current.status}, so its arms can be reweighted but not added, removed or renamed — users are already assigned on those identifiers.`,
+      );
+    }
 
     const experiment = await ctx.storage.experiments.update(
       organization.id,

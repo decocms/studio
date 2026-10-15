@@ -11,6 +11,17 @@ const experimentVariantSchema = z.object({
     .describe("One sentence: what this arm specifically shows or does."),
 });
 
+/** The lifecycle an operator drives: `draft` while the test is still being
+ *  iterated on, the rest once they have started it. `lifecycle.ts` owns which
+ *  moves between them are legal. */
+export const experimentStatusSchema = z.enum([
+  "draft",
+  "running",
+  "paused",
+  "ended",
+]);
+export type ExperimentStatus = z.infer<typeof experimentStatusSchema>;
+
 /** The experiment row as the tools return it (metadata; ISO timestamps). */
 export const experimentSchema = z.object({
   id: z.string(),
@@ -18,7 +29,7 @@ export const experimentSchema = z.object({
   site: z.string(),
   key: z.string(),
   name: z.string(),
-  status: z.enum(["draft", "running", "paused", "ended"]),
+  status: experimentStatusSchema,
   goals: z.array(z.string()),
   variants: z.array(experimentVariantSchema),
   startedAt: z.string().nullable(),
