@@ -162,9 +162,9 @@ function useFilterFields({
 }): FilterField[] {
   const t = useT();
 
+  const memberOf = (userId: string) => members.find((m) => m.userId === userId);
   const memberName = (userId: string) =>
-    members.find((m) => m.userId === userId)?.user?.name ??
-    t("taskBoard.taskFilters.assigneeMember");
+    memberOf(userId)?.user?.name ?? t("taskBoard.taskFilters.assigneeMember");
 
   const assignee: FilterField = {
     id: "assignee",
@@ -210,12 +210,21 @@ function useFilterFields({
           : f.assignee
             ? memberName(f.assignee)
             : "",
-    valueGlyph: (f) =>
-      f.assignee === SUPER_AGENT_ASSIGNEE_ID ? (
-        <SuperAgentIcon size={14} />
+    valueGlyph: (f) => {
+      if (f.assignee === SUPER_AGENT_ASSIGNEE_ID)
+        return <SuperAgentIcon size={14} />;
+      const member = f.assignee ? memberOf(f.assignee) : undefined;
+      return member ? (
+        <Avatar
+          url={member.user?.image ?? undefined}
+          fallback={getInitials(member.user?.name)}
+          shape="circle"
+          size="2xs"
+        />
       ) : (
         <User01 size={14} className="shrink-0" />
-      ),
+      );
+    },
   };
 
   const priority: FilterField = {
