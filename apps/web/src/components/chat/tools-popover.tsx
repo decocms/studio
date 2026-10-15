@@ -3,7 +3,12 @@ import {
   getGatewayClientId,
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
-import { getPrompt, listPrompts, useMCPClient, useProjectContext } from "@/sdk";
+import {
+  getPrompt,
+  listPrompts,
+  useMCPClientNonBlocking,
+  useProjectContext,
+} from "@/sdk";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -144,7 +149,8 @@ export function ToolsPopover({
       }
     }
   };
-  const client = useMCPClient({
+  // Only the open popover lists prompts, so the composer never waits on this.
+  const client = useMCPClientNonBlocking({
     connectionId: virtualMcpId,
     orgId: org.id,
     orgSlug: org.slug,

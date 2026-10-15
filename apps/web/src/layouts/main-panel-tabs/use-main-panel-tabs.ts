@@ -18,7 +18,7 @@ import {
   getReportsAgentId,
   getDevConnectionId,
   useConnections,
-  useMCPClientOptional,
+  useMCPClientNonBlocking,
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
@@ -177,12 +177,16 @@ export function useMainPanelTabs(ctx: {
   // needed — the dev server describes itself. Only queried once the dev server
   // is up (its `/api/mcp` serves tools); when present, these override the live
   // agent's own pinned views below.
-  const devClient = useMCPClientOptional({
-    connectionId: devConnId ?? undefined,
-    orgId: org.id,
-    orgSlug: org.slug,
-    mcpUrl: devMcpUrl,
-  });
+  // Non-blocking: the dev views are optional, and this hook runs in the tab bar.
+  const devClient = useMCPClientNonBlocking(
+    {
+      connectionId: devConnId,
+      orgId: org.id,
+      orgSlug: org.slug,
+      mcpUrl: devMcpUrl,
+    },
+    { enabled: !!devConnId && devServerReady },
+  );
   const { data: devToolsResult } = useMCPToolsListQuery({
     client: devClient as NonNullable<typeof devClient>,
     enabled: !!devClient && devServerReady,
