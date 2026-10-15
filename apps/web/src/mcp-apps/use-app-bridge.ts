@@ -51,7 +51,7 @@ function detectTimeZone(): string {
   }
 }
 
-function detectPlatform(): "web" | "desktop" | "mobile" {
+function detectPlatform(): "web" | "mobile" {
   if (typeof navigator === "undefined") return "web";
   return /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "web";
 }
