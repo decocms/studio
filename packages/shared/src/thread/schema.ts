@@ -151,10 +151,23 @@ export type ThreadEntity = z.infer<typeof ThreadEntitySchema>;
 // Create/Update Schemas
 // ============================================================================
 
+/** Mirrors the task-board title cap (MAX_TASK_TITLE_LENGTH) for consistency. */
+export const MAX_THREAD_TITLE_LENGTH = 500;
+/** Mirrors the task-board description cap (MAX_TASK_DESCRIPTION_LENGTH). */
+export const MAX_THREAD_DESCRIPTION_LENGTH = 50_000;
+
 export const ThreadCreateDataSchema = z.object({
   id: z.string().optional().describe("Optional custom ID for the thread"),
-  title: z.string().optional().describe("Thread title"),
-  description: z.string().nullish().describe("Thread description"),
+  title: z
+    .string()
+    .max(MAX_THREAD_TITLE_LENGTH)
+    .optional()
+    .describe("Thread title"),
+  description: z
+    .string()
+    .max(MAX_THREAD_DESCRIPTION_LENGTH)
+    .nullish()
+    .describe("Thread description"),
   virtual_mcp_id: z
     .string()
     .describe("Virtual MCP (agent) this thread is bound to"),
@@ -176,8 +189,16 @@ export const ThreadCreateDataSchema = z.object({
 export type ThreadCreateData = z.infer<typeof ThreadCreateDataSchema>;
 
 export const ThreadUpdateDataSchema = z.object({
-  title: z.string().optional().describe("New thread title"),
-  description: z.string().nullish().describe("New thread description"),
+  title: z
+    .string()
+    .max(MAX_THREAD_TITLE_LENGTH)
+    .optional()
+    .describe("New thread title"),
+  description: z
+    .string()
+    .max(MAX_THREAD_DESCRIPTION_LENGTH)
+    .nullish()
+    .describe("New thread description"),
   hidden: z.boolean().optional().describe("Whether the thread is hidden"),
   status: z
     .enum(THREAD_STATUSES)

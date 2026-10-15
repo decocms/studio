@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { ThreadUpdateDataSchema } from "./schema.ts";
+import {
+  MAX_THREAD_DESCRIPTION_LENGTH,
+  MAX_THREAD_TITLE_LENGTH,
+  ThreadCreateDataSchema,
+  ThreadUpdateDataSchema,
+} from "./schema.ts";
 
 describe("ThreadUpdateDataSchema", () => {
   test("rejects an empty-string branch", () => {
@@ -27,5 +32,46 @@ describe("ThreadUpdateDataSchema", () => {
       metadata: { sandboxMap: {} },
     });
     expect(result.success).toBe(false);
+  });
+
+  test("rejects an oversized title", () => {
+    const result = ThreadUpdateDataSchema.safeParse({
+      title: "a".repeat(MAX_THREAD_TITLE_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects an oversized description", () => {
+    const result = ThreadUpdateDataSchema.safeParse({
+      description: "a".repeat(MAX_THREAD_DESCRIPTION_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("ThreadCreateDataSchema", () => {
+  test("rejects an oversized title", () => {
+    const result = ThreadCreateDataSchema.safeParse({
+      virtual_mcp_id: "vmcp_test",
+      title: "a".repeat(MAX_THREAD_TITLE_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects an oversized description", () => {
+    const result = ThreadCreateDataSchema.safeParse({
+      virtual_mcp_id: "vmcp_test",
+      description: "a".repeat(MAX_THREAD_DESCRIPTION_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("accepts a title and description at the cap", () => {
+    const result = ThreadCreateDataSchema.safeParse({
+      virtual_mcp_id: "vmcp_test",
+      title: "a".repeat(MAX_THREAD_TITLE_LENGTH),
+      description: "a".repeat(MAX_THREAD_DESCRIPTION_LENGTH),
+    });
+    expect(result.success).toBe(true);
   });
 });
