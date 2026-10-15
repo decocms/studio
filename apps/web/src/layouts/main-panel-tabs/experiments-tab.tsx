@@ -1144,7 +1144,7 @@ function ImplementationCard({
                   params={{ org, taskKey: experiment.taskKey }}
                 >
                   <MessageChatCircle size={14} />
-                  {t("experiments.implementation.openChat")}
+                  {t("experiments.implementation.viewImplementation")}
                 </Link>
               </Button>
             )}
