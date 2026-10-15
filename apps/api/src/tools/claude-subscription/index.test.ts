@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeSubscriptionToken } from "./index";
+import {
+  CLAUDE_SUBSCRIPTION_CONNECT,
+  normalizeSubscriptionToken,
+} from "./index";
 
 describe("normalizeSubscriptionToken", () => {
   test("accepts a setup-token, trimmed", () => {
@@ -32,6 +35,13 @@ describe("normalizeSubscriptionToken", () => {
     expect(normalizeSubscriptionToken("future-format-token")).toBe(
       "future-format-token",
     );
+  });
+
+  test("rejects a token over 4096 chars — it is encrypted and stored as-is", () => {
+    const result = CLAUDE_SUBSCRIPTION_CONNECT.inputSchema.safeParse({
+      token: "a".repeat(4097),
+    });
+    expect(result.success).toBe(false);
   });
 
   test("the rejection never echoes the token back", () => {
