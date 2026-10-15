@@ -26,12 +26,9 @@ import { openCommandPalette } from "@/components/command-palette-store";
 import { Plus } from "@untitledui/icons";
 import { ConnectPill } from "@/components/org-home/connect-pill";
 import { firstName, greetingSlot } from "@/components/org-home/greeting";
-import {
-  buildFeed,
-  ProjectFeed,
-  useOrgTasksSuspense,
-} from "@/components/org-home/project-feed";
+import { buildFeed, ProjectFeed } from "@/components/org-home/project-feed";
 import { ProjectRoster } from "@/components/org-home/project-roster";
+import { useOrgTasksSuspense } from "@/components/org-home/use-org-tasks";
 import { TrainingCard } from "@/components/org-home/training-card";
 import { buildProjectIndex } from "@/lib/project-index";
 import { useCapability } from "@/hooks/use-capability";

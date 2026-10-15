@@ -6,10 +6,8 @@ import { Suspense } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ReportBanner } from "@/components/home/report-banner";
 import { NewTaskComposer } from "@/components/org-home/new-task-composer";
-import {
-  ProjectFeed,
-  useOrgTasksSuspense,
-} from "@/components/org-home/project-feed";
+import { ProjectFeed } from "@/components/org-home/project-feed";
+import { useOrgTasksSuspense } from "@/components/org-home/use-org-tasks";
 import { useProjectScope } from "@/hooks/use-project-scope";
 
 /**
