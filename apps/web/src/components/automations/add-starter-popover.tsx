@@ -15,7 +15,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { Clock, Plus, Globe01, Zap } from "@untitledui/icons";
+import { Clock, Columns01, Plus, Globe01, Zap } from "@untitledui/icons";
+import { ColumnTransitionDialog } from "./column-transition-dialog.tsx";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -40,6 +41,7 @@ export function AddStarterPopover({
   const t = useT();
   const { triggerAdd: addTrigger } = useAutomationActions();
   const [internalOpen, setInternalOpen] = useState(false);
+  const [columnDialogOpen, setColumnDialogOpen] = useState(false);
 
   const isOpen = open ?? internalOpen;
 
@@ -87,71 +89,89 @@ export function AddStarterPopover({
   };
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus size={14} />
-          {t("automations.addStarterPopover.addStarter")}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[200px]">
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="gap-2.5">
+    <>
+      <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Plus size={14} />
+            {t("automations.addStarterPopover.addStarter")}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-[240px]">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="gap-2.5">
+              <Clock size={14} className="text-muted-foreground shrink-0" />
+              {t("automations.addStarterPopover.every")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[160px]">
+              {SCHEDULE_UNITS.map((unit) => (
+                <DropdownMenuItem
+                  key={unit.cron}
+                  className="gap-2.5"
+                  onSelect={() => submitCron(unit.cron)}
+                  disabled={addTrigger.isPending}
+                >
+                  <Clock size={14} className="text-muted-foreground shrink-0" />
+                  {t("automations.addStarterPopover.everyUnit", {
+                    unit: unit.label,
+                  })}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              handleOpenChange(false);
+              onCustomSelect?.();
+            }}
+          >
             <Clock size={14} className="text-muted-foreground shrink-0" />
-            {t("automations.addStarterPopover.every")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-[160px]">
-            {SCHEDULE_UNITS.map((unit) => (
-              <DropdownMenuItem
-                key={unit.cron}
-                className="gap-2.5"
-                onSelect={() => submitCron(unit.cron)}
-                disabled={addTrigger.isPending}
-              >
-                <Clock size={14} className="text-muted-foreground shrink-0" />
-                {t("automations.addStarterPopover.everyUnit", {
-                  unit: unit.label,
-                })}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+            {t("automations.addStarterPopover.customCron")}
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          className="gap-2.5"
-          onSelect={() => {
-            handleOpenChange(false);
-            onCustomSelect?.();
-          }}
-        >
-          <Clock size={14} className="text-muted-foreground shrink-0" />
-          {t("automations.addStarterPopover.customCron")}
-        </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              handleOpenChange(false);
+              onEventSelect?.();
+            }}
+          >
+            <Zap size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.event")}
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          className="gap-2.5"
-          onSelect={() => {
-            handleOpenChange(false);
-            onEventSelect?.();
-          }}
-        >
-          <Zap size={14} className="text-muted-foreground shrink-0" />
-          {t("automations.addStarterPopover.event")}
-        </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              handleOpenChange(false);
+              setColumnDialogOpen(true);
+            }}
+          >
+            <Columns01 size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.cardEntersColumn")}
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          className="gap-2.5"
-          onSelect={() => {
-            // Don't close the popover synchronously — we want the toast/
-            // dialog flow to be driven by submitWebhook.
-            submitWebhook();
-          }}
-          disabled={addTrigger.isPending}
-        >
-          <Globe01 size={14} className="text-muted-foreground shrink-0" />
-          {t("automations.addStarterPopover.webhook")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              // Don't close the popover synchronously — we want the toast/
+              // dialog flow to be driven by submitWebhook.
+              submitWebhook();
+            }}
+            disabled={addTrigger.isPending}
+          >
+            <Globe01 size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.webhook")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ColumnTransitionDialog
+        automationId={automationId}
+        open={columnDialogOpen}
+        onOpenChange={setColumnDialogOpen}
+      />
+    </>
   );
 }

@@ -3,6 +3,7 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { experimentSchema, variantsInputSchema } from "./schema";
 import { assertOwnsSite } from "./ownership";
+import { withTaskKey } from "./task-key";
 
 export const EXPERIMENT_UPDATE = defineTool({
   name: "EXPERIMENT_UPDATE",
@@ -44,6 +45,13 @@ export const EXPERIMENT_UPDATE = defineTool({
     if (!experiment) {
       throw new Error(`No experiment "${input.key}" on ${input.site}.`);
     }
-    return { experiment };
+    return {
+      experiment: await withTaskKey(
+        ctx,
+        organization.id,
+        organization.slug,
+        experiment,
+      ),
+    };
   },
 });

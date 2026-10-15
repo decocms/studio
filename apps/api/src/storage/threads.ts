@@ -381,7 +381,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectAll()
       .where("id", "=", id)
       .where("organization_id", "=", data.organization_id)
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+
+    // `id` is a global PK but caller-suppliable, so a different org may own it.
+    if (!existing) {
+      throw new Error(`Thread id "${id}" is already in use`);
+    }
 
     return { ...this.threadFromDbRow(existing), isNew: false };
   }

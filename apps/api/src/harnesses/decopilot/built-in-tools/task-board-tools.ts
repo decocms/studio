@@ -33,14 +33,13 @@ import {
   TASK_BOARD_PROMPT_UPSERT,
 } from "@/tools/task-board/prompts";
 import {
-  TASK_BOARD_AUTOMATION_DELETE,
-  TASK_BOARD_AUTOMATION_LIST,
-  TASK_BOARD_AUTOMATION_UPSERT,
-} from "@/tools/task-board/automations";
-import {
   TASK_BOARD_ADMIN_ORG_LIST,
   TASK_BOARD_COST,
   TASK_BOARD_DELIVERY,
+  TASK_BOARD_OPERATION,
+  TASK_BOARD_OPERATION_TASKS,
+  TASK_BOARD_REWORK,
+  TASK_BOARD_SPRINTS,
   TASK_BOARD_ERRORS,
   TASK_BOARD_QUALITY,
   TASK_BOARD_STUCK,
@@ -96,15 +95,16 @@ export function createTaskBoardTools(
     TASK_BOARD_PROMPT_LIST: wrap(TASK_BOARD_PROMPT_LIST),
     TASK_BOARD_PROMPT_UPSERT: wrap(TASK_BOARD_PROMPT_UPSERT, true),
     TASK_BOARD_PROMPT_DELETE: wrap(TASK_BOARD_PROMPT_DELETE, true),
-    TASK_BOARD_AUTOMATION_LIST: wrap(TASK_BOARD_AUTOMATION_LIST),
-    TASK_BOARD_AUTOMATION_UPSERT: wrap(TASK_BOARD_AUTOMATION_UPSERT, true),
-    TASK_BOARD_AUTOMATION_DELETE: wrap(TASK_BOARD_AUTOMATION_DELETE, true),
     // The board's analytics, and the orgs a cross-org read may name.
     // Without these the agent cannot answer the questions the two Grafana
     // dashboards answer, and cannot discover the orgs the `org` parameter on
     // the read tools above accepts — it can only be handed a slug and guess.
     TASK_BOARD_ADMIN_ORG_LIST: wrap(TASK_BOARD_ADMIN_ORG_LIST),
     TASK_BOARD_DELIVERY: wrap(TASK_BOARD_DELIVERY),
+    TASK_BOARD_OPERATION: wrap(TASK_BOARD_OPERATION),
+    TASK_BOARD_OPERATION_TASKS: wrap(TASK_BOARD_OPERATION_TASKS),
+    TASK_BOARD_REWORK: wrap(TASK_BOARD_REWORK),
+    TASK_BOARD_SPRINTS: wrap(TASK_BOARD_SPRINTS),
     TASK_BOARD_STUCK: wrap(TASK_BOARD_STUCK),
     TASK_BOARD_COST: wrap(TASK_BOARD_COST),
     TASK_BOARD_QUALITY: wrap(TASK_BOARD_QUALITY),

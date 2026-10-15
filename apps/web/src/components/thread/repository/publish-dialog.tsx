@@ -64,7 +64,7 @@ import {
   type PublishChange,
   type PublishChangeSummary,
 } from "./publish-change-summary.ts";
-import type { PublishTarget } from "./publish-flow.ts";
+import { MAX_TITLE_LENGTH, type PublishTarget } from "./publish-flow.ts";
 import {
   type GitDiffResult,
   isGeneratedArtifactPath,
@@ -1012,6 +1012,7 @@ function CmsPublishView({
                       : t("thread.publishPopover.versionNotePlaceholder")
                   }
                   rows={2}
+                  maxLength={MAX_TITLE_LENGTH}
                   className="resize-none text-[13px]"
                   disabled={isPublishing}
                 />

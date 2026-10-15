@@ -39,6 +39,7 @@ import {
   isDecopilot,
 } from "@decocms/shared/sdk";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
+import { urlSlugBase } from "@decocms/shared/url-slug";
 import { CONNECTION_DECRYPT_DISABLE_THRESHOLD } from "../core/constants";
 import {
   isDecryptDisabled,
@@ -48,6 +49,12 @@ import {
 } from "./decrypt-failure-tracker";
 import { escapeLikePattern } from "./threads";
 import type { ConnectionStoragePort } from "./ports";
+import {
+  changeUrlSlug,
+  isUrlSlugConflict,
+  resolveUrlSlug,
+  withAllocatedUrlSlug,
+} from "./url-slug";
 import type { Database } from "./types";
 
 /** JSON fields that need serialization/deserialization. oauth_config is handled
@@ -71,6 +78,7 @@ type RawConnectionRow = {
   app_name: string | null;
   app_id: string | null;
   slug: string | null;
+  url_slug: string | null;
   connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
   connection_url: string | null;
   connection_token: string | null;
@@ -96,6 +104,7 @@ const TOP_LEVEL_COLUMNS = new Set([
   "app_name",
   "app_id",
   "slug",
+  "url_slug",
   "connection_type",
   "connection_url",
   // connection_token is intentionally excluded — sensitive
@@ -223,71 +232,56 @@ export class ConnectionStorage implements ConnectionStoragePort {
       return this.update(id, data);
     }
 
-    const slug = getConnectionSlug(data);
-    const serialized = await this.serializeConnection({
-      ...data,
-      id: data.id ?? id,
-      slug,
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    });
-    let row: RawConnectionRow | undefined;
-    try {
-      // returningAll() avoids a second round trip to re-fetch the inserted row.
-      row = (await this.db
-        .insertInto("connections")
-        .values(serialized as Insertable<Database["connections"]>)
-        .returningAll()
-        .executeTakeFirst()) as RawConnectionRow | undefined;
-    } catch (error) {
-      // Race with a concurrent create() for the same id: match createNew()'s error.
-      if (
-        error instanceof Error &&
-        (error.message.includes("duplicate key") ||
-          error.message.includes("unique constraint"))
-      ) {
-        throw new Error("Connection ID already exists");
-      }
-      throw error;
-    }
-    if (!row) {
-      throw new Error(`Failed to create connection with id: ${id}`);
-    }
-
-    return this.deserializeConnection(row as RawConnectionRow);
+    // A concurrent create() for the same id surfaces as createNew()'s error.
+    return this.insertNew(id, data, now);
   }
 
   async createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity> {
     const id = data.id ?? generatePrefixedId("conn");
-    const now = new Date().toISOString();
-    const slug = getConnectionSlug(data);
-    const serialized = await this.serializeConnection({
-      ...data,
-      id,
-      slug,
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    });
+    return this.insertNew(id, data, new Date().toISOString());
+  }
 
-    let row: RawConnectionRow | undefined;
-    try {
-      row = (await this.db
-        .insertInto("connections")
-        .values(serialized as Insertable<Database["connections"]>)
-        .returningAll()
-        .executeTakeFirst()) as RawConnectionRow | undefined;
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        (error.message.includes("duplicate key") ||
-          error.message.includes("unique constraint"))
-      ) {
-        throw new Error("Connection ID already exists");
-      }
-      throw error;
-    }
+  private async insertNew(
+    id: string,
+    data: Partial<ConnectionEntity>,
+    now: string,
+  ): Promise<ConnectionEntity> {
+    const { url_slug: _urlSlug, ...rest } = data;
+    const slug = getConnectionSlug(data);
+    const row = await withAllocatedUrlSlug(
+      this.db,
+      data.organization_id ?? "",
+      urlSlugBase(data.title, urlSlugBase(slug, "app")),
+      async (urlSlug) => {
+        const serialized = await this.serializeConnection({
+          ...rest,
+          id,
+          slug,
+          url_slug: urlSlug,
+          status: "active",
+          created_at: now,
+          updated_at: now,
+        });
+        try {
+          // returningAll() avoids a second round trip to re-fetch the inserted row.
+          return (await this.db
+            .insertInto("connections")
+            .values(serialized as Insertable<Database["connections"]>)
+            .returningAll()
+            .executeTakeFirst()) as RawConnectionRow | undefined;
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            !isUrlSlugConflict(error) &&
+            (error.message.includes("duplicate key") ||
+              error.message.includes("unique constraint"))
+          ) {
+            throw new Error("Connection ID already exists");
+          }
+          throw error;
+        }
+      },
+    );
 
     if (!row) {
       throw new Error(`Failed to create connection with id: ${id}`);
@@ -449,6 +443,14 @@ export class ConnectionStorage implements ConnectionStoragePort {
     }));
   }
 
+  resolveUrlSlug(
+    organizationId: string,
+    slug: string,
+    kind: "project" | "connection",
+  ) {
+    return resolveUrlSlug(this.db, organizationId, slug, kind);
+  }
+
   async update(
     id: string,
     data: Partial<ConnectionEntity>,
@@ -459,9 +461,15 @@ export class ConnectionStorage implements ConnectionStoragePort {
       organization_id: _organizationId,
       created_by: _createdBy,
       created_at: _createdAt,
+      url_slug: urlSlug,
       ...safeData
     } = data;
     data = safeData;
+
+    // Never through the SET clause: a slug change also records the old slug.
+    if (urlSlug) {
+      await changeUrlSlug(this.db, id, urlSlug);
+    }
 
     if (Object.keys(data).length === 0) {
       const connection = await this.findById(id);
@@ -846,6 +854,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       app_name: row.app_name,
       app_id: row.app_id,
       slug: row.slug,
+      url_slug: row.url_slug,
       connection_type: row.connection_type,
       connection_url: row.connection_url,
       connection_token: decryptedToken,

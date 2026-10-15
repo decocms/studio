@@ -5,20 +5,18 @@
  * the wrong column and straight back, fires a transition per drop. Reacting to
  * each one runs the column's agent on a card that never stayed there, and a
  * run started for one drop supersedes the run the card was really waiting on.
- * So a rule reacts to where the card RESTED instead: a status it stayed in for
- * a minute (`JIRA_SETTLE_SECONDS`), reached from the last status it had also
- * stayed in.
+ * So a trigger reacts to where the card RESTED instead: a status it stayed in
+ * for the settle window (`JIRA_SETTLE_SECONDS`), reached from the last status
+ * it had also stayed in.
  *
  * Derived from Jira's own history, not from anything Studio recorded, so the
  * webhook and the poll reach the same answer about the same change, and a
  * transition Studio never heard of still counts.
  */
 
+import { SETTLE_MS } from "@/automations/board-column-transition";
 import { getSettings } from "@/settings";
 import type { JiraStatusChange } from "./client";
-
-/** How long a card must stay in a status before a rule reacts to it. */
-const SETTLE_MS = 60_000;
 
 /** The configured window (`JIRA_SETTLE_SECONDS`), or the default where
  *  settings are not initialized (unit tests). */

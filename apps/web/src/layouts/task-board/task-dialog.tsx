@@ -700,7 +700,11 @@ function TaskBoardItemEditor({
   };
 
   const isSuperAgent = assigneeId === SUPER_AGENT_ASSIGNEE_ID;
-  const showAutoFix = item && onAutoFix && status === "triage" && !isSuperAgent;
+  const showAutoFix =
+    item &&
+    onAutoFix &&
+    (status === "triage" || status === "todo") &&
+    !isSuperAgent;
 
   /** Auto-fix's counterpart once the Super Agent owns the task: re-queue a run.
    *  Read against the SAVED assignee so it re-runs the task as it exists. */

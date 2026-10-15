@@ -9,7 +9,6 @@
  */
 
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
-import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -91,7 +90,6 @@ describe("auto-archive sweep", () => {
         // The sweep now asks the board where a finished card retires to, and
         // the board asks the org which board it is.
         organizationSettings: new OrganizationSettingsStorage(database.db),
-        columnAutomations: new ColumnAutomationStorage(database.db),
       },
     } as unknown as StudioContext;
   });

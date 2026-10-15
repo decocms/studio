@@ -55,7 +55,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts once the card has stayed put for a minute.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 5-minute check; with it, the run starts once the card has stayed put for 20 seconds.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -67,10 +67,10 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. An issue entering an automated status now starts its run once it has stayed there for a minute.",
+    "Save. An issue entering an automated status now starts its run once it has stayed there for 20 seconds.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses and stays there for a minute, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "When an issue enters one of these statuses and stays there for 20 seconds, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. An issue that links an open pull request has it continued. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
   "settings.jira.addAutomation": "Add automation",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
@@ -92,7 +92,7 @@ export const settings = {
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.jira.testRunLabel": "Run it by hand",
   "settings.jira.testRunDescription":
-    "Run the agent on one issue or a batch now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
+    "Run one of the automations above on an issue or a batch now, without enabling the integration \u2014 so you can see what its prompt does before it runs on every issue entering a status.",
   "settings.jira.issueKeysPlaceholder":
     "ABC-123, or a link — one per line, or comma-separated",
   "settings.jira.issueKeysCount": "{count} issue(s)",
@@ -103,11 +103,10 @@ export const settings = {
   "settings.jira.testRunStarted": "Started on",
   "settings.jira.testRunFailed": "Could not start the run",
   "settings.jira.testRunHelp":
-    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type “/” to insert the same skill the column rule would use.",
-  "settings.jira.continuePr":
-    "Continue the pull request the issue already carries (a re-run after a review asked for changes)",
-  "settings.jira.continuePrRuleHelp":
-    "Checked on every card that enters this status: one that already carries an open pull request continues it, one with none starts fresh. Leave it off on a review status.",
+    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue, and an issue that links an open pull request has it continued.",
+  "settings.jira.testRunAutomation": "Automation to run",
+  "settings.jira.testRunNoAutomations":
+    "Add an automation above first: running by hand fires one of them.",
   "settings.jira.together":
     "One run for all of them — the agent sees every issue and works them as a batch, instead of one run per issue",
   "settings.jira.togetherStarted": "Started one run on",
@@ -351,7 +350,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.blogBlocks.sectionTitle": "Blog blocks",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "AI blog",
+  "settings.blog.aiDescription":
+    "Brand context, campaigns and post generation. With this off the blog is written by hand.",
   "settings.blogBlocks.title": "Hide the default blog blocks",
   "settings.blogBlocks.description":
     "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",

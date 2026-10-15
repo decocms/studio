@@ -217,6 +217,11 @@ export const STATUS_CONFIG: Record<
     icon: AlertCircle,
     iconClassName: "text-muted-foreground",
   },
+  todo: {
+    labelKey: "taskBoard.config.statusTodo",
+    icon: Circle,
+    iconClassName: "text-muted-foreground",
+  },
   in_progress: {
     labelKey: "taskBoard.config.statusInProgress",
     icon: Loading02,

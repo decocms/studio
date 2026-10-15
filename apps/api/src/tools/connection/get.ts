@@ -4,6 +4,7 @@
  * Get connection details by ID with collection binding compliance.
  */
 
+import { isValidUrlSlug } from "@decocms/shared/url-slug";
 import {
   CollectionGetInputSchema,
   createCollectionGetOutputSchema,
@@ -37,7 +38,7 @@ const ConnectionGetOutputSchema = createCollectionGetOutputSchema(
 export const COLLECTION_CONNECTIONS_GET = defineTool({
   name: "COLLECTION_CONNECTIONS_GET",
   description:
-    "Get a connection's configuration, tools list, and status by ID.",
+    "Get a connection's configuration, tools list, and status by ID or URL slug.",
   annotations: {
     title: "Get Connection",
     readOnlyHint: true,
@@ -66,8 +67,18 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
       };
     }
 
-    // Get connection from database
-    const connection = await ctx.storage.connections.findById(input.id);
+    // A link names the connection by its URL slug; slugs can't contain `_`, so ids never take that path.
+    let connection = await ctx.storage.connections.findById(input.id);
+    if (!connection && isValidUrlSlug(input.id)) {
+      const resolved = await ctx.storage.connections.resolveUrlSlug(
+        organization.id,
+        input.id,
+        "connection",
+      );
+      connection = resolved
+        ? await ctx.storage.connections.findById(resolved.id)
+        : null;
+    }
 
     // Verify connection exists and belongs to the current organization
     if (!connection || connection.organization_id !== organization.id) {

@@ -344,11 +344,17 @@ async function resolveConflictAfterRefusedMerge(
 export async function shipFromReadyForDeployment(
   ctx: StudioContext,
   item: TaskBoardItem,
-  opts: { allowPendingChecks?: boolean } = {},
+  opts: {
+    allowPendingChecks?: boolean;
+    /** The person who shipped it; analytics reads no actor as the agent. */
+    shippedBy?: string | null;
+  } = {},
 ): Promise<{ item: TaskBoardItem; merged: boolean }> {
   const orgId = item.organizationId;
   if (item.status !== LANES.release) return { item, merged: false };
-  const outcome = await mergeLinkedPr(ctx, orgId, item.id, opts);
+  const outcome = await mergeLinkedPr(ctx, orgId, item.id, {
+    allowPendingChecks: opts.allowPendingChecks,
+  });
   if (!outcome.merged) {
     await resolveConflictAfterRefusedMerge(ctx, item, outcome);
     const refreshed =
@@ -365,7 +371,7 @@ export async function shipFromReadyForDeployment(
   await recordTaskActivity(ctx, {
     taskBoardItemId: item.id,
     action: "status_changed",
-    actorId: null,
+    actorId: opts.shippedBy ?? null,
     data: { from: item.status, to: LANES.shipped },
   });
   emitTaskBoardUpdated(orgId, shipped);

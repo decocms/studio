@@ -10,6 +10,7 @@
 import {
   DeleteObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import type {
@@ -226,6 +227,37 @@ export async function resolveFileConfig(
     }
   }
   return ctx;
+}
+
+/**
+ * Write bytes already in memory to a configured bucket.
+ *
+ * Deliberately not what the upload route uses: that one streams an untrusted
+ * body of up to 100 MB through `lib-storage`, with a counting transform because
+ * a client's `Content-Length` is a claim. This is for bytes the API itself
+ * produced — a generated cover is one request's worth of PNG — where a single
+ * `PutObject` is the whole job and buffering is not a risk.
+ *
+ * The caller supplies the key, so {@link buildObjectKey} and the content-type
+ * allowlist in `upload-policy` still apply; this does not re-derive either.
+ */
+export async function putObject(params: {
+  ctx: FileConfigContext;
+  key: string;
+  body: Uint8Array;
+  contentType: string;
+}): Promise<string> {
+  const client = buildS3Client(params.ctx);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: params.ctx.info.bucket,
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.contentType,
+      ContentLength: params.body.byteLength,
+    }),
+  );
+  return buildPublicUrl(params.ctx.info, params.key);
 }
 
 /**

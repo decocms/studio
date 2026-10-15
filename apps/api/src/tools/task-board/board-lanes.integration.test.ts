@@ -16,7 +16,6 @@ import {
 } from "../../database/test-db-pg";
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { TaskBoardStorage } from "../../storage/task-board";
-import { ColumnAutomationStorage } from "../../storage/task-board-column-automations";
 import {
   OrgScopedThreadStorage,
   SqlThreadStorage,
@@ -59,7 +58,6 @@ describe("board lanes (real Postgres)", () => {
       storage: {
         taskBoard,
         organizationSettings: new OrganizationSettingsStorage(database.db),
-        columnAutomations: new ColumnAutomationStorage(database.db),
         threads: new OrgScopedThreadStorage(
           new SqlThreadStorage(database.db),
           ORG,

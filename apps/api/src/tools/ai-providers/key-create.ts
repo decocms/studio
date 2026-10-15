@@ -19,7 +19,7 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
   inputSchema: z.object({
     providerId: z.enum(HOSTED_PROVIDER_IDS),
     label: z.string().min(1).max(100),
-    apiKey: z.string().min(1),
+    apiKey: z.string().min(1).max(4096),
     presetId: z.string().min(1).max(64).optional(),
   }),
   outputSchema: providerKeyOutputSchema,

@@ -35,6 +35,7 @@ import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import {
   blockRefLoaderConfigHasData,
   blockRefOptionLabel,
+  blockRefValueForBranch,
   detectBlockRefType,
   enrichBlockRefOptions,
   lazyWrappedInner,
@@ -359,18 +360,9 @@ export function AnyOfField({
     };
 
     const persistUnionValue = (next: unknown) => {
-      if (
-        discriminatorKey ||
-        !isEmbeddedUnionResolveType(activeRt) ||
-        next === null ||
-        typeof next !== "object" ||
-        Array.isArray(next)
-      ) {
-        onChange(next);
-        return;
-      }
-      const { __resolveType: _, ...rest } = next as Record<string, unknown>;
-      onChange(rest);
+      onChange(
+        discriminatorKey ? next : blockRefValueForBranch(next, activeRt),
+      );
     };
 
     const nestedProps = nestedSchema?.properties ? (

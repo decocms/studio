@@ -1,14 +1,9 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import {
-  LANES,
-  outstandingReviewFeedback,
-  SUPER_AGENT_ASSIGNEE_ID,
-} from "@decocms/shared/task-board";
+import { LANES, outstandingReviewFeedback } from "@decocms/shared/task-board";
 import {
   claimTaskExecution,
   rollbackTaskExecution,
-  TaskQuotaError,
   userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 import { isReportsTask } from "@decocms/shared/task-board";
@@ -23,30 +18,6 @@ import {
   buildClaudeCodeTaskPrompt,
   resolveTaskRepoChoice,
 } from "./claude-code-task-run";
-
-/**
- * The shared post-write reaction for a task delegated to the Super Agent:
- * enqueue the run. No-op for any other assignee, so callers that already know
- * the write delegated (create) and callers that gate on the transition
- * (update) share one body. The SSE broadcast is emitted by each write site
- * itself (every create/update broadcasts, not just delegations). Enqueue is
- * best-effort — the task is already persisted, so a dispatch failure (e.g. no
- * model configured) must never fail the write that delegated it.
- */
-export async function reactToSuperAgentDelegation(
-  ctx: StudioContext,
-  item: TaskBoardItem,
-  opts?: Pick<SuperAgentPromptOpts, "userInitiated" | "instruction" | "column">,
-): Promise<void> {
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await enqueueSuperAgentForTask(ctx, item, opts).catch((err) => {
-    // A paywall rejection is NOT best-effort: swallowing it would leave the
-    // task delegated-but-never-running with only a log line. Callers decide
-    // (the update tool surfaces it; the import route un-delegates).
-    if (err instanceof TaskQuotaError) throw err;
-    console.error("[task-board] Super Agent enqueue failed", err);
-  });
-}
 
 /**
  * Enqueue a Super Agent run for a task delegated to it. Creates a fresh thread
@@ -109,6 +80,16 @@ export type SuperAgentPromptOpts = {
    *  a call without a key means and the monitoring filter can tell it
    *  apart. */
   source?: { kind: "jira"; issueKeys: string[]; title: string; body: string };
+  /** An automation fired this run on the card: its agent runs it, the thread
+   *  is named after it and listed in its history, and `fence` makes the fire
+   *  start one run however many times it is replayed. */
+  automation?: {
+    name: string;
+    agentId: string;
+    /** Absent for a manual fire, which no trigger started. */
+    triggerId?: string;
+    fence: { threadId: string; workflowID: string };
+  };
 };
 
 /**
@@ -224,7 +205,7 @@ export async function enqueueSuperAgentForTask(
     const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
     const pr =
       opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
-    // A caller-supplied head (Jira's continuePr) always wins over the flag.
+    // A caller-supplied head (a Jira issue's linked pull request) always wins over the flag.
     const pinnedRef =
       opts?.pr?.head ??
       (reusesPrBranch && pr
@@ -267,7 +248,11 @@ export async function enqueueSuperAgentForTask(
     const promptTask = opts?.source
       ? { ...task, description: opts.source.body }
       : task;
-    const title = opts?.source?.title ?? `Super Agent: ${task.title}`;
+    const title =
+      opts?.source?.title ??
+      (opts?.automation
+        ? `${opts.automation.name}: ${task.title}`
+        : `Super Agent: ${task.title}`);
     const runMetadata = opts?.source
       ? {
           source: opts.source.kind,
@@ -310,6 +295,13 @@ export async function enqueueSuperAgentForTask(
       temperature: 0.5,
       ...(modelClass ? { modelClass } : {}),
       ...(repo ? { repo } : {}),
+      ...(opts?.automation
+        ? {
+            agentId: opts.automation.agentId,
+            triggerId: opts.automation.triggerId,
+            fence: opts.automation.fence,
+          }
+        : {}),
     });
   } catch (err) {
     // Nothing was dispatched — no thread exists to ever trigger the

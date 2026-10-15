@@ -10,7 +10,7 @@ import {
 import { autoResolveConflictsEnabled } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { fireImplementer } from "@/automations/fire-implementer";
 
 /**
  * How many times a single task may be auto-handed-back to the Super Agent to
@@ -126,7 +126,7 @@ export async function reactToApprovedPrConflict(
   if (!claimed) return false;
   emitTaskBoardUpdated(orgId, claimed);
   try {
-    await enqueueSuperAgentForTask(ctx, claimed, {
+    await fireImplementer(ctx, claimed, {
       pr: { number: pr.number, url: pr.url },
       resolveConflict: true,
     });

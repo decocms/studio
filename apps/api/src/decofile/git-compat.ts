@@ -22,6 +22,7 @@ import {
   type RepoContentClient,
   type TreeEntry,
 } from "@/git-providers";
+import { mergeBlockJson } from "@decocms/shared/decofile";
 import { mapBounded } from "@decocms/shared/std";
 import { resolveOrCreateHead } from "./read-decofile";
 
@@ -222,8 +223,10 @@ type ComparedFile = Awaited<
  * Bring the branch up to date with `base`, leaving it as ONE commit whose only
  * parent is the base head — a squash-rebase, not a merge, because a merge's
  * resolution lives only in its tree and `git rebase` drops merge commits.
- * Clean merges replay the merged content; a conflict replays the branch's own
- * blobs (whole file wins) for every path it touched.
+ * Clean merges replay the merged content. On a conflict the branch's own blobs
+ * win for every path it touched, except blocks both sides edited: those merge
+ * value by value ({@link mergeBlockJson}), so a draft cannot revert a block
+ * another draft published while it was open.
  *
  * The squash is a single `commitFiles({ rewriteFrom: baseHead })`, so the
  * commit exists before the branch is moved onto it and a crash mid-sync cannot
@@ -283,7 +286,16 @@ export async function repoGitRebase(
     }
     // Raised here, not inside the try: a 409 there means the merge conflicted.
     assertReplayable(client, replayed);
-    const changes = buildMergeReplayPlan(replayed, mergedSha ?? branchHead);
+    const plan = buildMergeReplayPlan(replayed, mergedSha ?? branchHead);
+    const changes = branchWon
+      ? await mergeBlocksEditedOnBothSides(client, plan, {
+          branch,
+          base,
+          branchHead,
+          baseHead,
+          branchModified: replayed,
+        })
+      : plan;
 
     const expectedHead = mergedSha ?? branchHead;
     try {
@@ -321,6 +333,71 @@ export async function repoGitRebase(
         : err;
     }
   }
+}
+
+/** A block source file: `.deco/blocks/<stem>.json`, at any package path. */
+const BLOCK_FILE_RE = /(?:^|\/)\.deco\/blocks\/[^/]+\.json$/i;
+
+const BLOCK_MERGE_READ_CONCURRENCY = 6;
+
+/**
+ * Swap the branch-wins replay of every block both sides modified for a value
+ * level merge against their merge base. Anything that cannot be merged that
+ * way (not a block, added or removed on a side, not valid JSON) keeps the
+ * branch's file.
+ */
+async function mergeBlocksEditedOnBothSides(
+  client: RepoContentClient,
+  plan: FileChange[],
+  refs: {
+    branch: string;
+    base: string;
+    branchHead: string;
+    baseHead: string;
+    branchModified: ComparedFile[];
+  },
+): Promise<FileChange[]> {
+  const modified = (files: ComparedFile[]) =>
+    new Set(
+      files
+        .filter(
+          (f) =>
+            normalizeCompareStatus(f.status) === "modified" &&
+            BLOCK_FILE_RE.test(f.filename),
+        )
+        .map((f) => f.filename),
+    );
+  const onBranch = modified(refs.branchModified);
+  if (onBranch.size === 0) return plan;
+  // What the base changed since the merge base: the reverse three-dot compare.
+  const baseSide = await client.compareDetailed(refs.branch, refs.base);
+  const onBase = modified(baseSide.files);
+  const paths = [...onBranch].filter((path) => onBase.has(path));
+  if (paths.length === 0) return plan;
+
+  const merged = new Map<string, string>();
+  await mapBounded(paths, BLOCK_MERGE_READ_CONCURRENCY, async (path) => {
+    const [ancestor, ours, theirs] = await Promise.all([
+      client.readFileAtRef(baseSide.mergeBaseSha, path),
+      client.readFileAtRef(refs.branchHead, path),
+      client.readFileAtRef(refs.baseHead, path),
+    ]);
+    if (ancestor === null || ours === null || theirs === null) return;
+    try {
+      const value = mergeBlockJson(
+        JSON.parse(ancestor),
+        JSON.parse(ours),
+        JSON.parse(theirs),
+      );
+      merged.set(path, `${JSON.stringify(value, null, 2)}\n`);
+    } catch {
+      // Not JSON on some side: the branch's file stands.
+    }
+  });
+  return plan.map((change) => {
+    const content = merged.get(change.path);
+    return content === undefined ? change : { path: change.path, content };
+  });
 }
 
 /**

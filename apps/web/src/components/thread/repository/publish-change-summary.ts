@@ -28,6 +28,7 @@ import {
   type GitChangedFile,
   type GitDiffResult,
 } from "./sandbox-git-api";
+import { shortenTitle } from "./publish-flow.ts";
 
 export type PublishChangeStatus = "new" | "edited" | "removed";
 
@@ -556,6 +557,15 @@ function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+/** Names past this many collapse into "and N more" — the note is a title. */
+const MAX_NOTE_NAMES = 3;
+
+function listNames(names: string[]): string {
+  if (names.length <= MAX_NOTE_NAMES) return joinNames(names);
+  const rest = names.length - MAX_NOTE_NAMES;
+  return `${names.slice(0, MAX_NOTE_NAMES).join(", ")} and ${rest} more`;
+}
+
 function pageNoteName(change: PublishChange): string {
   const sectionNames = change.sections
     .filter((s) => s.kind === "section")
@@ -580,24 +590,24 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
   const removedPages = summary.pages.filter((p) => p.status === "removed");
 
   if (editedPages.length > 0) {
-    segments.push(`updated ${joinNames(editedPages.map(pageNoteName))}`);
+    segments.push(`updated ${listNames(editedPages.map(pageNoteName))}`);
   }
   if (newPages.length > 0) {
     const label = newPages.length === 1 ? "page" : "pages";
     segments.push(
-      `added the ${joinNames(newPages.map((p) => p.name))} ${label}`,
+      `added the ${listNames(newPages.map((p) => p.name))} ${label}`,
     );
   }
   if (removedPages.length > 0) {
     const label = removedPages.length === 1 ? "page" : "pages";
     segments.push(
-      `removed the ${joinNames(removedPages.map((p) => p.name))} ${label}`,
+      `removed the ${listNames(removedPages.map((p) => p.name))} ${label}`,
     );
   }
 
   const blockNames = summary.blocks.map((b) => b.name);
   if (blockNames.length > 0) {
-    segments.push(`changed ${joinNames(blockNames)}`);
+    segments.push(`changed ${listNames(blockNames)}`);
   }
   if (summary.other.length > 0) {
     const label = summary.other.length === 1 ? "file" : "files";
@@ -606,7 +616,7 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
 
   if (segments.length === 0) return "";
   const note = joinNames(segments);
-  return note.charAt(0).toUpperCase() + note.slice(1);
+  return shortenTitle(note.charAt(0).toUpperCase() + note.slice(1));
 }
 
 /** Section count of a parsed page block, across both section shapes. */

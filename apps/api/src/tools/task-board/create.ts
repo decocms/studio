@@ -19,7 +19,7 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
-import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import {

@@ -11,6 +11,8 @@ export const automations = {
     "Erro ao adicionar gatilho webhook",
   "automations.addStarterPopover.starterAdded": "Gatilho adicionado",
   "automations.addStarterPopover.webhook": "Webhook",
+  "automations.addStarterPopover.cardEntersColumn":
+    "Quando um card entra numa coluna",
   "automations.addStarterPopover.webhookStarterAdded":
     "Gatilho webhook adicionado",
   "automations.automationConfig.all": "Todos",
@@ -189,6 +191,38 @@ export const automations = {
     "Um novo token será gerado e o token atual deixará de funcionar. Quaisquer remetentes que usem o token antigo devem ser atualizados.",
   "automations.triggerCard.starterRemoved": "Disparador removido",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST para disparar",
+  "automations.builtin.badge": "Nativa",
+  "automations.builtin.implementerDescription":
+    "Pega cada card sem dono que chega em In Progress e trabalha nele como o Super Agent. É também o que roda quando alguém clica em Run ou Re-run num card, delega um card ao agente, ou o board tenta uma run de novo. Desligar faz ele parar de pegar cards sozinho; o Run num card continua funcionando. A run segue as instruções e skills da coluna In Progress no board; mude lá.",
+  "automations.builtin.reviewerDescription":
+    "Revisa o pull request de um card quando ele fica pronto para review (aberto, checks terminados, preview no último commit) e registra um veredito: aprovar manda o card para QA, pedir mudanças passa o card para uma pessoa. Desligar aqui é o mesmo que desligar o Reviewer em Settings → Review. A revisão segue as instruções e skills da coluna In Review no board; mude lá.",
+  "automations.builtin.description":
+    "O Studio roda esta automação para o board. Ela segue as instruções e skills das colunas do board; mude lá.",
+  "automations.columnTransitionDialog.title":
+    "Quando um card entra numa coluna",
+  "automations.columnTransitionDialog.description":
+    "Roda esta automação em cada card que entra na coluna.",
+  "automations.columnTransitionDialog.column": "Coluna",
+  "automations.columnTransitionDialog.origin": "Vindo de",
+  "automations.columnTransitionDialog.fromAny": "Qualquer coluna",
+  "automations.columnTransitionDialog.fromEarlier": "Uma coluna anterior",
+  "automations.columnTransitionDialog.fromLater":
+    "Uma coluna posterior (devolvido)",
+  "automations.columnTransitionDialog.fromColumns": "Colunas específicas",
+  "automations.columnTransitionDialog.columnsPlaceholder": "Escolha as colunas",
+  "automations.columnTransitionDialog.help":
+    "Roda num card sem dono, ou que já é do agente, depois que ele fica 20 segundos na coluna; um card de uma pessoa fica de fora. A origem é a última coluna onde ele ficou, não uma pela qual só foi arrastado.",
+  "automations.columnTransitionDialog.cancel": "Cancelar",
+  "automations.columnTransitionDialog.add": "Adicionar gatilho",
+  "automations.triggerCard.prReady":
+    "Quando o pull request de um card fica pronto para review",
+  "automations.triggerCard.unownedOnly": "Só cards sem dono",
+  "automations.triggerCard.fromEarlier": "De uma coluna anterior",
+  "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",
+  "automations.triggerCard.fromColumns": "De {columns}",
+  "automations.triggerCard.issueEntersJiraStatus":
+    "Quando uma issue do Jira entra em {status}",
+  "automations.triggerCard.cardEntersColumn": "Quando um card entra em {lane}",
   "automations.webhookSecretDialog.copied": "Copiado",
   "automations.webhookSecretDialog.copy": "Copiar",
   "automations.webhookSecretDialog.done": "Concluído",

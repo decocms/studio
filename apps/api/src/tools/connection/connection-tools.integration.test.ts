@@ -126,7 +126,6 @@ describe("Connection Tools", () => {
         taskBoardPrompts: null as never,
         taskBoardAnalytics: null as never,
         threadAnalytics: null as never,
-        columnAutomations: null as never,
         notifications: null as never,
         orgFsEntries: null as never,
         oauthPkceStates: null as never,

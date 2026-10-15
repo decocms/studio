@@ -43,4 +43,5 @@ export const monitoring = {
   "monitoring.timeRangePicker.last2Days": "Last 2 days",
   "monitoring.timeRangePicker.last7Days": "Last 7 days",
   "monitoring.timeRangePicker.last30Days": "Last 30 days",
+  "monitoring.timeRangePicker.last90Days": "Last 90 days",
 } as const;

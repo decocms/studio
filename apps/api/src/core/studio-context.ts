@@ -312,7 +312,6 @@ import type { RepositoryStorage } from "@/storage/repositories";
 import type { GithubConnectFlowStorage } from "@/storage/github-connect-flows";
 import type { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
-import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
 import type { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
 import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
@@ -369,7 +368,6 @@ export interface StudioStorage {
   repositories: RepositoryStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
-  columnAutomations: ColumnAutomationStorage;
   taskBoardPrompts: TaskBoardPromptStorage;
   taskBoardAnalytics: TaskBoardAnalyticsStorage;
   threadAnalytics: ThreadAnalyticsStorage;

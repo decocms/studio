@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
-import { requireAuth } from "@/core/studio-context";
+import { getUserId, requireAuth } from "@/core/studio-context";
 import { LANES } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { shipFromReadyForDeployment } from "./merge-pr";
+import { taskRunContextStore } from "./task-run-context";
 
 export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
   name: "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -57,6 +58,9 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     const shipped = await shipFromReadyForDeployment(ctx, item, {
       // The human clicked Ship, so in-flight CI doesn't block — only red does.
       allowPendingChecks: true,
+      shippedBy: taskRunContextStore.getStore()
+        ? null
+        : (getUserId(ctx) ?? null),
     });
     return { status: shipped.item.status, merged: shipped.merged };
   },

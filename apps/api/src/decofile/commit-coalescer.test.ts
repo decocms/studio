@@ -7,7 +7,8 @@ import type {
   TreeEntry,
 } from "@/git-providers";
 import { RepoWriteConflict } from "@/git-providers";
-import { enqueueDecofilePatch } from "./commit-coalescer";
+import { decoBlockFingerprint } from "@decocms/shared/decofile";
+import { BlockConflictError, enqueueDecofilePatch } from "./commit-coalescer";
 import { resolveBlockContents } from "./read-decofile";
 
 /**
@@ -241,5 +242,119 @@ describe("enqueueDecofilePatch blob cost", () => {
       (gen as { path: string; content: string }).content,
     ) as Record<string, unknown>;
     expect(Object.keys(doc)).toHaveLength(stems.length);
+  });
+});
+
+describe("enqueueDecofilePatch expectations", () => {
+  const stems = ["Header", "Footer"];
+  const deps = (f: ReturnType<typeof fakeClient>) => ({
+    client: f.client,
+    branch: "feature",
+    packagePath: null,
+  });
+  // The fake serves `{ __resolveType: <stem> }` for every block at head.
+  const headFingerprint = (stem: string) =>
+    decoBlockFingerprint({ __resolveType: stem });
+
+  it("commits a write made against the block the branch still has", async () => {
+    const f = fakeClient({ stems, tracksGen: false });
+    const sha = await enqueueDecofilePatch(
+      `q-expect-ok-${Date.now()}`,
+      deps(f),
+      {
+        set: { Header: { __resolveType: "Header", title: "new" } },
+        expect: { Header: await headFingerprint("Header") },
+      },
+    );
+    expect(sha).toBe("commit1");
+    expect(f.committed.map((c) => c.path)).toEqual([
+      ".deco/blocks/Header.json",
+    ]);
+  });
+
+  it("rejects, writing nothing, a whole-block write made against an older version", async () => {
+    const f = fakeClient({ stems, tracksGen: false });
+    const stale = await decoBlockFingerprint({
+      __resolveType: "Header",
+      menu: ["what the editor loaded before someone else published"],
+    });
+    const write = enqueueDecofilePatch(
+      `q-expect-stale-${Date.now()}`,
+      deps(f),
+      {
+        set: { Header: { __resolveType: "Header", title: "new" } },
+        expect: { Header: stale },
+      },
+    );
+    await expect(write).rejects.toBeInstanceOf(BlockConflictError);
+    await expect(write).rejects.toMatchObject({ blocks: ["Header"] });
+    expect(f.commitAttempts).toBe(0);
+  });
+
+  it("treats null as 'the editor saw no such block'", async () => {
+    const f = fakeClient({ stems, tracksGen: false });
+    const queue = `q-expect-null-${Date.now()}`;
+    await expect(
+      enqueueDecofilePatch(queue, deps(f), {
+        set: { Banner: { __resolveType: "Banner" } },
+        expect: { Banner: null },
+      }),
+    ).resolves.toBe("commit1");
+    await expect(
+      enqueueDecofilePatch(queue, deps(f), {
+        set: { Footer: { __resolveType: "Footer", x: 1 } },
+        expect: { Footer: null },
+      }),
+    ).rejects.toBeInstanceOf(BlockConflictError);
+  });
+
+  it("checks a coalesced patch against the writes queued before it", async () => {
+    const f = fakeClient({ stems, tracksGen: false });
+    const queue = `q-expect-order-${Date.now()}`;
+    const headerAtHead = await headFingerprint("Header");
+    const first = { __resolveType: "Header", title: "first" };
+    const afterFirst = await decoBlockFingerprint(first);
+
+    // Holds the queue so the next three land in ONE batch.
+    const blocker = enqueueDecofilePatch(queue, deps(f), {
+      set: { Footer: { __resolveType: "Footer", x: 1 } },
+    });
+    const accepted = enqueueDecofilePatch(queue, deps(f), {
+      set: { Header: first },
+      expect: { Header: headerAtHead },
+    });
+    // Made against the head, but `first` replaces it earlier in the same commit.
+    const overtaken = enqueueDecofilePatch(queue, deps(f), {
+      set: { Header: { __resolveType: "Header", title: "stale" } },
+      expect: { Header: headerAtHead },
+    });
+    // Made against `first`, so it builds on it.
+    const followUp = enqueueDecofilePatch(queue, deps(f), {
+      set: { Header: { __resolveType: "Header", title: "second" } },
+      expect: { Header: afterFirst },
+    });
+
+    const [, ...results] = await Promise.allSettled([
+      blocker,
+      accepted,
+      overtaken,
+      followUp,
+    ]);
+    expect(results.map((r) => r.status)).toEqual([
+      "fulfilled",
+      "rejected",
+      "fulfilled",
+    ]);
+    expect(results[0]).toMatchObject({ value: "commit2" });
+    expect(results[1]).toMatchObject({
+      reason: expect.any(BlockConflictError),
+    });
+    const header = f.committed.find(
+      (c) => c.path === ".deco/blocks/Header.json",
+    ) as { content: string };
+    expect(JSON.parse(header.content)).toEqual({
+      __resolveType: "Header",
+      title: "second",
+    });
   });
 });

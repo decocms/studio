@@ -275,6 +275,16 @@ export const sectionsEditor = {
     "No editable fields for this variant.",
   "sectionsEditor.sectionsEditor.noPageFound":
     "No page found for {currentPath}",
+  "sectionsEditor.sectionsEditor.blockChangedElsewhere":
+    "This block changed while you were editing and could not be saved. The latest version is loaded.",
+  "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
+    "Not saved: {fields} changed while you were editing. The latest version is loaded.",
+  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
+    "Changed while you were editing: {fields}. The latest version of those fields was kept, and the rest of your changes were saved.",
+  "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
+    "This section was replaced while you were editing. The form now shows the current section, and your last change was not saved.",
+  "sectionsEditor.sectionsEditor.blockMergedWithOthers":
+    "This block was updated while you were editing. Your changes were applied on top of the latest version.",
   "sectionsEditor.sectionsEditor.saveFailed": "Save failed: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Saved global block "{blockId}"',
