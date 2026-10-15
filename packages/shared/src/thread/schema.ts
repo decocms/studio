@@ -38,9 +38,20 @@ export type ThreadMessageEntity = z.infer<typeof ThreadMessageEntitySchema>;
 // Thread Schema
 // ============================================================================
 
+/** Bounds untrusted `metadata` writes via COLLECTION_THREADS_UPDATE's full-replacement path. */
+const MAX_METADATA_STRING_LENGTH = 500;
+const MAX_EXPANDED_TOOLS = 200;
+const MAX_JIRA_ISSUE_KEYS = 200;
+
 const ThreadExpandedToolSchema = z.object({
-  toolName: z.string().describe("Fully qualified tool name"),
-  appId: z.string().describe("App ID that owns the tool"),
+  toolName: z
+    .string()
+    .max(MAX_METADATA_STRING_LENGTH)
+    .describe("Fully qualified tool name"),
+  appId: z
+    .string()
+    .max(MAX_METADATA_STRING_LENGTH)
+    .describe("App ID that owns the tool"),
   args: z
     .record(z.string(), z.unknown())
     .describe("Arguments used when expanding the tool"),
@@ -49,7 +60,10 @@ const ThreadExpandedToolSchema = z.object({
 
 const ThreadMetadataSchema = z
   .object({
-    expanded_tools: z.array(ThreadExpandedToolSchema).optional(),
+    expanded_tools: z
+      .array(ThreadExpandedToolSchema)
+      .max(MAX_EXPANDED_TOOLS)
+      .optional(),
     read_only: z
       .boolean()
       .optional()
@@ -70,18 +84,21 @@ const ThreadMetadataSchema = z
       ),
     jira_issue_key: z
       .string()
+      .max(MAX_METADATA_STRING_LENGTH)
       .optional()
       .describe(
         "The Jira issue a 'jira' run works on, e.g. EX-12. Absent on a run started on several issues at once — see jira_issue_keys.",
       ),
     jira_issue_keys: z
-      .array(z.string())
+      .array(z.string().max(MAX_METADATA_STRING_LENGTH))
+      .max(MAX_JIRA_ISSUE_KEYS)
       .optional()
       .describe(
         "Every Jira issue a 'jira' run may act on. One entry for a run on one issue; several for a run a person started on a batch, whose Jira tools take an issueKey to say which.",
       ),
     jira_created_issue_keys: z
-      .array(z.string())
+      .array(z.string().max(MAX_METADATA_STRING_LENGTH))
+      .max(MAX_JIRA_ISSUE_KEYS)
       .optional()
       .describe(
         "The Jira issues a 'jira' run created itself, so a repeated create returns the one it made.",
