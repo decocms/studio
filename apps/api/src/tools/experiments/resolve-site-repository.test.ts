@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
 import {
-  resolveRepositoryIdForProject,
+  resolveRepositoryForProject,
   resolveSiteRepositoryId,
 } from "./resolve-site-repository";
 
@@ -111,24 +111,24 @@ describe("resolveSiteRepositoryId", () => {
   });
 });
 
-describe("resolveRepositoryIdForProject", () => {
+describe("resolveRepositoryForProject", () => {
   it("resolves the binding's repository row for an already-resolved project", async () => {
     const ctx = contextWith([], {
       byId: { "repo-1": "repo-1" },
     });
 
     await expect(
-      resolveRepositoryIdForProject(ctx, "org-1", {
+      resolveRepositoryForProject(ctx, "org-1", {
         metadata: { repository: { ...repository, repositoryId: "repo-1" } },
       }),
-    ).resolves.toBe("repo-1");
+    ).resolves.toEqual({ id: "repo-1" });
   });
 
   it("returns null for a project with no repository binding", async () => {
     const ctx = contextWith([]);
 
     await expect(
-      resolveRepositoryIdForProject(ctx, "org-1", { metadata: null }),
+      resolveRepositoryForProject(ctx, "org-1", { metadata: null }),
     ).resolves.toBeNull();
   });
 });

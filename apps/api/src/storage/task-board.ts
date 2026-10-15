@@ -187,9 +187,9 @@ export const TERMINAL_THREAD_STATUSES = new Set([
 ]);
 
 /**
- * A card created against a repository. Callers that resolve the repository row
- * (`EXPERIMENT_IMPLEMENT`) set only `repositoryId`, never the `owner/name`
- * label, so reading `repo` alone sent their runs to QA as repo-less answers —
+ * A card created against a repository. `repository_id` is the binding and
+ * `repo` its legacy `owner/name` label (migration 204), so a card carrying
+ * only the id is repo-backed too — read as repo-less, its run went to QA,
  * past the sweeper that finds a PR opened inside the sandbox by its branch.
  */
 export function isRepoBacked(item: {

@@ -3,18 +3,11 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { findOwnedProject } from "./ownership";
 import { assertExperimentsV2 } from "./v2-gate";
-import { resolveRepositoryIdForProject } from "./resolve-site-repository";
+import { resolveRepositoryForProject } from "./resolve-site-repository";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskKey } from "@decocms/shared/task-key";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
 import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
-
-/** The branch the implementation PR is opened from. Named after the test so a
- *  person reading the repo's branch list, and the Experiments screen reading
- *  the card's pull requests, both see which experiment a branch belongs to. */
-function experimentBranch(key: string): string {
-  return `experiment/${key}`;
-}
 
 function buildInstruction(experiment: {
   key: string;
@@ -93,10 +86,7 @@ Steps:
    existing pattern rather than inventing a new one.
 5. Don't touch unrelated code, and don't create or edit anything in the
    Experiments panel itself — the record already exists.
-6. Commit on a branch named exactly \`${experimentBranch(experiment.key)}\` and
-   open a PR from it. Naming it after the test is what lets the Experiments
-   screen recognize this pull request as the experiment's own.
-7. In the PR body, list each arm and the exact
+6. In the PR body, list each arm and the exact
    \`?__ab=${experiment.key}:<arm-id>\` URL that forces it, so a reviewer can
    see both arms without waiting for a real assignment.`;
 }
@@ -162,12 +152,12 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       // The card was deleted; delegate again.
     }
 
-    const repositoryId = await resolveRepositoryIdForProject(
+    const repository = await resolveRepositoryForProject(
       ctx,
       organization.id,
       project,
     );
-    if (!repositoryId) {
+    if (!repository) {
       throw new Error(
         `${input.site} has no linked GitHub repository — connect one before implementing an experiment.`,
       );
@@ -188,7 +178,8 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       status: "todo",
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: owner?.userId ?? null,
-      repositoryId,
+      repositoryId: repository.id,
+      repo: repository.path,
       by: ctx.auth.user!.id,
     });
     emitTaskBoardUpdated(organization.id, item);
