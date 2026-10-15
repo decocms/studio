@@ -41,6 +41,8 @@ export interface Settings {
 
   // Auth & Secrets
   betterAuthSecret: string;
+  /** Optional cookie namespace for multiple instances on the same hostname. */
+  betterAuthCookiePrefix: string | undefined;
   encryptionKey: string;
   studioJwtSecret: string | undefined;
   localMode: boolean;

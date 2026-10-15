@@ -479,6 +479,7 @@ const authSecret =
 
 export const auth = betterAuth({
   secret: authSecret,
+  advanced: { cookiePrefix: settings.betterAuthCookiePrefix },
 
   // customAPIKeyGetter probes every `Authorization: Bearer …` as an API key,
   // so OAuth tokens, studio JWTs and stale keys routinely miss and Better Auth

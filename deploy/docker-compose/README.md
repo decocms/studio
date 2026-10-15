@@ -16,11 +16,16 @@ Existing managed-CLI data is not imported or deleted automatically.
 Use `WEB_PORT=4001 COMPOSE_PROJECT_NAME=branch-a docker compose up --build --watch` for
 an isolated second checkout. Keep the same project name/port for subsequent
 commands. There are no fixed container names or required infrastructure host ports.
+Development auth cookies use a project-specific prefix, so logging into another
+localhost port does not replace the first worktree's session. Native clients
+that require the default cookie names can set `BETTER_AUTH_COOKIE_PREFIX=better-auth`.
 Compose does not provision agent sandboxes; configure an existing provider or use
 the [local Kubernetes workflow](../../selfhost/examples/dev-hybrid/README.md).
 
 For host-only API development, `docker-compose.dev.yml` exposes dependency ports;
 configure `DATABASE_URL`, `NATS_URL`, and S3 settings before starting source commands.
+When reusing a Compose database, keep the same `BETTER_AUTH_SECRET` and
+`ENCRYPTION_KEY` in the host API; changing the auth secret breaks persisted JWKS.
 For release images, use `docker-compose.postgres.yml`; its one-shot migration job
 prepares the database before Studio starts. Override images and credentials for
 your deployment. These local examples use development secrets by default.
@@ -40,6 +45,11 @@ the standard service tools. There is no background Studio resource manager.
      -f deploy/docker-compose/docker-compose.dev.yml \
      -f deploy/docker-compose/compose.infra-shared.yaml up -d
    ```
+
+   Allow at least 4 GiB of JetStream capacity per worktree, plus KV headroom.
+   The example's 16 GB server limit supports its two accounts; it is a ceiling,
+   not preallocated disk space. Verify each account has `DECOPILOT_STREAMS`:
+   HTTP health alone does not prove agent output streaming is ready.
 
 2. Use PostgreSQL's `createuser`/`createdb` (or `psql`) inside the `postgres`
    container to create a restricted role and its database per worktree. Use

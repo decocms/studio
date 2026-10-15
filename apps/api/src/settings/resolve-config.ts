@@ -217,6 +217,7 @@ export function resolveConfig(
 
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",
+    betterAuthCookiePrefix: envVars.BETTER_AUTH_COOKIE_PREFIX,
     encryptionKey: envVars.ENCRYPTION_KEY || "",
     studioJwtSecret: resolveAliasedEnv(
       envVars.STUDIO_JWT_SECRET,
@@ -429,6 +430,16 @@ export function resolveConfig(
     awsS3TenantProvisionerSecretAccessKey:
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
   };
+
+  if (
+    settings.betterAuthCookiePrefix !== undefined &&
+    (!settings.betterAuthCookiePrefix ||
+      /[^A-Za-z0-9_-]/.test(settings.betterAuthCookiePrefix))
+  ) {
+    throw new Error(
+      "BETTER_AUTH_COOKIE_PREFIX must contain only letters, digits, underscores, and hyphens",
+    );
+  }
 
   if (Boolean(settings.natsUser) !== Boolean(settings.natsPassword)) {
     throw new Error("NATS_USER and NATS_PASSWORD must be set together");

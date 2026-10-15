@@ -39,6 +39,38 @@ describe("resolveConfig sandbox sticky head ref", () => {
   });
 });
 
+describe("resolveConfig auth cookie prefix", () => {
+  it("keeps Better Auth's default when unset", () => {
+    expect(resolveConfig({}).betterAuthCookiePrefix).toBeUndefined();
+  });
+
+  it.each(["studio-branch-a", "studio_branch_2", "Studio3"])(
+    "preserves the explicit cookie prefix %p",
+    (value) => {
+      expect(
+        resolveConfig({ BETTER_AUTH_COOKIE_PREFIX: value })
+          .betterAuthCookiePrefix,
+      ).toBe(value);
+    },
+  );
+
+  it.each([
+    "",
+    " ",
+    "studio branch",
+    "studio;branch",
+    "studio=branch",
+    "studio\nbranch",
+    "studio\n",
+    "studio\r",
+    "stúdio",
+  ])("rejects unsafe or empty cookie prefixes %p", (value) => {
+    expect(() => resolveConfig({ BETTER_AUTH_COOKIE_PREFIX: value })).toThrow(
+      "BETTER_AUTH_COOKIE_PREFIX must contain only",
+    );
+  });
+});
+
 describe("resolveConfig NATS connection", () => {
   it("preserves an external URL and generic credentials file", () => {
     const result = resolveConfig({
