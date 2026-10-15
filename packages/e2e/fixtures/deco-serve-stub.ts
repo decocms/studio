@@ -70,12 +70,28 @@ async function asOutdated(response: Response, body: string): Promise<Response> {
       return [];
     }
   })();
-  const text = await response.text();
+  // The handler gzips larger answers when the browser accepts it: read the
+  // JSON through the encoding, then send it back plain.
+  const gzipped = /gzip/i.test(response.headers.get("content-encoding") ?? "");
+  const text =
+    gzipped && response.body
+      ? await new Response(
+          response.body.pipeThrough(
+            new DecompressionStream("gzip") as unknown as ReadableWritablePair<
+              Uint8Array,
+              Uint8Array
+            >,
+          ),
+        ).text()
+      : await response.text();
   let answer: unknown;
   try {
     answer = JSON.parse(text);
   } catch {
-    return new Response(text, response);
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    headers.delete("content-encoding");
+    return new Response(text, { status: response.status, headers });
   }
   const fix = (one: Record<string, unknown>) => {
     const call = methods.find((m) => m.id === one.id);
@@ -243,6 +259,9 @@ export async function startDecoServeStub(params: {
     writeFile: (file, text) => writeFile(join(blocksDir, file), text),
     git: (...args) => git(root, ...args),
     close: async () => {
+      // The editor polls over keep-alive connections; `close` alone waits
+      // for them to go idle, which a polling page never does.
+      server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );
