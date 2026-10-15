@@ -1,6 +1,6 @@
 # Local development
 
-From the repository root, run `docker compose up --build --watch` (Compose 2.32+).
+From the repository root, run `docker compose up --build --watch` (Compose 2.40+).
 Open <http://localhost:4000>. Source changes sync into Linux containers; Bun/Vite
 reload the application. Dependencies and generated sandbox packages stay in the
 development image. Lockfile/manifests rebuild it. No host Bun installation is

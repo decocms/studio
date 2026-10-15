@@ -86,7 +86,7 @@ services:
           path: deploy/docker-compose/Dockerfile.dev.dockerignore
         - action: rebuild
           path: packages
-          ignore: ["**", "!**/", "!**/package.json"]
+          include: ["**/package.json"]
   web:
     <<: *development
     command: ["bun", "run", "--cwd=apps/web", "dev"]
@@ -125,7 +125,7 @@ services:
           path: deploy/docker-compose/Dockerfile.dev
         - action: rebuild
           path: packages
-          ignore: ["**", "!**/", "!**/package.json"]
+          include: ["**/package.json"]
         - action: rebuild
           path: apps/native/package.json
         - action: rebuild

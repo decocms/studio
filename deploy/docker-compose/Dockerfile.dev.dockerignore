@@ -13,6 +13,8 @@
 !packages/**
 !scripts/
 !scripts/**
+!deploy/docker-compose/Dockerfile.dev
+!deploy/docker-compose/Dockerfile.dev.dockerignore
 **/node_modules
 **/dist
 **/target

@@ -5,7 +5,7 @@ scoped instructions. This guide covers setup and contributions.
 
 ## Getting started
 
-Install Docker Desktop, or Docker Engine with Compose 2.32+. From the repository root:
+Install Docker Desktop, or Docker Engine with Compose 2.40+. From the repository root:
 
 ```bash
 docker compose up --build --watch   # dependencies, migrations, API, and web
