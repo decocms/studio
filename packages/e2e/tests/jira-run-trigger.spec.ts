@@ -265,21 +265,16 @@ test.describe("Jira run trigger", () => {
       AUTOMATED_STATUS,
     ]);
 
-    for (const from of [
-      { kind: "any" },
-      { kind: "later" },
-      { kind: "statuses", statuses: ["Teste"] },
-    ]) {
-      const { removed } = await callSelfMcpTool<{ removed: boolean }>(
-        api,
-        orgSlug,
-        "JIRA_AUTOMATION_DELETE",
-        { jiraStatus: AUTOMATED_STATUS, from },
-      );
-      expect(removed).toBe(true);
+    // Deleting an automation takes its Jira starter with it.
+    const { automations: rules } = await callSelfMcpTool<{
+      automations: Array<{ automationId: string; jiraStatus: string }>;
+    }>(api, orgSlug, "JIRA_AUTOMATION_LIST", {});
+    for (const rule of rules.filter((r) => r.jiraStatus === AUTOMATED_STATUS)) {
+      await callSelfMcpTool(api, orgSlug, "AUTOMATION_DELETE", {
+        id: rule.automationId,
+      });
     }
     expect((await list()).map((a) => a.jiraStatus)).toEqual(["Code Review"]);
-    // Removing the rule removed the automation it was the only trigger of.
     await expect(
       callSelfMcpTool(api, orgSlug, "AUTOMATION_GET", {
         id: automation.automationId,

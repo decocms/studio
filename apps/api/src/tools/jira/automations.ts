@@ -186,37 +186,3 @@ export const JIRA_AUTOMATION_UPSERT = defineTool({
     };
   },
 });
-
-export const JIRA_AUTOMATION_DELETE = defineTool({
-  name: "JIRA_AUTOMATION_DELETE",
-  description:
-    "Stop firing on issues entering a Jira status from an origin (`from`, " +
-    "default any): removes that trigger, and its automation when it has no " +
-    "other trigger.",
-  inputSchema: z.object({
-    jiraStatus: z.string().min(1),
-    from: RuleFromSchema.optional(),
-  }),
-  outputSchema: z.object({ removed: z.boolean() }),
-  handler: async (input, ctx) => {
-    requireAuth(ctx);
-    await ctx.access.check();
-    const organization = requireOrganization(ctx);
-    const key = fromKey(input.from ?? { kind: "any" });
-    const rule = (await listRules(ctx, organization.id, input.jiraStatus)).find(
-      (r) => fromKey(r.from) === key,
-    );
-    if (!rule) return { removed: false };
-    await ctx.storage.automations.removeTrigger(
-      rule.triggerId,
-      rule.automationId,
-    );
-    if (
-      (await ctx.storage.automations.listTriggers(rule.automationId)).length ===
-      0
-    ) {
-      await ctx.storage.automations.delete(rule.automationId, organization.id);
-    }
-    return { removed: true };
-  },
-});

@@ -221,7 +221,6 @@ const ALL_TOOL_NAMES = [
   "JIRA_BOARD_COLUMNS_LIST",
   "JIRA_AUTOMATION_LIST",
   "JIRA_AUTOMATION_UPSERT",
-  "JIRA_AUTOMATION_DELETE",
   "JIRA_RUN_START",
   "JIRA_ISSUE_GET",
   "JIRA_COMMENT_ADD",
@@ -1092,11 +1091,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
-    name: "JIRA_AUTOMATION_DELETE",
-    description: "Stop firing on issues entering a Jira status",
-    category: "Jira",
-  },
-  {
     name: "JIRA_RUN_START",
     description: "Fire an automation on Jira issues now",
     category: "Jira",
@@ -1847,7 +1841,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_BOARD_COLUMNS_LIST",
       "JIRA_AUTOMATION_LIST",
       "JIRA_AUTOMATION_UPSERT",
-      "JIRA_AUTOMATION_DELETE",
       "JIRA_RUN_START",
     ],
   },

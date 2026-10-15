@@ -7430,18 +7430,6 @@ export interface StudioToolIO {
       };
     };
   };
-  JIRA_AUTOMATION_DELETE: {
-    input: {
-      jiraStatus: string;
-      from?:
-        | { kind: "any" }
-        | { kind: "earlier" }
-        | { kind: "later" }
-        | { kind: "statuses"; statuses: string[] }
-        | undefined;
-    };
-    output: { removed: boolean };
-  };
   JIRA_RUN_START: {
     input: {
       automationId: string;
