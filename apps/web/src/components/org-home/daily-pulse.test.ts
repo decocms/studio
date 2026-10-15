@@ -207,18 +207,21 @@ describe("projectSummaries", () => {
     expect(summaries.get("p1")?.open).toBe(3);
   });
 
-  test("a card on a shared repository counts for every project pinning it", () => {
+  test("a card on a shared repository counts for the project it is stamped for", () => {
     const index = buildProjectIndex([
       project("p1", "deco/mono"),
       project("p2", "deco/mono"),
     ]);
     const summaries = projectSummaries(
       index,
-      [task({ status: "triage", repo: "deco/mono" })],
+      [
+        task({ status: "triage", repo: "deco/mono" }),
+        task({ status: "triage", repo: "deco/mono", virtualMcpId: "p2" }),
+      ],
       undefined,
       NOW,
     );
-    expect(summaries.get("p1")?.open).toBe(1);
+    expect(summaries.get("p1")?.open ?? 0).toBe(0);
     expect(summaries.get("p2")?.open).toBe(1);
   });
 

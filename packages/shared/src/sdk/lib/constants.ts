@@ -385,6 +385,26 @@ export function isRetiredStudioPackAgent(
   );
 }
 
+/**
+ * Whether a virtual MCP is a project a person works in, rather than plumbing:
+ * Decopilot is the org-wide default, Studio Pack agents are code-owned
+ * scaffolding, and a dev agent (`metadata.liveAgentId`) is reached through its
+ * live counterpart. The web's project switcher and the task board's
+ * attribution both count projects with this.
+ */
+export function isScopableProject(project: {
+  id: string;
+  metadata?: { liveAgentId?: unknown } | null;
+}): boolean {
+  const liveAgentId = project.metadata?.liveAgentId;
+  return (
+    !(typeof liveAgentId === "string" && liveAgentId) &&
+    !isDecopilot(project.id) &&
+    !isStudioPackAgent(project.id) &&
+    !isRetiredStudioPackAgent(project.id)
+  );
+}
+
 export function getWellKnownDecopilotConnection(
   organizationId: string,
 ): ConnectionEntity {

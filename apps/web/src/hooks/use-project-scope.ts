@@ -1,14 +1,8 @@
 /** Project scope comes from the canonical route; the API still uses the existing repository filters. */
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import {
-  isDecopilot,
-  isRetiredStudioPackAgent,
-  isStudioPackAgent,
-  useVirtualMCPNonBlocking,
-  useVirtualMCPsNonBlocking,
-} from "@/sdk";
-import { getDevAgentIds } from "@/lib/agent-capabilities";
+import { isScopableProject } from "@decocms/shared/sdk";
+import { useVirtualMCPNonBlocking, useVirtualMCPsNonBlocking } from "@/sdk";
 import {
   DESTINATION_ROUTE,
   useActivePanelSegment,
@@ -22,25 +16,12 @@ import { projectRepo } from "@/lib/repository-binding";
  *  once they navigated away. */
 export const MIN_PROJECTS_FOR_SWITCHER = 1;
 
-/**
- * The projects a person can scope to: their own, minus the plumbing.
- *
- * Decopilot is the org-wide default rather than a project; Studio Pack agents
- * are code-owned scaffolding; dev agents are reached through the Develop/Live
- * toggle on their live counterpart, never as standalone entries.
- */
+/** The projects a person can scope to: their own, minus the plumbing
+ *  ({@link isScopableProject}). */
 export function scopableProjects(
   all: VirtualMCPEntity[] | null | undefined,
 ): VirtualMCPEntity[] {
-  const projects = all ?? [];
-  const devIds = getDevAgentIds(projects);
-  return projects.filter(
-    (project) =>
-      !devIds.has(project.id) &&
-      !isDecopilot(project.id) &&
-      !isStudioPackAgent(project.id) &&
-      !isRetiredStudioPackAgent(project.id),
-  );
+  return (all ?? []).filter(isScopableProject);
 }
 
 export interface ProjectScope {

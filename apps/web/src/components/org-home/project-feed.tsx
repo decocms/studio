@@ -110,7 +110,10 @@ export function buildFeed(
   for (const task of tasks) {
     /** Deleted work is not activity; every other lane belongs here. */
     if (task.status === "archived") continue;
-    const bucket = entryForTask(task, index);
+    // A card no sibling owns yet still is activity, named for its repository.
+    const bucket =
+      entryForTask(task, index) ??
+      (task.repo ? entryForFilter(task.repo, index) : undefined);
     if (!bucket) continue;
     /** The board's own test, which resolves an id re-keyed since the link was
      *  made and reads a stamped card as its project. */

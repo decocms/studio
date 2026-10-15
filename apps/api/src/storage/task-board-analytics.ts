@@ -161,7 +161,8 @@ export interface AnalyticsQuery {
 
 export interface AnalyticsProject {
   id: string;
-  /** The project's `owner/name`, lowercased; null for a repo-less project. */
+  /** The project's `owner/name`, lowercased; null for a repo-less project or
+   *  one whose repository another project also pins. */
   repo: string | null;
 }
 

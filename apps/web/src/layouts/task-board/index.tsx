@@ -984,13 +984,18 @@ function TaskBoardBody({
   const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
   /** A project's home IS this board — see `board-scope.ts` for why scope is a
    *  narrowing of the input rather than a value in the `?repo=` filter. */
-  const { scopeId: routeScopeId, project: routeProject } = useProjectScope();
+  const {
+    scopeId: routeScopeId,
+    project: routeProject,
+    projects: orgProjects,
+  } = useProjectScope();
   const scopeId = scopeProject?.id ?? routeScopeId;
   const scopedProject = scopeProject ?? routeProject;
   const { items, isLoading } = scopedBoardItems({
     items: orgItems,
     scopeId,
     project: scopedProject,
+    projects: orgProjects,
     isLoading: itemsLoading,
   });
   const { data: orgTags = [] } = useTags();

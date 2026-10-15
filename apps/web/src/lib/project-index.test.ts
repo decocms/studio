@@ -278,13 +278,14 @@ describe("projectsForTask / projectForTask", () => {
 
   /** Listing a shared card under both is honest; listing it under one at
    *  random is the bug this index exists to remove. */
-  test("a shared bucket with no hint resolves to every project in it", () => {
+  /** Neither sibling owns it until it is stamped: it waits under "No
+   *  project" on the org board instead of showing on both project boards. */
+  test("a shared bucket with no hint resolves to no project", () => {
     const card = task({ repo: "acme/mono" });
-    expect(projectsForTask(card, index).map((p) => p.id)).toEqual([
-      "vir_m1",
-      "vir_m2",
-    ]);
+    expect(projectsForTask(card, index)).toEqual([]);
     expect(projectForTask(card, index)).toBeNull();
+    expect(entryForTask(card, index)).toBeNull();
+    expect(taskMatchesProjectFilter(card, NO_PROJECT_FILTER, index)).toBe(true);
   });
 
   test("nothing for an unattributable card", () => {
@@ -692,14 +693,14 @@ describe("tasksForProject", () => {
 
   /** Two projects over one monorepo both claim the card, the same answer the
    *  sidebar and the home already give. */
-  test("a shared repository counts for every project pinning it", () => {
+  test("a shared repository alone counts for none of the projects pinning it", () => {
     const shared = buildProjectIndex([
       project("a", "A", "acme/mono"),
       project("b", "B", "acme/mono"),
     ]);
     const card = task({ repo: "acme/mono" });
-    expect(tasksForProject([card], shared, "a")).toEqual([card]);
-    expect(tasksForProject([card], shared, "b")).toEqual([card]);
+    expect(tasksForProject([card], shared, "a")).toEqual([]);
+    expect(tasksForProject([card], shared, "b")).toEqual([]);
   });
 });
 
@@ -721,13 +722,16 @@ describe("stamped projects", () => {
     expect(entryForFilter("acme/mono", index)?.projects).toHaveLength(2);
   });
 
-  test("the stamp names one project where the repository named both", () => {
+  test("the stamp names one project where the repository named none", () => {
     const card = stamped("vir_m2", "acme/mono");
     expect(projectsForTask(card, index).map((p) => p.id)).toEqual(["vir_m2"]);
     expect(entryForTask(card, index)?.id).toBe("vir_m2");
-    expect(
-      projectsForTask(task({ repo: "acme/mono" }), index).map((p) => p.id),
-    ).toEqual(["vir_m1", "vir_m2"]);
+    expect(projectsForTask(task({ repo: "acme/mono" }), index)).toEqual([]);
+  });
+
+  test("a run in one of the siblings names that sibling", () => {
+    const card = task({ repo: "acme/mono", virtualMcpId: "vir_m1" });
+    expect(entryForTask(card, index)?.id).toBe("vir_m1");
   });
 
   test("the stamp outranks the repository and the runs", () => {
@@ -738,18 +742,14 @@ describe("stamped projects", () => {
     expect(projectForTask(card, index)?.id).toBe("vir_a");
   });
 
-  /** A project's own board indexes only itself, so the sibling's stamp is
-   *  unknown there and must not fall back to the shared repository. */
-  test("a project's board drops a sibling's stamped card", () => {
+  test("a project's board holds only the cards stamped or run for it", () => {
     const cards = [
       { id: "mine", ...stamped("vir_m1", "acme/mono") },
       { id: "sibling", ...stamped("vir_m2", "acme/mono") },
       { id: "shared", ...task({ repo: "acme/mono" }) },
     ];
-    const own = buildProjectIndex([MONO_1]);
-    expect(tasksForProject(cards, own, "vir_m1").map((c) => c.id)).toEqual([
+    expect(tasksForProject(cards, index, "vir_m1").map((c) => c.id)).toEqual([
       "mine",
-      "shared",
     ]);
   });
 
@@ -762,7 +762,7 @@ describe("stamped projects", () => {
     ).toBe(false);
     expect(
       taskMatchesProjectFilter(task({ repo: "acme/mono" }), "vir_m1", index),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("a repository filter does not admit a card stamped elsewhere", () => {
