@@ -110,6 +110,26 @@ describe("buildCommitForm", () => {
     expect(form!.getAll("a.json")).toEqual(["second"]);
   });
 
+  test("refuses a path that collides with POST /src's own form fields", () => {
+    for (const reserved of [
+      "message",
+      "author",
+      "files",
+      "branch",
+      "parents",
+    ]) {
+      expect(() =>
+        buildCommitForm({
+          branch: "main",
+          parent: "p1",
+          message: "save",
+          changes: [{ path: reserved, content: "x" }],
+          existsAtParent: exists([]),
+        }),
+      ).toThrow(/collides with/);
+    }
+  });
+
   test("nothing to commit yields no form", () => {
     expect(
       buildCommitForm({
