@@ -18,20 +18,18 @@ type Message = {
   [key: string]: unknown;
 };
 
+/** One paragraph per line: the editor turns paragraphs back into lines, so
+ *  the text survives a save from it. */
 function buildTiptapDoc(text: string) {
   return {
     type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          {
-            type: "text",
-            text,
-          },
-        ],
-      },
-    ],
+    content: text
+      .split("\n")
+      .map((line) =>
+        line
+          ? { type: "paragraph", content: [{ type: "text", text: line }] }
+          : { type: "paragraph" },
+      ),
   };
 }
 

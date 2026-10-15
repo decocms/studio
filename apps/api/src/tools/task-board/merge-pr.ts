@@ -8,7 +8,7 @@ import {
   allReviewersApproved,
   approvedButUnverified,
   enabledReviewerKinds,
-  shippedLane,
+  LANES,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -22,7 +22,11 @@ import {
   readNamespace,
 } from "./prs-get";
 import { inReviewPhase } from "./lanes";
-import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
+import {
+  emitTaskBoardUpdated,
+  handTaskToHuman,
+  moveApprovedCardToQa,
+} from "./run-reactions";
 
 /**
  * Why a merge didn't happen. `checks_pending` is the one ROUTINE outcome — CI
@@ -106,8 +110,8 @@ async function recordMergeFailure(
 }
 
 /**
- * Merge the task's open change request. Shared by the reviewer decision
- * (auto-merge on all-approved) and the manual "promote to production" action.
+ * Merge the task's open change request. Shared by `shipFromReadyForDeployment`
+ * (the Ship button and `auto_merge`) and the conflict paths.
  * Never throws: returns a `{merged: false, reason}` on any failure (no
  * credential, it's gone, a conflict) so the caller can leave it for a human.
  * Merges the newest linked one — the one under review.
@@ -118,13 +122,13 @@ async function recordMergeFailure(
  * codes, and only the implementation knows which of its own strategies is
  * worth trying next.
  *
- * Every failure is BOTH logged and written to the card's timeline. The card
- * staying In Review with no explanation is the exact shape of the outage this
+ * Every failure is BOTH logged and written to the card's timeline. A card
+ * staying put with no explanation is the exact shape of the outage this
  * function caused once already: a verified approval, a green mergeable PR, and
  * a card that sat there because the only record of the refusal was a log line
  * nobody was tailing.
  */
-export async function mergeLinkedPr(
+async function mergeLinkedPr(
   ctx: StudioContext,
   orgId: string,
   taskBoardItemId: string,
@@ -217,8 +221,8 @@ export function reasonFor(
 /**
  * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
  * decision in the current review cycle. `verifiedOnly` is the point: a
- * self-asserted approval (missing/wrong reviewToken) must never trigger an
- * automatic merge, otherwise one agent could forge the two-reviewer gate. Reads
+ * self-asserted approval (missing/wrong reviewToken) must never pass a card
+ * on to QA, otherwise an agent could forge the reviewer's verdict. Reads
  * the activity log through the shared cycle reducer (same logic the ship button
  * uses, minus the verification requirement).
  *
@@ -245,7 +249,7 @@ export async function allEnabledReviewersVerifiedApproved(
 
 /**
  * True when every enabled reviewer approved but at least one approval did NOT
- * verify — the auto-merge gate is unsatisfiable for the rest of this cycle.
+ * verify — the card cannot leave review on its own for the rest of this cycle.
  *
  * A reviewer's token binds its decision to its dispatch, so an approval that
  * fails to verify (the model dropped the token from its prompt, or replayed one
@@ -278,7 +282,8 @@ async function handUnverifiedApprovalToHuman(
     ctx,
     item,
     "every reviewer approved, but an approval could not be verified — " +
-      "auto-merge is blocked and no reviewer can be re-dispatched this cycle",
+      "the card cannot move to QA on its own and no reviewer can be " +
+      "re-dispatched this cycle",
   );
 }
 
@@ -303,16 +308,9 @@ export function conflictFromOutcome(
 }
 
 /**
- * Hand an approved-but-conflicting PR back to the Super Agent to rebase.
- *
- * The inline approval path does this (`review-decision.ts`), but the SWEEP's
- * retry didn't — so a conflict that appeared after the approval (the base
- * branch moved on, which is the common case for a card that waited) left the
- * card retrying the same 405 every five minutes, forever, with no run ever
- * dispatched to fix it. Two cards in one org, `merge_conflict_resolution` count
- * zero across the whole board.
- *
- * The reaction itself re-checks approval, the org flag and its own dispatch cap.
+ * Hand a conflicting PR back to the Super Agent to rebase, after a merge from
+ * Ready for Deployment was refused for it. The reaction itself re-checks the
+ * lane, the approval, the org flag and its own dispatch cap.
  */
 async function resolveConflictAfterRefusedMerge(
   ctx: StudioContext,
@@ -330,60 +328,96 @@ async function resolveConflictAfterRefusedMerge(
     pr: { number: pr.number, url: pr.url },
     conflict,
   }).catch((err) => {
-    console.error("[task-board] sweep conflict auto-resolve failed", err);
+    console.error("[task-board] conflict auto-resolve failed", err);
   });
 }
 
 /**
- * Retry the auto-merge for a card that finished its review but never shipped.
+ * Merge a card's pull request from Ready for Deployment and move the card to
+ * Post-deploy Validation. The one merge path: the Ship button calls it, and so
+ * does a card reaching the lane when the org has `auto_merge` on.
  *
- * The reviewer decision merges inline, and when that merge fails the card is
- * simply left In Review — the review cycle's claim is spent, so NOTHING
- * re-dispatches and nothing re-attempts. A transient GitHub blip, or a deleted
- * connection later restored, therefore stranded the card permanently. This is
- * the resumption: idempotent, safe to call every sweep, and gated on exactly
- * the state the inline path required (In Review + auto-merge on + every enabled
- * reviewer verifiably approved), so it can never ship something the reviewers
- * didn't.
- *
- * Returns true only when this call actually merged and advanced the card.
+ * A refused merge leaves the card in place with the reason on its timeline
+ * (`mergeLinkedPr`); a conflict goes back to the Super Agent when the org lets
+ * it (`reactToApprovedPrConflict`).
  */
-export async function retryAutoMergeIfApproved(
+export async function shipFromReadyForDeployment(
   ctx: StudioContext,
   item: TaskBoardItem,
-): Promise<boolean> {
+  opts: {
+    allowPendingChecks?: boolean;
+    /** The person who shipped it; analytics reads no actor as the agent. */
+    shippedBy?: string | null;
+  } = {},
+): Promise<{ item: TaskBoardItem; merged: boolean }> {
   const orgId = item.organizationId;
-  if (!inReviewPhase(item)) return false;
-  const settings = await ctx.storage.organizationSettings.get(orgId);
-  if (settings?.flags?.auto_merge !== true) return false;
-  // Same human-override guard `review-decision.ts` and `prs-get` honor.
-  if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
-    return false;
-  }
-  if (!(await allEnabledReviewersVerifiedApproved(ctx, orgId, item.id))) {
-    await handUnverifiedApprovalToHuman(ctx, item);
-    return false;
-  }
-
-  const outcome = await mergeLinkedPr(ctx, orgId, item.id);
+  if (item.status !== LANES.release) return { item, merged: false };
+  const outcome = await mergeLinkedPr(ctx, orgId, item.id, {
+    allowPendingChecks: opts.allowPendingChecks,
+  });
   if (!outcome.merged) {
     await resolveConflictAfterRefusedMerge(ctx, item, outcome);
-    return false;
+    const refreshed =
+      (await ctx.storage.taskBoard.getById(item.id, orgId)) ?? item;
+    emitTaskBoardUpdated(orgId, refreshed);
+    return { item: refreshed, merged: false };
   }
-
-  const shipped = shippedLane(settings?.flags);
-  const done = await ctx.storage.taskBoard.update(
+  const shipped = await ctx.storage.taskBoard.update(
     item.id,
     orgId,
-    { status: shipped },
+    { status: LANES.shipped },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
     taskBoardItemId: item.id,
     action: "status_changed",
-    actorId: null,
-    data: { from: item.status, to: shipped },
+    actorId: opts.shippedBy ?? null,
+    data: { from: item.status, to: LANES.shipped },
   });
-  emitTaskBoardUpdated(orgId, done);
-  return true;
+  emitTaskBoardUpdated(orgId, shipped);
+  return { item: shipped, merged: true };
+}
+
+/**
+ * A card just landed in Ready for Deployment: ship it now when the org merges
+ * on arrival (`auto_merge`). Checks still running hold the merge back; the
+ * Ship button can override that.
+ */
+export async function shipOnArrivalIfAutoMerge(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+): Promise<TaskBoardItem> {
+  if (item.status !== LANES.release) return item;
+  const settings = await ctx.storage.organizationSettings.get(
+    item.organizationId,
+  );
+  if (settings?.flags?.auto_merge !== true) return item;
+  return (await shipFromReadyForDeployment(ctx, item)).item;
+}
+
+/**
+ * Move a card whose review finished to QA, for the cases the verdict itself
+ * did not settle: a card the previous release left In Review after an
+ * approval, or a verdict whose move failed. Gated on every enabled reviewer
+ * having verifiably approved this cycle; an approval that did not verify goes
+ * to a person instead, since nothing will re-dispatch that reviewer.
+ *
+ * Returns true only when this call moved the card.
+ */
+export async function moveFinishedReviewToQa(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+): Promise<boolean> {
+  if (!inReviewPhase(item)) return false;
+  if (
+    !(await allEnabledReviewersVerifiedApproved(
+      ctx,
+      item.organizationId,
+      item.id,
+    ))
+  ) {
+    await handUnverifiedApprovalToHuman(ctx, item);
+    return false;
+  }
+  return (await moveApprovedCardToQa(ctx, item)) !== null;
 }

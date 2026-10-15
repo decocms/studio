@@ -13,8 +13,8 @@ import {
   Microphone01,
   LayoutAlt01,
   Pilcrow01,
-  Rocket01,
   SearchLg,
+  Stars02,
   Terminal,
   UserSquare,
 } from "@untitledui/icons";
@@ -27,6 +27,7 @@ import {
   useAutoResolveConflicts,
   useCodingAgentExcludedMcps,
   useOrgFlag,
+  useReviewerEnabled,
   useSetCodingAgentExcludedMcps,
   useSetNewBlocksEditor,
   useSetOrgFlag,
@@ -43,7 +44,8 @@ import type { ReactNode } from "react";
 
 /**
  * Org-level review settings: which automated reviewers run on a task's PR once
- * it's In Review, and whether an all-approved PR is merged automatically.
+ * it's In Review, and whether a card that reaches Ready for Deployment is
+ * merged automatically.
  */
 export function ReviewSettings() {
   const t = useT();
@@ -53,12 +55,7 @@ export function ReviewSettings() {
       description={t("settings.review.description")}
     >
       <SettingsCard>
-        <FlagToggle
-          flag="reviewer_enabled"
-          icon={<FileSearch02 size={16} />}
-          titleKey="settings.review.reviewerTitle"
-          descriptionKey="settings.review.reviewerDescription"
-        />
+        <ReviewerEnabledToggle />
         <FlagToggle
           flag="cheap_reviewer_model"
           icon={<Coins01 size={16} />}
@@ -72,12 +69,6 @@ export function ReviewSettings() {
           descriptionKey="settings.review.autoMergeDescription"
         />
         <AutoResolveConflictsToggle />
-        <FlagToggle
-          flag="delivery_lanes_enabled"
-          icon={<Rocket01 size={16} />}
-          titleKey="settings.review.deliveryLanesTitle"
-          descriptionKey="settings.review.deliveryLanesDescription"
-        />
         <FlagToggle
           flag="auto_assign_report_tasks_to_super_agent"
           icon={<UserSquare size={16} />}
@@ -404,6 +395,23 @@ export function CodeAgentsSettings() {
   );
 }
 
+/** Where every chat runs. Its own section: it covers all chats, not Code Agents. */
+export function ChatRuntimeSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="chat_harness_sandbox_only"
+          icon={<Terminal size={16} />}
+          titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
+          descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
 export function VoiceModeSettings() {
   const t = useT();
   return (
@@ -421,15 +429,23 @@ export function VoiceModeSettings() {
 }
 
 /**
- * Whether the blog's post inserter still offers the `deco-cms/blog` built-in
- * blocks, or only the site's own. Org-level: an org that designed its own post
- * blocks wants writers reaching for those, not the generic ones.
+ * What the blog is, for this org: whether writers reach for the built-in post
+ * blocks or only the site's own, and whether the agentic half exists at all.
+ *
+ * One section rather than two. They are both answers to "how does this org
+ * blog", and a heading per toggle makes the page read like a changelog.
  */
-export function BlogBlocksSettings() {
+export function BlogSettings() {
   const t = useT();
   return (
-    <SettingsSection title={t("settings.blogBlocks.sectionTitle")}>
+    <SettingsSection title={t("settings.blog.sectionTitle")}>
       <SettingsCard>
+        <FlagToggle
+          flag="blog_ai_enabled"
+          icon={<Stars02 size={16} />}
+          titleKey="settings.blog.aiTitle"
+          descriptionKey="settings.blog.aiDescription"
+        />
         <FlagToggle
           flag="hide_default_blog_blocks"
           icon={<Pilcrow01 size={16} />}
@@ -472,6 +488,25 @@ export function BlocksEditorSettings() {
         />
       </SettingsCard>
     </SettingsSection>
+  );
+}
+
+/**
+ * Reads through `useReviewerEnabled`, not the raw flag: an org that turned
+ * both legacy QA Agent and Code Reviewer flags off, without ever setting
+ * `reviewer_enabled`, has the server gate reading the Reviewer as off — a
+ * switch bound to the raw (default-on) flag would show it on regardless.
+ */
+function ReviewerEnabledToggle() {
+  const enabled = useReviewerEnabled();
+  return (
+    <FlagToggle
+      flag="reviewer_enabled"
+      icon={<FileSearch02 size={16} />}
+      titleKey="settings.review.reviewerTitle"
+      descriptionKey="settings.review.reviewerDescription"
+      enabled={enabled}
+    />
   );
 }
 

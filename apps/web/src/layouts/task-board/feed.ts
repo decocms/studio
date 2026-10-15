@@ -6,7 +6,6 @@
  * card's current state instead.
  */
 
-import { DELIVERY_LANES } from "@decocms/shared/task-board";
 import {
   agentRunState,
   isTaskBlocked,
@@ -38,8 +37,8 @@ export function feedEventKind(item: TaskBoardItem): FeedEventKind {
   if (run === "failed") return "failed";
   if (isTaskHandedToHuman(item)) return "handed";
   if (item.status === "done") return "done";
-  /** The row names the event; the lane pill says which one. */
-  if ((DELIVERY_LANES as string[]).includes(item.status)) return "delivered";
+  /** Merged and waiting on its production check. */
+  if (item.status === "post_deploy_validation") return "delivered";
   if (item.status === "in_review") return "review";
   const age = Date.parse(item.updatedAt) - Date.parse(item.createdAt);
   return Number.isFinite(age) && age < CREATED_WINDOW_MS

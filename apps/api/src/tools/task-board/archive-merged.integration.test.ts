@@ -9,7 +9,6 @@
  */
 
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
-import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -91,7 +90,6 @@ describe("auto-archive sweep", () => {
         // The sweep now asks the board where a finished card retires to, and
         // the board asks the org which board it is.
         organizationSettings: new OrganizationSettingsStorage(database.db),
-        columnAutomations: new ColumnAutomationStorage(database.db),
       },
     } as unknown as StudioContext;
   });
@@ -121,10 +119,14 @@ describe("auto-archive sweep", () => {
     ]);
   });
 
-  // The delivery lanes sit BEFORE Done, so a card parked in one is still in flight.
-  it("never sweeps a card resting in a delivery lane", async () => {
+  // These lanes sit BEFORE Done, so a card parked in one is still in flight.
+  it("never sweeps a card resting in a lane before Done", async () => {
     const settled = new Date(Date.now() - 3 * DAY_MS);
-    const lanes = ["approved", "merged", "post_deploy_validation"] as const;
+    const lanes = [
+      "qa",
+      "ready_for_deployment",
+      "post_deploy_validation",
+    ] as const;
     const parked = await Promise.all(
       lanes.map((lane) => seed(lane, settled, true)),
     );

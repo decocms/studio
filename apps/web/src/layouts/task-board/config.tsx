@@ -1,5 +1,10 @@
 import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
+  closestCorners,
+  pointerWithin,
+  type CollisionDetection,
+} from "@dnd-kit/core";
+import {
   AlertCircle,
   AlertOctagon,
   Archive,
@@ -7,23 +12,23 @@ import {
   ArrowNarrowUp,
   CheckCircle,
   Circle,
+  ClipboardCheck,
   Equal,
   Eye,
   Lightbulb02,
   Loading02,
+  PackageCheck,
   PlusCircle,
-  Rocket01,
   Settings01,
   Shield01,
   ShieldTick,
-  ThumbsUp,
+  UserCheck01,
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TAG_COLOR,
-  DELIVERY_LANES,
 } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { ComponentType } from "react";
@@ -49,7 +54,7 @@ export type TaskBoardItemPr =
  * `In Progress → In Progress` activity ("scheduled retry 1 of 1 — error"), so a
  * card that burned its budget read as a wall of retry chatter with the actual
  * story buried in it. The retry is still counted — the terminal
- * `activityRetriesExhausted` line ("moved to To Do after N failed retries") is
+ * `activityRetriesExhausted` line ("moved to Backlog after N failed retries") is
  * the part a person acts on, and it survives this filter.
  */
 export function isFeedWorthyActivity(a: {
@@ -227,15 +232,20 @@ export const STATUS_CONFIG: Record<
     icon: Eye,
     iconClassName: "text-warning",
   },
-  approved: {
-    labelKey: "taskBoard.config.statusApproved",
-    icon: ThumbsUp,
-    iconClassName: "text-success",
+  qa: {
+    labelKey: "taskBoard.config.statusQa",
+    icon: ClipboardCheck,
+    iconClassName: "text-warning",
   },
-  merged: {
-    labelKey: "taskBoard.config.statusMerged",
-    icon: Rocket01,
-    iconClassName: "text-primary",
+  customer_approval: {
+    labelKey: "taskBoard.config.statusCustomerApproval",
+    icon: UserCheck01,
+    iconClassName: "text-warning",
+  },
+  ready_for_deployment: {
+    labelKey: "taskBoard.config.statusReadyForDeployment",
+    icon: PackageCheck,
+    iconClassName: "text-success",
   },
   post_deploy_validation: {
     labelKey: "taskBoard.config.statusPostDeployValidation",
@@ -349,57 +359,78 @@ export const TASK_TYPE_CONFIG: Record<
   },
 };
 
-/** True for one of the post-merge delivery lanes. */
-function isDeliveryLane(status: string): boolean {
-  return (DELIVERY_LANES as string[]).includes(status);
-}
-
-/**
- * Lanes a card may be MOVED to — "Move to", the status dropdown. With the
- * delivery lanes off they aren't offered, so nobody can put a card somewhere
- * the org's state machine doesn't ship to.
- */
-export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
-  return CANONICAL_COLUMN_KEYS.filter(
-    (key) => deliveryEnabled || !isDeliveryLane(key),
-  );
-}
-
 /**
  * Which lanes the board draws as columns, and which collapse into the "Hidden
  * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
- * or is a delivery lane the board doesn't run; `shownLanes` overrides either.
- * `occupied` is what keeps a card from getting stuck: an unrun delivery lane is
- * absent while empty, but reappears in the drawer the moment a card sits in it.
+ * unless `shownLanes` brings it back.
  */
 export function laneVisibility({
-  deliveryEnabled,
   shownLanes,
-  occupied,
 }: {
-  deliveryEnabled: boolean;
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
-  occupied: readonly string[];
 }): {
   lanes: CanonicalColumnKey[];
   hidden: CanonicalColumnKey[];
   hideable: CanonicalColumnKey[];
 } {
-  const known = CANONICAL_COLUMN_KEYS.filter(
-    (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
-  );
-  const hideable = known.filter(
-    (s) =>
-      HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),
+  const hideable = CANONICAL_COLUMN_KEYS.filter((s) =>
+    HIDDEN_STATUSES.includes(s),
   );
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
-  return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+  return {
+    lanes: CANONICAL_COLUMN_KEYS.filter((s) => !hidden.includes(s)),
+    hidden,
+    hideable,
+  };
+}
+
+/** Width of a collapsed lane: room for its icon, vertical label and count. */
+const COLLAPSED_LANE_WIDTH = 44;
+
+/**
+ * The board grid's column tracks. Open lanes SHARE the width instead of each
+ * taking a fixed 300px: `minmax(280px, 1fr)` fills the panel when there is
+ * room and falls back to scrolling once every lane is at its minimum. 280px,
+ * not less — below it a card's footer runs out of room and its icons start
+ * overlapping instead of wrapping. A collapsed lane takes a fixed strip, and
+ * the hidden-lanes tail needs its own track or the grid wraps it onto a
+ * second row.
+ */
+export function boardGridColumns({
+  lanes,
+  collapsed,
+  hasHiddenTail,
+}: {
+  lanes: readonly string[];
+  /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
+  collapsed: readonly string[];
+  hasHiddenTail: boolean;
+}): string {
+  const tracks: string[] = lanes.map((lane) =>
+    collapsed.includes(lane)
+      ? `${COLLAPSED_LANE_WIDTH}px`
+      : "minmax(280px, 1fr)",
+  );
+  if (hasHiddenTail) tracks.push("280px");
+  return tracks.join(" ");
 }
 
 /** dnd-kit id prefix for a lane's own droppable — the empty space below the
  *  last card. Anything else `over` reports is a card id. */
 export const LANE_DROPPABLE_PREFIX = "lane:";
+
+/**
+ * The board's drop target: whatever the pointer is inside, else the closest
+ * corners. `closestCorners` alone can't pick an empty lane: its droppable runs
+ * the lane's full height, so its bottom corners are far from any dragged card
+ * and a card in the next lane always measures closer. The keyboard sensor has
+ * no pointer, so it keeps the corner distance.
+ */
+export const boardCollisions: CollisionDetection = (args) => {
+  const within = pointerWithin(args);
+  return within.length > 0 ? within : closestCorners(args);
+};
 
 /** True for one of the board's columns — the only place a drop may land. */
 function isColumnKey(status: string): status is CanonicalColumnKey {

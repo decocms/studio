@@ -64,6 +64,8 @@ import {
   orgFsChangeSubjects,
 } from "@/file-storage/org-fs-notify";
 import { isValidVolume } from "@/file-storage/org-fs-path";
+import { orgFsWriteDenial } from "@/file-storage/org-fs-write-guard";
+import { verifyOrgFsUploadToken } from "@/file-storage/upload-grant";
 import {
   buildPublicOrgFs,
   getPublicSets,
@@ -337,6 +339,20 @@ async function waitForChanges(
       // ignore double-unsubscribe
     }
   }
+}
+
+const THREAD_ID_FOLDER =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The chat a file came from: the write's thread, else the thread-id folder
+ *  chat volumes keep each run's files in. */
+function sourceThreadOf(entry: {
+  path: string;
+  threadId: string | null;
+}): string | null {
+  if (entry.threadId) return entry.threadId;
+  const top = entry.path.split("/")[0] ?? "";
+  return entry.path.includes("/") && THREAD_ID_FOLDER.test(top) ? top : null;
 }
 
 export interface OrgFsRoutesDeps {
@@ -695,6 +711,56 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   });
 
+  // A volume's newest files at any depth — the Library's flat view of the
+  // volumes chat fills one thread folder at a time (uploads, outputs). Paged
+  // newest first: `next` is the `before` cursor for the following page. Each
+  // file's chat comes along in `threads`, from the write's thread or the
+  // thread-id folder it sits in.
+  app.get("/:volume/files", async (c) => {
+    const volume = c.req.param("volume");
+    const r = await resolve(c, volume, "ORG_FS_READ");
+    if (!r.ok) return r.res;
+    const limit = Math.min(
+      Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
+      MAX_RECENT_LIMIT,
+    );
+    const before = c.req.query("before") || undefined;
+    if (before !== undefined && !/^\d{1,19}$/.test(before)) {
+      return c.json({ error: "Invalid cursor" }, 400);
+    }
+    const caller = r.ctx.auth.user!.id;
+    try {
+      const page = await r.fs.searchWithEffectivePublic(
+        "",
+        limit,
+        [volume],
+        undefined,
+        before,
+      );
+      const entries = page
+        .filter((e) => canReadPersonal(volume, e.path, caller))
+        .map((e) => ({ ...e, sourceThreadId: sourceThreadOf(e) }));
+      const threadIds = new Set(
+        entries
+          .map((e) => e.sourceThreadId)
+          .filter((id): id is string => id !== null),
+      );
+      const threads = Object.fromEntries(
+        (await r.ctx.storage.threads.summaries([...threadIds])).map((t) => [
+          t.id,
+          { title: t.title, agentId: t.virtual_mcp_id },
+        ]),
+      );
+      return c.json({
+        entries,
+        threads,
+        next: page.length === limit ? (page.at(-1)?.seq ?? null) : null,
+      });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
   // Metadata for a single entry (404 if absent).
   app.get("/:volume/stat", async (c) => {
     const volume = c.req.param("volume");
@@ -872,6 +938,54 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           getConnection(),
           r.ctx.organization!.id,
           volume,
+        );
+        return c.json({ entry });
+      } catch (err) {
+        return fsErrorResponse(c, err);
+      }
+    },
+  );
+
+  // Upload through a `PUT_PRESIGNED_URL` grant. No session: the signed token
+  // is the authentication, so it reaches this route the way a public-share
+  // read does. The write rules are checked again here because a volume can
+  // become a repo-sync mirror between minting and upload.
+  app.put(
+    "/:volume/upload/:token",
+    bodyLimit({
+      maxSize: MAX_UPLOAD_BYTES,
+      onError: (c) =>
+        c.json({ error: "File exceeds the per-file size limit" }, 413),
+    }),
+    async (c) => {
+      const ctx = c.get("studioContext");
+      const grant = verifyOrgFsUploadToken(c.req.param("token"));
+      if (
+        !grant ||
+        grant.organizationId !== ctx.organization?.id ||
+        grant.volume !== c.req.param("volume")
+      ) {
+        return c.json({ error: "Invalid or expired upload link" }, 404);
+      }
+      if (!ctx.orgFs) {
+        return c.json({ error: "Object storage not configured" }, 503);
+      }
+      const denial = await orgFsWriteDenial(ctx.storage, grant);
+      if (denial) return c.json({ error: denial }, 403);
+      const contentType = c.req.header("content-type");
+      const bytes = new Uint8Array(await c.req.arrayBuffer());
+      try {
+        const entry = await ctx.orgFs.write(grant.volume, grant.path, bytes, {
+          actor: grant.userId,
+          contentType:
+            contentType && contentType !== "application/octet-stream"
+              ? contentType
+              : undefined,
+        });
+        await notifyOrgFsChange(
+          getConnection(),
+          grant.organizationId,
+          grant.volume,
         );
         return c.json({ entry });
       } catch (err) {

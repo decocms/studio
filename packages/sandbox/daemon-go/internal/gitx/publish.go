@@ -185,6 +185,17 @@ func dotenvName(base string) bool {
 // branch, and GitHub, first. A push is irreversible (a force-push does not undo
 // a leak), which is what makes dropping them the safe default even though it
 // means a repo that genuinely tracks a `.env` cannot change it from a sandbox.
+// matchesDenyEntry reports whether rel is (or is under) a deny-list entry.
+// Only a trailing-slash entry matches as a directory prefix; a bare entry
+// names one file, so it must match exactly — otherwise "static/tailwind.css"
+// would also swallow an unrelated "static/tailwind.css.map".
+func matchesDenyEntry(rel, deny string) bool {
+	if strings.HasSuffix(deny, "/") {
+		return rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny)
+	}
+	return rel == deny
+}
+
 func dropNeverCommit(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -194,7 +205,7 @@ func dropNeverCommit(paths []string) []string {
 			reason = "dotenv file"
 		}
 		for _, deny := range NeverCommit {
-			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+			if matchesDenyEntry(rel, deny) {
 				reason = "daemon-managed path"
 				break
 			}
@@ -202,7 +213,7 @@ func dropNeverCommit(paths []string) []string {
 		// The pre-commit hook covers the agent's own `git add -A`; publish
 		// pushes with --no-verify, so it needs the same list in code.
 		for _, deny := range BuildArtifacts {
-			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+			if matchesDenyEntry(rel, deny) {
 				reason = "generated build artifact"
 				break
 			}

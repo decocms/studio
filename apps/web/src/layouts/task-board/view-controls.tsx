@@ -48,6 +48,7 @@ import {
   ChevronRight,
   FilterLines,
   Flag01,
+  Inbox01,
   Plus,
   Rows01,
   Settings02,
@@ -55,6 +56,8 @@ import {
   Tag01,
   User01,
   X,
+  Zap,
+  Circle,
 } from "@untitledui/icons";
 import { ProjectEntryIcon } from "@/components/project-entry";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
@@ -70,7 +73,6 @@ import {
   type ProjectIndex,
 } from "@/lib/project-index";
 import {
-  laneVisual,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -86,7 +88,10 @@ import {
 } from "./filter-fields";
 import { GROUP_BY_OPTIONS, type GroupBy } from "./list-groups";
 import { SORT_BY_OPTIONS, type SortBy, type SortDirection } from "./list-sort";
+import { currentSprintId, type Sprint } from "@decocms/shared/sprints";
+import { sprintLabel } from "./sprint-label";
 import {
+  BACKLOG_SPRINT_FILTER,
   DUE_FILTERS,
   dueFilterLabelKey,
   EMPTY_FILTERS,
@@ -147,17 +152,19 @@ function alphabetical<T>(items: readonly T[], name: (item: T) => string): T[] {
 function useFilterFields({
   members,
   tags,
+  sprints,
   index,
 }: {
   members: Member[];
   tags: OrgTag[];
+  sprints: readonly Sprint[];
   index: ProjectIndex;
 }): FilterField[] {
   const t = useT();
 
+  const memberOf = (userId: string) => members.find((m) => m.userId === userId);
   const memberName = (userId: string) =>
-    members.find((m) => m.userId === userId)?.user?.name ??
-    t("taskBoard.taskFilters.assigneeMember");
+    memberOf(userId)?.user?.name ?? t("taskBoard.taskFilters.assigneeMember");
 
   const assignee: FilterField = {
     id: "assignee",
@@ -203,12 +210,21 @@ function useFilterFields({
           : f.assignee
             ? memberName(f.assignee)
             : "",
-    valueGlyph: (f) =>
-      f.assignee === SUPER_AGENT_ASSIGNEE_ID ? (
-        <SuperAgentIcon size={14} />
+    valueGlyph: (f) => {
+      if (f.assignee === SUPER_AGENT_ASSIGNEE_ID)
+        return <SuperAgentIcon size={14} />;
+      const member = f.assignee ? memberOf(f.assignee) : undefined;
+      return member ? (
+        <Avatar
+          url={member.user?.image ?? undefined}
+          fallback={getInitials(member.user?.name)}
+          shape="circle"
+          size="2xs"
+        />
       ) : (
         <User01 size={14} className="shrink-0" />
-      ),
+      );
+    },
   };
 
   const priority: FilterField = {
@@ -316,7 +332,62 @@ function useFilterFields({
     ),
   };
 
-  return [assignee, priority, due, tagField, project];
+  const sprintById = new Map(sprints.map((sprint) => [sprint.id, sprint]));
+  const sprintField: FilterField = {
+    id: "sprint",
+    label: t("taskBoard.sprints.label"),
+    icon: <Zap size={14} className="shrink-0" />,
+    // An org that never planned a sprint has no sprint filter.
+    options:
+      sprints.length === 0
+        ? []
+        : [
+            {
+              id: BACKLOG_SPRINT_FILTER,
+              label: t("taskBoard.sprints.backlog"),
+              glyph: (
+                <Inbox01 size={14} className="shrink-0 text-muted-foreground" />
+              ),
+              apply: (f: TaskFilters) => ({
+                ...f,
+                sprint: BACKLOG_SPRINT_FILTER,
+              }),
+              isSelected: (f: TaskFilters) =>
+                f.sprint === BACKLOG_SPRINT_FILTER,
+            },
+            ...sprints.map((sprint) => ({
+              id: sprint.id,
+              label: sprintLabel(sprint, t),
+              glyph: (
+                <Zap
+                  size={14}
+                  className={cn(
+                    "shrink-0",
+                    sprint.state === "active"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                />
+              ),
+              apply: (f: TaskFilters) => ({ ...f, sprint: sprint.id }),
+              isSelected: (f: TaskFilters) => f.sprint === sprint.id,
+            })),
+          ],
+    valueLabel: (f) =>
+      f.sprint === BACKLOG_SPRINT_FILTER
+        ? t("taskBoard.sprints.backlog")
+        : f.sprint
+          ? (sprintById.get(f.sprint)?.name ?? "")
+          : "",
+    valueGlyph: (f) =>
+      f.sprint === BACKLOG_SPRINT_FILTER ? (
+        <Inbox01 size={14} className="shrink-0" />
+      ) : (
+        <Zap size={14} className="shrink-0" />
+      ),
+  };
+
+  return [sprintField, assignee, priority, due, tagField, project];
 }
 
 /** How many cards a choice would leave, right-aligned like Linear's. */
@@ -466,7 +537,10 @@ function FilterMenu({
     ).length;
 
   // An org with no tags has no tag filter: the field would open onto nothing.
-  const offered = fields.filter((field) => field.options.length > 0);
+  // The sprint is picked from the view row's switcher, not from here.
+  const offered = fields.filter(
+    (field) => field.options.length > 0 && field.id !== "sprint",
+  );
 
   return (
     <Command
@@ -547,6 +621,7 @@ export function TaskFilterButton({
   items,
   members,
   tags,
+  sprints,
   index,
   onChange,
 }: {
@@ -554,12 +629,14 @@ export function TaskFilterButton({
   items: TaskBoardItem[];
   members: Member[];
   tags: OrgTag[];
+  sprints: readonly Sprint[];
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, index });
-  const active = activeFilterFieldIds(filters, index).length > 0;
+  const fields = useFilterFields({ members, tags, sprints, index });
+  const active =
+    activeFilterFieldIds(filters, index, currentSprintId(sprints)).length > 0;
 
   return (
     <FilterMenuPopover
@@ -646,10 +723,8 @@ function MenuChoice<T>({
   );
 }
 
-const TodoIcon = laneVisual("todo").icon;
-
 const CRITERION_ICONS: Record<GroupBy | SortBy, ReactNode> = {
-  status: <TodoIcon size={14} className="shrink-0" />,
+  status: <Circle size={14} className="shrink-0" />,
   assignee: <User01 size={14} className="shrink-0" />,
   priority: <Flag01 size={14} className="shrink-0" />,
   due: <Calendar size={14} className="shrink-0" />,
@@ -1031,6 +1106,7 @@ export function AppliedFiltersBar({
   items,
   members,
   tags,
+  sprints,
   index,
   onChange,
   view,
@@ -1039,14 +1115,16 @@ export function AppliedFiltersBar({
   items: TaskBoardItem[];
   members: Member[];
   tags: OrgTag[];
+  sprints: readonly Sprint[];
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
   /** The list view's grouping and sorting; the board has neither. */
   view?: { grouping: GroupingProps; sorting: SortingProps };
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, index });
-  const activeIds = activeFilterFieldIds(filters, index);
+  const fields = useFilterFields({ members, tags, sprints, index });
+  const currentSprint = currentSprintId(sprints);
+  const activeIds = activeFilterFieldIds(filters, index, currentSprint);
   const arranged =
     view !== undefined &&
     (view.grouping.groupBy !== null || view.sorting.sortBy !== null);
@@ -1088,7 +1166,9 @@ export function AppliedFiltersBar({
                 field: field.label,
               })}
               size="icon-sm"
-              onClick={() => onChange(withFieldCleared(filters, id))}
+              onClick={() =>
+                onChange(withFieldCleared(filters, id, currentSprint))
+              }
             >
               <X />
             </IconButton>
@@ -1113,7 +1193,11 @@ export function AppliedFiltersBar({
             variant="ghost"
             size="sm"
             onClick={() =>
-              onChange({ ...EMPTY_FILTERS, search: filters.search })
+              onChange({
+                ...EMPTY_FILTERS,
+                search: filters.search,
+                sprint: currentSprint,
+              })
             }
           >
             {t("taskBoard.viewControls.clear")}

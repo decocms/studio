@@ -230,6 +230,22 @@ export interface TreeWriteEntry {
 
 const BLOB_MODE = "100644";
 
+/**
+ * Files with special Git semantics — a write to one of these would modify
+ * Git's own configuration rather than add repo content. GitHub, like Git,
+ * rejects these in tree writes.
+ */
+const RESERVED_GIT_NAMES = new Set([".gitmodules"]);
+
+/**
+ * Maximum path length for a file in a Git tree. GitHub has no published hard
+ * limit on path length, but Git itself caps paths, and filesystem-level limits
+ * (NTFS: 260 chars, most others: 4KB) constrain portability. 1024 is a
+ * practical upper bound that avoids edge-case filesystems while staying well
+ * below Git's internal limits.
+ */
+const MAX_PATH_LENGTH = 1024;
+
 /** What one change points the tree at: a blob sha, or null to delete. */
 export interface ChangeSources {
   /** Sha of the blob uploaded for a change that carries content. */
@@ -239,6 +255,41 @@ export interface ChangeSources {
     ref: string,
     path: string,
   ) => { sha: string; mode: string } | null;
+}
+
+/**
+ * Validate a file path before writing it to the tree. Rejects paths with
+ * Git-reserved names, excessive length, or invalid characters.
+ */
+function validateTreePath(path: string): void {
+  if (path.length === 0) {
+    throw new GitHubApiError(400, "POST", "git/trees", "Path cannot be empty");
+  }
+  if (path.length > MAX_PATH_LENGTH) {
+    throw new GitHubApiError(
+      400,
+      "POST",
+      "git/trees",
+      `Path exceeds maximum length of ${MAX_PATH_LENGTH}: ${path}`,
+    );
+  }
+  if (path.includes("\0")) {
+    throw new GitHubApiError(
+      400,
+      "POST",
+      "git/trees",
+      "Path cannot contain null bytes",
+    );
+  }
+  const basename = path.split("/").at(-1) ?? "";
+  if (RESERVED_GIT_NAMES.has(basename)) {
+    throw new GitHubApiError(
+      400,
+      "POST",
+      "git/trees",
+      `"${basename}" is a reserved Git file name and cannot be written`,
+    );
+  }
 }
 
 /**
@@ -255,6 +306,7 @@ export function treeWriteEntries(
   sources: ChangeSources,
 ): TreeWriteEntry[] {
   return changes.map((change) => {
+    validateTreePath(change.path);
     if ("deleted" in change) {
       return { path: change.path, mode: BLOB_MODE, type: "blob", sha: null };
     }

@@ -3,6 +3,7 @@ import {
   inferSchemaFromValue,
   isFreeformPropsSchema,
   resolveSchema,
+  resolveSchemaRef,
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
@@ -1145,6 +1146,46 @@ describe("resolveSchema – collapsed array keeps its loader picker", () => {
   });
 });
 
+describe("resolveSchema – block-ref keeps the prop's own title", () => {
+  test("an ImageWidget prop behind a $ref keeps its @title/@description", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        background: {
+          $ref: "#/definitions/ImageWidget",
+          title: "Background image",
+          description: "Shown behind the CTA",
+        },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      ImageWidget: {
+        anyOf: [
+          { type: "string", format: "image-uri", title: "ImageWidget" },
+          {
+            title: "Image Variants",
+            type: "object",
+            properties: {
+              __resolveType: {
+                type: "string",
+                enum: ["website/flags/multivariate/image.ts"],
+                default: "website/flags/multivariate/image.ts",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const background = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.background;
+    expect(background?.type).toBe("block-ref");
+    expect(background?.title).toBe("Background image");
+    expect(background?.description).toBe("Shown behind the CTA");
+    expect(background?.plainSchema?.format).toBe("image-uri");
+  });
+});
+
 describe("resolveSchema – @hide on block-ref fields", () => {
   // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
   // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in
@@ -1295,6 +1336,141 @@ describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)"
     expect(nestedMenu?.anyOfRefs?.every((r) => r.schema === undefined)).toBe(
       true,
     );
+  });
+});
+
+describe("resolveSchema – recursive data types (hang guard)", () => {
+  /**
+   * Commerce types like `Product` reference themselves through plain
+   * properties and array items (`isVariantOf.hasVariant: Product[]`,
+   * `ImageObject.image: ImageObject[]`). Each ref re-entered on the current
+   * path used to expand again until the structural depth cap, so a few
+   * self-references per level hung the editor.
+   */
+  function recursiveProductMeta(): LiveMeta {
+    const ref = (key: string) => ({ $ref: `#/definitions/${key}` });
+    const refArray = (key: string) => ({ type: "array", items: ref(key) });
+    return {
+      manifest: {
+        blocks: {
+          sections: { "site/sections/Shelf.tsx": ref("Shelf") },
+        },
+      },
+      schema: {
+        definitions: {
+          Shelf: { type: "object", properties: { product: ref("Product") } },
+          Product: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              image: refArray("ImageObject"),
+              video: refArray("VideoObject"),
+              isRelatedTo: refArray("Product"),
+              isSimilarTo: refArray("Product"),
+              isAccessoryOrSparePartFor: refArray("Product"),
+              isVariantOf: ref("ProductGroup"),
+            },
+          },
+          ProductGroup: {
+            type: "object",
+            properties: { hasVariant: refArray("Product") },
+          },
+          ImageObject: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              image: refArray("ImageObject"),
+              thumbnail: ref("ImageObject"),
+              video: refArray("VideoObject"),
+            },
+          },
+          VideoObject: {
+            type: "object",
+            properties: {
+              contentUrl: { type: "string" },
+              thumbnail: ref("ImageObject"),
+              video: refArray("VideoObject"),
+            },
+          },
+        },
+      },
+    };
+  }
+
+  test("resolves without expanding a re-entered ref", () => {
+    const start = Date.now();
+    const product = resolveSchema(
+      "site/sections/Shelf.tsx",
+      recursiveProductMeta(),
+    )?.properties?.product;
+    expect(Date.now() - start).toBeLessThan(1000);
+
+    expect(product?.properties?.name?.type).toBe("string");
+    expect(product?.properties?.image?.items?.properties?.url?.type).toBe(
+      "string",
+    );
+    // The cycle is cut where `Product` re-enters, through an array item…
+    const related = product?.properties?.isRelatedTo?.items;
+    expect(related?.type).toBe("object");
+    expect(related?.properties).toBeUndefined();
+    // …or through a nested object's array.
+    const variant =
+      product?.properties?.isVariantOf?.properties?.hasVariant?.items;
+    expect(variant?.type).toBe("object");
+    expect(variant?.properties).toBeUndefined();
+    expect(variant?.recursiveRef).toBe("#/definitions/Product");
+  });
+
+  test("resolveSchemaRef builds the level a recursive ref skipped", () => {
+    const meta = recursiveProductMeta();
+    const related = resolveSchema("site/sections/Shelf.tsx", meta)?.properties
+      ?.product?.properties?.isRelatedTo?.items;
+
+    const expanded = resolveSchemaRef(related!.recursiveRef!, meta);
+    expect(expanded.properties?.name?.type).toBe("string");
+    // The next re-entry is cut again, so each level stays lazy.
+    expect(expanded.properties?.isRelatedTo?.items?.recursiveRef).toBe(
+      "#/definitions/Product",
+    );
+  });
+
+  test("marks a recursive array def (Item.children: Item[])", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Menu.tsx": { $ref: "#/definitions/Menu" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Menu: {
+            type: "object",
+            properties: { items: { $ref: "#/definitions/[Item]" } },
+          },
+          "[Item]": { type: "array", items: { $ref: "#/definitions/Item" } },
+          Item: {
+            type: "object",
+            title: "{{{label}}}",
+            properties: {
+              label: { type: "string" },
+              children: { $ref: "#/definitions/[Item]", title: "Children" },
+            },
+          },
+        },
+      },
+    };
+    const item = resolveSchema("site/sections/Menu.tsx", meta)?.properties
+      ?.items?.items;
+    const children = item?.properties?.children;
+    expect(children?.title).toBe("Children");
+    expect(children?.items).toBeUndefined();
+    expect(children?.recursiveRef).toBe("#/definitions/[Item]");
+
+    const expanded = resolveSchemaRef(children!.recursiveRef!, meta);
+    expect(expanded.items?.titleBy).toBe("{{{label}}}");
+    expect(expanded.items?.properties?.label?.type).toBe("string");
   });
 });
 

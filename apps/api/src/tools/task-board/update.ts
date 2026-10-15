@@ -2,7 +2,6 @@ import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
@@ -14,14 +13,15 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { inReviewPhase, isDeliveryLane } from "./lanes";
+import { inReviewPhase, LANE_RANK, laneRank } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
-import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { recordTaskActivities } from "./activity";
-import { taskRunContextStore } from "./task-run-context";
+import { assertPlannableSprint, sprintChangeEntry } from "./sprints";
+import { isBoardRunThread, taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { runColumnAutomation } from "./run-column-automation";
+import { shipOnArrivalIfAutoMerge } from "./merge-pr";
 import { findChangeRequestIn } from "./change-request-extract";
 import { normalizePreviewRoutes } from "./preview-routes";
 import { invalidatePrCards } from "./prs-get";
@@ -69,6 +69,7 @@ const UPDATABLE_FIELDS = [
   "sortOrder",
   "previewRoutes",
   "tagIds",
+  "sprintId",
 ] as const;
 
 /** Whether an update touches any persisted field, as opposed to only linking a thread or a PR. */
@@ -119,14 +120,15 @@ export function diffTaskActivityEntries(
  * Does this update delegate the task to the Super Agent, i.e. queue a run?
  *
  * Not "did the assignee change": a run that fails out of its retry budget puts
- * the card back in To Do with the Super Agent still assigned
- * (`returnToTodoAfterFailure`), so the obvious recovery — clicking Auto fix
- * again — was a silent no-op and the card sat in To Do forever. An explicit
- * delegation to the Super Agent on a card sitting in To Do re-dispatches it.
+ * the card back in Backlog with the Super Agent still assigned
+ * (`returnToBacklogAfterFailure`), so the obvious recovery — clicking Auto fix
+ * again — would be a silent no-op and the card would sit in Backlog forever.
+ * An explicit delegation to the Super Agent on a card sitting in Backlog
+ * re-dispatches it.
  *
  * Any other lane keeps the old assignee-changed gate: In Progress already has
- * a run in flight, and In Review / Done have their own Rerun path — none of
- * them should be yanked back to To Do by a stray Auto fix click.
+ * a run in flight, and the lanes after it have their own Rerun path — none of
+ * them should be yanked back to In Progress by a stray Auto fix click.
  *
  * Pure so the gate is unit-tested; `previous` is null only when nothing else
  * changed either, which can't be a delegation.
@@ -139,58 +141,30 @@ export function delegatesToSuperAgent(
   if (!previous) return false;
   return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
     ? true
-    : previous.status === LANES.queue;
+    : previous.status === LANES.intake;
 }
 
-/** Forward-only terminal lanes (see the activity comment above): once a card
- *  lands here it's out of the review loop, same as "done" — `archived` skips
- *  review just as effectively as completing it does. The delivery lanes count
- *  too: they sit past In Review, so a run setting `merged` would escape this
- *  guard and drop the card out of `listItemsPendingReview`. */
-const REVIEW_CLOSING_STATUSES = new Set<string>([
-  "approved",
-  "merged",
-  "post_deploy_validation",
-  "done",
-  "archived",
-]);
+/** Lanes past In Review: once a card lands in one it's out of the review
+ *  loop, same as "done" — `archived` skips review just as effectively as
+ *  completing it does. */
+function closesReview(status: string): boolean {
+  return laneRank(status) > LANE_RANK.in_review;
+}
 
 /** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
- *  invariant; this tool sets `status` freely, so it needs the same guard. */
+ *  invariant; this tool sets `status` freely, so it needs the same guard.
+ *  `isBoardRun`: the caller is a run the board dispatched on a card
+ *  (`isBoardRunThread`), not a person's chat, which may move cards freely. */
 export function closesOwnReview(
   inputStatus: string | undefined,
   previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
-  isTaskRun: boolean,
+  isBoardRun: boolean,
 ): boolean {
-  const completesTask =
-    inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
-  // The PHASE, not the lane: a card whose reviewer is still working reads In
-  // Progress since migration 190, and gating on the lane alone would let the
-  // author's own run mark its work Done out from under that reviewer.
+  const completesTask = inputStatus !== undefined && closesReview(inputStatus);
+  // The PHASE, not the lane: an In Progress card with an open cycle is still
+  // under review (see `inReviewPhase`).
   const awaitingReview = previous !== undefined && inReviewPhase(previous);
-  return isTaskRun && completesTask && awaitingReview;
-}
-
-/**
- * A delivery lane (Approved, Merged, Post-deploy Validation) is a status that
- * only exists for an org running `delivery_lanes_enabled` — the schema still
- * accepts it unconditionally (adding a lane is a compile-time exhaustiveness
- * concern, not a runtime one), so this tool is the one place that has to
- * refuse it directly when the flag is off. Without this, any raw
- * TASK_BOARD_ITEM_UPDATE call (an MCP client, a script, a stale agent) could
- * park a card in a lane the flag's own description promises "behaves exactly
- * as if it did not exist" — the board's `moveTargets`/`laneVisibility` only
- * gate the UI's own drag/dropdown, not the tool underneath them.
- */
-export function rejectsUngatedDeliveryLane(
-  inputStatus: string | undefined,
-  deliveryLanesEnabled: boolean,
-): boolean {
-  return (
-    inputStatus !== undefined &&
-    isDeliveryLane(inputStatus) &&
-    !deliveryLanesEnabled
-  );
+  return isBoardRun && completesTask && awaitingReview;
 }
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -233,6 +207,14 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       ),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
+    sprintId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Plan the card into this sprint (an id from TASK_BOARD_SPRINT_LIST), " +
+          "or null to move it to the backlog. A closed sprint takes no new cards.",
+      ),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
     prUrl: z
@@ -309,29 +291,23 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       throw new Error(`Task board item not found: ${input.id}`);
     }
 
-    if (input.status !== undefined && isDeliveryLane(input.status)) {
-      const settings =
-        await ctx.storage.organizationSettings.get(organizationId);
-      if (
-        rejectsUngatedDeliveryLane(
-          input.status,
-          orgFlagEnabled(settings?.flags, "delivery_lanes_enabled"),
-        )
-      ) {
-        throw new Error(
-          "Delivery lanes are not enabled for this organization — enable " +
-            "them in Settings before moving a task to Approved, Merged, or " +
-            "Post-deploy Validation.",
-        );
-      }
+    // Only a move is checked: a card left in a closed sprint stays editable.
+    if (input.sprintId && input.sprintId !== previous?.sprintId) {
+      await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
 
-    const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
+    // Read only when the move could close a review, which is the one case
+    // the guard below cares who is asking.
+    const runThreadId = taskRunContextStore.getStore()?.threadId;
+    const isBoardRun =
+      runThreadId !== undefined &&
+      closesOwnReview(input.status, previous ?? undefined, true) &&
+      isBoardRunThread(await ctx.storage.threads.get(runThreadId));
+    if (closesOwnReview(input.status, previous ?? undefined, isBoardRun)) {
       throw new Error(
-        "This task is under review — a run can't move it to Done or Archived. " +
-          "Leave it for the reviewer; only a person, or " +
-          "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, closes out a " +
+        "This task is under review — the run working on it can't move it " +
+          "past In Review. Leave it for the reviewer; only a person, or " +
+          "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, moves on a " +
           "task under review.",
       );
     }
@@ -339,9 +315,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating queues the card onto the queue lane.
+    // Delegating puts the card in In Progress, where the Super Agent works.
     const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
-    const queuedStatus = becameSuperAgent ? LANES.queue : undefined;
+    const queuedStatus = becameSuperAgent ? LANES.progress : undefined;
     const nextStatus = queuedStatus ?? input.status;
 
     if (previous && isReportsTask(previous)) {
@@ -410,6 +386,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
           previewRoutes: normalizePreviewRoutes(input.previewRoutes),
+          sprintId: input.sprintId,
         },
         getUserId(ctx)!,
       );
@@ -442,6 +419,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (previous) {
       const actorId = getUserId(ctx)!;
       const entries = diffTaskActivityEntries(previous, item);
+      if (item.sprintId !== previous.sprintId) {
+        entries.push(
+          sprintChangeEntry(
+            await ctx.storage.sprints.listByOrg(organizationId),
+            previous.sprintId,
+            item.sprintId,
+          ),
+        );
+      }
       if (entries.length > 0) {
         await recordTaskActivities(
           ctx,
@@ -485,18 +471,14 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       return { item };
     }
 
-    // A card that just landed in a column runs that column's rule, whoever
-    // moved it. Only on an actual lane change: re-saving a title must not
-    // re-trigger, and the card is already owned once the rule has fired.
+    // Trunk-based orgs merge as soon as a card is cleared for release. Only
+    // on an actual lane change: re-saving a title must not re-trigger.
     if (
       input.status !== undefined &&
       previous !== null &&
       previous.status !== item.status
     ) {
-      item = await runColumnAutomation(ctx, item, {
-        assignedBy: getUserId(ctx)!,
-        actor: getUserId(ctx)!,
-      });
+      item = await shipOnArrivalIfAutoMerge(ctx, item);
     }
 
     return { item };

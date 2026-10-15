@@ -162,9 +162,8 @@ export async function applyBoardDecision(
     const advanceTo = atOrBefore(target.status, LANES.progress)
       ? LANES.progress
       : null;
-    // In Progress, not In Review: a reviewer is about to work on this PR, and
-    // In Review is what the board says once it is a person's turn. The open
-    // cycle below is what puts it on the reviewer's work list. The move also
+    // In Progress first: the cycle below opens from there and moves the card
+    // to In Review, onto the reviewer's work list. The move also
     // claims an unowned card for the Super Agent (reviewer dispatch gates on
     // it) — never a human's. One fenced write, because `target` predates the
     // LLM call above: a card someone moved since must not be dragged back.
@@ -211,6 +210,8 @@ export async function applyBoardDecision(
       taskBoardItemId: item.id,
       organizationId: orgId,
       authorId: userId,
+      // The model wrote it, not the user: mark it as the run's.
+      threadId,
       body: decision.comment.trim(),
     });
   }

@@ -87,8 +87,8 @@ export async function enqueueAgentRunForTask(
     temperature: number;
     /**
      * The lane whose rules this run follows, beside the org-wide ones. By role,
-     * not by where the card sits: a re-run happens on an In Progress card and
-     * must still follow To Do's. Null for the org-wide rules alone.
+     * not by where the card sits: the implementer follows In Progress's and
+     * the reviewer In Review's. Null for the org-wide rules alone.
      */
     rulesColumn: string | null;
     /**
@@ -129,6 +129,12 @@ export async function enqueueAgentRunForTask(
     /** Extra thread metadata, merged over the run's own — how a Jira-triggered
      *  run is stamped for its tool surface and the monitoring filter. */
     metadata?: Record<string, unknown>;
+    /** The agent the run is, when an automation chose one. Defaults to the
+     *  org's Super Agent. */
+    agentId?: string;
+    /** The automation trigger that fired this run, stamped on the thread so
+     *  the automation's run history lists it. */
+    triggerId?: string;
   },
 ): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
@@ -159,7 +165,7 @@ export async function enqueueAgentRunForTask(
   await assertAiBudget(ctx, organizationId, "running a task agent");
 
   const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
+  const agentId = opts.agentId ?? getDecopilotId(organizationId);
 
   // Best-effort: an unreadable row costs the run its house rules, never the dispatch.
   const boardPrompt = await ctx.storage.taskBoardPrompts
@@ -174,6 +180,7 @@ export async function enqueueAgentRunForTask(
 
   const thread = await ctx.storage.threads.create({
     ...(opts.fence ? { id: opts.fence.threadId } : {}),
+    ...(opts.triggerId ? { trigger_id: opts.triggerId } : {}),
     organization_id: organizationId,
     title: opts.title,
     status: "in_progress",

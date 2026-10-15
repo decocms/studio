@@ -373,6 +373,31 @@ describe("buildAutoNote", () => {
     );
   });
 
+  it("collapses long name lists and fits the note in a title", () => {
+    const removed = Object.fromEntries(
+      Array.from({ length: 93 }, (_, i) => [
+        `.deco/blocks/pages-campaign-${i}-${i}.json`,
+        {
+          from: JSON.stringify({
+            __resolveType: "website/pages/Page.tsx",
+            name: `Campaign ${i} ${"x".repeat(i === 0 ? 300 : 0)}`.trim(),
+            path: `/campaign-${i}`,
+            sections: [],
+          }),
+          to: null,
+        },
+      ]),
+    );
+    const note = buildAutoNote(summarizePublishChanges(diffOf(removed)));
+    expect(note).toEndWith("…");
+    expect(note.length).toBeLessThanOrEqual(255);
+
+    const fewer = Object.fromEntries(Object.entries(removed).slice(1, 6));
+    expect(buildAutoNote(summarizePublishChanges(diffOf(fewer)))).toMatch(
+      /^Removed the Campaign \d+, Campaign \d+, Campaign \d+ and 2 more pages$/,
+    );
+  });
+
   it("returns empty for an empty summary and never mentions git", () => {
     expect(buildAutoNote(summarizePublishChanges(diffOf({})))).toBe("");
     const note = buildAutoNote(

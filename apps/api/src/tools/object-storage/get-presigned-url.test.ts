@@ -27,4 +27,41 @@ describe("GET_PRESIGNED_URL", () => {
     );
     expect(tooShort.expiresIn).toBe(60);
   });
+
+  describe("Library files (`_fs/` keys)", () => {
+    function libraryCtx() {
+      const presignedGetUrl = mock(async () => "https://s3/x");
+      const ctx = {
+        auth: { user: { id: "user-1" } },
+        organization: { id: "org-a" },
+        access: { check: mock(async () => {}) },
+        objectStorage: { presignedGetUrl },
+      } as unknown as Parameters<typeof GET_PRESIGNED_URL.handler>[1];
+      return { ctx, presignedGetUrl };
+    }
+
+    it("refuses to read another member's home folder", async () => {
+      const { ctx } = libraryCtx();
+      await expect(
+        GET_PRESIGNED_URL.handler(
+          { key: "_fs/home/users/user-2/notes.md" },
+          ctx,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("still presigns the caller's own home files and shared volumes", async () => {
+      const { ctx, presignedGetUrl } = libraryCtx();
+      await expect(
+        GET_PRESIGNED_URL.handler(
+          { key: "_fs/home/users/user-1/notes.md" },
+          ctx,
+        ),
+      ).resolves.toHaveProperty("url");
+      await expect(
+        GET_PRESIGNED_URL.handler({ key: "_fs/shared/README.md" }, ctx),
+      ).resolves.toHaveProperty("url");
+      expect(presignedGetUrl).toHaveBeenCalledTimes(2);
+    });
+  });
 });

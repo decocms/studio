@@ -4,6 +4,7 @@
  * Lists automations for the current organization, including trigger counts.
  */
 
+import { withBuiltinActive } from "../../automations/builtin";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -33,6 +34,14 @@ export const AUTOMATION_LIST = defineTool({
         trigger_count: z.number(),
         nearest_next_run_at: z.string().nullable(),
         virtual_mcp_id: z.string(),
+        system_key: z.string().nullable(),
+        /** Its board starters: each one's column and type. */
+        board_triggers: z.array(
+          z.object({
+            type: z.enum(["board_column_transition", "board_pr_ready"]),
+            column_key: z.string(),
+          }),
+        ),
       }),
     ),
   }),
@@ -41,9 +50,13 @@ export const AUTOMATION_LIST = defineTool({
     const organization = requireOrganization(ctx);
     await ctx.access.check();
 
-    const automations = await ctx.storage.automations.listWithTriggerCounts(
+    const automations = await withBuiltinActive(
+      ctx,
       organization.id,
-      input.virtual_mcp_id,
+      await ctx.storage.automations.listWithTriggerCounts(
+        organization.id,
+        input.virtual_mcp_id,
+      ),
     );
 
     const results = automations.map((automation) => ({
@@ -55,6 +68,8 @@ export const AUTOMATION_LIST = defineTool({
       trigger_count: automation.trigger_count,
       nearest_next_run_at: automation.nearest_next_run_at,
       virtual_mcp_id: automation.virtual_mcp_id,
+      system_key: automation.system_key,
+      board_triggers: automation.board_triggers,
     }));
 
     return { automations: results };

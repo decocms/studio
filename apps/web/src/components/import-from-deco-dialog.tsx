@@ -33,7 +33,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowLeft } from "@untitledui/icons";
 import { authClient } from "@/lib/auth-client";
-import { KEYS } from "@/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { generateSlug } from "@/lib/slug";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -328,16 +328,7 @@ export function ImportFromDecoDialog({
       // Invalidate the projects list using a predicate — the collection list
       // key starts with the client instance, so a plain queryKey prefix never
       // matches it.
-      queryClient.invalidateQueries({
-        predicate: (query) => {
-          const key = query.queryKey;
-          return (
-            key[1] === org.id &&
-            key[3] === "collection" &&
-            key[4] === "VIRTUAL_MCP"
-          );
-        },
-      });
+      invalidateVirtualMcpQueries(queryClient, org.id);
       toast.success(t("common.importFromDecoDialog.importSuccess", { slug }));
       handleClose(false);
       navigateToAgent(virtualMcpId);

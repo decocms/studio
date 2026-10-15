@@ -4,6 +4,8 @@
  */
 
 import { useAutomationActions } from "@/hooks/use-automations";
+import { useJiraIntegration } from "@/hooks/use-jira-integration";
+import { JiraIcon } from "@/components/icons/jira-icon";
 import { SCHEDULE_UNITS } from "@/lib/cron-utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -15,7 +17,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { Clock, Plus, Globe01, Zap } from "@untitledui/icons";
+import { Clock, Columns01, Plus, Globe01, Zap } from "@untitledui/icons";
+import { ColumnTransitionDialog } from "./column-transition-dialog.tsx";
+import { JiraTransitionDialog } from "./jira-transition-dialog.tsx";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -40,6 +44,10 @@ export function AddStarterPopover({
   const t = useT();
   const { triggerAdd: addTrigger } = useAutomationActions();
   const [internalOpen, setInternalOpen] = useState(false);
+  const [columnDialogOpen, setColumnDialogOpen] = useState(false);
+  const [jiraDialogOpen, setJiraDialogOpen] = useState(false);
+  // Offered once the org's Jira integration watches a board.
+  const jiraBoardId = useJiraIntegration().data?.boardId ?? null;
 
   const isOpen = open ?? internalOpen;
 
@@ -87,71 +95,110 @@ export function AddStarterPopover({
   };
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus size={14} />
-          {t("automations.addStarterPopover.addStarter")}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[200px]">
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="gap-2.5">
+    <>
+      <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Plus size={14} />
+            {t("automations.addStarterPopover.addStarter")}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-[240px]">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="gap-2.5">
+              <Clock size={14} className="text-muted-foreground shrink-0" />
+              {t("automations.addStarterPopover.every")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[160px]">
+              {SCHEDULE_UNITS.map((unit) => (
+                <DropdownMenuItem
+                  key={unit.cron}
+                  className="gap-2.5"
+                  onSelect={() => submitCron(unit.cron)}
+                  disabled={addTrigger.isPending}
+                >
+                  <Clock size={14} className="text-muted-foreground shrink-0" />
+                  {t("automations.addStarterPopover.everyUnit", {
+                    unit: unit.label,
+                  })}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              handleOpenChange(false);
+              onCustomSelect?.();
+            }}
+          >
             <Clock size={14} className="text-muted-foreground shrink-0" />
-            {t("automations.addStarterPopover.every")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-[160px]">
-            {SCHEDULE_UNITS.map((unit) => (
-              <DropdownMenuItem
-                key={unit.cron}
-                className="gap-2.5"
-                onSelect={() => submitCron(unit.cron)}
-                disabled={addTrigger.isPending}
-              >
-                <Clock size={14} className="text-muted-foreground shrink-0" />
-                {t("automations.addStarterPopover.everyUnit", {
-                  unit: unit.label,
-                })}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+            {t("automations.addStarterPopover.customCron")}
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          className="gap-2.5"
-          onSelect={() => {
-            handleOpenChange(false);
-            onCustomSelect?.();
-          }}
-        >
-          <Clock size={14} className="text-muted-foreground shrink-0" />
-          {t("automations.addStarterPopover.customCron")}
-        </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              handleOpenChange(false);
+              onEventSelect?.();
+            }}
+          >
+            <Zap size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.event")}
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          className="gap-2.5"
-          onSelect={() => {
-            handleOpenChange(false);
-            onEventSelect?.();
-          }}
-        >
-          <Zap size={14} className="text-muted-foreground shrink-0" />
-          {t("automations.addStarterPopover.event")}
-        </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              handleOpenChange(false);
+              setColumnDialogOpen(true);
+            }}
+          >
+            <Columns01 size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.cardEntersColumn")}
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          className="gap-2.5"
-          onSelect={() => {
-            // Don't close the popover synchronously — we want the toast/
-            // dialog flow to be driven by submitWebhook.
-            submitWebhook();
-          }}
-          disabled={addTrigger.isPending}
-        >
-          <Globe01 size={14} className="text-muted-foreground shrink-0" />
-          {t("automations.addStarterPopover.webhook")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {jiraBoardId && (
+            <DropdownMenuItem
+              className="gap-2.5"
+              onSelect={() => {
+                handleOpenChange(false);
+                setJiraDialogOpen(true);
+              }}
+            >
+              <JiraIcon size={14} className="shrink-0" />
+              {t("automations.addStarterPopover.jiraIssueEntersStatus")}
+            </DropdownMenuItem>
+          )}
+
+          <DropdownMenuItem
+            className="gap-2.5"
+            onSelect={() => {
+              // Don't close the popover synchronously — we want the toast/
+              // dialog flow to be driven by submitWebhook.
+              submitWebhook();
+            }}
+            disabled={addTrigger.isPending}
+          >
+            <Globe01 size={14} className="text-muted-foreground shrink-0" />
+            {t("automations.addStarterPopover.webhook")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ColumnTransitionDialog
+        automationId={automationId}
+        open={columnDialogOpen}
+        onOpenChange={setColumnDialogOpen}
+      />
+      {jiraBoardId && (
+        <JiraTransitionDialog
+          automationId={automationId}
+          boardId={jiraBoardId}
+          open={jiraDialogOpen}
+          onOpenChange={setJiraDialogOpen}
+        />
+      )}
+    </>
   );
 }

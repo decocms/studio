@@ -24,6 +24,8 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
+import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
   buildVirtualUrl,
   type ConnectionEntity,
@@ -138,6 +140,34 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // Verify it exists and belongs to the current organization
     if (!existing || existing.organization_id !== organization.id) {
       throw new Error("Connection not found in organization");
+    }
+
+    // A VIRTUAL row is a project: its metadata carries the immutable site slug,
+    // which this generic write must neither change nor drop — nor move by a
+    // rename, for a legacy project whose slug is still its title.
+    if (
+      existing.connection_type === "VIRTUAL" &&
+      (data.metadata !== undefined || data.title !== undefined)
+    ) {
+      const project = await ctx.storage.virtualMcps.findById(existing.id);
+      if (project) {
+        if (data.metadata !== undefined) {
+          assertSiteSlugUnchanged(project, data.metadata);
+          const siteSlug = project.metadata?.siteSlug;
+          if (siteSlug) data.metadata = { ...data.metadata, siteSlug };
+        }
+        const pinned = pinnedSiteSlugOnRename({
+          nextTitle: data.title,
+          currentTitle: project.title,
+          currentSiteSlug: project.metadata?.siteSlug,
+        });
+        if (pinned) {
+          data.metadata = {
+            ...(data.metadata ?? project.metadata ?? {}),
+            siteSlug: pinned,
+          };
+        }
+      }
     }
 
     // Validate VIRTUAL connections if connection_type or connection_url is being updated

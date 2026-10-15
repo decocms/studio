@@ -2,8 +2,7 @@
  * Real-Postgres coverage for what the Jira trigger leans on in storage.
  *
  * The fence is the point: the webhook, its redelivery and the safety-net poll
- * can all report the same transition, and exactly one of them may dispatch a
- * paid run. That is a conditional insert on a real unique key, which no
+ * can all report the same transition, and exactly one of them may fire it. That is a conditional insert on a real unique key, which no
  * in-memory fake can be trusted to model.
  */
 
@@ -16,6 +15,7 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import { CredentialVault } from "../encryption/credential-vault";
+import { createAutomationsStorage } from "../storage/automations";
 import { JiraIntegrationStorage } from "../storage/jira-integrations";
 import { TaskBoardStorage } from "../storage/task-board";
 
@@ -110,82 +110,59 @@ describe("Jira trigger storage (real Postgres)", () => {
     expect(card.source).toBeNull();
   });
 
-  it("stores a rule per Jira status, and deleting it is the off switch", async () => {
-    expect(await jira.listAutomationsFor(ORG, "Doing")).toEqual([]);
-    await jira.upsertAutomation(ORG, { jiraStatus: "Doing", prompt: null });
-    expect(await jira.listAutomationsFor(ORG, "Doing")).toEqual([
-      {
-        jiraStatus: "Doing",
-        from: { kind: "any" },
-        prompt: null,
-        continuePr: false,
-      },
-    ]);
-    await jira.upsertAutomation(ORG, {
-      jiraStatus: "Doing",
-      prompt: null,
-      continuePr: true,
-    });
-    const [rule] = await jira.listAutomationsFor(ORG, "Doing");
-    expect(rule?.continuePr).toBe(true);
-    await jira.upsertAutomation(ORG, { jiraStatus: "Doing", prompt: "Fix it" });
-    expect((await jira.listAutomationsFor(ORG, "Doing"))[0]?.prompt).toBe(
-      "Fix it",
-    );
-    await jira.upsertAutomation(ORG, { jiraStatus: "QA", prompt: "Test it" });
-    expect((await jira.listAutomations(ORG)).map((a) => a.jiraStatus)).toEqual([
-      "Doing",
-      "QA",
-    ]);
-    expect(await jira.removeAutomation(ORG, "Doing")).toBe(true);
-    expect(await jira.removeAutomation(ORG, "Doing")).toBe(false);
-    expect(await jira.listAutomationsFor(ORG, "Doing")).toEqual([]);
-    // Another org's rules are not this org's.
-    expect(await jira.listAutomations("org_other")).toEqual([]);
-  });
+  it("lists an org's Jira triggers by status, and only its own", async () => {
+    const automations = createAutomationsStorage(database.db);
+    const make = async (name: string, status: string, active = true) => {
+      const automation = await automations.create({
+        organization_id: ORG,
+        name,
+        active,
+        created_by: USER,
+        messages: "[]",
+        models: "{}",
+        virtual_mcp_id: `decopilot_${ORG}`,
+      });
+      await automations.addTrigger({
+        automation_id: automation.id,
+        type: "jira_transition",
+        column_key: status,
+        from_kind: "statuses",
+        from_statuses: ["Backlog", "Client QA"],
+      });
+      return automation;
+    };
+    const doing = await make("doing", "Doing");
+    await make("review", "Code Review");
+    const paused = await make("paused", "Doing", false);
 
-  it("keeps one rule per origin on a status", async () => {
-    await jira.upsertAutomation(ORG, { jiraStatus: "Build", prompt: "Fresh" });
-    await jira.upsertAutomation(ORG, {
-      jiraStatus: "Build",
-      from: { kind: "later" },
-      prompt: "Iterate",
-      continuePr: true,
+    const onDoing = await automations.listJiraTransitionTriggers(ORG, {
+      jiraStatus: "Doing",
     });
-    await jira.upsertAutomation(ORG, {
-      jiraStatus: "Build",
-      from: { kind: "statuses", statuses: [" Client QA", "backlog"] },
-      prompt: "Listed",
-    });
-    // The same list in another order and case is the same rule.
-    await jira.upsertAutomation(ORG, {
-      jiraStatus: "Build",
-      from: { kind: "statuses", statuses: ["BACKLOG", "client qa"] },
-      prompt: "Listed again",
-    });
-    const rules = await jira.listAutomationsFor(ORG, "Build");
-    expect(rules.map((r) => [r.from, r.prompt])).toEqual([
-      [{ kind: "any" }, "Fresh"],
-      [{ kind: "later" }, "Iterate"],
-      [
-        { kind: "statuses", statuses: ["BACKLOG", "client qa"] },
-        "Listed again",
-      ],
-    ]);
-    expect(await jira.removeAutomation(ORG, "Build", { kind: "earlier" })).toBe(
-      false,
-    );
-    expect(await jira.removeAutomation(ORG, "Build", { kind: "later" })).toBe(
-      true,
-    );
+    expect(onDoing.map((t) => t.automation.name)).toEqual(["doing", "paused"]);
+    expect(onDoing[0]?.from_statuses).toEqual(["Backlog", "Client QA"]);
     expect(
-      await jira.removeAutomation(ORG, "Build", {
-        kind: "statuses",
-        statuses: ["client QA", "Backlog"],
+      (
+        await automations.listJiraTransitionTriggers(ORG, {
+          jiraStatus: "Doing",
+          activeOnly: true,
+        })
+      ).map((t) => t.automation_id),
+    ).toEqual([doing.id]);
+    expect(await automations.listJiraTransitionTriggers(ORG)).toHaveLength(3);
+    expect(await automations.listJiraTransitionTriggers("org_other")).toEqual(
+      [],
+    );
+    // A board trigger on a column named like a status is not a Jira trigger.
+    await automations.addTrigger({
+      automation_id: paused.id,
+      type: "board_column_transition",
+      column_key: "Doing",
+      from_kind: "any",
+    });
+    expect(
+      await automations.listJiraTransitionTriggers(ORG, {
+        jiraStatus: "Doing",
       }),
-    ).toBe(true);
-    expect(
-      (await jira.listAutomationsFor(ORG, "Build")).map((r) => r.from.kind),
-    ).toEqual(["any"]);
+    ).toHaveLength(2);
   });
 });

@@ -37,4 +37,31 @@ describe("logoutCommand", () => {
     const code = await logoutCommand({ dataDir: dir });
     expect(code).toBe(0);
   });
+
+  it("with --target clears only that studio's session, leaving others", async () => {
+    await writeSession(dir, {
+      target: "https://studio.decocms.com",
+      clientId: "client_abc",
+      user: { sub: "u_1", email: "tlgimenes@gmail.com" },
+      accessToken: "tok_abc",
+      createdAt: "2026-05-04T00:00:00.000Z",
+    });
+    await writeSession(dir, {
+      target: "https://staging.decocms.com",
+      clientId: "client_def",
+      user: { sub: "u_2", email: "staging@example.com" },
+      accessToken: "tok_def",
+      createdAt: "2026-05-04T00:00:00.000Z",
+    });
+
+    const code = await logoutCommand({
+      dataDir: dir,
+      target: "https://studio.decocms.com",
+    });
+    expect(code).toBe(0);
+    expect(await readSession(dir, "https://studio.decocms.com")).toBeNull();
+    expect(
+      await readSession(dir, "https://staging.decocms.com"),
+    ).not.toBeNull();
+  });
 });

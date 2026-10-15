@@ -55,7 +55,10 @@ import {
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { Panel } from "@/components/panel";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
-import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
+import {
+  inlinePageOverrideParams,
+  withVariantMatcherOverride,
+} from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -411,6 +414,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
   const [pagesSearch, setPagesSearch] = useState("");
+  const pagesListRef = useRef<HTMLDivElement>(null);
   const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
   const [createPageError, setCreatePageError] = useState<string | undefined>();
   const [activeGlobalSection, setActiveGlobalSection] =
@@ -1041,10 +1045,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       pathTemplate: currentPath,
     });
     if (!req) return;
-    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the default variant.
+    // Carry the selected variant like the reload-based `iframeSrc` does; else the runtime renders the variant live right now.
     const src = withVariantMatcherOverride(
       req.src,
-      workspace.state.variantOverride ?? [],
+      inlinePageOverrideParams(
+        workspace.state.variantOverride ?? [],
+        currentPageKey,
+      ),
     );
     win.postMessage(
       { type: "cms-editor::render", src, body: req.body },
@@ -1551,10 +1558,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <Command shouldFilter={false} defaultValue={currentPickerValue}>
             <CommandInput
               value={pagesSearch}
-              onValueChange={setPagesSearch}
+              onValueChange={(value) => {
+                setPagesSearch(value);
+                // cmdk skips scrolling when the highlighted item is unchanged.
+                pagesListRef.current?.scrollTo({ top: 0 });
+              }}
               placeholder={t("sandbox.preview.searchPagesAndComponents")}
             />
-            <CommandList className="max-h-80">
+            <CommandList ref={pagesListRef} className="max-h-80">
               <CommandEmpty>
                 {pages.length === 0 &&
                 globalSections.length === 0 &&

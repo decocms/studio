@@ -234,23 +234,13 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcp.subAgents": "Sub-projetos",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "URL do projeto copiada para a área de transferência",
-  "virtualMcp.virtualMcpShareModal.callFromYourApp": "Chamar do seu aplicativo",
-  "virtualMcp.virtualMcpShareModal.callFromYourAppDescription":
-    "Crie uma chave de API de escopo para iniciar um chat, executar este projeto e transmitir resultados de um sistema externo (por exemplo, um webhook de chatbot).",
   "virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied":
     "Comando do Claude Code copiado para a área de transferência",
   "virtualMcp.virtualMcpShareModal.commandCopied":
     "Comando copiado para a área de transferência",
   "virtualMcp.virtualMcpShareModal.connect": "Conectar",
-  "virtualMcp.virtualMcpShareModal.connectionDetails": "Detalhes da conexão",
-  "virtualMcp.virtualMcpShareModal.connectionDetailsCopied":
-    "Detalhes da conexão copiados para a área de transferência",
   "virtualMcp.virtualMcpShareModal.copied": "Copiado!",
   "virtualMcp.virtualMcpShareModal.copyUrl": "Copiar URL",
-  "virtualMcp.virtualMcpShareModal.createApiKey": "Criar chave de API",
-  "virtualMcp.virtualMcpShareModal.creating": "Criando…",
-  "virtualMcp.virtualMcpShareModal.failedCreateApiKey":
-    "Falha ao criar chave de API",
   "virtualMcp.virtualMcpShareModal.failedGenerateApiKey":
     "Falha ao gerar chave de API",
   "virtualMcp.virtualMcpShareModal.generateApiKey": "Gerar chave de API",

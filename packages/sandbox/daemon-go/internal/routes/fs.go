@@ -43,6 +43,15 @@ func (d FsDeps) notifyWrite(path string) {
 	}
 }
 
+// isSymlink reports whether resolvedPath itself is a symlink. SafePath only
+// confines the path lexically, so a symlink planted inside the repo (e.g. by a
+// cloned branch) and targeting outside AppRoot would otherwise let /write and
+// /edit follow it straight through the containment check.
+func isSymlink(resolvedPath string) bool {
+	info, err := os.Lstat(resolvedPath)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
 // decodeBody caps the request body at maxRequestBodyBytes: without a limit, a
 // misbehaving or malicious caller could stream an unbounded body into memory
 // and crash the daemon, tearing down the sandbox pod on the next missed
@@ -235,6 +244,10 @@ func Write(deps FsDeps) http.HandlerFunc {
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
 			httpx.Error(w, 400, deps.escapesRoot())
+			return
+		}
+		if isSymlink(filePath) {
+			httpx.Error(w, 400, "Refusing to write through a symlink")
 			return
 		}
 		if jsonErr := decofile.InvalidBlockJSON(body.Path, *body.Content); jsonErr != "" {
@@ -432,6 +445,10 @@ func Edit(deps FsDeps) http.HandlerFunc {
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
 			httpx.Error(w, 400, deps.escapesRoot())
+			return
+		}
+		if isSymlink(filePath) {
+			httpx.Error(w, 400, "Refusing to edit through a symlink")
 			return
 		}
 		if body.OldString == "" {

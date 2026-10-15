@@ -9,6 +9,10 @@ export const automations = {
     "Failed to add webhook starter",
   "automations.addStarterPopover.starterAdded": "Starter added",
   "automations.addStarterPopover.webhook": "Webhook",
+  "automations.addStarterPopover.cardEntersColumn":
+    "When a card enters a column",
+  "automations.addStarterPopover.jiraIssueEntersStatus":
+    "When a Jira issue enters a status",
   "automations.addStarterPopover.webhookStarterAdded": "Webhook starter added",
   "automations.automationConfig.all": "All",
   "automations.automationConfig.allTools": "All tools",
@@ -179,6 +183,52 @@ export const automations = {
     "A new token will be generated and the current token will stop working. Any senders using the old token must be updated.",
   "automations.triggerCard.starterRemoved": "Starter removed",
   "automations.triggerCard.webhookPostToFire": "Webhook · POST to fire",
+  "automations.builtin.badge": "Built-in",
+  "automations.builtin.implementerDescription":
+    "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. It is also what runs when someone clicks Run or Re-run on a card, delegates one to the agent, or the board retries a run. Turning it off stops it picking cards up on its own; Run on a card still works. The run follows the In Progress column's instructions and skills on the board; change them there.",
+  "automations.builtin.reviewerDescription":
+    "Reviews a card's pull request once it is ready for review (open, checks done, preview on its latest commit) and records a verdict: an approval sends the card to QA, a request for changes hands it to a person. Turning it off is the same as turning off the Reviewer in Settings → Review. The review follows the In Review column's instructions and skills on the board; change them there.",
+  "automations.builtin.description":
+    "Studio runs this automation for the board. It follows the board's column instructions and skills; change them there.",
+  "automations.columnTransitionDialog.title": "When a card enters a column",
+  "automations.columnTransitionDialog.description":
+    "Run this automation on each card that enters the column.",
+  "automations.columnTransitionDialog.column": "Column",
+  "automations.columnTransitionDialog.origin": "Coming from",
+  "automations.columnTransitionDialog.fromAny": "Any column",
+  "automations.columnTransitionDialog.fromEarlier": "An earlier column",
+  "automations.columnTransitionDialog.fromLater": "A later column (sent back)",
+  "automations.columnTransitionDialog.fromColumns": "Specific columns",
+  "automations.columnTransitionDialog.columnsPlaceholder": "Pick columns",
+  "automations.columnTransitionDialog.help":
+    "It runs on a card nobody owns, or one the agent already owns, once it has stayed in the column for 20 seconds; a card a person owns is left alone. Where it came from is the column it last stayed in, not one it was dragged through.",
+  "automations.columnTransitionDialog.cancel": "Cancel",
+  "automations.columnTransitionDialog.add": "Add starter",
+  "automations.jiraTransitionDialog.title": "When a Jira issue enters a status",
+  "automations.jiraTransitionDialog.description":
+    "Run this automation on each issue that enters the status, on the board your Jira integration watches.",
+  "automations.jiraTransitionDialog.status": "Status",
+  "automations.jiraTransitionDialog.noStatuses":
+    "Could not read the statuses of the Jira board. Check the integration in Settings.",
+  "automations.jiraTransitionDialog.origin": "Coming from",
+  "automations.jiraTransitionDialog.fromAny": "Any status",
+  "automations.jiraTransitionDialog.fromEarlier": "An earlier status",
+  "automations.jiraTransitionDialog.fromLater": "A later status (sent back)",
+  "automations.jiraTransitionDialog.fromStatuses": "Specific statuses",
+  "automations.jiraTransitionDialog.statusesPlaceholder": "Pick statuses",
+  "automations.jiraTransitionDialog.help":
+    "It runs once the issue has stayed in the status for 20 seconds, on the issue itself; nothing is copied to the board. A status can have one starter per origin. Where it came from is the status it last stayed in, not one it was dragged through.",
+  "automations.jiraTransitionDialog.cancel": "Cancel",
+  "automations.jiraTransitionDialog.add": "Add starter",
+  "automations.triggerCard.prReady":
+    "When a card's pull request is ready for review",
+  "automations.triggerCard.unownedOnly": "Only cards nobody owns",
+  "automations.triggerCard.fromEarlier": "From an earlier column",
+  "automations.triggerCard.fromLater": "From a later column (sent back)",
+  "automations.triggerCard.fromColumns": "From {columns}",
+  "automations.triggerCard.issueEntersJiraStatus":
+    "When a Jira issue enters {status}",
+  "automations.triggerCard.cardEntersColumn": "When a card enters {lane}",
   "automations.webhookSecretDialog.copied": "Copied",
   "automations.webhookSecretDialog.copy": "Copy",
   "automations.webhookSecretDialog.done": "Done",

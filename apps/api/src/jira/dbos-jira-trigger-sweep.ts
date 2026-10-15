@@ -1,15 +1,15 @@
 /**
  * The two durable halves of the Jira trigger.
  *
- * The settle wait: a status change the webhook reports is acted on only after
- * a minute, once the card has stayed put (`settle.ts`). A durable sleep, so a
+ * The settle wait: a status change the webhook reports is acted on only once
+ * the card has stayed put for the settle window (`settle.ts`). A durable sleep, so a
  * pod restarting mid-wait resumes it instead of dropping the move; keyed by the
  * changelog entry, so a redelivered webhook joins the wait already running.
  *
- * The safety net: every ten minutes, ask each enabled integration which issues
+ * The safety net: every five minutes, ask each enabled integration which issues
  * changed status recently and settle each one's latest move. A webhook the
  * tenant never configured, or one Jira dropped, costs latency instead of a
- * missed run; the per-transition claim makes the overlap free. Same shape as
+ * missed fire; the per-transition claim makes the overlap free. Same shape as
  * `dbos-archive-sweep.ts`: one pod per tick, the work list read inside a step,
  * one step per integration that never throws.
  */
@@ -28,14 +28,14 @@ import {
   triggerRunForSettledMove,
 } from "./trigger";
 
-/** Every ten minutes at :07 — off the other sweeps' ticks. */
-const SWEEP_CRONTAB = "7-59/10 * * * *";
+/** Every five minutes. */
+const SWEEP_CRONTAB = "*/5 * * * *";
 
 /** Three ticks and a margin, so one skipped tick (a deploy, a pod restart)
  *  is covered by the next instead of losing its transitions. Without a
  *  webhook this sweep is the only trigger. The per-transition claim dedupes
  *  the overlap. */
-const LOOKBACK_MINUTES = 35;
+const LOOKBACK_MINUTES = 20;
 
 /** Pages of 100 issues per integration per tick. Past this the tenant has a
  *  problem this sweep should not paper over. */
@@ -76,21 +76,22 @@ function storage(): JiraIntegrationStorage {
 /** One integration, folded to a result — the step body must never throw. */
 async function sweepOneIntegration(
   integrationId: string,
-): Promise<{ integrationId: string; started: number; error?: string }> {
+): Promise<{ integrationId: string; fired: number; error?: string }> {
   try {
     const integration = await storage().getById(integrationId);
     if (!integration?.enabled || !integration.boardId) {
-      return { integrationId, started: 0 };
+      return { integrationId, fired: 0 };
     }
     const ctx = await buildOrgContext(
       requireRuntime().db,
       integration.organizationId,
     );
-    if (!ctx) return { integrationId, started: 0 };
-    const rules = await ctx.storage.jiraIntegrations.listAutomations(
+    if (!ctx) return { integrationId, fired: 0 };
+    const triggers = await ctx.storage.automations.listJiraTransitionTriggers(
       integration.organizationId,
+      { activeOnly: true },
     );
-    if (rules.length === 0) return { integrationId, started: 0 };
+    if (triggers.length === 0) return { integrationId, fired: 0 };
 
     const client = new JiraClient(
       integration.siteUrl,
@@ -99,7 +100,7 @@ async function sweepOneIntegration(
     );
     const scope = await client.getBoardScopeJql(integration.boardId);
     const jql = `(${scope}) AND status CHANGED AFTER "-${LOOKBACK_MINUTES}m"`;
-    let started = 0;
+    let fired = 0;
     let nextPageToken: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const result = await client.searchIssues({ jql, nextPageToken });
@@ -110,16 +111,16 @@ async function sweepOneIntegration(
           issueId: issue.id,
           now: Date.now(),
         });
-        if (outcome === "started") started++;
+        if (outcome === "fired") fired++;
       }
       nextPageToken = result.nextPageToken ?? undefined;
       if (!nextPageToken) break;
     }
-    return { integrationId, started };
+    return { integrationId, fired };
   } catch (err) {
     return {
       integrationId,
-      started: 0,
+      fired: 0,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -145,9 +146,9 @@ async function jiraTriggerSweepWorkflowFn(
       console.warn(
         `[jira-trigger] integration ${result.integrationId} failed: ${result.error}`,
       );
-    } else if (result.started > 0) {
+    } else if (result.fired > 0) {
       console.log(
-        `[jira-trigger] integration ${result.integrationId} started ${result.started} run(s) the webhook missed`,
+        `[jira-trigger] integration ${result.integrationId} fired ${result.fired} automation(s) the webhook missed`,
       );
     }
   }
@@ -170,13 +171,13 @@ async function settleReportedMove(
       issueId: transition.issueId,
       changelogId: transition.changelogId,
     });
-    if (outcome === "started") {
+    if (outcome === "fired") {
       console.log(
-        `[jira-trigger] started a run for ${transition.issueKey} after it settled`,
+        `[jira-trigger] fired an automation for ${transition.issueKey} after it settled`,
       );
     } else if (outcome === "returned") {
       console.log(
-        `[jira-trigger] ${transition.issueKey} went back where it was before settling in "${transition.toStatus}"; no run`,
+        `[jira-trigger] ${transition.issueKey} went back where it was before settling in "${transition.toStatus}"; no fire`,
       );
     }
     return outcome;

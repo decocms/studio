@@ -22,8 +22,7 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * The reply has one entry per request item, in request order:
  * - `closed`: a reports-owned card still in triage moved to done and got the
  *   `finding_resolved` entry. Triage is the only lane that counts as not
- *   started. To Do is the queue the Super Agent claims from, and the import
- *   puts delegated cards there.
+ *   started; the import puts delegated cards straight in In Progress.
  * - `noted`: any other card got the entry and kept its lane. That covers cards
  *   in progress, in review, done or archived, and cards a member created.
  * - `skipped`: the org dismissed the card by deleting it from its board. The

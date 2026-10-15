@@ -45,6 +45,10 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   TASK_BOARD_ITEM_PRS_GET: { readOnly: true, destructive: false },
   TASK_BOARD_ADMIN_ORG_LIST: { readOnly: true, destructive: false },
   TASK_BOARD_DELIVERY: { readOnly: true, destructive: false },
+  TASK_BOARD_OPERATION: { readOnly: true, destructive: false },
+  TASK_BOARD_OPERATION_TASKS: { readOnly: true, destructive: false },
+  TASK_BOARD_REWORK: { readOnly: true, destructive: false },
+  TASK_BOARD_SPRINTS: { readOnly: true, destructive: false },
   TASK_BOARD_STUCK: { readOnly: true, destructive: false },
   TASK_BOARD_COST: { readOnly: true, destructive: false },
   TASK_BOARD_QUALITY: { readOnly: true, destructive: false },
@@ -68,8 +72,11 @@ import { makeBackgroundable } from "@/harnesses/lib/decopilot/built-in-tools/bac
 import { registerFlip } from "@/harnesses/decopilot/flip-registry";
 import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-tools/backgroundable";
 import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
-import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
-import { createClusterResearchJob } from "./cluster-research-job";
+import {
+  createWebSearchTool,
+  DEEP_RESEARCH_DESCRIPTION,
+} from "@/harnesses/lib/decopilot/built-in-tools/web-search";
+import { createClusterResearchJob } from "@/tools/chat/research-job";
 import type { PendingImage } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
@@ -243,7 +250,7 @@ async function buildAllTools(
   // anchor nobody reads, so handing it the board tools would have it record its
   // work where no one looks while the issue stayed untouched. The sandbox
   // harness makes the same swap at its run-scoped MCP endpoint
-  // (`resolveTaskRunToolNames`); this is the same rule for the Decopilot path,
+  // (`resolveThreadToolNames`); this is the same rule for the Decopilot path,
   // which an org with no repo to work in takes.
   Object.assign(
     tools,
@@ -433,12 +440,7 @@ async function buildAllTools(
       researchJob,
       toolOutputMap,
       taskId,
-      description:
-        "Run in-depth, multi-source research and synthesize a comprehensive, " +
-        "cited report. Use this when the user needs thorough analysis, a " +
-        "literature/market review, or a question that warrants exploring many " +
-        "sources — accuracy and depth matter more than latency. For quick " +
-        "lookups or fact-checks, use `web_search` instead.",
+      description: DEEP_RESEARCH_DESCRIPTION,
     });
   }
   return tools as {

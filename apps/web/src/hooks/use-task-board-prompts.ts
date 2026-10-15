@@ -1,4 +1,4 @@
-/** Board prompt scopes (`TASK_BOARD_PROMPT_*`) and column automations (`TASK_BOARD_AUTOMATION_*`). */
+/** Board prompt scopes (`TASK_BOARD_PROMPT_*`). */
 
 import { useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,26 +19,12 @@ export function useTaskBoardPrompts() {
   });
 }
 
-/** Per-column "run the agent when a card lands here" rules. */
-export function useTaskBoardColumnAutomations() {
-  const { org } = useProjectContext();
-  const studio = useStudioTools();
-  return useQuery({
-    queryKey: KEYS.taskBoardColumnAutomations(org.id),
-    staleTime: 60_000,
-    queryFn: async () =>
-      (await studio.call("TASK_BOARD_AUTOMATION_LIST", {})).automations,
-  });
-}
-
 export interface ColumnRules {
   /** null for the org-wide scope. */
   columnKey: string | null;
   /** Standing instructions and skills for every run on this scope. Omitted
    *  leaves them as saved, so a lane still on its default stays on it. */
   rules?: { prompt: string; skills: string[] };
-  /** Column scope only: null = no run on landing; "" = the agent's default. */
-  automation?: string | null;
 }
 
 /** Save the parts of one scope that changed; empty fields delete their rows. */
@@ -47,7 +33,7 @@ export function useSaveColumnRules() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ columnKey, rules, automation }: ColumnRules) => {
+    mutationFn: async ({ columnKey, rules }: ColumnRules) => {
       if (rules) {
         const prompt = rules.prompt.trim();
         await (prompt || rules.skills.length
@@ -58,24 +44,11 @@ export function useSaveColumnRules() {
             })
           : studio.call("TASK_BOARD_PROMPT_DELETE", { columnKey }));
       }
-      if (columnKey !== null && automation !== undefined) {
-        await (automation === null
-          ? studio.call("TASK_BOARD_AUTOMATION_DELETE", { columnKey })
-          : studio.call("TASK_BOARD_AUTOMATION_UPSERT", {
-              columnKey,
-              prompt: automation.trim() || null,
-            }));
-      }
     },
     onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: KEYS.taskBoardPrompts(org.id),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: KEYS.taskBoardColumnAutomations(org.id),
-        }),
-      ]),
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardPrompts(org.id),
+      }),
   });
 }
 
@@ -86,14 +59,9 @@ export function useTaskBoardRulesLive() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const refetch = () =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: KEYS.taskBoardPrompts(org.id),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: KEYS.taskBoardColumnAutomations(org.id),
-      }),
-    ]);
+    queryClient.invalidateQueries({
+      queryKey: KEYS.taskBoardPrompts(org.id),
+    });
   const subscribe = () =>
     taskBoardRulesWatchView.subscribe(org.slug, refetch, refetch);
   useSyncExternalStore(subscribe, noSnapshot, noSnapshot);

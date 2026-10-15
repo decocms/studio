@@ -55,7 +55,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts once the card has stayed put for a minute.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 5-minute check; with it, the run starts once the card has stayed put for 20 seconds.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -67,17 +67,12 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. An issue entering an automated status now starts its run once it has stayed there for a minute.",
+    "Save. An issue entering an automated status now starts its run once it has stayed there for 20 seconds.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses and stays there for a minute, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "The automations that run when an issue enters one of these statuses and stays there for 20 seconds. Open one to change its prompt, or give any automation a “When a Jira issue enters a status” starter. A card dragged through a status, or into the wrong one and straight back, starts nothing. An issue that links an open pull request has it continued. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+  "settings.jira.toggleAutomation": "Turn {name} on or off",
   "settings.jira.addAutomation": "Add automation",
-  "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
-  "settings.jira.promptHelp":
-    "This is the whole instruction the run gets — there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
-  "settings.jira.promptSave": "Save",
-  "settings.jira.promptDiscard": "Discard",
-  "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
   "settings.jira.fromAny": "From any column",
   "settings.jira.fromEarlier": "From an earlier column",
   "settings.jira.fromLater": "From a later column (sent back)",
@@ -86,13 +81,13 @@ export const settings = {
   "settings.jira.originStatusesPlaceholder": "Pick statuses",
   "settings.jira.originHelp":
     "A move starts one rule: the one naming where the card came from, else the one for its direction on the board, else the one for any column. Where it came from is the status it last stayed in, not one it was dragged through.",
-  "settings.jira.createRule": "Create rule",
+  "settings.jira.createRule": "Create automation",
   "settings.jira.cancelRule": "Cancel",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.jira.testRunLabel": "Run it by hand",
   "settings.jira.testRunDescription":
-    "Run the agent on one issue or a batch now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
+    "Run one of the automations above on an issue or a batch now, without enabling the integration \u2014 so you can see what its prompt does before it runs on every issue entering a status.",
   "settings.jira.issueKeysPlaceholder":
     "ABC-123, or a link — one per line, or comma-separated",
   "settings.jira.issueKeysCount": "{count} issue(s)",
@@ -103,11 +98,10 @@ export const settings = {
   "settings.jira.testRunStarted": "Started on",
   "settings.jira.testRunFailed": "Could not start the run",
   "settings.jira.testRunHelp":
-    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type “/” to insert the same skill the column rule would use.",
-  "settings.jira.continuePr":
-    "Continue the pull request the issue already carries (a re-run after a review asked for changes)",
-  "settings.jira.continuePrRuleHelp":
-    "Checked on every card that enters this status: one that already carries an open pull request continues it, one with none starts fresh. Leave it off on a review status.",
+    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue, and an issue that links an open pull request has it continued.",
+  "settings.jira.testRunAutomation": "Automation to run",
+  "settings.jira.testRunNoAutomations":
+    "Add an automation above first: running by hand fires one of them.",
   "settings.jira.together":
     "One run for all of them — the agent sees every issue and works them as a batch, instead of one run per issue",
   "settings.jira.togetherStarted": "Started one run on",
@@ -351,7 +345,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.blogBlocks.sectionTitle": "Blog blocks",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "AI blog",
+  "settings.blog.aiDescription":
+    "Brand context, campaigns and post generation. With this off the blog is written by hand.",
   "settings.blogBlocks.title": "Hide the default blog blocks",
   "settings.blogBlocks.description":
     "Only this site's own post blocks stay available when writing, generating or importing a post. Blocks already in a post keep rendering.",
@@ -536,7 +533,6 @@ export const settings = {
   "settings.connectClients.anyOtherClientDescription":
     "Any other MCP client: paste this endpoint into it to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
   "settings.connectClients.apiKeyOption": "API key",
-  "settings.connectClients.connectAClient": "Connect a client",
   "settings.connectClients.copy": "Copy",
   "settings.connectClients.doneHideKey": "Done, hide key",
   "settings.connectClients.generateKey": "Generate key",
@@ -546,6 +542,8 @@ export const settings = {
     "For CI, Conductor, or headless agents that can't open a browser.",
   "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
+  "settings.connectClients.mcpDescription":
+    "For clients without a shell. Sharing Library files and messaging agents need the CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
@@ -554,6 +552,18 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
+  "settings.connectClients.recommended": "Recommended",
+  "settings.connectClients.skillDescription":
+    "Install the Studio skill and log in once. Your agent then works with this org's chats, agents, tasks and Library files through the decocms CLI.",
+  "settings.connectClients.skillInstallStep": "1. Install the skill",
+  "settings.connectClients.skillLoginHint":
+    "A browser opens for you to approve the login. The session renews itself, so log in again only when your agent asks.",
+  "settings.connectClients.skillLoginStep": "2. Log in",
+  "settings.connectClients.skillNeedsBun": "Needs Bun.",
+  "settings.connectClients.skillOtherAgentsHint":
+    "The installer asks which agents to add the skill to.",
+  "settings.connectClients.skillTab": "CLI + skill",
+  "settings.connectClients.skillTitle": "Connect your agent",
   "settings.connectClients.snippetOneTimeWarning":
     "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
@@ -677,7 +687,6 @@ export const settings = {
     "For large teams with their own contract",
   "settings.plans.custom.cta": "Talk to us",
   "settings.plans.managed": "Your plan: {plan}. Contact us to change it.",
-  "settings.plans.limitReached": "You've reached your AI usage limit",
   "settings.plans.invoice.cta": "Add to my invoice",
   "settings.plans.invoice.confirm":
     "{plan} will be added to your next invoice. Switch now?",
@@ -807,22 +816,19 @@ export const settings = {
   "settings.orgGeneral.organization": "Organization",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
-    "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
+    "The automated Reviewer runs on a task's pull request when the card reaches In Review (checks passing or none). It appears as a session on the task card.",
   "settings.review.reviewerTitle": "Enable Reviewer",
   "settings.review.reviewerDescription":
-    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
+    "When the card reaches In Review, reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview. An approval moves the card to QA; when it can't settle something itself, it hands the task to you.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+    "When a card reaches Ready for Deployment, merge its pull request automatically instead of waiting for someone to press Ship.",
   "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
   "settings.review.autoResolveConflictsDescription":
-    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
-  "settings.review.deliveryLanesTitle": "Show delivery lanes",
-  "settings.review.deliveryLanesDescription":
-    "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
+    "When a pull request in Ready for Deployment conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
   "settings.review.autoAssignReportTasksTitle":
     "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
@@ -860,6 +866,11 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Discard",
   "settings.agentTools.orgMcpsPickSaved":
     "Saved which connections runs can reach",
+  "settings.agentTools.chatRuntimeSection": "Chats",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Run every chat with Claude Code in its own sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Every new chat runs Claude Code in a sandbox of its own instead of on Decopilot, and existing Decopilot chats switch over on their next message. The first message of a chat waits for its sandbox to start. Needs an Anthropic, OpenRouter or deco AI gateway key, or a Claude subscription.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

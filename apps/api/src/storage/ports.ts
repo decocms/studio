@@ -18,7 +18,6 @@ import type {
 import type {
   AsyncResearchJob,
   AsyncResearchJobCitation,
-  BrandContext,
   DomainJoinMode,
   DomainVerificationMethod,
   DomainVerificationStatus,
@@ -94,6 +93,16 @@ export interface ThreadStoragePort {
     id: string,
     organizationId: string,
     pin: ThreadRuntimePin,
+  ): Promise<ThreadRuntimePinResult>;
+  /**
+   * Move a Decopilot thread to claude-code, once. The `harness_id = 'decopilot'`
+   * predicate is the guard, as `harness_id IS NULL` is for `pinRuntimeIfUnset`.
+   * A repo-less branch (`null` or `"ephemeral"`) becomes `branch`.
+   */
+  repinDecopilotToClaudeCode(
+    id: string,
+    organizationId: string,
+    branch: string,
   ): Promise<ThreadRuntimePinResult>;
   /** Write `metadata.runtime` only if absent. One guarded statement — see the impl. */
   stampRuntimeIfAbsent(
@@ -330,6 +339,12 @@ export interface ConnectionStoragePort {
     id: string,
     data: Partial<ConnectionEntity>,
   ): Promise<ConnectionEntity>;
+  /** The org's project or connection a URL slug (current or old) names. */
+  resolveUrlSlug(
+    organizationId: string,
+    slug: string,
+    kind: "project" | "connection",
+  ): Promise<{ id: string; canonicalSlug: string } | null>;
   delete(id: string): Promise<void>;
   testConnection(
     id: string,
@@ -671,10 +686,6 @@ export interface VirtualMCPStoragePort {
 }
 
 // ============================================================================
-// Brand Context Storage Port
-// ============================================================================
-
-// ============================================================================
 // Organization Domain Storage Port
 // ============================================================================
 
@@ -744,7 +755,8 @@ export interface OrganizationJoinRequestStoragePort {
 export interface OrgSiteStoragePort {
   /**
    * Claim a globally-unique site slug for an organization. Idempotent for the
-   * same org; throws OrgSiteConflictError if a different org already owns it.
+   * same org; throws OrgSiteConflictError if a different org already owns it
+   * and OrgSiteLinkError("reserved") for a tombstone.
    */
   claimSite(params: {
     slug: string;
@@ -753,8 +765,9 @@ export interface OrgSiteStoragePort {
     by: string;
   }): Promise<OrgSite>;
   /**
-   * Move a slug to `organizationId` regardless of its current owner
-   * (deployment-admin override); insert it when unclaimed.
+   * Move a slug to `organizationId` from its current owner (deployment-admin
+   * override); insert it when unclaimed. Throws OrgSiteLinkError for a
+   * tombstone ("reserved") or a slug a project has used ("in_use").
    */
   reassignSite(params: {
     slug: string;
@@ -762,41 +775,30 @@ export interface OrgSiteStoragePort {
     source?: string;
     by: string;
   }): Promise<OrgSite>;
-  /** Release a slug owned by this org; false when it wasn't owned by it. */
+  /**
+   * Release a slug owned by this org; false when it wasn't owned by it.
+   * Throws OrgSiteLinkError("in_use") once a project has used it (never reused).
+   */
   releaseSite(slug: string, organizationId: string): Promise<boolean>;
   getBySlug(slug: string): Promise<OrgSite | null>;
+  /** The slug linked to this project, if any. */
+  getByProject(projectId: string): Promise<OrgSite | null>;
+  /**
+   * Make `slug` the site of `projectId`, once. Idempotent for the same pair;
+   * throws OrgSiteLinkError when the slug isn't this org's (not_found,
+   * reserved, not_owned), is another project's (linked_elsewhere), or the
+   * project already has a different site (project_has_other_slug). A slug
+   * whose project was deleted stays the org's: the same org may link it to
+   * another of its projects; another org never can.
+   */
+  link(params: {
+    slug: string;
+    organizationId: string;
+    projectId: string;
+    by: string;
+  }): Promise<OrgSite>;
   /** Every slug this org owns, slug-ascending. */
   listByOrg(organizationId: string): Promise<OrgSite[]>;
   /** Authorization primitive: does this org own this slug? */
   isOwnedBy(slug: string, organizationId: string): Promise<boolean>;
-}
-
-export interface BrandContextStoragePort {
-  get(id: string, organizationId: string): Promise<BrandContext | null>;
-  list(
-    organizationId: string,
-    options?: { includeArchived?: boolean },
-  ): Promise<BrandContext[]>;
-  getDefault(organizationId: string): Promise<BrandContext | null>;
-  setDefault(id: string, organizationId: string): Promise<BrandContext>;
-  create(
-    organizationId: string,
-    data: Omit<
-      BrandContext,
-      | "id"
-      | "organizationId"
-      | "archivedAt"
-      | "isDefault"
-      | "createdAt"
-      | "updatedAt"
-    >,
-  ): Promise<BrandContext>;
-  update(
-    id: string,
-    organizationId: string,
-    data: Partial<
-      Omit<BrandContext, "id" | "organizationId" | "createdAt" | "updatedAt">
-    >,
-  ): Promise<BrandContext>;
-  delete(id: string, organizationId: string): Promise<void>;
 }

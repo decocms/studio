@@ -5,6 +5,7 @@ import {
   fsVolumePrefix,
   isValidVolume,
   normalizeFsPath,
+  parseOrgFsKey,
   parentOf,
 } from "./org-fs-path";
 
@@ -70,5 +71,28 @@ describe("isValidVolume", () => {
   test("rejects '.' and '..' — the regex alone would accept them and let fsObjectKey escape the _fs/ namespace once sanitizeKey collapses the dot segments", () => {
     expect(isValidVolume(".")).toBe(false);
     expect(isValidVolume("..")).toBe(false);
+  });
+});
+
+describe("parseOrgFsKey", () => {
+  test("reads the volume and path however the key is spelled", () => {
+    const target = { volume: "home", path: "pages/a.html" };
+    expect(parseOrgFsKey("_fs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("/_fs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("uploads/../_fs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("%5Ffs/home/pages/a.html")).toEqual(target);
+    expect(parseOrgFsKey("_fs\\home\\pages\\a.html")).toEqual(target);
+  });
+
+  test("keeps the namespace itself, with an empty volume and path", () => {
+    expect(parseOrgFsKey("_fs")).toEqual({ volume: "", path: "" });
+    expect(parseOrgFsKey("_fs/home")).toEqual({ volume: "home", path: "" });
+  });
+
+  test("leaves every other key alone", () => {
+    expect(parseOrgFsKey("pages/a.html")).toBeNull();
+    expect(parseOrgFsKey("chat-uploads/_fs/a")).toBeNull();
+    expect(parseOrgFsKey("_fsx/a")).toBeNull();
+    expect(parseOrgFsKey("")).toBeNull();
   });
 });

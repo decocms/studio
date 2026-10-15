@@ -12,6 +12,7 @@
  */
 
 import type { ColumnType } from "kysely";
+import type { SprintState } from "@decocms/shared/sprints";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
@@ -227,6 +228,14 @@ export interface OrganizationSettings {
   updatedAt: Date | string;
 }
 
+/** A `url_slug` a connection used to have, kept so old links resolve. */
+export interface ConnectionSlugAliasTable {
+  organization_id: string;
+  slug: string;
+  connection_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * MCP Connection table definition
  * Uses snake_case column names to align with ConnectionEntitySchema
@@ -242,6 +251,7 @@ export interface MCPConnectionTable {
   app_name: string | null;
   app_id: string | null;
   slug: string | null;
+  url_slug: string | null; // Unique per org; names the row in Studio URLs
 
   // Connection details
   connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
@@ -1389,6 +1399,9 @@ export interface AutomationTable {
   // Parent agent-loop step cap (AI SDK stopWhen). null = PARENT_STEP_LIMIT.
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  /** Set on a built-in automation Studio seeds in every org (see
+   *  `automations/builtin.ts`); null on the ones people create. */
+  system_key: ColumnType<string | null, string | null | undefined, never>;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -1408,6 +1421,7 @@ export interface Automation {
   temperature: number;
   max_agent_steps: number | null;
   virtual_mcp_id: string;
+  system_key: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1437,7 +1451,24 @@ export interface AutomationTriggerTable {
   // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
   // Null for cron/event triggers.
   api_key_id: string | null;
+  // For board_column_transition triggers: the column a card entered; for
+  // jira_transition triggers: the Jira status an issue entered. Both say
+  // which moves count by where it came from. Null / '{}' for the others.
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
   created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Which moves into a column a `board_column_transition` trigger answers, by
+ *  where the card came from. */
+export type BoardTransitionFromKind = "any" | "earlier" | "later" | "statuses";
+
+/** One fire claimed per (trigger, event) — see migration 241. */
+export interface AutomationTriggerFireTable {
+  trigger_id: string;
+  event_key: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -1446,7 +1477,7 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event" | "webhook";
+  type: AutomationTriggerType;
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
@@ -1454,8 +1485,19 @@ export interface AutomationTrigger {
   last_run_at: string | null;
   next_run_at: string | null;
   api_key_id: string | null;
+  column_key: string | null;
+  from_kind: BoardTransitionFromKind | null;
+  from_statuses: string[];
   created_at: string;
 }
+
+export type AutomationTriggerType =
+  | "cron"
+  | "event"
+  | "webhook"
+  | "board_column_transition"
+  | "board_pr_ready"
+  | "jira_transition";
 
 /**
  * Trigger callback token table - stores hashed tokens for external MCP callbacks
@@ -1558,9 +1600,22 @@ export interface OrgSiteTable {
   // Globally-unique site slug = object-key prefix namespace in the shared
   // tenant bucket. Primary key enforces global uniqueness across orgs.
   slug: string;
-  organization_id: string;
+  // NULL = tombstone: the org was deleted and the slug stays reserved forever.
+  organization_id: ColumnType<string | null, string, string | null>;
   // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
   source: ColumnType<string, string | undefined, string>;
+  // The project (VIRTUAL connection) this slug is the site of; one per project.
+  project_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  // First time the slug was linked to a project; never cleared.
+  linked_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1569,8 +1624,13 @@ export interface OrgSiteTable {
 
 export interface OrgSite {
   slug: string;
-  organizationId: string;
+  /** Null for a tombstone (its org was deleted): reserved, nobody can claim it. */
+  organizationId: string | null;
   source: string;
+  /** The project this slug is the site of, if linked. */
+  projectId: string | null;
+  /** When the slug was first linked to a project; set once, never cleared. */
+  linkedAt: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1682,8 +1742,9 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
-  | "approved"
-  | "merged"
+  | "qa"
+  | "customer_approval"
+  | "ready_for_deployment"
   | "post_deploy_validation"
   | "done"
   | "archived";
@@ -1722,6 +1783,13 @@ export interface TaskBoardItemTable {
   repo: string | null;
   /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** The sprint the card is planned into (`task_board_sprints.id`); null =
+   *  backlog. */
+  sprint_id: ColumnType<
     string | null,
     string | null | undefined,
     string | null
@@ -1817,14 +1885,28 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** A sprint the board owns (migration 236). Days are `date` columns, read
+ *  back as `YYYY-MM-DD` text by the storage adapter. */
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
+  start_date: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  end_date: ColumnType<string | null, string | null | undefined, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /**
  * Instructions appended to the system prompt of every agent run dispatched
  * from a board card (migration 197). `column_key` null is the org-wide row;
  * a non-null key scopes the text to one column.
- *
- * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
- * the opening USER instruction of the run a column rule fires, this one is
- * standing context every run carries.
  */
 export interface TaskBoardPromptTable {
   id: string;
@@ -1832,18 +1914,6 @@ export interface TaskBoardPromptTable {
   column_key: string | null;
   prompt: string;
   skills: ColumnType<string[], string[] | undefined, string[]>;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
-}
-
-/** A rule the board runs when a card lands in a column (migration 189). The
- *  row's existence is the switch; `prompt` null means the Super Agent's own
- *  instruction. */
-export interface TaskBoardColumnAutomationTable {
-  id: string;
-  organization_id: string;
-  column_key: string;
-  prompt: string | null;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -2034,6 +2104,8 @@ export interface TaskBoardItem {
    * cannot. Null for a card that names only a name, or none at all.
    */
   repositoryId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -2102,62 +2174,6 @@ export interface TaskBoardActivity {
   occurredAt: string;
 }
 
-// ============================================================================
-// Brand Context Table Definition
-// ============================================================================
-
-export interface BrandContextTable {
-  id: string;
-  organization_id: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  og_image: string | null;
-  fonts: string | null;
-  colors: string | null;
-  images: string | null;
-  metadata: string | null;
-  archived_at: ColumnType<
-    Date | null,
-    Date | string | null,
-    Date | string | null
-  >;
-  is_default: boolean;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-}
-
 /** Per-org Jira Cloud integration config. */
 export interface OrgJiraIntegrationTable {
   id: ColumnType<string, string | undefined, never>;
@@ -2201,29 +2217,6 @@ export interface TaskBoardItemJiraLinkTable {
   jira_issue_id: string;
   jira_issue_key: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
-/** A rule the Jira integration runs when an issue enters a status (migration
- *  200). Row existence is the switch; `prompt` null is the agent's own
- *  instruction. */
-export interface OrgJiraColumnAutomationTable {
-  organization_id: string;
-  jira_status: string;
-  prompt: string | null;
-  /** Continue the pull request the issue already carries instead of opening
-   *  a new one (migration 220). */
-  continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
-  /** Which origins the rule answers, and its identity within the status
-   *  (migration 229, `jira/rule-from.ts`). */
-  from_kind: ColumnType<
-    "any" | "earlier" | "later" | "statuses",
-    "any" | "earlier" | "later" | "statuses" | undefined,
-    "any" | "earlier" | "later" | "statuses"
-  >;
-  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
-  from_key: ColumnType<string, string | undefined, string>;
-  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 /** One row per Jira transition a run was dispatched for — the fence between
@@ -2380,6 +2373,10 @@ export interface ExperimentVariant {
   id: string;
   weight: number;
   role?: "control" | "treatment" | null;
+  /** One sentence, from EXPERIMENT_SUGGEST or typed by the operator: what
+   *  this arm specifically shows/does. Optional — manually-created rows
+   *  before this field existed have none. */
+  description?: string | null;
 }
 
 export interface ExperimentTable {
@@ -2400,6 +2397,9 @@ export interface ExperimentTable {
     Date | string | null
   >;
   ended_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  /** The task board card the frontend implementation was delegated to, so the
+   *  tab can follow its pull request and deploy preview. NULL until delegated. */
+  task_board_item_id: string | null;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -2416,6 +2416,8 @@ export interface Experiment {
   variants: ExperimentVariant[];
   startedAt: string | null;
   endedAt: string | null;
+  /** @see ExperimentTable.task_board_item_id */
+  taskBoardItemId: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -2453,6 +2455,7 @@ export interface Database {
 
   // Connection aggregations (for VIRTUAL connections / agents)
   connection_aggregations: ConnectionAggregationTable;
+  connection_slug_aliases: ConnectionSlugAliasTable;
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
@@ -2489,6 +2492,7 @@ export interface Database {
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+  automation_trigger_fires: AutomationTriggerFireTable;
 
   // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
@@ -2499,9 +2503,6 @@ export interface Database {
 
   // Generic org-scoped KV store
   kv: KVTable;
-
-  // Brand context (org-scoped company profile)
-  brand_context: BrandContextTable;
 
   // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;
@@ -2528,7 +2529,7 @@ export interface Database {
   };
   repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
-  task_board_column_automations: TaskBoardColumnAutomationTable;
+  task_board_sprints: TaskBoardSprintTable;
   task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
@@ -2541,7 +2542,6 @@ export interface Database {
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
-  org_jira_column_automations: OrgJiraColumnAutomationTable;
   jira_trigger_claims: JiraTriggerClaimTable;
 
   // Follow/inbox for the task board

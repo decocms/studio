@@ -21,9 +21,13 @@
  *   - PATCH writes land as ONE commit per request batch, blocks serialized as
  *     pretty-printed JSON + trailing newline; deleting a key removes EVERY
  *     alias file whose stem decodes to that key.
+ *   - PATCH `expect: { <key>: <fingerprint> | null }` names the block version
+ *     the edit was made against: sha-256 hex of the block's JSON with keys
+ *     sorted at every depth, `null` for "no such block". A mismatch is a 409
+ *     `{ code: "block-conflict", blocks }` and writes nothing.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { connectDevDb } from "../fixtures/db";
@@ -39,6 +43,22 @@ import { expect, newApiContext, test } from "../fixtures/test";
 /** Serialization the decofile writer uses for a block file. */
 const blockFileContent = (value: unknown): string =>
   `${JSON.stringify(value, null, 2)}\n`;
+
+/** Block fingerprint for PATCH `expect`: sha-256 of key-sorted JSON. */
+const blockFingerprint = (value: unknown): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(value, (_key, v: unknown) =>
+        v && typeof v === "object" && !Array.isArray(v)
+          ? Object.fromEntries(
+              Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
+                a < b ? -1 : a > b ? 1 : 0,
+              ),
+            )
+          : v,
+      ),
+    )
+    .digest("hex");
 
 interface DecofileGetBody {
   version: string;
@@ -554,6 +574,139 @@ test.describe("decofile API", () => {
         aheadBy: 1,
         behindBy: 0,
       });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("PATCH with expect writes only over the block version the edit was made against", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+      const loaded = {
+        __resolveType: "site/sections/Header.tsx",
+        menu: [{ label: "SSRio", href: "/new-in" }],
+        shelf: { collection: "680" },
+      };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: { ".deco/blocks/Header.json": blockFileContent(loaded) },
+          },
+          draft: null,
+        },
+      });
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+      });
+      const url = decofileUrl(project, "draft");
+
+      // Another editor's change lands after this editor loaded the block.
+      const published = {
+        ...loaded,
+        menu: [{ label: "SS Rio", href: "/new-in" }],
+      };
+      const other = await ctx.patch(url, {
+        data: {
+          set: { Header: published },
+          expect: { Header: blockFingerprint(loaded) },
+        },
+      });
+      expect(other.status()).toBe(200);
+      const headAfterOther = (await inspectStubRepo(ctx, owner, repo)).branches[
+        "draft"
+      ]?.headSha;
+
+      // The stale editor saves the whole block it loaded, plus its own edit.
+      const stale = await ctx.patch(url, {
+        data: {
+          set: { Header: { ...loaded, shelf: { collection: "667" } } },
+          expect: { Header: blockFingerprint(loaded) },
+        },
+      });
+      expect(stale.status()).toBe(409);
+      expect(await stale.json()).toMatchObject({
+        code: "block-conflict",
+        blocks: ["Header"],
+      });
+      const afterStale = await inspectStubRepo(ctx, owner, repo);
+      expect(afterStale.branches["draft"]?.headSha).toBe(headAfterOther);
+      expect(
+        JSON.parse(
+          afterStale.branches["draft"]?.files[
+            ".deco/blocks/Header.json"
+          ] as string,
+        ),
+      ).toEqual(published);
+
+      // Redone against what the read now returns, the edit lands on top.
+      const reread = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      const redone = await ctx.patch(url, {
+        data: {
+          set: { Header: { ...published, shelf: { collection: "667" } } },
+          expect: { Header: blockFingerprint(reread.decofile["Header"]) },
+        },
+      });
+      expect(redone.status()).toBe(200);
+      const final = await inspectStubRepo(ctx, owner, repo);
+      expect(
+        JSON.parse(
+          final.branches["draft"]?.files[".deco/blocks/Header.json"] as string,
+        ),
+      ).toEqual({ ...published, shelf: { collection: "667" } });
+
+      // `null` means "I saw no such block": creating one is fine, replacing one is not.
+      const created = await ctx.patch(url, {
+        data: { set: { Banner: { title: "new" } }, expect: { Banner: null } },
+      });
+      expect(created.status()).toBe(200);
+      const replaced = await ctx.patch(url, {
+        data: { set: { Banner: { title: "again" } }, expect: { Banner: null } },
+      });
+      expect(replaced.status()).toBe(409);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("PATCH rejects an expect for a block the patch does not touch, or a malformed fingerprint", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+      });
+      const url = decofileUrl(project, "draft");
+
+      const untouched = await ctx.patch(url, {
+        data: { set: { Hero: { n: 2 } }, expect: { Footer: null } },
+      });
+      expect(untouched.status()).toBe(400);
+      const malformed = await ctx.patch(url, {
+        data: { set: { Hero: { n: 2 } }, expect: { Hero: "not-a-sha" } },
+      });
+      expect(malformed.status()).toBe(400);
     } finally {
       await ctx.dispose();
     }

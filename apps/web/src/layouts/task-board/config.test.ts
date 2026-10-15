@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
-  CANONICAL_COLUMN_KEYS,
-  SUPER_AGENT_ASSIGNEE_ID,
-} from "@decocms/shared/task-board";
+  closestCorners,
+  type ClientRect,
+  type DroppableContainer,
+} from "@dnd-kit/core";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
   daysSince,
   agentRunState,
+  boardCollisions,
   cardNeedsAttention,
+  boardGridColumns,
   dropLane,
   dueDateUrgency,
   insertSortOrder,
@@ -16,7 +20,6 @@ import {
   laneHeader,
   laneVisibility,
   laneVisual,
-  moveTargets,
   runSortOrders,
   statusIconClassName,
 } from "./config";
@@ -28,13 +31,14 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     organizationId: "org-1",
     title: id,
     description: null,
-    status: "todo",
+    status: "triage",
     priority: "none",
     type: "chore",
     assigneeId: null,
     assignedBy: null,
     repo: null,
     repositoryId: null,
+    sprintId: null,
     dueDate: null,
     sortOrder,
     keySeq: 1,
@@ -53,8 +57,6 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     updatedAt: new Date().toISOString(),
   } as TaskBoardItem;
 }
-
-const STATUSES = [...CANONICAL_COLUMN_KEYS];
 
 describe("insertSortOrder", () => {
   const lane = [item("a", 0), item("b", 10), item("c", 20)];
@@ -147,7 +149,13 @@ describe("isTaskHandedToHuman", () => {
   // Unassigned is the norm everywhere else on the board — only In Review means
   // automation stopped.
   test("an unassigned card in any other lane is not", () => {
-    for (const status of ["triage", "todo", "in_progress", "done"] as const) {
+    for (const status of [
+      "triage",
+      "in_progress",
+      "qa",
+      "ready_for_deployment",
+      "done",
+    ] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
   });
@@ -259,23 +267,6 @@ describe("cardNeedsAttention", () => {
   });
 });
 
-describe("moveTargets", () => {
-  test("offers no delivery lane to a board that doesn't run them", () => {
-    expect(moveTargets(false)).toEqual([
-      "triage",
-      "todo",
-      "in_progress",
-      "in_review",
-      "done",
-      "archived",
-    ]);
-  });
-
-  test("offers every lane once they're on", () => {
-    expect(moveTargets(true)).toEqual(STATUSES);
-  });
-});
-
 describe("dropLane", () => {
   const statusOf = (id: string) =>
     ({ card_in_column: "in_progress", card_in_dead_lane: "not_a_lane" })[id];
@@ -302,6 +293,70 @@ describe("dropLane", () => {
   });
 });
 
+describe("boardCollisions", () => {
+  function rect(left: number, top: number, width: number, height: number) {
+    return {
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+    } satisfies ClientRect;
+  }
+
+  // An In Review lane with a card at the top, and the empty lane beside it,
+  // as tall as a board whose longest lane holds dozens of cards.
+  const rects = new Map([
+    ["card_in_review", rect(0, 10, 280, 100)],
+    ["lane:in_review", rect(0, 0, 280, 4400)],
+    ["lane:approved", rect(292, 0, 280, 4400)],
+  ]);
+  const containers = [...rects.keys()].map(
+    (id): DroppableContainer => ({
+      id,
+      key: id,
+      data: { current: undefined },
+      disabled: false,
+      node: { current: null },
+      rect: { current: rects.get(id) ?? null },
+    }),
+  );
+  /** A card dragged over the top of the empty lane. */
+  const draggedOverApproved = rect(300, 20, 272, 100);
+
+  function collide(
+    detect: typeof boardCollisions,
+    pointerCoordinates: { x: number; y: number } | null,
+  ) {
+    return detect({
+      active: {
+        id: "dragged",
+        data: { current: undefined },
+        rect: { current: { initial: null, translated: null } },
+      },
+      collisionRect: draggedOverApproved,
+      droppableRects: rects,
+      droppableContainers: containers,
+      pointerCoordinates,
+    })[0]?.id;
+  }
+
+  test("lands in the empty lane the pointer is inside", () => {
+    expect(collide(boardCollisions, { x: 420, y: 70 })).toBe("lane:approved");
+    // What the board used before: the neighbour's card measures closer.
+    expect(collide(closestCorners, { x: 420, y: 70 })).toBe("card_in_review");
+  });
+
+  test("prefers a card over the lane that holds it, so reordering works", () => {
+    expect(collide(boardCollisions, { x: 100, y: 50 })).toBe("card_in_review");
+  });
+
+  test("falls back to the closest corners without a pointer", () => {
+    expect(collide(boardCollisions, null)).toBe("card_in_review");
+  });
+});
+
 describe("laneHeader", () => {
   const t = ((key: string) => `t:${key}`) as never;
 
@@ -324,69 +379,36 @@ describe("laneHeader", () => {
 describe("laneVisibility", () => {
   const shown: string[] = [];
 
-  test("draws the delivery lanes as columns when they're on", () => {
-    const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: true,
+  test("draws every lane but the hidden-by-default ones", () => {
+    const { lanes, hidden, hideable } = laneVisibility({
       shownLanes: shown,
-      occupied: [],
     });
     expect(lanes).toEqual([
       "triage",
       "todo",
       "in_progress",
       "in_review",
-      "approved",
-      "merged",
+      "qa",
+      "customer_approval",
+      "ready_for_deployment",
       "post_deploy_validation",
       "done",
-      // archived is hidden by default
     ]);
     expect(hidden).toEqual(["archived"]);
+    expect(hideable).toEqual(["archived"]);
   });
 
-  test("an empty delivery lane is absent, not hidden, when they're off", () => {
+  test("showing a hidden lane puts its column back", () => {
     const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: false,
-      shownLanes: shown,
-      occupied: [],
+      shownLanes: ["archived"],
     });
-    expect(lanes).toEqual([
-      "triage",
-      "todo",
-      "in_progress",
-      "in_review",
-      "done",
-    ]);
-    expect(hidden).toEqual(["archived"]);
-  });
-
-  // Lanes off with work still in one: the card must stay reachable.
-  test("a card left in a delivery lane keeps the lane in the drawer", () => {
-    const { lanes, hidden, hideable } = laneVisibility({
-      deliveryEnabled: false,
-      shownLanes: shown,
-      occupied: ["merged"],
-    });
-    expect(lanes).not.toContain("merged");
-    expect(hidden).toEqual(["merged", "archived"]);
-    expect(hideable).toContain("merged");
-  });
-
-  test("and showing it puts the column back", () => {
-    const { lanes, hidden } = laneVisibility({
-      deliveryEnabled: false,
-      shownLanes: ["merged"],
-      occupied: ["merged"],
-    });
-    expect(lanes).toContain("merged");
-    expect(hidden).toEqual(["archived"]);
+    expect(lanes).toContain("archived");
+    expect(hidden).toEqual([]);
   });
 
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
-      deliveryEnabled: false,
       shownLanes: ["a_lane_that_no_longer_exists"],
-      occupied: [],
     });
     expect(lanes).not.toContain("a_lane_that_no_longer_exists");
   });
@@ -406,7 +428,7 @@ describe("isFeedWorthyActivity", () => {
     expect(
       isFeedWorthyActivity({
         action: "status_changed",
-        data: { from: "in_progress", to: "todo", retriesSpent: 1 },
+        data: { from: "in_progress", to: "triage", retriesSpent: 1 },
       }),
     ).toBe(true);
   });
@@ -415,7 +437,7 @@ describe("isFeedWorthyActivity", () => {
     expect(
       isFeedWorthyActivity({
         action: "status_changed",
-        data: { from: "todo", to: "in_progress" },
+        data: { from: "triage", to: "in_progress" },
       }),
     ).toBe(true);
     expect(isFeedWorthyActivity({ action: "created", data: null })).toBe(true);
@@ -450,5 +472,48 @@ describe("daysSince", () => {
   test("the same day, or a timestamp ahead of the clock, is 0", () => {
     expect(daysSince("2026-09-28T01:00:00Z", now)).toBe(0);
     expect(daysSince("2026-09-29T00:00:00Z", now)).toBe(0);
+  });
+});
+
+describe("boardGridColumns", () => {
+  test("gives every open lane a shared, flexible track", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage", "in_progress"],
+        collapsed: [],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr) minmax(280px, 1fr)");
+  });
+
+  test("narrows a collapsed lane to a fixed strip, in place", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage", "in_progress", "done"],
+        collapsed: ["in_progress"],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr) 44px minmax(280px, 1fr)");
+  });
+
+  test("keeps a track for the hidden-lanes tail", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage"],
+        collapsed: ["triage"],
+        hasHiddenTail: true,
+      }),
+    ).toBe("44px 280px");
+  });
+
+  // localStorage can name a lane the board no longer has.
+  test("ignores a collapsed lane the board does not draw", () => {
+    expect(
+      boardGridColumns({
+        lanes: ["triage"],
+        collapsed: ["a_lane_that_no_longer_exists"],
+        hasHiddenTail: false,
+      }),
+    ).toBe("minmax(280px, 1fr)");
   });
 });

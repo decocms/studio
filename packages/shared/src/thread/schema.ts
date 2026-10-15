@@ -151,8 +151,17 @@ export type ThreadEntity = z.infer<typeof ThreadEntitySchema>;
 // Create/Update Schemas
 // ============================================================================
 
+/** Plenty for a `<prefix>_<nanoid>` id or a caller-supplied custom one. */
+export const MAX_THREAD_ID_LENGTH = 128;
+/** Above git's practical ref-name limit, well under the column's unbounded text type. */
+export const MAX_THREAD_BRANCH_LENGTH = 255;
+
 export const ThreadCreateDataSchema = z.object({
-  id: z.string().optional().describe("Optional custom ID for the thread"),
+  id: z
+    .string()
+    .max(MAX_THREAD_ID_LENGTH)
+    .optional()
+    .describe("Optional custom ID for the thread"),
   title: z.string().optional().describe("Thread title"),
   description: z.string().nullish().describe("Thread description"),
   virtual_mcp_id: z
@@ -161,6 +170,7 @@ export const ThreadCreateDataSchema = z.object({
   branch: z
     .string()
     .min(1)
+    .max(MAX_THREAD_BRANCH_LENGTH)
     .optional()
     .describe(
       "Preferred branch. Used only when the vMCP has a repository; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
@@ -199,6 +209,7 @@ export const ThreadUpdateDataSchema = z.object({
   branch: z
     .string()
     .min(1)
+    .max(MAX_THREAD_BRANCH_LENGTH)
     .nullish()
     .describe("New git branch for this thread"),
   virtual_mcp_id: z

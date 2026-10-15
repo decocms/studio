@@ -12,6 +12,7 @@ import {
 } from "@/sdk";
 import { extractConnectionData } from "@/utils/extract-connection-data";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useT } from "@/i18n/use-t.ts";
 
 interface InstallResult {
   id: string;
@@ -38,6 +39,7 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const actions = useConnectionActions();
+  const t = useT();
 
   const studio = useStudioTools();
 
@@ -46,7 +48,7 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
     bindingType: string,
   ): Promise<InstallResult | undefined> => {
     if (!org || !session?.user?.id) {
-      toast.error("Not authenticated");
+      toast.error(t("details.mcpConfigurationForm.notAuthenticated"));
       return undefined;
     }
 
@@ -56,7 +58,11 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
     );
 
     if (!registryItem) {
-      toast.error(`MCP Server not found in registry: ${bindingType}`);
+      toast.error(
+        t("details.mcpConfigurationForm.registryItemNotFound", {
+          bindingType,
+        }),
+      );
       return undefined;
     }
 
@@ -77,9 +83,7 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
       "command" in connectionData.connection_headers;
 
     if (!hasUrl && !hasStdioConfig) {
-      toast.error(
-        "This MCP Server cannot be connected: no connection method available",
-      );
+      toast.error(t("details.mcpConfigurationForm.registryItemNotConnectable"));
       return undefined;
     }
 

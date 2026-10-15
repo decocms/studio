@@ -58,7 +58,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Criar um API token",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":
-    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 10 minutos; com ele, a run começa quando o card fica um minuto parado.",
+    "Opcional. Sem ele, uma issue que entra num status automatizado é detectada na próxima verificação de 5 minutos; com ele, a run começa quando o card fica 20 segundos parado.",
   "settings.jira.webhookCopy": "Copiar",
   "settings.jira.webhookCopied": "URL do webhook copiada",
   "settings.jira.webhookStep1":
@@ -70,18 +70,13 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Opcionalmente restrinja com um filtro JQL, ex.: project = <chave do projeto>.",
   "settings.jira.webhookStep5":
-    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run depois de ficar um minuto nele.",
+    "Salve. Uma issue que entra num status automatizado passa a iniciar sua run depois de ficar 20 segundos nele.",
   "settings.jira.automationsLabel":
     "Rodar o agente quando uma issue entrar em…",
   "settings.jira.automationsDescription":
-    "Quando uma issue entra em um destes status e fica nele por um minuto, o Studio inicia um run do agente nela. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+    "As automações que rodam quando uma issue entra num destes status e fica nele por 20 segundos. Abra uma para mudar o prompt, ou dê a qualquer automação um gatilho “Quando uma issue do Jira entra num status”. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. Uma issue que tem um pull request aberto linkado continua nele. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
+  "settings.jira.toggleAutomation": "Ligar ou desligar {name}",
   "settings.jira.addAutomation": "Adicionar automação",
-  "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
-  "settings.jira.promptHelp":
-    "Esta é a instrução inteira que o run recebe — não existe um padrão. Digite “/” para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
-  "settings.jira.promptSave": "Salvar",
-  "settings.jira.promptDiscard": "Descartar",
-  "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
   "settings.jira.fromAny": "Vindo de qualquer coluna",
   "settings.jira.fromEarlier": "Vindo de uma coluna anterior",
   "settings.jira.fromLater": "Vindo de uma coluna posterior (devolvido)",
@@ -90,14 +85,14 @@ export const settings = {
   "settings.jira.originStatusesPlaceholder": "Escolha os status",
   "settings.jira.originHelp":
     "Um movimento inicia uma regra só: a que nomeia de onde o card veio, senão a da direção dele no board, senão a de qualquer coluna. De onde ele veio é o último status em que ficou parado, não um pelo qual foi arrastado.",
-  "settings.jira.createRule": "Criar regra",
+  "settings.jira.createRule": "Criar automação",
   "settings.jira.cancelRule": "Cancelar",
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
   "settings.jira.testRunLabel": "Rodar na mão",
   "settings.jira.testRunDescription":
-    "Rode o agente em uma issue ou num lote agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
+    "Rode uma das automações acima em uma issue ou num lote agora, sem habilitar a integração \u2014 assim você vê o que o prompt dela faz antes que ele rode em toda issue que entra em um status.",
   "settings.jira.issueKeysPlaceholder":
     "ABC-123, ou um link — um por linha, ou separados por vírgula",
   "settings.jira.issueKeysCount": "{count} issue(s)",
@@ -108,11 +103,10 @@ export const settings = {
   "settings.jira.testRunStarted": "Iniciado em",
   "settings.jira.testRunFailed": "Não foi possível iniciar o run",
   "settings.jira.testRunHelp":
-    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",
-  "settings.jira.continuePr":
-    "Continuar o pull request que a issue já carrega (re-run depois de um review pedir mudanças)",
-  "settings.jira.continuePrRuleHelp":
-    "Checado em todo card que entra neste status: quem já carrega um pull request aberto continua nele, quem não tem começa do zero. Deixe desligado num status de review.",
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue, e uma issue com um pull request aberto linkado continua nele.",
+  "settings.jira.testRunAutomation": "Automação a rodar",
+  "settings.jira.testRunNoAutomations":
+    "Adicione uma automação acima primeiro: rodar à mão dispara uma delas.",
   "settings.jira.together":
     "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
   "settings.jira.togetherStarted": "Iniciado um run em",
@@ -360,7 +354,10 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
-  "settings.blogBlocks.sectionTitle": "Blocos do blog",
+  "settings.blog.sectionTitle": "Blog",
+  "settings.blog.aiTitle": "Blog com IA",
+  "settings.blog.aiDescription":
+    "Contexto da marca, campanhas e geração de posts. Sem isso, o blog é editado à mão.",
   "settings.blogBlocks.title": "Esconder os blocos de blog padrão",
   "settings.blogBlocks.description":
     "Só os blocos de post do próprio site ficam disponíveis ao escrever, gerar ou importar um post. Blocos já presentes em um post continuam sendo renderizados.",
@@ -552,7 +549,6 @@ export const settings = {
   "settings.connectClients.anyOtherClientDescription":
     "Qualquer outro cliente MCP: cole este endpoint nele para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
   "settings.connectClients.apiKeyOption": "Chave API",
-  "settings.connectClients.connectAClient": "Conectar um cliente",
   "settings.connectClients.copy": "Copiar",
   "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
   "settings.connectClients.generateKey": "Gerar chave",
@@ -562,6 +558,8 @@ export const settings = {
     "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
   "settings.connectClients.installMethod": "Método de instalação",
   "settings.connectClients.keyCreated": "Chave criada",
+  "settings.connectClients.mcpDescription":
+    "Para clientes sem shell. Compartilhar arquivos da Library e mandar mensagem para agentes exige a CLI + skill.",
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
@@ -571,6 +569,18 @@ export const settings = {
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.recommended": "Recomendado",
+  "settings.connectClients.skillDescription":
+    "Instale a skill do Studio e faça login uma vez. Depois disso, seu agente trabalha com os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
+  "settings.connectClients.skillInstallStep": "1. Instale a skill",
+  "settings.connectClients.skillLoginHint":
+    "Um navegador abre para você aprovar o login. A sessão se renova sozinha, então só faça login de novo quando o agente pedir.",
+  "settings.connectClients.skillLoginStep": "2. Faça login",
+  "settings.connectClients.skillNeedsBun": "Precisa do Bun.",
+  "settings.connectClients.skillOtherAgentsHint":
+    "O instalador pergunta em quais agentes adicionar a skill.",
+  "settings.connectClients.skillTab": "CLI + skill",
+  "settings.connectClients.skillTitle": "Conectar seu agente",
   "settings.connectClients.snippetOneTimeWarning":
     "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
@@ -697,7 +707,6 @@ export const settings = {
     "Para grandes times com contrato próprio",
   "settings.plans.custom.cta": "Fale com a gente",
   "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
-  "settings.plans.limitReached": "Você atingiu o seu limite de uso de AI",
   "settings.plans.invoice.cta": "Adicionar à minha fatura",
   "settings.plans.invoice.confirm":
     "O plano {plan} será adicionado à sua próxima fatura. Mudar agora?",
@@ -827,24 +836,21 @@ export const settings = {
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
-    "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
+    "O Reviewer automático roda no pull request de uma tarefa quando o card chega na coluna Em Revisão (checks passando ou inexistentes). Ele aparece como uma sessão no card da tarefa.",
   "settings.review.reviewerTitle": "Ativar Reviewer",
   "settings.review.reviewerDescription":
-    "Revisa o c\u00f3digo com as skills de review do pr\u00f3prio reposit\u00f3rio, corrige o que encontra na branch do pull request e depois testa a mudan\u00e7a no preview do deploy \u2014 e passa a tarefa para você quando n\u00e3o consegue resolver algo.",
+    "Quando o card chega na coluna Em Revisão, revisa o código com as skills de review do próprio repositório, corrige o que encontra na branch do pull request e depois testa a mudança no preview do deploy. Uma aprovação move o card para QA; quando não consegue resolver algo, passa a tarefa para você.",
   "settings.review.cheapReviewerModelTitle":
     "Rodar os revisores em um modelo mais barato",
   "settings.review.cheapReviewerModelDescription":
     "O Reviewer roda em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
-    "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa.",
+    "Quando um card chega em Pronto para Deploy, mescla o pull request automaticamente em vez de esperar alguém clicar em Subir para produção.",
   "settings.review.autoResolveConflictsTitle":
     "Resolver conflitos de merge automaticamente",
   "settings.review.autoResolveConflictsDescription":
-    "Quando um pull request aprovado conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
-  "settings.review.deliveryLanesTitle": "Mostrar as colunas de entrega",
-  "settings.review.deliveryLanesDescription":
-    "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
+    "Quando um pull request em Pronto para Deploy conflita com a branch base, devolve para o Super Agent fazer checkout da branch, mesclar a base e dar push. Segue o Auto-merge, a menos que você ajuste aqui.",
   "settings.review.autoAssignReportTasksTitle":
     "Atribuir tarefas do Deco Score ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":
@@ -889,6 +895,11 @@ export const settings = {
   "settings.agentTools.orgMcpsPickDiscard": "Descartar",
   "settings.agentTools.orgMcpsPickSaved":
     "Conex\u00f5es que os runs alcan\u00e7am salvas",
+  "settings.agentTools.chatRuntimeSection": "Chats",
+  "settings.agentTools.chatHarnessSandboxOnlyTitle":
+    "Rodar todo chat com o Claude Code no seu pr\u00f3prio sandbox",
+  "settings.agentTools.chatHarnessSandboxOnlyDescription":
+    "Todo chat novo roda o Claude Code em um sandbox s\u00f3 dele em vez de rodar no Decopilot, e chats existentes do Decopilot mudam na pr\u00f3xima mensagem. A primeira mensagem de um chat espera o sandbox iniciar. Requer uma chave da Anthropic, OpenRouter ou do gateway de IA da deco, ou uma assinatura do Claude.",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

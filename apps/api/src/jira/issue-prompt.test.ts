@@ -171,6 +171,78 @@ describe("renderIssueForPrompt", () => {
   });
 });
 
+describe("renderIssueForPrompt commentsBefore", () => {
+  const comment = (author: string, body: string) => ({
+    author,
+    created: "2026-09-01T10:00:00Z",
+    body,
+  });
+  // Six 5k comments: the 12k budget shows the newest two whole and a clipped
+  // third, so a thread like this hides its oldest comments without paging.
+  const thread: IssueForPrompt = {
+    ...base,
+    comments: ["A", "B", "C", "D", "E", "F"].map((name) =>
+      comment(name, `${name}:${name.toLowerCase().repeat(5_000)}`),
+    ),
+  };
+
+  it("names the commentsBefore that reaches the hidden comments", () => {
+    const text = renderIssueForPrompt(thread);
+    expect(text).toContain("[… 3 older comments omitted]");
+    // D is shown clipped, so the next page ends after it and shows it whole.
+    expect(text).toContain("`commentsBefore: 4`");
+    expect(text).not.toContain("**A**");
+  });
+
+  it("pages back to the oldest comment, each read whole once", () => {
+    const seenWhole = new Set<string>();
+    let before: number | undefined;
+    for (let page = 0; page < 10; page++) {
+      const text = renderIssueForPrompt(thread, undefined, {
+        commentsBefore: before,
+      });
+      for (const c of thread.comments) {
+        if (text.includes(c.body)) seenWhole.add(c.author);
+      }
+      const next = text.match(/`commentsBefore: (\d+)`/);
+      if (!next) break;
+      const value = Number(next[1]);
+      expect(before === undefined || value < before).toBe(true);
+      before = value;
+    }
+    expect([...seenWhole].sort()).toEqual(["A", "B", "C", "D", "E", "F"]);
+  });
+
+  it("labels a paged window and keeps the rest of the issue", () => {
+    const text = renderIssueForPrompt(thread, undefined, { commentsBefore: 2 });
+    expect(text).toContain("## Comments (1–2 of 6)");
+    expect(text).toContain("**A**");
+    expect(text).toContain("**B**");
+    expect(text).not.toContain("**C**");
+    expect(text).toContain("Make it blue.");
+    expect(text).not.toContain("commentsBefore:");
+  });
+
+  it("does not offer a page that would not move past one oversized comment", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      comments: [comment("Old", "short"), comment("Huge", "h".repeat(20_000))],
+    });
+    expect(text).toContain("[… 1 older comment omitted]");
+    expect(text).toContain("`commentsBefore: 1`");
+  });
+
+  it("clamps a commentsBefore past the end of the thread", () => {
+    const text = renderIssueForPrompt(
+      { ...base, comments: [comment("Only", "one")] },
+      undefined,
+      { commentsBefore: 50 },
+    );
+    expect(text).toContain("## Comments\n");
+    expect(text).toContain("**Only**");
+  });
+});
+
 describe("renderIssuesForPrompt", () => {
   it("digests each issue with its links and says how to read one in full", () => {
     const out = renderIssuesForPrompt([

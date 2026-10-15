@@ -5,6 +5,7 @@
  * event triggers on their MCP connections accordingly.
  */
 
+import { setFlagBackedActive } from "../../automations/builtin";
 import { z } from "zod";
 import { syncAutomationActiveChanged } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
@@ -12,6 +13,7 @@ import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { ChatTierSchema } from "@decocms/shared/organization/schema";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";
+import { ToolsAllowlistSchema } from "./trigger-schema";
 
 export const AUTOMATION_UPDATE = defineTool({
   name: "AUTOMATION_UPDATE",
@@ -51,7 +53,7 @@ export const AUTOMATION_UPDATE = defineTool({
       .optional(),
     // null clears the allowlist (= all tools); an array sets it; omitting
     // leaves the stored value untouched.
-    tools: z.array(z.string()).nullable().optional(),
+    tools: ToolsAllowlistSchema.nullable().optional(),
     // Parent agent-loop step cap. null resets to the platform default
     // (PARENT_STEP_LIMIT); a number sets it; omitting leaves it untouched.
     maxAgentSteps: z.number().int().min(1).max(100).nullable().optional(),
@@ -75,6 +77,26 @@ export const AUTOMATION_UPDATE = defineTool({
     );
     if (!existing) {
       throw new Error("Automation not found");
+    }
+    const { id: _id, active: _active, ...edits } = input;
+    if (
+      existing.system_key &&
+      Object.values(edits).some((value) => value !== undefined)
+    ) {
+      throw new Error("Built-in automations can only be turned on or off.");
+    }
+
+    // The Reviewer's switch is still the org's review flag.
+    if (
+      input.active !== undefined &&
+      (await setFlagBackedActive(ctx, existing, input.active))
+    ) {
+      return {
+        id: existing.id,
+        name: existing.name,
+        active: input.active,
+        updated_at: existing.updated_at,
+      };
     }
 
     // Build update payload

@@ -107,6 +107,58 @@ export type ResolvedChange =
   | { path: string; deleted: true };
 
 /**
+ * Files with special Git semantics — a write to one of these would modify
+ * Git's own configuration rather than add repo content. GitLab, like Git,
+ * rejects these in tree writes.
+ */
+const RESERVED_GIT_NAMES = new Set([".gitmodules"]);
+
+/**
+ * Maximum path length for a file in a Git tree. GitLab has no published hard
+ * limit on path length, but Git itself caps paths, and filesystem-level limits
+ * (NTFS: 260 chars, most others: 4KB) constrain portability. 1024 is a
+ * practical upper bound that avoids edge-case filesystems while staying well
+ * below Git's internal limits.
+ */
+const MAX_PATH_LENGTH = 1024;
+
+/**
+ * Validate a file path before writing it to the repository. Rejects paths with
+ * Git-reserved names, excessive length, or invalid characters.
+ */
+function validateCommitPath(path: string): void {
+  if (path.length === 0) {
+    throw new GitProviderError({
+      provider: "gitlab",
+      status: 400,
+      message: "Path cannot be empty",
+    });
+  }
+  if (path.length > MAX_PATH_LENGTH) {
+    throw new GitProviderError({
+      provider: "gitlab",
+      status: 400,
+      message: `Path exceeds maximum length of ${MAX_PATH_LENGTH}: ${path}`,
+    });
+  }
+  if (path.includes("\0")) {
+    throw new GitProviderError({
+      provider: "gitlab",
+      status: 400,
+      message: "Path cannot contain null bytes",
+    });
+  }
+  const basename = path.split("/").at(-1) ?? "";
+  if (RESERVED_GIT_NAMES.has(basename)) {
+    throw new GitProviderError({
+      provider: "gitlab",
+      status: 400,
+      message: `"${basename}" is a reserved Git file name and cannot be written`,
+    });
+  }
+}
+
+/**
  * The `actions` array for a set of changes, given what each path looked like
  * at the base commit: a `string` is the file's `last_commit_id` (it exists), a
  * `null`/absent entry means it does not exist there.
@@ -131,6 +183,7 @@ export function buildCommitActions(
 
   const actions: GitlabCommitAction[] = [];
   for (const [path, change] of collapsed) {
+    validateCommitPath(path);
     const lastCommitId = lastCommitIdByPath.get(path) ?? null;
     if ("deleted" in change) {
       if (lastCommitId === null) continue;

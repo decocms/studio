@@ -277,6 +277,16 @@ export const sectionsEditor = {
     "Nenhum campo editável para esta variante.",
   "sectionsEditor.sectionsEditor.noPageFound":
     "Nenhuma página encontrada para {currentPath}",
+  "sectionsEditor.sectionsEditor.blockChangedElsewhere":
+    "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
+  "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
+    "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
+  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
+    "Mudou enquanto você editava: {fields}. Mantivemos a versão mais recente desses campos e salvamos o resto das suas alterações.",
+  "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
+    "Esta seção foi substituída enquanto você editava. O formulário agora mostra a seção atual, e sua última alteração não foi salva.",
+  "sectionsEditor.sectionsEditor.blockMergedWithOthers":
+    "Este bloco foi atualizado enquanto você editava. Suas alterações foram aplicadas sobre a versão mais recente.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',

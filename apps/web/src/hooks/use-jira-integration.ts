@@ -1,8 +1,8 @@
 /**
  * Per-org Jira integration (`JIRA_*` tools) — managed from Settings → Tasks.
  * One integration per org: credentials, the board it watches, the webhook
- * that tells it when an issue moves, and the per-status rules that start an
- * agent run when an issue enters a status.
+ * that tells it when an issue moves, and the automations that start a run
+ * when an issue enters a status.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -49,14 +49,16 @@ export function useDeleteJiraIntegration() {
   });
 }
 
-export function useJiraBoards(connected: boolean) {
+/** The first boards Jira lists, or with `query`, the boards whose name holds it. */
+export function useJiraBoards(connected: boolean, query = "") {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
-    queryKey: KEYS.jiraBoards(org.id),
+    queryKey: KEYS.jiraBoards(org.id, query),
     enabled: connected,
     staleTime: 60_000,
-    queryFn: async () => (await studio.call("JIRA_BOARDS_LIST", {})).boards,
+    queryFn: async () =>
+      (await studio.call("JIRA_BOARDS_LIST", query ? { query } : {})).boards,
   });
 }
 
@@ -90,47 +92,25 @@ export function useJiraAutomations() {
 }
 
 /**
- * Turn a status rule on, off, or reword it. A status has one rule per origin,
- * so `from` says which one.
- *
- * `null` is off: the row is deleted rather than stored empty, so "no rule" has
- * one representation. An empty prompt is stored as no prompt, which means the
- * agent runs on its own instruction.
+ * Add an automation on a status, for the origin `from`. It starts with no
+ * prompt; the caller opens it so a person writes one.
  */
-export function useSetJiraAutomation() {
+export function useCreateJiraAutomation() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      jiraStatus: string;
-      from: JiraRuleFrom;
-      prompt: string | null;
-      continuePr?: boolean;
-    }) => {
-      if (input.prompt === null) {
-        await studio.call("JIRA_AUTOMATION_DELETE", {
-          jiraStatus: input.jiraStatus,
-          from: input.from,
-        });
-        return;
-      }
-      await studio.call("JIRA_AUTOMATION_UPSERT", {
-        jiraStatus: input.jiraStatus,
-        from: input.from,
-        prompt: input.prompt.trim() === "" ? undefined : input.prompt,
-        continuePr: input.continuePr ?? false,
-      });
-    },
+    mutationFn: async (input: { jiraStatus: string; from: JiraRuleFrom }) =>
+      (await studio.call("JIRA_AUTOMATION_UPSERT", input)).automation,
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: KEYS.jiraAutomations(org.id) }),
   });
 }
 
 /**
- * Run the agent on one issue, now — the way a rule is tried before it is
- * turned on for a whole column. Needs no rule and works with the integration
- * disabled, so nothing has to move on the real board to see what it does.
+ * Fire a Jira automation on issues, now — the way it is tried before it runs
+ * on a whole column. Works with the integration disabled, so nothing has to
+ * move on the real board to see what it does.
  */
 export function useStartJiraRun() {
   const studio = useStudioTools();

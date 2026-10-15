@@ -11,8 +11,10 @@
  * the admin-only case, and it fails closed.
  */
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import { resolveCallerProjectScope } from "@/core/project-scope";
 import {
   auditTaskBoardAdminAction,
   isAdminOrgId,
@@ -20,33 +22,60 @@ import {
 } from "@/core/task-board-admin";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
-import type { AnalyticsQuery } from "@/storage/task-board-analytics";
+import {
+  type AnalyticsQuery,
+  parseDrill,
+} from "@/storage/task-board-analytics";
 
 const DEFAULT_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-const AnalyticsInputSchema = z
-  .object({
-    org: z
-      .string()
-      .optional()
-      .describe(
-        'Org slug or id to report on. Omit for the current org. "all" is the cross-tenant aggregate (admin orgs only).',
-      ),
-    from: z
-      .string()
-      .datetime({ offset: true })
-      .optional()
-      .describe("ISO start of the range. Defaults to 30 days ago."),
-    to: z
-      .string()
-      .datetime({ offset: true })
-      .optional()
-      .describe("ISO end of the range. Defaults to now."),
-  })
-  .refine((v) => !v.from || !v.to || Date.parse(v.from) <= Date.parse(v.to), {
-    message: "`from` must not be after `to`",
-    path: ["from"],
-  });
+const AnalyticsFields = z.object({
+  org: z
+    .string()
+    .optional()
+    .describe(
+      'Org slug or id to report on. Omit for the current org. "all" is the cross-tenant aggregate (admin orgs only).',
+    ),
+  from: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe("ISO start of the range. Defaults to 30 days ago."),
+  to: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe("ISO end of the range. Defaults to now."),
+  project: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Project (virtual MCP) id to narrow to: its runs and the cards naming its repository. Omit for the whole board.",
+    ),
+});
+
+const rangeInOrder = (v: { from?: string; to?: string }) =>
+  !v.from || !v.to || Date.parse(v.from) <= Date.parse(v.to);
+const RANGE_ORDER = {
+  message: "`from` must not be after `to`",
+  path: ["from"],
+};
+
+const AnalyticsInputSchema = AnalyticsFields.refine(rangeInOrder, RANGE_ORDER);
+
+const OperationTasksInputSchema = AnalyticsFields.extend({
+  drill: z
+    .string()
+    .max(500)
+    .refine(
+      (v) => parseDrill(v) !== null,
+      "Unknown drill: use a figure's `drill` from the report",
+    )
+    .describe(
+      "Which figure to list, as `&`-joined parts: a cohort (`shipped`, `failed_qa`, `returned`, ...), `touch:<kind>` for the cards a person stepped in on that way, or a card field (`type:bug`, `priority:urgent`, `tag:<id>`, `sprint:<id>`, `author:<user id>`; `none` for unset). The reports return each figure's `drill`.",
+    ),
+}).refine(rangeInOrder, RANGE_ORDER);
 
 const StatSectionSchema = z.object({
   kind: z.literal("stat"),
@@ -56,6 +85,10 @@ const StatSectionSchema = z.object({
       label: z.string(),
       value: z.number().nullable(),
       unit: z.string().optional(),
+      previous: z.number().nullable().optional(),
+      better: z.enum(["up", "down"]).optional(),
+      detail: z.string().optional(),
+      drill: z.string().optional(),
     }),
   ),
 });
@@ -74,12 +107,110 @@ const TableSectionSchema = z.object({
   title: z.string(),
   columns: z.array(z.string()),
   rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))),
+  units: z.record(z.string(), z.string()).optional(),
+  drills: z.array(z.string().nullable()).optional(),
+});
+
+const FunnelSectionSchema = z.object({
+  kind: z.literal("funnel"),
+  title: z.string(),
+  stages: z.array(
+    z.object({
+      label: z.string(),
+      value: z.number(),
+      drill: z.string().optional(),
+    }),
+  ),
+});
+
+const BarsSectionSchema = z.object({
+  kind: z.literal("bars"),
+  title: z.string(),
+  unit: z.string().optional(),
+  total: z.object({ value: z.number(), label: z.string() }).optional(),
+  bars: z.array(
+    z.object({
+      label: z.string(),
+      value: z.number(),
+      detail: z.string().optional(),
+      note: z.string().optional(),
+      drill: z.string().optional(),
+    }),
+  ),
+});
+
+const MetricSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  unit: z.string().optional(),
+  better: z.enum(["up", "down"]).optional(),
+});
+
+const MetricValuesSchema = z.record(z.string(), z.number().nullable());
+
+const BreakdownSectionSchema = z.object({
+  kind: z.literal("breakdown"),
+  title: z.string(),
+  metrics: z.array(MetricSchema),
+  dimensions: z.array(
+    z.object({
+      label: z.string(),
+      rows: z.array(
+        z.object({
+          label: z.string(),
+          count: z.number(),
+          drill: z.string().optional(),
+          values: MetricValuesSchema,
+        }),
+      ),
+    }),
+  ),
+});
+
+const MatrixSectionSchema = z.object({
+  kind: z.literal("matrix"),
+  title: z.string(),
+  rowLabel: z.string(),
+  colLabel: z.string(),
+  metrics: z.array(MetricSchema),
+  rows: z.array(z.string()),
+  cols: z.array(z.string()),
+  cells: z.array(
+    z.object({
+      row: z.string(),
+      col: z.string(),
+      count: z.number(),
+      drill: z.string().optional(),
+      values: MetricValuesSchema,
+    }),
+  ),
+});
+
+const CategoriesSectionSchema = z.object({
+  kind: z.literal("categories"),
+  title: z.string(),
+  unit: z.string().optional(),
+  layout: z.enum(["stacked", "grouped"]),
+  keys: z.array(z.string()),
+  baseline: z.string().optional(),
+  categories: z.array(
+    z.object({
+      label: z.string(),
+      drill: z.string().optional(),
+      values: MetricValuesSchema,
+    }),
+  ),
 });
 
 const SectionSchema = z.discriminatedUnion("kind", [
   StatSectionSchema,
   SeriesSectionSchema,
   TableSectionSchema,
+  FunnelSectionSchema,
+  BarsSectionSchema,
+  BreakdownSectionSchema,
+  MatrixSectionSchema,
+  CategoriesSectionSchema,
 ]);
 
 const AnalyticsOutputSchema = z.object({
@@ -154,6 +285,36 @@ export async function resolveScope(
   };
 }
 
+/**
+ * Narrow a resolved scope to one project. Only within a single org — a project
+ * lives in exactly one — and only one the caller's role may see; anything else
+ * reads as not found, so a project id never confirms another tenant's project.
+ */
+async function narrowToProject(
+  projectId: string | undefined,
+  query: AnalyticsQuery,
+  ctx: StudioContext,
+): Promise<AnalyticsQuery> {
+  if (!projectId) return query;
+  const orgId = query.orgIds?.length === 1 ? query.orgIds[0] : undefined;
+  const project = orgId
+    ? await ctx.storage.virtualMcps.findById(projectId, orgId)
+    : null;
+  const allowed =
+    project?.organization_id === orgId &&
+    (orgId !== ctx.organization?.id ||
+      isProjectAllowed(await resolveCallerProjectScope(ctx), projectId));
+  if (!project || !allowed) throw new Error(`Project not found: ${projectId}`);
+  const repo = project.metadata?.repository;
+  return {
+    ...query,
+    project: {
+      id: project.id,
+      repo: repo ? `${repo.owner}/${repo.name}`.toLowerCase() : null,
+    },
+  };
+}
+
 /** One line for the model; the page still gets the full structuredContent. */
 function summarize(result: AnalyticsOutput): string {
   const stats = result.sections
@@ -161,6 +322,29 @@ function summarize(result: AnalyticsOutput): string {
     .flatMap((s) => s.values)
     .map((v) => `${v.label}: ${v.value ?? "—"}${v.unit ? ` ${v.unit}` : ""}`)
     .join(", ");
+  const funnels = result.sections
+    .filter((s) => s.kind === "funnel")
+    .map((s) => s.stages.map((st) => `${st.label} ${st.value}`).join(" > "))
+    .join(", ");
+  const breakdowns = result.sections
+    .filter((s) => s.kind === "breakdown")
+    .flatMap((s) =>
+      s.dimensions.map(
+        (d) =>
+          `by ${d.label}: ${d.rows
+            .map(
+              (r) =>
+                `${r.label} (${r.count}: ${s.metrics
+                  .map(
+                    (m) =>
+                      `${m.label} ${r.values[m.key] ?? "—"}${m.unit ?? ""}`,
+                  )
+                  .join(", ")})`,
+            )
+            .join("; ")}`,
+      ),
+    )
+    .join(" | ");
   const tables = result.sections
     .filter((s) => s.kind === "table")
     .map((s) => `${s.title} (${s.rows.length} rows)`)
@@ -168,6 +352,8 @@ function summarize(result: AnalyticsOutput): string {
   return [
     `${result.org}, ${result.range.from}..${result.range.to}`,
     stats,
+    funnels,
+    breakdowns,
     tables,
   ]
     .filter(Boolean)
@@ -196,24 +382,77 @@ export function defineAnalyticsTool<TName extends string>(
     inputSchema: AnalyticsInputSchema,
     outputSchema: AnalyticsOutputSchema,
     modelSummary: summarize,
-    handler: async (input, ctx) => {
-      requireAuth(ctx);
-      await ctx.access.check();
-      const { query, org } = await resolveScope(input, ctx, name);
-      return {
-        range: { from: query.from, to: query.to },
-        org,
-        sections: await run(ctx, query),
-      };
-    },
+    handler: (input, ctx) =>
+      runAnalytics(input, ctx, name, (query) => run(ctx, query)),
   });
+}
+
+async function runAnalytics(
+  input: AnalyticsInput,
+  ctx: StudioContext,
+  toolName: string,
+  run: (query: AnalyticsQuery) => Promise<AnalyticsOutput["sections"]>,
+): Promise<AnalyticsOutput> {
+  requireAuth(ctx);
+  await ctx.access.check();
+  const scope = await resolveScope(input, ctx, toolName);
+  const query = await narrowToProject(input.project, scope.query, ctx);
+  return {
+    range: { from: query.from, to: query.to },
+    org: scope.org,
+    sections: await run(query),
+  };
 }
 
 export const TASK_BOARD_DELIVERY = defineAnalyticsTool(
   "TASK_BOARD_DELIVERY",
   "Task Board Delivery",
-  "Task board throughput and flow: tasks completed, how many shipped a PR, lead vs cycle time, completions per day by board, time in review, and dwell by lane.",
+  "Task board throughput and flow: tasks completed, how many shipped a PR, lead vs cycle time, completions per day by board, time in review, time in each lane and time to done by priority, by assignee, and dwell by lane.",
   (ctx, query) => ctx.storage.taskBoardAnalytics.delivery(query),
+);
+
+export const TASK_BOARD_OPERATION = defineAnalyticsTool(
+  "TASK_BOARD_OPERATION",
+  "Task Board Operation",
+  "How autonomously the agent delivers: of the cards it picked up, how many ran without errors, passed QA (and the customer, where the board has that lane) on the first try, shipped, and shipped on its own (no person sent it back); the failed-QA rate; each against the previous period; and where people stepped in, by intent (sent back, guided, approved or shipped, admin).",
+  (ctx, query) => ctx.storage.taskBoardAnalytics.operation(query),
+);
+
+export const TASK_BOARD_OPERATION_TASKS = defineTool({
+  name: "TASK_BOARD_OPERATION_TASKS",
+  description:
+    "The cards behind one TASK_BOARD_OPERATION figure (e.g. which tasks failed QA, or which a person re-ran), newest first, up to 200.",
+  annotations: {
+    title: "Task Board Operation Tasks",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: OperationTasksInputSchema,
+  outputSchema: AnalyticsOutputSchema,
+  modelSummary: summarize,
+  handler: (input, ctx) =>
+    runAnalytics(input, ctx, "TASK_BOARD_OPERATION_TASKS", (query) =>
+      ctx.storage.taskBoardAnalytics.operationTasks(
+        query,
+        parseDrill(input.drill) ?? [],
+      ),
+    ),
+});
+
+export const TASK_BOARD_REWORK = defineAnalyticsTool(
+  "TASK_BOARD_REWORK",
+  "Task Board Rework",
+  "Why tasks come back: of the cards the agent picked up, the failed-QA and sent-back-by-a-person rates, who sent work back (QA Agent, team, customer), the QA escape rate, USD spent on rework, and the rates cut by type, priority, tag, sprint and who wrote the brief. Each figure's `drill` lists its cards via TASK_BOARD_OPERATION_TASKS.",
+  (ctx, query) => ctx.storage.taskBoardAnalytics.rework(query),
+);
+
+export const TASK_BOARD_SPRINTS = defineAnalyticsTool(
+  "TASK_BOARD_SPRINTS",
+  "Task Board Sprints",
+  "Sprint velocity: for each sprint overlapping the range, what it committed to, what shipped, and how much of that shipped with no human; plus the active sprint's progress.",
+  (ctx, query) => ctx.storage.taskBoardAnalytics.sprints(query),
 );
 
 export const TASK_BOARD_STUCK = defineAnalyticsTool(

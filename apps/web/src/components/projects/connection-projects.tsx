@@ -43,7 +43,6 @@ export function ConnectionProjects({
   }
 
   const shown = projects.slice(0, MAX_MARKS);
-  const rest = projects.length - shown.length;
 
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -66,7 +65,6 @@ export function ConnectionProjects({
           ? projects[0]?.title
           : t("projects.connections.usedBy", { count: projects.length })}
       </span>
-      {rest > 0 && <span className="sr-only">{rest}</span>}
     </div>
   );
 }

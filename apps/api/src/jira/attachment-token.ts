@@ -8,8 +8,7 @@
  * attachment, expires, and is signed — a guess or an edit fails closed.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { getSigningKey } from "@/core/signing-key";
+import { mintSignedGrant, readSignedGrant } from "@/core/signed-grant";
 
 export interface AttachmentGrant {
   organizationId: string;
@@ -22,15 +21,8 @@ export interface AttachmentGrant {
  *  transcript is not a durable link to a customer's file. */
 export const ATTACHMENT_GRANT_TTL_MS = 10 * 60 * 1000;
 
-function sign(payload: string): string {
-  return createHmac("sha256", getSigningKey())
-    .update(payload)
-    .digest("base64url");
-}
-
 export function mintAttachmentToken(grant: AttachmentGrant): string {
-  const payload = Buffer.from(JSON.stringify(grant)).toString("base64url");
-  return `${payload}.${sign(payload)}`;
+  return mintSignedGrant(grant);
 }
 
 /** The grant a token carries, or null when it is forged, malformed or past
@@ -39,20 +31,7 @@ export function verifyAttachmentToken(
   token: string,
   now: number = Date.now(),
 ): AttachmentGrant | null {
-  const dot = token.indexOf(".");
-  if (dot <= 0) return null;
-  const payload = token.slice(0, dot);
-  const mac = Buffer.from(token.slice(dot + 1));
-  const expected = Buffer.from(sign(payload));
-  if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) {
-    return null;
-  }
-  let grant: unknown;
-  try {
-    grant = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-  } catch {
-    return null;
-  }
+  const grant = readSignedGrant(token);
   if (
     typeof grant !== "object" ||
     grant === null ||

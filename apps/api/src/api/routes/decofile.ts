@@ -5,7 +5,7 @@
  * merges the branch into the default branch. No sandbox is involved.
  *
  *   GET    /api/:org/decofile/:virtualMcpId/:branch           read (session OR ?token=)
- *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
+ *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session; 409 block-conflict on a stale `expect`)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *
@@ -48,6 +48,7 @@ import {
   type InstallAppPatches,
 } from "@decocms/shared/site-apps";
 import {
+  BlockConflictError,
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
@@ -106,6 +107,15 @@ export const patchBodySchema = z
   .object({
     set: z.record(z.string(), z.unknown()).optional(),
     delete: z.array(z.string()).optional(),
+    expect: z
+      .record(
+        z.string(),
+        z
+          .string()
+          .regex(/^[0-9a-f]{64}$/)
+          .nullable(),
+      )
+      .optional(),
   })
   .refine(
     (b) => Object.keys(b.set ?? {}).length > 0 || (b.delete?.length ?? 0) > 0,
@@ -132,6 +142,18 @@ export const patchBodySchema = z
     {
       message: `Each block key must be at most ${MAX_BLOCK_KEY_LENGTH} characters`,
     },
+  )
+  .refine(
+    (b) =>
+      Object.keys(b.expect ?? {}).every(
+        (key) => key in (b.set ?? {}) || (b.delete ?? []).includes(key),
+      ),
+    { message: "Each expected block must be one the patch sets or deletes" },
+  )
+  .refine(
+    (b) =>
+      Object.keys(b.set ?? {}).every((key) => !(b.delete ?? []).includes(key)),
+    { message: "A block cannot be both set and deleted in the same patch" },
   );
 
 const installAppBodySchema = z.object({
@@ -252,6 +274,12 @@ async function contentClientForScope(
 
 function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof BlockConflictError) {
+    return c.json(
+      { error: message, code: "block-conflict", blocks: err.blocks },
+      409,
+    );
+  }
   if (err instanceof RepoWriteConflict) return c.json({ error: message }, 409);
   const providerStatus = repoErrorStatus(err);
   if (providerStatus !== null) {

@@ -45,13 +45,11 @@
  * parked card costs one sweep per `DEFAULT_ITEM_SWEEP_INTERVAL_MS` instead of one
  * per tick, CLAIMED not stamped (`claimSweep`) so replicas can't race it.
  *
- * It later grew a third job for the same reason — **retrying a failed merge**.
- * A card whose reviewers all approved but whose merge was refused (GitHub down,
- * the repo's connection deleted, a transient 500) is left In Review by
- * `TASK_BOARD_REVIEW_DECISION`, and the cycle's reviewer attempts are already
- * spent, so nothing re-dispatches and nothing re-merges: the card is stranded
- * forever on a failure that has usually fixed itself minutes later. The sweeper
- * is again the only place that can retry, for the same reason as above.
+ * It later grew a third job for the same reason — **finishing a review that
+ * never left In Review**. A card whose reviewers all approved but whose move to
+ * QA did not happen has its cycle's reviewer attempts spent, so nothing
+ * re-dispatches: the card would be stranded forever. The sweeper is again the
+ * only place that can settle it, for the same reason as above.
  *
  * Deliberately NOT a replacement for the instant paths. `TASK_BOARD_ITEM_PRS_GET`
  * dispatches reviewers on the dialog's poll, and the projector hook still fires —
@@ -71,10 +69,10 @@ import {
 } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { linkPrFromRunBranch } from "./pr-by-branch";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { retryAutoMergeIfApproved } from "./merge-pr";
+import { fireImplementer } from "@/automations/fire-implementer";
+import { moveFinishedReviewToQa } from "./merge-pr";
 import { inReviewPhase } from "./lanes";
-import { advanceToDoneIfMerged } from "./reconcile-merged";
+import { shipIfMerged } from "./reconcile-merged";
 import {
   emitTaskBoardUpdated,
   handTaskToHuman,
@@ -86,7 +84,6 @@ import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { previewMatchesHead, prReadyForReview } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
-import { reactToApprovedPrConflict } from "./conflict-reaction";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
  *  would take to notice a stuck card, and the work list is one index scan when
@@ -352,9 +349,10 @@ export class TaskBoardReviewSweeper {
         const reason =
           "the run finished without opening a pull request — there is " +
           "nothing for a reviewer to review";
-        const parked = await this.taskBoard.advanceToReviewIfInProgress(
+        const parked = await this.taskBoard.advanceFromProgress(
           id,
           organizationId,
+          LANES.review,
           item.updatedBy,
         );
         if (!parked) continue;
@@ -385,7 +383,7 @@ export class TaskBoardReviewSweeper {
    * It belongs on this timer for the same reason the reviewer dispatch does: the
    * failure hook that schedules a retry runs inside the projector's DBOS step,
    * where `DBOS.startWorkflow` is rejected. Out here it is legal, and
-   * `enqueueSuperAgentForTask` puts the run on the durable thread-gate queue, so
+   * the Implementer's run goes on the durable thread-gate queue, so
    * DBOS owns the retry from that point on.
    *
    * `claimDueRetry` is a conditional clear of `retry_at`, so exactly one replica
@@ -418,7 +416,7 @@ export class TaskBoardReviewSweeper {
         if (!ctx) continue;
         // A retry is work that already failed once and has a budget — it
         // outranks a brand-new task for the next slot.
-        await enqueueSuperAgentForTask(ctx, item, { runClass: "retry" });
+        await fireImplementer(ctx, item, { runClass: "retry" });
         count++;
         console.warn(
           `[task-board-review-sweeper] re-dispatched ${id} after a failure ` +
@@ -432,10 +430,10 @@ export class TaskBoardReviewSweeper {
         // A failure no later tick can fix must not be re-armed (see
         // `isPermanentDispatchFailure`) — the card would sit In Progress with
         // no run behind it and the same rejection every minute. Send it back
-        // to To Do with the reason, the same terminal the retry budget itself
+        // to Backlog with the reason, the same terminal the retry budget itself
         // has when it runs out.
         if (isPermanentDispatchFailure(err)) {
-          await this.returnToTodo(
+          await this.returnToBacklog(
             id,
             organizationId,
             err instanceof Error ? err.message : String(err),
@@ -467,12 +465,12 @@ export class TaskBoardReviewSweeper {
   }
 
   /**
-   * Park a card a retry can no longer help back on To Do, with the reason on
+   * Park a card a retry can no longer help back in Backlog, with the reason on
    * its timeline — the same landing `reactToFailedTaskRun` gives a card that
    * runs out of retry budget, so a human sees one shape for "the agent stopped
    * and it needs you" rather than a card frozen In Progress.
    */
-  private async returnToTodo(
+  private async returnToBacklog(
     id: string,
     organizationId: string,
     reason: string,
@@ -480,7 +478,7 @@ export class TaskBoardReviewSweeper {
     try {
       const item = await this.taskBoard.getById(id, organizationId);
       if (!item || item.status !== LANES.progress) return;
-      const returned = await this.taskBoard.returnToTodoAfterFailure(
+      const returned = await this.taskBoard.returnToBacklogAfterFailure(
         id,
         organizationId,
         item.updatedBy,
@@ -491,13 +489,18 @@ export class TaskBoardReviewSweeper {
           taskBoardItemId: id,
           action: "status_changed",
           actorId: null,
-          data: { from: "in_progress", to: "todo", reason },
+          data: {
+            from: LANES.progress,
+            to: LANES.intake,
+            reason,
+            retriesSpent: item.retryAttempts,
+          },
         })
         .catch(() => {});
       emitTaskBoardUpdated(organizationId, returned);
     } catch (err) {
       console.error(
-        `[task-board-review-sweeper] returning ${id} to todo failed`,
+        `[task-board-review-sweeper] returning ${id} to backlog failed`,
         err,
       );
     }
@@ -557,10 +560,10 @@ export class TaskBoardReviewSweeper {
     // possibly-stale snapshot, and a human can bounce the card between that scan
     // and this reconcile.
     if (!inReviewPhase(item)) return false;
-    // Everything below EXCEPT the merge retry needs the Super Agent to still own
-    // the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
-    // `enqueueEnabledReviewers` call. A handed-off card burns no agent runs, but
-    // its approvals stay valid, so it stays eligible to merge.
+    // Everything below EXCEPT the merged-PR reconcile needs the Super Agent to
+    // still own the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies
+    // before its own `enqueueEnabledReviewers` call. A handed-off card burns no
+    // agent runs.
     const owned = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
     let prs = await this.taskBoard.listPrs(id, organizationId);
@@ -618,22 +621,18 @@ export class TaskBoardReviewSweeper {
     }
 
     // A PR merged outside Studio moves no card on its own — see
-    // `reconcile-merged.ts`. Runs before the merge retry and before the `owned`
-    // gate: a handed-off card whose PR a human merged is exactly the stuck case.
-    if (await advanceToDoneIfMerged(ctx, item, live)) {
+    // `reconcile-merged.ts`. Runs before the `owned` gate: a handed-off card
+    // whose PR a person merged is exactly the stuck case.
+    if (await shipIfMerged(ctx, item, live)) {
       return true;
     }
-
-    // A card whose review already COMPLETED but whose merge failed is stranded:
-    // the cycle's reviewer attempts are spent, so the dispatch below is a no-op
-    // and nothing else ever retries. Retry the merge — it's the only path back
-    // out of In Review for these, and it's why the sweep must keep visiting a
-    // card that has no reviewer left to enqueue. Gated on verified approval +
-    // auto-merge inside, so it can't ship anything the reviewers didn't.
-    if (await retryAutoMergeIfApproved(ctx, item)) return true;
-    // With `auto_merge` off there is no refused merge to reveal a conflict.
-    if (await this.resolveConflictFromSweep(ctx, item, live)) return true;
     if (!owned) return false;
+
+    // A card whose review already COMPLETED but which never left In Review
+    // (the previous release parked approved cards there, or the verdict's own
+    // move failed) is stranded: the cycle's reviewer attempts are spent, so the
+    // dispatch below is a no-op. Gated on verified approval inside.
+    if (await moveFinishedReviewToQa(ctx, item)) return true;
 
     if (!prReadyForReview(live)) return false;
 
@@ -641,33 +640,6 @@ export class TaskBoardReviewSweeper {
       previewMatchesHead: previewMatchesHead(live),
     });
     return true;
-  }
-
-  /**
-   * Hand a swept card's conflicting PR back to the Super Agent, using the
-   * conflict already read by `readPrStateThrottled` — no second GitHub call
-   * (the whole reason `SweptPrState` carries it). Best-effort: a dispatch
-   * failure must not abort the sweep pass for every other card.
-   */
-  private async resolveConflictFromSweep(
-    ctx: StudioContext,
-    item: TaskBoardItem,
-    live: readonly {
-      number: number;
-      url: string;
-      state: "open" | "closed" | null;
-      conflict: boolean | null;
-    }[],
-  ): Promise<boolean> {
-    const pr = live.find((p) => p.state !== "closed" && p.conflict === true);
-    if (!pr) return false;
-    return await reactToApprovedPrConflict(ctx, item.organizationId, item, {
-      pr: { number: pr.number, url: pr.url },
-      conflict: true,
-    }).catch((err) => {
-      console.error("[task-board-review-sweeper] conflict resolve failed", err);
-      return false;
-    });
   }
 
   dispose(): void {

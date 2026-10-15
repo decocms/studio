@@ -77,7 +77,11 @@ import {
   User01,
   UserPlus01,
   X,
+  Zap,
+  Inbox01,
 } from "@untitledui/icons";
+import { useTaskBoardSprints } from "@/hooks/use-task-board-sprints";
+import { formatSprintDays, sprintLabel } from "./sprint-label";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
@@ -103,7 +107,6 @@ import {
   laneHeader,
   laneVisual,
   STATUS_CONFIG,
-  moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
   isFeedWorthyActivity,
@@ -117,27 +120,19 @@ import {
   isSuccessfulCheck,
   prCardActions,
 } from "./pr-card-actions";
-import { previewRouteUrl } from "./preview-routes";
+import { PreviewButton } from "./preview-button";
 import { decodeRunFailureReason, lastRunFailure } from "./run-failure";
 import { githubReauthUrl } from "./github-reauth-url";
 import { useRepositories } from "@/hooks/use-git-providers";
 import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
-import { usePreviewProbe } from "@/hooks/use-preview-probe";
 import { useTaskBoardActivity } from "@/hooks/use-task-board-activity";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import { useRunReviewer } from "@/hooks/use-run-reviewer";
-import {
-  enabledReviewers,
-  laneCanShip,
-  reviewsSatisfiedForPromotion,
-} from "./review-status";
+import { laneCanShip } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import {
@@ -198,6 +193,8 @@ type TaskForm = {
   repo: string | null;
   dueDate: Date | null;
   tagIds: string[];
+  /** Create mode only; an existing card's sprint is read live off the item. */
+  sprintId: string | null;
 };
 
 /**
@@ -251,6 +248,36 @@ const EMPTY_PROPERTY = "opacity-50";
  * Hidden entirely when no run recorded usage, so a card that never ran shows
  * nothing rather than a $0.00 we did not measure.
  */
+/** One row of the Sprint property's picker. */
+function SprintOption({
+  icon,
+  label,
+  hint,
+  selected,
+  onSelect,
+}: {
+  icon: ReactNode;
+  label: string;
+  hint?: string | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent"
+      onClick={onSelect}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {hint && (
+        <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
+      )}
+      {selected && <Check size={14} className="shrink-0" />}
+    </button>
+  );
+}
+
 function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
   const summary = summarizeTaskCost(threads);
@@ -395,6 +422,13 @@ interface TaskEditorProps {
    * Project filter's repo, so a card made while the board is narrowed to a
    * project belongs to it). An `owner/name`, matching the {@link repo} field. */
   defaultRepo?: string | null;
+  /** In create mode, the sprint to plan the new task into (the one the board
+   * is showing); null for the backlog. */
+  defaultSprintId?: string | null;
+  /** Edit mode only: move the task to a sprint, or null for the backlog. Its
+   * own write, not part of the autosave: a sprint completed while the card is
+   * open moves it, and a later edit must not move it back. */
+  onSetSprint?: (sprintId: string | null) => void;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -405,6 +439,8 @@ interface TaskEditorProps {
     repo: string | null;
     dueDate: string | null;
     tagIds: string[];
+    /** Create mode only. */
+    sprintId?: string | null;
   }) => void;
   onDelete?: () => void;
   /** Edit mode only: create a copy of this task. */
@@ -440,6 +476,8 @@ function TaskBoardItemEditor({
   item,
   defaultStatus,
   defaultRepo,
+  defaultSprintId,
+  onSetSprint,
   onSubmit,
   onDelete,
   onClone,
@@ -455,7 +493,6 @@ function TaskBoardItemEditor({
   const { agentId } = useParams({ strict: false });
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const { handleCopy, copied } = useCopy();
   const { handleCopy: copyLink, copied: linkCopied } = useCopy();
   const { handleCopy: copyId, copied: idCopied } = useCopy();
@@ -482,6 +519,7 @@ function TaskBoardItemEditor({
     repo: item?.repo ?? defaultRepo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
+    sprintId: defaultSprintId ?? null,
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
@@ -515,6 +553,18 @@ function TaskBoardItemEditor({
     return () => observer.disconnect();
   };
   const [dueOpen, setDueOpen] = useState(false);
+  const [sprintOpen, setSprintOpen] = useState(false);
+  const sprints = useTaskBoardSprints();
+  const sprintId = item ? item.sprintId : form.sprintId;
+  const selectedSprint = sprints.find((sprint) => sprint.id === sprintId);
+  const plannableSprints = sprints.filter(
+    (sprint) => sprint.state !== "closed",
+  );
+  const pickSprint = (next: string | null) => {
+    setSprintOpen(false);
+    if (item) onSetSprint?.(next);
+    else patch({ sprintId: next });
+  };
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   /** The linked run being read in the sheet, by id rather than by object: a
@@ -548,6 +598,7 @@ function TaskBoardItemEditor({
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
+      ...(item ? {} : { sprintId: v.sprintId }),
     });
   };
 
@@ -1135,7 +1186,7 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  {moveTargets(deliveryEnabled).map((s) => {
+                  {CANONICAL_COLUMN_KEYS.map((s) => {
                     const { label, visual } = laneHeader(s, t);
                     const Icon = visual.icon;
                     return (
@@ -1430,6 +1481,51 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
 
+              {(sprints.length > 0 || sprintId) && (
+                <Popover open={sprintOpen} onOpenChange={setSprintOpen} modal>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        !sprintId && EMPTY_PROPERTY,
+                      )}
+                    >
+                      <Zap size={16} className="text-muted-foreground" />
+                      <span className="truncate">
+                        {selectedSprint
+                          ? sprintLabel(selectedSprint, t)
+                          : sprintId
+                            ? t("taskBoard.sprints.goneLabel")
+                            : t("taskBoard.sprints.backlog")}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-1">
+                    <SprintOption
+                      icon={
+                        <Inbox01 size={14} className="text-muted-foreground" />
+                      }
+                      label={t("taskBoard.sprints.backlog")}
+                      selected={!sprintId}
+                      onSelect={() => pickSprint(null)}
+                    />
+                    {plannableSprints.map((sprint) => (
+                      <SprintOption
+                        key={sprint.id}
+                        icon={
+                          <Zap size={14} className="text-muted-foreground" />
+                        }
+                        label={sprintLabel(sprint, t)}
+                        hint={formatSprintDays(sprint)}
+                        selected={sprint.id === sprintId}
+                        onSelect={() => pickSprint(sprint.id)}
+                      />
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              )}
+
               <TaskCost threads={item?.threads} />
             </PropertyGroup>
 
@@ -1634,7 +1730,12 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
+    | "onClose"
+    | "defaultStatus"
+    | "defaultRepo"
+    | "defaultSprintId"
+    | "onSubmit"
+    | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -1887,105 +1988,6 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
 }
 
 /**
- * The "Open preview" button, enabled only once the preview URL actually answers.
- *
- * A preview deploy is regularly still building — or already torn down — while
- * the PR still advertises its URL, so the plain link sent people to a 404. The
- * status can only be read server-side (CORS makes a cross-origin response
- * opaque to the browser), so this blocks on `usePreviewProbe` and offers the
- * link only on a < 400.
- */
-function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
-  const t = useT();
-  const { data, isPending, isError } = usePreviewProbe(url);
-  const available = data?.available ?? false;
-
-  if (isPending) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled
-      >
-        <Spinner className="size-[14px]" />
-        {t("taskBoard.taskDialog.previewLabel")}
-      </Button>
-    );
-  }
-
-  if (!available || isError) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled
-        title={t("taskBoard.taskDialog.previewUnavailableTitle")}
-      >
-        <Globe01 size={14} />
-        {t("taskBoard.taskDialog.previewUnavailable")}
-      </Button>
-    );
-  }
-
-  const link = (
-    <Button
-      asChild
-      type="button"
-      variant="outline"
-      size="sm"
-      className={cn("gap-1.5", routes.length > 0 && "rounded-r-none")}
-    >
-      <a href={url} target="_blank" rel="noreferrer">
-        <Globe01 size={14} />
-        {t("taskBoard.taskDialog.previewLabel")}
-        <LinkExternal01 size={12} />
-      </a>
-    </Button>
-  );
-
-  if (routes.length === 0) return link;
-
-  // Button keeps opening the preview root; the caret offers the run's pages.
-  return (
-    <div className="flex items-center">
-      {link}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="rounded-l-none border-l-0 px-1.5"
-            aria-label={t("taskBoard.taskDialog.previewRoutesLabel")}
-            title={t("taskBoard.taskDialog.previewRoutesLabel")}
-          >
-            <ChevronDown size={14} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {routes.map((route) => (
-            <DropdownMenuItem key={route} asChild>
-              <a
-                href={previewRouteUrl(url, route)}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-xs"
-              >
-                {route}
-              </a>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
-/**
  * One PR card: identity + the `#123 ↗` link (`!123` on GitLab), an action
  * row (Edit / preview / ship), and an expandable checks footer that opens each
  * CI check with its output markdown (fetched for failing runs).
@@ -1995,7 +1997,7 @@ function PrCard({
   routes,
   revalidating,
   previewThread,
-  reviewsReady,
+  readyToShip,
   shipPending,
   resolvePending,
   onShip,
@@ -2008,8 +2010,8 @@ function PrCard({
   /** A live GitHub read is in flight behind the values shown. */
   revalidating: boolean;
   previewThread?: TaskBoardItemThread;
-  /** Task-level: In Review + every enabled reviewer approved. */
-  reviewsReady: boolean;
+  /** Task-level: the card sits in Ready for Deployment. */
+  readyToShip: boolean;
   shipPending: boolean;
   resolvePending: boolean;
   onShip: () => void;
@@ -2024,7 +2026,7 @@ function PrCard({
   const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
     pr,
-    reviewsReady,
+    readyToShip,
   );
   const hasActions =
     !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
@@ -2250,8 +2252,6 @@ function LinksSection({
     isLoading: prsLoading,
     isFetching: prsFetching,
   } = useTaskBoardItemPrs(item.id);
-  const { data: activity } = useTaskBoardActivity(item.id);
-  const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const comments = useTaskBoardComments(item.id);
@@ -2272,17 +2272,11 @@ function LinksSection({
     return null;
   }
 
-  // Task-level readiness for the manual ship button: a shippable lane + every
-  // enabled reviewer approved. Shown regardless of auto-merge — it's a manual
-  // escape hatch (a human can ship even while auto-merge is pending/blocked on
-  // token verification). The per-card PrCard adds the PR-open + green-checks gate.
-  const reviewsReady =
-    laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(
-      activity ?? [],
-      enabledReviewers(reviewerOn),
-      item.reviewCycleStartedAt,
-    );
+  // Task-level readiness for the manual ship button: the card reached Ready
+  // for Deployment. Shown regardless of auto-merge, so a person can ship while
+  // auto-merge is pending or blocked. The per-card PrCard adds the PR-open +
+  // green-checks gate.
+  const readyToShip = laneCanShip(item.status);
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>
@@ -2322,7 +2316,7 @@ function LinksSection({
               routes={item.previewRoutes ?? []}
               revalidating={prsFetching}
               previewThread={previewThread}
-              reviewsReady={reviewsReady}
+              readyToShip={readyToShip}
               shipPending={promote.isPending}
               resolvePending={resolveConflict.isPending}
               onShip={onShip}
@@ -2815,6 +2809,20 @@ function describeActivity(
       />
     );
   };
+  const sprintChip = (ref: unknown) => {
+    const name =
+      ref && typeof ref === "object" && "name" in ref
+        ? (ref as { name?: unknown }).name
+        : null;
+    return (
+      <ValueChip
+        icon={<Zap size={14} className="text-muted-foreground" />}
+        label={
+          typeof name === "string" ? name : t("taskBoard.sprints.goneLabel")
+        }
+      />
+    );
+  };
   const reviewerChip = (reviewer: unknown) => (
     <ValueChip
       icon={<ReviewerIcon size={14} />}
@@ -2907,6 +2915,19 @@ function describeActivity(
       });
     case "description_changed":
       return t("taskBoard.taskDialog.activityDescriptionUpdated");
+    // `from`/`to` are `{ id, name }`, or null for the backlog.
+    case "sprint_changed":
+      if (d.to == null)
+        return interleaveChips(
+          t("taskBoard.sprints.activityToBacklog", { from }),
+          { from: sprintChip(d.from) },
+        );
+      return interleaveChips(
+        d.from == null
+          ? t("taskBoard.sprints.activitySet", { to })
+          : t("taskBoard.sprints.activityFromTo", { from, to }),
+        { from: sprintChip(d.from), to: sprintChip(d.to) },
+      );
     case "tags_changed":
       if (!Array.isArray(d.to) || d.to.length === 0)
         return t("taskBoard.taskDialog.activityTagsCleared");

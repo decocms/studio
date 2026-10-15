@@ -7,6 +7,8 @@
  * the connection_aggregations table.
  */
 
+import { urlSlugBase } from "@decocms/shared/url-slug";
+import { changeUrlSlug, withAllocatedUrlSlug } from "./url-slug";
 import {
   readRepositoryMetadata,
   writeRepositoryMetadata,
@@ -15,9 +17,7 @@ import {
 import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
-  getWellKnownBrandContextSetupVirtualMCP,
   getWellKnownDecopilotVirtualMCP,
-  isBrandContextSetup,
   isDecopilot,
   normalizeSandboxMap,
 } from "@decocms/shared/sdk";
@@ -29,12 +29,14 @@ import type {
 } from "./ports";
 import type { Database, DependencyMode } from "./types";
 import { pruneOrphanedUiRefs } from "./prune-orphaned-ui-refs";
+import { SiteSlugImmutableError } from "./org-sites";
 
 /** Raw database row type for connections (VIRTUAL type) */
 type RawConnectionRow = {
   id: string;
   organization_id: string;
   title: string;
+  url_slug: string | null;
   description: string | null;
   icon: string | null;
   status: "active" | "inactive" | "error";
@@ -98,6 +100,25 @@ function boundRepositoryId(
   return typeof bound === "string" && bound.length > 0 ? bound : null;
 }
 
+/**
+ * `metadata` with `siteSlug` pinned to the project's current slug. A different
+ * non-empty value throws; an absent or empty one is restored.
+ */
+function withUnchangedSiteSlug(
+  metadata: Record<string, unknown> | null,
+  siteSlug: string,
+): Record<string, unknown> {
+  const incoming = metadata?.siteSlug;
+  if (
+    typeof incoming === "string" &&
+    incoming.trim() &&
+    incoming.trim().toLowerCase() !== siteSlug
+  ) {
+    throw new SiteSlugImmutableError();
+  }
+  return { ...metadata, siteSlug };
+}
+
 export class VirtualMCPStorage implements VirtualMCPStoragePort {
   constructor(private db: Kysely<Database>) {}
 
@@ -110,64 +131,68 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const id = options?.id ?? generatePrefixedId("vir");
     const now = new Date().toISOString();
 
-    await this.db.transaction().execute(async (trx) => {
-      // Insert as a VIRTUAL connection
-      await trx
-        .insertInto("connections")
-        .values({
-          id,
-          organization_id: organizationId,
-          created_by: userId,
-          updated_by: userId,
-          title: data.title,
-          description: data.description ?? null,
-          icon: data.icon ?? null,
-          app_name: null,
-          app_id: null,
-          connection_type: "VIRTUAL",
-          pinned: data.pinned ?? false,
-          connection_url: `virtual://${id}`,
-          connection_token: null,
-          connection_headers: null,
-          oauth_config: null,
-          configuration_state: null,
-          configuration_scopes: null,
-          metadata: data.metadata
-            ? JSON.stringify(writeRepositoryMetadata(data.metadata))
-            : null,
-          repository_id: boundRepositoryId(data.metadata),
-          bindings: null,
-          status: data.status ?? "active",
-          created_at: now,
-          updated_at: now,
-        })
-        .execute();
-
-      // Insert connection aggregations (all explicit connections are 'direct' dependencies)
-      if (data.connections.length > 0) {
+    const slugBase = urlSlugBase(data.title, "project");
+    await withAllocatedUrlSlug(this.db, organizationId, slugBase, (urlSlug) =>
+      this.db.transaction().execute(async (trx) => {
+        // Insert as a VIRTUAL connection
         await trx
-          .insertInto("connection_aggregations")
-          .values(
-            data.connections.map((conn) => ({
-              id: generatePrefixedId("agg"),
-              parent_connection_id: id,
-              child_connection_id: conn.connection_id,
-              selected_tools: conn.selected_tools
-                ? JSON.stringify(conn.selected_tools)
-                : null,
-              selected_resources: conn.selected_resources
-                ? JSON.stringify(conn.selected_resources)
-                : null,
-              selected_prompts: conn.selected_prompts
-                ? JSON.stringify(conn.selected_prompts)
-                : null,
-              dependency_mode: "direct" as DependencyMode,
-              created_at: now,
-            })),
-          )
+          .insertInto("connections")
+          .values({
+            id,
+            organization_id: organizationId,
+            url_slug: urlSlug,
+            created_by: userId,
+            updated_by: userId,
+            title: data.title,
+            description: data.description ?? null,
+            icon: data.icon ?? null,
+            app_name: null,
+            app_id: null,
+            connection_type: "VIRTUAL",
+            pinned: data.pinned ?? false,
+            connection_url: `virtual://${id}`,
+            connection_token: null,
+            connection_headers: null,
+            oauth_config: null,
+            configuration_state: null,
+            configuration_scopes: null,
+            metadata: data.metadata
+              ? JSON.stringify(writeRepositoryMetadata(data.metadata))
+              : null,
+            repository_id: boundRepositoryId(data.metadata),
+            bindings: null,
+            status: data.status ?? "active",
+            created_at: now,
+            updated_at: now,
+          })
           .execute();
-      }
-    });
+
+        // Insert connection aggregations (all explicit connections are 'direct' dependencies)
+        if (data.connections.length > 0) {
+          await trx
+            .insertInto("connection_aggregations")
+            .values(
+              data.connections.map((conn) => ({
+                id: generatePrefixedId("agg"),
+                parent_connection_id: id,
+                child_connection_id: conn.connection_id,
+                selected_tools: conn.selected_tools
+                  ? JSON.stringify(conn.selected_tools)
+                  : null,
+                selected_resources: conn.selected_resources
+                  ? JSON.stringify(conn.selected_resources)
+                  : null,
+                selected_prompts: conn.selected_prompts
+                  ? JSON.stringify(conn.selected_prompts)
+                  : null,
+                dependency_mode: "direct" as DependencyMode,
+                created_at: now,
+              })),
+            )
+            .execute();
+        }
+      }),
+    );
 
     const virtualMcp = await this.findById(id);
     if (!virtualMcp) {
@@ -187,17 +212,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       const resolvedOrgId = organizationId ?? decopilotOrgId;
       return {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
-        pinned: false,
-        connections: [],
-      };
-    }
-
-    // Well-known guided-onboarding agent for the brand-context preset.
-    const bcsOrgId = isBrandContextSetup(id);
-    if (bcsOrgId) {
-      const resolvedOrgId = organizationId ?? bcsOrgId;
-      return {
-        ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
         pinned: false,
         connections: [],
       };
@@ -230,10 +244,65 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       .where("dependency_mode", "=", "direct")
       .execute();
 
-    return this.deserializeVirtualMCPEntity(
-      row as unknown as RawConnectionRow,
-      aggregationRows as RawAggregationRow[],
-    );
+    const [entity] = await this.withLinkedSiteSlugs(db, [
+      this.deserializeVirtualMCPEntity(
+        row as unknown as RawConnectionRow,
+        aggregationRows as RawAggregationRow[],
+      ),
+    ]);
+    return entity ?? null;
+  }
+
+  /**
+   * Overlay each project's site slug from its `org_sites` link onto
+   * `metadata.siteSlug`. The link is the source of truth; the stored key is a
+   * mirror kept for the many readers of `metadata.siteSlug` (and for projects
+   * not linked yet, whose stored value still applies).
+   */
+  private async withLinkedSiteSlugs(
+    db: Kysely<Database>,
+    entities: VirtualMCPEntity[],
+  ): Promise<VirtualMCPEntity[]> {
+    const ids = entities.flatMap((e) => (e.id ? [e.id] : []));
+    if (ids.length === 0) return entities;
+    const links = await db
+      .selectFrom("org_sites")
+      .select(["slug", "project_id"])
+      .where("project_id", "in", ids)
+      .execute();
+    if (links.length === 0) return entities;
+    const slugByProject = new Map(links.map((l) => [l.project_id, l.slug]));
+    return entities.map((entity) => {
+      const slug = entity.id ? slugByProject.get(entity.id) : undefined;
+      return slug
+        ? { ...entity, metadata: { ...entity.metadata, siteSlug: slug } }
+        : entity;
+    });
+  }
+
+  /** The project's current site slug: its link, else its stored value. */
+  private async currentSiteSlug(
+    db: Kysely<Database>,
+    id: string,
+  ): Promise<string | null> {
+    const link = await db
+      .selectFrom("org_sites")
+      .select("slug")
+      .where("project_id", "=", id)
+      .executeTakeFirst();
+    if (link) return link.slug;
+    const row = await db
+      .selectFrom("connections")
+      .select("metadata")
+      .where("id", "=", id)
+      .where("connection_type", "=", "VIRTUAL")
+      .executeTakeFirst();
+    const stored = this.parseJson<{ siteSlug?: unknown }>(
+      row?.metadata ?? null,
+    )?.siteSlug;
+    return typeof stored === "string" && stored.trim()
+      ? stored.trim().toLowerCase()
+      : null;
   }
 
   /**
@@ -357,10 +426,13 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       aggregationsByParent.set(agg.parent_connection_id, existing);
     }
 
-    return rows.map((row) =>
-      this.deserializeVirtualMCPEntity(
-        row as unknown as RawConnectionRow,
-        aggregationsByParent.get(row.id) ?? [],
+    return this.withLinkedSiteSlugs(
+      this.db,
+      rows.map((row) =>
+        this.deserializeVirtualMCPEntity(
+          row as unknown as RawConnectionRow,
+          aggregationsByParent.get(row.id) ?? [],
+        ),
       ),
     );
   }
@@ -397,10 +469,13 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       aggregationsByParent.set(agg.parent_connection_id, existing);
     }
 
-    return rows.map((row) =>
-      this.deserializeVirtualMCPEntity(
-        row as unknown as RawConnectionRow,
-        aggregationsByParent.get(row.id) ?? [],
+    return this.withLinkedSiteSlugs(
+      this.db,
+      rows.map((row) =>
+        this.deserializeVirtualMCPEntity(
+          row as unknown as RawConnectionRow,
+          aggregationsByParent.get(row.id) ?? [],
+        ),
       ),
     );
   }
@@ -453,10 +528,13 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       aggregationsByParent.set(agg.parent_connection_id, existing);
     }
 
-    return rows.map((row) =>
-      this.deserializeVirtualMCPEntity(
-        row as RawConnectionRow,
-        aggregationsByParent.get(row.id) ?? [],
+    return this.withLinkedSiteSlugs(
+      this.db,
+      rows.map((row) =>
+        this.deserializeVirtualMCPEntity(
+          row as RawConnectionRow,
+          aggregationsByParent.get(row.id) ?? [],
+        ),
       ),
     );
   }
@@ -490,11 +568,22 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       updateData.pinned = data.pinned;
     }
     if (data.metadata !== undefined) {
+      // The site slug is immutable once set: keep it through any metadata
+      // write (callers rebuild metadata from scratch, or clear it) and refuse
+      // one that would change it. Tools check first, with a clearer error.
+      const siteSlug = await this.currentSiteSlug(this.db, id);
+      const metadata = siteSlug
+        ? withUnchangedSiteSlug(data.metadata, siteSlug)
+        : data.metadata;
       // Dual-write, in step with the JSON — see `boundRepositoryId`.
-      updateData.repository_id = boundRepositoryId(data.metadata);
-      updateData.metadata = data.metadata
-        ? JSON.stringify(writeRepositoryMetadata(data.metadata))
+      updateData.repository_id = boundRepositoryId(metadata);
+      updateData.metadata = metadata
+        ? JSON.stringify(writeRepositoryMetadata(metadata))
         : null;
+    }
+
+    if (data.url_slug) {
+      await changeUrlSlug(this.db, id, data.url_slug);
     }
 
     const removedConnectionIds: string[] = [];
@@ -587,6 +676,14 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     unset: string[];
     by: string;
   }): Promise<boolean> {
+    // The site slug is set once, by the create/import flow; a single-key
+    // patch never touches it (defence in depth behind the admin allow-list).
+    if (
+      Object.hasOwn(params.set, "siteSlug") ||
+      params.unset.includes("siteSlug")
+    ) {
+      throw new SiteSlugImmutableError();
+    }
     // Compatibility: remove both stored spellings before replacing or clearing
     // a binding, including rows written with canonical keys during migration.
     const removedKeys = [
@@ -768,6 +865,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       id: row.id,
       organization_id: row.organization_id,
       title: row.title,
+      url_slug: row.url_slug,
       description: row.description,
       icon: row.icon,
       status,

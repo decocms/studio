@@ -9,6 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { sleep } from "@decocms/shared/std";
 import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
@@ -114,6 +115,7 @@ import {
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
   fetchProtectedResourceMetadata,
+  firstAuthorizationServer,
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
@@ -151,6 +153,7 @@ import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
 } from "../nats/connection";
+import pkg from "../../package.json" with { type: "json" };
 import {
   JetStreamKVMcpListCache,
   setMcpListCache,
@@ -161,6 +164,7 @@ import {
   setSkillCatalogCache,
   type SkillCatalogCache,
 } from "../file-storage/skill-catalog-cache";
+import { setOrgFsNotifyConnection } from "../file-storage/org-fs-notify";
 import {
   JetStreamKVPrCache,
   PR_CARDS_CACHE,
@@ -198,11 +202,18 @@ import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
-import { TaskBoardStorage } from "../storage/task-board";
+import { setBoardMoveListener, TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
+import {
+  onBoardMove,
+  registerBoardTransitionWorkflows,
+  setBoardTransitionRuntime,
+} from "../automations/board-column-transition-workflows";
+import { ensureBuiltinAutomations } from "../automations/builtin";
+import { buildOrgContext } from "../tools/task-board/org-context";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -226,7 +237,10 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
+import {
+  BOARD_TRANSITIONS_QUEUE,
+  GITHUB_READS_QUEUE,
+} from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -336,6 +350,29 @@ export function isSsoExemptPath(path: string): boolean {
  */
 function isNativeDesktopControlOrigin(hostname: string): boolean {
   return hostname === "local.studio.decocms.com";
+}
+
+/**
+ * Secret voice session grants (`voice/grant.ts`) are HMAC-signed and verified
+ * with. Every OTHER secret-derived signer in this codebase (`auth/jwt.ts`,
+ * `core/signing-key.ts`, `decofile/draft-token.ts`) falls back to a random,
+ * non-persistent secret when neither STUDIO_JWT_SECRET nor
+ * BETTER_AUTH_SECRET is configured. This call site passed them straight
+ * through instead: a non-local deployment that sets neither leaves
+ * `betterAuthSecret` as `""` (see `settings/pipeline.ts`), so `grant.ts`'s own
+ * `if (!secret) throw` fires on every sign/verify, 500ing every voice session
+ * instead of degrading like the rest of the app.
+ */
+export function resolveVoiceSigningSecret(settings: {
+  studioJwtSecret: string | undefined;
+  betterAuthSecret: string;
+}): string {
+  const configured = settings.studioJwtSecret || settings.betterAuthSecret;
+  if (configured) return configured;
+  console.warn(
+    "STUDIO_JWT_SECRET/BETTER_AUTH_SECRET not set - generating a random secret for voice sessions (not persistent across restarts)",
+  );
+  return randomBytes(32).toString("base64");
 }
 
 export function resolveCorsOrigin(
@@ -477,10 +514,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
 
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
-    const resourceData = (await resourceRes.json()) as {
-      authorization_servers?: string[];
-    };
-    originAuthServer = resourceData.authorization_servers?.[0];
+    originAuthServer = firstAuthorizationServer(await resourceRes.json());
   }
 
   // Fall back to origin root if:
@@ -1078,6 +1112,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     const tlc = isMcpCacheEnabled()
       ? new JetStreamKVMcpListCache({
           getJetStream: () => natsProvider!.getJetStream(),
+          selfListVersion: pkg.version,
         })
       : null;
     tlc?.init().catch(() => {});
@@ -1157,6 +1192,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
   setSkillCatalogCache(skillCatalogCache);
+  setOrgFsNotifyConnection(() => natsProvider?.getConnection() ?? null);
   setPrCaches(prCaches);
   setConnectionCircuitStore(connectionCircuitStore);
 
@@ -1257,6 +1293,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setSkillCatalogCache(null);
+    setOrgFsNotifyConnection(null);
     setPrCaches(null);
     setConnectionCircuitStore(null);
   };
@@ -1649,7 +1686,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
-  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  // Every 5 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
@@ -1683,6 +1720,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   setAutomationRuntime({
     storage: automationsStorage,
     studioContextFactory: automationContextFactory,
+    orgContextFactory: (organizationId) =>
+      buildOrgContext(database.db, organizationId),
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
   });
 
   // The per-thread gate starts the hosted run and lets the consume step write
@@ -1753,6 +1796,20 @@ export async function createApp(options: CreateAppOptions = {}) {
       taskBoardReviewSweeper.dispose();
     };
   }
+  // Fires `board_column_transition` automation triggers when a card settles
+  // in a column: every logged lane move is offered to the settle wait, and a
+  // 5-minute sweep catches what it missed.
+  setBoardTransitionRuntime({
+    automations: automationsStorage,
+    taskBoard: projectorTaskBoard,
+    fire: enqueueAutomationFire,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+    settleMs: getSettings().boardTransitionSettleSeconds * 1000,
+  });
+  setBoardMoveListener(onBoardMove);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1932,6 +1989,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardArchiveSweepWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
+  registerBoardTransitionWorkflows();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
@@ -2333,7 +2391,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     adapter: speechAdapter,
     conversationAdapters,
     defaults: voiceSettings,
-    secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
+    secret: resolveVoiceSigningSecret(voiceSettings),
     getConnection: () => natsProvider?.getConnection() ?? null,
   });
   const orgScopedApi = createOrgScopedApi({
@@ -2464,6 +2522,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
+    await DBOS.registerQueue(BOARD_TRANSITIONS_QUEUE);
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.
@@ -2487,6 +2546,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     // replicas/workers all enqueueing in parallel collapse via OAOO.
     backfillStudioPackForAllOrgs().catch((err) => {
       console.error("[studio-pack-backfill] failed:", err);
+    });
+
+    // Seeds the built-in automations an org lacks. One set-based statement
+    // per built-in, a no-op once every org has them; replicas booting
+    // together collapse on the unique key.
+    ensureBuiltinAutomations(database.db).catch((err) => {
+      console.error("[automations] built-in seed failed:", err);
     });
 
     // Fire-and-forget immediate public-sets sync (hour-bucketed workflow ID,

@@ -34,7 +34,7 @@ const thread = (
 const task = (over: Record<string, unknown> = {}) =>
   ({
     id: "task",
-    status: "todo",
+    status: "triage",
     assigneeId: null,
     createdAt: daysAgo(0),
     updatedAt: daysAgo(0),
@@ -46,16 +46,29 @@ const task = (over: Record<string, unknown> = {}) =>
 describe("shippedSince", () => {
   const since = NOW - 86_400_000;
 
-  test("counts done and merged at or after the window start", () => {
+  test("counts merged work at or after the window start", () => {
     expect(
       shippedSince(
         [
           task({ status: "done", updatedAt: daysAgo(0.5) }),
-          task({ status: "merged", updatedAt: new Date(since).toISOString() }),
+          task({ status: "post_deploy_validation", updatedAt: daysAgo(0.5) }),
+          task({ status: "done", updatedAt: new Date(since).toISOString() }),
         ],
         since,
       ),
-    ).toBe(2);
+    ).toBe(3);
+  });
+
+  test("a card waiting on QA or its release has not shipped", () => {
+    expect(
+      shippedSince(
+        [
+          task({ status: "qa", updatedAt: daysAgo(0.5) }),
+          task({ status: "ready_for_deployment", updatedAt: daysAgo(0.5) }),
+        ],
+        since,
+      ),
+    ).toBe(0);
   });
 
   test("does not count what shipped before the window", () => {
@@ -118,7 +131,6 @@ describe("tasksNeedingMe", () => {
     const list = tasksNeedingMe(
       [
         task({ id: "done", status: "done", assigneeId: "user_1" }),
-        task({ id: "merged", status: "merged", assigneeId: "user_1" }),
         task({ id: "archived", status: "archived", assigneeId: "user_1" }),
       ],
       "user_1",
@@ -176,20 +188,23 @@ describe("projectSummaries", () => {
       connections: [],
     }) as never;
 
+  // Post-deploy validation shipped but stays open: someone still has to
+  // confirm it in production.
   test("counts only what is still open", () => {
     const index = buildProjectIndex([project("p1", "deco/farm")]);
     const summaries = projectSummaries(
       index,
       [
-        task({ status: "todo", repo: "deco/farm" }),
+        task({ status: "triage", repo: "deco/farm" }),
         task({ status: "in_progress", repo: "deco/farm" }),
-        task({ status: "merged", repo: "deco/farm" }),
+        task({ status: "post_deploy_validation", repo: "deco/farm" }),
+        task({ status: "done", repo: "deco/farm" }),
         task({ status: "done", repo: "deco/farm" }),
       ],
       undefined,
       NOW,
     );
-    expect(summaries.get("p1")?.open).toBe(2);
+    expect(summaries.get("p1")?.open).toBe(3);
   });
 
   test("a card on a shared repository counts for every project pinning it", () => {
@@ -199,7 +214,7 @@ describe("projectSummaries", () => {
     ]);
     const summaries = projectSummaries(
       index,
-      [task({ status: "todo", repo: "deco/mono" })],
+      [task({ status: "triage", repo: "deco/mono" })],
       undefined,
       NOW,
     );
@@ -211,7 +226,7 @@ describe("projectSummaries", () => {
     const index = buildProjectIndex([project("p1", null)]);
     const summaries = projectSummaries(
       index,
-      [task({ status: "todo", threads: [{ virtualMcpId: "p1" }] })],
+      [task({ status: "triage", threads: [{ virtualMcpId: "p1" }] })],
       undefined,
       NOW,
     );
@@ -227,7 +242,7 @@ describe("projectSummaries", () => {
       [
         task({ status: "done", updatedAt: daysAgo(1), repo: "deco/farm" }),
         task({
-          status: "todo",
+          status: "triage",
           repo: "deco/farm",
           threads: [thread("failed")],
         }),
@@ -261,7 +276,7 @@ describe("projectSummaries", () => {
     const index = buildProjectIndex([project("p1", "deco/farm")]);
     const summaries = projectSummaries(
       index,
-      [task({ status: "todo", repo: "deco/farm" })],
+      [task({ status: "triage", repo: "deco/farm" })],
       undefined,
       NOW,
     );
@@ -322,7 +337,7 @@ describe("shippedSeries", () => {
       index,
       [
         task({ status: "done", updatedAt: daysAgo(0), repo: "deco/farm" }),
-        task({ status: "merged", updatedAt: daysAgo(0), repo: "deco/farm" }),
+        task({ status: "done", updatedAt: daysAgo(0), repo: "deco/farm" }),
         task({ status: "done", updatedAt: daysAgo(3), repo: "deco/farm" }),
       ],
       "p1",
@@ -525,7 +540,7 @@ describe("monthlyCost", () => {
           threads: [thread("completed", onDay(5), { costUsd: 6 })],
         }),
         task({
-          status: "merged",
+          status: "done",
           repo: "deco/farm",
           updatedAt: onDay(6),
           threads: [thread("completed", onDay(6), { costUsd: 4 })],

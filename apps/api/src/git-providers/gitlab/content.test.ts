@@ -146,6 +146,40 @@ describe("buildCommitActions", () => {
     expect(stated?.execute_filemode).toBe(false);
     expect(silent).not.toHaveProperty("execute_filemode");
   });
+
+  test("rejects an empty path", () => {
+    expect(() =>
+      buildCommitActions([{ path: "", content: "{}" }], new Map()),
+    ).toThrow(/cannot be empty/);
+  });
+
+  test("rejects a path exceeding maximum length", () => {
+    const longPath = "a".repeat(1025);
+    expect(() =>
+      buildCommitActions([{ path: longPath, content: "{}" }], new Map()),
+    ).toThrow(/exceeds maximum length/);
+  });
+
+  test("rejects a path containing null bytes", () => {
+    expect(() =>
+      buildCommitActions([{ path: "a\0b.json", content: "{}" }], new Map()),
+    ).toThrow(/cannot contain null bytes/);
+  });
+
+  test("rejects reserved Git file names", () => {
+    for (const reserved of [".gitmodules"]) {
+      expect(() =>
+        buildCommitActions([{ path: reserved, content: "{}" }], new Map()),
+      ).toThrow(/reserved Git file name/);
+
+      expect(() =>
+        buildCommitActions(
+          [{ path: `dir/${reserved}`, content: "{}" }],
+          new Map(),
+        ),
+      ).toThrow(/reserved Git file name/);
+    }
+  });
 });
 
 describe("isCommitConflict", () => {

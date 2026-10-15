@@ -4,10 +4,12 @@ import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { withModelMetadata } from "./with-model-metadata";
 import {
+  cancelDaemonRun,
   describeTermination,
   dispatchWithContinuation,
   errorForTerminal,
   harnessRunsInSandbox,
+  harnessSessionKey,
   isRunSuperseded,
   isStudioOwnedConnection,
   orgOutputFallbackInstruction,
@@ -146,6 +148,51 @@ describe("selectRunConnections", () => {
         }).map((c) => c.id),
       ).toEqual(["conn_github", "conn_vtex"]);
     }
+  });
+});
+
+describe("harnessSessionKey", () => {
+  const turn = (overrides: Record<string, unknown> = {}) =>
+    ({
+      threadId: "thrd_1",
+      userMessage: { parts: [{ type: "text", text: "first" }] },
+      workspace: { cwd: null },
+      mode: "default",
+      mcp: {
+        url: "https://studio.test/mcp",
+        headers: { a: "1" },
+        expiresAt: 1,
+      },
+      ...overrides,
+    }) as unknown as Parameters<typeof harnessSessionKey>[0];
+
+  test("a follow-up with a new message, title and MCP bearer keeps the session", () => {
+    expect(
+      harnessSessionKey(
+        turn({
+          userMessage: { parts: [{ type: "text", text: "second" }] },
+          currentThreadTitle: "Named",
+          mcp: {
+            url: "https://studio.test/mcp",
+            headers: { a: "2" },
+            expiresAt: 2,
+          },
+        }),
+      ),
+    ).toBe(harnessSessionKey(turn()));
+  });
+
+  test("anything that shapes the session gets a new one", () => {
+    expect(harnessSessionKey(turn({ mode: "plan" }))).not.toBe(
+      harnessSessionKey(turn()),
+    );
+    expect(
+      harnessSessionKey(
+        turn({
+          mcp: { url: "https://other.test/mcp", headers: {}, expiresAt: 1 },
+        }),
+      ),
+    ).not.toBe(harnessSessionKey(turn()));
   });
 });
 
@@ -359,12 +406,88 @@ describe("pushSandboxEnv", () => {
       );
       let thrown: unknown;
       try {
-        await pushSandboxEnv(provider, "handle-1", { FOO: "bar" });
+        await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
       } catch (err) {
         thrown = err;
       }
       expect(thrown).toBeInstanceOf(SandboxUnreachableError);
     }
+  });
+
+  test("waits out a gateway error from a waking VM instead of failing the turn", async () => {
+    const statuses = [502, 503, 204];
+    let calls = 0;
+    const provider = fakeProvider(
+      async () => new Response(null, { status: statuses[calls++] }),
+    );
+    await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
+    expect(calls).toBe(3);
+  });
+
+  test("gives up on a VM that never wakes, with the last status", async () => {
+    let calls = 0;
+    const provider = fakeProvider(async () => {
+      calls++;
+      return new Response("bad gateway", { status: 502 });
+    });
+    let thrown: unknown;
+    try {
+      await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(SandboxUnreachableError);
+    expect(String(thrown)).toContain("502");
+    expect(calls).toBe(6);
+  });
+
+  test("a 404 is the sandbox gone, not waking — no wait", async () => {
+    let calls = 0;
+    const provider = fakeProvider(async () => {
+      calls++;
+      return new Response("gone", { status: 404 });
+    });
+    await pushSandboxEnv(provider, "handle-1", { FOO: "bar" }, 1).catch(
+      () => {},
+    );
+    expect(calls).toBe(1);
+  });
+});
+
+describe("cancelDaemonRun", () => {
+  test("DELETEs the turn's run on the daemon", async () => {
+    const calls: { handle: string; path: string; method: string }[] = [];
+    const provider = {
+      proxyDaemonRequest: async (
+        handle: string,
+        path: string,
+        init: { method: string },
+      ) => {
+        calls.push({ handle, path, method: init.method });
+        return new Response(null, { status: 204 });
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await cancelDaemonRun(provider, "handle-1", "thread-1:fence-1");
+    expect(calls).toEqual([
+      {
+        handle: "handle-1",
+        path: "/_sandbox/runs/thread-1%3Afence-1",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  test("never throws: a dead or rejecting daemon leaves the stop to its grace", async () => {
+    const throwing = {
+      proxyDaemonRequest: async () => {
+        throw new Error("connection refused");
+      },
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    const rejecting = {
+      proxyDaemonRequest: async () => new Response("nope", { status: 503 }),
+    } as unknown as Parameters<typeof cancelDaemonRun>[0];
+    await expect(cancelDaemonRun(throwing, "h", "r")).resolves.toBeUndefined();
+    await expect(cancelDaemonRun(rejecting, "h", "r")).resolves.toBeUndefined();
   });
 });
 

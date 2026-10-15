@@ -281,7 +281,7 @@ export function resolveConfig(
     jiraSettleSeconds: toPositiveIntegerOrDefault(
       "JIRA_SETTLE_SECONDS",
       envVars.JIRA_SETTLE_SECONDS,
-      60,
+      20,
       3600,
     ),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
@@ -373,6 +373,12 @@ export function resolveConfig(
       envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
       true,
     ),
+    boardTransitionSettleSeconds: toPositiveIntegerOrDefault(
+      "BOARD_TRANSITION_SETTLE_SECONDS",
+      envVars.BOARD_TRANSITION_SETTLE_SECONDS,
+      20,
+      3600,
+    ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
       envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,
@@ -423,6 +429,10 @@ export function resolveConfig(
       true,
     ),
     sandboxReleaseOnRunEndEnabled: toBool(envVars.SANDBOX_RELEASE_ON_RUN_END),
+    sandboxPrewarmOnThreadCreateEnabled: toBool(
+      envVars.SANDBOX_PREWARM_ON_THREAD_CREATE,
+    ),
+    sandboxPersistentHarnessEnabled: toBool(envVars.SANDBOX_PERSISTENT_HARNESS),
     sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
       "SANDBOX_RELEASE_GRACE_MS",
       envVars.SANDBOX_RELEASE_GRACE_MS,
@@ -432,7 +442,6 @@ export function resolveConfig(
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
-    firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
     controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
     controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
     analyticsDataUrl: envVars.ANALYTICS_URL,

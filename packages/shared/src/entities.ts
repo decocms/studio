@@ -1,3 +1,4 @@
+import type { CanonicalColumnKey } from "./task-board";
 import type { Metadata } from "./chat.ts";
 import type { ThreadRuntime } from "./thread/session-runtime.ts";
 import type { ReviewerKind } from "./task-board.ts";
@@ -94,12 +95,7 @@ export interface StudioThreadMessage {
   updated_at: string;
 }
 
-export type TaskBoardItemStatus =
-  | "triage"
-  | "todo"
-  | "in_progress"
-  | "in_review"
-  | "done";
+export type TaskBoardItemStatus = CanonicalColumnKey;
 
 /** What KIND of work a card is — its shape, not its area (that's tags). */
 export type TaskBoardItemType =
@@ -169,6 +165,8 @@ export interface TaskBoardItem {
    *  preferred over `repo` for binding a run's checkout. Mirrors
    *  `taskBoardItemSchema` in `apps/api/src/tools/task-board/schema.ts`. */
   repositoryId: string | null;
+  /** The sprint this card is planned into; null = backlog. */
+  sprintId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -207,35 +205,6 @@ export interface TaskBoardItem {
   createdAt: string;
   updatedBy: string;
   updatedAt: string;
-}
-
-export interface BrandContext {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo: string | null;
-  favicon: string | null;
-  ogImage: string | null;
-  fonts: {
-    heading?: string;
-    body?: string;
-    code?: string;
-  } | null;
-  colors: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-    background?: string;
-    foreground?: string;
-  } | null;
-  images: Record<string, unknown>[] | null;
-  metadata: Record<string, unknown> | null;
-  archivedAt: Date | string | null;
-  isDefault: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
 }
 
 /** Sanitized organization SSO configuration returned to browser clients. */

@@ -92,7 +92,10 @@ describe("pickProjectMetadata", () => {
 });
 
 describe("listSiteProjects", () => {
-  const owned = new Set(["acme", "acme-tanstack"]);
+  const owned = new Map<string, string | null>([
+    ["acme", null],
+    ["acme-tanstack", null],
+  ]);
 
   it("lists a project whose slug is only its title", () => {
     expect(
@@ -130,6 +133,19 @@ describe("listSiteProjects", () => {
         metadata: { analyticsSiteSlug: "acme-tanstack" },
       },
     ]);
+  });
+
+  it("lists only the linked project when the slug is linked", () => {
+    const linked = new Map<string, string | null>([["acme", "vir_2"]]);
+    expect(
+      listSiteProjects(
+        [
+          { id: "vir_1", title: "Copy", metadata: { siteSlug: "acme" } },
+          { id: "vir_2", title: "Acme", metadata: { siteSlug: "acme" } },
+        ],
+        linked,
+      ).map((p) => p.id),
+    ).toEqual(["vir_2"]);
   });
 
   it("skips projects whose slug the org does not own", () => {

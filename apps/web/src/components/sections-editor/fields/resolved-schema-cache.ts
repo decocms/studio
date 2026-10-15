@@ -1,5 +1,6 @@
 import {
   resolveSchema,
+  resolveSchemaRef,
   type LiveMeta,
   type SchemaProperty,
 } from "../resolve-schema";
@@ -30,4 +31,42 @@ export function cachedResolveSchema(
     byResolveType.set(resolveType, result);
   }
   return result;
+}
+
+const expandedCache = new WeakMap<SchemaProperty, SchemaProperty>();
+
+/**
+ * Fill in the nested schema resolveSchema() skipped at a recursive type's
+ * re-entry, one level at a time as the form reaches it. Keyed on the node, so
+ * a re-render gets the same object back.
+ */
+export function expandRecursiveSchema(
+  schema: SchemaProperty,
+  meta: LiveMeta | undefined,
+): SchemaProperty;
+export function expandRecursiveSchema(
+  schema: SchemaProperty | undefined,
+  meta: LiveMeta | undefined,
+): SchemaProperty | undefined;
+export function expandRecursiveSchema(
+  schema: SchemaProperty | undefined,
+  meta: LiveMeta | undefined,
+): SchemaProperty | undefined {
+  if (!schema?.recursiveRef || !meta) return schema;
+  let expanded = expandedCache.get(schema);
+  if (!expanded) {
+    const { properties, required, items } = resolveSchemaRef(
+      schema.recursiveRef,
+      meta,
+    );
+    expanded = {
+      ...schema,
+      properties,
+      required,
+      items,
+      recursiveRef: undefined,
+    };
+    expandedCache.set(schema, expanded);
+  }
+  return expanded;
 }

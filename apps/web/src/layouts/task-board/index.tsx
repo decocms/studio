@@ -15,7 +15,6 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -31,11 +30,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
+import {
+  TaskBoardAdminBanner,
+  TaskBoardAdminControls,
+  TaskBoardAnalyticsButton,
+} from "./admin-controls";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import { ColumnRulesSheet, useColumnRules } from "./column-rules";
+import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { getInitials } from "@/lib/get-initials";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -59,6 +62,7 @@ import {
   ChevronRight,
   DotsHorizontal,
   HelpCircle,
+  Inbox01,
   Lightning01,
   Plus,
   RefreshCw01,
@@ -66,7 +70,9 @@ import {
   User01,
   UserPlus01,
   X,
+  Zap,
 } from "@untitledui/icons";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -92,6 +98,13 @@ import {
   useTaskBoardItemActions,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
+import {
+  useTaskBoardSprints,
+  useTaskBoardSprintsLive,
+} from "@/hooks/use-task-board-sprints";
+import { currentSprintId } from "@decocms/shared/sprints";
+import { SprintSwitcher } from "./sprint-controls";
+import { sprintLabel } from "./sprint-label";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentRunState,
@@ -105,11 +118,12 @@ import {
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
+  boardGridColumns,
   laneVisibility,
-  moveTargets,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
+  boardCollisions,
   dropLane,
   LANE_DROPPABLE_PREFIX,
   laneHeader,
@@ -126,10 +140,7 @@ import {
   type OrgTag,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import {
-  useOrgFlag,
-  useReviewerEnabled,
-} from "@/hooks/use-organization-settings";
+import { useReviewerEnabled } from "@/hooks/use-organization-settings";
 import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
@@ -161,6 +172,7 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
+  resolveSprintFilter,
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters-core";
@@ -245,8 +257,10 @@ const META =
   "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
 
 /** A lane's own controls: revealed on hover, focus, or an open menu. */
+/** Shown on lane hover, and on the lane a drag is over: the dragged card
+ *  holds the pointer then, so the lane itself never reads as hovered. */
 const LANE_ACTION =
-  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -661,6 +675,18 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
+/** The sprint a card is planned into; nothing for a card in the backlog. */
+function SprintPill({ sprintId }: { sprintId: string | null }) {
+  const sprint = useTaskBoardSprints().find((s) => s.id === sprintId);
+  if (!sprint) return null;
+  return (
+    <span className={cn(PILL, "text-foreground")}>
+      <Zap size={10} className="shrink-0 text-muted-foreground" />
+      {sprint.name}
+    </span>
+  );
+}
+
 /** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
 function TagPill({ tag }: { tag: TaskBoardItemTag }) {
   return (
@@ -781,13 +807,12 @@ function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
 
 /**
  * The card's checks indicator, or null when there is nothing to say: this org
- * runs no reviewers, or the task has not reached review yet (a To Do card with
- * `0/1` would be reporting a failure that hasn't had a chance to happen).
+ * runs no reviewers, or the task has not reached review yet (a Backlog card
+ * with `0/1` would be reporting a failure that hasn't had a chance to happen).
  *
- * "Reached review" is the open cycle, not the In Review lane. Since migration
- * 189 a card whose reviewer is working reads In Progress, and that is exactly
- * when the pending chip earns its place — the lane alone would hide the checks
- * for the whole time they are actually being decided.
+ * "Reached review" is the open cycle as well as the In Review lane: a cycle
+ * opened by the previous release can sit on an In Progress card, and the lane
+ * alone would hide the checks for the whole time they are being decided.
  */
 function useCardChecks(item: TaskBoardItem): {
   summary: ChecksSummary;
@@ -967,6 +992,8 @@ function TaskBoardBody({
     isLoading: itemsLoading,
   });
   const { data: orgTags = [] } = useTags();
+  const sprints = useTaskBoardSprints();
+  useTaskBoardSprintsLive();
   const actions = useTaskBoardItemActions();
   const repositories = useRepositories();
   const usableRepos = (repositories.data ?? []).filter(
@@ -1049,7 +1076,7 @@ function TaskBoardBody({
   );
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const {
-    filters,
+    filters: urlFilters,
     setFilters,
     layout: urlLayout,
     setLayout,
@@ -1072,11 +1099,22 @@ function TaskBoardBody({
               membersData ? new Set(memberByUserId.keys()) : null,
             ),
       groupBy: "status",
+      sprint: currentSprintId(sprints),
     },
     (assignee) => {
       if (viewerId !== null) setSavedAssignee(assignee);
     },
   );
+  const filters = {
+    ...urlFilters,
+    sprint: resolveSprintFilter(urlFilters.sprint, sprints),
+  };
+  /** The sprint a new card is planned into: the one the board is showing,
+   *  unless that one is closed and takes no new cards. */
+  const activeSprintId =
+    sprints.find(
+      (sprint) => sprint.id === filters.sprint && sprint.state !== "closed",
+    )?.id ?? null;
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
@@ -1435,6 +1473,13 @@ function TaskBoardBody({
           <Page.Actions
             secondary={
               <>
+                <SprintSwitcher
+                  sprints={sprints}
+                  value={filters.sprint}
+                  onChange={(sprint) =>
+                    handleFiltersChange({ ...filters, sprint })
+                  }
+                />
                 {items.length > 0 && (
                   <>
                     {/* No width swap: these three are ~100px together, so there
@@ -1457,6 +1502,7 @@ function TaskBoardBody({
                         items={items}
                         members={members}
                         tags={orgTags}
+                        sprints={sprints}
                         index={projectIndex}
                         onChange={handleFiltersChange}
                       />
@@ -1477,6 +1523,7 @@ function TaskBoardBody({
             }
           >
             <TaskBoardAdminControls />
+            <TaskBoardAnalyticsButton project={scopeId} />
             <AgenticSetupButton />
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
@@ -1509,6 +1556,7 @@ function TaskBoardBody({
         items={items}
         members={members}
         tags={orgTags}
+        sprints={sprints}
         index={projectIndex}
         onChange={handleFiltersChange}
         view={layout === "list" ? { grouping, sorting } : undefined}
@@ -1671,6 +1719,12 @@ function TaskBoardBody({
           item={openItem}
           onClose={() => closeTask()}
           isSaving={actions.update.isPending}
+          onSetSprint={(sprintId) =>
+            actions.update.mutate(
+              { id: openItem.id, sprintId },
+              { onError: onDelegateError },
+            )
+          }
           onSubmit={(input) => {
             if (blockSuperAgentWithoutRepository(input.assigneeId)) {
               closeTask();
@@ -1706,6 +1760,12 @@ function TaskBoardBody({
               repo: openItem.repo,
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
+              sprintId:
+                sprints.find(
+                  (sprint) =>
+                    sprint.id === openItem.sprintId &&
+                    sprint.state !== "closed",
+                )?.id ?? null,
             });
             widenProjectFilterFor(openItem.repo ?? null);
             toast.success(t("taskBoard.taskDialog.cloneSuccess"));
@@ -1751,6 +1811,7 @@ function TaskBoardBody({
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
         defaultRepo={activeProjectRepo}
+        defaultSprintId={activeSprintId}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutRepository(input.assigneeId)) {
@@ -1794,6 +1855,11 @@ function TaskBoardBody({
           }}
           onMoveTo={(status) => {
             for (const id of selectedIds) actions.update.mutate({ id, status });
+            clearSelection();
+          }}
+          onSetSprint={(sprintId) => {
+            for (const id of selectedIds)
+              actions.update.mutate({ id, sprintId });
             clearSelection();
           }}
           onSetPriority={(priority) => {
@@ -1895,6 +1961,7 @@ function SelectionBar({
   projectEntries,
   onSetRepo,
   onMoveTo,
+  onSetSprint,
   onSetPriority,
   onAddTag,
   onAssign,
@@ -1911,6 +1978,8 @@ function SelectionBar({
   /** Bulk-assign the project (persisted as the underlying repo), or clear it. */
   onSetRepo: (repo: string | null) => void;
   onMoveTo: (status: TaskBoardItemStatus) => void;
+  /** Bulk-plan into a sprint, or null for the backlog. */
+  onSetSprint: (sprintId: string | null) => void;
   onSetPriority: (priority: TaskBoardItemPriority) => void;
   onAddTag: (tagId: string) => void;
   onAssign: (userId: string | null) => void;
@@ -1926,7 +1995,9 @@ function SelectionBar({
 }) {
   const t = useT();
   const { data: orgTags = [] } = useTags();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
+  const openSprints = useTaskBoardSprints().filter(
+    (sprint) => sprint.state !== "closed",
+  );
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
@@ -1949,7 +2020,7 @@ function SelectionBar({
                 {t("taskBoard.taskBoard.moveToButton")}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {moveTargets(deliveryEnabled).map((status) => (
+                {CANONICAL_COLUMN_KEYS.map((status) => (
                   <DropdownMenuItem
                     key={status}
                     onClick={() => onMoveTo(status)}
@@ -1959,6 +2030,28 @@ function SelectionBar({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {openSprints.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {t("taskBoard.sprints.moveToSprint")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuItem onClick={() => onSetSprint(null)}>
+                    <Inbox01 size={14} className="text-muted-foreground" />
+                    {t("taskBoard.sprints.backlog")}
+                  </DropdownMenuItem>
+                  {openSprints.map((sprint) => (
+                    <DropdownMenuItem
+                      key={sprint.id}
+                      onClick={() => onSetSprint(sprint.id)}
+                    >
+                      <Zap size={14} className="text-muted-foreground" />
+                      <span className="truncate">{sprintLabel(sprint, t)}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 {t("taskBoard.taskBoard.changePriorityButton")}
@@ -2146,7 +2239,6 @@ function Lanes({
   /** See `TaskBoardPage`'s own doc comment. */
   inlineTabs?: boolean;
 }) {
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [activeId, setActiveId] = useState<string | null>(null);
   // Cards that just landed from a drop — they get the settle animation. Cleared
   // on drag start so dropping the same card twice replays it (a CSS animation
@@ -2243,9 +2335,7 @@ function Lanes({
     hidden: hiddenLanes,
     hideable: hideableLanes,
   } = laneVisibility({
-    deliveryEnabled,
     shownLanes: preferences.shownTaskBoardLanes,
-    occupied: placed.map((item) => item.status),
   });
   const setLaneShown = (status: string, shown: boolean) =>
     setPreferences((prev) => ({
@@ -2253,6 +2343,14 @@ function Lanes({
       shownTaskBoardLanes: shown
         ? [...prev.shownTaskBoardLanes, status]
         : prev.shownTaskBoardLanes.filter((s) => s !== status),
+    }));
+  const collapsedLanes = preferences.collapsedTaskBoardLanes;
+  const toggleLaneCollapsed = (status: string) =>
+    setPreferences((prev) => ({
+      ...prev,
+      collapsedTaskBoardLanes: prev.collapsedTaskBoardLanes.includes(status)
+        ? prev.collapsedTaskBoardLanes.filter((s) => s !== status)
+        : [...prev.collapsedTaskBoardLanes, status],
     }));
 
   /** Resolved against `placed` rather than dnd-kit's `over.data`, which is a
@@ -2363,13 +2461,21 @@ function Lanes({
     ? placed.find((item) => item.id === activeId)
     : null;
   const activeGroup = activeId ? groupOf(activeId) : [];
+  // Dropping here starts the lane's automations when the drag brings in cards
+  // nobody owns from another lane: a person's card is never taken over, and a
+  // card staying in its lane is no move. Read from the saved cards, not the
+  // preview, which already shows them in the lane under the cursor.
+  const dropBringsUnownedCards = (lane: string) =>
+    activeGroup.length > 0 &&
+    activeGroup.every((id) => {
+      const saved = items.find((item) => item.id === id);
+      return !!saved && !saved.assigneeId && saved.status !== lane;
+    });
 
   return (
     <DndContext
       sensors={sensors}
-      // Corners beat centers across lanes: a tall card's center can sit outside
-      // the column the pointer is actually over.
-      collisionDetection={closestCorners}
+      collisionDetection={boardCollisions}
       onDragStart={(event: DragStartEvent) => {
         setActiveId(String(event.active.id));
         setLandedIds([]);
@@ -2389,25 +2495,19 @@ function Lanes({
             room is handled per-lane by each column's own scrollable div — a pb
             here would eat into this row's h-full and cut every column short,
             since it no longer wraps a single page-level scroll. */}
-        {/* The lanes SHARE the width instead of each taking a fixed 300px:
-            `minmax(280px, 1fr)` fills the panel when there is room and falls
-            back to scrolling once every lane is at its minimum. Fixed columns
-            left a dead margin on a wide screen and made the board scroll
-            sideways at widths where it did not have to. Inline, because the
-            track count is the lane count. 280px, not less — below it a card's
-            footer (type + key, due date, priority, checks, assignee) runs out
-            of room and its icons start overlapping instead of wrapping. */}
+        {/* Inline tracks, because their count is the lane count — see
+            `boardGridColumns`. */}
         <div
           className={cn(
             "mx-auto grid h-full w-full max-w-[1680px] gap-3",
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
           style={{
-            // The hidden-lanes tail needs its own track, or the grid wraps it
-            // onto a second row below the lanes.
-            gridTemplateColumns: `repeat(${boardLanes.length}, minmax(280px, 1fr))${
-              hiddenLanes.length > 0 ? " 280px" : ""
-            }`,
+            gridTemplateColumns: boardGridColumns({
+              lanes: boardLanes,
+              collapsed: collapsedLanes,
+              hasHiddenTail: hiddenLanes.length > 0,
+            }),
           }}
         >
           {boardLanes.map((status) => (
@@ -2423,6 +2523,10 @@ function Lanes({
               // whenever a card (not the lane) is the drop target and would
               // strobe the background.
               isTarget={activeItem?.status === status}
+              firesOnDrop={
+                activeItem?.status === status && dropBringsUnownedCards(status)
+              }
+              draggedCount={activeGroup.length}
               hiddenIds={activeGroup}
               landedIds={landedIds}
               onToggleSelect={onToggleSelect}
@@ -2440,6 +2544,8 @@ function Lanes({
                   ? () => setLaneShown(status, false)
                   : undefined
               }
+              collapsed={collapsedLanes.includes(status)}
+              onToggleCollapsed={() => toggleLaneCollapsed(status)}
             />
           ))}
           {hiddenLanes.length > 0 && (
@@ -2570,6 +2676,8 @@ function Lane({
   memberByUserId,
   selectedIds,
   isTarget,
+  firesOnDrop,
+  draggedCount,
   hiddenIds,
   landedIds,
   onToggleSelect,
@@ -2583,6 +2691,8 @@ function Lane({
   onTypeChange,
   onDueDateChange,
   onHide,
+  collapsed,
+  onToggleCollapsed,
 }: {
   status: TaskBoardItemStatus;
   items: TaskBoardItem[];
@@ -2590,6 +2700,9 @@ function Lane({
   memberByUserId: Map<string, Member>;
   selectedIds: Set<string>;
   isTarget: boolean;
+  /** Dropping the dragged cards here would start this lane's automations. */
+  firesOnDrop: boolean;
+  draggedCount: number;
   /** Cards riding in the DragOverlay — held in the layout as gaps. */
   hiddenIds: string[];
   /** Cards that just landed from a drop — they play the settle animation. */
@@ -2606,26 +2719,89 @@ function Lane({
   onDueDateChange?: (id: string, iso: string) => void;
   /** Present only for a hidden-by-default lane, which can be put back away. */
   onHide?: () => void;
+  /** Drawn as a narrow strip with its label and count, cards out of view. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const t = useT();
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const rules = useColumnRules(status);
+  const takers = useEntryAutomations(status)
+    .filter((automation) => automation.active)
+    .map((automation) => automation.name);
+  const announce = firesOnDrop && takers.length > 0;
   // The lane's own droppable covers the empty space below the last card, so an
   // empty lane (and the area past the end of a short one) still takes a drop.
   const { setNodeRef } = useDroppable({
     id: `${LANE_DROPPABLE_PREFIX}${status}`,
   });
 
+  if (collapsed) {
+    return (
+      // The whole strip stays a drop target, so a card can still be dragged
+      // into a collapsed lane.
+      <div
+        ref={setNodeRef}
+        data-lane={status}
+        data-lane-collapsed=""
+        data-drop-target={isTarget || undefined}
+        className="group/lane flex h-full min-h-0 min-w-0 flex-col items-center py-1"
+      >
+        <div
+          className={cn(
+            "flex w-full flex-col items-center gap-2 rounded-xl px-1 py-3 transition-colors",
+            isTarget ? "bg-muted" : "bg-muted/50",
+          )}
+        >
+          <LaneIcon
+            size={15}
+            className={cn(
+              "shrink-0",
+              visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            )}
+          />
+          <span className="text-sm font-medium text-foreground [writing-mode:vertical-rl]">
+            {label}
+          </span>
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {items.length}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.expandColumnAriaLabel", {
+                  lane: label,
+                })}
+                onClick={onToggleCollapsed}
+                className={LANE_ACTION}
+              >
+                <Maximize2 size={15} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {t("taskBoard.taskBoard.expandColumn")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       // Stable hook for e2e drag specs — lane columns are otherwise only
       // identifiable by their localized label or utility classes.
       data-lane={status}
+      data-drop-target={isTarget || undefined}
       className={cn(
-        "group/lane flex h-full min-w-0 flex-col rounded-xl py-1 transition-colors",
-        isTarget && "bg-muted/50",
+        // min-h-0: a grid item's minimum height is its content, so without it
+        // every lane grows to the longest one instead of scrolling on its own.
+        "group/lane flex h-full min-h-0 min-w-0 flex-col rounded-xl py-1 transition-colors",
+        announce
+          ? "bg-special/15 ring-1 ring-inset ring-special/30"
+          : isTarget && "bg-muted/50",
       )}
     >
       <ColumnRulesSheet
@@ -2639,100 +2815,113 @@ function Lane({
           under cards, so it tracks the lane's own highlight color (solid,
           since bg-muted/50 would let cards show through) rather than a fixed
           one that'd seam against it while a drag is over the lane. */}
+      {/* Sticky together, so the drop hint stays in view above the dragged card. */}
       <div
         className={cn(
-          "sticky top-0 z-10 flex items-center gap-2 px-2 py-1.5 transition-colors",
+          "sticky top-0 z-10 flex flex-col transition-colors",
           isTarget ? "bg-muted" : "bg-background",
         )}
       >
-        {/* Static in the header — unlike the card's own status icon, this
-            one isn't tied to a specific task, so spinning it reads as the
-            whole lane being "busy" rather than as in-progress work. */}
-        <LaneIcon
-          size={15}
-          className={cn(
-            "shrink-0",
-            visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
-          )}
-        />
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
-          {items.length}
-        </span>
-        <DropdownMenu>
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          {/* Static in the header — unlike the card's own status icon, this
+              one isn't tied to a specific task, so spinning it reads as the
+              whole lane being "busy" rather than as in-progress work. */}
+          <LaneIcon
+            size={15}
+            className={cn(
+              "shrink-0",
+              visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+            )}
+          />
+          <span className="text-sm font-medium text-foreground">{label}</span>
+          <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+            {items.length}
+          </span>
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                      lane: label,
+                    })}
+                    className={cn(LANE_ACTION, "ml-auto")}
+                  >
+                    <DotsHorizontal size={15} />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setRulesOpen(true)}>
+                <Stars02 size={14} />
+                {t("taskBoard.columnRules.menuItem")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
+                {t("taskBoard.taskBoard.selectAllInLane")}
+              </DropdownMenuItem>
+              {onHide && (
+                <DropdownMenuItem onClick={onHide}>
+                  {t("taskBoard.taskBoard.hideColumn")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                    lane: label,
-                  })}
-                  className={cn(LANE_ACTION, "ml-auto")}
-                >
-                  <DotsHorizontal size={15} />
-                </button>
-              </DropdownMenuTrigger>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                  lane: label,
+                })}
+                onClick={() => onCreate(status)}
+                className={LANE_ACTION}
+              >
+                <Plus size={15} />
+              </button>
             </TooltipTrigger>
             <TooltipContent side="top">
-              {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+              {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
-              {t("taskBoard.taskBoard.selectAllInLane")}
-            </DropdownMenuItem>
-            {onHide && (
-              <DropdownMenuItem onClick={onHide}>
-                {t("taskBoard.taskBoard.hideColumn")}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-                lane: label,
-              })}
-              onClick={() => onCreate(status)}
-              className={LANE_ACTION}
-            >
-              <Plus size={15} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t(
-                rules.configured
-                  ? "taskBoard.columnRules.editAriaLabel"
-                  : "taskBoard.columnRules.add",
-                { lane: label },
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
+                  lane: label,
+                })}
+                onClick={onToggleCollapsed}
+                className={LANE_ACTION}
+              >
+                <Minimize2 size={15} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t("taskBoard.taskBoard.collapseColumn")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        {announce && (
+          <div
+            role="status"
+            className="mx-1 mb-1.5 flex items-center gap-2 rounded-lg border border-special/30 bg-background px-3 py-2 text-xs text-special"
+          >
+            <Stars02 size={14} className="shrink-0" />
+            <span>
+              {t(
+                draggedCount > 1
+                  ? "taskBoard.dropHint.pickUpMany"
+                  : "taskBoard.dropHint.pickUp",
+                { names: takers.join(", ") },
               )}
-              onClick={() => setRulesOpen(true)}
-              className={cn(LANE_ACTION, rules.configured && "opacity-100")}
-            >
-              <Stars02
-                size={15}
-                className={cn(rules.configured && "text-special")}
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-64">
-            <span className="line-clamp-4">
-              {rules.configured
-                ? rules.summary
-                : t("taskBoard.columnRules.add")}
             </span>
-          </TooltipContent>
-        </Tooltip>
+          </div>
+        )}
       </div>
       {/* px-1 so each card's shadow has room inside the scrollport — an
           overflow-y container clips the x-axis too, which would clip a FLIP-
@@ -2974,8 +3163,9 @@ function TaskCard({
         {runState && <AgentRunIndicator state={runState} />}
       </div>
 
-      {item.tags.length > 0 && (
+      {(item.tags.length > 0 || item.sprintId) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <SprintPill sprintId={item.sprintId} />
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -3202,7 +3392,6 @@ function FeedComposer({
   onCreated: (input: FeedComposeInput) => void;
 }) {
   const t = useT();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
@@ -3278,7 +3467,7 @@ function FeedComposer({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              {moveTargets(deliveryEnabled).map((s) => {
+              {CANONICAL_COLUMN_KEYS.map((s) => {
                 const { label, visual } = laneHeader(s, t);
                 const Icon = visual.icon;
                 return (
@@ -3483,7 +3672,9 @@ function FeedView({
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col",
-        project ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+        project
+          ? "mx-auto w-full max-w-[1680px] px-4 pt-4 md:px-8"
+          : "px-4 pt-6 sm:px-8",
       )}
     >
       <div
@@ -3743,7 +3934,6 @@ function ListRowStatusMenu({
   onStatusChange: (status: TaskBoardItemStatus) => void;
 }) {
   const t = useT();
-  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const StatusIcon = laneVisual(item.status).icon;
   return (
     <DropdownMenu>
@@ -3759,7 +3949,7 @@ function ListRowStatusMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
-        {moveTargets(deliveryEnabled).map((status) => {
+        {CANONICAL_COLUMN_KEYS.map((status) => {
           const { label, visual } = laneHeader(status, t);
           const Icon = visual.icon;
           return (
@@ -3820,6 +4010,11 @@ function ListRow({
       {runState && <AgentRunIndicator state={runState} />}
       {isTaskBlocked(item) && <BlockedBadge />}
       {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
+      {item.sprintId && (
+        <span className="hidden sm:inline-flex">
+          <SprintPill sprintId={item.sprintId} />
+        </span>
+      )}
       {item.tags.length > 0 && (
         <span className="hidden items-center gap-1.5 sm:inline-flex">
           {item.tags.slice(0, 2).map((tag) => (

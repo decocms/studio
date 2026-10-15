@@ -6,6 +6,8 @@ import {
   normalizeFrom,
   pickRule,
   type RuleFrom,
+  ruleConflict,
+  ruleFromColumns,
   sharedStatuses,
 } from "./rule-from";
 
@@ -86,5 +88,57 @@ describe("needsDirection", () => {
   it("is only true when a rule answers by direction", () => {
     expect(needsDirection([rule("a", { kind: "any" })])).toBe(false);
     expect(needsDirection([rule("b", { kind: "later" })])).toBe(true);
+  });
+});
+
+describe("ruleConflict", () => {
+  const statuses = (...names: string[]): RuleFrom => ({
+    kind: "statuses",
+    statuses: names,
+  });
+
+  it("lets a status carry one trigger per origin", () => {
+    expect(
+      ruleConflict("Doing", { kind: "later" }, [
+        { kind: "any" },
+        { kind: "earlier" },
+        statuses("Backlog"),
+      ]),
+    ).toBeNull();
+    expect(ruleConflict("Doing", { kind: "any" }, [])).toBeNull();
+  });
+
+  it("refuses a second trigger for the same origin", () => {
+    expect(ruleConflict("Doing", { kind: "any" }, [{ kind: "any" }])).toContain(
+      'Another trigger on "Doing" already answers the same origin',
+    );
+    // The same list in another order and case is the same origin.
+    expect(
+      ruleConflict("Doing", statuses("client qa", "BACKLOG"), [
+        statuses("Backlog", "Client QA"),
+      ]),
+    ).toContain("same origin");
+  });
+
+  it("refuses two lists that name the same status", () => {
+    expect(
+      ruleConflict("Doing", statuses("Code Review", "teste"), [
+        statuses("Teste"),
+      ]),
+    ).toContain('already answers moves from "teste"');
+  });
+});
+
+describe("ruleFromColumns", () => {
+  it("reads a trigger's origin, any when unset", () => {
+    expect(ruleFromColumns({ from_kind: null, from_statuses: [] })).toEqual({
+      kind: "any",
+    });
+    expect(ruleFromColumns({ from_kind: "later", from_statuses: [] })).toEqual({
+      kind: "later",
+    });
+    expect(
+      ruleFromColumns({ from_kind: "statuses", from_statuses: ["QA"] }),
+    ).toEqual({ kind: "statuses", statuses: ["QA"] });
   });
 });

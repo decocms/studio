@@ -101,6 +101,17 @@ interface PublishMessage {
   message: string;
 }
 
+/** GitHub rejects longer pull-request titles (256) and GitLab longer than 255. */
+export const MAX_TITLE_LENGTH = 255;
+
+/** Fit a title to {@link MAX_TITLE_LENGTH}, ending on a whole word. */
+export function shortenTitle(title: string): string {
+  if (title.length <= MAX_TITLE_LENGTH) return title;
+  const head = title.slice(0, MAX_TITLE_LENGTH - 1);
+  const wordEnd = head.lastIndexOf(" ");
+  return `${(wordEnd > 0 ? head.slice(0, wordEnd) : head).trimEnd()}…`;
+}
+
 /**
  * Derive what the pull request and the commit are called. An empty title falls
  * back to `fallbackTitle`; the commit message is title and body joined, and
@@ -113,11 +124,15 @@ export function publishMessageParts(input: {
 }): PublishMessage {
   const title = input.title.trim();
   const body = input.body.trim();
+  const message = [title, body].filter(Boolean).join("\n\n");
+  if (title.length > MAX_TITLE_LENGTH) {
+    return { title: shortenTitle(title), body: message, message };
+  }
   const prTitle = title || input.fallbackTitle;
   return {
     title: prTitle,
     body: body || undefined,
-    message: [title, body].filter(Boolean).join("\n\n") || prTitle,
+    message: message || prTitle,
   };
 }
 
