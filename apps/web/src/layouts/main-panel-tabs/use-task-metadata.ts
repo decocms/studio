@@ -51,6 +51,8 @@ export function useTaskMetadata(taskId: string | null): ThreadMetadata | null {
         return null;
       }
     },
+    // A just-created thread is local only; don't suspend on a GET for it.
+    initialData: localHit && !localHit.partial ? localHit : undefined,
     select: (task) => task?.metadata ?? null,
     staleTime: 30_000,
   });

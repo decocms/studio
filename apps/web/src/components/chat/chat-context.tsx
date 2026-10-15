@@ -16,7 +16,6 @@
 
 import {
   createContext,
-  use,
   useContext,
   useEffect,
   useRef,
@@ -158,6 +157,11 @@ export interface ChatStreamContextValue {
     transcript?: VoiceTranscript,
   ) => Promise<boolean>;
   voiceContext?: string;
+  /** Settles once the thread's first page of messages has loaded or failed.
+   *  Whatever renders the conversation suspends on it with `use()`; the
+   *  provider does not, because it wraps the whole chat layout and its
+   *  suspension would blank both panels on every thread switch. */
+  ready: Promise<void>;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
   sendMessage: (
@@ -818,6 +822,9 @@ export function ChatContextProvider({
 /** Frozen identity so a threadless render never hands consumers a new array. */
 const NO_MESSAGES: ChatMessage[] = [];
 
+/** `ready` for a stream with nothing to load. */
+export const STREAM_READY: Promise<void> = Promise.resolve();
+
 /**
  * Chat context for a route with no thread — every destination (`/$org/home`,
  * `/$org/tasks`, …) until one is opened.
@@ -832,6 +839,7 @@ export function ThreadlessChatProvider({ children }: PropsWithChildren) {
   const { createTaskWithMessage } = useChatTask();
 
   const value: ChatStreamContextValue = {
+    ready: STREAM_READY,
     messages: NO_MESSAGES,
     status: "ready",
     sendMessage: async (params) => {
@@ -935,12 +943,6 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   });
   const conn = getOrOpenStream(org.slug, taskId, { client });
-  /** Suspend until the initial-page MCP fetch settles. The `MainPanelBoundary`
-   *  in side-panel-chat.tsx catches this and shows the app's one panel loader
-   *  instead of an empty message list. `conn.ready` resolves on success, error
-   *  and null-client paths so the chat unsuspends in every terminal case;
-   *  error states are surfaced via `status` and rendered inline. */
-  use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
@@ -1531,6 +1533,8 @@ export function ActiveTaskProvider({
   // oxlint-disable-next-line ban-use-effect/ban-use-effect, react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   useEffect(() => {
     if (!shouldAutosend) return;
+    // Before the first page lands an existing thread still looks empty.
+    if (connStatus.kind === "loading") return;
     if (messages.length > 0) return;
     if (hostedRuntimeBlocked) return;
 
@@ -1543,6 +1547,7 @@ export function ActiveTaskProvider({
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   }, [
     shouldAutosend,
+    connStatus.kind,
     messages.length,
     hostedRuntimeBlocked,
     locator,
@@ -1553,6 +1558,7 @@ export function ActiveTaskProvider({
   // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
+    ready: conn.ready,
     voiceContext: voiceEnabled
       ? [
           contextPrompt,

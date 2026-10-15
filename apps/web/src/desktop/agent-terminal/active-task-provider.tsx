@@ -9,6 +9,7 @@ import { useSearch } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   ChatStreamValueProvider,
+  STREAM_READY,
   useChatPrefs,
   useChatTask,
   type ChatStreamContextValue,
@@ -310,6 +311,7 @@ export function NativeAgentTerminalProvider({
   };
 
   const streamValue: ChatStreamContextValue = {
+    ready: STREAM_READY,
     messages: EMPTY_MESSAGES,
     status: streamStatus(snapshot),
     sendMessage,

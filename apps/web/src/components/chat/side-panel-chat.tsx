@@ -1,6 +1,6 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
-import { useState } from "react";
+import { use, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
@@ -22,6 +22,7 @@ import { ChatVoiceBindings, VoiceModePanel, useVoiceMode } from "./voice";
 // ---------- Panel content ----------
 
 function ChatSidePanelContent() {
+  use(useChatStream().ready);
   return (
     <ChatVoiceBindings>
       <ChatSidePanelBody />
