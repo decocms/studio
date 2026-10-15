@@ -35,7 +35,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { nudgeThreadTurn } from "./nudge-thread";
-import { shouldAdvanceToReview } from "@/storage/task-board";
+import { isRepoBacked, shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, Thread } from "@/storage/types";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 import { isThreadRunStale } from "@/tools/thread/helpers";
@@ -224,7 +224,7 @@ export async function recoverStalledTasks(
     let hasPr: boolean;
     try {
       hasPr =
-        item.repo != null &&
+        isRepoBacked(item) &&
         (await ctx.storage.taskBoard.listPrs(item.id, organizationId)).length >
           0;
     } catch (err) {

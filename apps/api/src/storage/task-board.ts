@@ -187,6 +187,26 @@ export const TERMINAL_THREAD_STATUSES = new Set([
 ]);
 
 /**
+ * Does this card's work live in a repository? Either column answers it: `repo`
+ * is the `owner/name` a card was written against, `repositoryId` the
+ * first-class row a writer that knew the repository used instead.
+ *
+ * Both are checked because a card can carry one without the other, and the
+ * lanes below branch on "repo-backed or not": `EXPERIMENT_IMPLEMENT` creates
+ * its card with `repositoryId` alone, which read as repo-less, so the card its
+ * run opened a pull request for took the "its answer IS its deliverable"
+ * branch straight to QA — past the reviewers, and past every sweeper that
+ * looks for a card still In Progress, which is what left the experiment screen
+ * waiting on a pull request nothing would ever link.
+ */
+export function isRepoBacked(item: {
+  repo?: string | null;
+  repositoryId?: string | null;
+}): boolean {
+  return item.repo != null || item.repositoryId != null;
+}
+
+/**
  * Should a task advance to In Review now that a thread finished? True iff it's
  * In Progress, has at least one thread that was actually used, and every such
  * thread's run has reached a terminal status. Repo-backed tasks advance here
@@ -207,6 +227,7 @@ export function shouldAdvanceToReview(
   item: {
     status: string;
     repo?: string | null;
+    repositoryId?: string | null;
     threads: { status: string | null; hasMessages: boolean }[];
   },
   /** Whether a PR is linked — a repo-backed task needs one to advance on finish. */
@@ -216,7 +237,7 @@ export function shouldAdvanceToReview(
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
   // A repo-backed task reaches review only once a PR is linked; one that finishes without one is left to the review sweeper (`settleFinishedRunsWithoutPr`), which finds its PR by branch or hands it to a person. Non-repo tasks advance on finish.
-  if (item.repo != null && !hasPr) return false;
+  if (isRepoBacked(item) && !hasPr) return false;
   if (
     !used.every(
       (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),

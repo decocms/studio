@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { shouldAdvanceToReview } from "./task-board";
+import { isRepoBacked, shouldAdvanceToReview } from "./task-board";
 
 /** A thread that was actually used — the default for these cases. */
 const thread = (
@@ -44,6 +44,40 @@ describe("shouldAdvanceToReview", () => {
         {
           status: "in_progress",
           repo: "acme/site",
+          threads: [thread("completed")],
+        },
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  /**
+   * `EXPERIMENT_IMPLEMENT` creates its card with `repositoryId` and no `repo`.
+   * Read as repo-less, such a card took the "its answer IS its deliverable"
+   * branch to QA the moment its run finished — past the reviewers, and past
+   * every sweeper that only visits cards still In Progress, so the pull
+   * request its run had opened was never linked and the experiment screen sat
+   * on "the agent is writing the code" forever.
+   */
+  it("does NOT advance a card repo-backed by id alone with no PR", () => {
+    expect(
+      shouldAdvanceToReview(
+        {
+          status: "in_progress",
+          repositoryId: "repo_1",
+          threads: [thread("completed")],
+        },
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  it("advances a card repo-backed by id alone once a PR is linked", () => {
+    expect(
+      shouldAdvanceToReview(
+        {
+          status: "in_progress",
+          repositoryId: "repo_1",
           threads: [thread("completed")],
         },
         true,
@@ -152,5 +186,20 @@ describe("shouldAdvanceToReview", () => {
         threads: [emptyThread(), thread("in_progress")],
       }),
     ).toBe(false);
+  });
+});
+
+describe("isRepoBacked", () => {
+  it("is true for either column", () => {
+    expect(isRepoBacked({ repo: "acme/site" })).toBe(true);
+    expect(isRepoBacked({ repositoryId: "repo_1" })).toBe(true);
+    expect(isRepoBacked({ repo: "acme/site", repositoryId: "repo_1" })).toBe(
+      true,
+    );
+  });
+
+  it("is false only when a card names no repository at all", () => {
+    expect(isRepoBacked({})).toBe(false);
+    expect(isRepoBacked({ repo: null, repositoryId: null })).toBe(false);
   });
 });
