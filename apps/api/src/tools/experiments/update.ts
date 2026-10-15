@@ -19,9 +19,9 @@ export const EXPERIMENT_UPDATE = defineTool({
   inputSchema: z.object({
     site: z.string().min(1),
     key: z.string().min(1),
-    name: z.string().min(1).optional(),
+    name: z.string().min(1).max(200).optional(),
     status: z.enum(["draft", "running", "paused", "ended"]).optional(),
-    goals: z.array(z.string()).optional(),
+    goals: z.array(z.string().min(1).max(200)).max(20).optional(),
     variants: variantsInputSchema.optional(),
   }),
   outputSchema: z.object({ experiment: experimentSchema }),
