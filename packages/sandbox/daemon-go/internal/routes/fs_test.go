@@ -207,6 +207,67 @@ func TestWriteEscapesRootNamesTheRoot(t *testing.T) {
 	}
 }
 
+// A symlink inside the repo pointing outside AppRoot must not let /write
+// follow it: SafePath only clamps the lexical path, so the containment check
+// alone would pass while the actual write landed on the symlink's target.
+func TestWriteRefusesSymlinkEscape(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	deps := seedBlocks(t)
+	link := filepath.Join(deps.RepoDir, "link.txt")
+	if err := os.Symlink(outsideFile, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	body, _ := json.Marshal(map[string]any{"path": "link.txt", "content": "pwned"})
+	req := httptest.NewRequest(http.MethodPost, "/write", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Write(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatalf("read outside file: %v", err)
+	}
+	if string(got) != "original" {
+		t.Fatalf("symlink target was written: %q", got)
+	}
+}
+
+// Same escape, via /edit.
+func TestEditRefusesSymlinkEscape(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	deps := seedBlocks(t)
+	link := filepath.Join(deps.RepoDir, "link.txt")
+	if err := os.Symlink(outsideFile, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	newString := "pwned"
+	body, _ := json.Marshal(map[string]any{"path": "link.txt", "old_string": "original", "new_string": newString})
+	req := httptest.NewRequest(http.MethodPost, "/edit", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Edit(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatalf("read outside file: %v", err)
+	}
+	if string(got) != "original" {
+		t.Fatalf("symlink target was edited: %q", got)
+	}
+}
+
 // Unlink already marks a deleted path touched so a pre-baseline-arm delete
 // isn't folded into the dirty baseline as boot dirt (see
 // BranchStatusMonitor.MarkUserTouched). A rename deletes `from` the same way,
