@@ -81,6 +81,8 @@ interface Minted {
   id: string;
   key: string;
   at: number;
+  /** Which org this was minted for — switching orgs must not leak it. */
+  orgId: string;
 }
 
 /**
@@ -374,11 +376,13 @@ function OrgConnectContent() {
    * The keys list below is the only record of what still exists, so a key
    * minted here disappears from the snippet as soon as it is revoked there. A
    * list snapshot older than the mint can't prove a revocation, so it hides
-   * nothing.
+   * nothing. The org frame stays mounted across an org switch (see
+   * `routes/orgs/route.tsx`), so a key minted for a previous org must never
+   * surface here just because its org's key list hasn't loaded yet.
    */
   const liveKey = (client: ConnectClient): string | null => {
     const minted = newKeys[client];
-    if (!minted) return null;
+    if (!minted || minted.orgId !== org.id) return null;
     if (!orgKeys || keysUpdatedAt < minted.at) return minted.key;
     return orgKeys.some((k) => k.id === minted.id) ? minted.key : null;
   };
@@ -399,7 +403,12 @@ function OrgConnectContent() {
         onSuccess: (key) => {
           setNewKeys((prev) => ({
             ...prev,
-            [client]: { id: key.id, key: key.key, at: Date.now() },
+            [client]: {
+              id: key.id,
+              key: key.key,
+              at: Date.now(),
+              orgId: org.id,
+            },
           }));
           toast.success(t("settings.connectClients.keyCreated"));
         },
