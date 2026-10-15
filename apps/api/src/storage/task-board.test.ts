@@ -37,6 +37,33 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(false);
   });
 
+  // An experiment's implementation card names its repository by id only.
+  it("does NOT advance a task bound only by repositoryId on finish with no PR", () => {
+    expect(
+      shouldAdvanceToReview(
+        {
+          status: "in_progress",
+          repositoryId: "repo_1",
+          threads: [thread("completed")],
+        },
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  it("advances a task bound only by repositoryId once a PR is linked", () => {
+    expect(
+      shouldAdvanceToReview(
+        {
+          status: "in_progress",
+          repositoryId: "repo_1",
+          threads: [thread("completed")],
+        },
+        true,
+      ),
+    ).toBe(true);
+  });
+
   // Backstop for missed PR-open detection: a PR exists, so finishing means there is one to review.
   it("advances a repo-backed task on finish once a PR is linked", () => {
     expect(

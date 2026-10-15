@@ -42,12 +42,15 @@ describe("advanceFromProgress (real Postgres)", () => {
   let threads: SqlThreadStorage;
 
   /** A card In Progress with one finished, message-carrying run linked. */
-  const cardWithFinishedRun = async (title: string, source?: "jira") => {
+  const cardWithFinishedRun = async (
+    title: string,
+    opts: { source?: "jira"; repositoryId?: string } = {},
+  ) => {
     const task = await taskBoard.create({
       organizationId: ORG,
       title,
       status: "in_progress",
-      ...(source ? { source } : {}),
+      ...opts,
       by: USER,
     });
     const thread = await threads.create({
@@ -239,6 +242,31 @@ describe("advanceFromProgress (real Postgres)", () => {
     expect(await stampsInto(task.id, "in_review")).toBe(1);
   });
 
+  /** An experiment's implementation card carries only the repository row's id;
+   *  read as repo-less it went to QA with its sandbox-opened PR unlinked. */
+  it("holds a card bound only by repositoryId In Progress until a PR is linked", async () => {
+    const repository = await database.db
+      .insertInto("repositories")
+      .values({
+        organization_id: ORG,
+        provider: "github",
+        host: "github.com",
+        path: "acme/storefront",
+        web_url: "https://github.com/acme/storefront",
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    const { task, thread } = await cardWithFinishedRun("repositoryId only", {
+      repositoryId: repository.id,
+    });
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+    const held = await taskBoard.getById(task.id, ORG);
+    expect(held?.repo).toBeNull();
+    expect(held?.status).toBe("in_progress");
+    expect(await stampsInto(task.id, "qa")).toBe(0);
+  });
+
   /**
    * The duplicate-stamp bug, re-encoded against the column that replaced the
    * activity row. Re-stamping an OPEN cycle moves its boundary forward and
@@ -319,7 +347,9 @@ describe("advanceFromProgress (real Postgres)", () => {
    * closed, and unassigned the agent.
    */
   it("never advances an item the board does not manage, PR or not", async () => {
-    const { task, thread } = await cardWithFinishedRun("jira anchor", "jira");
+    const { task, thread } = await cardWithFinishedRun("jira anchor", {
+      source: "jira",
+    });
     await taskBoard.linkPr({
       taskBoardItemId: task.id,
       organizationId: ORG,
@@ -342,7 +372,7 @@ describe("advanceFromProgress (real Postgres)", () => {
 
   it("boardManagedIds keeps ordinary cards and drops sourced anchors", async () => {
     const card = await cardWithFinishedRun("ordinary");
-    const anchor = await cardWithFinishedRun("anchored", "jira");
+    const anchor = await cardWithFinishedRun("anchored", { source: "jira" });
     expect(
       await taskBoard.boardManagedIds([anchor.task.id, card.task.id], ORG),
     ).toEqual([card.task.id]);
