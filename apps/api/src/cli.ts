@@ -290,7 +290,7 @@ if (command === "auth") {
   }
   if (sub === "logout") {
     const { logoutCommand } = await import("./cli/commands/auth/logout");
-    const code = await logoutCommand({ dataDir });
+    const code = await logoutCommand({ dataDir, target: values.target });
     process.exit(code);
   }
   console.error(`Usage: decocms auth <login|whoami|token|logout>`);
