@@ -95,6 +95,12 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
     }
   }
 
+  // The controller's default Freestyle image is tagged from the sandbox
+  // version it bundles, so a new image only reaches it through a new release.
+  if (manifests.has(SANDBOX_MANIFEST)) {
+    manifests.add(SANDBOX_CONTROLLER_MANIFEST);
+  }
+
   return [...manifests].sort();
 }
 

@@ -47,8 +47,11 @@ RUN apt-get update \
   && node --version \
   && npm --version \
   && rm -rf /var/lib/apt/lists/* \
+  # Not `-y`: that runs the installer's shell setup, which executes deno, and
+  # the arm64 build's QEMU dies on it ("Illegal instruction"). The symlink
+  # below puts deno on PATH.
   && curl -fsSL https://deno.land/install.sh \
-       | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
+       | DENO_INSTALL=/opt/deno sh -s -- --no-modify-path "${DENO_VERSION}" \
   && ln -s /opt/deno/bin/deno /usr/local/bin/deno \
   # Node 26 no longer ships Corepack in its dist.
   && (command -v corepack >/dev/null 2>&1 \

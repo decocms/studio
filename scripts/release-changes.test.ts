@@ -75,6 +75,7 @@ describe("release change classification", () => {
       releaseManifestCandidates(["packages/harness-runner/main.ts"]),
     ).toEqual([
       "packages/harness-runner/package.json",
+      "packages/sandbox-controller/package.json",
       "packages/sandbox/package.json",
     ]);
   });
@@ -91,9 +92,15 @@ describe("release change classification", () => {
       "packages/sandbox/package.json",
       "packages/shared/package.json",
     ]);
+  });
+
+  test("a new sandbox image also bumps the controller that defaults to it", () => {
     expect(
-      releaseManifestCandidates(["packages/sandbox/daemon-go/main.go"]),
-    ).toEqual(["packages/sandbox/package.json"]);
+      releaseManifestCandidates(["packages/sandbox/image/Dockerfile"]),
+    ).toEqual([
+      "packages/sandbox-controller/package.json",
+      "packages/sandbox/package.json",
+    ]);
   });
 
   test("maps release inputs to sorted, deduplicated manifests", () => {
