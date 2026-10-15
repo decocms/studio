@@ -205,6 +205,37 @@ describe("treeWriteEntries", () => {
       treeWriteEntries([{ path: "Gone.json", copyFromRef: "r" }], uploads),
     ).toThrow(/does not exist at r/);
   });
+
+  it("rejects an empty path", () => {
+    expect(() =>
+      treeWriteEntries([{ path: "", content: "{}" }], uploads),
+    ).toThrow(/cannot be empty/);
+  });
+
+  it("rejects a path exceeding maximum length", () => {
+    const longPath = "a".repeat(1025);
+    expect(() =>
+      treeWriteEntries([{ path: longPath, content: "{}" }], uploads),
+    ).toThrow(/exceeds maximum length/);
+  });
+
+  it("rejects a path containing null bytes", () => {
+    expect(() =>
+      treeWriteEntries([{ path: "a\0b.json", content: "{}" }], uploads),
+    ).toThrow(/cannot contain null bytes/);
+  });
+
+  it("rejects reserved Git file names", () => {
+    for (const reserved of [".gitmodules"]) {
+      expect(() =>
+        treeWriteEntries([{ path: reserved, content: "{}" }], uploads),
+      ).toThrow(/reserved Git file name/);
+
+      expect(() =>
+        treeWriteEntries([{ path: `dir/${reserved}`, content: "{}" }], uploads),
+      ).toThrow(/reserved Git file name/);
+    }
+  });
 });
 
 describe("mapGithubPull", () => {
