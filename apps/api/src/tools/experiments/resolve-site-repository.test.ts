@@ -117,11 +117,10 @@ describe("resolveRepositoryForProject", () => {
       byId: { "repo-1": "repo-1" },
     });
 
-    await expect(
-      resolveRepositoryForProject(ctx, "org-1", {
-        metadata: { repository: { ...repository, repositoryId: "repo-1" } },
-      }),
-    ).resolves.toEqual({ id: "repo-1" });
+    const resolved = await resolveRepositoryForProject(ctx, "org-1", {
+      metadata: { repository: { ...repository, repositoryId: "repo-1" } },
+    });
+    expect(resolved?.id).toBe("repo-1");
   });
 
   it("returns null for a project with no repository binding", async () => {
