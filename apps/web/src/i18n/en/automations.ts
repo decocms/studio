@@ -165,6 +165,7 @@ export const automations = {
   "automations.triggerCard.cancel": "Cancel",
   "automations.triggerCard.confirmRemoveStarter":
     "Are you sure you want to remove this starter?",
+  "automations.triggerCard.editSchedule": "Edit schedule",
   "automations.triggerCard.every": "Every",
   "automations.triggerCard.failedToRemoveStarter": "Failed to remove starter",
   "automations.triggerCard.failedToUpdateStarter": "Failed to update starter",

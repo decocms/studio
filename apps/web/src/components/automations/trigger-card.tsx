@@ -260,6 +260,7 @@ export function TriggerCard({
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={t("automations.triggerCard.editSchedule")}
               onClick={() => {
                 setEditValue(trigger.cron_expression ?? "");
                 setIsEditing(true);
@@ -274,6 +275,7 @@ export function TriggerCard({
               size="sm"
               className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("automations.triggerCard.rotateToken")}
+              aria-label={t("automations.triggerCard.rotateToken")}
               onClick={() => setConfirmRotate(true)}
             >
               <RefreshCw01 size={13} className="text-muted-foreground" />
@@ -284,6 +286,7 @@ export function TriggerCard({
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={t("automations.triggerCard.removeStarter")}
               onClick={() => setConfirmDelete(true)}
             >
               <XClose size={13} className="text-muted-foreground" />

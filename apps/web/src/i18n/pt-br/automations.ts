@@ -173,6 +173,7 @@ export const automations = {
   "automations.triggerCard.cancel": "Cancelar",
   "automations.triggerCard.confirmRemoveStarter":
     "Tem certeza de que deseja remover este disparador?",
+  "automations.triggerCard.editSchedule": "Editar agendamento",
   "automations.triggerCard.every": "A cada",
   "automations.triggerCard.failedToRemoveStarter":
     "Falha ao remover disparador",
