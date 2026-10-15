@@ -164,7 +164,12 @@ async function fetchScopesFromMCP(client: Client): Promise<string[] | null> {
       if (textContent && "text" in textContent) {
         const config = JSON.parse(String(textContent.text));
         if (Array.isArray(config.scopes) && config.scopes.length > 0) {
-          return config.scopes as string[];
+          const scopes = config.scopes.filter(
+            (s: unknown): s is string => typeof s === "string",
+          );
+          if (scopes.length > 0) {
+            return scopes;
+          }
         }
       }
     }
