@@ -323,6 +323,7 @@ import type { KVStorage } from "@/storage/kv";
 import type { InterestsStorage } from "@/storage/interests";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import type { ClaudeSubscriptionStorage } from "@/storage/claude-subscriptions";
+import type { OrgSharedPlanStorage } from "@/storage/org-shared-plans";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
@@ -376,6 +377,7 @@ export interface StudioStorage {
   oauthPkceStates: OAuthPkceStateStorage;
   claudeSubscriptions: ClaudeSubscriptionStorage;
   githubCopilotSubscriptions: ClaudeSubscriptionStorage;
+  orgSharedPlans: OrgSharedPlanStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
   orgSsoConfig: OrgSsoConfigStorage;

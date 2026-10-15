@@ -562,7 +562,7 @@ async function validate(
       if (!(err instanceof TierUnavailableError) || !sandboxOnlyChats) {
         throw err;
       }
-      const planId = await userPlanCredentialId(ctx, userId);
+      const planId = await userPlanCredentialId(ctx, organization.id, userId);
       if (!planId) throw err;
       return claudeSubscriptionChatModel(planId);
     },

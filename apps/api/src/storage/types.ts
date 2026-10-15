@@ -768,6 +768,14 @@ export interface BetterAuthOrganizationTable {
   createdAt: ColumnType<Date, string, string>;
 }
 
+/** A member's linked plan shared with their org (migration 251). */
+export interface OrgSharedPlanTable {
+  organization_id: string;
+  provider_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
 /**
  * Better Auth member table (organization membership)
  */
@@ -2500,6 +2508,7 @@ export interface Database {
   oauth_pkce_states: OAuthPkceStateTable;
   claude_subscriptions: ClaudeSubscriptionTable;
   github_copilot_subscriptions: ClaudeSubscriptionTable;
+  org_shared_plans: OrgSharedPlanTable;
 
   // Automations tables
   automations: AutomationTable;

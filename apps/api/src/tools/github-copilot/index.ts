@@ -15,12 +15,37 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
+  type StudioContext,
 } from "../../core/studio-context";
+import { GITHUB_COPILOT_PROVIDER_ID } from "../../harnesses/claude-code-env";
 
 const statusSchema = z.object({
   connected: z.boolean(),
   linkedAt: z.string().nullable(),
+  orgShare: z
+    .object({
+      sharedBy: z.object({ id: z.string(), name: z.string().nullable() }),
+      sharedByMe: z.boolean(),
+    })
+    .nullable()
+    .describe("The plan shared with this org, which every run here uses first"),
 });
+
+/** The org's shared Copilot plan: the oldest share, the one dispatch uses. */
+async function orgShare(
+  ctx: StudioContext,
+  organizationId: string,
+  userId: string,
+) {
+  const plans = await ctx.storage.orgSharedPlans.list(organizationId);
+  const plan = plans.find((p) => p.providerId === GITHUB_COPILOT_PROVIDER_ID);
+  return plan
+    ? {
+        sharedBy: { id: plan.userId, name: plan.userName },
+        sharedByMe: plan.userId === userId,
+      }
+    : null;
+}
 
 /** Classic PATs are refused by Copilot (GitHub's Copilot CLI auth docs). */
 const CLASSIC_PAT_PREFIX = "ghp_";
@@ -59,7 +84,7 @@ export const GITHUB_COPILOT_CONNECT = defineTool({
   outputSchema: statusSchema,
   handler: async (input, ctx) => {
     requireAuth(ctx);
-    requireOrganization(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
@@ -68,7 +93,11 @@ export const GITHUB_COPILOT_CONNECT = defineTool({
       userId,
       accessToken: normalizeCopilotToken(input.token),
     });
-    return { connected: true, linkedAt };
+    return {
+      connected: true,
+      linkedAt,
+      orgShare: await orgShare(ctx, organization.id, userId),
+    };
   },
 });
 
@@ -79,13 +108,17 @@ export const GITHUB_COPILOT_STATUS = defineTool({
   outputSchema: statusSchema,
   handler: async (_input, ctx) => {
     requireAuth(ctx);
-    requireOrganization(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
 
     const found = await ctx.storage.githubCopilotSubscriptions.find(userId);
-    return { connected: found !== null, linkedAt: found?.linkedAt ?? null };
+    return {
+      connected: found !== null,
+      linkedAt: found?.linkedAt ?? null,
+      orgShare: await orgShare(ctx, organization.id, userId),
+    };
   },
 });
 
@@ -96,12 +129,59 @@ export const GITHUB_COPILOT_DISCONNECT = defineTool({
   outputSchema: statusSchema,
   handler: async (_input, ctx) => {
     requireAuth(ctx);
-    requireOrganization(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
 
     await ctx.storage.githubCopilotSubscriptions.delete(userId);
-    return { connected: false, linkedAt: null };
+    // The share points at this token; without it the share means nothing.
+    await ctx.storage.orgSharedPlans.unshareEverywhere(
+      GITHUB_COPILOT_PROVIDER_ID,
+      userId,
+    );
+    return {
+      connected: false,
+      linkedAt: null,
+      orgShare: await orgShare(ctx, organization.id, userId),
+    };
+  },
+});
+
+export const GITHUB_COPILOT_SHARE = defineTool({
+  name: "GITHUB_COPILOT_SHARE",
+  description:
+    "Share (or stop sharing) the caller's linked GitHub Copilot plan with " +
+    "this organization. While shared, every sandbox run in the org uses it " +
+    "first, ahead of members' own plans and the org's model key.",
+  inputSchema: z.object({ shared: z.boolean() }),
+  outputSchema: statusSchema,
+  handler: async (input, ctx) => {
+    requireAuth(ctx);
+    const organization = requireOrganization(ctx);
+    await ctx.access.check();
+    const userId = getUserId(ctx);
+    if (!userId) throw new Error("Unable to determine user ID");
+
+    const found = await ctx.storage.githubCopilotSubscriptions.find(userId);
+    if (input.shared) {
+      if (!found) throw new Error("Link your GitHub Copilot plan first");
+      await ctx.storage.orgSharedPlans.share(
+        organization.id,
+        GITHUB_COPILOT_PROVIDER_ID,
+        userId,
+      );
+    } else {
+      await ctx.storage.orgSharedPlans.unshare(
+        organization.id,
+        GITHUB_COPILOT_PROVIDER_ID,
+        userId,
+      );
+    }
+    return {
+      connected: found !== null,
+      linkedAt: found?.linkedAt ?? null,
+      orgShare: await orgShare(ctx, organization.id, userId),
+    };
   },
 });

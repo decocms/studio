@@ -199,6 +199,7 @@ const ALL_TOOL_NAMES = [
   "GITHUB_COPILOT_CONNECT",
   "GITHUB_COPILOT_STATUS",
   "GITHUB_COPILOT_DISCONNECT",
+  "GITHUB_COPILOT_SHARE",
 
   // Secrets vault tools
   "SECRET_CREATE",
@@ -1022,6 +1023,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "GITHUB_COPILOT_DISCONNECT",
     description: "Unlink your GitHub Copilot plan",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_SHARE",
+    description: "Share your GitHub Copilot plan with the organization",
     category: "AI Providers",
   },
   {
@@ -2039,6 +2045,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GITHUB_COPILOT_CONNECT",
       "GITHUB_COPILOT_STATUS",
       "GITHUB_COPILOT_DISCONNECT",
+      "GITHUB_COPILOT_SHARE",
     ],
   },
   // Organization (tags moved here from Developer)

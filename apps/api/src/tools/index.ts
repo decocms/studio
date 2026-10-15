@@ -265,6 +265,7 @@ export const CORE_TOOLS = [
   GithubCopilotTools.GITHUB_COPILOT_CONNECT,
   GithubCopilotTools.GITHUB_COPILOT_STATUS,
   GithubCopilotTools.GITHUB_COPILOT_DISCONNECT,
+  GithubCopilotTools.GITHUB_COPILOT_SHARE,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,

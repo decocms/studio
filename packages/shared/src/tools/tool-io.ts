@@ -7296,15 +7296,47 @@ export interface StudioToolIO {
   };
   GITHUB_COPILOT_CONNECT: {
     input: { token: string };
-    output: { connected: boolean; linkedAt: string | null };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
   };
   GITHUB_COPILOT_STATUS: {
     input: { [x: string]: never };
-    output: { connected: boolean; linkedAt: string | null };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
   };
   GITHUB_COPILOT_DISCONNECT: {
     input: { [x: string]: never };
-    output: { connected: boolean; linkedAt: string | null };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
+  };
+  GITHUB_COPILOT_SHARE: {
+    input: { shared: boolean };
+    output: {
+      connected: boolean;
+      linkedAt: string | null;
+      orgShare: {
+        sharedBy: { id: string; name: string | null };
+        sharedByMe: boolean;
+      } | null;
+    };
   };
   SECRET_CREATE: {
     input: {

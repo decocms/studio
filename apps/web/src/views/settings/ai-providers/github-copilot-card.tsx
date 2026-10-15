@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -48,7 +49,15 @@ export function GithubCopilotCard() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const share = useMutation({
+    mutationFn: (shared: boolean) =>
+      studio.call("GITHUB_COPILOT_SHARE", { shared }),
+    onSuccess: invalidate,
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const connected = status.data?.connected === true;
+  const orgShare = status.data?.orgShare ?? null;
 
   return (
     <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
@@ -73,7 +82,30 @@ export function GithubCopilotCard() {
           </Button>
         ) : null}
       </div>
-      {connected ? null : (
+      {orgShare && !orgShare.sharedByMe ? (
+        <p className="text-sm text-muted-foreground">
+          {t("settings.githubCopilot.sharedBy", {
+            name: orgShare.sharedBy.name ?? "",
+          })}
+        </p>
+      ) : null}
+      {connected ? (
+        <label className="flex items-start gap-3">
+          <Switch
+            checked={orgShare?.sharedByMe === true}
+            disabled={share.isPending}
+            onCheckedChange={(checked) => share.mutate(checked)}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium">
+              {t("settings.githubCopilot.shareTitle")}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {t("settings.githubCopilot.shareDescription")}
+            </span>
+          </span>
+        </label>
+      ) : (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
             <a

@@ -553,6 +553,7 @@ import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { ClaudeSubscriptionStorage } from "@/storage/claude-subscriptions";
+import { OrgSharedPlanStorage } from "@/storage/org-shared-plans";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import type { ProviderKeyCache } from "@/storage/provider-key-cache";
@@ -1495,6 +1496,7 @@ export async function createStudioContextFactory(
       vault,
       "github_copilot_subscriptions",
     ),
+    orgSharedPlans: new OrgSharedPlanStorage(config.db),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),

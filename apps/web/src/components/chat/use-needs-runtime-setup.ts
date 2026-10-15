@@ -48,6 +48,7 @@ export function useNeedsRuntimeSetup(): RuntimeSetupNeed {
     canRunClaudeCode:
       hasClaudeCodeKey ||
       subscription.data?.connected !== false ||
-      copilot.data?.connected !== false,
+      copilot.data?.connected !== false ||
+      Boolean(copilot.data?.orgShare),
   });
 }

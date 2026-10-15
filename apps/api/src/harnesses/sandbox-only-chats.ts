@@ -5,10 +5,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import {
-  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
-  GITHUB_COPILOT_PROVIDER_ID,
-} from "@/harnesses/claude-code-env";
+import { resolvePlanCredential } from "@/harnesses/plan-credential";
 import { agentSandboxEnabled } from "@/settings";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -52,8 +49,8 @@ export class ClaudeCodeProviderRequiredError extends Error {
 
 /**
  * Whether a claude-code run has any credential to start on: an org key of a
- * provider it supports, or the user's own unexpired Claude subscription or
- * GitHub Copilot token (which outrank the org key at dispatch).
+ * provider it supports, or a Claude or Copilot plan — shared with the org or
+ * the user's own — which outranks the org key at dispatch.
  */
 export async function hasClaudeCodeCredential(
   ctx: StudioContext,
@@ -62,32 +59,18 @@ export async function hasClaudeCodeCredential(
 ): Promise<boolean> {
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
   if (keys.some((key) => supportsClaudeCode(key.providerId))) return true;
-  return (await userPlanCredentialId(ctx, userId)) !== null;
+  return (await userPlanCredentialId(ctx, organizationId, userId)) !== null;
 }
 
-/** The user's own plan a run would bill, in dispatch's order, or null. */
+/** The plan a run would bill, in dispatch's order, or null. */
 export async function userPlanCredentialId(
   ctx: StudioContext,
+  organizationId: string,
   userId: string,
 ): Promise<string | null> {
-  if (await hasLiveClaudeSubscription(ctx, userId)) {
-    return CLAUDE_SUBSCRIPTION_PROVIDER_ID;
-  }
-  return (await ctx.storage.githubCopilotSubscriptions.find(userId))
-    ? GITHUB_COPILOT_PROVIDER_ID
-    : null;
-}
-
-/** Whether the user linked a Claude subscription that has not expired. */
-async function hasLiveClaudeSubscription(
-  ctx: StudioContext,
-  userId: string,
-): Promise<boolean> {
-  const subscription = await ctx.storage.claudeSubscriptions.find(userId);
   return (
-    subscription !== null &&
-    (subscription.expiresAt === null ||
-      new Date(subscription.expiresAt).getTime() > Date.now())
+    (await resolvePlanCredential(ctx, organizationId, userId))?.providerId ??
+    null
   );
 }
 

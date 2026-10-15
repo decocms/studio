@@ -642,6 +642,11 @@ export const settings = {
   "settings.githubCopilot.disconnected": "GitHub Copilot unlinked",
   "settings.githubCopilot.howTo":
     "Create a fine-grained GitHub token with the Copilot Requests permission",
+  "settings.githubCopilot.sharedBy":
+    "Every run in this organization uses {name}'s shared GitHub Copilot plan.",
+  "settings.githubCopilot.shareTitle": "Share with the organization",
+  "settings.githubCopilot.shareDescription":
+    "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
   "settings.githubCopilot.title": "Your GitHub Copilot plan",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
   "settings.decoCreditsHero.add": "Add",

@@ -45,11 +45,10 @@ import { NoResultError } from "kysely";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import {
-  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
-  GITHUB_COPILOT_PROVIDER_ID,
   isUserPlanCredential,
   TASK_RUN_INSTRUCTIONS_KEY,
 } from "@/harnesses/claude-code-env";
+import { resolvePlanCredential } from "@/harnesses/plan-credential";
 import {
   harnessRunsInSandbox,
   isRunSuperseded,
@@ -1476,36 +1475,11 @@ async function prepareRun(
         stage: PREPARE_RUN_STATUS_STAGES[2],
       });
     }
-    // The dispatching user's own Claude subscription, when they linked one and
-    // it has not expired. It outranks the org's thinking-slot key for a
-    // sandbox-hosted run: they asked for their plan to pay. Expired or absent
-    // falls back to the org credential rather than failing the run — and so
-    // does a vault decrypt failure (e.g. a rotated encryption key), which
-    // `findLiveToken` would otherwise throw and take the whole dispatch down
-    // with it.
-    // A linked GitHub Copilot plan is the same kind of choice, ranked after
-    // the Claude plan so linking Copilot never changes who pays for a user
-    // who already had both.
-    const findUserPlanToken = (
-      storage: typeof ctx.storage.claudeSubscriptions,
-      providerId: string,
-    ) =>
-      storage
-        .findLiveToken(input.userId)
-        .then((apiKey) => (apiKey ? { providerId, apiKey } : null))
-        .catch((err) => {
-          console.warn(`[dispatch] ${providerId} lookup failed`, err);
-          return null;
-        });
+    // A Claude or Copilot plan — shared with the org, or the dispatcher's
+    // own — outranks the org's thinking-slot key for a sandbox-hosted run.
+    // Absent, expired or undecryptable falls back to the org credential.
     const userPlanCredential = sandboxHosted
-      ? ((await findUserPlanToken(
-          ctx.storage.claudeSubscriptions,
-          CLAUDE_SUBSCRIPTION_PROVIDER_ID,
-        )) ??
-        (await findUserPlanToken(
-          ctx.storage.githubCopilotSubscriptions,
-          GITHUB_COPILOT_PROVIDER_ID,
-        )))
+      ? await resolvePlanCredential(ctx, input.organizationId, input.userId)
       : null;
 
     const dispatchHarnessChunks =
