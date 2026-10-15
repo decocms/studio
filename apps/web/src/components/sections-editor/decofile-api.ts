@@ -44,6 +44,21 @@ export interface DecofileDraft {
 export interface DecofilePatchBody {
   set?: Record<string, unknown>;
   delete?: string[];
+  /** Per block: fingerprint of the version the edit was made against, `null` for none. */
+  expect?: Record<string, string | null>;
+}
+
+/** The branch's copy of `blocks` changed after the edit was made; nothing was written. */
+export class BlockConflictError extends Error {
+  constructor(
+    readonly blocks: string[],
+    message: string,
+    /** JSON pointers of the values the edit and the stored block both changed, when known. */
+    readonly fields: string[] = [],
+  ) {
+    super(message);
+    this.name = "BlockConflictError";
+  }
 }
 
 function decofileCacheKey(params: DecofileScopeParams): string {
@@ -170,6 +185,20 @@ export async function patchDecofile(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(patch),
   });
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as {
+      code?: string;
+      blocks?: string[];
+      error?: string;
+    };
+    if (body.code === "block-conflict") {
+      throw new BlockConflictError(
+        body.blocks ?? [],
+        body.error ?? "Block changed",
+      );
+    }
+    throw new Error(body.error ?? `Save failed (${res.status})`);
+  }
   if (!res.ok) return throwResponseError(res, "Save");
   const body = (await res.json()) as Partial<DecofileDraft> &
     Pick<DecofileDraft, "version" | "token">;

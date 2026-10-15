@@ -339,6 +339,12 @@ export interface ConnectionStoragePort {
     id: string,
     data: Partial<ConnectionEntity>,
   ): Promise<ConnectionEntity>;
+  /** The org's project or connection a URL slug (current or old) names. */
+  resolveUrlSlug(
+    organizationId: string,
+    slug: string,
+    kind: "project" | "connection",
+  ): Promise<{ id: string; canonicalSlug: string } | null>;
   delete(id: string): Promise<void>;
   testConnection(
     id: string,

@@ -4,8 +4,10 @@
 process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { DBOS } from "@dbos-inc/dbos-sdk";
 import { sql } from "kysely";
 import { auth } from "../../auth";
+import type { FireAutomationOutcome } from "../../automations/dbos-workflow";
 import type { StudioDatabase } from "../../database";
 import {
   closeTestPgDatabase,
@@ -1259,37 +1261,35 @@ describe("Task Board Import Route", () => {
   });
 
   it("a Super Agent delegation the task quota refuses reports quota_blocked for its card", async () => {
-    const settings = getSettings();
-    // With no free executions, the claim at dispatch throws TaskQuotaError.
-    setGlobalSettings({
-      ...settings,
-      taskQuotaEnforced: true,
-      freeTaskExecutions: 0,
-    });
-    try {
-      const res = await app.fetch(
-        post("org_board", "svc-secret", {
-          items: [
-            { title: "Adicionar sinônimos à busca", assigneeId: "super-agent" },
-            { title: "Tarefa comum" },
-          ],
-        }),
-      );
-      const blocked = await cardTitled("Adicionar sinônimos à busca");
-      expect(await res.json()).toEqual({
-        created: 2,
-        updated: 0,
-        delegated: 0,
-        quota_blocked: 1,
+    // The delegation is a fire of the Implementer, and DBOS is not launched
+    // here: the fire answers with the refusal its dispatch claim returns.
+    const refused: FireAutomationOutcome = {
+      skipped: "rejected",
+      error: { message: "out of runs", quotaReason: "trial_exhausted" },
+    };
+    vi.spyOn(DBOS, "startWorkflow").mockReturnValue(async () => ({
+      getResult: async () => refused,
+    }));
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
         items: [
-          entry(0, "quota_blocked", blocked),
-          entry(1, "created", await cardTitled("Tarefa comum")),
+          { title: "Adicionar sinônimos à busca", assigneeId: "super-agent" },
+          { title: "Tarefa comum" },
         ],
-      });
-      // Unassigned, so the card does not look delegated with no run behind it.
-      expect(blocked.assignee_id).toBeNull();
-    } finally {
-      setGlobalSettings(settings);
-    }
+      }),
+    );
+    const blocked = await cardTitled("Adicionar sinônimos à busca");
+    expect(await res.json()).toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 0,
+      quota_blocked: 1,
+      items: [
+        entry(0, "quota_blocked", blocked),
+        entry(1, "created", await cardTitled("Tarefa comum")),
+      ],
+    });
+    // Unassigned, so the card does not look delegated with no run behind it.
+    expect(blocked.assignee_id).toBeNull();
   });
 });

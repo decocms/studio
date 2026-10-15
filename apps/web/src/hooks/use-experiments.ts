@@ -4,6 +4,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
 import { useProjectContext } from "@/sdk";
@@ -44,6 +45,63 @@ export function useExperiments(site: string) {
   });
 }
 
+/** LOCAL DEV ONLY — writes a draft's manifest entry to a local site's
+ *  `.deco/TestesAB.json`, so its dev server can preview it via `?__ab=`
+ *  before anything is created. No-ops server-side (returns `synced: false`)
+ *  unless the API is run with `AB_TESTING_LOCAL_MANIFEST_PATH` set. */
+export function useSyncExperimentPreviewLocal(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (input: {
+      key: string;
+      variants: { id: string; weight: number }[];
+    }) => {
+      return await studio.call("EXPERIMENT_PREVIEW_SYNC_LOCAL", {
+        site,
+        ...input,
+      });
+    },
+  });
+}
+
+/** LOCAL DEV ONLY — appends the arms to the local site's stylesheet as rules
+ *  scoped by the SDK's `data-ab-<key>` root attribute, right in the create
+ *  flow. No-ops (`implemented: false`) unless the API is run with
+ *  `AB_TESTING_LOCAL_SITE_PATH` set, or when the arms need more than CSS. */
+export function useImplementExperimentLocal(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (input: {
+      key: string;
+      variants: {
+        id: string;
+        role?: "control" | "treatment" | null;
+        description?: string | null;
+      }[];
+    }) => {
+      return await studio.call("EXPERIMENT_IMPLEMENT_LOCAL", {
+        site,
+        ...input,
+      });
+    },
+    onSuccess: (result) => {
+      if (result.implemented) {
+        toast.success(`Wired into ${result.cssFile} locally.`);
+      } else {
+        toast.warning(
+          `Didn't implement it automatically (${result.reason ?? "unknown reason"}) — the experiment was still created.`,
+        );
+      }
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to implement this experiment locally",
+      ),
+  });
+}
+
 export function useCreateExperiment(site: string) {
   const queryClient = useQueryClient();
   const { locator } = useProjectContext();
@@ -64,6 +122,88 @@ export function useCreateExperiment(site: string) {
       toast.error(
         error instanceof Error ? error.message : "Failed to create experiment",
       ),
+  });
+}
+
+export type SuggestedExperiment = StudioToolOutput<"EXPERIMENT_SUGGEST">;
+
+/** Turns a plain-language prompt into a proposed experiment (key, name,
+ *  hypothesis, variants) — read-only, nothing is persisted until the caller
+ *  reviews the result and calls `useCreateExperiment`. */
+export function useSuggestExperiment(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (prompt: string) => {
+      return await studio.call("EXPERIMENT_SUGGEST", { site, prompt });
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : "Failed to suggest experiment",
+      ),
+  });
+}
+
+/** Delegates the frontend implementation to the Super Agent, which opens a PR.
+ *
+ *  `openCard` picks what happens next: the explicit menu action jumps to the
+ *  card's chat, while the create flow stays on the experiment it just made —
+ *  yanking the operator to the board mid-create loses the thing they built. */
+export function useImplementExperiment(
+  site: string,
+  { openCard = true }: { openCard?: boolean } = {},
+) {
+  const studio = useStudioTools();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { org, locator } = useProjectContext();
+  return useMutation({
+    mutationFn: async (key: string) => {
+      return await studio.call("EXPERIMENT_IMPLEMENT", { site, key });
+    },
+    onSuccess: (result) => {
+      // The experiment now points at a card; the detail screen follows its PR.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.experiments(locator, site),
+      });
+      // No key means no card address to open — say where it went instead.
+      if (!openCard || !result.taskKey) {
+        toast.success(
+          "Sent to the Super Agent — it's writing the code and will open a PR.",
+        );
+        return;
+      }
+      navigate({
+        to: "/$org/tasks/{-$taskKey}",
+        params: { org: org.slug, taskKey: result.taskKey },
+      });
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to start implementing this experiment",
+      ),
+  });
+}
+
+/**
+ * The whole "describe it and get a pull request" path in one call: create the
+ * experiment, then delegate its frontend to the Super Agent.
+ *
+ * Sequential, not parallel: `EXPERIMENT_IMPLEMENT` reads the experiment row the
+ * create writes. Delegation failing (no linked repository, quota) does NOT fail
+ * the call — the experiment exists either way, and the screen it lands on is
+ * where that state is explained.
+ */
+export function useCreateAndImplementExperiment(site: string) {
+  const create = useCreateExperiment(site);
+  const implement = useImplementExperiment(site, { openCard: false });
+  return useMutation({
+    mutationFn: async (input: CreateExperimentInput) => {
+      const experiment = await create.mutateAsync(input);
+      await implement.mutateAsync(experiment.key).catch(() => {});
+      return experiment;
+    },
   });
 }
 

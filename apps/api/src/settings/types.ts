@@ -48,8 +48,9 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
-  /** How long a Jira card must stay in a status before a rule runs on it
-   *  (`JIRA_SETTLE_SECONDS`, default 60). Shortened only by e2e. */
+  /** How long a Jira card must stay in a status before a trigger fires on it
+   *  (`JIRA_SETTLE_SECONDS`, default 20, as on the board). Shortened only by
+   *  e2e. */
   jiraSettleSeconds: number;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
@@ -203,6 +204,10 @@ export interface Settings {
    *  reviewer runs for every org on a timer, so it needs one way to stop it that
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
+  /** How long a card must stay in a column before a `board_column_transition`
+   *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
+   *  Shortened only by e2e. */
+  boardTransitionSettleSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap

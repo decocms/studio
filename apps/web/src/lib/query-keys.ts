@@ -69,9 +69,30 @@ export const KEYS = {
     locator: ProjectLocator,
     tool: string,
     org: string,
+    project: string,
     from: string,
     to: string,
-  ) => [locator, "task-board-analytics", tool, org, from, to] as const,
+  ) => [locator, "task-board-analytics", tool, org, project, from, to] as const,
+
+  // The cards behind one operation figure
+  taskBoardOperationTasks: (
+    locator: ProjectLocator,
+    org: string,
+    project: string,
+    from: string,
+    to: string,
+    drill: string,
+  ) =>
+    [
+      locator,
+      "task-board-analytics",
+      "TASK_BOARD_OPERATION_TASKS",
+      org,
+      project,
+      from,
+      to,
+      drill,
+    ] as const,
 
   // Admin thread analytics; `tick` bumps on each pushed thread status change.
   threadAnalyticsOrgs: (pathOrgSlug: string) =>
@@ -466,8 +487,6 @@ export const KEYS = {
   // Automations (scoped by organization, optionally by project)
   taskBoardPrompts: (organizationId: string) =>
     ["task-board-prompts", organizationId] as const,
-  taskBoardColumnAutomations: (organizationId: string) =>
-    ["task-board-column-automations", organizationId] as const,
   taskBoardSprints: (organizationId: string) =>
     ["task-board-sprints", organizationId] as const,
   automationsAll: (organizationId: string) =>
@@ -574,7 +593,8 @@ export const KEYS = {
 
   // Jira integration (Settings → Jira)
   jiraIntegration: (orgId: string) => ["jira-integration", orgId] as const,
-  jiraBoards: (orgId: string) => ["jira-boards", orgId] as const,
+  jiraBoards: (orgId: string, query: string) =>
+    ["jira-boards", orgId, query] as const,
   jiraBoardColumns: (orgId: string, boardId: string | null) =>
     ["jira-board-columns", orgId, boardId] as const,
   jiraAutomations: (orgId: string) => ["jira-automations", orgId] as const,
@@ -768,6 +788,9 @@ export const KEYS = {
   // Last content-protocol blocks revision and schema version a project saw.
   contentRevision: (cacheKey: string) =>
     ["content-revision", cacheKey] as const,
+  // Per block, the content-protocol version of the copy the editor holds.
+  contentVersions: (cacheKey: string) =>
+    ["content-versions", cacheKey] as const,
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,

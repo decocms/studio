@@ -4,6 +4,10 @@
  * Gets a single automation by ID, including its full configuration and triggers.
  */
 
+import { withBuiltinActive } from "../../automations/builtin";
+import { triggerFrom } from "../../automations/board-column-transition";
+import { RuleFromSchema, ruleFromColumns } from "../../jira/rule-from";
+import { AutomationTriggerTypeSchema } from "./trigger-schema";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -31,6 +35,8 @@ export const AUTOMATION_GET = defineTool({
         created_at: z.string(),
         updated_at: z.string(),
         virtual_mcp_id: z.string(),
+        /** Set on a built-in, which can only be turned on or off. */
+        system_key: z.string().nullable(),
         messages: z.unknown(),
         models: z.unknown(),
         tools: z.array(z.string()).nullable(),
@@ -39,13 +45,15 @@ export const AUTOMATION_GET = defineTool({
         triggers: z.array(
           z.object({
             id: z.string(),
-            type: z.enum(["cron", "event", "webhook"]),
+            type: AutomationTriggerTypeSchema,
             cron_expression: z.string().nullable(),
             connection_id: z.string().nullable(),
             event_type: z.string().nullable(),
             params: z.unknown().nullable(),
             last_run_at: z.string().nullable(),
             api_key_id: z.string().nullable(),
+            column_key: z.string().nullable(),
+            from: RuleFromSchema.nullable(),
             created_at: z.string(),
           }),
         ),
@@ -57,14 +65,16 @@ export const AUTOMATION_GET = defineTool({
     const organization = requireOrganization(ctx);
     await ctx.access.check();
 
-    const automation = await ctx.storage.automations.findById(
+    const found = await ctx.storage.automations.findById(
       input.id,
       organization.id,
     );
 
-    if (!automation) {
+    if (!found) {
       return { automation: null };
     }
+    const [automation] = await withBuiltinActive(ctx, organization.id, [found]);
+    if (!automation) return { automation: null };
 
     const triggers = await ctx.storage.automations.listTriggers(automation.id);
 
@@ -77,6 +87,7 @@ export const AUTOMATION_GET = defineTool({
         created_at: automation.created_at,
         updated_at: automation.updated_at,
         virtual_mcp_id: automation.virtual_mcp_id,
+        system_key: automation.system_key,
         messages: JSON.parse(automation.messages),
         models: JSON.parse(automation.models),
         tools: automation.tools ? JSON.parse(automation.tools) : null,
@@ -91,6 +102,13 @@ export const AUTOMATION_GET = defineTool({
           params: t.params ? JSON.parse(t.params) : null,
           last_run_at: t.last_run_at,
           api_key_id: t.api_key_id,
+          column_key: t.column_key,
+          from:
+            t.type === "board_column_transition"
+              ? triggerFrom(t)
+              : t.type === "jira_transition"
+                ? ruleFromColumns(t)
+                : null,
           created_at: t.created_at,
         })),
       },

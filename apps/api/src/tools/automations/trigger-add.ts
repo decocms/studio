@@ -1,13 +1,19 @@
 /**
  * AUTOMATION_TRIGGER_ADD Tool
  *
- * Adds a trigger (cron, event, or webhook) to an automation.
+ * Adds a trigger (cron, event, webhook, or board column transition) to an
+ * automation.
  * - Cron triggers: validated with croner, minimum interval enforced
  *   (`AUTOMATION_CRON_MIN_INTERVAL_MS`) to keep one tenant from flooding the
  *   DBOS scheduler and gate queues.
  * - Event triggers: fail-atomic — if TRIGGER_CONFIGURE call fails, trigger is not inserted
  * - Webhook triggers: mint a Better Auth API key scoped to the trigger and
  *   return the plaintext token + URL. Token is shown only here.
+ * - Board column transition triggers: fire when a card settles in a column
+ *   of this org's board (`automations/board-column-transition.ts`).
+ * - Jira transition triggers: fire when an issue of the org's Jira board
+ *   settles in a status (`jira/trigger.ts`). A move answers one of them, so
+ *   two on a status may not claim the same origin.
  */
 
 import { computeNextRunAt } from "../../automations/fire";
@@ -18,6 +24,18 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { webhookPermissionResource, webhookUrl } from "./webhook-trigger";
+import {
+  BoardColumnKeySchema,
+  BoardTransitionFromSchema,
+} from "../../automations/board-column-transition";
+import {
+  JiraStatusNameSchema,
+  normalizeFrom,
+  RuleFromSchema,
+  ruleConflict,
+  ruleFromColumns,
+} from "../../jira/rule-from";
+import { AutomationTriggerTypeSchema } from "./trigger-schema";
 
 // Cluster-wide floor on cron firing frequency. Tighter than the 60s floor
 // the old NATS dispatcher allowed: each fire writes ~4 DBOS workflow rows
@@ -35,7 +53,13 @@ const CRON_PROBE_RUNS = 10;
 export const AUTOMATION_TRIGGER_ADD = defineTool({
   name: "AUTOMATION_TRIGGER_ADD",
   description:
-    "Add a cron, event, or webhook trigger to an automation. For webhook triggers the response includes a one-time URL + secret token.",
+    "Add a cron, event, webhook, board column transition or Jira transition " +
+    "trigger to an automation. For webhook triggers the response includes a " +
+    "one-time URL + secret token. A board_column_transition trigger runs the " +
+    "automation on each card that enters `column_key` (after it stays there " +
+    "a few seconds), with the card as the run's task. A jira_transition " +
+    "trigger runs it on each issue of the org's Jira board that enters " +
+    "`jira_status`, with the issue in the run's message.",
   annotations: {
     title: "Add Trigger",
     readOnlyHint: false,
@@ -45,16 +69,28 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
   },
   inputSchema: z.object({
     automation_id: z.string(),
-    type: z.enum(["cron", "event", "webhook"]),
+    type: AutomationTriggerTypeSchema,
     cron_expression: z.string().optional(),
     connection_id: z.string().optional(),
     event_type: z.string().optional(),
     params: z.record(z.string(), z.string()).optional(),
+    column_key: BoardColumnKeySchema.optional().describe(
+      "For board_column_transition: the board column a card enters.",
+    ),
+    jira_status: JiraStatusNameSchema.optional().describe(
+      "For jira_transition: the Jira status an issue enters — a status " +
+        "name from JIRA_BOARD_COLUMNS_LIST, not a column name.",
+    ),
+    from: RuleFromSchema.optional().describe(
+      "For board_column_transition and jira_transition: which moves count, " +
+        "by where the card came from (board column keys, or Jira status " +
+        "names). Defaults to any.",
+    ),
   }),
   outputSchema: z.object({
     id: z.string(),
     automation_id: z.string(),
-    type: z.enum(["cron", "event", "webhook"]),
+    type: AutomationTriggerTypeSchema,
     created_at: z.string(),
     // Only set for `type: "webhook"`. The token is plaintext and is
     // shown only here — rotate via AUTOMATION_TRIGGER_ROTATE_TOKEN.
@@ -78,6 +114,15 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
     );
     if (!automation) {
       throw new Error("Automation not found");
+    }
+    if (automation.system_key) {
+      throw new Error("A built-in automation's starters can't be changed.");
+    }
+
+    if (input.type === "board_pr_ready") {
+      throw new Error(
+        "The pull-request-ready starter belongs to the built-in Reviewer for now.",
+      );
     }
 
     if (input.type === "cron") {
@@ -142,6 +187,9 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
         last_run_at: null,
         next_run_at: null,
         api_key_id: null,
+        column_key: null,
+        from_kind: null,
+        from_statuses: [],
         created_at: "",
       };
 
@@ -159,6 +207,36 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       }
     }
 
+    if (input.type === "board_column_transition" && !input.column_key) {
+      throw new Error(
+        "column_key is required for board_column_transition triggers",
+      );
+    }
+    if (input.type === "board_column_transition" && input.from) {
+      BoardTransitionFromSchema.parse(input.from);
+    }
+    if (input.type === "jira_transition" && !input.jira_status) {
+      throw new Error("jira_status is required for jira_transition triggers");
+    }
+    const from =
+      input.type === "board_column_transition" ||
+      input.type === "jira_transition"
+        ? normalizeFrom(input.from ?? { kind: "any" })
+        : null;
+    if (input.type === "jira_transition" && input.jira_status && from) {
+      const conflict = ruleConflict(
+        input.jira_status,
+        from,
+        (
+          await ctx.storage.automations.listJiraTransitionTriggers(
+            organization.id,
+            { jiraStatus: input.jira_status },
+          )
+        ).map(ruleFromColumns),
+      );
+      if (conflict) throw new Error(conflict);
+    }
+
     const nextRunAt =
       input.type === "cron" && input.cron_expression
         ? computeNextRunAt(input.cron_expression, new Date())
@@ -172,6 +250,14 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       event_type: input.type === "event" ? input.event_type : null,
       params: input.params ? JSON.stringify(input.params) : null,
       next_run_at: nextRunAt?.toISOString() ?? null,
+      column_key:
+        input.type === "board_column_transition"
+          ? input.column_key
+          : input.type === "jira_transition"
+            ? input.jira_status
+            : null,
+      from_kind: from?.kind ?? null,
+      from_statuses: from?.kind === "statuses" ? from.statuses : [],
     });
 
     // For webhook triggers, mint a Better Auth API key now that we know

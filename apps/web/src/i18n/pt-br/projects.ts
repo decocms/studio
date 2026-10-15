@@ -61,6 +61,7 @@ export const projects = {
     "A loja no ar. Os relatórios rodam contra este endereço.",
   "projects.flat.viewProject": "Projeto",
   "projects.flat.viewFiles": "Arquivos",
+  "projects.flat.viewAnalytics": "Análise",
   "projects.apps.heading": "Apps",
   "projects.apps.seeAll": "Ver todos",
   "projects.apps.showLess": "Ver menos",

@@ -1,17 +1,18 @@
 /**
- * JIRA_RUN_START — run the agent on one Jira issue, now.
+ * JIRA_RUN_START — fire an automation on Jira issues, now.
  *
- * How a status rule gets tried before it is switched on for every issue that
- * enters a column: name an issue, give the prompt you are about to save, watch
- * the run. No rule has to exist and the integration can be disabled, so
- * nothing has to be dragged around a real board to see what the agent does.
- *
- * The run is the real one, not a simulation — it reads and comments on the
- * actual issue. Firing it again takes over any run still working that issue,
- * the same way a card's Re-run does.
+ * How a Jira automation gets tried before it is switched on for every issue
+ * that enters a column, and how one is run by hand on issues no move picked:
+ * name the automation and the issues, watch the runs. The integration and the
+ * automation can both be off. Each run is the automation's real run, through the automation fire
+ * workflow (`automations/jira-run.ts`): it reads and comments on the actual
+ * issue, continues the pull request the issue links, and takes over any run
+ * still working that issue.
  */
 
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { fireAutomationDirect } from "@/automations/dbos-sync";
 import { defineTool } from "@/core/define-tool";
 import {
   getUserId,
@@ -20,9 +21,7 @@ import {
 } from "@/core/studio-context";
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
 import { JiraClient } from "@/jira/client";
-import { openPrForIssue } from "@/jira/open-pr";
-import { startJiraRunForIssue, startJiraRunForIssues } from "@/jira/trigger";
-import { MAX_AUTOMATION_PROMPT_LENGTH } from "@/tools/task-board/schema";
+import { issueUrl } from "@/jira/issue-prompt";
 
 /** Generous — the input accepts a pasted column of issue URLs. */
 const MAX_ISSUE_INPUT_LENGTH = 8_000;
@@ -37,14 +36,22 @@ const MAX_ISSUES_PER_CALL = 25;
 export const JIRA_RUN_START = defineTool({
   name: "JIRA_RUN_START",
   description:
-    "Run the agent on Jira issues right now — how a status rule is tried " +
-    "out before it runs on every issue entering that status. Needs no rule " +
-    "for the issue's status and works with the integration disabled. " +
-    "`prompt` is the instruction to try; omit it for the agent's own. The " +
-    "issue itself is always in the run's message. One run per issue, or one " +
-    "run for all of them with `together`. This is a real run on the real " +
-    "issue, and a per-issue run takes over any run still working that issue.",
+    "Fire an automation on Jira issues right now — how a Jira automation is " +
+    "tried out before it runs on every issue entering its status, or run on " +
+    "issues no move picked. Works with the integration disabled and the " +
+    "automation off. The " +
+    "automation's message is the instruction and the issue itself is always " +
+    "in the run's message. One run per issue, or one run for all of them " +
+    "with `together`. These are real runs on the real issues: a per-issue " +
+    "run continues the pull request the issue links and takes over any run " +
+    "still working that issue.",
   inputSchema: z.object({
+    automationId: z
+      .string()
+      .min(1)
+      .describe(
+        "The automation to fire — see JIRA_AUTOMATION_LIST or AUTOMATION_LIST.",
+      ),
     issueKey: z
       .string()
       .min(1)
@@ -53,12 +60,6 @@ export const JIRA_RUN_START = defineTool({
         "One or more issue keys (ABC-123) or pasted links, separated by " +
           "newlines or commas. One run is started per issue.",
       ),
-    prompt: z
-      .string()
-      .max(MAX_AUTOMATION_PROMPT_LENGTH)
-      .nullable()
-      .optional()
-      .describe("What to do with the issue; null for the agent's default."),
     together: z
       .boolean()
       .optional()
@@ -66,39 +67,15 @@ export const JIRA_RUN_START = defineTool({
         "Start ONE run that works every issue named, instead of one run per " +
           "issue — for work that spans them, like landing an epic's pull " +
           "requests in order. Its Jira tools take `issueKey` to say which " +
-          "issue they act on. Cannot be combined with " +
-          "`continuePr`, which pins a run to one issue's pull request.",
-      ),
-    continuePr: z
-      .boolean()
-      .optional()
-      .describe(
-        "Continue the pull request the issue already carries instead of " +
-          "opening a new one — what a re-run after a review asked for " +
-          "changes wants. Off by default, and deliberately not inferred: a " +
-          "REVIEW run on the same issue must not be told to push to the pull " +
-          "request it is reviewing.",
+          "issue they act on, and it starts fresh rather than continuing a " +
+          "pull request.",
       ),
   }),
   outputSchema: z.object({
-    /**
-     * One entry per issue, in the order given. A batch reports per issue
-     * rather than failing whole: one unreachable issue must not cost the
-     * other nine their runs, and the caller needs to know WHICH one it was.
-     */
-    started: z.array(
-      z.object({
-        issueKey: z.string(),
-        issueUrl: z.string(),
-        /** The hidden board item the run hangs off — its id in the monitoring
-         *  history, not a card anyone sees. One per issue, or the same one on
-         *  every entry of a `together` call. */
-        itemId: z.string(),
-        supersededThreadIds: z
-          .array(z.string())
-          .describe("Runs that were stopped to make room for this one."),
-      }),
-    ),
+    /** One entry per issue, in the order given. A batch reports per issue
+     *  rather than failing whole: one unreachable issue must not cost the
+     *  others their runs, and the caller needs to know WHICH one it was. */
+    started: z.array(z.object({ issueKey: z.string(), issueUrl: z.string() })),
     failed: z
       .array(z.object({ issueKey: z.string(), error: z.string() }))
       .describe("Issues whose run could not be started, and why."),
@@ -124,6 +101,16 @@ export const JIRA_RUN_START = defineTool({
         `${keys.length} issues named, and ${MAX_ISSUES_PER_CALL} is the most one call starts — each is a real run`,
       );
     }
+    const automation = await ctx.storage.automations.findById(
+      input.automationId,
+      organization.id,
+    );
+    if (!automation) throw new Error("Automation not found");
+    if (automation.system_key) {
+      throw new Error(
+        "A built-in automation runs on the board's cards and can't be run on Jira issues by hand.",
+      );
+    }
     const integration = await ctx.storage.jiraIntegrations.getByOrg(
       organization.id,
     );
@@ -132,72 +119,66 @@ export const JIRA_RUN_START = defineTool({
         "Jira is not connected — save credentials with JIRA_INTEGRATION_UPSERT first",
       );
     }
-    const instruction = input.prompt?.trim() ? input.prompt.trim() : null;
-    if (input.together) {
-      if (input.continuePr) {
-        throw new Error(
-          "A run on several issues cannot continue a pull request — that pins the run to one issue's branch",
-        );
-      }
-      const batch = await startJiraRunForIssues(ctx, integration, keys, {
-        instruction,
-        actorId: userId,
-      });
-      return {
-        started: batch.issues.map((issue) => ({
-          issueKey: issue.key,
-          issueUrl: issue.url,
-          itemId: batch.item?.id ?? "",
-          supersededThreadIds: [],
-        })),
-        failed: batch.failed,
-        unreadable: invalid,
-      };
-    }
-    const jira = input.continuePr
-      ? new JiraClient(
-          integration.siteUrl,
-          integration.email,
-          integration.apiToken,
-        )
-      : null;
 
-    // Sequential on purpose. Each start reads the issue from Jira and claims a
-    // run slot, and firing a paste of twenty at once turns one fat finger into
-    // a burst against both. The loop is also what lets one bad issue report
-    // itself while the rest still go.
-    const started: Array<{
-      issueKey: string;
-      issueUrl: string;
-      itemId: string;
-      supersededThreadIds: string[];
-    }> = [];
+    // Read up front so a bad key is reported here, not as a fire that skips.
+    // Sequential on purpose: a paste of twenty must not become a burst.
+    const client = new JiraClient(
+      integration.siteUrl,
+      integration.email,
+      integration.apiToken,
+    );
+    const readable: string[] = [];
     const failed: Array<{ issueKey: string; error: string }> = [];
     for (const key of keys) {
       try {
-        // Resolved per issue, not once: each has its own pull request, and one
-        // that has none (or several) simply starts fresh.
-        const pr = jira
-          ? await openPrForIssue(ctx, organization.id, jira, key)
-          : null;
-        const { item, issue, supersededThreadIds } = await startJiraRunForIssue(
-          ctx,
-          integration,
-          key,
-          { instruction, actorId: userId, ...(pr ? { pr } : {}) },
-        );
-        started.push({
-          issueKey: issue.key,
-          issueUrl: issue.url,
-          itemId: item.id,
-          supersededThreadIds,
-        });
+        readable.push((await client.getIssue(key)).key);
       } catch (err) {
         failed.push({
           issueKey: key,
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+
+    // A manual fire is listed under the automation's Jira trigger when it has one.
+    const triggerId =
+      (await ctx.storage.automations.listTriggers(automation.id)).find(
+        (trigger) => trigger.type === "jira_transition",
+      )?.id ?? null;
+    const runs = input.together ? [readable] : readable.map((key) => [key]);
+    const started: Array<{ issueKey: string; issueUrl: string }> = [];
+    // Run off the queue and waited on, like a card's Run: a refusal (the
+    // paywall included) has to reach the person who asked.
+    for (const issues of runs) {
+      if (issues.length === 0) continue;
+      const outcome = await fireAutomationDirect(
+        {
+          automationId: automation.id,
+          organizationId: organization.id,
+          triggerId,
+          target: {
+            kind: "jira",
+            issues,
+            eventKey: `manual:${randomUUID()}`,
+            manual: { requestedBy: userId },
+          },
+        },
+        { idempotencyKey: `jira-manual:${randomUUID()}` },
+      ).catch((err: unknown) => ({
+        skipped: "rejected" as const,
+        error: { message: err instanceof Error ? err.message : String(err) },
+      }));
+      if ("skipped" in outcome) {
+        const error = outcome.error?.message ?? `skipped: ${outcome.skipped}`;
+        failed.push(...issues.map((issueKey) => ({ issueKey, error })));
+        continue;
+      }
+      started.push(
+        ...issues.map((key) => ({
+          issueKey: key,
+          issueUrl: issueUrl(integration.siteUrl, key),
+        })),
+      );
     }
     return { started, failed, unreadable: invalid };
   },

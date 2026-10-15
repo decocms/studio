@@ -24,6 +24,7 @@ interface Activity {
 }
 
 const FLOW = [
+  "todo",
   "in_progress",
   "in_review",
   "qa",
@@ -86,7 +87,7 @@ test.describe("task board lanes", () => {
       "TASK_BOARD_ITEM_CREATE",
       { title: "Stays on the new board" },
     );
-    for (const status of ["todo", "approved", "merged"]) {
+    for (const status of ["approved", "merged"]) {
       await expect(
         call("TASK_BOARD_ITEM_UPDATE", { id: item.id, status }),
       ).rejects.toThrow();

@@ -11,11 +11,36 @@
  * was dropped through.
  */
 
-export type RuleFrom =
-  | { kind: "any" }
-  | { kind: "earlier" }
-  | { kind: "later" }
-  | { kind: "statuses"; statuses: string[] };
+import { z } from "zod";
+
+const MAX_STATUS_NAME_LENGTH = 200;
+const MAX_FROM_STATUSES = 50;
+
+export const JiraStatusNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_STATUS_NAME_LENGTH);
+
+export const RuleFromSchema = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("any") }),
+    z.object({ kind: z.literal("earlier") }),
+    z.object({ kind: z.literal("later") }),
+    z.object({
+      kind: z.literal("statuses"),
+      statuses: z.array(JiraStatusNameSchema).min(1).max(MAX_FROM_STATUSES),
+    }),
+  ])
+  .describe(
+    "Which moves into the status count, by where the issue last " +
+      "rested: `any`; `earlier` (a column left of this one on the board — " +
+      "the normal flow); `later` (a column right of it — sent back); or " +
+      "`statuses`, named outright. A move answers ONE trigger: a list naming " +
+      "its origin, else the one for its direction, else `any`.",
+  );
+
+export type RuleFrom = z.infer<typeof RuleFromSchema>;
 
 /** Where the origin sits relative to the destination on the board, or null
  *  when either is off it or both share a column. */
@@ -95,4 +120,41 @@ export function needsDirection(rules: readonly { from: RuleFrom }[]): boolean {
   return rules.some(
     (r) => r.from.kind === "earlier" || r.from.kind === "later",
   );
+}
+
+/** A trigger's origin rule, from its columns. */
+export function ruleFromColumns(trigger: {
+  from_kind: RuleFrom["kind"] | null;
+  from_statuses: string[];
+}): RuleFrom {
+  return trigger.from_kind === "statuses"
+    ? { kind: "statuses", statuses: trigger.from_statuses }
+    : { kind: trigger.from_kind ?? "any" };
+}
+
+/**
+ * Why `from` cannot join `others` on the same status, or null when it can:
+ * a move answers one rule, so two with the same origin, or two lists naming
+ * the same status, would leave one of them never firing.
+ */
+export function ruleConflict(
+  status: string,
+  from: RuleFrom,
+  others: readonly RuleFrom[],
+): string | null {
+  const key = fromKey(from);
+  for (const other of others) {
+    if (fromKey(other) === key) {
+      return `Another trigger on "${status}" already answers the same origin. A move answers one trigger: change that one instead.`;
+    }
+    const shared = sharedStatuses(from, other);
+    if (shared.length > 0) {
+      return (
+        `Another trigger on "${status}" already answers moves from ` +
+        `${shared.map((name) => `"${name}"`).join(", ")}. A move answers ` +
+        "one trigger: take the status out of one of the lists."
+      );
+    }
+  }
+  return null;
 }

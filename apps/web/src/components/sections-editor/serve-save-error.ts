@@ -14,6 +14,7 @@ import {
 } from "@decocms/blocks/protocol";
 import type { TFunction } from "@/i18n/use-t.ts";
 import type { ContentSource } from "./content-backend";
+import { BlockConflictError } from "./decofile-api";
 
 /** A local `deco serve` request that got no answer (see `guarded`). */
 export class ServeLostError extends Error {
@@ -47,6 +48,9 @@ export function saveErrorMessage(
   error: Error,
   source: ContentSource | null,
 ): string {
+  // An outdated copy, already replaced by the stored one: its message says
+  // so in the editor's words, on every backend.
+  if (error instanceof BlockConflictError) return error.message;
   if (source === "local") return localSaveErrorMessage(t, error);
   if (error instanceof ContentProtocolError) {
     switch (error.code) {
@@ -73,7 +77,7 @@ export function saveErrorDetail(
   error: Error,
   source: ContentSource | null,
 ): string | null {
-  if (source === "local") return null;
+  if (source === "local" || error instanceof BlockConflictError) return null;
   if (error instanceof ContentProtocolError) {
     // A refused block: which fields to fix, in the server's own words.
     const message =

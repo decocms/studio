@@ -27,6 +27,7 @@
  */
 
 import { useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartSquare02,
@@ -1952,8 +1953,13 @@ function RegisteredView({
   status: AnalyticsStatus;
 }) {
   const t = useT();
+  // Deep-link from another tab (e.g. Experiments' "ver dados") — `?view=` picks
+  // which DATA_VIEWS tab opens instead of always landing on "overview".
+  const { view: initialView } = useSearch({ strict: false }) as {
+    view?: string;
+  };
   const [range, setRange] = useState("24h");
-  const [active, setActive] = useState("overview");
+  const [active, setActive] = useState(initialView ?? "overview");
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;

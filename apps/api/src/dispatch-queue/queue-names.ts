@@ -41,3 +41,7 @@ export const AUTOMATIONS_QUEUE = "automations";
 export const BACKGROUND_TOOLS_QUEUE = "background-tools";
 /** Rate-limited GitHub reads for the task board's review sweep. */
 export const GITHUB_READS_QUEUE = "task-board-github-reads";
+/** Settle waits of `board_column_transition` triggers. No concurrency cap: a
+ *  wait spends its time in a durable sleep, and a cap would let a busy board
+ *  hold every slot asleep. */
+export const BOARD_TRANSITIONS_QUEUE = "board-transitions";

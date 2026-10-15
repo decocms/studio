@@ -5,7 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
 export interface ViewModeOption<T extends string = string> {
   value: T;
-  icon: ReactNode;
+  /** Optional when the option has a label. */
+  icon?: ReactNode;
   label?: string;
   tooltip?: string;
 }
@@ -90,17 +91,19 @@ export function ViewModeToggle<T extends string = string>({
                   : config.button,
             )}
           >
-            <span
-              className={cn(
-                "transition-colors ease-out duration-200 flex items-center justify-center [&>svg]:size-[1em]",
-                config.icon,
-                value === option.value
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              {option.icon}
-            </span>
+            {option.icon && (
+              <span
+                className={cn(
+                  "transition-colors ease-out duration-200 flex items-center justify-center [&>svg]:size-[1em]",
+                  config.icon,
+                  value === option.value
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {option.icon}
+              </span>
+            )}
             {option.label && (
               <span
                 className={cn(

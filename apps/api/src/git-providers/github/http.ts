@@ -117,7 +117,10 @@ export async function githubFetch(
   return res;
 }
 
-/** The `message` GitHub puts in JSON error bodies, else the truncated raw body. Pure. */
+/**
+ * The `message` GitHub puts in JSON error bodies, followed by the `errors`
+ * entries that say what failed validation, else the truncated raw body. Pure.
+ */
 export function githubErrorMessage(bodyText: string): string {
   try {
     const parsed: unknown = JSON.parse(bodyText);
@@ -128,7 +131,21 @@ export function githubErrorMessage(bodyText: string): string {
       typeof parsed.message === "string" &&
       parsed.message.length > 0
     ) {
-      return parsed.message;
+      const details =
+        "errors" in parsed && Array.isArray(parsed.errors)
+          ? parsed.errors.flatMap((entry: unknown) =>
+              entry !== null &&
+              typeof entry === "object" &&
+              "message" in entry &&
+              typeof entry.message === "string" &&
+              entry.message.length > 0
+                ? [entry.message]
+                : [],
+            )
+          : [];
+      return details.length > 0
+        ? `${parsed.message}: ${details.join("; ")}`
+        : parsed.message;
     }
   } catch {
     // Not JSON — an HTML outage page, an empty body. Fall through to the raw text.

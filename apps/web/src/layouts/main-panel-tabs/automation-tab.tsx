@@ -1,6 +1,7 @@
 import { parseAutomationTabId } from "./tab-id";
 import { SettingsTab as AutomationInlineDetail } from "@/views/automations/automation-detail";
 import { AutomationRunsView } from "@/views/automations/automation-runs";
+import { BuiltinAutomationSettings } from "@/views/automations/builtin-automation-settings";
 import { useAutomation } from "@/hooks/use-automations";
 import { Page } from "@/components/page";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -149,7 +150,14 @@ function AutomationTabInner({ id }: { id: string }) {
           </div>
 
           {tab === "settings" ? (
-            <AutomationInlineDetail automationId={id} automation={automation} />
+            automation.system_key ? (
+              <BuiltinAutomationSettings automation={automation} />
+            ) : (
+              <AutomationInlineDetail
+                automationId={id}
+                automation={automation}
+              />
+            )
           ) : (
             <RunsTab automationId={id} triggerIds={triggerIds} />
           )}

@@ -26,6 +26,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     temperature: 0.7,
     max_agent_steps: null,
     virtual_mcp_id: "agent_1",
+    system_key: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

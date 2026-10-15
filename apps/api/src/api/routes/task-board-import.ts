@@ -17,7 +17,7 @@ import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
-import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
+import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";

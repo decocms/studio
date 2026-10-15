@@ -81,8 +81,19 @@ export function AppEditor({
     { guard: saveGuard },
   );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    save(refKey, data),
+    saveBlock.mutate(
+      { blockKey: refKey, data },
+      {
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
+      },
+    ),
   );
 
   const [prevBlockKey, setPrevBlockKey] = useState(blockKey);

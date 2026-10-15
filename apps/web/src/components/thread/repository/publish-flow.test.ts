@@ -80,6 +80,34 @@ describe("publishNoteParts", () => {
     });
   });
 
+  it("shortens a one-line note past the title limit and keeps it whole in the body", () => {
+    const note = `Removed the ${Array.from({ length: 60 }, (_, i) => `Page ${i}`).join(", ")}`;
+    const parts = publishNoteParts(note, FALLBACK);
+    expect(parts.title.length).toBeLessThanOrEqual(255);
+    expect(parts.title.endsWith("…")).toBe(true);
+    expect(note.startsWith(parts.title.slice(0, -1))).toBe(true);
+    expect(parts.title.at(-2)).not.toBe(" ");
+    expect(parts.body).toBe(note);
+    expect(parts.message).toBe(note);
+  });
+
+  it("keeps the rest of the note after the full long title", () => {
+    const title = "x".repeat(300);
+    const parts = publishNoteParts(`${title}\nwhy`, FALLBACK);
+    expect(parts.title).toBe(`${"x".repeat(254)}…`);
+    expect(parts.body).toBe(`${title}\n\nwhy`);
+    expect(parts.message).toBe(`${title}\n\nwhy`);
+  });
+
+  it("keeps a title of exactly the limit as is", () => {
+    const title = "y".repeat(255);
+    expect(publishNoteParts(title, FALLBACK)).toEqual({
+      title,
+      body: undefined,
+      message: title,
+    });
+  });
+
   it("falls back to the branch title for a blank note", () => {
     expect(publishNoteParts("   \n  ", FALLBACK)).toEqual({
       title: FALLBACK,

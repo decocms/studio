@@ -49,6 +49,9 @@ export const AUTOMATION_TRIGGER_REMOVE = defineTool({
     if (!automation) {
       throw new Error("Automation not found");
     }
+    if (automation.system_key) {
+      throw new Error("A built-in automation's starters can't be changed.");
+    }
 
     // If event trigger, disable on MCP connection (best-effort)
     if (trigger.type === "event") {

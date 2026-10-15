@@ -41,6 +41,13 @@ export const AUTOMATION_RUN = defineTool({
       throw new Error("Automation runner not available");
     }
 
+    const automation = await ctx.storage.automations.findById(input.id, org.id);
+    if (automation?.system_key) {
+      throw new Error(
+        "A built-in automation runs on the board's cards and can't be run by hand.",
+      );
+    }
+
     const userId = getUserId(ctx);
     if (!userId) {
       throw new Error("User ID not available");

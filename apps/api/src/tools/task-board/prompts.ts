@@ -20,7 +20,7 @@ const TaskBoardPromptSchema = z.object({
 const MAX_BOARD_PROMPT_SKILLS = 20;
 
 /** Tell open boards a column's rules changed, so they refetch without a reload. */
-export function emitTaskBoardRulesUpdated(
+function emitTaskBoardRulesUpdated(
   orgId: string,
   columnKey: string | null,
 ): void {

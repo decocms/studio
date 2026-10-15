@@ -81,6 +81,7 @@ import {
   useStartJiraRun,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useProjectContext } from "@/sdk";
 import { TaskSystemPromptSettings } from "./task-system-prompt";
 
@@ -244,7 +245,16 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const boards = useJiraBoards(true);
-  const boardOptions = (boards.data ?? []).map((board) => {
+  // Boards past the first 200 are only reachable by a name search.
+  const [search, setSearch] = useState("");
+  const query = useDebouncedValue(search.trim(), 300);
+  const searched = useJiraBoards(query !== "", query);
+  const listed = boards.data ?? [];
+  const listedIds = new Set(listed.map((board) => board.id));
+  const matches = query
+    ? (searched.data ?? []).filter((board) => !listedIds.has(board.id))
+    : [];
+  const boardOptions = [...listed, ...matches].map((board) => {
     const { primary, secondary } = boardLabels(board);
     return {
       value: String(board.id),
@@ -274,8 +284,11 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
           placeholder={t("settings.jira.boardPlaceholder")}
           searchPlaceholder={t("settings.jira.boardSearchPlaceholder")}
           filter={boardSearchFilter}
+          onSearchChange={setSearch}
           emptyMessage={
-            boards.isPending
+            boards.isPending ||
+            search.trim() !== query ||
+            (query !== "" && searched.isFetching)
               ? t("settings.jira.loadingBoards")
               : t("settings.jira.noBoardsMatch")
           }
@@ -570,7 +583,7 @@ function StatusAutomationCard({
 
   const create = (from: JiraRuleFrom) =>
     setAutomation.mutate(
-      { jiraStatus: status, from, prompt: "", continuePr: false },
+      { jiraStatus: status, from, prompt: "" },
       {
         onSuccess: () => setAdding(false),
         onError: (err) =>
@@ -701,12 +714,12 @@ function NewOriginRule({
   );
 }
 
-/** One rule: its origin, its prompt and whether it continues the open pull
- *  request. `prompt` null means the rule runs on the agent's own instruction. */
+/** One rule: its origin and its prompt. `prompt` null means the rule runs on
+ *  the agent's own instruction. */
 function AutomationRuleEditor({ rule }: { rule: JiraAutomation }) {
   const t = useT();
   const setAutomation = useSetJiraAutomation();
-  const { jiraStatus: status, from, prompt, continuePr } = rule;
+  const { jiraStatus: status, from, prompt } = rule;
   // A draft, so typing is not a write per keystroke. Re-seeded on change.
   const [draft, setDraft] = useState(prompt ?? "");
   const [syncedWith, setSyncedWith] = useState(prompt);
@@ -720,9 +733,9 @@ function AutomationRuleEditor({ rule }: { rule: JiraAutomation }) {
   }
   const dirty = draft !== (prompt ?? "");
 
-  const save = (next: string | null, nextContinuePr = continuePr) =>
+  const save = (next: string | null) =>
     setAutomation.mutate(
-      { jiraStatus: status, from, prompt: next, continuePr: nextContinuePr },
+      { jiraStatus: status, from, prompt: next },
       {
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
@@ -755,24 +768,6 @@ function AutomationRuleEditor({ rule }: { rule: JiraAutomation }) {
       <p className="text-xs text-muted-foreground">
         {t("settings.jira.promptHelp")}
       </p>
-      {/* Saved on its own, not with the prompt: it is a rule of the
-          column, and the prompt below may be mid-edit. Per rule rather
-          than inferred from the move, so a review column never pins its
-          run to the pull request it is about to judge. */}
-      <label className="flex w-fit cursor-pointer items-start gap-2 text-xs">
-        <Checkbox
-          className="mt-0.5"
-          checked={continuePr}
-          disabled={setAutomation.isPending}
-          onCheckedChange={(v) => save(prompt ?? "", v === true)}
-        />
-        <span className="flex flex-col gap-0.5">
-          {t("settings.jira.continuePr")}
-          <span className="text-muted-foreground">
-            {t("settings.jira.continuePrRuleHelp")}
-          </span>
-        </span>
-      </label>
       {dirty && (
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -799,52 +794,40 @@ function AutomationRuleEditor({ rule }: { rule: JiraAutomation }) {
 }
 
 /**
- * Run the agent on one issue, by hand — the answer to "will this prompt do the
- * right thing?" without turning a rule on for every card that lands in a
- * column.
- *
- * Deliberately independent of the rules above: no rule has to exist, the
- * integration can be off, and the same issue can be re-run while the prompt is
- * reworded, none of which is true of waiting for a real transition. It is a
- * real run on the real issue, which is why the copy says so.
- */
-/**
- * Run the agent on issues, by hand — the answer to "will this prompt do the
- * right thing?" without turning a rule on for every card that lands in a
- * column.
- *
- * Deliberately independent of the rules above: no rule has to exist, the
- * integration can be off, and the same issue can be re-run while the prompt is
- * reworded, none of which is true of waiting for a real transition. These are
- * real runs on the real issues, which is why the copy says so.
+ * Fire one of the automations above on issues, by hand — the answer to "will
+ * this prompt do the right thing?" without waiting for a real transition. The
+ * integration can be off, and the same issue can be re-run while the prompt
+ * is reworded. These are real runs on the real issues, which is why the copy
+ * says so.
  */
 function TestRunRow() {
   const t = useT();
   const { org } = useProjectContext();
   const start = useStartJiraRun();
+  const automations = useJiraAutomations();
   const [issueKeys, setIssueKeys] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [continuePr, setContinuePr] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
   const [together, setTogether] = useState(false);
   const [result, setResult] = useState<{
     started: string[];
     failed: Array<{ issueKey: string; error: string }>;
     together: boolean;
   } | null>(null);
+  const rules = automations.data ?? [];
+  const automationId = picked ?? rules[0]?.automationId ?? null;
   const parsed = parseIssueKeys(issueKeys);
-  const canRun = parsed.keys.length > 0 && !start.isPending;
-  // One run across several issues cannot pin itself to one issue's branch,
-  // so the two are exclusive; the server refuses the pair too.
+  const canRun =
+    automationId !== null && parsed.keys.length > 0 && !start.isPending;
   const batch = together && parsed.keys.length > 1;
 
   const run = () => {
-    if (!canRun) return;
+    if (!canRun || !automationId) return;
     setResult(null);
     start.mutate(
       {
+        automationId,
         issueKey: issueKeys,
-        prompt: prompt.trim() === "" ? null : prompt.trim(),
-        ...(batch ? { together: true } : { continuePr }),
+        ...(batch ? { together: true } : {}),
       },
       {
         onSuccess: (r) =>
@@ -871,22 +854,31 @@ function TestRunRow() {
           disabled={start.isPending}
           ariaLabel={t("settings.jira.testRunIssueAriaLabel")}
         />
-        <PromptEditor
-          value=""
-          onChange={setPrompt}
-          placeholder={t("settings.jira.promptPlaceholder")}
-        />
-        {/* Off by default and never inferred: a REVIEW run on an issue that
-            has a pull request must not be told to push to the one it is
-            reviewing. */}
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
-          <Checkbox
-            checked={continuePr && !batch}
-            disabled={batch}
-            onCheckedChange={(v) => setContinuePr(v === true)}
-          />
-          {t("settings.jira.continuePr")}
-        </label>
+        {rules.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {t("settings.jira.testRunNoAutomations")}
+          </p>
+        ) : (
+          <Select value={automationId ?? undefined} onValueChange={setPicked}>
+            <SelectTrigger
+              className="h-8 w-fit min-w-56 text-xs"
+              aria-label={t("settings.jira.testRunAutomation")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {rules.map((rule) => (
+                <SelectItem
+                  key={rule.automationId}
+                  value={rule.automationId}
+                  className="text-xs"
+                >
+                  {rule.jiraStatus} · <OriginLabel from={rule.from} />
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {parsed.keys.length > 1 && (
           <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
             <Checkbox

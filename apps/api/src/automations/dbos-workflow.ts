@@ -35,7 +35,21 @@
  * recovery executor can replay them after a crash.
  */
 
+import {
+  type CardRunOutcome,
+  type CardRunSkip,
+  type CardTarget,
+  type RunError,
+  runAutomationOnCard,
+} from "./card-run";
+import {
+  type JiraRunOutcome,
+  type JiraRunSkip,
+  type JiraTarget,
+  runAutomationOnJira,
+} from "./jira-run";
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
+import type { StudioContext } from "@/core/studio-context";
 import type { Pool } from "pg";
 import {
   runDispatchSteps,
@@ -129,12 +143,37 @@ export async function cleanupOrphanedOrgQueues(pool: Pool): Promise<void> {
 export interface AutomationRuntime {
   storage: AutomationsStorage;
   studioContextFactory: StudioContextFactory;
+  /** The org's own context, for a built-in automation: it belongs to the org,
+   *  not to the member who stood in as its creator. */
+  orgContextFactory?: (organizationId: string) => Promise<StudioContext | null>;
+  /** For enqueueing a fire from inside a workflow or step, where the
+   *  in-process API cannot (see `enqueueAutomationFire`). */
+  systemDatabaseUrl?: string;
 }
 
 let runtime: AutomationRuntime | null = null;
 
 export function setAutomationRuntime(rt: AutomationRuntime): void {
   runtime = rt;
+}
+
+/** The system database a fire enqueued from inside DBOS is written to. */
+export function automationSystemDatabaseUrl(): string | undefined {
+  return runtime?.systemDatabaseUrl;
+}
+
+/** The context a fire runs with: the creator's, or the org's for a built-in. */
+async function fireContext(
+  rt: AutomationRuntime,
+  automation: Automation,
+): Promise<StudioContext | null> {
+  if (automation.system_key) {
+    return (await rt.orgContextFactory?.(automation.organization_id)) ?? null;
+  }
+  return await rt.studioContextFactory(
+    automation.organization_id,
+    automation.created_by,
+  );
 }
 
 function requireRuntime(): AutomationRuntime {
@@ -174,12 +213,25 @@ export interface FireAutomationContext {
    *  (alongside its legacy alias). Distinct
    *  from `contextMessages`, which is untrusted payload shown to the model. */
   runMetadata?: Record<string, string>;
+  /** The card or Jira issues the fire is about: it runs on them instead of
+   *  in a thread of its own. */
+  target?: CardTarget | JiraTarget;
 }
 
 export type FireAutomationOutcome =
   | { taskId: string }
   | { taskId: string; error: string }
-  | { skipped: "not_found" | "inactive" | "creator_invalid" };
+  | {
+      skipped:
+        | "not_found"
+        | "inactive"
+        | "creator_invalid"
+        | "org_unavailable"
+        | CardRunSkip
+        | JiraRunSkip;
+      /** Why a card or Jira run was refused. */
+      error?: RunError;
+    };
 
 function toThinkingCapabilities(caps: string[] | undefined) {
   if (!caps || caps.length === 0) return undefined;
@@ -192,7 +244,10 @@ function toThinkingCapabilities(caps: string[] | undefined) {
 }
 
 type PrepareOutcome =
-  | { skip: "not_found" | "inactive" | "creator_invalid" }
+  | { skip: "not_found" | "inactive" | "creator_invalid" | "org_unavailable" }
+  /** A card run resolves its own model (`enqueueAgentRunForTask`). */
+  | { automation: Automation; onCard: CardTarget }
+  | { automation: Automation; onJira: JiraTarget }
   | {
       automation: Automation;
       resolvedModel: ResolvedAutomationModel;
@@ -208,12 +263,12 @@ async function prepareFireStep(
     ctx.organizationId,
   );
   if (!automation) return { skip: "not_found" };
-  if (!automation.active) return { skip: "inactive" };
+  // A run someone asked for runs whether or not the automation fires on its
+  // own: off means its starters don't fire.
+  if (!automation.active && !ctx.target?.manual) return { skip: "inactive" };
 
-  const studioCtx = await rt.studioContextFactory(
-    automation.organization_id,
-    automation.created_by,
-  );
+  const studioCtx = await fireContext(rt, automation);
+  if (!studioCtx && automation.system_key) return { skip: "org_unavailable" };
   if (!studioCtx) {
     console.warn(
       `[fireAutomationWorkflow] deactivating "${automation.name}" — creator ${automation.created_by} no longer in org ${automation.organization_id}`,
@@ -221,6 +276,8 @@ async function prepareFireStep(
     await rt.storage.deactivateAutomation(automation.id);
     return { skip: "creator_invalid" };
   }
+  if (ctx.target?.kind === "jira") return { automation, onJira: ctx.target };
+  if (ctx.target) return { automation, onCard: ctx.target };
 
   const parsedModels = JSON.parse(automation.models) as {
     tier?: SimpleModeTier;
@@ -442,6 +499,40 @@ async function buildDispatchRequestStep(
   return { ok: true, request: serializableRequest };
 }
 
+export async function runOnCardStep(
+  automation: Automation,
+  triggerId: string,
+  target: CardTarget,
+): Promise<CardRunOutcome> {
+  const studioCtx = await fireContext(requireRuntime(), automation);
+  const outcome: CardRunOutcome = studioCtx
+    ? await runAutomationOnCard(studioCtx, automation, triggerId, target)
+    : { skipped: "rejected" };
+  if ("skipped" in outcome) {
+    console.log(
+      `[fireAutomationWorkflow] "${automation.name}" skipped card ${target.itemId}: ${outcome.skipped}`,
+    );
+  }
+  return outcome;
+}
+
+async function runOnJiraStep(
+  automation: Automation,
+  triggerId: string | null,
+  target: JiraTarget,
+): Promise<JiraRunOutcome> {
+  const studioCtx = await fireContext(requireRuntime(), automation);
+  const outcome: JiraRunOutcome = studioCtx
+    ? await runAutomationOnJira(studioCtx, automation, triggerId, target)
+    : { skipped: "rejected" };
+  if ("skipped" in outcome) {
+    console.log(
+      `[fireAutomationWorkflow] "${automation.name}" skipped Jira ${target.issues.join(", ")}: ${outcome.skipped}`,
+    );
+  }
+  return outcome;
+}
+
 async function markRunFailedStep(
   taskId: string,
   reason?: string,
@@ -466,13 +557,48 @@ async function deactivateAutomationStep(automationId: string): Promise<void> {
 
 // Split into steps so a crash-recovery replay doesn't duplicate the
 // `threads` row inserted by `createRunThread`.
-async function fireAutomationWorkflowFn(
+export async function fireAutomationWorkflowFn(
   ctx: FireAutomationContext,
 ): Promise<FireAutomationOutcome> {
   const prep = await DBOS.runStep(() => prepareFireStep(ctx), {
     name: "prepareFire",
   });
   if ("skip" in prep) return { skipped: prep.skip };
+
+  // A fire that carries a card runs on it as the board's own run, which makes
+  // and tracks its thread; this workflow only starts it.
+  if ("onCard" in prep) {
+    const target = prep.onCard;
+    const { triggerId } = ctx;
+    if (!triggerId) throw new Error("A card fire needs the trigger that fired");
+    await DBOS.runStep(() => updateTriggerTimingStep(triggerId), {
+      name: "updateTriggerTiming",
+    });
+    const outcome = await DBOS.runStep(
+      () => runOnCardStep(prep.automation, triggerId, target),
+      { name: "runOnCard" },
+    );
+    return "threadId" in outcome
+      ? { taskId: outcome.threadId }
+      : { skipped: outcome.skipped, error: outcome.error };
+  }
+
+  if ("onJira" in prep) {
+    const target = prep.onJira;
+    const { triggerId } = ctx;
+    if (triggerId) {
+      await DBOS.runStep(() => updateTriggerTimingStep(triggerId), {
+        name: "updateTriggerTiming",
+      });
+    }
+    const outcome = await DBOS.runStep(
+      () => runOnJiraStep(prep.automation, triggerId, target),
+      { name: "runOnJira" },
+    );
+    return "threadId" in outcome
+      ? { taskId: outcome.threadId }
+      : { skipped: outcome.skipped, error: outcome.error };
+  }
 
   const taskId = await DBOS.runStep(
     () => createRunThreadStep(prep.automation, ctx.triggerId),

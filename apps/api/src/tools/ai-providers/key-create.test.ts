@@ -76,6 +76,16 @@ describe("hosted AI provider schemas", () => {
     },
   );
 
+  test("rejects an oversized apiKey", () => {
+    expect(
+      AI_PROVIDER_KEY_CREATE.inputSchema.safeParse({
+        providerId: "deco",
+        label: "Provider key",
+        apiKey: "a".repeat(4097),
+      }).success,
+    ).toBeFalse();
+  });
+
   test("keeps historical native-only keys listable", () => {
     expect(
       AI_PROVIDER_KEY_LIST.inputSchema.safeParse({

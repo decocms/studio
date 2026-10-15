@@ -18,6 +18,7 @@ import {
 
 const BOARD_ORDER: TaskBoardItemStatus[] = [
   "triage",
+  "todo",
   "in_progress",
   "in_review",
   "qa",
