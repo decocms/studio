@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import type { StudioContext } from "@/core/studio-context";
+import { TASK_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
 import { createThreadMcpRoutes, THREAD_MCP_PATHS } from "./thread-mcp";
 
 const threads: Record<string, { title: string }> = {
@@ -60,6 +61,22 @@ describe("thread MCP route", () => {
       expect(names).not.toContain("TASK_BOARD_REVIEW_DECISION");
     });
   }
+
+  // Every schema of the catalog on every request was ~95k tokens of prompt.
+  it("marks only the run's own tools always-loaded", async () => {
+    const res = await listTools("/mcp/thread/thrd_chat");
+    const body = (await res.json()) as {
+      result: {
+        tools: Array<{ name: string; _meta?: Record<string, unknown> }>;
+      };
+    };
+    const alwaysLoaded = body.result.tools
+      .filter((tool) => tool._meta?.["anthropic/alwaysLoad"] === true)
+      .map((tool) => tool.name)
+      .sort();
+    expect(alwaysLoaded).toEqual([...TASK_RUN_TOOL_NAMES].sort());
+    expect(body.result.tools.length).toBeGreaterThan(alwaysLoaded.length);
+  });
 
   it("serves a reviewer its own surface, from the thread", async () => {
     const names = await toolNames(await listTools("/mcp/thread/thrd_review"));

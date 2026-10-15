@@ -410,6 +410,8 @@ export function resolveToolByName(name: string): RegistrableTool | undefined {
 export const toolSubsetMCP = (
   name: string,
   toolNames: readonly string[],
+  /** Tools Claude Code keeps in every prompt; the rest wait for tool search. */
+  alwaysLoad: ReadonlySet<string> = new Set(),
 ): McpServer => {
   const server = new McpServer(
     { name, version: "1.0.0" },
@@ -425,7 +427,16 @@ export const toolSubsetMCP = (
       continue;
     }
     const { config, handler } = getToolRegistration(tool);
-    server.registerTool(tool.name, config, handler);
+    server.registerTool(
+      tool.name,
+      alwaysLoad.has(tool.name)
+        ? {
+            ...config,
+            _meta: { ...config._meta, "anthropic/alwaysLoad": true },
+          }
+        : config,
+      handler,
+    );
   }
   return server;
 };

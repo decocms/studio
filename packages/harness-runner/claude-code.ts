@@ -447,19 +447,14 @@ export function buildOptions(args: {
  * deduped there). The Studio entry wins a name clash — an org connection called
  * `studio` must not displace the surface the run reports its work through.
  *
- * The two differ in ONE option, and it is the whole reason an org can hand a
- * run thirty connections without drowning it: `alwaysLoad`.
- *
- * - Org connections are left at the default, which means their tools are
- *   DEFERRED behind Claude Code's tool search — the model sees them only after
- *   searching for one, so N connections cost the prompt nothing up front, and
- *   their servers connect in the background instead of blocking the session.
- * - Studio's own server is `alwaysLoad: true`. Its tools are how the run
- *   reports what it did (the board), so they have to be in the turn-1 prompt
- *   rather than behind a search the model may never run. It is also what makes
- *   the `brokenStudioMcp` preflight mean anything: `alwaysLoad` blocks startup
- *   until the server connects (capped at 5s), so `system/init` reports it as
- *   connected or failed instead of the `pending` a deferred server shows.
+ * No server is `alwaysLoad`: that flag sends EVERY tool's schema on every
+ * request, and Studio's chat surface is the whole catalog (~220 tools, ~95k
+ * tokens). Tools are DEFERRED behind Claude Code's tool search instead — the
+ * model sees their names and loads a schema when it needs one. The few tools a
+ * run reports its work through (the board) are marked always-loaded per tool,
+ * by Studio, with `_meta["anthropic/alwaysLoad"]` (see `thread-mcp.ts`), so
+ * they are in the turn-1 prompt rather than behind a search the model may
+ * never run.
  *
  * Deferral is Claude Code's own behavior, not something requested here, and it
  * only applies when tool search is on — which the CLI turns OFF by default on a
@@ -489,7 +484,6 @@ export function mcpServersFor(
       type: "http" as const,
       url: input.mcp.url,
       headers: input.mcp.headers,
-      alwaysLoad: true,
     };
   }
   return servers;
