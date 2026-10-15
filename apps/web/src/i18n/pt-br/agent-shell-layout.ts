@@ -2,9 +2,9 @@ import type { agentShellLayout as agentShellLayoutEn } from "../en/agent-shell-l
 
 export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWeb":
-    "Este chat não está disponível na web",
+    "Não é possível continuar este chat",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
-    "Chats com agentes de código são executados localmente no Studio Desktop. Abra este chat lá para continuar.",
+    "O aplicativo de desktop do Studio foi descontinuado. Inicie um novo chat para continuar trabalhando.",
   "agentShellLayout.agentShellLayout.agentNotFound": "Projeto não encontrado",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
     'O projeto "{virtualMcpId}" não existe nesta organização.',

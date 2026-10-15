@@ -745,7 +745,7 @@ test.describe("hosted runtime boundary", () => {
 
       await expect(
         page.getByRole("heading", {
-          name: "This chat isn't available on the web",
+          name: "This chat can no longer be continued",
         }),
       ).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId("chat-panel")).toHaveCount(0);
