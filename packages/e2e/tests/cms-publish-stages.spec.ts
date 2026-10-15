@@ -52,13 +52,23 @@ const PUBLISH_ONE = "Publish 1 change";
  * exists to catch. Reading until two samples agree measures layout, not motion.
  */
 async function settledY(locator: Locator): Promise<number> {
+  const page = locator.page();
   let previous = (await locator.boundingBox())?.y ?? 0;
-  for (let attempt = 0; attempt < 40; attempt++) {
-    await locator.page().waitForTimeout(50);
-    const current = (await locator.boundingBox())?.y ?? 0;
-    if (Math.abs(current - previous) < 0.5) return current;
-    previous = current;
-  }
+
+  await page.waitForFunction(
+    async () => {
+      // Small delay to let animation proceed.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const current = (await locator.boundingBox())?.y ?? 0;
+      if (Math.abs(current - previous) < 0.5) {
+        return true;
+      }
+      previous = current;
+      return false;
+    },
+    { timeout: 5000 },
+  );
+
   return previous;
 }
 
