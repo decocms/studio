@@ -28,6 +28,8 @@ import type { ConnectionEntity } from "./schema";
 
 const LIST_CONCURRENCY = 8;
 const DESCRIPTION_CHARS = 400;
+// arguments is forwarded as-is to the connection's MCP server; bound its size.
+const MAX_ARGUMENTS_BYTES = 256 * 1024;
 
 /**
  * The connections the caller may reach. A run's key names them itself (one
@@ -197,7 +199,15 @@ export const CONNECTION_TOOL_CALL = defineTool({
   inputSchema: z.object({
     connectionId: z.string(),
     toolName: z.string(),
-    arguments: z.record(z.string(), z.unknown()).default({}),
+    arguments: z
+      .record(z.string(), z.unknown())
+      .default({})
+      .refine(
+        (args) =>
+          new TextEncoder().encode(JSON.stringify(args)).byteLength <=
+          MAX_ARGUMENTS_BYTES,
+        { message: `arguments exceeds ${MAX_ARGUMENTS_BYTES} bytes` },
+      ),
   }),
   outputSchema: z.object({
     content: z.array(z.unknown()),

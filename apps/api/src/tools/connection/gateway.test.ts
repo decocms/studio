@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { rankTools } from "./gateway";
+import { CONNECTION_TOOL_CALL, rankTools } from "./gateway";
 
 const tool = (name: string, description = ""): Tool => ({
   name,
@@ -59,5 +59,27 @@ describe("rankTools", () => {
         false,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("CONNECTION_TOOL_CALL arguments bound", () => {
+  it("accepts a small arguments payload", () => {
+    expect(
+      CONNECTION_TOOL_CALL.inputSchema.safeParse({
+        connectionId: "c1",
+        toolName: "echo",
+        arguments: { message: "hi" },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an oversized arguments payload", () => {
+    expect(
+      CONNECTION_TOOL_CALL.inputSchema.safeParse({
+        connectionId: "c1",
+        toolName: "echo",
+        arguments: { message: "a".repeat(300 * 1024) },
+      }).success,
+    ).toBe(false);
   });
 });
