@@ -37,8 +37,10 @@ import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
+import { protocolBlockVersion } from "./content-protocol-api";
 import {
   findSectionMovedTo,
+  formSaveGuard,
   formSourceMovedOn,
   isOwnVersion,
   rememberOwnVersion,
@@ -950,6 +952,10 @@ export function SectionsEditor({
     setFormReloadRequest((n) => n + 1);
   };
 
+  /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
+  const protocolVersionOf = (blockKey: string) =>
+    protocolBlockVersion(queryClient, decofileCacheKey, blockKey);
+
   const scheduleAutoSave = (
     nextValue: Record<string, unknown>,
     sectionIndex: number,
@@ -1091,6 +1097,8 @@ export function SectionsEditor({
             formBase.base = startedFrom;
           }
           if (err instanceof BlockConflictError) {
+            // The version is read again with the block the save re-read.
+            if (formBase) formBase.version = undefined;
             // The save re-read the branch; build on that copy again. Right
             // after a commit the provider can keep answering with the
             // previous head for a few seconds, so back off between tries
@@ -1132,6 +1140,11 @@ export function SectionsEditor({
               : {}),
             // A refused save comes back here and goes through the checks above.
             rebaseOnConflict: false,
+            guard: formSaveGuard({
+              formBase,
+              rebased: !!rebased,
+              versionOf: protocolVersionOf,
+            }),
           },
           saveCallbacks,
         );
@@ -1216,6 +1229,11 @@ export function SectionsEditor({
           blockKey: latestPageKey,
           data: fullPageData,
           rebaseOnConflict: false,
+          guard: formSaveGuard({
+            formBase: null,
+            rebased: false,
+            versionOf: protocolVersionOf,
+          }),
         },
         saveCallbacks,
       );
