@@ -122,6 +122,28 @@ pub(crate) async fn recover_mutation_stages(
     .await
 }
 
+/// True when an existing ancestor directory between `root` (exclusive) and
+/// `path`'s parent (inclusive) is itself a symlink. `safe_path` only confines
+/// `path` lexically, so a symlinked directory planted inside the repo (e.g.
+/// by a cloned branch) would otherwise let a mutation's `create_dir_all` or
+/// final `rename`/`remove_file` resolve through it and land outside `root`
+/// even though the lexical path stayed inside it.
+async fn has_symlinked_ancestor(root: &Path, path: &Path) -> bool {
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir == root || !dir.starts_with(root) {
+            return false;
+        }
+        if let Ok(meta) = tokio::fs::symlink_metadata(dir).await {
+            if meta.file_type().is_symlink() {
+                return true;
+            }
+        }
+        current = dir.parent();
+    }
+    false
+}
+
 async fn remove_staged_path(path: &Path) {
     let metadata = match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) => metadata,
@@ -451,6 +473,10 @@ pub async fn write(State(state): State<AppState>, body: Bytes) -> Response {
     let Some(file_path) = safe_path(&state.app_root, &state.repo_dir, &user_path) else {
         return ApiError::bad_request("Path escapes app root").into_response();
     };
+    if has_symlinked_ancestor(&state.app_root, &file_path).await {
+        return ApiError::bad_request("Refusing to write through a symlinked directory")
+            .into_response();
+    }
     let (stage_dir, staged) = match stage_bytes(&state.app_root, content.as_bytes()).await {
         Ok(staged) => staged,
         Err(error) => return error.into_response(),
@@ -507,6 +533,10 @@ pub async fn unlink(State(state): State<AppState>, body: Bytes) -> Response {
     let Some(file_path) = safe_path(&state.app_root, &state.repo_dir, &raw_path) else {
         return ApiError::bad_request("Path escapes app root").into_response();
     };
+    if has_symlinked_ancestor(&state.app_root, &file_path).await {
+        return ApiError::bad_request("Refusing to unlink through a symlinked directory")
+            .into_response();
+    }
     let trash_dir = if recursive {
         match new_stage_dir(&state.app_root).await {
             Ok(dir) => Some(dir),
@@ -589,6 +619,12 @@ pub async fn mkdir(State(state): State<AppState>, body: Bytes) -> Response {
     let Some(dir_path) = safe_path(&state.app_root, &state.repo_dir, &raw_path) else {
         return ApiError::bad_request("Path escapes app root").into_response();
     };
+    if has_symlinked_ancestor(&state.app_root, &dir_path).await {
+        return ApiError::bad_request(
+            "Refusing to create a directory through a symlinked directory",
+        )
+        .into_response();
+    }
     if let Err(error) = run_commit_owned(&state, move || async move {
         tokio::fs::create_dir_all(&dir_path)
             .await
@@ -637,6 +673,12 @@ pub async fn rename(State(state): State<AppState>, body: Bytes) -> Response {
     let Some(to_path) = safe_path(&state.app_root, &state.repo_dir, &raw_to) else {
         return ApiError::bad_request("Path escapes app root").into_response();
     };
+    if has_symlinked_ancestor(&state.app_root, &from_path).await
+        || has_symlinked_ancestor(&state.app_root, &to_path).await
+    {
+        return ApiError::bad_request("Refusing to rename through a symlinked directory")
+            .into_response();
+    }
     let from_label = raw_from.clone();
     let to_label = raw_to.clone();
     if let Err(error) = run_commit_owned(&state, move || async move {
@@ -693,6 +735,10 @@ pub async fn edit(State(state): State<AppState>, body: Bytes) -> Response {
     let Some(file_path) = safe_path(&state.app_root, &state.repo_dir, &user_path) else {
         return ApiError::bad_request("Path escapes app root").into_response();
     };
+    if has_symlinked_ancestor(&state.app_root, &file_path).await {
+        return ApiError::bad_request("Refusing to edit through a symlinked directory")
+            .into_response();
+    }
     let old_string = match body.old_string.as_deref() {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => return ApiError::bad_request("old_string is required").into_response(),
@@ -1517,5 +1563,49 @@ mod tests {
 
         let response = super::read(State(state), read_body(&absolute)).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    fn write_body(path: &str, content: &str) -> Bytes {
+        Bytes::from(serde_json::to_vec(&json!({ "path": path, "content": content })).unwrap())
+    }
+
+    /// `safe_path` only confines `link_dir/evil.txt` lexically; without the
+    /// `has_symlinked_ancestor` guard, `create_dir_all` sees the symlink as an
+    /// existing directory and the final `rename` resolves it on the OS side,
+    /// landing the write outside the repo entirely.
+    #[tokio::test]
+    async fn write_refuses_symlinked_ancestor_escape() {
+        let repo = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), repo.path().join("link_dir")).unwrap();
+        let state = fresh_state(repo.path().to_path_buf());
+
+        let response = super::write(State(state), write_body("link_dir/evil.txt", "pwned")).await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(!outside.path().join("evil.txt").exists());
+    }
+
+    /// Same escape, via `/unlink` with `recursive: true` — the guard must
+    /// stop a symlinked ancestor from letting a delete land outside the repo.
+    #[tokio::test]
+    async fn unlink_refuses_symlinked_ancestor_escape() {
+        let repo = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        let outside_file = outside.path().join("secret.txt");
+        std::fs::write(&outside_file, "keep me").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), repo.path().join("link_dir")).unwrap();
+        let state = fresh_state(repo.path().to_path_buf());
+
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({ "path": "link_dir/secret.txt", "recursive": true }))
+                .unwrap(),
+        );
+        let response = super::unlink(State(state), body).await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(outside_file.exists());
     }
 }
