@@ -1787,6 +1787,12 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** The project the card belongs to (`connections.id`, migration 249). */
+  virtual_mcp_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   /** The sprint the card is planned into (`task_board_sprints.id`); null =
    *  backlog. */
   sprint_id: ColumnType<
@@ -2104,6 +2110,10 @@ export interface TaskBoardItem {
    * cannot. Null for a card that names only a name, or none at all.
    */
   repositoryId: string | null;
+  /** The project this card belongs to. Attribution only: a run still checks
+   *  out `repo`/`repositoryId`. Null leaves the card attributed by its
+   *  repository and runs, as before migration 249. */
+  virtualMcpId: string | null;
   /** The sprint this card is planned into; null = backlog. */
   sprintId: string | null;
   dueDate: string | null;

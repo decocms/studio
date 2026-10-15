@@ -179,6 +179,9 @@ export const TaskBoardItemSchema = z.object({
    *  `TaskBoardItem`, so — like `retryAttempts` below — it MUST be modeled
    *  here or Ajv-revalidating MCP clients reject every response with `-32602`. */
   repositoryId: z.string().nullable(),
+  /** The project this card belongs to; null leaves it attributed by its
+   *  repository and runs. Attribution only — a run checks out `repo`. */
+  virtualMcpId: z.string().nullable(),
   /** The sprint this card is planned into (see `TASK_BOARD_SPRINT_LIST`);
    *  null = backlog. Present on every `TaskBoardItem`, so it MUST be modeled
    *  here or Ajv-revalidating MCP clients reject every response. */

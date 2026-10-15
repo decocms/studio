@@ -270,6 +270,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assignedBy: null,
     repo: null,
     repositoryId: null,
+    virtualMcpId: null,
     sprintId: null,
     dueDate: null,
     sortOrder: 0,

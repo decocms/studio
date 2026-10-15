@@ -11,6 +11,7 @@ import {
   projectForTask,
   projectsForTask,
   stampableEntries,
+  stampFor,
   taskMatchesProjectFilter,
   tasksForProject,
   type AttributableTask,
@@ -595,12 +596,18 @@ describe("filterAfterCreate", () => {
 });
 
 describe("stampableEntries", () => {
-  /** `task_board_items.repo` is the only per-card link, so a project pinning
-   *  no repository has nothing a card can point at. */
-  test("offers only buckets a card can be stamped with", () => {
-    const index = buildProjectIndex([ALPHA, BARE], ["acme/orphan"]);
+  /** A repo-less project is reached through `virtualMcpId`; a shared
+   *  repository is one option per project. */
+  test("offers every project, and repositories no project claims", () => {
+    const index = buildProjectIndex(
+      [ALPHA, BARE, MONO_1, MONO_2],
+      ["acme/orphan"],
+    );
     expect(stampableEntries(index).map((e) => e.id)).toEqual([
       "acme/alpha",
+      "vir_m2",
+      "vir_bare",
+      "vir_m1",
       "acme/orphan",
     ]);
   });
@@ -693,5 +700,97 @@ describe("tasksForProject", () => {
     const card = task({ repo: "acme/mono" });
     expect(tasksForProject([card], shared, "a")).toEqual([card]);
     expect(tasksForProject([card], shared, "b")).toEqual([card]);
+  });
+});
+
+describe("stamped projects", () => {
+  const stamped = (virtualMcpId: string, repo: string | null = null) => ({
+    ...task({ repo }),
+    virtualMcpId,
+  });
+  const index = buildProjectIndex([ALPHA, MONO_1, MONO_2]);
+
+  test("a shared repository is one option per project", () => {
+    expect(index.options.map((e) => [e.id, e.title, e.repo])).toEqual([
+      ["acme/alpha", "Alpha", "acme/alpha"],
+      ["vir_m2", "Checkout", "acme/mono"],
+      ["vir_m1", "Storefront", "acme/mono"],
+    ]);
+    expect(entryForFilter("vir_m1", index)?.title).toBe("Storefront");
+    // The bucket itself stays, for the cards nobody stamped.
+    expect(entryForFilter("acme/mono", index)?.projects).toHaveLength(2);
+  });
+
+  test("the stamp names one project where the repository named both", () => {
+    const card = stamped("vir_m2", "acme/mono");
+    expect(projectsForTask(card, index).map((p) => p.id)).toEqual(["vir_m2"]);
+    expect(entryForTask(card, index)?.id).toBe("vir_m2");
+    expect(
+      projectsForTask(task({ repo: "acme/mono" }), index).map((p) => p.id),
+    ).toEqual(["vir_m1", "vir_m2"]);
+  });
+
+  test("the stamp outranks the repository and the runs", () => {
+    const card = {
+      ...stamped("vir_a", "acme/mono"),
+      threads: [{ virtualMcpId: "vir_m1" }],
+    };
+    expect(projectForTask(card, index)?.id).toBe("vir_a");
+  });
+
+  /** A project's own board indexes only itself, so the sibling's stamp is
+   *  unknown there and must not fall back to the shared repository. */
+  test("a project's board drops a sibling's stamped card", () => {
+    const cards = [
+      { id: "mine", ...stamped("vir_m1", "acme/mono") },
+      { id: "sibling", ...stamped("vir_m2", "acme/mono") },
+      { id: "shared", ...task({ repo: "acme/mono" }) },
+    ];
+    const own = buildProjectIndex([MONO_1]);
+    expect(tasksForProject(cards, own, "vir_m1").map((c) => c.id)).toEqual([
+      "mine",
+      "shared",
+    ]);
+  });
+
+  test("a project option filters by the project, not the repository", () => {
+    expect(
+      taskMatchesProjectFilter(stamped("vir_m1", "acme/mono"), "vir_m1", index),
+    ).toBe(true);
+    expect(
+      taskMatchesProjectFilter(stamped("vir_m2", "acme/mono"), "vir_m1", index),
+    ).toBe(false);
+    expect(
+      taskMatchesProjectFilter(task({ repo: "acme/mono" }), "vir_m1", index),
+    ).toBe(true);
+  });
+
+  test("a repository filter does not admit a card stamped elsewhere", () => {
+    const card = stamped("vir_a", "acme/mono");
+    expect(taskMatchesProjectFilter(card, "acme/mono", index)).toBe(false);
+    expect(taskMatchesProjectFilter(card, "acme/alpha", index)).toBe(true);
+    expect(taskMatchesProjectFilter(card, NO_PROJECT_FILTER, index)).toBe(
+      false,
+    );
+  });
+
+  test("an unknown stamp falls back to the repository", () => {
+    const card = stamped("vir_gone", "acme/alpha");
+    expect(projectForTask(card, index)?.id).toBe("vir_a");
+    expect(taskMatchesProjectFilter(card, "acme/alpha", index)).toBe(true);
+  });
+
+  test("stampFor writes the project only when the option is one", () => {
+    expect(stampFor(entryForFilter("vir_m1", index) ?? null)).toEqual({
+      repo: "acme/mono",
+      virtualMcpId: "vir_m1",
+    });
+    expect(
+      stampFor(
+        entryForFilter("acme/orphan", buildProjectIndex([], ["acme/orphan"])) ??
+          null,
+      ),
+    ).toEqual({ repo: "acme/orphan", virtualMcpId: null });
+    expect(stampFor(null)).toEqual({ repo: null, virtualMcpId: null });
   });
 });

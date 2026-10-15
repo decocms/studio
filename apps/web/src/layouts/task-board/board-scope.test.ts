@@ -20,10 +20,14 @@ function project(id: string, repo?: string): VirtualMCPEntity {
 }
 
 /** A card, as `AttributableTask` reads one, plus an id to assert on. */
-function task(id: string, link: { repo?: string; virtualMcpId?: string } = {}) {
+function task(
+  id: string,
+  link: { repo?: string; virtualMcpId?: string; stamp?: string } = {},
+) {
   return {
     id,
     repo: link.repo ?? null,
+    virtualMcpId: link.stamp ?? null,
     threads: [{ virtualMcpId: link.virtualMcpId ?? null }],
   };
 }
@@ -69,6 +73,22 @@ describe("scopedBoardItems", () => {
       isLoading: false,
     });
     expect(items.map((i) => i.id)).toEqual(["bare1"]);
+  });
+
+  /** Two projects on one repository: each board keeps its own stamped cards
+   *  and shares only the ones nobody stamped. */
+  test("a sibling's stamped card stays on the sibling's board", () => {
+    const { items } = scopedBoardItems({
+      items: [
+        task("mine", { repo: "acme/alpha", stamp: "vir_a" }),
+        task("sibling", { repo: "acme/alpha", stamp: "vir_a2" }),
+        task("shared", { repo: "acme/alpha" }),
+      ],
+      scopeId: "vir_a",
+      project: ALPHA,
+      isLoading: false,
+    });
+    expect(items.map((i) => i.id)).toEqual(["mine", "shared"]);
   });
 
   /** The load-bearing one: narrowing only once the project resolves paints

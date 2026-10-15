@@ -480,4 +480,37 @@ describe("TaskBoardAnalyticsStorage.operation (real Postgres)", () => {
     const errors = await analytics.errors(project());
     expect(stat(errors, "Failed runs")?.value).toBe(1);
   });
+
+  /** Two projects over one repository: a stamped card is its own project's. */
+  it("counts a stamped card for its project and not for a sibling", async () => {
+    const SIBLING = "vir_board_analytics_sibling";
+    await sql`
+      INSERT INTO connections (id, organization_id, created_by, title, connection_type, connection_url)
+      VALUES (${PROJECT}, ${ORG}, ${USER}, 'project', 'VIRTUAL', 'virtual://project'),
+             (${SIBLING}, ${ORG}, ${USER}, 'sibling', 'VIRTUAL', 'virtual://sibling')
+    `.execute(database.db);
+    const sibling = () => ({
+      ...range(),
+      orgIds: [ORG],
+      project: { id: SIBLING, repo: PROJECT_REPO },
+    });
+    const ran = async (query: AnalyticsQuery) =>
+      tableRows(
+        await analytics.operationTasks(query, parseDrill("ran") ?? []),
+        "Tasks",
+      ).map((r) => r["Task ID"]);
+
+    expect(await ran(sibling())).toContain(sentBack);
+    await sql`
+      UPDATE task_board_items SET virtual_mcp_id = ${PROJECT} WHERE id = ${sentBack}
+    `.execute(database.db);
+    try {
+      expect(await ran(sibling())).not.toContain(sentBack);
+      expect(await ran(project())).toContain(sentBack);
+    } finally {
+      await sql`
+        UPDATE task_board_items SET virtual_mcp_id = null WHERE id = ${sentBack}
+      `.execute(database.db);
+    }
+  });
 });

@@ -170,7 +170,7 @@ function strategy(
         keysOf: (item) => [
           entryForTask(item, context.index)?.id ?? NO_PROJECT_FILTER,
         ],
-        order: context.index.entries.map((entry) => entry.id),
+        order: context.index.options.map((entry) => entry.id),
         last: NO_PROJECT_FILTER,
       };
     default: {

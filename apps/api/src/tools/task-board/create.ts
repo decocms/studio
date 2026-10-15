@@ -19,6 +19,7 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { assertValidTagIds } from "./validate-tags";
+import { cardCheckout, resolveCardProject } from "./validate-project";
 import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -52,6 +53,15 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
+    virtualMcpId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "The project (`vir_…` id) this card belongs to. When `repo` is " +
+          "omitted the card takes the project's repository, so its run checks " +
+          "that one out.",
+      ),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).max(1000).optional(),
     sprintId: z
@@ -135,13 +145,17 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     if (input.sprintId) {
       await assertPlannableSprint(ctx, organizationId, input.sprintId);
     }
+    const project = input.virtualMcpId
+      ? await resolveCardProject(ctx, organizationId, input.virtualMcpId)
+      : undefined;
+    const checkout = cardCheckout({ project, repo: input.repo });
 
     let duplicateCheck: DuplicateOutcome | null = null;
     if (input.onDuplicate === "return_existing") {
       duplicateCheck = await findDuplicateTask(ctx, organizationId, {
         title: input.title,
         description: input.description,
-        repo: input.repo,
+        repo: checkout.repo,
       }).catch((err): DuplicateOutcome => {
         console.error("[task-board] duplicate check failed", err);
         return {
@@ -169,7 +183,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       type: input.type,
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
-      repo: input.repo ?? null,
+      repo: checkout.repo ?? null,
+      repositoryId: checkout.repositoryId ?? null,
+      virtualMcpId: project?.id ?? null,
       sprintId: input.sprintId ?? null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,

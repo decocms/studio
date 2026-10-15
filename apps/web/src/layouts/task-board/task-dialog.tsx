@@ -141,7 +141,11 @@ import {
 } from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
-import { entryForFilter, stampableEntries } from "@/lib/project-index";
+import {
+  entryForFilter,
+  stampableEntries,
+  stampFor,
+} from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -191,6 +195,8 @@ type TaskForm = {
   type: TaskBoardItemType;
   assigneeId: string | null;
   repo: string | null;
+  /** The project picked, written beside `repo`; see `stampFor`. */
+  virtualMcpId: string | null;
   dueDate: Date | null;
   tagIds: string[];
   /** Create mode only; an existing card's sprint is read live off the item. */
@@ -418,10 +424,10 @@ interface TaskEditorProps {
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
-  /** In create mode, the repository to stamp the new task with (e.g. the active
-   * Project filter's repo, so a card made while the board is narrowed to a
-   * project belongs to it). An `owner/name`, matching the {@link repo} field. */
-  defaultRepo?: string | null;
+  /** In create mode, the project to stamp the new task with (the board's own,
+   * or the active Project filter's), so a card made while the board is
+   * narrowed to a project belongs to it. */
+  defaultProject?: { repo: string | null; virtualMcpId: string | null };
   /** In create mode, the sprint to plan the new task into (the one the board
    * is showing); null for the backlog. */
   defaultSprintId?: string | null;
@@ -437,6 +443,7 @@ interface TaskEditorProps {
     type: TaskBoardItemType;
     assigneeId: string | null;
     repo: string | null;
+    virtualMcpId: string | null;
     dueDate: string | null;
     tagIds: string[];
     /** Create mode only. */
@@ -475,7 +482,7 @@ function TaskBoardItemEditor({
   onClose,
   item,
   defaultStatus,
-  defaultRepo,
+  defaultProject,
   defaultSprintId,
   onSetSprint,
   onSubmit,
@@ -515,14 +522,25 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    // Edit wins with the card's own repo; create seeds from the active project.
-    repo: item?.repo ?? defaultRepo ?? null,
+    // Edit keeps the card's own; create seeds from the active project.
+    repo: item ? item.repo : (defaultProject?.repo ?? null),
+    virtualMcpId: item
+      ? item.virtualMcpId
+      : (defaultProject?.virtualMcpId ?? null),
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
     sprintId: defaultSprintId ?? null,
   });
-  const { title, description, status, priority, assigneeId, repo, dueDate } =
-    form;
+  const {
+    title,
+    description,
+    status,
+    priority,
+    assigneeId,
+    repo,
+    virtualMcpId,
+    dueDate,
+  } = form;
   /**
    * The bucket this card's repository belongs to, so the control shows the
    * PROJECT — its avatar and its name — rather than the string underneath.
@@ -532,8 +550,13 @@ function TaskBoardItemEditor({
    * its project and should say so. The reachability gate decides what you can
    * PICK, not what an existing value is called. Undefined only when nothing in
    * the org names that repository, which renders as the raw `owner/name`.
+   *
+   * A stamped project names itself, which on a repository several projects
+   * share is the only way to tell which one.
    */
-  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
+  const selectedEntry =
+    (virtualMcpId ? entryForFilter(virtualMcpId, projectIndex) : undefined) ??
+    (repo ? entryForFilter(repo, projectIndex) : undefined);
   const taskType = form.type;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -596,6 +619,7 @@ function TaskBoardItemEditor({
       type: v.type,
       assigneeId: v.assigneeId,
       repo: v.repo,
+      virtualMcpId: v.virtualMcpId,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
       ...(item ? {} : { sprintId: v.sprintId }),
@@ -1614,9 +1638,8 @@ function TaskBoardItemEditor({
             </PropertyGroup>
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which project this task pertains to. The value persisted is
-                  still the repository — that is the only per-card link there
-                  is — but what you PICK is a project, named as you know it. */}
+              {/* Which project this task pertains to: the project itself and
+                  the repository its run checks out. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -1626,7 +1649,7 @@ function TaskBoardItemEditor({
                     className={cn(
                       PROPERTY_BUTTON,
                       "max-w-full",
-                      !repo && EMPTY_PROPERTY,
+                      !repo && !virtualMcpId && EMPTY_PROPERTY,
                     )}
                   >
                     <ProjectEntryIcon entry={selectedEntry} />
@@ -1638,14 +1661,14 @@ function TaskBoardItemEditor({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onSelect={() => patch({ repo: null })}>
+                  <DropdownMenuItem onSelect={() => patch(stampFor(null))}>
                     {t("taskBoard.taskDialog.noProject")}
                   </DropdownMenuItem>
                   {projectEntries.map((entry) => (
                     <DropdownMenuItem
                       key={entry.id}
                       className="gap-2"
-                      onSelect={() => patch({ repo: entry.repo })}
+                      onSelect={() => patch(stampFor(entry))}
                     >
                       <ProjectEntryRow entry={entry} />
                     </DropdownMenuItem>
@@ -1732,7 +1755,7 @@ export function TaskBoardItemDialog(
     TaskEditorProps,
     | "onClose"
     | "defaultStatus"
-    | "defaultRepo"
+    | "defaultProject"
     | "defaultSprintId"
     | "onSubmit"
     | "isSaving"

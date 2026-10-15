@@ -369,6 +369,7 @@ export interface StudioToolIO {
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
       sprintId?: string | null | undefined;
@@ -398,6 +399,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        virtualMcpId: string | null;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -475,6 +477,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        virtualMcpId: string | null;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;
@@ -547,6 +550,7 @@ export interface StudioToolIO {
       type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
+      virtualMcpId?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
       previewRoutes?: string[] | undefined;
@@ -578,6 +582,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         repositoryId: string | null;
+        virtualMcpId: string | null;
         sprintId: string | null;
         dueDate: string | null;
         sortOrder: number;

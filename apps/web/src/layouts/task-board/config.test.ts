@@ -38,6 +38,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     assignedBy: null,
     repo: null,
     repositoryId: null,
+    virtualMcpId: null,
     sprintId: null,
     dueDate: null,
     sortOrder,

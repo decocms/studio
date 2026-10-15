@@ -154,11 +154,14 @@ function useFilterFields({
   tags,
   sprints,
   index,
+  scoped = false,
 }: {
   members: Member[];
   tags: OrgTag[];
   sprints: readonly Sprint[];
   index: ProjectIndex;
+  /** The board is one project's, so there is no project left to pick. */
+  scoped?: boolean;
 }): FilterField[] {
   const t = useT();
 
@@ -311,7 +314,7 @@ function useFilterFields({
         apply: (f) => ({ ...f, project: NO_PROJECT_FILTER }),
         isSelected: (f) => f.project === NO_PROJECT_FILTER,
       },
-      ...alphabetical(index.entries, (entry) => entry.title).map((entry) => ({
+      ...alphabetical(index.options, (entry) => entry.title).map((entry) => ({
         id: entry.id,
         label: entry.title,
         glyph: <ProjectEntryIcon entry={entry} />,
@@ -387,7 +390,9 @@ function useFilterFields({
       ),
   };
 
-  return [sprintField, assignee, priority, due, tagField, project];
+  return scoped
+    ? [sprintField, assignee, priority, due, tagField]
+    : [sprintField, assignee, priority, due, tagField, project];
 }
 
 /** How many cards a choice would leave, right-aligned like Linear's. */
@@ -623,6 +628,7 @@ export function TaskFilterButton({
   tags,
   sprints,
   index,
+  scoped,
   onChange,
 }: {
   filters: TaskFilters;
@@ -631,10 +637,12 @@ export function TaskFilterButton({
   tags: OrgTag[];
   sprints: readonly Sprint[];
   index: ProjectIndex;
+  /** A project's own board offers no Project filter. */
+  scoped: boolean;
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, sprints, index });
+  const fields = useFilterFields({ members, tags, sprints, index, scoped });
   const active =
     activeFilterFieldIds(filters, index, currentSprintId(sprints)).length > 0;
 

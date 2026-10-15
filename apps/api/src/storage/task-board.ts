@@ -411,6 +411,8 @@ export class TaskBoardStorage {
     repo?: string | null;
     /** The first-class repository the card was written against, when known. */
     repositoryId?: string | null;
+    /** The project the card belongs to; the caller checks it is this org's. */
+    virtualMcpId?: string | null;
     /** The sprint the card is planned into; absent = backlog. */
     sprintId?: string | null;
     dueDate?: string | null;
@@ -449,6 +451,7 @@ export class TaskBoardStorage {
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
           repository_id: params.repositoryId ?? null,
+          virtual_mcp_id: params.virtualMcpId ?? null,
           sprint_id: params.sprintId ?? null,
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
@@ -500,6 +503,7 @@ export class TaskBoardStorage {
       assignedBy?: string | null;
       repo?: string | null;
       repositoryId?: string | null;
+      virtualMcpId?: string | null;
       sprintId?: string | null;
       dueDate?: string | null;
       externalUrl?: string | null;
@@ -527,6 +531,9 @@ export class TaskBoardStorage {
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.repositoryId !== undefined
           ? { repository_id: data.repositoryId }
+          : {}),
+        ...(data.virtualMcpId !== undefined
+          ? { virtual_mcp_id: data.virtualMcpId }
           : {}),
         ...(data.sprintId !== undefined ? { sprint_id: data.sprintId } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
@@ -2986,6 +2993,7 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     repo: string | null;
     repository_id?: string | null;
+    virtual_mcp_id?: string | null;
     sprint_id?: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
@@ -3012,6 +3020,7 @@ export class TaskBoardStorage {
       assignedBy: row.assigned_by,
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
+      virtualMcpId: row.virtual_mcp_id ?? null,
       sprintId: row.sprint_id ?? null,
       dueDate:
         row.due_date instanceof Date

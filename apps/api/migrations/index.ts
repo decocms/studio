@@ -25,6 +25,7 @@ import * as migration245automationsystemkey from "./245-automation-system-key";
 import * as migration246automationprreadytrigger from "./246-automation-pr-ready-trigger";
 import * as migration247automationjiratransition from "./247-automation-jira-transition";
 import * as migration248dropretiredruletables from "./248-drop-retired-rule-tables";
+import * as migration249taskboarditemproject from "./249-task-board-item-project";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -536,6 +537,7 @@ const migrations: Record<string, Migration> = {
   "246-automation-pr-ready-trigger": migration246automationprreadytrigger,
   "247-automation-jira-transition": migration247automationjiratransition,
   "248-drop-retired-rule-tables": migration248dropretiredruletables,
+  "249-task-board-item-project": migration249taskboarditemproject,
 };
 
 export default migrations;
