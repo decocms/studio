@@ -98,7 +98,7 @@ import {
   getRegistryItemAppName,
 } from "@/utils/extract-connection-data";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
-import { KEYS } from "@/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import {
   buildCustomStdioParameters,
   buildNpxParameters,
@@ -475,16 +475,7 @@ function ConnectionResults({
         },
       });
 
-      queryClient.invalidateQueries({
-        predicate: (query) => {
-          const key = query.queryKey;
-          return (
-            key[1] === org.id &&
-            key[3] === "collection" &&
-            key[4] === "VIRTUAL_MCP"
-          );
-        },
-      });
+      invalidateVirtualMcpQueries(queryClient, org.id);
 
       toast.success(
         t("orgs.connections.addedConnectionsToAgent", {
