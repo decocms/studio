@@ -162,18 +162,29 @@ export function automationSystemDatabaseUrl(): string | undefined {
   return runtime?.systemDatabaseUrl;
 }
 
-/** The context a fire runs with: the creator's, or the org's for a built-in. */
+/** The context a fire runs with: the creator's, or the org's for a built-in,
+ *  or (when given) a manual fire's own requester — so a person trying an
+ *  automation out doesn't need its original creator to still be a member. */
 async function fireContext(
   rt: AutomationRuntime,
   automation: Automation,
+  manualRequester?: string,
 ): Promise<StudioContext | null> {
   if (automation.system_key) {
     return (await rt.orgContextFactory?.(automation.organization_id)) ?? null;
   }
   return await rt.studioContextFactory(
     automation.organization_id,
-    automation.created_by,
+    manualRequester ?? automation.created_by,
   );
+}
+
+/** The user a manual Jira fire was asked by — absent for a card fire (always
+ *  built-in, so `fireContext` never needs it) or an automatic fire. */
+function manualRequesterOf(
+  target: FireAutomationContext["target"],
+): string | undefined {
+  return target?.kind === "jira" ? target.manual?.requestedBy : undefined;
 }
 
 function requireRuntime(): AutomationRuntime {
@@ -253,7 +264,7 @@ type PrepareOutcome =
       resolvedModel: ResolvedAutomationModel;
     };
 
-async function prepareFireStep(
+export async function prepareFireStep(
   ctx: FireAutomationContext,
 ): Promise<PrepareOutcome> {
   const rt = requireRuntime();
@@ -267,9 +278,12 @@ async function prepareFireStep(
   // own: off means its starters don't fire.
   if (!automation.active && !ctx.target?.manual) return { skip: "inactive" };
 
-  const studioCtx = await fireContext(rt, automation);
+  const manualRequester = manualRequesterOf(ctx.target);
+  const studioCtx = await fireContext(rt, automation, manualRequester);
   if (!studioCtx && automation.system_key) return { skip: "org_unavailable" };
   if (!studioCtx) {
+    // A manual fire's own (failed) requester isn't evidence the creator left.
+    if (manualRequester) return { skip: "creator_invalid" };
     console.warn(
       `[fireAutomationWorkflow] deactivating "${automation.name}" — creator ${automation.created_by} no longer in org ${automation.organization_id}`,
     );
@@ -521,7 +535,11 @@ async function runOnJiraStep(
   triggerId: string | null,
   target: JiraTarget,
 ): Promise<JiraRunOutcome> {
-  const studioCtx = await fireContext(requireRuntime(), automation);
+  const studioCtx = await fireContext(
+    requireRuntime(),
+    automation,
+    target.manual?.requestedBy,
+  );
   const outcome: JiraRunOutcome = studioCtx
     ? await runAutomationOnJira(studioCtx, automation, triggerId, target)
     : { skipped: "rejected" };
