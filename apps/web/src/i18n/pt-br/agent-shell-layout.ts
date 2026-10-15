@@ -4,7 +4,7 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWeb":
     "Não é possível continuar este chat",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
-    "O aplicativo de desktop do Studio foi descontinuado. Inicie um novo chat para continuar trabalhando.",
+    "O ambiente de execução original deste chat não é mais suportado. Inicie um novo chat para continuar trabalhando.",
   "agentShellLayout.agentShellLayout.agentNotFound": "Projeto não encontrado",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
     'O projeto "{virtualMcpId}" não existe nesta organização.',
