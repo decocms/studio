@@ -1,4 +1,6 @@
 import { Page } from "@/components/page";
+import { ThreadsView } from "@/views/forum/threads-view";
+import { TopicPage } from "@/views/forum/topic-page";
 import { Panel } from "@/components/panel";
 /**
  * Task board — the org's own board of tasks (title,
@@ -1097,7 +1099,12 @@ function TaskBoardBody({
     setSortDirection,
   } = useBoardSearch(
     {
-      layout: inlineTabs && feedEnabled ? "feed" : "board",
+      // A forum channel is read as threads first; its cards are topics.
+      layout: scopedProject?.metadata?.forum
+        ? "threads"
+        : inlineTabs && feedEnabled
+          ? "feed"
+          : "board",
       assignee:
         viewerId === null
           ? null
@@ -1387,7 +1394,7 @@ function TaskBoardBody({
    * wherever it was clicked. The board's filters ride along; anything the
    * tasks route does not declare is dropped by its schema.
    */
-  const openTask = (item: TaskBoardItem) => {
+  const openTask = (item: { id: string; keySeq: number | null }) => {
     navigate({ to: ".", ...taskAddress(taskRouteSegment(org.slug, item)) });
   };
 
@@ -1430,6 +1437,18 @@ function TaskBoardBody({
           {t("common.taskBoard.feedView")}
         </Page.Tab>
       )}
+      <Page.Tab
+        active={layout === "threads"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("forum.threadsView"),
+        })}
+        onClick={() => {
+          setLayout("threads");
+          clearSelection();
+        }}
+      >
+        {t("forum.threadsView")}
+      </Page.Tab>
       <Page.Tab
         active={layout === "board"}
         aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
@@ -1577,7 +1596,9 @@ function TaskBoardBody({
         view={layout === "list" ? { grouping, sorting } : undefined}
       />
 
-      {items.length === 0 ? (
+      {layout === "threads" ? (
+        <ThreadsView project={scopedProject ?? undefined} onOpen={openTask} />
+      ) : items.length === 0 ? (
         <div
           className={cn(
             "mx-auto w-full max-w-[1680px]",
@@ -1728,7 +1749,12 @@ function TaskBoardBody({
 
       {/* Keyed by id so switching cards (a deep link changing under us) starts
           the editor's form over rather than carrying the last one's fields. */}
-      {openItem && (
+      {openItem && layout === "threads" && openItem.keySeq !== null && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <TopicPage keySeq={openItem.keySeq} onBack={() => closeTask()} />
+        </div>
+      )}
+      {openItem && layout !== "threads" && (
         <TaskBoardItemDetail
           key={openItem.id}
           item={openItem}

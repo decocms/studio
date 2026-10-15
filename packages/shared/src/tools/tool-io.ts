@@ -923,6 +923,73 @@ export interface StudioToolIO {
     input: { id: string };
     output: { deleted: boolean; movedCount: number };
   };
+  FORUM_CHANNEL_LIST: {
+    input: { [x: string]: never };
+    output: {
+      channels: {
+        id: string;
+        title: string;
+        description: string | null;
+        icon: string | null;
+        forum: { visibility: "public" | "org"; kinds: string[] };
+        topicCount: number;
+        lastActivityAt: string | null;
+      }[];
+    };
+  };
+  FORUM_TOPIC_LIST: {
+    input: { channelId?: string | undefined };
+    output: {
+      topics: {
+        id: string;
+        keySeq: number;
+        channelId: string;
+        title: string;
+        body: string | null;
+        status: string;
+        author: { id: string; name: string; image: string | null };
+        assigneeId: string | null;
+        tags: { id: string; name: string; color: string | null }[];
+        votes: number;
+        viewerVoted: boolean;
+        replyCount: number;
+        createdAt: string;
+        lastActivityAt: string;
+      }[];
+    };
+  };
+  FORUM_TOPIC_GET: {
+    input: { keySeq: number };
+    output: {
+      topic: {
+        id: string;
+        keySeq: number;
+        channelId: string;
+        title: string;
+        body: string | null;
+        status: string;
+        author: { id: string; name: string; image: string | null };
+        assigneeId: string | null;
+        tags: { id: string; name: string; color: string | null }[];
+        votes: number;
+        viewerVoted: boolean;
+        replyCount: number;
+        createdAt: string;
+        lastActivityAt: string;
+      };
+      replies: {
+        id: string;
+        parentId: string | null;
+        author: { id: string; name: string; image: string | null };
+        body: string;
+        createdAt: string;
+      }[];
+    };
+  };
+  FORUM_TOPIC_VOTE: {
+    input: { topicId: string };
+    output: { voted: boolean; votes: number };
+  };
   TASK_ADD_REPO: {
     input: { id?: string | undefined; connectionId?: string | undefined };
     output: {
@@ -3730,6 +3797,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;
@@ -3998,6 +4069,10 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
+              forum?:
+                | { visibility: "public" | "org"; kinds: string[] }
+                | null
+                | undefined;
               repository?:
                 | {
                     url: string;
@@ -4189,6 +4264,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;
@@ -4418,6 +4497,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;
@@ -4638,6 +4721,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;
@@ -4859,6 +4946,10 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
+              forum?:
+                | { visibility: "public" | "org"; kinds: string[] }
+                | null
+                | undefined;
               repository?:
                 | {
                     url: string;
@@ -5058,6 +5149,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;
@@ -5276,6 +5371,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;
@@ -6907,6 +7006,10 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
+          forum?:
+            | { visibility: "public" | "org"; kinds: string[] }
+            | null
+            | undefined;
           repository?:
             | {
                 url: string;

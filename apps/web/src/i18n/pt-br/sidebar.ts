@@ -19,7 +19,7 @@ export const sidebar = {
   "sidebar.navDestinations.agents": "Agentes",
   "sidebar.navDestinations.home": "Início",
   "sidebar.navDestinations.library": "Biblioteca",
-  "sidebar.navDestinations.reports": "Deco Score",
+  "sidebar.navDestinations.reports": "Relatórios",
   "sidebar.navDestinations.settings": "Configurações",
   "sidebar.navDestinations.spineTasks": "Tarefas",
   "sidebar.navDestinations.tasks": "Board",
