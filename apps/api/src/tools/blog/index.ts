@@ -12,5 +12,6 @@ export { BLOG_BRAND_ENRICH } from "./brand-enrich";
 export { BLOG_CONTEXT_EXTRACT } from "./context-extract";
 export { BLOG_FORMAT_SUGGEST } from "./format-suggest";
 export { BLOG_POST_DRAFT } from "./post-draft";
+export { BLOG_POST_ILLUSTRATE } from "./post-illustrate";
 export { BLOG_LINK_SUGGEST } from "./link-suggest";
 export { BLOG_CAMPAIGN_SUGGEST } from "./campaign-suggest";

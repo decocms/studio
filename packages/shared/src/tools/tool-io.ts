@@ -2454,7 +2454,7 @@ export interface StudioToolIO {
         excerpt: string;
         categorySlugs: string[];
         authorEmails: string[];
-        cover: { url: string; alt: string };
+        cover: { url: string; alt: string; prompt: string };
         sections: {
           type: string;
           props: Record<string, unknown>;
@@ -2471,6 +2471,19 @@ export interface StudioToolIO {
           | "drafts-failed";
         count?: number | undefined;
       }[];
+    };
+  };
+  BLOG_POST_ILLUSTRATE: {
+    input: {
+      requests: { id: string; prompt: string; alt?: string | undefined }[];
+      productImages?: string[] | undefined;
+      companyName?: string | undefined;
+      fileConfigId?: string | undefined;
+    };
+    output: {
+      images: { id: string; url: string }[];
+      outcome: "ok" | "failed" | "no-bucket" | "no-model";
+      referenced: number;
     };
   };
   BLOG_LINK_SUGGEST: {

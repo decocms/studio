@@ -415,7 +415,17 @@ export const BLOG_POST_DRAFT = defineTool({
   outputSchema: z.object({
     posts: z.array(
       PostSchema.omit({ cover: true, sections: true }).extend({
-        cover: z.object({ url: z.string(), alt: z.string() }),
+        cover: z.object({
+          url: z
+            .string()
+            .describe(
+              "Empty unless a `fileConfigId` was given. BLOG_POST_ILLUSTRATE is the call that fills it, and the one that can condition the image on the product's own photographs.",
+            ),
+          alt: z.string(),
+          prompt: z
+            .string()
+            .describe("The brief the image was asked for, for ILLUSTRATE."),
+        }),
         sections: z.array(
           z.object({
             /** The block's name; the caller maps it to a resolveType. */
@@ -601,7 +611,11 @@ export const BLOG_POST_DRAFT = defineTool({
           title: draft.title,
           excerpt: draft.excerpt,
           seo: draft.seo,
-          cover: { url: cover, alt: draft.cover.alt },
+          cover: {
+            url: cover,
+            alt: draft.cover.alt,
+            prompt: coverPrompt(draft, brand.companyName ?? ""),
+          },
           categorySlugs: draft.categorySlugs.filter((slug) =>
             input.categories.some((c) => c.slug === slug),
           ),

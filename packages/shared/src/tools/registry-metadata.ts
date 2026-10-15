@@ -67,6 +67,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
   "BLOG_POST_DRAFT",
+  "BLOG_POST_ILLUSTRATE",
   "BLOG_LINK_SUGGEST",
   "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
@@ -448,6 +449,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_POST_DRAFT",
     description: "Write a blog post from a theme and a format",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_ILLUSTRATE",
+    description:
+      "Draw a drafted post's images, conditioned on the product's own photographs",
     category: "Blog",
   },
   {

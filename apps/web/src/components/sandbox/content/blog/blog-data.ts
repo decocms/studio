@@ -2921,7 +2921,15 @@ export function buildGeneratedPostPayload({
   takenSlugs,
   now,
 }: {
-  draft: StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number];
+  /**
+   * The drafted post. `cover.url` is filled by whoever drew it — the drafting
+   * tool when it was given a bucket, BLOG_POST_ILLUSTRATE otherwise — so the
+   * brief that produced it is not this function's business.
+   */
+  draft: Omit<
+    StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number],
+    "cover"
+  > & { cover: { url: string; alt: string } };
   resolveTypes: Record<string, string>;
   /** How each block already stores its product slot, by component name. */
   productShapes?: Record<string, unknown>;

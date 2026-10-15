@@ -38,22 +38,46 @@ const mutateAsync = mock(
   },
 );
 
-const studioCall = mock(async () => ({
-  posts: [
-    { title: "Post um" },
-    { title: "Post dois" },
-    { title: "Post três" },
-  ].map((post) => ({
-    ...post,
-    excerpt: "",
-    seo: { title: "", description: "" },
-    cover: { url: "", alt: "" },
-    categorySlugs: [],
-    authorEmails: [],
-    sections: [],
-  })),
-  gaps: [],
+/** Which tools the run reached, in order, so the sequence itself is testable. */
+const toolCalls: string[] = [];
+
+const DRAFTS = ["Post um", "Post dois", "Post três"].map((title) => ({
+  title,
+  excerpt: "",
+  seo: { title: "", description: "" },
+  cover: { url: "", alt: "capa", prompt: "uma mochila na mesa" },
+  categorySlugs: [],
+  authorEmails: [],
+  sections: [],
 }));
+
+const studioCall = mock(
+  async (name: string, input: Record<string, unknown>) => {
+    toolCalls.push(name);
+    if (name === "BLOG_SITE_GROUND") {
+      return {
+        report: "a loja vende mochilas",
+        outcome: "ok",
+        toolNames: ["search"],
+        evidence: "",
+        evidenceUri: null,
+        evidenceChars: 0,
+      };
+    }
+    if (name === "BLOG_POST_ILLUSTRATE") {
+      const requests = input.requests as { id: string }[];
+      return {
+        images: requests.map((request) => ({
+          id: request.id,
+          url: `https://cdn.example.com/${request.id}.png`,
+        })),
+        outcome: "ok",
+        referenced: 2,
+      };
+    }
+    return { posts: DRAFTS, gaps: [] };
+  },
+);
 
 mock.module("@/components/sections-editor/use-save-block", () => ({
   useSaveBlock: () => ({ mutateAsync, isPending: false }),
@@ -78,7 +102,21 @@ const BRIEFING = {
     status: "active",
     period: { start: null, end: null },
     trigger: { type: "date", note: "Volta às aulas" },
-    intent: { objective: "awareness", targets: [], products: [], keywords: [] },
+    intent: {
+      objective: "awareness",
+      targets: [],
+      products: [
+        {
+          id: "150298",
+          name: "Mochila",
+          url: "",
+          category: "Escolar",
+          description: "",
+          images: ["https://cdn.example.com/mochila-1.jpg"],
+        },
+      ],
+      keywords: [],
+    },
     guardrails: { avoidComplements: [], toneOverrides: "" },
   },
   format: { name: "Guia", value: "Um guia" },
@@ -89,6 +127,19 @@ const BRIEFING = {
 const keysInOrder = () => [...new Set(writes.map((write) => write.blockKey))];
 
 describe("useGeneratePost", () => {
+  const runWithBucket = () => {
+    const { result } = renderHook(() =>
+      useGeneratePost({
+        orgSlug: "org",
+        virtualMcpId: "vmcp",
+        branch: "main",
+        decofile: {},
+        meta: { schema: { definitions: {} } } as never,
+      }),
+    );
+    return result.current({ ...BRIEFING, fileConfigId: "bucket-1" } as never);
+  };
+
   const run = () => {
     const { result } = renderHook(() =>
       useGeneratePost({
@@ -104,8 +155,22 @@ describe("useGeneratePost", () => {
 
   beforeEach(() => {
     writes.length = 0;
+    toolCalls.length = 0;
     calls = 0;
     failOnCall = 0;
+  });
+
+  test("reads the store in its own call before drafting", async () => {
+    await run();
+    expect(toolCalls.indexOf("BLOG_SITE_GROUND")).toBeLessThan(
+      toolCalls.indexOf("BLOG_POST_DRAFT"),
+    );
+  });
+
+  /** Without a bucket there is nowhere to put an image, so none is drawn. */
+  test("does not illustrate when the briefing names no bucket", async () => {
+    await run();
+    expect(toolCalls).not.toContain("BLOG_POST_ILLUSTRATE");
   });
 
   test("writes one placeholder per requested draft, then one post each", async () => {
@@ -115,6 +180,29 @@ describe("useGeneratePost", () => {
     expect(writes.filter((write) => write.blockKey === keys[0])).toEqual([
       { blockKey: keys[0]!, title: "A campanha" },
       { blockKey: keys[0]!, title: "Post um" },
+    ]);
+  });
+
+  /**
+   * The cover is drawn after the words, by its own call, and conditioned on the
+   * product's own photographs — a post about a backpack illustrated with one
+   * the brand does not sell is worse than one with no picture.
+   */
+  test("takes the cover from the illustrating call, not from the draft", async () => {
+    await runWithBucket();
+    expect(toolCalls).toContain("BLOG_POST_ILLUSTRATE");
+    expect(toolCalls.indexOf("BLOG_POST_DRAFT")).toBeLessThan(
+      toolCalls.indexOf("BLOG_POST_ILLUSTRATE"),
+    );
+  });
+
+  test("offers the campaign's product photographs as references", async () => {
+    await runWithBucket();
+    const drawn = studioCall.mock.calls.find(
+      ([name]) => name === "BLOG_POST_ILLUSTRATE",
+    );
+    expect(drawn?.[1].productImages).toEqual([
+      "https://cdn.example.com/mochila-1.jpg",
     ]);
   });
 
