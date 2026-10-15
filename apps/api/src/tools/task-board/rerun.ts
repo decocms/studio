@@ -305,12 +305,13 @@ export async function refuseIfMergePending(
 export async function supersedeLiveRuns(
   ctx: StudioContext,
   item: TaskBoardItem,
+  reason: string = SUPERSEDED_FAILURE_REASON,
 ): Promise<string[]> {
   const supersededThreadIds: string[] = [];
   for (const threadId of threadsToSupersede(item)) {
     const marked = await ctx.storage.threads.failIfNotTerminal(
       threadId,
-      SUPERSEDED_FAILURE_REASON,
+      reason,
       "superseded",
     );
     if (!marked) continue;
