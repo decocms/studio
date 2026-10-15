@@ -1,20 +1,21 @@
 import type { automations as automationsEn } from "../en/automations.ts";
 
 export const automations = {
-  "automations.addStarterPopover.addStarter": "Adicionar Gatilho",
+  "automations.addStarterPopover.addStarter": "Adicionar acionador",
   "automations.addStarterPopover.customCron": "Personalizado (cron)",
   "automations.addStarterPopover.event": "Evento",
   "automations.addStarterPopover.every": "A cada...",
   "automations.addStarterPopover.everyUnit": "A cada {unit}",
-  "automations.addStarterPopover.failedAddStarter": "Erro ao adicionar gatilho",
+  "automations.addStarterPopover.failedAddStarter":
+    "Erro ao adicionar acionador",
   "automations.addStarterPopover.failedAddWebhookStarter":
-    "Erro ao adicionar gatilho webhook",
-  "automations.addStarterPopover.starterAdded": "Gatilho adicionado",
+    "Erro ao adicionar acionador webhook",
+  "automations.addStarterPopover.starterAdded": "Acionador adicionado",
   "automations.addStarterPopover.webhook": "Webhook",
   "automations.addStarterPopover.cardEntersColumn":
     "Quando um card entra numa coluna",
   "automations.addStarterPopover.webhookStarterAdded":
-    "Gatilho webhook adicionado",
+    "Acionador webhook adicionado",
   "automations.automationConfig.all": "Todos",
   "automations.automationConfig.allTools": "Todas as ferramentas",
   "automations.automationConfig.allToolsEnabled":
@@ -137,8 +138,8 @@ export const automations = {
     "Esta automação ainda não foi executada. Dispare-a ou aguarde um inicializador disparar.",
   "automations.automationRuns.noRunsTitle": "Nenhuma execução ainda",
   "automations.automationRuns.noStartersDescription":
-    "Adicione um inicializador (cron, evento ou webhook) para começar a coletar execuções.",
-  "automations.automationRuns.noStartersTitle": "Nenhum inicializador ainda",
+    "Adicione um acionador (cron, evento ou webhook) para começar a coletar execuções.",
+  "automations.automationRuns.noStartersTitle": "Nenhum acionador ainda",
   "automations.automationRuns.ok": "ok",
   "automations.automationRuns.runHeader": "Execução",
   "automations.automationRuns.running": "em execução",
