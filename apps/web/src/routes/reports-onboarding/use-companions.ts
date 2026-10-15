@@ -8,6 +8,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
+import { useDeferredValue } from "react";
 import { PROVIDER_BY_BINDING_TYPE } from "./companion-forms/sa-binding-copy.ts";
 import { COMMERCE_COMPANION_MCPS } from "./companions.ts";
 import {
@@ -83,8 +84,10 @@ export function useReportsCompanions({
     retry: false,
   });
 
-  const schemaRequirements = schemaQuery.data?.stateSchema
-    ? parseBindingRequirements(schemaQuery.data.stateSchema)
+  // Schema and saved state are deferred so the cards stay up while their queries load.
+  const stateSchema = useDeferredValue(schemaQuery.data?.stateSchema);
+  const schemaRequirements = stateSchema
+    ? parseBindingRequirements(stateSchema)
     : null;
   // Live schema wins; fall back to the known companion set while it loads or
   // when it's unreachable, so the section is never empty due to a CD proxy 401.
@@ -120,8 +123,9 @@ export function useReportsCompanions({
       }>(result);
     },
   });
-  const configurationState =
-    cdConnectionQuery.data?.item?.configuration_state ?? null;
+  const configurationState = useDeferredValue(
+    cdConnectionQuery.data?.item?.configuration_state ?? null,
+  );
   const linkedConnectionIds = requirements
     .map(
       (r) =>
