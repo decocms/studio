@@ -5,6 +5,10 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import {
+  CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+  GITHUB_COPILOT_PROVIDER_ID,
+} from "@/harnesses/claude-code-env";
 import { agentSandboxEnabled } from "@/settings";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -40,7 +44,7 @@ export class ClaudeCodeProviderRequiredError extends Error {
   readonly code = "claude_code_provider_required";
   constructor() {
     super(
-      "Chats need an Anthropic, OpenRouter or deco AI Gateway provider, or your own linked Claude subscription. Connect one in Settings → AI Providers.",
+      "Chats need an Anthropic, OpenRouter or deco AI Gateway provider, or your own linked Claude or GitHub Copilot plan. Connect one in Settings → AI Providers.",
     );
     this.name = "ClaudeCodeProviderRequiredError";
   }
@@ -48,8 +52,8 @@ export class ClaudeCodeProviderRequiredError extends Error {
 
 /**
  * Whether a claude-code run has any credential to start on: an org key of a
- * provider it supports, or the user's own unexpired Claude subscription (which
- * outranks the org key at dispatch).
+ * provider it supports, or the user's own unexpired Claude subscription or
+ * GitHub Copilot token (which outrank the org key at dispatch).
  */
 export async function hasClaudeCodeCredential(
   ctx: StudioContext,
@@ -58,11 +62,24 @@ export async function hasClaudeCodeCredential(
 ): Promise<boolean> {
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
   if (keys.some((key) => supportsClaudeCode(key.providerId))) return true;
-  return hasLiveClaudeSubscription(ctx, userId);
+  return (await userPlanCredentialId(ctx, userId)) !== null;
+}
+
+/** The user's own plan a run would bill, in dispatch's order, or null. */
+export async function userPlanCredentialId(
+  ctx: StudioContext,
+  userId: string,
+): Promise<string | null> {
+  if (await hasLiveClaudeSubscription(ctx, userId)) {
+    return CLAUDE_SUBSCRIPTION_PROVIDER_ID;
+  }
+  return (await ctx.storage.githubCopilotSubscriptions.find(userId))
+    ? GITHUB_COPILOT_PROVIDER_ID
+    : null;
 }
 
 /** Whether the user linked a Claude subscription that has not expired. */
-export async function hasLiveClaudeSubscription(
+async function hasLiveClaudeSubscription(
   ctx: StudioContext,
   userId: string,
 ): Promise<boolean> {

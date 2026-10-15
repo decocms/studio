@@ -1490,6 +1490,11 @@ export async function createStudioContextFactory(
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     claudeSubscriptions: new ClaudeSubscriptionStorage(config.db, vault),
+    githubCopilotSubscriptions: new ClaudeSubscriptionStorage(
+      config.db,
+      vault,
+      "github_copilot_subscriptions",
+    ),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),

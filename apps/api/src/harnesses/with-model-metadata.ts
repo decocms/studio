@@ -1,4 +1,5 @@
 import type { UIMessageChunk } from "ai";
+import { GITHUB_COPILOT_PROVIDER_ID } from "./claude-code-env";
 
 /**
  * Stamp the model a sandbox-hosted run actually used onto its assistant
@@ -23,9 +24,10 @@ export async function* withModelMetadata(
   modelId: string | null | undefined,
   providerId: string,
 ): AsyncIterable<UIMessageChunk> {
+  const dropCost = providerId === GITHUB_COPILOT_PROVIDER_ID;
   let stamped = false;
   for await (const chunk of chunks) {
-    yield chunk;
+    yield dropCost ? withoutCost(chunk) : chunk;
     if (stamped || !modelId) continue;
     if ((chunk as { type?: string }).type !== "start") continue;
     stamped = true;
@@ -38,4 +40,19 @@ export async function* withModelMetadata(
       },
     } as UIMessageChunk;
   }
+}
+
+/**
+ * A Copilot plan bills premium requests, not tokens, so the CLI's list-price
+ * estimate is not what the run cost. Dropping it at the source keeps every
+ * cost surface (chat footer, task card, analytics) on tokens alone.
+ */
+function withoutCost(chunk: UIMessageChunk): UIMessageChunk {
+  const meta = (chunk as { messageMetadata?: { usage?: object } })
+    .messageMetadata;
+  if (!meta?.usage || !("providerMetadata" in meta.usage)) return chunk;
+  const { providerMetadata: _, ...usage } = meta.usage as {
+    providerMetadata?: unknown;
+  };
+  return { ...chunk, messageMetadata: { ...meta, usage } } as UIMessageChunk;
 }

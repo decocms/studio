@@ -130,6 +130,7 @@ describe("Connection Tools", () => {
         orgFsEntries: null as never,
         oauthPkceStates: null as never,
         claudeSubscriptions: null as never,
+        githubCopilotSubscriptions: null as never,
         automations: null as never,
         orgSsoConfig: null as never,
         orgSsoSessions: null as never,

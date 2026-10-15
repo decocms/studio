@@ -375,6 +375,7 @@ export interface StudioStorage {
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   claudeSubscriptions: ClaudeSubscriptionStorage;
+  githubCopilotSubscriptions: ClaudeSubscriptionStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
   orgSsoConfig: OrgSsoConfigStorage;

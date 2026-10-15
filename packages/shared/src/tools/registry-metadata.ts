@@ -195,6 +195,11 @@ const ALL_TOOL_NAMES = [
   "CLAUDE_SUBSCRIPTION_STATUS",
   "CLAUDE_SUBSCRIPTION_DISCONNECT",
 
+  // GitHub Copilot (per-user token for the claude-code harness)
+  "GITHUB_COPILOT_CONNECT",
+  "GITHUB_COPILOT_STATUS",
+  "GITHUB_COPILOT_DISCONNECT",
+
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
@@ -1002,6 +1007,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CLAUDE_SUBSCRIPTION_DISCONNECT",
     description: "Unlink your Claude subscription",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_CONNECT",
+    description: "Link your own GitHub Copilot plan with a GitHub token",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_STATUS",
+    description: "Whether your GitHub Copilot plan is linked, and since when",
+    category: "AI Providers",
+  },
+  {
+    name: "GITHUB_COPILOT_DISCONNECT",
+    description: "Unlink your GitHub Copilot plan",
     category: "AI Providers",
   },
   {
@@ -2016,6 +2036,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",
+      "GITHUB_COPILOT_CONNECT",
+      "GITHUB_COPILOT_STATUS",
+      "GITHUB_COPILOT_DISCONNECT",
     ],
   },
   // Organization (tags moved here from Developer)

@@ -632,6 +632,18 @@ export const settings = {
     "Generate a token on your own machine with",
   "settings.claudeSubscription.title": "Your Claude subscription",
   "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
+  "settings.githubCopilot.active":
+    "Your GitHub Copilot plan is running these coding tasks.",
+  "settings.githubCopilot.connect": "Link",
+  "settings.githubCopilot.connected": "GitHub Copilot linked",
+  "settings.githubCopilot.description":
+    "Run coding tasks on Claude through your own GitHub Copilot plan instead of the organization's AI credit.",
+  "settings.githubCopilot.disconnect": "Disconnect",
+  "settings.githubCopilot.disconnected": "GitHub Copilot unlinked",
+  "settings.githubCopilot.howTo":
+    "Create a fine-grained GitHub token with the Copilot Requests permission",
+  "settings.githubCopilot.title": "Your GitHub Copilot plan",
+  "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
   "settings.decoCreditsHero.amountPlaceholder": "50",

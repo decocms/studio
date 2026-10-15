@@ -9,10 +9,16 @@ export interface ClaudeSubscriptionInfo {
   expiresAt: string | null;
 }
 
+/** A Claude plan, or a GitHub token for a Copilot plan: same per-user shape. */
+type SubscriptionTable =
+  | "claude_subscriptions"
+  | "github_copilot_subscriptions";
+
 export class ClaudeSubscriptionStorage {
   constructor(
     private db: Kysely<Database>,
     private vault: CredentialVault,
+    private table: SubscriptionTable = "claude_subscriptions",
   ) {}
 
   /** Link (or re-link) a user's subscription token. One row per user. */
@@ -25,7 +31,7 @@ export class ClaudeSubscriptionStorage {
     const expiresAt = params.expiresAt ?? null;
     const createdAt = new Date();
     await this.db
-      .insertInto("claude_subscriptions")
+      .insertInto(this.table)
       .values({
         user_id: params.userId,
         encrypted_access_token: encrypted,
@@ -49,7 +55,7 @@ export class ClaudeSubscriptionStorage {
   /** Metadata only — for the settings UI, which must never see the token. */
   async find(userId: string): Promise<ClaudeSubscriptionInfo | null> {
     const row = await this.db
-      .selectFrom("claude_subscriptions")
+      .selectFrom(this.table)
       .select(["created_at", "expires_at"])
       .where("user_id", "=", userId)
       .executeTakeFirst();
@@ -70,7 +76,7 @@ export class ClaudeSubscriptionStorage {
    */
   async findLiveToken(userId: string): Promise<string | null> {
     const row = await this.db
-      .selectFrom("claude_subscriptions")
+      .selectFrom(this.table)
       .select(["encrypted_access_token", "expires_at"])
       .where("user_id", "=", userId)
       .executeTakeFirst();
@@ -83,7 +89,7 @@ export class ClaudeSubscriptionStorage {
 
   async delete(userId: string): Promise<void> {
     await this.db
-      .deleteFrom("claude_subscriptions")
+      .deleteFrom(this.table)
       .where("user_id", "=", userId)
       .execute();
   }

@@ -7,7 +7,7 @@
  */
 
 import type { Kysely } from "kysely";
-import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
+import { isUserPlanCredential } from "@/harnesses/claude-code-env";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import type { Database, Permission } from "@/storage/types";
 
@@ -57,7 +57,7 @@ export function checkModelPermission(
   // No models key = all models allowed (backward compat)
   if (!models) return true;
   // Roles restrict the org's credentials; the user's own plan is not one.
-  if (keyId === CLAUDE_SUBSCRIPTION_PROVIDER_ID) return true;
+  if (isUserPlanCredential(keyId)) return true;
 
   return (
     models.includes("*:*") ||

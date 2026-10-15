@@ -648,6 +648,18 @@ export const settings = {
     "Gere um token na sua pr\u00f3pria m\u00e1quina com",
   "settings.claudeSubscription.title": "Sua assinatura Claude",
   "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
+  "settings.githubCopilot.active":
+    "Seu plano GitHub Copilot est\u00e1 executando estas tarefas de c\u00f3digo.",
+  "settings.githubCopilot.connect": "Vincular",
+  "settings.githubCopilot.connected": "GitHub Copilot conectado",
+  "settings.githubCopilot.description":
+    "Execute tarefas de c\u00f3digo no Claude pelo seu pr\u00f3prio plano GitHub Copilot, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
+  "settings.githubCopilot.disconnect": "Desconectar",
+  "settings.githubCopilot.disconnected": "GitHub Copilot desconectado",
+  "settings.githubCopilot.howTo":
+    "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
+  "settings.githubCopilot.title": "Seu plano GitHub Copilot",
+  "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",
   "settings.decoCreditsHero.amountPlaceholder": "50",

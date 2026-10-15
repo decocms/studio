@@ -3,6 +3,8 @@ import {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   CLAUDE_SUBSCRIPTION_PROVIDER_ID,
   claudeCodeEnvFromCredential,
+  copilotModelId,
+  GITHUB_COPILOT_PROVIDER_ID,
   modelClassFromMetadata,
   UnsupportedClaudeCodeProviderError,
 } from "./claude-code-env";
@@ -12,6 +14,7 @@ const BUDGET = {
   CLAUDE_CODE_MAX_TURNS: null,
   ENABLE_TOOL_SEARCH: "1",
   FORCE_PROMPT_CACHING_5M: "1",
+  ANTHROPIC_CUSTOM_HEADERS: null,
 };
 
 describe("claudeCodeEnvFromCredential", () => {
@@ -106,8 +109,50 @@ describe("claudeCodeEnvFromCredential", () => {
     });
   });
 
+  test("a linked Copilot token is a bearer against Copilot's endpoint", () => {
+    expect(
+      claudeCodeEnvFromCredential({
+        providerId: GITHUB_COPILOT_PROVIDER_ID,
+        apiKey: "github_pat_1",
+      }),
+    ).toEqual({
+      ...BUDGET,
+      CLAUDE_CODE_MODEL: "claude-sonnet-5.5",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_AUTH_TOKEN: "github_pat_1",
+      CLAUDE_CODE_OAUTH_TOKEN: null,
+      ANTHROPIC_BASE_URL: "https://api.githubcopilot.com",
+      ANTHROPIC_CUSTOM_HEADERS: "Copilot-Integration-Id: copilot-developer-cli",
+    });
+  });
+
+  test("a Copilot chat keeps the chosen Claude model in Copilot's id form", () => {
+    const model = (chosen: string) =>
+      claudeCodeEnvFromCredential(
+        { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "k" },
+        "chat",
+        chosen,
+      ).CLAUDE_CODE_MODEL;
+    expect(model("claude-opus-5-5")).toBe("claude-opus-5.5");
+    expect(model("anthropic/claude-sonnet-5.5")).toBe("claude-sonnet-5.5");
+    expect(model("gpt-5")).toBe("claude-sonnet-5.5");
+  });
+
+  test("copilotModelId leaves single-number versions alone", () => {
+    expect(copilotModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(copilotModelId("anthropic/claude-haiku-4.5")).toBe(
+      "claude-haiku-4.5",
+    );
+    expect(copilotModelId("openai/gpt-5")).toBeNull();
+  });
+
   test("a key credential clears a previous run's OAuth token", () => {
-    for (const providerId of ["anthropic", "openrouter", "deco"]) {
+    for (const providerId of [
+      "anthropic",
+      "openrouter",
+      "deco",
+      GITHUB_COPILOT_PROVIDER_ID,
+    ]) {
       expect(
         claudeCodeEnvFromCredential({ providerId, apiKey: "k" })
           .CLAUDE_CODE_OAUTH_TOKEN,
@@ -321,6 +366,7 @@ describe("tool search", () => {
     ["openrouter"],
     ["deco"],
     [CLAUDE_SUBSCRIPTION_PROVIDER_ID],
+    [GITHUB_COPILOT_PROVIDER_ID],
   ])("%s runs get ENABLE_TOOL_SEARCH", (providerId) => {
     expect(
       claudeCodeEnvFromCredential({ providerId, apiKey: "k" })

@@ -86,4 +86,25 @@ describe("withModelMetadata", () => {
     );
     expect(out.map((c) => c.type)).toEqual(["error"]);
   });
+
+  test("drops the dollar estimate from a Copilot run, keeps the tokens", async () => {
+    const usage = {
+      inputTokens: 10,
+      providerMetadata: { openrouter: { usage: { cost: 0.3 } } },
+    };
+    const finish = () =>
+      (async function* () {
+        yield chunk("finish", { messageMetadata: { usage } });
+      })();
+    const [copilot] = await collect(
+      withModelMetadata(finish(), "m", "github-copilot"),
+    );
+    expect(copilot).toEqual(
+      chunk("finish", { messageMetadata: { usage: { inputTokens: 10 } } }),
+    );
+    const [other] = await collect(
+      withModelMetadata(finish(), "m", "openrouter"),
+    );
+    expect(other).toEqual(chunk("finish", { messageMetadata: { usage } }));
+  });
 });

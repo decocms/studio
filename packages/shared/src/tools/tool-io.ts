@@ -7294,6 +7294,18 @@ export interface StudioToolIO {
       expiresAt: string | null;
     };
   };
+  GITHUB_COPILOT_CONNECT: {
+    input: { token: string };
+    output: { connected: boolean; linkedAt: string | null };
+  };
+  GITHUB_COPILOT_STATUS: {
+    input: { [x: string]: never };
+    output: { connected: boolean; linkedAt: string | null };
+  };
+  GITHUB_COPILOT_DISCONNECT: {
+    input: { [x: string]: never };
+    output: { connected: boolean; linkedAt: string | null };
+  };
   SECRET_CREATE: {
     input: {
       scope: "user" | "organization";

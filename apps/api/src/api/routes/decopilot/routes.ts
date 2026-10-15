@@ -77,7 +77,7 @@ import { claudeSubscriptionChatModel } from "@/harnesses/claude-code-env";
 import {
   ClaudeCodeProviderRequiredError,
   hasClaudeCodeCredential,
-  hasLiveClaudeSubscription,
+  userPlanCredentialId,
   sandboxOnlyChatsEnabled,
 } from "@/harnesses/sandbox-only-chats";
 import { markTurn, startTurnClock } from "@/harnesses/turn-latency";
@@ -557,15 +557,14 @@ async function validate(
 
   const resolvedModels = await resolvePerRequestModels(ctx, tier).catch(
     async (err): Promise<ModelsConfig> => {
-      // A sandbox chat on the user's own Claude plan needs no org model.
-      if (
-        err instanceof TierUnavailableError &&
-        sandboxOnlyChats &&
-        (await hasLiveClaudeSubscription(ctx, userId))
-      ) {
-        return claudeSubscriptionChatModel();
+      // A sandbox chat on the user's own Claude or Copilot plan needs no org
+      // model.
+      if (!(err instanceof TierUnavailableError) || !sandboxOnlyChats) {
+        throw err;
       }
-      throw err;
+      const planId = await userPlanCredentialId(ctx, userId);
+      if (!planId) throw err;
+      return claudeSubscriptionChatModel(planId);
     },
   );
 

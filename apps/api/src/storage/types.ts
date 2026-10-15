@@ -514,7 +514,8 @@ export interface OAuthPkceStateTable {
   created_at: ColumnType<Date, Date | string, never>;
 }
 
-/** A user's linked Claude subscription token (migration 162). */
+/** A user's linked Claude subscription token (migration 162), and the same
+ *  shape for a linked GitHub Copilot token (migration 250). */
 export interface ClaudeSubscriptionTable {
   user_id: string;
   encrypted_access_token: string;
@@ -2498,6 +2499,7 @@ export interface Database {
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
   claude_subscriptions: ClaudeSubscriptionTable;
+  github_copilot_subscriptions: ClaudeSubscriptionTable;
 
   // Automations tables
   automations: AutomationTable;

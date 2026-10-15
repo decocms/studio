@@ -46,6 +46,8 @@ import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
 import {
   CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+  GITHUB_COPILOT_PROVIDER_ID,
+  isUserPlanCredential,
   TASK_RUN_INSTRUCTIONS_KEY,
 } from "@/harnesses/claude-code-env";
 import {
@@ -953,10 +955,10 @@ async function prepareRun(
       input.organizationId,
       ctx.metadata?.runMetadata,
     );
-    // The subscription is the user's, not an org key: `claudeSubscriptionToken`
-    // below carries it to the sandbox.
+    // A user's own plan is not an org key: `userPlanCredential` below carries
+    // it to the sandbox.
     const resolveSlot = (slot?: ModelSelection) =>
-      slot && slot.credentialId !== CLAUDE_SUBSCRIPTION_PROVIDER_ID
+      slot && !isUserPlanCredential(slot.credentialId)
         ? resolveSecretModelSource(
             ctx,
             input.organizationId,
@@ -1481,13 +1483,29 @@ async function prepareRun(
     // does a vault decrypt failure (e.g. a rotated encryption key), which
     // `findLiveToken` would otherwise throw and take the whole dispatch down
     // with it.
-    const claudeSubscriptionToken = sandboxHosted
-      ? await ctx.storage.claudeSubscriptions
-          .findLiveToken(input.userId)
-          .catch((err) => {
-            console.warn("[dispatch] claude subscription lookup failed", err);
-            return null;
-          })
+    // A linked GitHub Copilot plan is the same kind of choice, ranked after
+    // the Claude plan so linking Copilot never changes who pays for a user
+    // who already had both.
+    const findUserPlanToken = (
+      storage: typeof ctx.storage.claudeSubscriptions,
+      providerId: string,
+    ) =>
+      storage
+        .findLiveToken(input.userId)
+        .then((apiKey) => (apiKey ? { providerId, apiKey } : null))
+        .catch((err) => {
+          console.warn(`[dispatch] ${providerId} lookup failed`, err);
+          return null;
+        });
+    const userPlanCredential = sandboxHosted
+      ? ((await findUserPlanToken(
+          ctx.storage.claudeSubscriptions,
+          CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+        )) ??
+        (await findUserPlanToken(
+          ctx.storage.githubCopilotSubscriptions,
+          GITHUB_COPILOT_PROVIDER_ID,
+        )))
       : null;
 
     const dispatchHarnessChunks =
@@ -1553,12 +1571,9 @@ async function prepareRun(
               }),
               // The already-resolved thinking-slot credential becomes the
               // sandbox's model env — resolved once, here, not again inside.
-              credential: claudeSubscriptionToken
-                ? {
-                    providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID,
-                    apiKey: claudeSubscriptionToken,
-                  }
-                : thinkingSource
+              credential:
+                userPlanCredential ??
+                (thinkingSource
                   ? {
                       providerId: thinkingSource.providerId,
                       apiKey: thinkingSource.apiKey,
@@ -1566,7 +1581,7 @@ async function prepareRun(
                         ? { baseUrl: thinkingSource.baseUrl }
                         : {}),
                     }
-                  : null,
+                  : null),
             }).dispatch(harnessInput)
           : streamDecopilot(ctx, harnessInput);
         if (!sandboxHosted) {

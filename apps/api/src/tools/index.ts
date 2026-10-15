@@ -28,6 +28,7 @@ import * as UserTools from "./user";
 import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
+import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
@@ -260,6 +261,10 @@ export const CORE_TOOLS = [
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_DISCONNECT,
+  // GitHub Copilot (per-user token for the claude-code harness)
+  GithubCopilotTools.GITHUB_COPILOT_CONNECT,
+  GithubCopilotTools.GITHUB_COPILOT_STATUS,
+  GithubCopilotTools.GITHUB_COPILOT_DISCONNECT,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,

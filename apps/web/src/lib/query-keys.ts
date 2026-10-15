@@ -530,6 +530,7 @@ export const KEYS = {
   // org-scoped, so the key is too).
   claudeSubscription: (orgId: string) =>
     ["claude-subscription", orgId] as const,
+  githubCopilot: (orgId: string) => ["github-copilot", orgId] as const,
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,
 
