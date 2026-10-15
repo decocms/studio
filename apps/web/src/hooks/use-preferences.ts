@@ -21,7 +21,7 @@ interface Preferences {
   /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
    *  the same reason as `shownTaskBoardLanes`. */
   collapsedTaskBoardLanes: string[];
-  /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
+  /** Project-first navigation (on by default): the org rail, project launcher, project tree and Today/Agents home. */
   projectFirstNav: boolean;
 }
 
@@ -33,7 +33,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   language: detectLocale(),
   shownTaskBoardLanes: [],
   collapsedTaskBoardLanes: [],
-  projectFirstNav: false,
+  projectFirstNav: true,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -114,7 +114,8 @@ export function usePreferences() {
       if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
         merged.collapsedTaskBoardLanes = [];
       }
-      merged.projectFirstNav = merged.projectFirstNav === true;
+      // On unless someone turned it off.
+      merged.projectFirstNav = merged.projectFirstNav !== false;
       return merged;
     },
   );

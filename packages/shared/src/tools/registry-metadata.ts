@@ -318,6 +318,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_SPRINT_START",
   "TASK_BOARD_SPRINT_COMPLETE",
   "TASK_BOARD_SPRINT_DELETE",
+  "FORUM_CHANNEL_LIST",
+  "FORUM_TOPIC_LIST",
+  "FORUM_TOPIC_GET",
+  "FORUM_TOPIC_VOTE",
   "TASK_BOARD_ADMIN_ORG_LIST",
   "TASK_BOARD_DELIVERY",
   "TASK_BOARD_OPERATION",
@@ -1576,6 +1580,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "FORUM_CHANNEL_LIST",
+    description: "List forum channels",
+    category: "Task Board",
+  },
+  {
+    name: "FORUM_TOPIC_LIST",
+    description: "List forum topics",
+    category: "Task Board",
+  },
+  {
+    name: "FORUM_TOPIC_GET",
+    description: "Read a forum topic and its replies",
+    category: "Task Board",
+  },
+  {
+    name: "FORUM_TOPIC_VOTE",
+    description: "Upvote a forum topic",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_ADMIN_ORG_LIST",
     description:
       "Whether the caller may read every org's task board, and the orgs that have board items",
@@ -1850,6 +1874,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_SPRINT_START",
       "TASK_BOARD_SPRINT_COMPLETE",
       "TASK_BOARD_SPRINT_DELETE",
+      "FORUM_CHANNEL_LIST",
+      "FORUM_TOPIC_LIST",
+      "FORUM_TOPIC_GET",
+      "FORUM_TOPIC_VOTE",
       "TASK_BOARD_ADMIN_ORG_LIST",
       "TASK_BOARD_DELIVERY",
       "TASK_BOARD_OPERATION",
