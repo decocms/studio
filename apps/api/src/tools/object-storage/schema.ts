@@ -7,6 +7,7 @@ import type { OrgFs } from "../../file-storage/org-fs";
 import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
 import { fsObjectKey, normalizeFsPath } from "../../file-storage/org-fs-path";
 import { orgFsWriteDenial } from "../../file-storage/org-fs-write-guard";
+import { canReadPersonal } from "../../file-storage/personal-home";
 
 export function requireObjectStorage(ctx: StudioContext): BoundObjectStorage {
   if (!ctx.objectStorage) {
@@ -74,6 +75,29 @@ export async function requireOrgFsWrite(
     volume: target.volume,
     path,
   };
+}
+
+/**
+ * Guards a read against a Library file (`_fs/<volume>/<path>` key): the
+ * object-storage tools read any key in the bucket directly, which would
+ * otherwise let a member fetch another member's `home/users/<id>/` files —
+ * the one carve-out the `/api/:org/fs` routes enforce on top of "every
+ * member reads every volume" (see org-fs.ts's ACL note).
+ */
+export function requireOrgFsRead(
+  ctx: StudioContext,
+  target: { volume: string; path: string },
+): void {
+  const userId = getUserId(ctx);
+  if (!userId) {
+    throw new Error(
+      "Library files need a signed-in member of the organization",
+    );
+  }
+  const path = normalizeFsPath(target.path);
+  if (!canReadPersonal(target.volume, path, userId)) {
+    throw new ForbiddenError("This file belongs to another member");
+  }
 }
 
 /** Deletes a Library file or folder, and stray bytes a raw write left unindexed. */
