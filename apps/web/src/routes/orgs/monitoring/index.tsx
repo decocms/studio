@@ -54,7 +54,7 @@ import {
 } from "@decocms/ui/components/time-range-picker.tsx";
 import { expressionToDate } from "@decocms/ui/lib/time-expressions.ts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useDeferredValue, useRef, useState } from "react";
 import { Plus, Trash01, Code01, Grid01 } from "@untitledui/icons";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
@@ -666,8 +666,10 @@ function MonitoringDashboardContent({
   const { data: membersData } = useMembers();
 
   const [connectionSearch, setConnectionSearch] = useState("");
+  // Deferred: a new term keeps the old options up instead of suspending the page.
+  const deferredConnectionSearch = useDeferredValue(connectionSearch);
   const searchFilteredConnections = useConnections({
-    searchTerm: connectionSearch || undefined,
+    searchTerm: deferredConnectionSearch || undefined,
   });
   const connectionOptions = (searchFilteredConnections ?? []).map((conn) => {
     const icon = conn.icon;
@@ -969,22 +971,30 @@ function MonitoringDashboardContent({
           filterSource={threadFilterSource}
         />
       ) : tab === "audit" ? (
-        <AuditTabContent
-          client={client}
-          locator={locator}
-          baseParams={baseParams}
-          pageSize={pageSize}
-          isStreaming={isStreaming}
-          streamingRefetchInterval={streamingRefetchInterval}
-          connectionIds={connectionIds}
-          virtualMcpIds={virtualMcpIds}
-          tool={tool}
-          status={status}
-          searchQuery={searchQuery}
-          allConnections={allConnections}
-          allVirtualMcps={allVirtualMcps}
-          membersData={membersData}
-        />
+        <Suspense
+          fallback={
+            <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+              <MonitoringLogsTable.Skeleton />
+            </div>
+          }
+        >
+          <AuditTabContent
+            client={client}
+            locator={locator}
+            baseParams={baseParams}
+            pageSize={pageSize}
+            isStreaming={isStreaming}
+            streamingRefetchInterval={streamingRefetchInterval}
+            connectionIds={connectionIds}
+            virtualMcpIds={virtualMcpIds}
+            tool={tool}
+            status={status}
+            searchQuery={searchQuery}
+            allConnections={allConnections}
+            allVirtualMcps={allVirtualMcps}
+            membersData={membersData}
+          />
+        </Suspense>
       ) : (
         <div className="flex-1 flex flex-col overflow-auto min-w-0">
           <OverviewTabContent
@@ -1052,19 +1062,19 @@ export default function MonitoringDashboard() {
     });
   };
 
+  // Pinned per picked range, so a re-render can't change the logs query key.
+  const [anchorAt, setAnchorAt] = useState(() => Date.now());
   const handleTimeRangeChange = (range: TimeRangeValue) => {
+    setAnchorAt(Date.now());
     updateFilters({ from: range.from, to: range.to });
   };
 
-  const fromResult = expressionToDate(from);
-  const toResult = expressionToDate(to);
-  // Frozen at mount: a default window that slid with every render would
-  // change the query key and refetch forever.
-  const [mountedAt] = useState(() => Date.now());
+  const now = new Date(anchorAt);
+  const fromResult = expressionToDate(from, now);
+  const toResult = expressionToDate(to, now);
 
-  const startDate =
-    fromResult.date || new Date(mountedAt - 24 * 60 * 60 * 1000);
-  const originalEndDate = toResult.date || new Date();
+  const startDate = fromResult.date || new Date(anchorAt - 24 * 60 * 60 * 1000);
+  const originalEndDate = toResult.date || now;
 
   const displayDateRange = { startDate, endDate: originalEndDate };
 
