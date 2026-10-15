@@ -9,8 +9,8 @@ export const AutomationTriggerTypeSchema = z.enum([
   "jira_transition",
 ]);
 
-export const TRIGGER_PARAMS_MAX_ENTRIES = 50;
-export const TRIGGER_PARAMS_MAX_STRING_LENGTH = 2000;
+const TRIGGER_PARAMS_MAX_ENTRIES = 50;
+const TRIGGER_PARAMS_MAX_STRING_LENGTH = 2000;
 
 export const TriggerParamsSchema = z
   .record(
