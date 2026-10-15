@@ -154,6 +154,9 @@ describe("useGeneratePost", () => {
   };
 
   beforeEach(() => {
+    // The recorded calls outlive a test otherwise, and `find` then answers
+    // with an earlier test's briefing.
+    studioCall.mockClear();
     writes.length = 0;
     toolCalls.length = 0;
     calls = 0;
@@ -204,6 +207,49 @@ describe("useGeneratePost", () => {
     expect(drawn?.[1].productImages).toEqual([
       "https://cdn.example.com/mochila-1.jpg",
     ]);
+  });
+
+  /**
+   * The tool caps the array it accepts. Flattening product by product overruns
+   * that on any well-stocked campaign, and the rejected request is swallowed —
+   * so the campaigns that most deserve a cover were the ones never getting one.
+   */
+  test("never offers more photographs than the tool accepts", async () => {
+    const many = Array.from({ length: 8 }, (_, p) => ({
+      id: `p${p}`,
+      name: `Produto ${p}`,
+      url: "",
+      category: "",
+      description: "",
+      images: Array.from({ length: 3 }, (_, i) => `https://cdn/${p}-${i}.jpg`),
+    }));
+    const { result } = renderHook(() =>
+      useGeneratePost({
+        orgSlug: "org",
+        virtualMcpId: "vmcp",
+        branch: "main",
+        decofile: {},
+        meta: { schema: { definitions: {} } } as never,
+      }),
+    );
+    await result.current({
+      ...BRIEFING,
+      fileConfigId: "bucket-1",
+      campaign: {
+        ...BRIEFING.campaign,
+        intent: { ...BRIEFING.campaign.intent, products: many },
+      },
+    } as never);
+
+    const drawn = studioCall.mock.calls.find(
+      ([name]) => name === "BLOG_POST_ILLUSTRATE",
+    );
+    const offered = drawn?.[1].productImages as string[];
+    expect(offered.length).toBeLessThanOrEqual(12);
+    // One per product before a second from any, so the range is represented.
+    expect(
+      new Set(offered.map((u) => u.split("/").pop()!.split("-")[0])).size,
+    ).toBe(8);
   });
 
   test("a save that fails after two posts landed does not erase them", async () => {

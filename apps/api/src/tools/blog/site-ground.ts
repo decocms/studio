@@ -9,6 +9,7 @@ import {
   groundingRequestFor,
   type GroundingPurpose,
 } from "./grounding-purpose";
+import { EVIDENCE_KEY_PREFIX } from "./grounding-input";
 import { groundSiteReport, VirtualMcpIdSchema } from "./site-tools";
 
 /**
@@ -172,7 +173,7 @@ async function stashEvidence(
   const storage = ctx.objectStorage;
   if (!storage) return null;
   const day = new Date().toISOString().slice(0, 10);
-  const key = `blog-grounding/${day}/${crypto.randomUUID()}.txt`;
+  const key = `${EVIDENCE_KEY_PREFIX}${day}/${crypto.randomUUID()}.txt`;
   try {
     await storage.put(key, evidence, { contentType: "text/plain" });
     return toStudioStorageUri(key);

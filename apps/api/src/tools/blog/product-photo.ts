@@ -53,23 +53,21 @@ export interface ProductPhoto {
 const noRedirectFetch = createNoRedirectFetch();
 
 /**
- * The first photos that answered, as bytes an image model can take.
+ * The photos that answered first, as bytes an image model can take.
  *
- * Sequential rather than parallel, and deliberately: the point is to get a
- * couple of usable references, not to open every URL a campaign carries at a
- * storefront that did not ask for the traffic.
+ * Only the first few URLs are tried, and together rather than in turn. One at a
+ * time, a dozen slow or dead addresses spend two minutes before the first image
+ * is even requested — which is the whole budget, on fetching references for a
+ * picture that then never gets drawn. Asking for a few at once bounds the wait
+ * at one timeout instead of a dozen, and a storefront serving its own product
+ * photographs is not troubled by three parallel reads.
  */
 export async function fetchProductPhotos(
   urls: readonly string[],
   limit = MAX_REFERENCE_PHOTOS,
 ): Promise<ProductPhoto[]> {
-  const photos: ProductPhoto[] = [];
-  for (const url of urls) {
-    if (photos.length >= limit) break;
-    const photo = await fetchPhoto(url);
-    if (photo) photos.push(photo);
-  }
-  return photos;
+  const tried = await Promise.all(urls.slice(0, limit).map(fetchPhoto));
+  return tried.filter((photo): photo is ProductPhoto => photo !== null);
 }
 
 /** True when a declared length is present and already over the cap. */

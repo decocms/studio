@@ -632,7 +632,16 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
         input.brand.storeUrl,
         "BLOG_CAMPAIGN_SUGGEST",
       ));
-    const evidence = evidenceFrom(catalogue, report.evidence);
+    /**
+     * A grounding passed by reference carries no raw output — that went to
+     * BLOG_SITE_CATALOGUE, which is where the ids and names come from. The
+     * report is what remains, and it is evidence: without it `groundedOnly`
+     * finds nothing to match and strips every product the pass just found.
+     */
+    const evidence = evidenceFrom(
+      catalogue,
+      report.evidence || report.grounding,
+    );
     const catalogued = catalogue.products.length + catalogue.targets.length;
     const today = new Date().toISOString().slice(0, 10);
 

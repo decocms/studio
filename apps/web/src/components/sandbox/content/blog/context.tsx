@@ -269,10 +269,30 @@ export function BlogContext({
     setIsExtracting(true);
     setPhase(PHASE_READING);
     try {
+      /**
+       * One pass over the store serves both halves. Folded into either call it
+       * shared that request's window; run here it is its own, and the second
+       * half does not pay for it again.
+       */
+      const grounding = await studio
+        .call("BLOG_SITE_GROUND", {
+          virtualMcpId,
+          purpose: "brand",
+          language: str(brand.language) || undefined,
+        })
+        .catch((err) => {
+          console.warn("[blogBrand] grounding failed", err);
+          return undefined;
+        });
+      const carried = grounding
+        ? { report: grounding.report, outcome: grounding.outcome }
+        : undefined;
+
       const extraction = await studio.call("BLOG_BRAND_EXTRACT", {
         virtualMcpId,
         blocks: evidence.blocks,
         seo: evidence.seo,
+        grounding: carried,
       });
 
       /**
@@ -290,6 +310,7 @@ export function BlogContext({
           profile: extraction,
           blocks: evidence.blocks,
           seo: evidence.seo,
+          grounding: carried,
         })
         .catch((err) => {
           console.warn("[blog] enriching the brand failed", err);
@@ -414,7 +435,24 @@ export function BlogContext({
       6_000,
     );
     try {
+      const formatGrounding = await studio
+        .call("BLOG_SITE_GROUND", {
+          virtualMcpId,
+          purpose: "format",
+          language: str(brand.language) || undefined,
+        })
+        .catch((err) => {
+          console.warn("[blogFormats] grounding failed", err);
+          return undefined;
+        });
+
       const result = await studio.call("BLOG_FORMAT_SUGGEST", {
+        grounding: formatGrounding
+          ? {
+              report: formatGrounding.report,
+              outcome: formatGrounding.outcome,
+            }
+          : undefined,
         virtualMcpId,
         brand: contextForTools({ ...brand, ...context }),
         // One entry per component name: the model cites `@Name`, so a site's

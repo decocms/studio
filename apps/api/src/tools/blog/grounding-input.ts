@@ -22,15 +22,31 @@ import {
  * used to be, because it has to share a request with the generation after it.
  */
 
+/**
+ * Where a grounding pass parks its raw output.
+ *
+ * `takeEvidence` refuses any key outside it. The uri arrives in a request body,
+ * and the call that reads it also deletes it — without this a caller could name
+ * any object in its organization's storage and have this tool fetch it into a
+ * model's context and then destroy it.
+ */
+export const EVIDENCE_KEY_PREFIX = "blog-grounding/";
+
 /** A hair above what `BLOG_SITE_GROUND` emits, so its own output always fits. */
 const MAX_REPORT_CHARS = 10_000;
 
 /** One catalogue field, as a request body may carry it. */
 const MAX_ENTRY_CHARS = 4_000;
 
-/** Entries and images per entry, matching what the extraction itself keeps. */
+/**
+ * Entries per catalogue, matching what the extraction itself keeps.
+ *
+ * Images per entry are deliberately unbounded here. The extraction caps
+ * nothing — a storefront routinely reports a dozen angles — so a bound on the
+ * way back in would reject a catalogue this feature had just produced and
+ * billed for.
+ */
 const MAX_CATALOGUE_ENTRIES = 200;
-const MAX_IMAGES = 20;
 
 /** Raw output a caller may inline rather than pass by reference. */
 const MAX_INLINE_EVIDENCE_CHARS = 40_000;
@@ -120,7 +136,10 @@ export async function takeEvidence(
   const uri = supplied?.evidenceUri;
   if (!uri || !ctx.objectStorage) return "";
   const key = parseStudioStorageKey(uri);
-  if (!key) return "";
+  if (!key?.startsWith(EVIDENCE_KEY_PREFIX)) {
+    if (key) console.warn("[blog] refused an evidence key outside the prefix");
+    return "";
+  }
   try {
     const bytes = await ctx.objectStorage.getBytes(key);
     const evidence = new TextDecoder().decode(bytes);
@@ -154,7 +173,7 @@ export const CatalogueInputSchema = z
           price: z.string().max(MAX_ENTRY_CHARS),
           slug: z.string().max(MAX_ENTRY_CHARS),
           url: z.string().max(MAX_ENTRY_CHARS),
-          images: z.array(z.string().max(MAX_ENTRY_CHARS)).max(MAX_IMAGES),
+          images: z.array(z.string().max(MAX_ENTRY_CHARS)),
           description: z.string().max(MAX_ENTRY_CHARS),
         }),
       )

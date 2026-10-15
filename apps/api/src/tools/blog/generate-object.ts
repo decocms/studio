@@ -14,6 +14,14 @@ export function retryGenerateObject<OBJECT>(options: {
   schema: z.ZodType<OBJECT>;
   system?: string;
   prompt: string;
+  /**
+   * A deadline for the whole call, retries included.
+   *
+   * Phases that share a request need one: without it a pass runs until the
+   * provider answers, and the edge proxy in front hangs up first — which bills
+   * the organization for an answer nobody receives.
+   */
+  abortSignal?: AbortSignal;
 }): Promise<{ object: OBJECT }> {
   return retry(
     async () => {

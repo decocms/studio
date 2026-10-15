@@ -40,6 +40,17 @@ import { renderGrounding } from "./site-tools";
  * was not judged is the raw extraction, which is what the caller had anyway.
  */
 
+/**
+ * What each half of this call may spend.
+ *
+ * Two model phases in one request, so each needs a deadline of its own or the
+ * pair runs until the providers answer and the edge proxy hangs up first —
+ * billing the organization for a result nobody receives. Both are enrichment,
+ * so a phase that runs out contributes nothing and the other still counts.
+ */
+const RESEARCH_TIMEOUT_MS = 35_000;
+const JUDGE_TIMEOUT_MS = 35_000;
+
 export const BLOG_BRAND_ENRICH = defineTool({
   name: "BLOG_BRAND_ENRICH",
   description:
@@ -101,7 +112,12 @@ export const BLOG_BRAND_ENRICH = defineTool({
     await requireBlogAi(ctx, organizationId);
 
     const { profile } = input;
-    const research = await researchBrand(ctx, organizationId, profile);
+    const research = await researchBrand(
+      ctx,
+      organizationId,
+      profile,
+      AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
+    );
 
     // Research only fills what the site's own copy could not answer.
     const competitors = preferFilled(profile.competitors, research.competitors);
@@ -128,6 +144,7 @@ export const BLOG_BRAND_ENRICH = defineTool({
         organizationId,
         { evidence: judgeEvidence(evidence, research), claims, specs },
         "BLOG_BRAND_ENRICH",
+        AbortSignal.timeout(JUDGE_TIMEOUT_MS),
       ),
       specs,
     );

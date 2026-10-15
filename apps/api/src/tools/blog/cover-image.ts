@@ -36,8 +36,15 @@ type ImagePrompt = Parameters<typeof generateImage>[0]["prompt"];
 /** A cover is a wide hero; the body images follow whatever the block renders. */
 const COVER_ASPECT = "16:9" as const;
 
-/** One image, start to finish, before the post waiting on it gives up. */
-const IMAGE_TIMEOUT_MS = 90_000;
+/**
+ * One image, start to finish, before the post waiting on it gives up.
+ *
+ * Both attempts share it. The fallback that drops the product photographs is
+ * for a model that refuses image input, which it does immediately — so giving
+ * the retry a fresh ninety seconds would only ever help the case this cannot
+ * help anyway, while doubling the worst case past what the request has.
+ */
+const IMAGE_TIMEOUT_MS = 60_000;
 
 /** Why an image is missing, in the same code-plus-count shape the gaps use. */
 export type ImageOutcome = "ok" | "no-bucket" | "no-model" | "failed";
@@ -133,17 +140,18 @@ export async function painterFor(
   return {
     outcome: () => outcome,
     paint: async (prompt, alt, references = []) => {
+      const deadline = AbortSignal.timeout(IMAGE_TIMEOUT_MS);
       const draw = (withReferences: readonly ProductPhoto[]) =>
         generateImage({
           model: imageModel,
           prompt: promptWith(prompt, withReferences),
           n: 1,
           aspectRatio: COVER_ASPECT,
-          abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+          abortSignal: deadline,
         });
       try {
         const result = await draw(references).catch(async (err) => {
-          if (references.length === 0) throw err;
+          if (references.length === 0 || deadline.aborted) throw err;
           console.warn(`[${label}] retrying without the product photos`, err);
           return draw([]);
         });

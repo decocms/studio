@@ -424,7 +424,9 @@ export const BLOG_POST_DRAFT = defineTool({
           alt: z.string(),
           prompt: z
             .string()
-            .describe("The brief the image was asked for, for ILLUSTRATE."),
+            .describe(
+              "What the cover should show, unframed. BLOG_POST_ILLUSTRATE adds the attribution and the no-lettering rule, so passing it through there twice would say both twice.",
+            ),
         }),
         sections: z.array(
           z.object({
@@ -614,7 +616,7 @@ export const BLOG_POST_DRAFT = defineTool({
           cover: {
             url: cover,
             alt: draft.cover.alt,
-            prompt: coverPrompt(draft, brand.companyName ?? ""),
+            prompt: draft.cover.prompt,
           },
           categorySlugs: draft.categorySlugs.filter((slug) =>
             input.categories.some((c) => c.slug === slug),
@@ -638,7 +640,9 @@ export const BLOG_POST_DRAFT = defineTool({
         grounded: report.outcome === "ok" && report.grounding.trim().length > 0,
         droppedSections,
         failedDrafts: input.count - posts.length,
-        images: painter.outcome(),
+        // Only when drawing was asked for: without a bucket this call was
+        // never going to draw, and BLOG_POST_ILLUSTRATE is reporting instead.
+        images: input.fileConfigId ? painter.outcome() : "ok",
         covered: posts.filter((post) => post.cover.url).length,
       }),
     };

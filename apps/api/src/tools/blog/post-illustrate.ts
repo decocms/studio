@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_OFFERED_PHOTOS } from "@decocms/shared/blog-campaign";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
@@ -26,9 +27,6 @@ import { fetchProductPhotos, MAX_REFERENCE_PHOTOS } from "./product-photo";
 const MAX_REQUESTS = 6;
 const MAX_PROMPT_CHARS = 2_000;
 const MAX_URL_CHARS = 2_048;
-
-/** URLs offered as references. Only the first few that answer are used. */
-const MAX_OFFERED_PHOTOS = 12;
 
 export const BLOG_POST_ILLUSTRATE = defineTool({
   name: "BLOG_POST_ILLUSTRATE",
