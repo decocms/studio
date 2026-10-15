@@ -240,6 +240,92 @@ describe("advanceFromProgress (real Postgres)", () => {
   });
 
   /**
+   * The same rule for a card repo-backed by ID ALONE, which is what
+   * `EXPERIMENT_IMPLEMENT` creates: it resolves the project's repository row
+   * and writes `repository_id`, never `repo`. Reading only `repo` made such a
+   * card look repo-less, so the finish hook took the "its answer IS its
+   * deliverable" branch and parked it in QA — where no reviewer is dispatched
+   * and no sweeper looks, so the pull request its run had already opened was
+   * never linked and the experiment screen waited on it forever.
+   *
+   * Integration rather than unit because the card has to carry a real
+   * `repository_id` (a foreign key), which is the column the bug was about.
+   */
+  it("holds a card repo-backed by repository_id out of QA until a PR is linked", async () => {
+    const repositoryId = crypto.randomUUID();
+    await database.db
+      .insertInto("repositories")
+      .values({
+        id: repositoryId,
+        organization_id: ORG,
+        account_id: null,
+        provider: "github",
+        host: "github.com",
+        path: "acme/experiments",
+        external_id: null,
+        default_branch: null,
+        web_url: "https://github.com/acme/experiments",
+        visibility: null,
+        sandbox_image: null,
+        legacy_connection_id: null,
+        created_by: USER,
+      })
+      .execute();
+
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "implement experiment",
+      status: "in_progress",
+      repositoryId,
+      by: USER,
+    });
+    const thread = await threads.create({
+      organization_id: ORG,
+      title: "run",
+      status: "completed",
+      message_storage_version: 2,
+      created_by: USER,
+    });
+    await taskBoard.linkThread(task.id, thread.id, ORG);
+    await database.db
+      .insertInto("thread_message_parts")
+      .values({
+        id: `${thread.id}:m:0`,
+        seq: 0,
+        org_id: ORG,
+        thread_id: thread.id,
+        run_id: thread.id,
+        message_id: `${thread.id}:m`,
+        role: "user",
+        kind: "text",
+        payload: JSON.stringify({ type: "text", text: "go" }),
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+    const before = await taskBoard.getById(task.id, ORG);
+    expect(before?.status).toBe("in_progress");
+    expect(await stampsInto(task.id, "qa")).toBe(0);
+
+    await taskBoard.linkPr({
+      taskBoardItemId: task.id,
+      organizationId: ORG,
+      url: "https://github.com/acme/experiments/pull/38",
+      prNumber: 38,
+      repo: {
+        provider: "github",
+        host: "github.com",
+        path: "acme/experiments",
+      },
+    });
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+    const after = await taskBoard.getById(task.id, ORG);
+    expect(after?.status).toBe("in_review");
+    expect(after?.reviewCycleStartedAt).not.toBeNull();
+  });
+
+  /**
    * The duplicate-stamp bug, re-encoded against the column that replaced the
    * activity row. Re-stamping an OPEN cycle moves its boundary forward and
    * invalidates every verdict already recorded against it — which is exactly
