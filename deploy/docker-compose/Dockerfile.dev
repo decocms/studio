@@ -7,7 +7,6 @@ RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json ./apps/api/
-COPY apps/native/package.json ./apps/native/
 COPY apps/web/package.json ./apps/web/
 COPY packages/bindings/package.json ./packages/bindings/
 COPY packages/create-deco/package.json ./packages/create-deco/

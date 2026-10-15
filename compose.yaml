@@ -127,8 +127,6 @@ services:
           path: packages
           include: ["**/package.json"]
         - action: rebuild
-          path: apps/native/package.json
-        - action: rebuild
           path: tsconfig.json
         - action: rebuild
           path: deploy/docker-compose/Dockerfile.dev.dockerignore

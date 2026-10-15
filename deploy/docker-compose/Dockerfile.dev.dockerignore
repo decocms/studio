@@ -7,8 +7,6 @@
 !apps/api/**
 !apps/web/
 !apps/web/**
-!apps/native/
-!apps/native/package.json
 !packages/
 !packages/**
 !scripts/
