@@ -2169,11 +2169,64 @@ export interface StudioToolIO {
       evidenceChars: number;
     };
   };
+  BLOG_SITE_CATALOGUE: {
+    input: {
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+      storeUrl?: string | undefined;
+    };
+    output: {
+      products: {
+        id: string;
+        name: string;
+        category: string;
+        price: string;
+        slug: string;
+        url: string;
+        images: string[];
+        description: string;
+      }[];
+      targets: {
+        kind: "category" | "collection";
+        id: string;
+        name: string;
+        slug: string;
+        url: string;
+      }[];
+      read: boolean;
+    };
+  };
   BLOG_BRAND_EXTRACT: {
     input: {
       blocks: { key: string; content: string }[];
       seo?: { key: string; content: string }[] | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: {
       companyName: string;
@@ -2249,6 +2302,20 @@ export interface StudioToolIO {
       guidance?: string | undefined;
       count?: number | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: { formats: { name: string; value: string }[] };
   };
@@ -2257,8 +2324,8 @@ export interface StudioToolIO {
       brand: {
         description?: string | undefined;
         language?: string | undefined;
-        companyName?: string | undefined;
         storeUrl?: string | undefined;
+        companyName?: string | undefined;
         targetAudience?: string | undefined;
         tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
@@ -2323,6 +2390,20 @@ export interface StudioToolIO {
       count?: number | undefined;
       fileConfigId?: string | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: {
       posts: {
@@ -2356,6 +2437,20 @@ export interface StudioToolIO {
       posts: { title: string; slug: string }[];
       count?: number | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
     };
     output: { suggestions: { quote: string; slug: string }[] };
   };
@@ -2383,6 +2478,41 @@ export interface StudioToolIO {
       existingNames?: string[] | undefined;
       count?: number | undefined;
       virtualMcpId?: string | undefined;
+      grounding?:
+        | {
+            report: string;
+            outcome?:
+              | "ok"
+              | "failed"
+              | "no-site"
+              | "no-tools"
+              | "timeout"
+              | undefined;
+            evidence?: string | undefined;
+            evidenceUri?: string | null | undefined;
+          }
+        | undefined;
+      catalogue?:
+        | {
+            products: {
+              id: string;
+              name: string;
+              category: string;
+              price: string;
+              slug: string;
+              url: string;
+              images: string[];
+              description: string;
+            }[];
+            targets: {
+              kind: "category" | "collection";
+              id: string;
+              name: string;
+              slug: string;
+              url: string;
+            }[];
+          }
+        | undefined;
     };
     output: {
       campaigns: {

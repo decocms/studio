@@ -61,6 +61,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
   "BLOG_SITE_GROUND",
+  "BLOG_SITE_CATALOGUE",
   "BLOG_BRAND_EXTRACT",
   "BLOG_CONTEXT_EXTRACT",
   "BLOG_FORMAT_SUGGEST",
@@ -406,6 +407,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_SITE_GROUND",
     description:
       "Read the site's connected systems once, for the generators that follow",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_SITE_CATALOGUE",
+    description:
+      "Turn a grounding pass's raw output into the store's catalogue",
     category: "Blog",
   },
   {

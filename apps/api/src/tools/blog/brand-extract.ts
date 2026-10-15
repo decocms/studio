@@ -3,6 +3,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
+import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogBrandSchema } from "./schema";
 import { researchBrand } from "./brand-research";
@@ -19,11 +20,7 @@ import {
   EvidenceSeoSchema,
   renderEvidence,
 } from "./evidence-prompt";
-import {
-  groundFromSite,
-  renderGrounding,
-  VirtualMcpIdSchema,
-} from "./site-tools";
+import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
 
 const SYSTEM = `You are identifying who a brand is, from its own website, so that blogposts generated later rest on facts about the company rather than on guesses. Every field of the output schema says what it wants and where to find it — work through them field by field.
 
@@ -187,6 +184,7 @@ export const BLOG_BRAND_EXTRACT = defineTool({
     blocks: EvidenceBlocksSchema,
     seo: EvidenceSeoSchema,
     virtualMcpId: VirtualMcpIdSchema,
+    grounding: GroundingInputSchema,
   }),
 
   outputSchema: BlogBrandSchema.extend({
@@ -236,13 +234,18 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       organizationId,
     );
 
-    const grounding = await groundFromSite(ctx, organizationId, {
-      virtualMcpId: input.virtualMcpId,
-      label: "BLOG_BRAND_EXTRACT",
-      task: "Building a brand profile for this site's blog, from its own pages.",
-      wanted:
-        "What this business actually sells and under what names — the shape of its catalog, the words it uses for its categories and products, its price range, and anything currently being promoted. These are the terms customers search for, which a site's prose almost never states about itself.",
-    });
+    const { grounding } = await resolveGrounding(
+      ctx,
+      organizationId,
+      input.grounding,
+      {
+        virtualMcpId: input.virtualMcpId,
+        label: "BLOG_BRAND_EXTRACT",
+        task: "Building a brand profile for this site's blog, from its own pages.",
+        wanted:
+          "What this business actually sells and under what names — the shape of its catalog, the words it uses for its categories and products, its price range, and anything currently being promoted. These are the terms customers search for, which a site's prose almost never states about itself.",
+      },
+    );
 
     const evidence = [renderEvidence(input), renderGrounding(grounding)]
       .filter(Boolean)

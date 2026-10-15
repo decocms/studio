@@ -7,11 +7,8 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
-import {
-  groundSiteReport,
-  renderGrounding,
-  VirtualMcpIdSchema,
-} from "./site-tools";
+import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
+import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { ReducedContextSchema } from "./schema";
 import {
@@ -53,7 +50,6 @@ const MAX_DRAFTS = 3;
 /** Images in the body of one post, over and above its cover. */
 const MAX_BODY_IMAGES = 2;
 
-const GROUNDING_TIMEOUT_MS = 120_000;
 const GROUNDING_MAX_STEPS = 12;
 
 /**
@@ -413,6 +409,7 @@ export const BLOG_POST_DRAFT = defineTool({
         "The organization's bucket, where a generated image is uploaded so a reader can load it. Omit and no image is made.",
       ),
     virtualMcpId: VirtualMcpIdSchema,
+    grounding: GroundingInputSchema,
   }),
 
   outputSchema: z.object({
@@ -478,16 +475,20 @@ export const BLOG_POST_DRAFT = defineTool({
     const model = provider.aiSdk.languageModel(tier.modelId);
 
     // One pass for every draft: the store answers the same for all of them.
-    const report = await groundSiteReport(ctx, organizationId, {
-      virtualMcpId: input.virtualMcpId,
-      language: brand.language,
-      label: "BLOG_POST_DRAFT",
-      maxSteps: GROUNDING_MAX_STEPS,
-      timeoutMs: GROUNDING_TIMEOUT_MS,
-      task: `Writing ${input.count} blog post(s) for ${brand.companyName}, for the campaign "${campaign.name}": ${campaign.trigger.note}`,
-      wanted:
-        "Anything these posts would otherwise have to assume: the products they will mention, their real names and current prices, what is in stock, any promotion running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
-    });
+    const report = await resolveGrounding(
+      ctx,
+      organizationId,
+      input.grounding,
+      {
+        virtualMcpId: input.virtualMcpId,
+        language: brand.language,
+        label: "BLOG_POST_DRAFT",
+        maxSteps: GROUNDING_MAX_STEPS,
+        task: `Writing ${input.count} blog post(s) for ${brand.companyName}, for the campaign "${campaign.name}": ${campaign.trigger.note}`,
+        wanted:
+          "Anything these posts would otherwise have to assume: the products they will mention, their real names and current prices, what is in stock, any promotion running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
+      },
+    );
 
     console.info(
       `[BLOG_POST_DRAFT] ${input.blocks.length} block(s) offered`,

@@ -6,6 +6,7 @@
  */
 
 export { BLOG_SITE_GROUND } from "./site-ground";
+export { BLOG_SITE_CATALOGUE } from "./site-catalogue";
 export { BLOG_BRAND_EXTRACT } from "./brand-extract";
 export { BLOG_CONTEXT_EXTRACT } from "./context-extract";
 export { BLOG_FORMAT_SUGGEST } from "./format-suggest";
