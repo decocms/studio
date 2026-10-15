@@ -450,6 +450,77 @@ test.describe("Site Editor stale section form", () => {
       await previewSite.close();
     }
   });
+  test("an old copy of the editor's own saves coming back from a read does not revert them", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      // What the editor read when it opened the block.
+      const opened = await (await page.request.get(url)).text();
+
+      await headline.fill("First edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual({ ...hero, headline: "First edit" });
+
+      // Right after a save, the provider can still answer with the branch's
+      // previous head for a moment: one save is refused as stale and the
+      // re-read that follows returns the block as it was when the form opened.
+      let refuseNext = true;
+      let serveOld = false;
+      await page.route("**/decofile/**", async (route) => {
+        const method = route.request().method();
+        if (method === "PATCH" && refuseNext) {
+          refuseNext = false;
+          serveOld = true;
+          await route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: "Blocks changed since they were loaded: SharedHero",
+              code: "block-conflict",
+              blocks: ["SharedHero"],
+            }),
+          });
+          return;
+        }
+        if (
+          method === "GET" &&
+          serveOld &&
+          /\/main$/.test(new URL(route.request().url()).pathname)
+        ) {
+          serveOld = false;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: opened,
+          });
+          return;
+        }
+        await route.continue();
+      });
+
+      await headline.fill("Second edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...hero, headline: "Second edit" });
+      await expect(headline).toHaveValue("Second edit");
+      await expect(
+        page.getByText("Changed while you were editing"),
+      ).toHaveCount(0);
+    } finally {
+      await previewSite.close();
+    }
+  });
 });
 
 test.describe("Site Editor stale page fields", () => {

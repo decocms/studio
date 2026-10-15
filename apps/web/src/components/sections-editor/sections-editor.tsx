@@ -40,6 +40,8 @@ import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import {
   findSectionMovedTo,
   formSourceMovedOn,
+  isOwnVersion,
+  rememberOwnVersion,
   sectionFormSource,
   sectionTypeChanged,
   trackFormChange,
@@ -147,6 +149,10 @@ import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
  * The active page is determined by `currentPath` (from the iframe URL).
  * Changes auto-save after a debounce.
  */
+/** Refused saves the form rebuilds and retries before reloading. */
+const CONFLICT_RETRIES = 3;
+const CONFLICT_RETRY_BASE_MS = 1_000;
+
 export function SectionsEditor({
   orgSlug,
   virtualMcpId,
@@ -901,8 +907,14 @@ export function SectionsEditor({
         targetSectionVariantIndex,
         latestDecofile,
       );
+      // An older version this form saved itself, read back while the
+      // provider still served the previous head, is not someone else's
+      // change; the server's version check still guards the write.
       const movedOn =
-        !!startedFrom && !!stored && formSourceMovedOn(startedFrom, stored);
+        !!startedFrom &&
+        !!stored &&
+        formSourceMovedOn(startedFrom, stored) &&
+        !(formBase && isOwnVersion(formBase, stored));
       if (movedOn && startedFrom && stored) {
         // A different kind of section now sits where the form points: its
         // edits can't be applied there, so start over from what is stored.
@@ -979,6 +991,7 @@ export function SectionsEditor({
       if (formBase) {
         formBase.base = savedBase;
         formBase.sectionCount = latestRawSections.length;
+        rememberOwnVersion(formBase, savedBase);
       }
       const saveCallbacks = {
         onSuccess: () => onSaved?.(),
@@ -987,15 +1000,23 @@ export function SectionsEditor({
             formBase.base = startedFrom;
           }
           if (err instanceof BlockConflictError) {
-            // The save re-read the branch; build on that copy once more.
-            if (conflicts === 0) {
-              const latest = formBase?.emitted;
-              scheduleAutoSave(
-                latest && typeof latest === "object"
-                  ? (latest as Record<string, unknown>)
-                  : nextValue,
-                sectionIndex,
-                conflicts + 1,
+            // The save re-read the branch; build on that copy again. Right
+            // after a commit the provider can keep answering with the
+            // previous head for a few seconds, so back off between tries
+            // before giving up.
+            if (conflicts < CONFLICT_RETRIES) {
+              setTimeout(
+                () => {
+                  const latest = formBase?.emitted;
+                  scheduleAutoSave(
+                    latest && typeof latest === "object"
+                      ? (latest as Record<string, unknown>)
+                      : nextValue,
+                    sectionIndex,
+                    conflicts + 1,
+                  );
+                },
+                CONFLICT_RETRY_BASE_MS * 2 ** conflicts,
               );
             } else {
               reloadStaleForm();

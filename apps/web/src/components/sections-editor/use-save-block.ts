@@ -6,14 +6,17 @@ import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import {
+  canonicalBlockJson,
   decoBlockFingerprint,
   mergeBlockJson,
   sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
+import { sleep } from "@decocms/shared/std";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
   BlockConflictError,
+  type DecofileDraft,
   decofileWriteMutationKey,
   decofileWriteScope,
   patchDecofile,
@@ -62,6 +65,27 @@ interface SaveBlockVariables {
    */
   base?: SaveBlockBase;
   rebaseOnConflict?: boolean;
+}
+
+/**
+ * Versions of each block this tab saved, as canonical JSON, per decofile cache
+ * key and block. Right after a commit the provider can keep answering with the
+ * previous head for a few seconds; a re-read that returns one of these is this
+ * tab's own past, not another editor's change, and must not be merged in.
+ */
+const ownVersions = new Map<string, string[]>();
+const OWN_VERSIONS_KEPT = 20;
+const ECHO_RETRY_MS = 1_500;
+
+function rememberOwnVersion(key: string, value: unknown): void {
+  const versions = ownVersions.get(key) ?? [];
+  versions.push(canonicalBlockJson(value));
+  if (versions.length > OWN_VERSIONS_KEPT) versions.shift();
+  ownVersions.set(key, versions);
+}
+
+function isOwnVersion(key: string, value: unknown): boolean {
+  return ownVersions.get(key)?.includes(canonicalBlockJson(value)) ?? false;
 }
 
 async function blockExpectation(
@@ -130,21 +154,40 @@ export function useSaveBlock({
             { set: { [blockKey]: value }, ...(expect ? { expect } : {}) },
           );
         };
-        let written = data;
-        let draft;
-        try {
-          draft = await write(data, base);
-        } catch (err) {
-          if (!(err instanceof BlockConflictError)) throw err;
-          // Re-read before anything else, so whatever reacts to the outcome
-          // sees the branch's current copy rather than the one this edit was
-          // built on.
+        const versionsKey = `${cacheKey}:${blockKey}`;
+        const refused = (blocks: string[], fields: string[] = []) =>
+          new BlockConflictError(
+            blocks,
+            fields.length > 0
+              ? t("sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere", {
+                  fields: describeConflictFields(fields),
+                })
+              : t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
+            fields,
+          );
+        /** The server refused `data` as built on an outdated copy. */
+        const recover = async (
+          err: BlockConflictError,
+        ): Promise<{ draft: DecofileDraft; written: unknown }> => {
+          // Re-read first, so whatever reacts to the outcome sees the
+          // branch's current copy rather than the one this edit was built on.
           await queryClient.invalidateQueries({
             queryKey: KEYS.decofile(cacheKey),
           });
           const stored = queryClient.getQueryData<Record<string, unknown>>(
             KEYS.decofile(cacheKey),
           )?.[blockKey];
+          // The re-read returned an older save of this tab: the provider is
+          // still answering with a previous head. Send the same edit again
+          // once it has caught up.
+          if (
+            base &&
+            isOwnVersion(versionsKey, stored) &&
+            canonicalBlockJson(stored) !== canonicalBlockJson(base.value)
+          ) {
+            await sleep(ECHO_RETRY_MS);
+            return { draft: await write(data, base), written: data };
+          }
           const fields: string[] = [];
           const rebased =
             rebaseOnConflict && base?.fromCache
@@ -154,35 +197,34 @@ export function useSaveBlock({
                 })
               : undefined;
           if (rebased === undefined || fields.length > 0) {
-            throw new BlockConflictError(
-              err.blocks,
-              fields.length > 0
-                ? t(
-                    "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere",
-                    {
-                      fields: describeConflictFields(fields),
-                    },
-                  )
-                : t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
-              fields,
-            );
+            throw refused(err.blocks, fields);
           }
           // The two edits touched different values: the result is the same as
           // if this one had been made after the other.
-          written = sanitizeSecretsForPersistence(rebased);
+          const merged = sanitizeSecretsForPersistence(rebased);
+          return {
+            draft: await write(merged, { value: stored }),
+            written: merged,
+          };
+        };
+        let written = data;
+        let draft: DecofileDraft;
+        try {
+          draft = await write(data, base);
+        } catch (err) {
+          if (!(err instanceof BlockConflictError)) throw err;
           try {
-            draft = await write(written, { value: stored });
+            ({ draft, written } = await recover(err));
           } catch (retryErr) {
             if (!(retryErr instanceof BlockConflictError)) throw retryErr;
+            if (retryErr.fields.length > 0) throw retryErr;
             await queryClient.invalidateQueries({
               queryKey: KEYS.decofile(cacheKey),
             });
-            throw new BlockConflictError(
-              retryErr.blocks,
-              t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
-            );
+            throw refused(retryErr.blocks);
           }
         }
+        rememberOwnVersion(versionsKey, written);
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
         /**
          * The landed commit moved the branch head — refresh the header's

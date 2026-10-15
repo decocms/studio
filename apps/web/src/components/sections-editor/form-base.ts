@@ -47,6 +47,32 @@ export interface FormBase {
   emitted: unknown;
   /** How many sections the page had when the form started. */
   sectionCount: number;
+  /**
+   * Every version of the section this form started from or saved, as
+   * canonical JSON. A read can answer with one of them after a newer save
+   * landed (the provider lags right after a commit); that is the form's own
+   * past, not someone else's change.
+   */
+  own: string[];
+}
+
+const OWN_VERSIONS_KEPT = 50;
+
+/** Record a version this form saved (or started from). */
+export function rememberOwnVersion(
+  tracked: FormBase,
+  value: Record<string, unknown>,
+): void {
+  tracked.own.push(canonicalBlockJson(value));
+  if (tracked.own.length > OWN_VERSIONS_KEPT) tracked.own.shift();
+}
+
+/** True when `stored` is a version this form itself started from or saved. */
+export function isOwnVersion(
+  tracked: FormBase,
+  stored: Record<string, unknown>,
+): boolean {
+  return tracked.own.includes(canonicalBlockJson(stored));
 }
 
 /**
@@ -77,7 +103,14 @@ export function trackFormChange(
     return tracked;
   }
   return shown
-    ? { sectionIndex, variantIndex, base: shown, emitted: next, sectionCount }
+    ? {
+        sectionIndex,
+        variantIndex,
+        base: shown,
+        emitted: next,
+        sectionCount,
+        own: [canonicalBlockJson(shown)],
+      }
     : null;
 }
 

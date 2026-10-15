@@ -3,6 +3,8 @@ import {
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
+  isOwnVersion,
+  rememberOwnVersion,
   sectionFormSource,
   trackFormChange,
 } from "./form-base";
@@ -183,5 +185,34 @@ describe("findSectionMovedTo", () => {
     expect(
       findSectionMovedTo(hero, [inserted, { ...hero, title: "b" }], 0, 1),
     ).toBe("unknown");
+  });
+});
+
+describe("own versions", () => {
+  it("knows the version the form started from and every version it saved", () => {
+    const tracked = trackFormChange(null, {
+      sectionIndex: 0,
+      variantIndex: 0,
+      shown: { title: "a" },
+      next: { title: "b" },
+      sectionCount: 1,
+    });
+    if (!tracked) throw new Error("expected a tracked form");
+    rememberOwnVersion(tracked, { title: "b" });
+    expect(isOwnVersion(tracked, { title: "a" })).toBe(true);
+    expect(isOwnVersion(tracked, { title: "b" })).toBe(true);
+    expect(isOwnVersion(tracked, { title: "someone else" })).toBe(false);
+  });
+
+  it("ignores key order", () => {
+    const tracked = trackFormChange(null, {
+      sectionIndex: 0,
+      variantIndex: 0,
+      shown: { a: 1, b: 2 },
+      next: {},
+      sectionCount: 1,
+    });
+    if (!tracked) throw new Error("expected a tracked form");
+    expect(isOwnVersion(tracked, { b: 2, a: 1 })).toBe(true);
   });
 });
