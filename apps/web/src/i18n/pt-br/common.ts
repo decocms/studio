@@ -86,6 +86,9 @@ export const common = {
   "common.errorBoundary.newVersionDeployed":
     "Uma nova versão foi implantada. Atualize para continuar.",
   "common.errorBoundary.refresh": "Atualizar",
+  "common.errorBoundary.refreshNow": "Atualizar agora",
+  "common.errorBoundary.reloadingAutomatically":
+    "Uma nova versão foi implantada. Recarregando automaticamente…",
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
