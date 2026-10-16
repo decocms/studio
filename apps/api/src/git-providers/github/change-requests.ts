@@ -61,6 +61,12 @@ const MERGE_LADDER: Record<MergeStrategy, readonly string[]> = {
 /** Newest deployments inspected when looking for a published URL. */
 const DEPLOYMENTS_SCANNED = 3;
 
+/** GitHub's conventional name for the environment a repository's live site is
+ *  deployed to — what `readLiveDeployedUrl` asks for before falling back to a
+ *  ref match. A repository that names its live environment anything else
+ *  resolves to null, and the caller's own configuration names it instead. */
+const PRODUCTION_ENVIRONMENT = "production";
+
 export interface RawPullRequest {
   number?: number | null;
   html_url?: string | null;
@@ -801,9 +807,23 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
     return run?.output?.summary ?? run?.output?.text ?? null;
   }
 
-  async readDeployedUrl(sha: string): Promise<string | null> {
+  readDeployedUrl(sha: string): Promise<string | null> {
+    return this.deployedUrl(`sha=${encodeURIComponent(sha)}`);
+  }
+
+  async readLiveDeployedUrl(ref: string): Promise<string | null> {
+    return (
+      (await this.deployedUrl(`environment=${PRODUCTION_ENVIRONMENT}`)) ??
+      (await this.deployedUrl(`ref=${encodeURIComponent(ref)}`))
+    );
+  }
+
+  /** Newest deployments matching `filter`, scanned for a published URL. The
+   *  list comes back newest-first, so the current deploy is the first one with
+   *  a successful status. */
+  private async deployedUrl(filter: string): Promise<string | null> {
     const deployments = await this.rest<Array<{ id?: number }>>(
-      `/deployments?sha=${encodeURIComponent(sha)}&per_page=${DEPLOYMENTS_SCANNED}`,
+      `/deployments?${filter}&per_page=${DEPLOYMENTS_SCANNED}`,
       { operation: "change_request_deployments" },
     );
     for (const deployment of deployments ?? []) {

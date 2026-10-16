@@ -624,4 +624,9 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
   async readDeployedUrl(_sha: string): Promise<string | null> {
     return null;
   }
+
+  /** Null for the same reason as {@link readDeployedUrl}. */
+  async readLiveDeployedUrl(_ref: string): Promise<string | null> {
+    return null;
+  }
 }
