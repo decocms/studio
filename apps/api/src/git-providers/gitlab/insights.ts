@@ -409,6 +409,7 @@ export class GitlabInsightsClient implements RepoInsightsClient {
       per_page: String(limit),
       page: String(pageFromCursor(params.cursor)),
     });
+    if (params.path !== undefined) query.set("path", params.path);
     const page = await this.rows<GitlabCommitRow>(
       `/repository/commits?${query}`,
     );
