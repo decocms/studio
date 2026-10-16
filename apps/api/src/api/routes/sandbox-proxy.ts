@@ -792,23 +792,6 @@ export const createSandboxRoutes = () => {
     }),
   );
 
-  // Owner-only: the sign-in stores an account token in the sandbox's Claude Code.
-  const mcpLogin = (daemonPath: string) => async (c: Context<VmEnv>) => {
-    const claim = c.get("vmClaim");
-    if (claim.callerUserId !== claim.userId) {
-      return c.json(
-        { error: "Only the chat's owner can connect accounts" },
-        403,
-      );
-    }
-    return proxyDaemon(c, daemonPath, { forwardJsonBody: true });
-  };
-  app.post("/:virtualMcpId/:branch/mcp-login", mcpLogin("/_sandbox/mcp-login"));
-  app.post(
-    "/:virtualMcpId/:branch/mcp-login/finish",
-    mcpLogin("/_sandbox/mcp-login/finish"),
-  );
-
   // -- Script exec/kill -----------------------------------------------------
   app.post("/:virtualMcpId/:branch/exec/:script", async (c) => {
     const script = c.req.param("script");

@@ -86,8 +86,6 @@ import { VoiceWaveform } from "./voice-input";
 import { VoiceModeToggle } from "./voice";
 import { resolveComposerAction } from "./composer-action";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
-import { ConnectMcpButton } from "./connect-mcp-button";
-import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -416,15 +414,6 @@ export function ChatInput({
   const userId = session?.user?.id;
 
   const { org, locator } = useProjectContext();
-  const sandboxRef =
-    taskCtx?.taskId && taskCtx.lockedBranch
-      ? {
-          orgSlug: org.slug,
-          virtualMcpId: taskCtx.virtualMcpId,
-          branch: taskCtx.lockedBranch,
-          threadId: taskCtx.taskId,
-        }
-      : null;
   // Task mode is the Home default — reporting something is why people land
   // here. Turning it off gives an ordinary chat, and the choice sticks.
   const [taskMode, setTaskMode] = useLocalStorage(
@@ -867,13 +856,6 @@ export function ChatInput({
                         selectedModel={selectedModel}
                         isStreaming={isStreaming}
                         onUnsupportedFile={onUnsupportedFile}
-                      />
-                      <ConnectMcpButton
-                        sandboxUrl={
-                          sandboxRef
-                            ? (path) => buildSandboxUrl(sandboxRef, path)
-                            : null
-                        }
                       />
                       {isPlanMode && (
                         <ModeDismissPill

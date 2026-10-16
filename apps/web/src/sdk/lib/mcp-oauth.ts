@@ -730,7 +730,8 @@ async function checkOAuthTokenStatus(
   connectionId: string,
   orgSlug: string,
   apiBaseUrl?: string,
-): Promise<{ hasToken: boolean }> {
+): Promise<{ hasToken: boolean; usable: boolean; sandboxSignIn: boolean }> {
+  const none = { hasToken: false, usable: false, sandboxSignIn: false };
   try {
     const path = `/api/${encodeURIComponent(orgSlug)}/connections/${connectionId}/oauth-token/status`;
     const url = apiBaseUrl ? new URL(path, apiBaseUrl).href : path;
@@ -740,13 +741,17 @@ async function checkOAuthTokenStatus(
     const response = await fetch(url, {
       credentials: isSameOrigin ? "include" : "omit", // Don't send cookies for cross-origin
     });
-    if (!response.ok) {
-      return { hasToken: false };
-    }
+    if (!response.ok) return none;
     const data = await response.json();
-    return { hasToken: data.hasToken === true };
+    return {
+      hasToken: data.hasToken === true,
+      usable:
+        data.hasToken === true &&
+        (data.isExpired !== true || data.canRefresh === true),
+      sandboxSignIn: data.sandboxSignIn === true,
+    };
   } catch {
-    return { hasToken: false };
+    return none;
   }
 }
 
@@ -774,6 +779,26 @@ export async function isConnectionAuthenticated({
   meshUrl?: string;
 }): Promise<McpAuthStatus> {
   try {
+    const connectionId = extractConnectionIdFromUrl(url);
+    const orgSlug = extractOrgSlugFromUrl(url);
+    const base = getCurrentOrigin();
+    const apiBaseUrl = resolveStudioUrl(
+      { studioUrl, meshUrl },
+      base ? new URL(url, base).origin : new URL(url).origin,
+    );
+    const oauthStatus =
+      connectionId && orgSlug
+        ? await checkOAuthTokenStatus(connectionId, orgSlug, apiBaseUrl)
+        : null;
+    // Studio's proxy can't call these servers; the stored token is the status.
+    if (oauthStatus?.sandboxSignIn) {
+      return {
+        isAuthenticated: oauthStatus.usable,
+        supportsOAuth: true,
+        hasOAuthToken: oauthStatus.hasToken,
+      };
+    }
+
     const headers = new Headers();
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "application/json, text/event-stream");
@@ -800,30 +825,13 @@ export async function isConnectionAuthenticated({
       signal: AbortSignal.timeout(CONNECTION_CHECK_TIMEOUT_MS),
     });
 
-    // Extract connection ID for OAuth token status check
-    const connectionId = extractConnectionIdFromUrl(url);
-    const orgSlug = extractOrgSlugFromUrl(url);
-    // Determine the Studio base URL for API calls.
-    // Use current origin as base for relative URLs (browser only)
-    const base = getCurrentOrigin();
-    const apiBaseUrl = resolveStudioUrl(
-      { studioUrl, meshUrl },
-      base ? new URL(url, base).origin : new URL(url).origin,
-    );
-
     if (response.ok) {
-      // Check if we have an OAuth token stored for this connection
-      const oauthStatus =
-        connectionId && orgSlug
-          ? await checkOAuthTokenStatus(connectionId, orgSlug, apiBaseUrl)
-          : { hasToken: false };
-
       return {
         isAuthenticated: true,
         // When authenticated, we can't determine OAuth support from the response
         // (no 401 to check WWW-Authenticate header). Default to false.
         supportsOAuth: false,
-        hasOAuthToken: oauthStatus.hasToken,
+        hasOAuthToken: oauthStatus?.hasToken ?? false,
       };
     }
 

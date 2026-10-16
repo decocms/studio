@@ -64,7 +64,9 @@ import {
   runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { signsInFromSandbox, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
+import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
@@ -409,16 +411,25 @@ export class SandboxDispatchClient {
         (aggregation) => aggregation.connection_id,
       ),
     );
-    const mounted = connections.filter((connection) =>
-      ownIds.has(connection.id),
+    // A sandbox sign-in server can't be reached through the proxy, so it is
+    // always mounted.
+    const mounted = connections.filter(
+      (connection) =>
+        ownIds.has(connection.id) ||
+        signsInFromSandbox(connection.connection_url),
     );
     if (mounted.length === 0 || !organization.slug) return { mcp };
-    const orgMcps = orgMcpServers({
+    const servers = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
       headers: mcp.headers,
       connections: mounted,
     });
+    const orgMcps = (
+      await Promise.all(
+        servers.map((server, i) => this.directMount(server, mounted[i]!)),
+      )
+    ).filter((server) => server !== null);
     console.log(
       `[${SANDBOX_HOSTED_HARNESS}] org mcps: ${
         orgMcps.map((server) => server.name).join(" ") || "none"
@@ -430,6 +441,36 @@ export class SandboxDispatchClient {
       }`,
     );
     return { mcp, orgMcps };
+  }
+
+  /**
+   * A sandbox sign-in server is called straight from the sandbox with the
+   * connection's token, refreshed here; Claude Code skips its own OAuth when
+   * the config carries an Authorization header. Without a usable token it is
+   * left out, and the connection shows as needing sign-in.
+   */
+  private async directMount(
+    server: { name: string; url: string; headers: Record<string, string> },
+    connection: ConnectionEntity,
+  ) {
+    const url = connection.connection_url;
+    if (!url || !signsInFromSandbox(url)) return server;
+    const token = await getValidDownstreamAccessToken({
+      connectionId: connection.id,
+      connectionUrl: url,
+      tokenStorage: new DownstreamTokenStorage(this.ctx.db, this.ctx.vault),
+    }).catch(() => null);
+    if (!token?.accessToken) {
+      console.warn(
+        `[${SANDBOX_HOSTED_HARNESS}] ${server.name}: no usable token (${token?.state ?? "lookup failed"}), not mounted`,
+      );
+      return null;
+    }
+    return {
+      name: server.name,
+      url,
+      headers: { Authorization: `Bearer ${token.accessToken}` },
+    };
   }
 
   /**

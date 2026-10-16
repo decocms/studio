@@ -447,22 +447,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Sections",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
-  "sandbox.connectMcp.button": "Connect MCP",
-  "sandbox.connectMcp.callbackLabel": "Redirect address",
-  "sandbox.connectMcp.connected":
-    "{name} connected. New messages in this chat can use it.",
-  "sandbox.connectMcp.failed": "Could not connect: {error}",
-  "sandbox.connectMcp.finish": "Finish",
-  "sandbox.connectMcp.intro":
-    "Sign Claude Code in this sandbox in to a remote MCP server, such as Figma.",
-  "sandbox.connectMcp.nameLabel": "Server name",
-  "sandbox.connectMcp.needsSandbox":
-    "Send a message first to start this chat's sandbox",
-  "sandbox.connectMcp.openSignIn": "Open sign-in page",
-  "sandbox.connectMcp.pasteHint":
-    "After you approve access, your browser shows a page that can't be reached. Copy that page's full address and paste it here.",
-  "sandbox.connectMcp.start": "Connect",
-  "sandbox.connectMcp.urlLabel": "Server URL",
   "sandbox.contentBrowser.createdSection": 'Created section "{name}"',
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
   "sandbox.contentBrowser.duplicatedSection": 'Duplicated "{name}"',

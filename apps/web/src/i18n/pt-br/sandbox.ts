@@ -451,22 +451,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
-  "sandbox.connectMcp.button": "Conectar MCP",
-  "sandbox.connectMcp.callbackLabel": "Endereço de redirecionamento",
-  "sandbox.connectMcp.connected":
-    "{name} conectado. Novas mensagens neste chat podem usá-lo.",
-  "sandbox.connectMcp.failed": "Não foi possível conectar: {error}",
-  "sandbox.connectMcp.finish": "Concluir",
-  "sandbox.connectMcp.intro":
-    "Conecte o Claude Code deste sandbox a um servidor MCP remoto, como o Figma.",
-  "sandbox.connectMcp.nameLabel": "Nome do servidor",
-  "sandbox.connectMcp.needsSandbox":
-    "Envie uma mensagem primeiro para iniciar o sandbox deste chat",
-  "sandbox.connectMcp.openSignIn": "Abrir página de login",
-  "sandbox.connectMcp.pasteHint":
-    "Depois de aprovar o acesso, o navegador mostra uma página que não pode ser acessada. Copie o endereço completo dessa página e cole aqui.",
-  "sandbox.connectMcp.start": "Conectar",
-  "sandbox.connectMcp.urlLabel": "URL do servidor",
   "sandbox.contentBrowser.createdSection": 'Seção "{name}" criada',
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',

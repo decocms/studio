@@ -3,10 +3,12 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -33,7 +35,8 @@ type mcpLoginProc struct {
 	out      lockedBuffer
 	done     chan struct{} // the CLI exited
 	drained  chan struct{} // its output is fully read
-	redirect string        // scheme://host/path the callback URL must match
+	name     string
+	redirect string // scheme://host/path the callback URL must match
 }
 
 const (
@@ -85,6 +88,7 @@ func (m *McpLogin) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := &mcpLoginProc{
+		name:    body.Name,
 		cmd:     exec.Command("claude", "mcp", "login", body.Name, "--no-browser"),
 		done:    make(chan struct{}),
 		drained: make(chan struct{}),
@@ -110,8 +114,8 @@ func (m *McpLogin) Start(w http.ResponseWriter, r *http.Request) {
 }
 
 // Finish handles POST /_sandbox/mcp-login/finish — body `{ callbackUrl }`,
-// the localhost URL the user's browser landed on. Returns 200 once Claude
-// Code has exchanged the code and stored the token.
+// the localhost URL the user's browser landed on. Once Claude Code has
+// exchanged the code, returns the stored grant so Studio can keep it.
 func (m *McpLogin) Finish(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		CallbackURL string `json:"callbackUrl"`
@@ -156,7 +160,45 @@ func (m *McpLogin) Finish(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 502, lastLine(p.text()))
 		return
 	}
-	httpx.JSON(w, 200, map[string]any{"ok": true})
+	grant, err := storedGrant(p.name)
+	if err != nil {
+		httpx.Error(w, 500, err.Error())
+		return
+	}
+	httpx.JSON(w, 200, grant)
+}
+
+// mcpGrant is the part of Claude Code's `mcpOAuth` credential entry that
+// Studio needs to call the server and refresh the token itself.
+type mcpGrant struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+	ExpiresAt    int64  `json:"expiresAt,omitempty"` // epoch ms
+	Scope        string `json:"scope,omitempty"`
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+}
+
+func storedGrant(name string) (*mcpGrant, error) {
+	raw, err := os.ReadFile(filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), ".credentials.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read Claude Code credentials: %w", err)
+	}
+	var creds struct {
+		McpOAuth map[string]struct {
+			ServerName string `json:"serverName"`
+			mcpGrant
+		} `json:"mcpOAuth"`
+	}
+	if err := json.Unmarshal(raw, &creds); err != nil {
+		return nil, fmt.Errorf("parse Claude Code credentials: %w", err)
+	}
+	for _, entry := range creds.McpOAuth {
+		if entry.ServerName == name && entry.AccessToken != "" {
+			return &entry.mcpGrant, nil
+		}
+	}
+	return nil, fmt.Errorf("Claude Code stored no token for %s", name)
 }
 
 func (m *McpLogin) cancelLocked() {
