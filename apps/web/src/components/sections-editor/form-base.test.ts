@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   type FormBase,
+  displayedOverBase,
   formSaveGuard,
+  formValueOnBase,
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
@@ -391,5 +393,58 @@ describe("focusInside", () => {
     expect(focusInside(form as Element, {} as Element)).toBe(false);
     expect(focusInside(null, input as Element)).toBe(false);
     expect(focusInside(form as Element, null)).toBe(false);
+  });
+});
+
+describe("formValueOnBase", () => {
+  // The form shows the user's "Draft" while the stored headline is the other
+  // editor's "Published" (and their new subtitle), which the user was told.
+  const waiting = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { headline: "Published", subtitle: "Theirs", cta: "Buy" },
+    displayed: { headline: "Draft", subtitle: "Old", cta: "Buy" },
+    emitted: { headline: "Draft", subtitle: "Old", cta: "Buy" },
+    sectionCount: 1,
+    own: [],
+  });
+
+  it("saves what the user types after the merge over the stored value", () => {
+    expect(
+      formValueOnBase(waiting(), {
+        headline: "Draft more",
+        subtitle: "Old",
+        cta: "Buy",
+      }),
+    ).toEqual({ headline: "Draft more", subtitle: "Theirs", cta: "Buy" });
+  });
+
+  it("keeps the stored value of every field the user leaves alone", () => {
+    expect(
+      formValueOnBase(waiting(), {
+        headline: "Draft",
+        subtitle: "Old",
+        cta: "Buy now",
+      }),
+    ).toEqual({ headline: "Published", subtitle: "Theirs", cta: "Buy now" });
+  });
+
+  it("passes the form's value through when it shows the stored section", () => {
+    const value = { headline: "typed" };
+    expect(formValueOnBase({ ...waiting(), displayed: undefined }, value)).toBe(
+      value,
+    );
+    expect(formValueOnBase(null, value)).toBe(value);
+  });
+});
+
+describe("displayedOverBase", () => {
+  it("is unset when the form shows what is stored", () => {
+    expect(displayedOverBase({ b: 1, a: 2 }, { a: 2, b: 1 })).toBeUndefined();
+  });
+
+  it("is what the form shows when it differs from what is stored", () => {
+    const shown = { a: 1 };
+    expect(displayedOverBase(shown, { a: 2 })).toBe(shown);
   });
 });
