@@ -24,6 +24,7 @@
  */
 
 import { resolvePreviewServerUrl } from "../deco-site-production-url.ts";
+import { isBlocksV8Project } from "../blocks-major.ts";
 
 /** How a session reads and writes the project: sandbox-less CMS over the
  *  decofile API, or a sandbox pod with a daemon and dev server. */
@@ -42,11 +43,17 @@ export interface VmcpRuntimeMetadata {
   previewServerUrl?: string | null;
   productionUrl?: string | null;
   fastPreview?: boolean | null;
+  /** Server-managed: `8` when main's schema is a Blocks v8 one (see
+   *  `isBlocksV8Project` in `@decocms/shared/blocks-major`). Absent on every
+   *  v7 site. */
+  blocksMajor?: number | null;
 }
 
 /**
- * The project's Fast Preview capability: the switch is on AND there is a
- * preview server to render against. A bare flag with no URL is inert.
+ * The project's Fast Preview capability: there is a preview server to render
+ * against AND either the project is a Blocks v8 site (always Fast Preview; its
+ * settings have no switch) or the switch is on (v7, as before). A bare flag
+ * with no URL is inert.
  *
  * This is the ONE capability predicate. It answers a PROJECT question, never a
  * session one — `defaultThreadRuntime` turns it into the runtime a NEW thread
@@ -57,7 +64,7 @@ export function fastPreviewCapability(
 ): boolean {
   return (
     !!resolvePreviewServerUrl(vmcpMetadata) &&
-    vmcpMetadata?.fastPreview === true
+    (isBlocksV8Project(vmcpMetadata) || vmcpMetadata?.fastPreview === true)
   );
 }
 
