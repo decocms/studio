@@ -61,6 +61,7 @@ import type { StudioContext } from "../core/studio-context";
 import {
   mintMcpEndpoint,
   orgMcpServers,
+  RUN_MCP_KEY_TTL_SECONDS,
   runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
@@ -405,6 +406,7 @@ export class SandboxDispatchClient {
         }),
         grants,
       }),
+      RUN_MCP_KEY_TTL_SECONDS,
     );
     const ownIds = new Set(
       (ownAgent?.connections ?? []).map(

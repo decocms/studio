@@ -1,5 +1,5 @@
 /**
- * Mint a 1h-TTL API key + return the MCP endpoint URL/headers a sandbox-side
+ * Mint a short-lived API key + return the MCP endpoint URL/headers a sandbox-side
  * consumer uses to talk to Studio's virtual-MCP gateway over HTTP. Callers:
  * the sandbox-hosted harness dispatcher (`SandboxDispatchClient`) and the
  * cluster sandbox-fs layer (materializing the tool-scripting endpoint file
@@ -18,7 +18,18 @@
 import { getPublicUrl } from "@/core/server-constants";
 import type { StudioContext } from "@/core/studio-context";
 
-const MCP_KEY_TTL_SECONDS = 3600;
+export const MCP_KEY_TTL_SECONDS = 3600;
+
+/**
+ * TTL for the key a sandbox-hosted run mounts as its Studio MCP server.
+ *
+ * The key is minted once per dispatch and nothing re-mints it mid-run, while a
+ * hosted run has no wall-clock cap (see `hosted-harness-workflow.ts`). With the
+ * 1h default, a run past its first hour got 401 on every Studio tool call, and
+ * a Jira run did its work but could not report back to the card. 12h covers the
+ * runs we see; the key stays scoped to one run thread and its tools.
+ */
+export const RUN_MCP_KEY_TTL_SECONDS = 12 * 3600;
 
 /**
  * Which Studio MCP surface the minted endpoint points at.
@@ -98,13 +109,14 @@ export async function mintMcpEndpoint(
    * not a scope anyone chose, it is one nobody narrowed.
    */
   permissions: Record<string, string[]> = { "*": ["*"] },
+  ttlSeconds: number = MCP_KEY_TTL_SECONDS,
 ): Promise<{
   url: string;
   headers: Record<string, string>;
   expiresAt: number;
 }> {
-  // Before minting: a throw after `apiKey.create` would leave a live 1h key
-  // behind for a run that never starts.
+  // Before minting: a throw after `apiKey.create` would leave a live key behind
+  // for a run that never starts.
   const url = mcpEndpointUrl({
     publicUrl: getPublicUrl(),
     agentId,
@@ -118,7 +130,7 @@ export async function mintMcpEndpoint(
     // behalf of the user for the duration of the run. With no implicit default
     // (auth/index.ts), the scope must be explicit; see the parameter.
     permissions,
-    expiresIn: MCP_KEY_TTL_SECONDS,
+    expiresIn: ttlSeconds,
     metadata: {
       organization: {
         id: organization.id,
@@ -136,7 +148,7 @@ export async function mintMcpEndpoint(
     // Wire-shape: HarnessStreamInputWire requires expiresAt for the
     // remote-cli path so the daemon can pre-empt expiry with a refresh
     // (v2 — currently only used for logging / forward-compat).
-    expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
+    expiresAt: Date.now() + ttlSeconds * 1000,
   };
 }
 
