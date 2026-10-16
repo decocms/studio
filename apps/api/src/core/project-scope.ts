@@ -88,10 +88,28 @@ export async function resolveHiddenProjectIds(
   );
 }
 
-/** Whether something filed under `projectId` (or nothing) is visible. */
-export function isFiledUnderVisibleProject(
+/** The fields the board attributes a card to a project by. */
+interface ProjectAttributedCard {
+  virtualMcpId: string | null;
+  repo: string | null;
+  threads: readonly { virtualMcpId: string | null }[];
+}
+
+/**
+ * Whether a card is visible when `hidden` projects are not. The board
+ * attributes a card to a project by its stamp, a linked thread, or a project
+ * id older clients wrote into `repo`, so any of them naming a hidden project
+ * hides the card.
+ */
+export function isCardInVisibleProject(
   hidden: ReadonlySet<string>,
-  projectId: string | null | undefined,
+  card: ProjectAttributedCard,
 ): boolean {
-  return !projectId || !hidden.has(projectId);
+  if (hidden.size === 0) return true;
+  const named = [
+    card.virtualMcpId,
+    card.repo?.trim(),
+    ...card.threads.map((thread) => thread.virtualMcpId),
+  ];
+  return !named.some((id) => id && hidden.has(id));
 }

@@ -219,6 +219,12 @@ test.describe("project-scoped role", () => {
     const openCard = await createCard("open card", openId);
     const hiddenCard = await createCard("hidden card", hiddenId);
     const unfiledCard = await createCard("unfiled card");
+    // Older clients wrote the project id into `repo` and left the stamp empty.
+    const legacyCard = await createCard("legacy card");
+    await db.query(`UPDATE task_board_items SET repo = $1 WHERE id = $2`, [
+      hiddenId,
+      legacyCard,
+    ]);
 
     // Every project but one, plus a gated tool, so the role's statement is
     // what decides — not the basic-usage floor every member gets.
@@ -257,6 +263,7 @@ test.describe("project-scoped role", () => {
     expect(cardIds).toContain(openCard);
     expect(cardIds).toContain(unfiledCard);
     expect(cardIds).not.toContain(hiddenCard);
+    expect(cardIds).not.toContain(legacyCard);
 
     // Projects created after the role still reach it.
     const laterId = await createProject(

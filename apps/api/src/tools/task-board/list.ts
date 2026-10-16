@@ -2,7 +2,7 @@ import { CANONICAL_COLUMNS } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import {
-  isFiledUnderVisibleProject,
+  isCardInVisibleProject,
   resolveHiddenProjectIds,
 } from "@/core/project-scope";
 import { requireAuth } from "@/core/studio-context";
@@ -58,7 +58,7 @@ const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
         resolveHiddenProjectIds(ctx),
       ]);
     const items = allItems.filter((item) =>
-      isFiledUnderVisibleProject(hidden, item.virtualMcpId),
+      isCardInVisibleProject(hidden, item),
     );
     /**
      * Both eras, deduped: the org's first-class repositories and the legacy
