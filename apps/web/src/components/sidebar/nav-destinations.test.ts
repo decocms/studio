@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { featureForTab } from "@/layouts/main-panel-tabs/tab-feature";
 import { NAV_DESTINATION_KEYS, SETTINGS_DESTINATION } from "./nav-destinations";
 
 /** `NavDestinationsContent` maps over `NAV_DESTINATION_KEYS`, so this constant
@@ -18,6 +19,14 @@ describe("NAV_DESTINATION_KEYS", () => {
     for (const key of ["reports", "discover"]) {
       expect(NAV_DESTINATION_KEYS).not.toContain(key);
     }
+  });
+});
+
+describe("tasks destination's plan lock", () => {
+  // Regression: the row's lock must key off `trackAs` ("board"), not `key`.
+  test("the destination key is not itself a gateable tab id", () => {
+    expect(featureForTab("tasks")).toBeNull();
+    expect(featureForTab("board")).toBe("kanban");
   });
 });
 

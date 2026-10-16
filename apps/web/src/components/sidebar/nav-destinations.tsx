@@ -141,7 +141,8 @@ export function NavDestinationsContent({
           isActive={item.isActive}
           link={item.link}
           trailing={
-            isLocked(item.key) ? (
+            // `trackAs` doubles as the project tab id `featureForTab` gates on.
+            isLocked(item.trackAs) ? (
               <Lock01 size={14} className="text-muted-foreground" />
             ) : undefined
           }
