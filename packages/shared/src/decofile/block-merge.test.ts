@@ -137,3 +137,26 @@ describe("mergeBlockJson conflict reporting", () => {
     expect(conflicts).toEqual(["/x~1y~0z"]);
   });
 });
+
+describe("mergeBlockJson block metadata", () => {
+  const meta = (by: string) => ({
+    lastEditedBy: by,
+    lastEditedAt: "2026-10-16T12:00:00.000Z",
+  });
+
+  it("never reports __meta as a conflict; the preferred side's record stands", () => {
+    const ancestor = { title: "a", subtitle: "a", __meta: meta("u-0") };
+    const ours = { title: "ours", subtitle: "a", __meta: meta("u-ana") };
+    const theirs = { title: "a", subtitle: "theirs", __meta: meta("u-bob") };
+    const conflicts: string[] = [];
+    expect(mergeBlockJson(ancestor, ours, theirs, { conflicts })).toEqual({
+      title: "ours",
+      subtitle: "theirs",
+      __meta: meta("u-ana"),
+    });
+    expect(conflicts).toEqual([]);
+    expect(
+      mergeBlockJson(ancestor, ours, theirs, { prefer: "theirs" }),
+    ).toMatchObject({ __meta: meta("u-bob") });
+  });
+});

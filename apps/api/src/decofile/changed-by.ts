@@ -2,14 +2,16 @@
  * Who made the other change, and when: what the site editor's "someone else
  * changed this" dialog shows next to their version.
  *
- * Nothing new is stored for a git-backed draft. Every Fast Preview save is a
+ * This module reads history; it stores nothing. Every Fast Preview save is a
  * commit on the draft branch carrying the Studio user as a `Co-authored-by:`
  * trailer (`appendCoAuthorTrailer`), so the block file's latest commit says
  * who and when: the trailer, else the commit's author when it is a person
  * (a developer's push), and the commit time. A Blocks v8 draft is an object
- * on the delivery bucket instead: the editor reads who changed the names it
- * holds from the draft's own edits (`DraftEdit`), and asks here only for the
- * others, which are main's, like a v7 block.
+ * on the delivery bucket instead, with no history of its own.
+ *
+ * Every save now stamps the block's own `__meta` ({ lastEditedBy,
+ * lastEditedAt }), which the editor reads first; this history is the
+ * fallback for blocks saved before that.
  *
  * The identity is shown as the org's member (name, avatar) when
  * it is one, else by its git name; `you` when it is the viewer (another tab

@@ -87,11 +87,7 @@ import {
   createDraftContentStorage,
   createV7MainStorage,
 } from "@/hosted/draft-content-storage";
-import {
-  type DraftStore,
-  type HostedDraftRef,
-  heldDraftEdits,
-} from "@/hosted/draft-store";
+import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
@@ -346,7 +342,6 @@ function hostedScope(
       virtualMcpId: scope.virtualMcpId,
       branch: scope.branch,
       site: scope.site,
-      editor: scope.userId,
     },
   };
 }
@@ -557,16 +552,6 @@ export function createDecofileRoutes(
       if (hosted && mainV8) {
         const draft = await hosted.drafts.load(hosted.ref);
         const version = bareEtag(draft?.etag);
-        // `?edits=1` (the same-field dialog): who last changed each name the
-        // draft holds (`null`: not recorded). Ids only; the editor resolves
-        // the people from the org's members.
-        const edits =
-          c.req.query("edits") === "1"
-            ? heldDraftEdits(
-                draft?.body ?? null,
-                draft ? await hosted.drafts.edits(hosted.ref) : {},
-              )
-            : undefined;
         return c.json(
           {
             draft:
@@ -574,7 +559,6 @@ export function createDecofileRoutes(
                 ? draftPointerTarget(hosted.ref.site, draft.slug)
                 : null,
             version,
-            ...(edits ? { edits } : {}),
           },
           200,
           { "Cache-Control": "no-store" },
@@ -876,9 +860,9 @@ export function createDecofileRoutes(
       let authors: Record<string, ChangeAuthor>;
       const mainBranch = hosted ? await client.getDefaultBranch() : null;
       if (hosted && mainBranch && (await scopeIsV8(c, client, mainBranch))) {
-        // A v8 draft is not git: the editor reads who changed the names the
-        // draft holds from the draft's own edits (the session GET with
-        // `?edits=1`) and asks here only for the others, which are main's.
+        // A v8 draft is not git: the editor reads who changed a block from
+        // its `__meta` and asks here only for blocks without one, from
+        // main's history.
         const dir = blocksDirPath(scope.packagePath);
         authors = await gitChangeAuthors(
           insights,
