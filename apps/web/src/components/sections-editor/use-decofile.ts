@@ -53,10 +53,10 @@ export function useDecofile(
   const localOverride = !!localPreviewUrl;
   const key = params ? decofileCacheKey({ ...params, localPreviewUrl }) : "";
   // `fetchEnabled` means the dev server is up, so the live `/.decofile` route is
-  // worth hitting. When it's down we read `.deco/blocks.gen.json` straight from
-  // the working tree — and if that artifact is absent (it's commonly gitignored)
-  // the daemon regenerates it from the `.deco/blocks/*.json` sources, so the CMS
-  // is readable as soon as the FS is up, before the dev server boots. Single
+  // worth hitting. When it's down we read `.deco/blocks.gen.json` through the
+  // daemon, which merges it from the `.deco/blocks/*.json` sources on every read
+  // (the on-disk artifact is often gitignored or stale), so the CMS is readable
+  // as soon as the FS is up, before the dev server boots. Single
   // source of truth for KEYS.decofile, so optimistic block writes (which persist
   // to the FS) operate on a full base and the CMS stays editable even if the
   // preview never comes up.
