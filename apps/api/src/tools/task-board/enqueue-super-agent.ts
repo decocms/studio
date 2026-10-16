@@ -89,6 +89,9 @@ export type SuperAgentPromptOpts = {
     /** Absent for a manual fire, which no trigger started. */
     triggerId?: string;
     fence: { threadId: string; workflowID: string };
+    /** Open the run's thread on the card with the Super Agent's comment.
+     *  Not for a run a comment started, which is its own thread's root. */
+    announce?: boolean;
   };
 };
 
@@ -303,6 +306,11 @@ export async function enqueueSuperAgentForTask(
             agentId: opts.automation.agentId,
             triggerId: opts.automation.triggerId,
             fence: opts.automation.fence,
+            ...(opts.automation.announce
+              ? {
+                  runRoot: `${opts.automation.name} started working on this card.`,
+                }
+              : {}),
           }
         : {}),
     });

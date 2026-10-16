@@ -2,9 +2,11 @@
  * A person talking to the Super Agent from a card's comments: the built-in
  * "Super Agent mentions".
  *
- * Each run is a comment thread. The comment that started it carries the run's
- * `threadId`, the agent replies under it (see `runCommentParent`), and a
- * reply in the thread goes to the run. One run works a card at a time:
+ * Each run is a comment thread. Its root carries the run's `threadId`: the
+ * comment that started the run, or for a board run (Implementer, Reviewer,
+ * Run) the Super Agent's note that it started. The agent writes under it (see
+ * `runCommentParent`), and a reply in the thread goes to the run. One run
+ * works a card at a time:
  *
  * - a mention with a run in progress goes to that run, in its thread;
  * - a mention with none starts one;
@@ -37,7 +39,7 @@ import { sendCommentToRun } from "./comment-to-run";
 type ItemThread = TaskBoardItem["threads"][number];
 type CommentRef = Pick<
   TaskBoardComment,
-  "id" | "parentId" | "threadId" | "authorId"
+  "id" | "parentId" | "threadId" | "authorId" | "audience"
 >;
 
 /** Where a comment for the Super Agent goes, decided before it is written. */
@@ -63,13 +65,11 @@ function isLive(thread: ItemThread): boolean {
   );
 }
 
-/** The person's comment a run's thread hangs off, if any. */
-function personRootOf(comments: CommentRef[], runThreadId: string) {
+/** The comment a run's thread hangs off, if any. An agent's handoff note
+ *  is not one: people don't see it by default. */
+function runRootOf(comments: CommentRef[], runThreadId: string) {
   return comments.find(
-    (c) =>
-      !c.parentId &&
-      c.threadId === runThreadId &&
-      c.authorId !== SUPER_AGENT_ASSIGNEE_ID,
+    (c) => !c.parentId && c.threadId === runThreadId && c.audience === "human",
   );
 }
 
@@ -114,7 +114,7 @@ export function routeComment(
 
   if (live) {
     const parentId =
-      input.parentId ?? personRootOf(comments, live.threadId)?.id ?? null;
+      input.parentId ?? runRootOf(comments, live.threadId)?.id ?? null;
     return {
       kind: "send",
       threadId: live.threadId,
@@ -235,13 +235,12 @@ async function mentionsTrigger(
 }
 
 /**
- * Where a comment a run writes without a parent goes: under the person's
- * comment that started or speaks to the run, so the agent answers in that
- * thread. Null when no comment is tied to the run.
+ * Where a comment a run writes without a parent goes: under its thread's
+ * root. Null when no comment is tied to the run.
  */
 export function runCommentParent(
   comments: CommentRef[],
   runThreadId: string,
-): string | null {
-  return personRootOf(comments, runThreadId)?.id ?? null;
+): CommentRef | null {
+  return runRootOf(comments, runThreadId) ?? null;
 }

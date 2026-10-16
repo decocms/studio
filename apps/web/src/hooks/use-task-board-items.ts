@@ -79,6 +79,10 @@ export function useTaskBoardLiveSync(): void {
       queryClient.invalidateQueries({
         queryKey: KEYS.taskBoardActivity(locator, item.id),
       });
+      // A card is pushed when a comment lands on it, a run's included.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardComments(locator, item.id),
+      });
     },
     // Stream back after a drop — nothing was buffered, so re-read the list.
     onResync: () => {

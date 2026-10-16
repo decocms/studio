@@ -21,12 +21,18 @@ const card = (...threads: Run[]) =>
 
 const comment = (
   id: string,
-  over: { parentId?: string; threadId?: string; authorId?: string } = {},
+  over: {
+    parentId?: string;
+    threadId?: string;
+    authorId?: string;
+    audience?: "human" | "internal";
+  } = {},
 ) => ({
   id,
   parentId: over.parentId ?? null,
   threadId: over.threadId ?? null,
   authorId: over.authorId ?? "u1",
+  audience: over.audience ?? ("human" as const),
 });
 
 describe("routeComment", () => {
@@ -74,11 +80,31 @@ describe("routeComment", () => {
     });
   });
 
-  it("does not hang a mention off the agent's own comment", () => {
+  it("sends a mention to a board run in progress, under the comment that opened its thread", () => {
+    const comments = [
+      comment("opened", {
+        threadId: "t-board",
+        authorId: SUPER_AGENT_ASSIGNEE_ID,
+      }),
+    ];
+    expect(
+      routeComment(card(run("t-board", "in_progress")), comments, {
+        body: MENTION,
+      }),
+    ).toEqual({
+      kind: "send",
+      threadId: "t-board",
+      parentId: "opened",
+      tieNew: false,
+    });
+  });
+
+  it("does not hang a mention off the agent's handoff note", () => {
     const comments = [
       comment("agent-note", {
         threadId: "t-live",
         authorId: SUPER_AGENT_ASSIGNEE_ID,
+        audience: "internal",
       }),
     ];
     expect(
@@ -151,16 +177,24 @@ describe("routeComment", () => {
 });
 
 describe("runCommentParent", () => {
-  it("answers under the person's comment tied to the run", () => {
+  it("answers under the person's comment tied to the run, not a handoff note", () => {
     const comments = [
-      comment("agent-root", {
+      comment("agent-note", {
         threadId: "t1",
         authorId: SUPER_AGENT_ASSIGNEE_ID,
+        audience: "internal",
       }),
       comment("person-root", { threadId: "t1" }),
       comment("reply", { parentId: "person-root", threadId: "t1" }),
     ];
-    expect(runCommentParent(comments, "t1")).toBe("person-root");
+    expect(runCommentParent(comments, "t1")?.id).toBe("person-root");
     expect(runCommentParent(comments, "t2")).toBeNull();
+  });
+
+  it("writes a board run's comments under the one that opened its thread", () => {
+    const comments = [
+      comment("opened", { threadId: "t1", authorId: SUPER_AGENT_ASSIGNEE_ID }),
+    ];
+    expect(runCommentParent(comments, "t1")?.id).toBe("opened");
   });
 });

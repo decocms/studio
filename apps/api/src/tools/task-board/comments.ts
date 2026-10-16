@@ -19,6 +19,21 @@ import {
 } from "./description-uploads";
 import { taskRunContextStore } from "./task-run-context";
 import { planMention, runCommentParent, runMention } from "./mention-runs";
+import { emitTaskBoardUpdated } from "./run-reactions";
+
+/** Comments have no push of their own: an open card re-reads them when the
+ *  card is pushed. The hidden Jira anchor is on no board. */
+async function pushCard(
+  ctx: StudioContext,
+  itemId: string,
+  organizationId: string,
+): Promise<void> {
+  const card = await ctx.storage.taskBoard
+    .getById(itemId, organizationId)
+    .catch(() => null);
+  if (card && card.source !== "jira")
+    emitTaskBoardUpdated(organizationId, card);
+}
 
 /** No real comment is this long — caps the row a single POST can write. */
 const MAX_COMMENT_BODY_LENGTH = 50_000;
@@ -168,15 +183,20 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
           organizationId,
         );
     const plan = item ? await planMention(ctx, item, input) : null;
+    const runRoot =
+      taskRun && !input.parentId
+        ? runCommentParent(
+            await ctx.storage.taskBoard.listComments(
+              input.taskBoardItemId,
+              organizationId,
+            ),
+            taskRun.threadId,
+          )
+        : null;
+    const answersPerson =
+      !!runRoot && runRoot.authorId !== SUPER_AGENT_ASSIGNEE_ID;
     const parentId = taskRun
-      ? (input.parentId ??
-        runCommentParent(
-          await ctx.storage.taskBoard.listComments(
-            input.taskBoardItemId,
-            organizationId,
-          ),
-          taskRun.threadId,
-        ))
+      ? (input.parentId ?? runRoot?.id ?? null)
       : plan?.kind === "send"
         ? plan.parentId
         : (input.parentId ?? null);
@@ -190,9 +210,11 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       // Which run wrote it — the only way to tell one agent's comments from
       // another's, since they all share the author id above.
       threadId: taskRun?.threadId ?? null,
-      // A run's new thread is handoff; its reply goes to whoever it answers.
+      // A run's own note is handoff, under its thread's root too; one that
+      // answers a person's comment is for them.
       audience:
-        input.audience ?? (taskRun && !parentId ? "internal" : undefined),
+        input.audience ??
+        (taskRun && !input.parentId && !answersPerson ? "internal" : undefined),
       body,
     });
     if (!comment) throw new Error("Task board item not found");
@@ -210,6 +232,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
         throw err;
       }
     }
+    await pushCard(ctx, comment.taskBoardItemId, organizationId);
     // Nobody is notified about a comment the feed hides from them.
     if (comment.audience === "internal") return { comment };
     // Not an activity action, hence its own fan-out. The agent has no inbox.

@@ -308,6 +308,11 @@ function newestIso(
  *  is history, and tagging it moves nothing. */
 const TAGGABLE_MERGED_STATUSES: string[] = [LANES.shipped, LANES.done];
 
+/** The id of the comment that opens a board run's thread: one per run. */
+export function runRootCommentId(threadId: string): string {
+  return `cmt_run_${threadId}`;
+}
+
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
@@ -3009,6 +3014,42 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .execute();
     return true;
+  }
+
+  /** The Super Agent's comment a board run's thread on the card hangs off,
+   *  on a card of `organizationId` only. Written once per run. */
+  async createRunRoot(params: {
+    taskBoardItemId: string;
+    organizationId: string;
+    threadId: string;
+    body: string;
+  }): Promise<void> {
+    await this.db
+      .insertInto("task_board_comments")
+      .columns([
+        "id",
+        "task_board_item_id",
+        "author_id",
+        "thread_id",
+        "audience",
+        "body",
+      ])
+      .expression(
+        this.db
+          .selectFrom("task_board_items")
+          .select([
+            sql<string>`${runRootCommentId(params.threadId)}::text`.as("id"),
+            "id as task_board_item_id",
+            sql<string>`${SUPER_AGENT_ASSIGNEE_ID}::text`.as("author_id"),
+            sql<string>`${params.threadId}::text`.as("thread_id"),
+            sql<string>`'human'`.as("audience"),
+            sql<string>`${params.body}::text`.as("body"),
+          ])
+          .where("id", "=", params.taskBoardItemId)
+          .where("organization_id", "=", params.organizationId),
+      )
+      .onConflict((oc) => oc.column("id").doNothing())
+      .execute();
   }
 
   /** Tie a comment to the agent run it started or speaks to. */

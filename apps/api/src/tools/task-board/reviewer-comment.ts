@@ -46,6 +46,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
+import { runRootCommentId } from "@/storage/task-board";
 import {
   NO_VISUAL_SURFACE,
   REVIEWER_LABEL,
@@ -53,6 +54,7 @@ import {
   type ReviewerKind,
   type TaskCommentAudience,
 } from "@decocms/shared/task-board";
+import { runCommentParent } from "./mention-runs";
 import { nudgeThreadTurn } from "./nudge-thread";
 
 /** What the reviewer still owes the card. Null = nothing. */
@@ -111,13 +113,17 @@ function showsVisualChange(comments: readonly ReviewerComment[]): boolean {
  * mirror only stands in for a missing record, which is the agents'.
  */
 export function verdictMirrorAudience(
-  comments: readonly ReviewerComment[],
+  comments: readonly (ReviewerComment & { id: string })[],
   threadId: string,
   decision: "approve" | "request_changes",
   gap: ReviewerCommentGap | null,
 ): TaskCommentAudience | null {
+  // The note that opened the run's thread only says it started.
   const told = comments.some(
-    (c) => c.threadId === threadId && c.audience === "human",
+    (c) =>
+      c.threadId === threadId &&
+      c.audience === "human" &&
+      c.id !== runRootCommentId(threadId),
   );
   if (decision === "request_changes" && !told) return "human";
   return gap === "missing" ? "internal" : null;
@@ -208,6 +214,7 @@ export async function ensureReviewerCommented(
       // to THIS reviewer's run.
       authorId: SUPER_AGENT_ASSIGNEE_ID,
       threadId,
+      parentId: runCommentParent(comments, threadId)?.id ?? null,
       audience: mirrorAudience,
       body,
     });
