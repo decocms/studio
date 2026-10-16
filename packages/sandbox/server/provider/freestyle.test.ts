@@ -316,6 +316,7 @@ describe("repo snapshots", () => {
     const snapshots: string[] = [];
     const creates: Record<string, unknown>[] = [];
     const posted: string[] = [];
+    const commands: string[] = [];
     const vm = {
       exec: async ({
         command,
@@ -324,6 +325,7 @@ describe("repo snapshots", () => {
         command: string;
         env?: Record<string, string>;
       }) => {
+        commands.push(command);
         if (env?.DAEMON_BODY) posted.push(env.DAEMON_BODY);
         if (command.includes("/health")) {
           return { statusCode: 0, stdout: '{"ready":true}' };
@@ -363,7 +365,7 @@ describe("repo snapshots", () => {
         },
       },
     } as unknown as Freestyle;
-    return { fake, snapshots, creates, posted };
+    return { fake, snapshots, creates, posted, commands };
   }
 
   const ref = (name: string) => ({
@@ -376,7 +378,7 @@ describe("repo snapshots", () => {
   }
 
   test("the first sandbox for a repo builds its snapshot; the next forks it", async () => {
-    const { fake, snapshots, creates, posted } = client();
+    const { fake, snapshots, creates, posted, commands } = client();
     const provider = new FreestyleSandboxProvider({
       apiKey: "k",
       client: fake,
@@ -394,6 +396,8 @@ describe("repo snapshots", () => {
     const built = posted.filter((b) => !b.includes("thread-branch"));
     expect(built.at(0)).toContain(TOKEN);
     expect(built.at(-1)).not.toContain(TOKEN);
+    // A fork's branch checkout refuses the tree install left dirty.
+    expect(commands.some((c) => c.includes("reset -q --hard HEAD"))).toBe(true);
 
     const second = await provider.ensure(ref("b"), {
       tenant: TENANT,

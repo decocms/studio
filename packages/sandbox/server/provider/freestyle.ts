@@ -465,6 +465,12 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       try {
         await this.postConfigInVm(vm, sentinel, payload(cloneUrl, submodules));
         await this.waitUntilServing(vm);
+        // Install can rewrite tracked files (a lockfile); a fork's branch
+        // checkout refuses a dirty tree, and nobody's work is in this one.
+        await this.run(
+          vm,
+          `docker exec ${CONTAINER} git -c safe.directory='*' -C ${REPO_DIR} reset -q --hard HEAD`,
+        );
         const bare = withoutCredentials(cloneUrl);
         // An empty list clears them; an absent one would keep them.
         await this.postConfigInVm(vm, sentinel, payload(bare, []));
