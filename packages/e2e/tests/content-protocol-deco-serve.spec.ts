@@ -666,6 +666,98 @@ test.describe("site editor over deco serve", () => {
     }
   });
 
+  test("a field another writer also changed asks whose version to keep, and saves the choice with the version guard", async ({
+    page,
+  }) => {
+    const stub = await startStub(
+      (await generateKeyPair()).publicKey,
+      undefined,
+      schemaWithPages,
+      {
+        "pages-home.json": heroFile({
+          __resolveType: "page",
+          name: "Home",
+          path: "/",
+          sections: [{ __resolveType: HERO }],
+        }),
+      },
+    );
+    // As above: the editor's polls wait for its next save, so only the
+    // version guard (`ifMatch`) can tell the form's copy is outdated.
+    let holdPolls = false;
+    let releasePolls = () => {};
+    const polls = new Promise<void>((resolve) => {
+      releasePolls = resolve;
+    });
+    await page.route(stub.endpoint, async (route) => {
+      const body = route.request().postData() ?? "";
+      if (body.includes('"blocks.apply"')) releasePolls();
+      else if (holdPolls && body.includes('"blocks.list"')) await polls;
+      await route.continue();
+    });
+    try {
+      await page.goto(linkOf(stub));
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 30_000,
+      });
+      const blocks = page.getByTestId("blocks-panel");
+      await blocks
+        .getByRole("button", { name: /home.?hero/i })
+        .first()
+        .click({ timeout: 60_000 });
+      const title = blocks.getByLabel("Title", { exact: true });
+      await expect(title).toHaveValue("Hello", { timeout: 30_000 });
+
+      // Another writer changes the title the user is about to change.
+      holdPolls = true;
+      const theirs = { ...(await heroOf(stub)), title: "Changed on disk" };
+      await stub.writeFile(`${HERO}.json`, heroFile(theirs));
+      await title.fill("Hello from Studio");
+
+      const dialog = page.getByRole("dialog", {
+        name: "Someone else changed this while you were editing",
+      });
+      await expect(dialog).toBeVisible({ timeout: 30_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Title" });
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Hello from Studio",
+      );
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Changed on disk",
+      );
+      // Nothing written over theirs while the user decides.
+      expect((await heroOf(stub)).title).toBe("Changed on disk");
+
+      await field.getByRole("radio", { name: "Keep mine" }).click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await expect(dialog).toBeHidden();
+      await expect
+        .poll(async () => (await heroOf(stub)).title, { timeout: 15_000 })
+        .toBe("Hello from Studio");
+      await expect(title).toHaveValue("Hello from Studio");
+
+      const applies = stub.requestBodies.flatMap((body) => {
+        try {
+          const parsed = JSON.parse(body) as unknown;
+          return (Array.isArray(parsed) ? parsed : [parsed]).filter(
+            (call) => (call as { method?: string }).method === "blocks.apply",
+          ) as Array<{ params: { ifMatch?: Record<string, unknown> } }>;
+        } catch {
+          return [];
+        }
+      });
+      // The choice is saved against the version the dialog showed.
+      expect(applies.length).toBeGreaterThanOrEqual(2);
+      expect(Object.keys(applies.at(-1)!.params.ifMatch ?? {})).toEqual([HERO]);
+      expect(applies[0]!.params.ifMatch![HERO]).not.toBe(
+        applies.at(-1)!.params.ifMatch![HERO],
+      );
+    } finally {
+      releasePolls();
+      await stub.close();
+    }
+  });
+
   test("waits for a stopped deco serve and reconnects when it starts", async ({
     page,
   }) => {
