@@ -373,6 +373,28 @@ describe("repo snapshots", () => {
     projectRef: `agent:org:vmcp:${name}`,
   });
 
+  /** The default branch's head, as the remote advertises it. */
+  let head = "a".repeat(40);
+  const refsRequests: { url: string; auth: string | null }[] = [];
+  beforeEach(() => {
+    head = "a".repeat(40);
+    refsRequests.length = 0;
+    globalThis.fetch = Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.includes("/info/refs")) return Response.json({});
+        refsRequests.push({
+          url,
+          auth: new Headers(init?.headers).get("authorization"),
+        });
+        return new Response(
+          `001e# service=git-upload-pack\n0000015${head} HEAD\0multi_ack\n`,
+        );
+      },
+      { preconnect: realFetch.preconnect },
+    );
+  });
+
   async function settled(check: () => boolean) {
     for (let i = 0; i < 100 && !check(); i++) await sleep(5);
   }
@@ -414,6 +436,39 @@ describe("repo snapshots", () => {
       repoSnapshot: true,
     });
     expect(String(creates.at(-1)?.snapshotId)).toStartWith("studio-sandbox-");
+    provider.close();
+  });
+
+  test("a push to the default branch rebuilds; meanwhile sandboxes fork the previous head's", async () => {
+    const { fake, snapshots, creates } = client();
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+    const opts = { tenant: TENANT, repo: REPO, repoSnapshot: true };
+    // Builds create VMs too; a sandbox's is the one with a slug.
+    const forked = () => creates.filter((c) => c.slug).at(-1)?.snapshotId;
+    await provider.ensure(ref("a"), opts);
+    await settled(() => snapshots.length === 1);
+    const [first] = snapshots;
+
+    await provider.ensure(ref("b"), opts);
+    expect(forked()).toBe(first);
+    expect(snapshots).toHaveLength(1);
+
+    head = "b".repeat(40);
+    await provider.ensure(ref("c"), opts);
+    expect(forked()).toBe(first);
+    await settled(() => snapshots.length === 2);
+    expect(snapshots[1]).not.toBe(first);
+
+    await provider.ensure(ref("d"), opts);
+    expect(forked()).toBe(snapshots[1]);
+    // The credential rides in the header, never in the URL.
+    expect(refsRequests.every((r) => !r.url.includes(TOKEN))).toBe(true);
+    expect(atob(refsRequests[0]!.auth!.slice("Basic ".length))).toContain(
+      TOKEN,
+    );
     provider.close();
   });
 

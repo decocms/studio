@@ -233,7 +233,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Keep a daily Freestyle snapshot of each project repo with its dependencies installed and its dev server running, so a new sandbox for that repo starts already serving. Off by default: each repo costs a snapshot build a day.",
+      "Keep a Freestyle snapshot of each project repo at its default branch's head, with its dependencies installed and its dev server running, so a new sandbox for that repo starts already serving. Off by default: each push to a default branch costs a snapshot build the next time a sandbox starts.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()

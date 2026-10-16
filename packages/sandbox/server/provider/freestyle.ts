@@ -97,10 +97,15 @@ const WATCH_TIMEOUT_MS = 5 * 60_000;
 const LOOKUP_TIMEOUT_MS = 3_000;
 const IDLE_SWEEP_MS = 60_000;
 const IDLE_SWEEP_PAGE = 100;
-/** A repo snapshot is rebuilt daily, so a fork's checkout is at most a day behind. */
-const REPO_SNAPSHOT_GENERATION_MS = 24 * 60 * 60_000;
-/** Outlives the next generation, so a replica still on the old one finds it. */
-const REPO_SNAPSHOT_TTL_SECONDS = 3 * 24 * 60 * 60;
+/**
+ * Freestyle deletes a repo snapshot nobody forked for this long, which reclaims
+ * the ones a newer default-branch head superseded.
+ *
+ * ponytail: a superseded snapshot lives this long after its last fork, so a repo
+ * pushed N times in that window holds up to N; delete the previous one on build
+ * if snapshot storage cost shows up.
+ */
+const REPO_SNAPSHOT_UNUSED_SECONDS = 2 * 24 * 60 * 60;
 /** Clone, install and dev boot of a large storefront; past this the build is dropped. */
 const REPO_SNAPSHOT_READY_TIMEOUT_MS = 30 * 60_000;
 const REPO_SNAPSHOT_POLL_MS = 5_000;
@@ -169,13 +174,13 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   >();
   private readonly idleSweep: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
-  /** Org + repo → the newest repo snapshot known to exist. */
+  /** Org + repo → the newest repo snapshot known to exist, and the head it was built for. */
   private readonly repoSnapshots = new Map<
     string,
-    { slug: string; generation: number }
+    { slug: string; head: string }
   >();
-  /** Org + repo + generation already looked up, so a miss costs one lookup. */
-  private readonly repoSnapshotLookups = new Set<string>();
+  /** Org + repo with a build running, so a push mid-build waits for it. */
+  private readonly repoSnapshotBuilds = new Set<string>();
   /** When a repo's last build failed; a build takes up to 30 min, so not on every ensure. */
   private readonly repoSnapshotFailures = new Map<string, number>();
 
@@ -366,12 +371,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
 
   /**
    * The repo snapshot a sandbox for `opts.repo` forks, or null for the base.
-   * Opt-in per ensure (`repoSnapshot`), keyed by org and repo. When today's is
-   * missing, builds it in the background from this ensure's own credential,
-   * and meanwhile serves yesterday's if it still exists.
-   *
-   * ponytail: rebuilt daily rather than on push; a fork checks out its own
-   * branch anyway, so a day-old snapshot costs an incremental install.
+   * Opt-in per ensure (`repoSnapshot`), keyed by org, repo and the head of the
+   * repo's default branch. When that head has no snapshot yet, builds one in
+   * the background from this ensure's own credential, and meanwhile serves the
+   * previous head's: a fork checks out its own branch anyway, so a stale one
+   * costs an incremental install.
    */
   private async repoSnapshotFor(
     opts: EnsureOptions,
@@ -383,36 +387,40 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     const repoUrl = normalizeRepoUrl(repo.cloneUrl)?.toLowerCase();
     if (!repoUrl) return null;
     const key = `${base}\n${opts.tenant.orgId}\n${repoUrl}`;
-    const generation = Math.floor(Date.now() / REPO_SNAPSHOT_GENERATION_MS);
-    const slugOf = (g: number) =>
-      `studio-repo-${createHash("sha256").update(`${key}\n${g}`).digest("hex").slice(0, 16)}`;
-    for (const g of [generation, generation - 1]) {
-      if ((this.repoSnapshots.get(key)?.generation ?? -1) >= g) break;
-      const lookup = `${key}\n${g}`;
-      if (this.repoSnapshotLookups.has(lookup)) continue;
-      this.repoSnapshotLookups.add(lookup);
-      if (await this.snapshotExists(slugOf(g)).catch(() => false)) {
-        this.repoSnapshots.set(key, { slug: slugOf(g), generation: g });
-      }
-    }
     const known = this.repoSnapshots.get(key);
+    const head = await remoteHead(repo.cloneUrl).catch((err: unknown) => {
+      console.warn(
+        `[${LOG_LABEL}] default-branch head of ${repoUrl}: ${errMsg(err)}`,
+      );
+      return null;
+    });
+    if (!head || known?.head === head) return known?.slug ?? null;
+    const slug = `studio-repo-${createHash("sha256").update(`${key}\n${head}`).digest("hex").slice(0, 16)}`;
+    // Another replica, or this one before a restart, may have built it.
+    if (await this.snapshotExists(slug).catch(() => false)) {
+      this.repoSnapshots.set(key, { slug, head });
+      return slug;
+    }
     const failedAt = this.repoSnapshotFailures.get(key) ?? 0;
     // A harness run has no dev server to snapshot; it only forks one.
     if (
-      (known?.generation ?? -1) < generation &&
       !opts.cloneOnly &&
+      !this.repoSnapshotBuilds.has(key) &&
       Date.now() - failedAt > REPO_SNAPSHOT_RETRY_MS
     ) {
-      const slug = slugOf(generation);
-      void this.buildRepoSnapshot(opts, repo, base, slug).then(
-        () => this.repoSnapshots.set(key, { slug, generation }),
-        (err: unknown) => {
-          this.repoSnapshotFailures.set(key, Date.now());
-          console.warn(
-            `[${LOG_LABEL}] repo snapshot ${slug} for ${repoUrl} failed: ${errMsg(err)}`,
-          );
-        },
-      );
+      this.repoSnapshotBuilds.add(key);
+      console.log(`[${LOG_LABEL}] ${repoUrl} is at ${head}; building ${slug}`);
+      void this.buildRepoSnapshot(opts, repo, base, slug)
+        .then(
+          () => this.repoSnapshots.set(key, { slug, head }),
+          (err: unknown) => {
+            this.repoSnapshotFailures.set(key, Date.now());
+            console.warn(
+              `[${LOG_LABEL}] repo snapshot ${slug} for ${repoUrl} failed: ${errMsg(err)}`,
+            );
+          },
+        )
+        .finally(() => this.repoSnapshotBuilds.delete(key));
     }
     return known?.slug ?? null;
   }
@@ -502,7 +510,10 @@ export class FreestyleSandboxProvider implements SandboxProvider {
             );
           }
         }
-        await vm.snapshot({ slug, ttlSeconds: REPO_SNAPSHOT_TTL_SECONDS });
+        await vm.snapshot({
+          slug,
+          autoDeleteSeconds: REPO_SNAPSHOT_UNUSED_SECONDS,
+        });
       } catch (err) {
         if (!(await this.snapshotExists(slug))) throw err;
       } finally {
@@ -1085,6 +1096,41 @@ function withoutCredentials(url: string): string {
   parsed.username = "";
   parsed.password = "";
   return parsed.toString();
+}
+
+/**
+ * The head of the repo's default branch, read from the smart-HTTP ref
+ * advertisement the way `git ls-remote` does, so no git binary is needed. HEAD
+ * is advertised first, so the read stops at the first chunk that holds it.
+ */
+async function remoteHead(cloneUrl: string): Promise<string | null> {
+  const url = new URL(cloneUrl);
+  const headers: Record<string, string> = {};
+  if (url.username || url.password) {
+    const user = decodeURIComponent(url.username);
+    const pass = decodeURIComponent(url.password);
+    headers.Authorization = `Basic ${btoa(`${user}:${pass}`)}`;
+  }
+  const res = await fetch(
+    `${withoutCredentials(cloneUrl).replace(/\/$/, "")}/info/refs?service=git-upload-pack`,
+    { headers, signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) },
+  );
+  if (!res.ok || !res.body) throw new Error(`info/refs ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    while (text.length < 64 * 1024) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      const head = /([0-9a-f]{40}) HEAD\0/.exec(text)?.[1];
+      if (head) return head;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return null;
 }
 
 function credentialOf(url: string): string {

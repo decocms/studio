@@ -203,7 +203,7 @@ export interface EnsureOptions {
   cloneOnly?: boolean;
   /**
    * Start from a snapshot of `repo` with its dependencies installed and its
-   * dev server running, and keep one built daily. Freestyle only; ignored
+   * dev server running, rebuilt whenever its default branch moves. Freestyle only; ignored
    * elsewhere and without `repo`.
    */
   repoSnapshot?: boolean;
