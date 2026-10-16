@@ -3,6 +3,7 @@ import {
   CommentThreadCard,
   NewCommentComposer,
   type CommentAuthor,
+  type CommentRun,
   type TaskComment,
 } from "@/layouts/task-board/task-comments";
 
@@ -52,10 +53,9 @@ const RUNNING: TaskComment = {
 
 /**
  * CT surface for Super Agent run threads: a finished run, optionally a run in
- * progress, and the task composer routed the way the dialog routes it. A reply
- * lands in its thread, and a post that mentions the Super Agent while a run
- * works the card lands in that run's thread, so a flow can be recorded end to
- * end.
+ * progress, and the task composer routed the way the dialog routes it. Posts
+ * do what the server is meant to: a mention starts a run in a new thread, or
+ * lands in the live run's thread, and a reply to a finished run resumes it.
  */
 export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
   const [threads, setThreads] = useState<TaskComment[]>(
@@ -67,6 +67,7 @@ export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
     (thread) =>
       thread.run?.status === "running" || thread.run?.status === "waiting",
   );
+  const nowRunning: CommentRun = { status: "running", onOpen: () => {} };
   const post = (body: string, parentId?: string) =>
     setThreads((prev) => {
       const comment: TaskComment = {
@@ -76,13 +77,22 @@ export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
         createdAt: at(30),
         replies: [],
       };
-      return parentId
-        ? prev.map((thread) =>
-            thread.id === parentId
-              ? { ...thread, replies: [...thread.replies, comment] }
-              : thread,
-          )
-        : [...prev, comment];
+      if (parentId) {
+        return prev.map((thread) =>
+          thread.id === parentId
+            ? {
+                ...thread,
+                replies: [...thread.replies, comment],
+                run: thread.run && nowRunning,
+              }
+            : thread,
+        );
+      }
+      const mentionsAgent = body.includes("mention:super-agent");
+      return [
+        ...prev,
+        mentionsAgent ? { ...comment, run: nowRunning } : comment,
+      ];
     });
 
   return (
@@ -105,13 +115,13 @@ export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
       <NewCommentComposer
         agentRoute={live ? "steer" : "start"}
         onSubmit={(body) => {
-          const running = threads.find(
+          const liveThread = threads.find(
             (thread) => thread.run?.status === "running",
           );
           post(
             body,
-            running && body.includes("mention:super-agent")
-              ? running.id
+            liveThread && body.includes("mention:super-agent")
+              ? liveThread.id
               : undefined,
           );
         }}
