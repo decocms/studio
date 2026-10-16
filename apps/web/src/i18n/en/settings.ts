@@ -898,11 +898,14 @@ export const settings = {
   "settings.orgRoleDetail.addMembersToRole": "Add Members to Role",
   "settings.orgRoleDetail.addWithCount": "Add ({count})",
   "settings.orgRoleDetail.added": "Added",
+  "settings.orgRoleDetail.allConnections": "All connections",
+  "settings.orgRoleDetail.allConnectionsDescription":
+    "Every tool on every connection, including ones added later. Uncheck a connection to leave it out.",
   "settings.orgRoleDetail.allModels": "All models",
   "settings.orgRoleDetail.allOrgPermissions": "All organization permissions",
   "settings.orgRoleDetail.allProjects": "All projects",
   "settings.orgRoleDetail.allProjectsDescription":
-    "This role can access every project. Turn off to restrict it to specific projects.",
+    "This role can access every project, including ones created later. Uncheck a project to hide it from this role, or turn off to pick specific projects.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Built-in role permissions cannot be changed",
   "settings.orgRoleDetail.cancel": "Cancel",

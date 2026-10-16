@@ -82,4 +82,45 @@ describe("checkApiKeyPermission", () => {
       ),
     ).toBe(false);
   });
+
+  it("lets a denied tool win over a wildcard", () => {
+    const granted = { conn_1: ["*", "!DELETE"] };
+    expect(checkApiKeyPermission(granted, { conn_1: ["READ"] })).toBe(true);
+    expect(checkApiKeyPermission(granted, { conn_1: ["DELETE"] })).toBe(false);
+    expect(
+      checkApiKeyPermission(
+        { conn_1: ["!DELETE"], "*": ["*"] },
+        { conn_1: ["DELETE"] },
+      ),
+    ).toBe(false);
+  });
+
+  it("grants whole connections through the connections scope, never self", () => {
+    const granted = {
+      connections: ["*", "!conn_2"],
+      self: ["ORGANIZATION_GET"],
+    };
+    expect(checkApiKeyPermission(granted, { conn_1: ["ANY_TOOL"] })).toBe(true);
+    expect(checkApiKeyPermission(granted, { conn_2: ["ANY_TOOL"] })).toBe(
+      false,
+    );
+    expect(checkApiKeyPermission(granted, { self: ["API_KEY_CREATE"] })).toBe(
+      false,
+    );
+  });
+
+  it("lets a connection's denied scope win over its own entry", () => {
+    expect(
+      checkApiKeyPermission(
+        { connections: ["!conn_2"], conn_2: ["READ"] },
+        { conn_2: ["READ"] },
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a connection entry's denials under the connections scope", () => {
+    const granted = { connections: ["*"], conn_1: ["!DELETE"] };
+    expect(checkApiKeyPermission(granted, { conn_1: ["READ"] })).toBe(true);
+    expect(checkApiKeyPermission(granted, { conn_1: ["DELETE"] })).toBe(false);
+  });
 });

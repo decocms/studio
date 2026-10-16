@@ -14,6 +14,18 @@
  * would read as "no access" and lose the connection entirely.
  */
 
+import { CONNECTION_SCOPE_KEY } from "@decocms/shared/auth/connection-scope";
+import {
+  deniedName,
+  listDenies,
+  listFromFilter,
+  listGrants,
+  listsAllow,
+  PERMISSION_WILDCARD,
+  type PermissionListFilter,
+  permissionListFilter,
+  unionListFilters,
+} from "@decocms/shared/auth/permission-list";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import {
   BASIC_USAGE_TOOLS,
@@ -28,10 +40,10 @@ import type { Permission } from "@/storage/types";
  * - **admin/owner** bypass every permission check in `AccessControl`, so their
  *   runs get every candidate connection at `"*"`. Anything narrower would be a
  *   restriction the dispatcher does not have.
- * - **everyone else** gets the union of their roles' own statements, verbatim:
- *   a role granting two tools on a connection yields those two tools, and a
- *   connection no role names is absent — which is what the proxy would answer
- *   anyway.
+ * - **everyone else** gets the union of their roles' statements: a role
+ *   granting two tools on a connection yields those two tools, the
+ *   `connections` scope yields `"*"` less any denials, and a connection no
+ *   role covers is absent — which is what the proxy would answer anyway.
  *
  * A member whose roles grant no connection therefore gets none. That is the
  * honest result, not a bug: today the same person calling that connection
@@ -58,13 +70,11 @@ export function connectionGrantsFor(args: {
   }
   const grants: Record<string, string[]> = {};
   for (const id of connectionIds) {
-    const tools = new Set<string>();
-    for (const statement of roleStatements) {
-      for (const tool of statement[id] ?? []) tools.add(tool);
-    }
-    if (tools.size === 0) continue;
-    // A `"*"` anywhere in the union subsumes the named tools next to it.
-    grants[id] = tools.has("*") ? ["*"] : [...tools];
+    const filter = unionListFilters(
+      roleStatements.map((statement) => connectionToolFilter(statement, id)),
+    );
+    if (filter.kind === "only" && filter.names.length === 0) continue;
+    grants[id] = listFromFilter(filter);
   }
   return grants;
 }
@@ -91,14 +101,31 @@ export function selfToolGrantsFor(args: {
   const { role, roleStatements, toolNames, runScoped } = args;
   if (hasAdminRole(role ?? undefined)) return [...toolNames];
   const isUser = rolesOf(role).includes("user");
-  const granted = new Set(roleStatements.flatMap((s) => s.self ?? []));
   return toolNames.filter(
     (tool) =>
       runScoped.has(tool) ||
       BASIC_USAGE_TOOLS.has(tool) ||
       (isUser && USER_ROLE_TOOLS.has(tool)) ||
-      granted.has("*") ||
-      granted.has(tool),
+      roleStatements.some((statement) => listsAllow([statement.self], tool)),
+  );
+}
+
+/**
+ * The tools one role statement grants on a connection: its own entry, or every
+ * tool when the `connections` scope covers the connection — less the entry's
+ * denials either way. A connection the scope denies gets nothing.
+ */
+function connectionToolFilter(
+  statement: Permission,
+  connectionId: string,
+): PermissionListFilter {
+  const scope = statement[CONNECTION_SCOPE_KEY];
+  if (listDenies(scope, connectionId)) return { kind: "only", names: [] };
+  const own = statement[connectionId] ?? [];
+  return permissionListFilter(
+    listGrants(scope, connectionId)
+      ? [PERMISSION_WILDCARD, ...own.filter((entry) => deniedName(entry))]
+      : own,
   );
 }
 

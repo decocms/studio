@@ -3,6 +3,7 @@ import {
   getProjectScope,
   isProjectAllowed,
   PROJECT_SCOPE_KEY,
+  projectScopeFilter,
 } from "./project-scope";
 
 describe("getProjectScope", () => {
@@ -50,5 +51,30 @@ describe("isProjectAllowed", () => {
 
   it("allows any id when the wildcard is present", () => {
     expect(isProjectAllowed(["*"], "conn_anything")).toBe(true);
+  });
+
+  it("allows every project but the denied ones", () => {
+    expect(isProjectAllowed(["*", "!conn_b"], "conn_a")).toBe(true);
+    expect(isProjectAllowed(["*", "!conn_b"], "conn_b")).toBe(false);
+  });
+});
+
+describe("projectScopeFilter", () => {
+  it("does not filter an unrestricted caller", () => {
+    expect(projectScopeFilter(null)).toEqual({ kind: "all" });
+  });
+
+  it("excludes denied projects from an all-projects scope", () => {
+    expect(projectScopeFilter(["*", "!conn_b"])).toEqual({
+      kind: "except",
+      names: ["conn_b"],
+    });
+  });
+
+  it("keeps an allowlist an allowlist", () => {
+    expect(projectScopeFilter(["conn_a"])).toEqual({
+      kind: "only",
+      names: ["conn_a"],
+    });
   });
 });

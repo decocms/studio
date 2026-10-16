@@ -928,12 +928,15 @@ export const settings = {
   "settings.orgRoleDetail.addMembersToRole": "Adicionar Membros ao Papel",
   "settings.orgRoleDetail.addWithCount": "Adicionar ({count})",
   "settings.orgRoleDetail.added": "Adicionado",
+  "settings.orgRoleDetail.allConnections": "Todas as conex\u00f5es",
+  "settings.orgRoleDetail.allConnectionsDescription":
+    "Todas as ferramentas de todas as conex\u00f5es, inclusive as adicionadas depois. Desmarque uma conex\u00e3o para deix\u00e1-la de fora.",
   "settings.orgRoleDetail.allModels": "Todos os modelos",
   "settings.orgRoleDetail.allOrgPermissions":
     "Todas as permiss\u00f5es da organiza\u00e7\u00e3o",
   "settings.orgRoleDetail.allProjects": "Todos os projetos",
   "settings.orgRoleDetail.allProjectsDescription":
-    "Este papel pode acessar todos os projetos. Desative para restringi-lo a projetos espec\u00edficos.",
+    "Este papel pode acessar todos os projetos, inclusive os criados depois. Desmarque um projeto para escond\u00ea-lo deste papel, ou desative para escolher projetos espec\u00edficos.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Permiss\u00f5es de papel integrado n\u00e3o podem ser alteradas",
   "settings.orgRoleDetail.cancel": "Cancelar",

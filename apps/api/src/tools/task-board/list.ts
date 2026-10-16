@@ -1,6 +1,10 @@
 import { CANONICAL_COLUMNS } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import {
+  isFiledUnderVisibleProject,
+  resolveHiddenProjectIds,
+} from "@/core/project-scope";
 import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { TaskBoardItemSchema } from "./schema";
@@ -46,12 +50,16 @@ const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
       );
     }
 
-    const [items, { items: githubConnections }, repositories] =
+    const [allItems, { items: githubConnections }, repositories, hidden] =
       await Promise.all([
         ctx.storage.taskBoard.list(organizationId),
         ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
         ctx.storage.repositories.listByOrg(organizationId),
+        resolveHiddenProjectIds(ctx),
       ]);
+    const items = allItems.filter((item) =>
+      isFiledUnderVisibleProject(hidden, item.virtualMcpId),
+    );
     /**
      * Both eras, deduped: the org's first-class repositories and the legacy
      * repo-scoped connections. A GitLab-only org has no connection at all, so
@@ -69,7 +77,7 @@ const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
     // missed. Fire-and-forget — a stuck card must not slow down or break the
     // read, and the returned list is deliberately the pre-recovery one (the
     // moves broadcast over SSE, which is how the board already learns them).
-    void recoverStalledTasks(ctx, items);
+    void recoverStalledTasks(ctx, allItems);
 
     return { items, repos, columns: CANONICAL_COLUMNS };
   },
