@@ -12,6 +12,9 @@ export const taskBoard = {
   "taskBoard.feed.eventReview": "Em revisão",
   "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.agentThread.reply": "Responder",
+  "taskBoard.agentThread.repliesCount": "{count} respostas",
+  "taskBoard.agentThread.repliesCountOne": "1 resposta",
+  "taskBoard.agentThread.hideReplies": "Esconder respostas",
   "taskBoard.agentThread.replySteer": "Responder ao run",
   "taskBoard.agentThread.replyRevive": "Continuar este run",
   "taskBoard.agentThread.replyToRunPlaceholder":
