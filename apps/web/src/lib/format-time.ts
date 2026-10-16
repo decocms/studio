@@ -38,6 +38,34 @@ export function formatTimeAgo(date: Date): string {
 }
 
 /**
+ * Relative time in the viewer's language ("2 hours ago", "há 2 horas",
+ * "now"), for copy a business user reads. {@link formatTimeAgo} is English
+ * only.
+ */
+export function formatRelativeTime(
+  date: Date,
+  locale: string,
+  now: number = Date.now(),
+): string {
+  const seconds = Math.round((now - date.getTime()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 31_536_000],
+    ["month", 2_592_000],
+    ["week", 604_800],
+    ["day", 86_400],
+    ["hour", 3_600],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) {
+      return rtf.format(-Math.floor(seconds / size), unit);
+    }
+  }
+  return rtf.format(0, "second");
+}
+
+/**
  * Convert a server-provided timestamp (ISO string, Date, null, or undefined)
  * into a finite epoch-ms number, or `null` if the value is missing/unparseable.
  *
