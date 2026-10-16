@@ -27,10 +27,11 @@ const Glyph = ({ children }: { children: string }) => (
 const HEADING_LEVELS = [1, 2, 3] as const;
 
 /**
- * The default fires for any non-empty selection, including a selected image or
- * attachment node, or a code block — where none of these controls apply.
+ * The default fires for any non-empty selection, including a selected image,
+ * attachment or mention node, or a code block — where none of these controls
+ * apply.
  */
-const shouldShow: NonNullable<BubbleMenuPluginProps["shouldShow"]> = ({
+export const shouldShow: NonNullable<BubbleMenuPluginProps["shouldShow"]> = ({
   editor,
   state,
 }) =>
@@ -38,6 +39,7 @@ const shouldShow: NonNullable<BubbleMenuPluginProps["shouldShow"]> = ({
   !state.selection.empty &&
   !editor.isActive("image") &&
   !editor.isActive("attachment") &&
+  !editor.isActive("mention") &&
   !editor.isActive("codeBlock");
 
 /**
