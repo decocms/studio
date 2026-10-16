@@ -4,6 +4,7 @@ import {
   isProjectAllowed,
   PROJECT_SCOPE_KEY,
   projectScopeFilter,
+  unionProjectScopes,
 } from "./project-scope";
 
 describe("getProjectScope", () => {
@@ -76,5 +77,36 @@ describe("projectScopeFilter", () => {
       kind: "only",
       names: ["conn_a"],
     });
+  });
+});
+
+describe("unionProjectScopes", () => {
+  it("is unrestricted when any role is", () => {
+    expect(unionProjectScopes([["p1"], null])).toBeNull();
+  });
+
+  it("admits the projects of every role", () => {
+    const scope = unionProjectScopes([["p1"], ["p2"]]);
+    expect(isProjectAllowed(scope, "p1")).toBe(true);
+    expect(isProjectAllowed(scope, "p2")).toBe(true);
+    expect(isProjectAllowed(scope, "p3")).toBe(false);
+  });
+
+  it("hides a project only when every role hides it", () => {
+    const scope = unionProjectScopes([
+      ["*", "!finance", "!hr"],
+      ["*", "!finance"],
+    ]);
+    expect(isProjectAllowed(scope, "hr")).toBe(true);
+    expect(isProjectAllowed(scope, "finance")).toBe(false);
+  });
+
+  it("lets an allowlist reopen a project another role hides", () => {
+    const scope = unionProjectScopes([["*", "!finance"], ["finance"]]);
+    expect(isProjectAllowed(scope, "finance")).toBe(true);
+  });
+
+  it("admits nothing for a role that admits nothing", () => {
+    expect(unionProjectScopes([[]])).toEqual([]);
   });
 });

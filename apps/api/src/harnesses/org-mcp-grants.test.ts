@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  connectionGrantsFor,
-  rolesOf,
-  selfToolGrantsFor,
-} from "./org-mcp-grants";
+import { connectionGrantsFor, selfToolGrantsFor } from "./org-mcp-grants";
 
 describe("connectionGrantsFor", () => {
   const ids = ["conn_a", "conn_b"];
@@ -105,20 +101,6 @@ describe("connectionGrantsFor with scopes and denials", () => {
         connectionIds: ids,
       }),
     ).toEqual({ conn_a: ["*"], conn_b: ["READ"] });
-  });
-});
-
-describe("rolesOf", () => {
-  it("splits Better Auth's comma-joined multi-role value", () => {
-    expect(rolesOf("admin, billing-manager")).toEqual([
-      "admin",
-      "billing-manager",
-    ]);
-  });
-
-  it("is empty for a member with no role", () => {
-    expect(rolesOf(undefined)).toEqual([]);
-    expect(rolesOf("")).toEqual([]);
   });
 });
 

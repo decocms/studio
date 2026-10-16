@@ -6,6 +6,8 @@
  * This resolves that allowlist for the caller so read/list tools can hide, and
  * mutation tools can reject, projects outside it.
  *
+ * A member with several roles sees the projects any of them admits.
+ *
  * Returns `null` (unrestricted — sees every project) for:
  *   - owner/admin (they bypass all permission checks anyway),
  *   - built-in roles (owner/admin/user have no organizationRole row),
@@ -16,9 +18,10 @@
 import {
   getProjectScope,
   projectScopeFilter,
+  unionProjectScopes,
 } from "@decocms/shared/auth/project-scope";
 import { isScopableProject } from "@decocms/shared/sdk";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
+import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "./context-factory";
 import type { StudioContext } from "./studio-context";
 
@@ -51,8 +54,12 @@ export async function resolveCallerProjectScope(
   }
 
   // Built-in roles have no organizationRole row → undefined → unrestricted.
-  const permission = await fetchRolePermissions(ctx.db, organizationId, role);
-  return getProjectScope(permission);
+  const scopes = await Promise.all(
+    rolesOf(role).map(async (one) =>
+      getProjectScope(await fetchRolePermissions(ctx.db, organizationId, one)),
+    ),
+  );
+  return unionProjectScopes(scopes);
 }
 
 const NO_HIDDEN_PROJECTS: ReadonlySet<string> = new Set();

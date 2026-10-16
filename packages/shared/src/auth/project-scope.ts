@@ -17,10 +17,12 @@
  */
 
 import {
+  listFromFilter,
   listsAllow,
   PERMISSION_WILDCARD,
   type PermissionListFilter,
   permissionListFilter,
+  unionListFilters,
 } from "./permission-list";
 
 /** Reserved permission-map key holding a role's project scope. */
@@ -58,4 +60,12 @@ export function projectScopeFilter(
   scope: string[] | null,
 ): PermissionListFilter {
   return scope === null ? { kind: "all" } : permissionListFilter(scope);
+}
+
+/** The scope of a member holding several roles: any project one role admits. */
+export function unionProjectScopes(
+  scopes: readonly (string[] | null)[],
+): string[] | null {
+  if (scopes.some((scope) => scope === null)) return null;
+  return listFromFilter(unionListFilters(scopes.map(projectScopeFilter)));
 }

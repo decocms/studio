@@ -9,8 +9,8 @@
  * (see API_KEY_CREATE and the internal minters), so "a key without a scope"
  * does not exist.
  *
- * Custom role statements are read with the same rules (see
- * `createBoundAuthClient`), so a role and a key minted from it agree.
+ * Custom role statements are read with the same rules, less the `"*"`
+ * resource (see `checkRolePermission`).
  */
 
 import { CONNECTION_SCOPE_KEY } from "@decocms/shared/auth/connection-scope";
@@ -20,6 +20,8 @@ import {
   listsAllow,
 } from "@decocms/shared/auth/permission-list";
 import type { Permission } from "../storage/types";
+
+const WILDCARD_RESOURCE = "*";
 
 /**
  * Does a stored permission map grant the requested permission?
@@ -37,7 +39,7 @@ export function checkApiKeyPermission(
   requested: Permission,
 ): boolean {
   for (const [resource, tools] of Object.entries(requested)) {
-    const lists = [granted[resource], granted["*"]];
+    const lists = [granted[resource], granted[WILDCARD_RESOURCE]];
     const connectionScope =
       resource === "self" ? undefined : granted[CONNECTION_SCOPE_KEY];
     if (listDenies(connectionScope, resource)) return false;
@@ -53,4 +55,18 @@ export function checkApiKeyPermission(
   }
 
   return true;
+}
+
+/**
+ * Does a role statement grant the requested permission? The same rules as a
+ * key, except that a `"*"` resource key grants nothing: Better Auth, which
+ * evaluated custom roles before deny entries existed, only matched it for a
+ * resource literally named `"*"`, so honoring it would widen stored roles.
+ */
+export function checkRolePermission(
+  statement: Permission,
+  requested: Permission,
+): boolean {
+  const { [WILDCARD_RESOURCE]: _anyResource, ...ownResources } = statement;
+  return checkApiKeyPermission(ownResources, requested);
 }

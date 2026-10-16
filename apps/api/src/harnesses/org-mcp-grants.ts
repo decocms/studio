@@ -26,7 +26,7 @@ import {
   permissionListFilter,
   unionListFilters,
 } from "@decocms/shared/auth/permission-list";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
+import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import {
   BASIC_USAGE_TOOLS,
   USER_ROLE_TOOLS,
@@ -127,17 +127,4 @@ function connectionToolFilter(
       ? [PERMISSION_WILDCARD, ...own.filter((entry) => deniedName(entry))]
       : own,
   );
-}
-
-/**
- * The individual roles in a `member.role` value. Better Auth stores multiple
- * roles comma-joined (`"admin,billing-manager"`), and a caller that treats that
- * string as one role name finds no statement for it and silently grants
- * nothing.
- */
-export function rolesOf(role: string | null | undefined): string[] {
-  return (role ?? "")
-    .split(",")
-    .map((one) => one.trim())
-    .filter(Boolean);
 }

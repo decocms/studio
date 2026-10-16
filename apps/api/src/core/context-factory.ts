@@ -343,16 +343,24 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
       // Custom roles: Better Auth matches actions literally, so it would read
       // `["*", "!TOOL"]` as a grant of TOOL. Evaluate the stored statements
-      // with our own rules instead (see checkApiKeyPermission).
+      // with our own rules instead (see checkRolePermission).
       if (db && options?.role && options.organizationId) {
-        const statements = await fetchRoleStatements(
-          db,
-          options.organizationId,
-          options.role,
-        );
-        return statements.some((statement) =>
-          checkApiKeyPermission(statement, requestedPermission),
-        );
+        try {
+          const statements = await fetchRoleStatements(
+            db,
+            options.organizationId,
+            options.role,
+          );
+          return statements.some((statement) =>
+            checkRolePermission(statement, requestedPermission),
+          );
+        } catch (err) {
+          console.error(
+            "[Auth] Role permission lookup failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+          return false;
+        }
       }
 
       // Slow path: delegate to Better Auth's hasPermission API.
@@ -541,8 +549,12 @@ import {
   BUILTIN_ROLES,
   type BuiltinRole,
   hasAdminRole,
+  rolesOf,
 } from "@decocms/shared/auth/roles";
-import { checkApiKeyPermission } from "../auth/api-key-permissions";
+import {
+  checkApiKeyPermission,
+  checkRolePermission,
+} from "../auth/api-key-permissions";
 import {
   getCachedBuiltinRoleStatements,
   resolveBuiltinRolePermission,
@@ -633,7 +645,7 @@ async function fetchRoleStatements(
 ): Promise<Permission[]> {
   const builtin = getCachedBuiltinRoleStatements();
   return Promise.all(
-    role.split(",").map(async (one) => {
+    rolesOf(role).map(async (one) => {
       if (BUILTIN_ROLES.includes(one as BuiltinRole)) return builtin[one] ?? {};
       return (await fetchRolePermissions(db, organizationId, one)) ?? {};
     }),

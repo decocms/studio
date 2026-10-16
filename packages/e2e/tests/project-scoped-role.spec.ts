@@ -33,22 +33,27 @@ async function orgIdForSlug(db: Client, slug: string): Promise<string> {
 
 type ApiContext = Awaited<ReturnType<typeof newApiContext>>;
 
-/** A fresh member of `orgId`, signed in, on a new custom role with `permission`. */
-async function memberOnCustomRole(
+/** A fresh member of `orgId`, signed in, on one new custom role per `permissions` entry. */
+async function memberOnCustomRoles(
   playwright: Parameters<typeof newApiContext>[0],
   db: Client,
   ownerCtx: ApiContext,
   orgId: string,
-  permission: Record<string, string[]>,
+  permissions: Record<string, string[]>[],
 ): Promise<ApiContext> {
-  const roleSlug = `scoped-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  const createRole = await ownerCtx.post("/api/auth/organization/create-role", {
-    data: { organizationId: orgId, role: roleSlug, permission },
-  });
-  expect(
-    createRole.ok(),
-    `create-role failed: ${await createRole.text().catch(() => "")}`,
-  ).toBe(true);
+  const roleSlugs: string[] = [];
+  for (const permission of permissions) {
+    const roleSlug = `scoped-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const createRole = await ownerCtx.post(
+      "/api/auth/organization/create-role",
+      { data: { organizationId: orgId, role: roleSlug, permission } },
+    );
+    expect(
+      createRole.ok(),
+      `create-role failed: ${await createRole.text().catch(() => "")}`,
+    ).toBe(true);
+    roleSlugs.push(roleSlug);
+  }
 
   const memberCtx = await newApiContext(playwright);
   const member = await signUpViaApi(memberCtx);
@@ -75,7 +80,7 @@ async function memberOnCustomRole(
   if (!memberId) throw new Error("member row not found after accept");
   const assign = await ownerCtx.post(
     "/api/auth/organization/update-member-role",
-    { data: { organizationId: orgId, memberId, role: [roleSlug] } },
+    { data: { organizationId: orgId, memberId, role: roleSlugs } },
   );
   expect(
     assign.ok(),
@@ -135,14 +140,12 @@ test.describe("project-scoped role", () => {
     );
 
     // A member on a custom role scoped to project A only.
-    const memberCtx = await memberOnCustomRole(
+    const memberCtx = await memberOnCustomRoles(
       playwright,
       db,
       ownerCtx,
       orgId,
-      {
-        [PROJECT_SCOPE_KEY]: [projectAId],
-      },
+      [{ [PROJECT_SCOPE_KEY]: [projectAId] }],
     );
 
     // LIST returns only the allowlisted project.
@@ -219,15 +222,17 @@ test.describe("project-scoped role", () => {
 
     // Every project but one, plus a gated tool, so the role's statement is
     // what decides — not the basic-usage floor every member gets.
-    const memberCtx = await memberOnCustomRole(
+    const memberCtx = await memberOnCustomRoles(
       playwright,
       db,
       ownerCtx,
       orgId,
-      {
-        [PROJECT_SCOPE_KEY]: ["*", `!${hiddenId}`],
-        self: ["COLLECTION_VIRTUAL_MCP_CREATE"],
-      },
+      [
+        {
+          [PROJECT_SCOPE_KEY]: ["*", `!${hiddenId}`],
+          self: ["COLLECTION_VIRTUAL_MCP_CREATE"],
+        },
+      ],
     );
 
     const list = await memberCtx.post(
@@ -266,6 +271,57 @@ test.describe("project-scoped role", () => {
     expect(
       ((await later.json()) as { item?: { id?: string } | null }).item?.id,
     ).toBe(laterId);
+
+    await ownerCtx.dispose();
+    await memberCtx.dispose();
+  });
+
+  test("a member with two scoped roles sees the projects of both", async ({
+    playwright,
+  }) => {
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = await orgIdForSlug(db, owner.orgSlug);
+
+    const aId = await createProject(ownerCtx, owner.orgSlug, `A ${Date.now()}`);
+    const bId = await createProject(ownerCtx, owner.orgSlug, `B ${Date.now()}`);
+    const cId = await createProject(ownerCtx, owner.orgSlug, `C ${Date.now()}`);
+    const cCard = await ownerCtx.post(
+      `/api/${owner.orgSlug}/tools/TASK_BOARD_ITEM_CREATE`,
+      { data: { title: "c card", virtualMcpId: cId } },
+    );
+    expect(cCard.ok(), `create card: ${await cCard.text()}`).toBe(true);
+    const cCardId = ((await cCard.json()) as { item: { id: string } }).item.id;
+
+    const memberCtx = await memberOnCustomRoles(
+      playwright,
+      db,
+      ownerCtx,
+      orgId,
+      [{ [PROJECT_SCOPE_KEY]: [aId] }, { [PROJECT_SCOPE_KEY]: [bId] }],
+    );
+
+    const list = await memberCtx.post(
+      `/api/${owner.orgSlug}/tools/COLLECTION_VIRTUAL_MCP_LIST`,
+      { data: {} },
+    );
+    expect(list.ok()).toBe(true);
+    const projectIds = (
+      (await list.json()) as { items: { id: string }[] }
+    ).items.map((item) => item.id);
+    expect(projectIds).toContain(aId);
+    expect(projectIds).toContain(bId);
+    expect(projectIds).not.toContain(cId);
+
+    const board = await memberCtx.post(
+      `/api/${owner.orgSlug}/tools/TASK_BOARD_ITEM_LIST`,
+      { data: {} },
+    );
+    expect(board.ok(), `member board: HTTP ${board.status()}`).toBe(true);
+    const cardIds = (
+      (await board.json()) as { items: { id: string }[] }
+    ).items.map((item) => item.id);
+    expect(cardIds).not.toContain(cCardId);
 
     await ownerCtx.dispose();
     await memberCtx.dispose();

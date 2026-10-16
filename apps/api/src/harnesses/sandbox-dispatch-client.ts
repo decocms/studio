@@ -67,12 +67,11 @@ import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
+import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
 import type { Permission } from "@/storage/types";
 import {
   connectionGrantsFor,
-  rolesOf,
   selfToolGrantsFor,
 } from "@/harnesses/org-mcp-grants";
 import {
