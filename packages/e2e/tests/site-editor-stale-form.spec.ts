@@ -176,13 +176,14 @@ async function writeElsewhere(
 async function countToasts(page: Page, text: string) {
   await page.evaluate((needle) => {
     const seen = new WeakSet<Element>();
-    const w = window as unknown as { __toastCount: number };
-    w.__toastCount = 0;
+    const w = window as unknown as { __toastCounts?: Record<string, number> };
+    w.__toastCounts = { ...w.__toastCounts, [needle]: 0 };
     new MutationObserver(() => {
       for (const el of document.querySelectorAll("[data-sonner-toast]")) {
         if (seen.has(el) || !(el.textContent ?? "").includes(needle)) continue;
         seen.add(el);
-        w.__toastCount++;
+        const counts = w.__toastCounts ?? {};
+        counts[needle] = (counts[needle] ?? 0) + 1;
       }
     }).observe(document.body, {
       childList: true,
@@ -192,7 +193,10 @@ async function countToasts(page: Page, text: string) {
   }, text);
   return () =>
     page.evaluate(
-      () => (window as unknown as { __toastCount: number }).__toastCount,
+      (needle) =>
+        (window as unknown as { __toastCounts?: Record<string, number> })
+          .__toastCounts?.[needle] ?? 0,
+      text,
     );
 }
 
@@ -334,6 +338,11 @@ test.describe("Site Editor stale section form", () => {
           await route.continue();
         },
       );
+      const mergedToasts = await countToasts(page, MERGED);
+      const keptToasts = await countToasts(
+        page,
+        "Changed while you were editing",
+      );
       await headline.fill("Draft one");
       await expect.poll(() => held).toBe(true);
       await headline.fill("Draft two");
@@ -353,10 +362,9 @@ test.describe("Site Editor stale section form", () => {
           ],
         });
       await expect(headline).toHaveValue("Draft two");
-      await expect(page.getByText(MERGED)).toHaveCount(1);
-      await expect(
-        page.getByText(/Changed while you were editing/),
-      ).toHaveCount(0);
+      // Counted as they appear: under load the toast can expire before here.
+      expect(await mergedToasts()).toBe(1);
+      expect(await keptToasts()).toBe(0);
     } finally {
       await previewSite.close();
     }
