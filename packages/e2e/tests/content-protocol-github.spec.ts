@@ -307,10 +307,22 @@ test.describe("content protocol on GitHub", () => {
         ctx,
         `sites/${project.owner}/drafts/`,
       );
-      const [draft] = Object.values(drafts);
+      // The draft the site reads is exactly { set, delete }; who changed
+      // each name sits next to it, ids and times only.
+      const draftKey = Object.keys(drafts).find((k) =>
+        /\/[A-Za-z0-9_-]{22}\.json$/.test(k),
+      )!;
+      const draft = drafts[draftKey];
       expect(JSON.parse(draft!.text)).toEqual({
         set: { "hero-home": hero },
         delete: ["promo"],
+      });
+      const edits = drafts[draftKey.replace(/\.json$/, ".edits.json")];
+      expect(JSON.parse(edits!.text)).toEqual({
+        edits: {
+          "hero-home": { userId: expect.any(String), at: expect.any(String) },
+          promo: { userId: expect.any(String), at: expect.any(String) },
+        },
       });
       expect(draft!.cacheControl).toBe("no-cache, max-age=0, must-revalidate");
 
