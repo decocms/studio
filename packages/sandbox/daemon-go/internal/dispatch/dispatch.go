@@ -143,6 +143,8 @@ type RunInfo struct {
 	McpURL       string
 	McpHeaders   map[string]string
 	McpExpiresAt int64
+	// LiveMessages: the run takes messages while it works (live_messages.go).
+	LiveMessages bool
 }
 
 // activeRun is one in-flight run. It owns the harness, not the HTTP handler
@@ -160,6 +162,9 @@ type activeRun struct {
 	harness string
 	// sessionKey, when set, runs the turn on the thread's kept runner (session.go).
 	sessionKey string
+	// live carries messages into the running turn (live_messages.go); nil when
+	// the run was dispatched without them.
+	live *liveMessages
 
 	mu       sync.Mutex
 	sink     *bodyWriter
@@ -677,7 +682,11 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		// decision now: a takeover, a DELETE, daemon shutdown, or nobody
 		// reattaching within `detachGrace`.
 		ctx, cancel := context.WithCancel(context.Background())
-		return &activeRun{ctx: ctx, done: make(chan struct{}), harness: harnessId, sessionKey: sessionKey}, cancel
+		run := &activeRun{ctx: ctx, done: make(chan struct{}), harness: harnessId, sessionKey: sessionKey}
+		if runInfoOf(input).LiveMessages {
+			run.live = newLiveMessages()
+		}
+		return run, cancel
 	})
 	if entry == nil {
 		// Cancelled during the supersede grace — same answer as the pre-wait
@@ -823,12 +832,12 @@ func (reg *Registry) runHarness(
 	var err error
 	if entry.sessionKey != "" {
 		frames, err = reg.sessions.runSession(ctx, deps.HarnessRunnerCmd, entry.harness, input,
-			runEnv, prepJSON, info, entry.sessionKey, emitFrame)
+			runEnv, prepJSON, info, entry.sessionKey, emitFrame, entry.live)
 	} else {
 		if prepJSON != "" {
 			runEnv["HARNESS_BEFORE_RUN_MS"] = prepJSON
 		}
-		frames, err = RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv, emitFrame)
+		frames, err = RunHarness(ctx, deps.HarnessRunnerCmd, entry.harness, input, runEnv, emitFrame, entry.live)
 	}
 	elapsed := int(time.Since(startedAt).Seconds())
 

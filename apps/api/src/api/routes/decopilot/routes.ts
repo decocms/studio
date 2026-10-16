@@ -18,7 +18,11 @@ import {
 } from "@decocms/shared/organization/schema";
 import { agentSandboxEnabled } from "@/settings";
 import { posthog } from "@/posthog";
-import { consumeStream, createUIMessageStreamResponse } from "ai";
+import {
+  consumeStream,
+  createUIMessageStreamResponse,
+  type UIMessage,
+} from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -81,6 +85,8 @@ import {
   sandboxOnlyChatsEnabled,
 } from "@/harnesses/sandbox-only-chats";
 import { markTurn, startTurnClock } from "@/harnesses/turn-latency";
+import { deliverLiveMessage, liveRunIdOf } from "@/harnesses/live-messages";
+import { publishUserMessage } from "./user-message-stream";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { buildHistoryPrefix } from "./history-prefix";
 
@@ -862,18 +868,67 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       }
       const messageId = materializedRequestMessage.id ?? crypto.randomUUID();
-      const persistedRequestMessage = {
+      let persistedRequestMessage = {
         ...materializedRequestMessage,
         id: messageId,
       };
-      const alreadyPersisted = Boolean(
-        await ctx.db
-          .selectFrom("thread_message_parts")
-          .select("id")
-          .where("thread_id", "=", taskId)
-          .where("message_id", "=", messageId)
-          .executeTakeFirst(),
-      );
+      const storedRows = await ctx.db
+        .selectFrom("thread_message_parts")
+        .select(["kind", "metadata"])
+        .where("thread_id", "=", taskId)
+        .where("message_id", "=", messageId)
+        .execute();
+      let alreadyPersisted = storedRows.length > 0;
+
+      const emitter = new PartEmitter({
+        storage: ctx.storage.threads.messageParts(),
+        orgId: input.organizationId,
+        threadId: taskId,
+        runId: taskId,
+      });
+
+      // A message for a claude-code run that is working goes into that run
+      // (see `harnesses/live-messages.ts`). Whatever it cannot deliver is
+      // queued below exactly as before.
+      if (existingThread && answer === null) {
+        const live = await deliverLiveMessage({
+          ctx,
+          organizationId: input.organizationId,
+          thread: existingThread,
+          harnessId: pinnedHarness,
+          userId: input.userId,
+          agentId: input.agent.id,
+          runBranch: branch,
+          message: persistedRequestMessage,
+          storedLiveRunId: alreadyPersisted
+            ? liveRunIdOf(
+                storedRows.find((row) => row.kind === "finish")?.metadata,
+              )
+            : undefined,
+          persist: (message) => emitter.emitRequestMessage(message),
+        });
+        if (live.outcome === "delivered") {
+          // Other viewers of the thread see it now, as they do a queued turn.
+          await publishUserMessage(
+            streamBuffer,
+            taskId,
+            live.message as UIMessage,
+          );
+          markTurn(taskId, "delivered-live");
+          return c.json(
+            {
+              taskId,
+              delivery: "live",
+              liveRunId: liveRunIdOf(live.message.metadata),
+            },
+            202,
+          );
+        }
+        if (live.outcome === "queue-persisted") {
+          persistedRequestMessage = live.message;
+          alreadyPersisted = true;
+        }
+      }
       // Idempotency: the gate workflow id is keyed by the turn's idempotency
       // key (user message id, or SHA1 for continuations), so a network
       // redelivery collapses onto the existing workflow. The run FENCE is NOT
@@ -886,12 +941,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
 
-      const emitter = new PartEmitter({
-        storage: ctx.storage.threads.messageParts(),
-        orgId: input.organizationId,
-        threadId: taskId,
-        runId: taskId,
-      });
       if (
         shouldPersistRequestMessage({
           alreadyPersisted,
@@ -962,7 +1011,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         { workflowID },
       );
       markTurn(taskId, "enqueued");
-      return c.json({ taskId }, 202);
+      return c.json({ taskId, delivery: "queued" }, 202);
     } catch (err) {
       // Expected refusal, not an incident — logged as a warning below rather
       // than through the error path.
