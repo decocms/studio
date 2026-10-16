@@ -1,4 +1,4 @@
-import { canonicalBlockJson } from "@decocms/shared/decofile";
+import { canonicalBlockJson, mergeBlockJson } from "@decocms/shared/decofile";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
 import { formatMatcher } from "./format-matcher";
@@ -54,6 +54,12 @@ export interface FormBase {
    * past, not someone else's change.
    */
   own: string[];
+  /**
+   * What the form shows instead of `base`, while a merge that kept the stored
+   * value of a field the user changed waits for them to leave the form
+   * (mergedFormDisplay "on-leave"). Their later edits are relative to it.
+   */
+  displayed?: Record<string, unknown>;
 }
 
 const OWN_VERSIONS_KEPT = 50;
@@ -171,8 +177,9 @@ export function findSectionMovedTo(
  *   while the user is still in the form. Replacing the field under their
  *   cursor would put their next keystrokes after the stored text, and that
  *   mix would be saved as their edit. The form keeps showing what they type
- *   (whose saves keep the stored value of that field) and re-reads the stored
- *   section once they leave it and its saves have settled.
+ *   (`FormBase.displayed`: what they change after the merge is saved over
+ *   the stored value, what they leave alone keeps it) and re-reads the
+ *   stored section once they leave it and its saves have settled.
  * - `"now"`: show it at once.
  */
 export function mergedFormDisplay({
@@ -206,4 +213,32 @@ export function focusInside(
   active: Element | null | undefined,
 ): boolean {
   return !!container && !!active && container.contains(active);
+}
+
+/**
+ * The form's value as an edit of `base`, the section as stored. While the form
+ * shows something else (`displayed`, a merge waiting for the user to leave the
+ * form), a field the user changes after that is theirs, saved over the stored
+ * value they were told about; a field they leave alone keeps the stored value.
+ * Without it, what they type after "The latest version was kept" would be
+ * merged against the old copy again and dropped.
+ */
+export function formValueOnBase(
+  tracked: FormBase | null,
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!tracked?.displayed) return value;
+  return mergeBlockJson(tracked.displayed, value, tracked.base, {
+    prefer: "ours",
+  }) as Record<string, unknown>;
+}
+
+/** What `displayed` becomes when the form shows `shown` over `base`. */
+export function displayedOverBase(
+  shown: Record<string, unknown>,
+  base: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  return canonicalBlockJson(shown) === canonicalBlockJson(base)
+    ? undefined
+    : shown;
 }

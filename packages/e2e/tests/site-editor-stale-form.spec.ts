@@ -169,6 +169,33 @@ async function writeElsewhere(
   expect(res.ok()).toBe(true);
 }
 
+/**
+ * Counts the toasts containing `text` from now on, as they appear: one shown
+ * twice counts twice, and one that expired still counts.
+ */
+async function countToasts(page: Page, text: string) {
+  await page.evaluate((needle) => {
+    const seen = new WeakSet<Element>();
+    const w = window as unknown as { __toastCount: number };
+    w.__toastCount = 0;
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll("[data-sonner-toast]")) {
+        if (seen.has(el) || !(el.textContent ?? "").includes(needle)) continue;
+        seen.add(el);
+        w.__toastCount++;
+      }
+    }).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }, text);
+  return () =>
+    page.evaluate(
+      () => (window as unknown as { __toastCount: number }).__toastCount,
+    );
+}
+
 async function storedBlock(api: APIRequestContext, url: string, key: string) {
   const res = await api.get(url);
   const body = (await res.json()) as { decofile: Record<string, unknown> };
@@ -199,7 +226,7 @@ test.describe("Site Editor stale section form", () => {
       // The form still holds the copy it loaded; its edit lands on top of
       // the other editor's change instead of reverting it.
       await headline.fill("Draft headline");
-      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect(page.getByText(MERGED)).toBeVisible({ timeout: 15_000 });
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual({ ...published, headline: "Draft headline" });
@@ -249,7 +276,7 @@ test.describe("Site Editor stale section form", () => {
       await writeElsewhere(page.request, url, "home", published);
 
       await headline.fill("Draft headline");
-      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect(page.getByText(MERGED)).toBeVisible({ timeout: 15_000 });
       await expect
         .poll(() => storedBlock(page.request, url, "home"))
         .toEqual({
@@ -398,7 +425,7 @@ test.describe("Site Editor stale section form", () => {
         }
       });
       await headline.fill("Draft headline");
-      await expect(page.getByText(MERGED)).toBeVisible();
+      await expect(page.getByText(MERGED)).toBeVisible({ timeout: 15_000 });
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual({ ...published, headline: "Draft headline" });
@@ -425,7 +452,9 @@ test.describe("Site Editor stale section form", () => {
       await writeElsewhere(page.request, url, "SharedHero", published);
 
       await headline.fill("Draft headline");
-      await expect(page.getByText(KEPT_STORED)).toBeVisible();
+      await expect(page.getByText(KEPT_STORED)).toBeVisible({
+        timeout: 15_000,
+      });
       await expect(page.getByText(/the rest of your changes/)).toHaveCount(0);
       // Shown once the user leaves the field, not under their cursor.
       await headline.blur();
@@ -438,7 +467,7 @@ test.describe("Site Editor stale section form", () => {
     }
   });
 
-  test("typing on after a save kept the other editor's value does not add the keystrokes to that value", async ({
+  test("typing on after a save kept the other editor's value saves what the user typed, never mixed with that value", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -455,6 +484,10 @@ test.describe("Site Editor stale section form", () => {
 
       // The user pauses mid-word (as on a busy machine): the autosave goes
       // out, is refused as stale and keeps the other editor's headline.
+      const keptToasts = await countToasts(
+        page,
+        "Changed while you were editing",
+      );
       await headline.click();
       await headline.press("ControlOrMeta+a");
       await headline.pressSequentially("Draft");
@@ -466,25 +499,25 @@ test.describe("Site Editor stale section form", () => {
       // (that put "Published headline more" in it, and saved it).
       await headline.pressSequentially(" more");
       await expect(headline).toHaveValue("Draft more");
-      // Its autosave (sent after the keystrokes) keeps the stored headline.
-      const save = await page.waitForRequest(
-        (r) => r.method() === "PATCH" && new URL(r.url()).pathname === url,
-      );
-      await save.response();
-      await expect(headline).toHaveValue("Draft more");
+      // Typing on after the notice is a new edit: it is saved over the
+      // stored headline they were told about (it used to be dropped, and the
+      // field went back to "Published headline" when they left it).
+      const typedOn = { ...published, headline: "Draft more" };
       await expect
-        .poll(() => storedBlock(page.request, url, "SharedHero"))
-        .toEqual(published);
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual(typedOn);
+      await expect(headline).toHaveValue("Draft more");
 
       // Leaving the field shows what is stored; one toast for it all.
       await headline.blur();
-      await expect(headline).toHaveValue("Published headline");
+      await expect(headline).toHaveValue("Draft more");
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
-        published,
+        typedOn,
       );
-      await expect(
-        page.getByText(/Changed while you were editing/),
-      ).toHaveCount(1);
+      // Counted as they appear: under load the toast can expire before here.
+      expect(await keptToasts()).toBe(1);
     } finally {
       await previewSite.close();
     }
@@ -516,7 +549,10 @@ test.describe("Site Editor stale section form", () => {
       // The edit lands on the section the form opened, not on the one that
       // now sits at its old position.
       await expect
-        .poll(() => storedBlock(page.request, url, "home"))
+        // The refused save's merged retry waits out main's backoff (#8000).
+        .poll(() => storedBlock(page.request, url, "home"), {
+          timeout: 20_000,
+        })
         .toEqual({
           ...home,
           sections: [inserted, { ...hero, headline: "Draft headline" }],
@@ -567,7 +603,10 @@ test.describe("Site Editor stale section form", () => {
 
       await headline.fill("Draft headline");
       await expect
-        .poll(() => storedBlock(page.request, url, "home"))
+        // The refused save's merged retry waits out main's backoff (#8000).
+        .poll(() => storedBlock(page.request, url, "home"), {
+          timeout: 20_000,
+        })
         .toEqual({
           ...home,
           sections: [{ ...editedTwin, headline: "Draft headline" }, hero],

@@ -41,6 +41,8 @@ import {
   findSectionMovedTo,
   focusInside,
   formSourceMovedOn,
+  formValueOnBase,
+  displayedOverBase,
   isOwnVersion,
   mergedFormDisplay,
   rememberOwnVersion,
@@ -963,8 +965,11 @@ export function SectionsEditor({
         waitingFormSavesRef.current.set(waitingKey, write);
         return;
       }
-      const nextValue =
+      const formValue =
         typeof nextInput === "function" ? nextInput() : nextInput;
+      // What the user changed since a merge they were told about is theirs;
+      // the rest of what the form shows defers to the stored section.
+      const nextValue = formValueOnBase(formBase, formValue);
       const {
         rawSections: latestRawSections,
         parsedSections: latestParsedSections,
@@ -1047,14 +1052,15 @@ export function SectionsEditor({
       const value = rebased ?? nextValue;
       // Show the merged section only while the form is still on it and has
       // not moved past `nextValue`, and not under the user's cursor when it
-      // replaces a field they changed (mergedFormDisplay); otherwise its
-      // baseline stays `nextValue`, so their next saves keep the stored value
-      // of that field too.
+      // replaces a field they changed (mergedFormDisplay). Under their cursor
+      // the form keeps what they typed while its baseline becomes the merge,
+      // so what they type next is saved over the stored value they were told
+      // about, and the fields they leave alone keep it.
       const display = mergedFormDisplay({
         merged: !!rebased,
         tracked: formBase,
         current: formBaseRef.current,
-        saved: nextValue,
+        saved: formValue,
         keptStored: overwritten.length > 0,
         editing: editingForm(),
       });
@@ -1087,9 +1093,14 @@ export function SectionsEditor({
         setFormValue(rebased);
       }
       // The stored copy becomes this value; a failed write puts it back.
-      const savedBase = showRebased || !rebased ? value : nextValue;
+      const savedBase =
+        showRebased || !rebased || display === "on-leave" ? value : nextValue;
+      const displayedBefore = formBase?.displayed;
       if (formBase) {
         formBase.base = savedBase;
+        formBase.displayed = showRebased
+          ? undefined
+          : displayedOverBase(formValue, savedBase);
         formBase.sectionCount = latestRawSections.length;
         rememberOwnVersion(formBase, savedBase);
       }
@@ -1098,6 +1109,7 @@ export function SectionsEditor({
         onError: (err: Error) => {
           if (formBase?.base === savedBase && startedFrom) {
             formBase.base = startedFrom;
+            formBase.displayed = displayedBefore;
           }
           if (err instanceof BlockConflictError) {
             // The save re-read the branch; build on that copy again. Right
