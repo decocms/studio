@@ -55,9 +55,12 @@ import {
   type PageDeepLink,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
-import type { AppCatalogEntry } from "./app-catalog";
+import { buildAppCatalog, type AppCatalogEntry } from "./app-catalog";
 import { ListEmpty } from "./list-empty";
-import { useDecoAppsCatalog } from "@/hooks/use-deco-apps-catalog";
+import { useInstallApp } from "@/hooks/use-install-app";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useSiteTechnology } from "@/hooks/use-site-technology";
+import { siteAppRegistry } from "@decocms/shared/site-apps";
 import { normalizePagePath } from "@/components/sections-editor/page-path-utils";
 import {
   appendPageVariantSections,
@@ -477,10 +480,39 @@ function ContentBrowserReady({
     !hasEditableAppEditorSchema(resolveType, meta, excludeFields) &&
     (metaLoading || metaFetching);
 
-  const { catalog: appCatalog, isLoading: appCatalogLoading } =
-    useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
-      enabled: activeCollection === "apps",
-    });
+  const { createTask } = useChatTask();
+  /**
+   * Installing writes code; a Fast Preview session only edits content, so the
+   * app's schema would never reach the manifest and it could never be
+   * configured. `resolved` gates the read: until the project row lands,
+   * `runtime` is the shape of an answer rather than one.
+   */
+  const session = useSessionRuntime(virtualMcpId);
+  const siteTechnology = useSiteTechnology(virtualMcpId, meta ?? undefined);
+  /**
+   * Installing writes to the repository, so it needs a stack to write FOR.
+   * `metadata.runtime.selected` is unset until a project's first sandbox
+   * start; until then the catalogue is browsable and the apps are not
+   * installable, rather than installed in a guessed format. Local mode
+   * renders a pasted tunnel and persists nothing, so it has none either.
+   */
+  const localPreviewUrl = useLocalPreviewUrl(virtualMcpId).url;
+  const canInstallApps = siteTechnology !== null && !localPreviewUrl;
+  /**
+   * Installable apps come from this repository's registry
+   * (`@decocms/shared/site-apps`), not a fetch: the catalogue ships with the
+   * code that knows how to install each entry, so the two cannot drift. An
+   * unknown stack contributes none, leaving only what the runtime reports.
+   */
+  const appCatalog =
+    meta && decofile
+      ? buildAppCatalog(
+          siteTechnology ? siteAppRegistry(siteTechnology) : [],
+          meta,
+          decofile,
+        )
+      : [];
+  const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
@@ -1000,7 +1032,33 @@ function ContentBrowserReady({
             sections={globalSections}
             availableSections={availableSections}
             appCatalog={appCatalog}
-            appCatalogLoading={appCatalogLoading}
+            canInstallApps={canInstallApps}
+            installingAppId={
+              installApp.isPending
+                ? (installApp.variables?.blockKey ?? null)
+                : null
+            }
+            onInstallApp={(entry) => {
+              if (!session.resolved) return;
+              if (session.runtime === "cms") {
+                toast.error(t("sandbox.appEditor.installNeedsCodingSession"), {
+                  action: {
+                    label: t("chat.fastPreview.startCodingSession"),
+                    onClick: () => createTask({ runtime: "sandbox" }),
+                  },
+                });
+                return;
+              }
+              installApp.mutate(
+                { blockKey: entry.id },
+                {
+                  // Most apps carry credentials they cannot work without.
+                  onSuccess: (block) =>
+                    selectItem({ collection: "apps", key: block.key }),
+                  onError: (err) => toast.error(err.message),
+                },
+              );
+            }}
             blogEntries={blogEntries}
             decofile={decofile}
             searchQuery={searchQuery}
@@ -1424,7 +1482,9 @@ function ItemList({
   sections,
   availableSections,
   appCatalog,
-  appCatalogLoading,
+  canInstallApps,
+  installingAppId,
+  onInstallApp,
   blogEntries,
   decofile,
   searchQuery,
@@ -1451,7 +1511,11 @@ function ItemList({
   sections: GlobalSectionEntry[];
   availableSections: AvailableSectionEntry[];
   appCatalog: AppCatalogEntry[];
-  appCatalogLoading: boolean;
+  /** Whether this project has a stack to install FOR — see ContentBrowser. */
+  canInstallApps: boolean;
+  /** Catalogue id of the app being installed right now, if any. */
+  installingAppId: string | null;
+  onInstallApp: (entry: AppCatalogEntry) => void;
   blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   searchQuery: string;
@@ -1700,11 +1764,7 @@ function ItemList({
               </>
             )
           ) : activeCollection === "apps" ? (
-            appCatalogLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner className="size-4.5 text-muted-foreground" />
-              </div>
-            ) : filteredApps.length === 0 ? (
+            filteredApps.length === 0 ? (
               <ListEmpty
                 hasItems={appCatalog.length > 0}
                 emptyLabel="No apps found."
@@ -1716,6 +1776,7 @@ function ItemList({
                   selection?.collection === "apps" &&
                   entry.blockKey !== null &&
                   selection.key === entry.blockKey;
+                const isInstalling = installingAppId === entry.id;
                 return (
                   <ItemRow
                     key={entry.id}
@@ -1729,16 +1790,27 @@ function ItemList({
                         <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
                           Installed
                         </span>
+                      ) : isInstalling ? (
+                        <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : entry.installable && canInstallApps ? (
+                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          Install
+                        </span>
                       ) : undefined
                     }
                     onClick={() => {
-                      if (!entry.installed || !entry.blockKey) {
+                      if (entry.installed && entry.blockKey) {
+                        onSelect({ collection: "apps", key: entry.blockKey });
+                        return;
+                      }
+                      if (!entry.installable || !canInstallApps) {
                         toast.message(
                           `${entry.title} is not installed on this site.`,
                         );
                         return;
                       }
-                      onSelect({ collection: "apps", key: entry.blockKey });
+                      if (installingAppId !== null) return;
+                      onInstallApp(entry);
                     }}
                   />
                 );

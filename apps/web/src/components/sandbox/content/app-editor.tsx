@@ -8,7 +8,10 @@ import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { AddSectionModal } from "@/components/sections-editor/add-section-modal";
 import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";
-import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import {
+  isResolvableManifestApp,
+  type LiveMeta,
+} from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
@@ -247,7 +250,11 @@ export function AppEditor({
               </div>
             ) : (
               <div className="py-6 text-center text-xs text-muted-foreground">
-                {t("sandbox.appEditor.noEditableSchema")}
+                {t(
+                  isResolvableManifestApp(meta, resolveType)
+                    ? "sandbox.appEditor.noEditableSchema"
+                    : "sandbox.appEditor.schemaAwaitsBuild",
+                )}
               </div>
             )}
           </div>
