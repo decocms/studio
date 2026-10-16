@@ -28,7 +28,9 @@ import { expect, test } from "../fixtures/test";
 test.use({ newBlocksEditor: true });
 
 const MERGED = "This block was updated while you were editing";
-const KEPT_STORED = "Changed while you were editing: headline.";
+// Names the field as the form labels it; nothing else of the form's was left to save.
+const KEPT_STORED =
+  "Changed while you were editing: Headline. The latest version was kept.";
 
 const hero = {
   __resolveType: "site/sections/HeroSlideShow.tsx",
@@ -263,6 +265,75 @@ test.describe("Site Editor stale section form", () => {
       await previewSite.close();
     }
   });
+  test("a form that saves again while its refused save is on the wire keeps both edits", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        hero,
+      );
+      const page1 = (await storedBlock(page.request, url, "home")) as Record<
+        string,
+        unknown
+      >;
+      const published = {
+        ...page1,
+        sections: [
+          {
+            ...hero,
+            slides: [
+              { title: "First slide", description: "Published elsewhere" },
+            ],
+          },
+        ],
+      };
+      await writeElsewhere(page.request, url, "home", published);
+
+      // A slow network: the form's first save is still on its way (and will
+      // be refused as stale) when the user's next keystrokes save again.
+      let held = false;
+      await page.route(
+        (u) => u.pathname === url,
+        async (route) => {
+          if (route.request().method() === "PATCH" && !held) {
+            held = true;
+            await new Promise((resolve) => setTimeout(resolve, 3_000));
+          }
+          await route.continue();
+        },
+      );
+      await headline.fill("Draft one");
+      await expect.poll(() => held).toBe(true);
+      await headline.fill("Draft two");
+
+      // Both kept: the other editor's description and the user's last edit.
+      await expect
+        .poll(() => storedBlock(page.request, url, "home"), {
+          timeout: 30_000,
+        })
+        .toEqual({
+          ...published,
+          sections: [
+            {
+              ...(published.sections[0] as Record<string, unknown>),
+              headline: "Draft two",
+            },
+          ],
+        });
+      await expect(headline).toHaveValue("Draft two");
+      await expect(page.getByText(MERGED)).toHaveCount(1);
+      await expect(
+        page.getByText(/Changed while you were editing/),
+      ).toHaveCount(0);
+    } finally {
+      await previewSite.close();
+    }
+  });
   test("a form left open while a sync brings in another draft's publish merges without a refused save", async ({
     authedPage: { page, orgSlug },
   }) => {
@@ -355,6 +426,7 @@ test.describe("Site Editor stale section form", () => {
 
       await headline.fill("Draft headline");
       await expect(page.getByText(KEPT_STORED)).toBeVisible();
+      await expect(page.getByText(/the rest of your changes/)).toHaveCount(0);
       await expect(headline).toHaveValue("Published headline");
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
