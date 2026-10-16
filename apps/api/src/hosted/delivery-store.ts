@@ -5,7 +5,6 @@
  *   sites/<site>/latest.json             { revision, schemaHash, publishedAt }
  *   sites/<site>/revisions/<sha>.json    { revision, schemaHash, blocks }
  *   sites/<site>/drafts/<slug>.json      { set, delete }
- *   sites/<site>/drafts/<slug>.edits.json { edits: { <name>: { userId, at } } }
  *
  * Keys are only ever built here, from a validated site slug, commit sha or
  * draft slug, so no caller can address anything outside its site's prefix.
@@ -55,11 +54,6 @@ export const deliveryKeys = {
   draft: (site: string, slug: string) => {
     if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
     return `${siteKey(site)}/drafts/${slug}.json`;
-  },
-  /** Who last changed each name of a draft, next to it (the SDK never reads it). */
-  draftEdits: (site: string, slug: string) => {
-    if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
-    return `${siteKey(site)}/drafts/${slug}.edits.json`;
   },
 };
 

@@ -198,6 +198,49 @@ describe("createDraftContentStorage", () => {
     });
   });
 
+  it("a save writes only the draft object; a block's __meta is kept in it, and alone never makes a change", async () => {
+    const { delivery, drafts, storage } = setup();
+    const __meta = {
+      lastEditedBy: "u-ana",
+      lastEditedAt: "2026-10-16T12:00:00.000Z",
+    };
+    delivery.log.length = 0;
+    await storage.commit({
+      base: await storage.snapshot(),
+      put: {
+        "Home.json": serializeBlock({ path: "/", title: "draft", __meta }),
+      },
+      delete: [],
+      expected: {},
+    });
+    const draft = await drafts.load(REF);
+    // One object, the draft itself: no other file is written.
+    expect([...delivery.objects.keys()]).toEqual([
+      deliveryKeys.draft("acme", draft!.slug),
+    ]);
+    expect(delivery.log).toEqual([
+      `put ${deliveryKeys.draft("acme", draft!.slug)}`,
+    ]);
+    expect(draft!.body).toEqual({
+      set: { Home: { path: "/", title: "draft", __meta } },
+      delete: [],
+    });
+    // Main's content again, stamped by someone: no longer a change.
+    await storage.commit({
+      base: await storage.snapshot(),
+      put: {
+        "Home.json": serializeBlock({
+          path: "/",
+          title: "main",
+          __meta: { ...__meta, lastEditedBy: "u-bob" },
+        }),
+      },
+      delete: [],
+      expected: {},
+    });
+    expect((await drafts.load(REF))?.body).toEqual({ set: {}, delete: [] });
+  });
+
   it("the last writer wins: a save over another's base still lands", async () => {
     const { storage } = setup();
     const stale = await storage.snapshot();
