@@ -27,24 +27,33 @@ function SelectValue({
 function SelectTrigger({
   className,
   size = "default",
+  variant = "outline",
   children,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "xs" | "sm" | "default";
+  /** `outline` is a white pill on a hairline; `filled` a grey pill, for
+   *  toolbars and filters. */
+  variant?: "outline" | "filled";
 }) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
+      data-variant={variant}
       className={cn(
-        "data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground flex w-fit items-center justify-between gap-2 rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] px-3 py-2 text-sm whitespace-nowrap transition-[color,box-shadow] outline-none focus-visible:ring-[2px] card-shadow disabled:opacity-50 data-[size=default]:h-[var(--studio-control-height,2rem)] data-[size=sm]:h-7 data-[size=xs]:h-6 data-[size=xs]:px-2.5 data-[size=xs]:py-1.5 data-[size=xs]:rounded-[var(--studio-control-radius,var(--radius-lg))] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[placeholder]:text-subtle-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-ring aria-invalid:bg-destructive/10 aria-invalid:shadow-[inset_0_0_0_1px_var(--destructive)] flex w-fit items-center justify-between gap-1.5 rounded-full px-3 text-sm whitespace-nowrap transition-[color,background-color,box-shadow] outline-none disabled:text-subtle-foreground disabled:pointer-events-none",
+        "data-[variant=outline]:bg-[var(--studio-input-background)] data-[variant=outline]:card-shadow data-[variant=outline]:hover:bg-sidebar",
+        "data-[variant=filled]:bg-muted data-[variant=filled]:hover:bg-secondary-hover",
+        "data-[size=default]:h-[var(--studio-control-height,2.25rem)] data-[size=default]:pl-4 data-[size=sm]:h-8 data-[size=xs]:h-7 data-[size=xs]:px-2.5 data-[size=xs]:text-xs data-[size=xs]:font-medium",
+        "*:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
         className,
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 opacity-50" />
+        <ChevronDown className="size-3.5 stroke-[1.5]" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );

@@ -117,18 +117,24 @@ const ResponsiveSelectItem = ({
 
 const ResponsiveSelectTrigger = ({
   children,
+  variant,
   ...props
 }: React.ComponentProps<typeof select.SelectTrigger>) => {
   const { isMobile } = useResponsiveSelectContext();
 
   return isMobile ? (
     <drawer.DrawerTrigger asChild>
-      <Button variant="outline" {...props}>
+      <Button
+        variant={variant === "filled" ? "secondary" : "outline"}
+        {...props}
+      >
         {children}
       </Button>
     </drawer.DrawerTrigger>
   ) : (
-    <select.SelectTrigger {...props}>{children}</select.SelectTrigger>
+    <select.SelectTrigger variant={variant} {...props}>
+      {children}
+    </select.SelectTrigger>
   );
 };
 

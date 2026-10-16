@@ -55,15 +55,22 @@ source extension: `@decocms/ui/components/button.tsx`.
    Available color roles: `background`, `foreground`, `card`, `popover`, `primary`,
    `secondary`, `muted`, `accent`, `destructive`, `success`, `warning`, `special`
    (AI/highlight moments), `brand`, `border`, `input`, `ring`, `sidebar-*`
-   (sidebar surfaces), `chart-1..5` (data viz). Most roles pair with a
-   `*-foreground` text token.
+   (sidebar surfaces, also the app canvas), `chart-1..5` (data viz). Most roles
+   pair with a `*-foreground` text token. `subtle-foreground` is meta and
+   placeholder text. Brand tints: `brand-lime-tint`, `brand-purple-tint`,
+   `brand-yellow-tint`, `brand-blue-tint` with their `-dark` inks; project
+   colours: `project-blue|green|purple|red|amber`. Status tints are the status
+   colour at 10% (`bg-success/10 text-success`).
 2. **Dark mode is automatic** via the `.dark` class on a root element — never
    hardcode colors or write `dark:` overrides that bypass tokens.
 3. **Compose, don't fork.** Extend components with `className` + `cn()`; add
    variants through the component's `cva` config rather than wrapping with
    custom styles.
-4. **`font-bold` renders at weight 650** (custom scale); body text is 450.
-   Radius scale derives from `--radius` (default 0.375rem).
+4. **Inter only, at most Medium.** Body is 13px Regular (`text-sm`), meta 12px
+   (`text-xs`), headlines use `font-display`. `font-semibold` renders at 500.
+   Buttons, inputs in toolbars, selects, tabs, badges and chips are pills;
+   form inputs are radius 10; cards and panels radius 16 (`surface`).
+   Modals and floating panels are frosted (`glass`, over `bg-scrim`).
 5. **User-facing copy comes from the app**, passed as props — components ship
    only overridable English defaults.
 
@@ -76,13 +83,16 @@ source extension: `@decocms/ui/components/button.tsx`.
 - **Overlays**: dialog, alert-dialog, sheet, drawer, popover, hover-card,
   tooltip, command (palette), context-menu, dropdown-menu, menubar,
   responsive-dropdown, responsive-select (desktop/mobile adaptive)
-- **Feedback**: alert, badge, progress, skeleton, spinner, sonner (toasts),
-  empty-state, empty-state-illustrations
+- **Feedback**: alert, badge (tones + dot), progress (tones), stage-tracker,
+  skeleton, spinner, sonner (toasts), empty-state, empty-state-illustrations
 - **Layout & navigation**: card, separator, tabs, accordion, collapsible,
   breadcrumb, navigation-menu, pagination, scroll-area, aspect-ratio, table,
   sidebar (full app sidebar system), sidebar-footer-shell, app-topbar,
   topbar-switcher, user-menu, step-indicator
-- **Data & content**: avatar, calendar, carousel, chart (recharts + chart tokens),
+- **Agent & identity**: composer, agent-avatar, org-avatar, project-icon,
+  chip (entities), button `variant="agent"`
+- **Data & content**: avatar, metric-card, sparkline, list-row, calendar,
+  carousel, chart (recharts + chart tokens),
   markdown, entity-card, entity-grid, filter-bar, collection-search,
   view-mode-toggle, button-group, toggle, toggle-group
 

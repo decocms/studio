@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ArrowRight, Plus, Trash01 } from "@untitledui/icons";
+import { AgentAvatar } from "./agent-avatar.tsx";
 import { Button } from "./button.tsx";
 
 const meta = {
@@ -47,6 +48,7 @@ export const Variants: Story = {
       <Button variant="destructive">Destructive</Button>
       <Button variant="success">Success</Button>
       <Button variant="warning">Warning</Button>
+      <Button variant="brand">Brand</Button>
       <Button variant="special">Special</Button>
       <Button variant="link">Link</Button>
     </div>
@@ -85,4 +87,23 @@ export const WithIcon: Story = {
 
 export const Disabled: Story = {
   args: { disabled: true },
+};
+
+const AGENT_FACE =
+  "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png";
+
+export const Agent: Story = {
+  render: () => (
+    <div className="flex items-center gap-2">
+      <Button variant="agent" size="sm">
+        <AgentAvatar src={AGENT_FACE} size={20} /> Ask
+      </Button>
+      <Button variant="agent">
+        <AgentAvatar src={AGENT_FACE} size={26} /> Ask
+      </Button>
+      <Button variant="agent" size="lg">
+        <AgentAvatar src={AGENT_FACE} size={32} /> Ask
+      </Button>
+    </div>
+  ),
 };

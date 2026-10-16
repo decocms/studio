@@ -62,3 +62,17 @@ export const Invalid: Story = {
 export const Disabled: Story = {
   args: { disabled: true, value: "conn_9f2e1c" },
 };
+
+export const Shapes: Story = {
+  render: () => (
+    <div className="grid w-80 gap-3">
+      <Input shape="pill" placeholder="Search people" />
+      <Input shape="pill" size="sm" placeholder="Search files" />
+      <Input placeholder="Project name" />
+      <Input size="sm" placeholder="Project name" />
+      <Input defaultValue="casa-aurora" data-valid />
+      <Input defaultValue="Casa Aurora!" aria-invalid />
+      <Input defaultValue="Read only" readOnly />
+    </div>
+  ),
+};

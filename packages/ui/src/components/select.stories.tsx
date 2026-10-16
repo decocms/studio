@@ -151,3 +151,25 @@ export const WithDisabledItem: Story = {
     </Select>
   ),
 };
+
+export const Styles: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      {(["outline", "filled"] as const).map((variant) => (
+        <div key={variant} className="flex items-center gap-2">
+          {(["default", "sm", "xs"] as const).map((size) => (
+            <Select key={size} defaultValue="all">
+              <SelectTrigger variant={variant} size={size}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All projects</SelectItem>
+                <SelectItem value="site">Site</SelectItem>
+              </SelectContent>
+            </Select>
+          ))}
+        </div>
+      ))}
+    </div>
+  ),
+};

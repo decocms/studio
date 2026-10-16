@@ -4,8 +4,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../lib/utils.ts";
 
-/** Compact layout raises secondary controls onto the card surface. Variables
- *  keep both layouts compatible with the caller's className overrides. */
+/** A grey fill that darkens a step on hover. Variables keep it overridable
+ *  per layout. */
 const SECONDARY =
   "bg-[var(--studio-secondary-background)] text-[color:var(--studio-secondary-foreground)] shadow-[var(--studio-secondary-shadow)] hover:bg-[var(--studio-secondary-hover-background)] hover:text-[color:var(--studio-secondary-hover-foreground)]";
 
@@ -16,9 +16,9 @@ const buttonVariants = cva(
     "rounded-[var(--studio-button-radius)] text-sm font-medium",
     /* Colour and shadow ease; the press is instant (`active:transition-none`). */
     "transition-[background-color,box-shadow,color,opacity] duration-150 ease-[var(--ease-out-cubic)]",
-    "active:scale-[0.98] active:transition-none motion-reduce:active:scale-100",
+    "active:translate-y-px active:transition-none motion-reduce:active:translate-y-0",
     "focus-ring",
-    "disabled:pointer-events-none disabled:opacity-45",
+    "disabled:pointer-events-none disabled:opacity-40",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
     "aria-invalid:outline-destructive",
   ],
@@ -26,12 +26,12 @@ const buttonVariants = cva(
     variants: {
       variant: {
         /* The one filled button on a screen: ink, and nothing else is this dark. */
-        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        default: "bg-primary text-primary-foreground hover:bg-primary-hover",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive/70",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/85 dark:bg-destructive/70",
         secondary: SECONDARY,
         outline:
-          "bg-[var(--studio-input-background)] text-[color:var(--studio-outline-foreground)] hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground card-shadow",
+          "bg-transparent text-[color:var(--studio-outline-foreground)] hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground hairline",
         success: "bg-success text-success-foreground hover:bg-success/90",
         warning: "bg-warning text-warning-foreground hover:bg-warning/90",
         /* Lime. Reserved for starting work — see the accent rule. */
@@ -39,6 +39,13 @@ const buttonVariants = cva(
         special: "bg-special text-special-foreground hover:bg-special/90",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        /**
+         * The agent's own button — "Ask" in the header. A white pill on a
+         * hairline that leads with the agent avatar, which sits flush with
+         * the pill's curve, so the padding on that side is the avatar's inset.
+         */
+        agent:
+          "bg-card text-card-foreground hairline hover:bg-accent has-[>[data-slot=agent-avatar]]:pl-[3px]",
         /**
          * An icon button living in the SIDEBAR, so it wears the sidebar's own
          * tokens and matches `SidebarMenuButton` beside it: a quiet glyph that
@@ -67,7 +74,7 @@ const buttonVariants = cva(
       /* A pill's curve eats the end pixels, so padding grows faster than height; an icon-led button gives some back. */
       size: {
         default: "h-8 px-3.5 has-[>svg]:px-3",
-        sm: "h-7 gap-1.5 px-3 has-[>svg]:px-2.5",
+        sm: "h-[1.625rem] gap-1.5 px-3 has-[>svg]:px-2.5",
         xs: "h-6 gap-1 px-2.5 text-xs has-[>svg]:px-2",
         lg: "h-10 px-4.5 has-[>svg]:px-4",
         xl: "h-12 px-6 text-base has-[>svg]:px-5",

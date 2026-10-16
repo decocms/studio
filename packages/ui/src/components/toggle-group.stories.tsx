@@ -101,3 +101,25 @@ export const Disabled: Story = {
     </ToggleGroup>
   ),
 };
+
+export const Segmented: Story = {
+  render: () => (
+    <div className="flex flex-col items-start gap-3">
+      <ToggleGroup type="single" variant="segmented" defaultValue="preview">
+        <ToggleGroupItem value="preview">Preview</ToggleGroupItem>
+        <ToggleGroupItem value="code">Code</ToggleGroupItem>
+      </ToggleGroup>
+      <ToggleGroup
+        type="single"
+        variant="segmented"
+        size="sm"
+        defaultValue="all"
+      >
+        <ToggleGroupItem value="all">All</ToggleGroupItem>
+        <ToggleGroupItem value="dev">Dev</ToggleGroupItem>
+        <ToggleGroupItem value="content">Content</ToggleGroupItem>
+        <ToggleGroupItem value="design">Design</ToggleGroupItem>
+      </ToggleGroup>
+    </div>
+  ),
+};

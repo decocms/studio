@@ -61,3 +61,13 @@ function UsageDemo() {
 export const WithLabel: Story = {
   render: () => <UsageDemo />,
 };
+
+export const Tones: Story = {
+  render: () => (
+    <div className="flex w-60 flex-col gap-4">
+      <Progress value={60} />
+      <Progress value={60} tone="warning" />
+      <Progress value={60} tone="dark" />
+    </div>
+  ),
+};
