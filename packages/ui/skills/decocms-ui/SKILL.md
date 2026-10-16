@@ -19,7 +19,8 @@ Requirements: React 19 and Tailwind CSS v4 (`bun add -d tailwindcss @tailwindcss
 plus the `tailwindcss()` plugin in `vite.config.ts`).
 
 Make the design-system stylesheet the FIRST import of the app's CSS entry point —
-it pulls in Tailwind itself, all tokens, and the bundled fonts (Inter + Commit Mono).
+it pulls in Tailwind itself, all tokens, and the bundled fonts (Switzer + Commit Mono,
+with Inter as Switzer's loading fallback).
 Do NOT also `@import "tailwindcss"` yourself:
 
 ```css
@@ -62,17 +63,25 @@ source extension: `@decocms/ui/components/button.tsx`.
 3. **Compose, don't fork.** Extend components with `className` + `cn()`; add
    variants through the component's `cva` config rather than wrapping with
    custom styles.
-4. **`font-bold` renders at weight 650** (custom scale); body text is 450.
-   Radius scale derives from `--radius` (default 0.375rem).
-5. **User-facing copy comes from the app**, passed as props — components ship
+4. **Two typefaces.** Switzer (`font-sans`) sets the UI; body text is 450,
+   `font-bold` renders at 650, and display headings use `font-display`.
+   Commit Mono (`font-mono`) is only for strings compared character by
+   character — ids, SHAs, paths, commands, code. Statuses, relative times,
+   and other captions use `text-meta`, not mono.
+5. **Radius by role, not size.** Buttons are pills — compose `Button` or
+   `IconButton` to inherit it. Controls (inputs, selects, chips) use
+   `rounded-lg` (10px); surfaces (cards, popovers, dialogs) use `rounded-xl`
+   (14px). The `rounded-*` scale is explicit, not derived from `--radius`.
+6. **User-facing copy comes from the app**, passed as props — components ship
    only overridable English defaults.
 
 ## Component inventory
 
-- **Forms**: button, input, textarea, label, checkbox, radio-group, switch,
-  slider, select, form (react-hook-form), input-otp, password-input,
-  datetime-input, email-tags-input, multi-select, search-input, combobox,
-  time-range-picker
+- **Forms**: button, icon-button (every icon-only button; its `label` becomes
+  the tooltip and accessible name), split-button, input, textarea, label,
+  checkbox, radio-group, switch, slider, select, form (react-hook-form),
+  input-otp, password-input, datetime-input, email-tags-input, multi-select,
+  search-input, search-toggle, combobox, time-range-picker
 - **Overlays**: dialog, alert-dialog, sheet, drawer, popover, hover-card,
   tooltip, command (palette), context-menu, dropdown-menu, menubar,
   responsive-dropdown, responsive-select (desktop/mobile adaptive)
