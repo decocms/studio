@@ -116,6 +116,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     boundAuth: createMockBoundAuth(),
     access: {
       granted: () => true,
+      getRole: () => undefined,
       check: async () => {},
       grant: () => {},
       setToolName: () => {},

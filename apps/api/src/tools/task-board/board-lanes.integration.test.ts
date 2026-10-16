@@ -65,6 +65,7 @@ describe("board lanes (real Postgres)", () => {
       },
       access: {
         granted: () => true,
+        getRole: () => undefined,
         check: async () => {},
         grant: () => {},
         setToolName: () => {},

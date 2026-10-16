@@ -39,6 +39,7 @@ describe("TaskBoardStorage comments", () => {
       storage: { taskBoard: storage, notifications },
       access: {
         granted: () => true,
+        getRole: () => undefined,
         check: async () => {},
         grant: () => {},
         setToolName: () => {},

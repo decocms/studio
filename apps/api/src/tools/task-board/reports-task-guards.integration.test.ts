@@ -63,6 +63,7 @@ describe("reports-task guards", () => {
       },
       access: {
         granted: () => true,
+        getRole: () => undefined,
         check: async () => {},
         grant: () => {},
         setToolName: () => {},
