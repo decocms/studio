@@ -40,6 +40,7 @@ import {
   spellingKey,
   unsupported,
 } from "@decocms/blocks/protocol";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import type { RepoContentClient } from "@/git-providers";
 import { gitBlobSha } from "@/decofile/read-decofile";
 import { createRepoContentReader } from "@/decofile/repo-content-storage";
@@ -51,22 +52,13 @@ function groupOf(file: string): string {
   return fullyDecodeFileName(file).name;
 }
 
-/** Equal JSON values, whatever the key order. */
+/**
+ * Equal JSON values, whatever the key order. A block's `__meta` (who edited
+ * it last) isn't content: a put of main's content with a new record is still
+ * main's content.
+ */
 function sameJson(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  return ka.every(
-    (k) =>
-      Object.hasOwn(b, k) &&
-      sameJson(
-        (a as Record<string, unknown>)[k],
-        (b as Record<string, unknown>)[k],
-      ),
-  );
+  return canonicalBlockJson(a) === canonicalBlockJson(b);
 }
 
 function draftRevision(mainSha: string, etag: string | null): string {
