@@ -161,3 +161,49 @@ export function findSectionMovedTo(
   );
   return matches.length === 1 ? (matches[0] as number) : "unknown";
 }
+
+/**
+ * When the open form shows the value a save merged onto the stored section.
+ *
+ * - `"never"`: there is nothing merged, or the form has moved on (another
+ *   section, or a newer value than the one merged); it keeps what it shows.
+ * - `"on-leave"`: the merge kept the stored value of a field the form changed
+ *   while the user is still in the form. Replacing the field under their
+ *   cursor would put their next keystrokes after the stored text, and that
+ *   mix would be saved as their edit. The form keeps showing what they type
+ *   (whose saves keep the stored value of that field) and re-reads the stored
+ *   section once they leave it and its saves have settled.
+ * - `"now"`: show it at once.
+ */
+export function mergedFormDisplay({
+  merged,
+  tracked,
+  current,
+  saved,
+  keptStored,
+  editing,
+}: {
+  merged: boolean;
+  /** The form's record when the save was built. */
+  tracked: FormBase | null;
+  /** The form's record now. */
+  current: FormBase | null;
+  /** The value the save was built from. */
+  saved: unknown;
+  /** The merge kept the stored value of a field the form changed. */
+  keptStored: boolean;
+  /** Focus is inside the form. */
+  editing: boolean;
+}): "now" | "on-leave" | "never" {
+  if (!merged || !tracked || current !== tracked) return "never";
+  if (tracked.emitted !== saved) return "never";
+  return keptStored && editing ? "on-leave" : "now";
+}
+
+/** True while focus is inside `container` (an input of the open form). */
+export function focusInside(
+  container: Element | null | undefined,
+  active: Element | null | undefined,
+): boolean {
+  return !!container && !!active && container.contains(active);
+}
