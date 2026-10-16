@@ -133,6 +133,7 @@ type sandboxHandlers struct {
 	tasksList, tasksGet, tasksDelete      http.HandlerFunc
 	tasksKill, tasksKillAll, tasksStream  http.HandlerFunc
 	toolsSync, exec                       http.HandlerFunc
+	mcpLogin                              *routes.McpLogin
 	fs, git, setup                        map[string]http.HandlerFunc
 }
 
@@ -677,6 +678,8 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 	mux.HandleFunc("POST "+pre+"/tasks/{id}/kill", d.authed(h.tasksKill))
 
 	mux.HandleFunc("POST "+pre+"/tools/sync", d.authed(h.toolsSync))
+	mux.HandleFunc("POST "+pre+"/mcp-login", d.authed(h.mcpLogin.Start))
+	mux.HandleFunc("POST "+pre+"/mcp-login/finish", d.authed(h.mcpLogin.Finish))
 	for _, step := range []string{"clone", "install", "start"} {
 		mux.HandleFunc("POST "+pre+"/setup/"+step, d.authed(h.setup[step]))
 	}
@@ -1391,6 +1394,7 @@ func main() {
 			SetStatus:   d.setStatus,
 		}),
 		toolsSync: routes.ToolsSync(routes.ToolsDeps{AppRoot: appRoot, RepoDir: repoDir}),
+		mcpLogin:  routes.NewMcpLogin(),
 	}
 
 	d.mux = http.NewServeMux()

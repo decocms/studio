@@ -22,6 +22,8 @@ import {
 import {
   GenericToolCallPart,
   GenerateImagePart,
+  ImageGrid,
+  screenshotImageUrl,
   WebSearchPart,
   ProposePlanPart,
   SubtaskPart,
@@ -400,9 +402,12 @@ function MessagePart({
         );
       }
       if (fallback.type.startsWith("tool-")) {
-        const toolCallId = (fallback as ToolUIPart).toolCallId;
-        const meta = dataParts.toolMetadata.get(toolCallId);
-        return (
+        const toolPart = fallback as ToolUIPart;
+        const meta = dataParts.toolMetadata.get(toolPart.toolCallId);
+        const screenshot = fallback.type.endsWith("__get_screenshot")
+          ? screenshotImageUrl(toolPart.output)
+          : null;
+        const card = (
           <GenericToolCallPart
             part={fallback}
             annotations={meta?.annotations}
@@ -411,6 +416,13 @@ function MessagePart({
             isLastMessage={isLastMessage}
             toolMeta={meta?._meta}
           />
+        );
+        if (!screenshot) return card;
+        return (
+          <div className="flex flex-col gap-2">
+            {card}
+            <ImageGrid srcs={[screenshot]} alt={toolPart.type.slice(5)} />
+          </div>
         );
       }
       if (fallback.type.startsWith("data-")) {
