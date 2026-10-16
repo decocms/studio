@@ -65,58 +65,60 @@ describe("boardEventForListener", () => {
     data,
     time: "2026-01-01T00:00:00.000Z",
   });
-  const noCard = async () => null;
+  const prsFor = (attribution: unknown) =>
+    event(TASK_BOARD_ITEM_PRS_UPDATED_EVENT, {
+      id: "item_1",
+      prs: [],
+      card: attribution,
+    });
 
-  it("passes every event through when nothing is hidden", async () => {
+  it("passes every event through when nothing is hidden", () => {
     const update = event(
       TASK_BOARD_ITEM_UPDATED_EVENT,
       card({ virtualMcpId: "vir_hidden" }),
     );
-    expect(await boardEventForListener(new Set(), update, noCard)).toBe(update);
+    expect(boardEventForListener(new Set(), update)).toBe(update);
   });
 
-  it("passes a visible card update through", async () => {
+  it("passes a visible card update through", () => {
     const update = event(
       TASK_BOARD_ITEM_UPDATED_EVENT,
       card({ virtualMcpId: "vir_open" }),
     );
-    expect(await boardEventForListener(hidden, update, noCard)).toBe(update);
+    expect(boardEventForListener(hidden, update)).toBe(update);
   });
 
-  it("turns a hidden card update into its deletion", async () => {
-    const scoped = await boardEventForListener(
+  it("turns a hidden card update into its deletion", () => {
+    const scoped = boardEventForListener(
       hidden,
       event(TASK_BOARD_ITEM_UPDATED_EVENT, card({ repo: "vir_hidden" })),
-      noCard,
     );
     expect(scoped?.type).toBe(TASK_BOARD_ITEM_DELETED_EVENT);
     expect(scoped?.data).toEqual({ id: "item_1" });
   });
 
-  it("treats an update it cannot read as a deletion", async () => {
-    const scoped = await boardEventForListener(
+  it("treats an update it cannot read as a deletion", () => {
+    const scoped = boardEventForListener(
       hidden,
       event(TASK_BOARD_ITEM_UPDATED_EVENT, { title: "no attribution" }),
-      noCard,
     );
     expect(scoped?.type).toBe(TASK_BOARD_ITEM_DELETED_EVENT);
   });
 
-  it("drops a PR update for a hidden or missing card", async () => {
-    const prs = event(TASK_BOARD_ITEM_PRS_UPDATED_EVENT, { prs: [] });
+  it("drops a PR update for a hidden card or one without attribution", () => {
     expect(
-      await boardEventForListener(hidden, prs, async () =>
-        card({ virtualMcpId: "vir_hidden" }),
+      boardEventForListener(
+        hidden,
+        prsFor(card({ virtualMcpId: "vir_hidden" })),
       ),
     ).toBeNull();
-    expect(await boardEventForListener(hidden, prs, noCard)).toBeNull();
-    expect(await boardEventForListener(hidden, prs, async () => card({}))).toBe(
-      prs,
-    );
+    expect(boardEventForListener(hidden, prsFor(null))).toBeNull();
+    const visible = prsFor(card({}));
+    expect(boardEventForListener(hidden, visible)).toBe(visible);
   });
 
-  it("passes other events through", async () => {
+  it("passes other events through", () => {
     const rules = event("task-board.rules.updated", {});
-    expect(await boardEventForListener(hidden, rules, noCard)).toBe(rules);
+    expect(boardEventForListener(hidden, rules)).toBe(rules);
   });
 });

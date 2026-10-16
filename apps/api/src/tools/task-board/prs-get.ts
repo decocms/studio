@@ -757,12 +757,18 @@ export async function refreshItemPrCards(
   try {
     const linked = await ctx.storage.taskBoard.listPrs(taskBoardItemId, orgId);
     if (linked.length === 0) return null;
-    const prs = await getPrCardCache().refresh({
-      namespace: orgId,
-      key: taskBoardItemId,
-      fetchLive: () => assemblePrCards(ctx, orgId, linked, true),
-    });
-    emitTaskBoardPrsUpdated(orgId, taskBoardItemId, prs);
+    const [prs, card] = await Promise.all([
+      getPrCardCache().refresh({
+        namespace: orgId,
+        key: taskBoardItemId,
+        fetchLive: () => assemblePrCards(ctx, orgId, linked, true),
+      }),
+      // Without it the event only skips listeners whose role hides projects.
+      ctx.storage.taskBoard
+        .getAttribution(taskBoardItemId, orgId)
+        .catch(() => null),
+    ]);
+    emitTaskBoardPrsUpdated(orgId, taskBoardItemId, prs, card);
     return prs;
   } catch (err) {
     console.error(

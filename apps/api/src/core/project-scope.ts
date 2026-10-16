@@ -29,6 +29,7 @@ import {
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
 import type { SSEEvent } from "../event-bus/sse-hub";
+import type { TaskBoardItemAttribution } from "../storage/types";
 import type { StudioContext } from "./studio-context";
 
 export async function resolveCallerProjectScope(
@@ -94,16 +95,9 @@ export async function resolveHiddenProjectIds(
   );
 }
 
-/** The fields the board attributes a card to a project by. */
-interface ProjectAttributedCard {
-  virtualMcpId: string | null;
-  repo: string | null;
-  threads: readonly { virtualMcpId: string | null }[];
-}
-
-function isProjectAttributedCard(
+function isTaskBoardItemAttribution(
   value: unknown,
-): value is ProjectAttributedCard {
+): value is TaskBoardItemAttribution {
   if (typeof value !== "object" || value === null) return false;
   const card = value as Record<string, unknown>;
   const optionalString = (field: unknown) =>
@@ -129,7 +123,7 @@ function isProjectAttributedCard(
  */
 export function isCardInVisibleProject(
   hidden: ReadonlySet<string>,
-  card: ProjectAttributedCard,
+  card: TaskBoardItemAttribution,
 ): boolean {
   if (hidden.size === 0) return true;
   const named = [
@@ -151,7 +145,7 @@ export async function assertCardVisible(
 ): Promise<void> {
   const hidden = await resolveHiddenProjectIds(ctx);
   if (hidden.size === 0) return;
-  const card = await ctx.storage.taskBoard.getById(id, organizationId);
+  const card = await ctx.storage.taskBoard.getAttribution(id, organizationId);
   if (card && !isCardInVisibleProject(hidden, card)) {
     throw new Error(`Task board item not found: ${id}`);
   }
@@ -161,17 +155,20 @@ export async function assertCardVisible(
  * What a realtime listener whose role hides `hidden` projects receives for
  * `event`. A card update for a hidden project becomes that card's deletion,
  * so a card moved into one leaves the listener's board; a PR update for a
- * hidden card is dropped. Other events pass through.
+ * hidden card, or one that does not say which card it is, is dropped. Other
+ * events pass through. Synchronous, so it adds no I/O per listener.
  */
-export async function boardEventForListener(
+export function boardEventForListener(
   hidden: ReadonlySet<string>,
   event: SSEEvent,
-  getCard: (id: string) => Promise<ProjectAttributedCard | null>,
-): Promise<SSEEvent | null> {
+): SSEEvent | null {
   if (hidden.size === 0) return event;
   if (event.type === TASK_BOARD_ITEM_UPDATED_EVENT) {
-    if (isProjectAttributedCard(event.data)) {
-      if (isCardInVisibleProject(hidden, event.data)) return event;
+    if (
+      isTaskBoardItemAttribution(event.data) &&
+      isCardInVisibleProject(hidden, event.data)
+    ) {
+      return event;
     }
     if (!event.subject) return null;
     return {
@@ -181,8 +178,14 @@ export async function boardEventForListener(
     };
   }
   if (event.type === TASK_BOARD_ITEM_PRS_UPDATED_EVENT) {
-    const card = event.subject ? await getCard(event.subject) : null;
-    return card && isCardInVisibleProject(hidden, card) ? event : null;
+    const card =
+      typeof event.data === "object" && event.data !== null
+        ? (event.data as Record<string, unknown>).card
+        : undefined;
+    return isTaskBoardItemAttribution(card) &&
+      isCardInVisibleProject(hidden, card)
+      ? event
+      : null;
   }
   return event;
 }

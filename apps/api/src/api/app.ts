@@ -884,15 +884,7 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
               sseHub.remove(listenerKey, listenerId);
             });
         };
-        if (hiddenProjects.size === 0) {
-          write(event);
-          return;
-        }
-        boardEventForListener(hiddenProjects, event, (id) =>
-          studioContext.storage.taskBoard.getById(id, orgId),
-        ).then(write, (error: unknown) => {
-          console.error("[watch] board event scope failed:", error);
-        });
+        write(boardEventForListener(hiddenProjects, event));
       },
     });
 

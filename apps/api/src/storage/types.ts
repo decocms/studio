@@ -2098,6 +2098,13 @@ export interface TaskBoardItemThreadRef {
   createdAt: string;
 }
 
+/** The fields the board attributes a card to a project by. */
+export interface TaskBoardItemAttribution {
+  virtualMcpId: string | null;
+  repo: string | null;
+  threads: readonly { virtualMcpId: string | null }[];
+}
+
 export interface TaskBoardItem {
   id: string;
   organizationId: string;
