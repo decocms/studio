@@ -203,3 +203,34 @@ export async function patchDecofile(
     Pick<DecofileDraft, "version" | "token">;
   return { ...body, apiHost: body.apiHost ?? window.location.host };
 }
+
+/**
+ * Who last changed a block, and when (`GET …/changed-by`): the wire shape.
+ * `name` is absent when only the time is known; `you` when the viewer made
+ * it (in another tab or window).
+ */
+export interface ChangedBy {
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  at: string;
+  you?: true;
+}
+
+/**
+ * Who last changed `blocks`, from the project's history (a Fast Preview
+ * branch, a v8 draft). Absent keys: unknown. Any failure is "unknown" too:
+ * the caller shows nothing rather than an error.
+ */
+export async function fetchChangedBy(
+  params: DecofileScopeParams,
+  blocks: string[],
+): Promise<Record<string, ChangedBy>> {
+  const query = new URLSearchParams(blocks.map((block) => ["block", block]));
+  const res = await fetch(`${decofileApiUrl(params)}/changed-by?${query}`);
+  if (!res.ok) return {};
+  const body = (await res.json().catch(() => ({}))) as {
+    changedBy?: Record<string, ChangedBy>;
+  };
+  return body.changedBy ?? {};
+}
