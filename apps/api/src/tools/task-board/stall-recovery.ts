@@ -11,7 +11,8 @@
  *     PR, QA without). This is the finish hook's own job, done late; costs two
  *     queries, no model call.
  *   every used thread terminal, newest `failed`    → nudge the thread once: one
- *     user turn asking the agent to finish what it started. Advancing here would
+ *     user turn asking the agent to finish what it started, on a thread whose
+ *     run may move the card (`runMovesLinkedCards`). Advancing here would
  *     mark unfinished work as reviewable.
  *   any thread `requires_action` / `in_progress` → leave it. The first is parked
  *     on a `user_ask` (a human owns it), the second is either live or the stall
@@ -248,7 +249,12 @@ export async function recoverStalledTasks(
           organizationId,
           ctx.storage.organizationBilling,
         );
-      } else {
+      } else if (
+        await ctx.storage.taskBoard.runMovesLinkedCards(
+          thread.threadId,
+          organizationId,
+        )
+      ) {
         await nudgeThread(ctx, item, row);
       }
     } catch (err) {
