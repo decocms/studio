@@ -11,6 +11,24 @@ export const taskBoard = {
   "taskBoard.feed.eventDelivered": "Avançou",
   "taskBoard.feed.eventReview": "Em revisão",
   "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
+  "taskBoard.agentThread.reply": "Responder",
+  "taskBoard.agentThread.replySteer": "Responder ao run",
+  "taskBoard.agentThread.replyRevive": "Continuar este run",
+  "taskBoard.agentThread.replyToRunPlaceholder":
+    "Mensagem para o Super Agent...",
+  "taskBoard.agentThread.statusRunning": "Rodando",
+  "taskBoard.agentThread.statusWaiting": "Esperando você",
+  "taskBoard.agentThread.statusFailed": "Falhou",
+  "taskBoard.agentThread.statusDone": "Concluído",
+  "taskBoard.agentThread.openRun": "Abrir o run",
+  "taskBoard.agentThread.routeStart":
+    "Começa um run do Super Agent neste card.",
+  "taskBoard.agentThread.routeSteer":
+    "Vai para o run do Super Agent em andamento. Ele lê depois do passo atual.",
+  "taskBoard.agentThread.routeRevive":
+    "Retoma este run, com tudo o que ele já fez.",
+  "taskBoard.agentThread.routeBusy":
+    "Outro run está trabalhando neste card. Responda na thread dele ou espere ele terminar.",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",
   "taskBoard.conversation.details": "Detalhes",

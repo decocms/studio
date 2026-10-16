@@ -12,7 +12,7 @@
  * listbox.
  */
 
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Suggestion, {
   exitSuggestion,
   type SuggestionOptions,
@@ -47,6 +47,14 @@ interface MenuState {
 }
 
 const CLOSED: MenuState = { query: "", range: null, rect: null, editor: null };
+
+/** Someone pickable who is not an org member, like the Super Agent: listed
+ *  above the members, with its own glyph. */
+export interface MentionAgent {
+  id: string;
+  name: string;
+  icon: ReactNode;
+}
 
 /**
  * The bridge between the plugin and the menu. A store rather than React state
@@ -91,7 +99,11 @@ export class MentionMenuStore {
 export const MENTION_SUGGESTION_KEY = new PluginKey("markdownEditorMention");
 
 /** Insert the chip, replacing the typed `@query`. */
-function insert(editor: Editor, range: Range, member: MentionMember) {
+function insert(
+  editor: Editor,
+  range: Range,
+  member: Pick<MentionMember, "id" | "name">,
+) {
   editor
     .chain()
     .focus()
@@ -226,18 +238,30 @@ const MENU_MIN_HEIGHT = 140;
  * The menu. Renders nothing until the plugin opens it, so the members fetch
  * doesn't run until an `@` is actually typed.
  */
-export function MentionMenu({ store }: { store: MentionMenuStore }) {
+const NO_AGENTS: MentionAgent[] = [];
+
+export function MentionMenu({
+  store,
+  agents = NO_AGENTS,
+}: {
+  store: MentionMenuStore;
+  agents?: MentionAgent[];
+}) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const open = state.range !== null;
-  return open ? <OpenMentionMenu store={store} state={state} /> : null;
+  return open ? (
+    <OpenMentionMenu store={store} state={state} agents={agents} />
+  ) : null;
 }
 
 function OpenMentionMenu({
   store,
   state,
+  agents,
 }: {
   store: MentionMenuStore;
   state: MenuState;
+  agents: MentionAgent[];
 }) {
   const t = useT();
   const { members, loading } = useMentionMembers(true);
@@ -317,7 +341,7 @@ function OpenMentionMenu({
     close();
   };
 
-  const choose = (member: MentionMember) => {
+  const choose = (member: Pick<MentionMember, "id" | "name">) => {
     if (!state.editor || !state.range) return;
     insert(state.editor, state.range, member);
     store.close();
@@ -368,6 +392,18 @@ function OpenMentionMenu({
           ) : (
             <CommandEmpty>{t("markdownEditor.mentionEmpty")}</CommandEmpty>
           )}
+          {agents.map((agent) => (
+            <CommandItem
+              key={agent.id}
+              value={agent.name}
+              onSelect={() => choose(agent)}
+              onMouseDown={(e) => e.preventDefault()}
+              className="gap-2"
+            >
+              {agent.icon}
+              <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+            </CommandItem>
+          ))}
           {members.map((member) => (
             <CommandItem
               key={member.id}
