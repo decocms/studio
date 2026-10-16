@@ -104,9 +104,10 @@ export interface TaskBoardComment {
   taskBoardItemId: string;
   parentId: string | null;
   authorId: string;
-  /** The agent run that wrote it; null for a human's comment. It is what tells
-   *  one agent's comments from another's — every agent comment shares the same
-   *  synthetic author id. */
+  /** The agent run that wrote it, or, on a person's comment, the run it
+   *  started or spoke to; null otherwise. It is what tells one agent's
+   *  comments from another's — every agent comment shares the same synthetic
+   *  author id. */
   threadId: string | null;
   audience: TaskCommentAudience;
   body: string;
@@ -3008,6 +3009,27 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .execute();
     return true;
+  }
+
+  /** Tie a comment to the agent run it started or speaks to. */
+  async setCommentThread(
+    id: string,
+    organizationId: string,
+    threadId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("task_board_comments")
+      .set({ thread_id: threadId })
+      .where("id", "=", id)
+      .where(
+        "task_board_item_id",
+        "in",
+        this.db
+          .selectFrom("task_board_items")
+          .select("id")
+          .where("organization_id", "=", organizationId),
+      )
+      .execute();
   }
 
   async getComment(

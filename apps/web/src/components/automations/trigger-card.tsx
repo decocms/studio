@@ -88,7 +88,9 @@ export function TriggerCard({
           ? t("automations.triggerCard.prMerged")
           : trigger.type === "chat_pr_opened"
             ? t("automations.triggerCard.chatPrOpened")
-            : null;
+            : trigger.type === "card_mention"
+              ? t("automations.triggerCard.cardMention")
+              : null;
   const isJiraTransition = trigger.type === "jira_transition";
 
   const handleRemove = async () => {

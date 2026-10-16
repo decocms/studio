@@ -28,7 +28,16 @@ import {
   automationInstruction,
   cardFireFence,
 } from "./board-column-transition";
-import { IMPLEMENTER_SYSTEM_KEY, REVIEWER_SYSTEM_KEY } from "./builtin";
+import {
+  IMPLEMENTER_SYSTEM_KEY,
+  MENTIONS_SYSTEM_KEY,
+  REVIEWER_SYSTEM_KEY,
+} from "./builtin";
+import {
+  type CommentForRun,
+  mentionInstruction,
+  sendCommentToRun,
+} from "@/tools/task-board/comment-to-run";
 
 /** A card a fire runs on: the card, the column the run is for, and the event
  *  that picked it (it keys the run, so a retried fire starts it once). */
@@ -52,6 +61,9 @@ export interface CardTarget {
    *  delegation, a retry, a conflict fix): it runs whatever the column gates
    *  say, with these run options, and its error goes back to the caller. */
   manual?: ManualRun;
+  /** Set on the built-in Super Agent mentions' fire: the comment that starts
+   *  the run, and the comment its thread hangs off (`tieId`). */
+  mention?: CommentForRun & { tieId: string };
 }
 
 /** The board-run options a manual fire carries through to the run. */
@@ -107,6 +119,16 @@ export async function runAutomationOnCard(
   if (!item) return { skipped: "card_gone" };
   if (automation.system_key === REVIEWER_SYSTEM_KEY && target.review) {
     return await runReviewOnCard(ctx, item, triggerId, target.review);
+  }
+  if (automation.system_key === MENTIONS_SYSTEM_KEY && target.mention) {
+    return await runMentionOnCard(
+      ctx,
+      automation,
+      item,
+      triggerId,
+      target.eventKey,
+      target.mention,
+    );
   }
   if (target.manual) {
     return await runManuallyOnCard(ctx, automation, item, triggerId, target);
@@ -218,6 +240,50 @@ async function runManuallyOnCard(
     return { skipped: "rejected", error: runErrorOf(err) };
   }
   return { threadId: fence.threadId };
+}
+
+/**
+ * A run a comment started: no gate or claim, the card stays where and whose
+ * it is, and the run's thread hangs off the comment. Two mentions racing on
+ * one card share the fence, so the one that lost sends its words to the run
+ * the other started.
+ */
+async function runMentionOnCard(
+  ctx: StudioContext,
+  automation: Automation,
+  item: TaskBoardItem,
+  triggerId: string,
+  eventKey: string,
+  mention: CommentForRun & { tieId: string },
+): Promise<CardRunOutcome> {
+  try {
+    const dispatched = await enqueueSuperAgentForTask(ctx, item, {
+      userInitiated: true,
+      column: item.status,
+      instruction: mentionInstruction(item, {
+        ...mention,
+        rootId: mention.tieId,
+      }),
+      automation: {
+        name: automation.name,
+        agentId: automation.virtual_mcp_id,
+        triggerId,
+        fence: cardFireFence(triggerId, eventKey),
+      },
+    });
+    if (dispatched.isNew) {
+      await ctx.storage.taskBoard.setCommentThread(
+        mention.tieId,
+        item.organizationId,
+        dispatched.threadId,
+      );
+    } else {
+      await sendCommentToRun(ctx, item, dispatched.threadId, mention);
+    }
+    return { threadId: dispatched.threadId };
+  } catch (err) {
+    return { skipped: "rejected", error: runErrorOf(err) };
+  }
 }
 
 /** The Reviewer's run: the card stays the Super Agent's, the review runs as a
