@@ -49,7 +49,7 @@ import {
 } from "./form-base";
 import { describeConflictFields } from "./conflict-fields";
 import { BlockConflictError } from "./decofile-api";
-import { mergeBlockJson } from "@decocms/shared/decofile";
+import { canonicalBlockJson, mergeBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
@@ -150,6 +150,9 @@ import {
 } from "./sections-editor-panels";
 import { VariantRuleEditor } from "./variant-rule-editor";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
+
+/** One toast for a section form's save outcome, however many saves it took. */
+const STALE_FORM_TOAST = "section-form-stale-save";
 
 /**
  * Side panel for editing deco.cx page sections.
@@ -419,6 +422,11 @@ export function SectionsEditor({
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
   // What the open section form's edits are relative to (see trackFormChange).
   const formBaseRef = useRef<FormBase | null>(null);
+  // A section form sends one save at a time: the next is built once the one
+  // on the wire has landed or been refused, so it starts from what is stored
+  // rather than from a copy that may never land (see scheduleAutoSave).
+  const formSaveInFlightRef = useRef(false);
+  const waitingFormSavesRef = useRef(new Map<string, () => void>());
 
   // A discard of the block an armed autosave would write drops that autosave
   // (content-sync.ts): fired after the discard, it would bring the discarded
@@ -449,6 +457,7 @@ export function SectionsEditor({
       timer.current = null;
     }
     pendingSectionSaveRef.current = null;
+    waitingFormSavesRef.current.clear();
     if (activePageKey && keys.has(activePageKey)) {
       pendingPageFieldsRef.current = {};
     }
@@ -796,6 +805,8 @@ export function SectionsEditor({
     const ownSavePending =
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read once per content change: is an autosave timer armed
       debounceRef.current !== null ||
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, a form save waiting for the one on the wire
+      waitingFormSavesRef.current.size > 0 ||
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the section rule's timer
       sectionRuleDebounceRef.current !== null ||
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the page rule's timer
@@ -885,6 +896,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     if (sectionRuleDebounceRef.current) {
       clearTimeout(sectionRuleDebounceRef.current);
       sectionRuleDebounceRef.current = null;
@@ -941,8 +953,9 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     pendingSectionSaveRef.current = null;
-    toast.error(message);
+    toast.error(message, { id: STALE_FORM_TOAST });
     setFormReloadRequest((n) => n + 1);
   };
 
@@ -950,8 +963,21 @@ export function SectionsEditor({
   const protocolVersionOf = (blockKey: string) =>
     protocolBlockVersion(queryClient, decofileCacheKey, blockKey);
 
+  /** Run the form saves that waited for the one on the wire, after `delay`. */
+  const runWaitingFormSaves = (delay: number) => {
+    if (waitingFormSavesRef.current.size === 0) return;
+    setTimeout(() => {
+      // A save sent meanwhile runs them when it settles.
+      if (formSaveInFlightRef.current) return;
+      const waiting = [...waitingFormSavesRef.current.values()];
+      waitingFormSavesRef.current.clear();
+      for (const write of waiting) write();
+    }, delay);
+  };
+
   const scheduleAutoSave = (
-    nextValue: Record<string, unknown>,
+    /** The form's value, or a getter read when the save runs (a retry). */
+    nextInput: Record<string, unknown> | (() => Record<string, unknown>),
     sectionIndex: number,
     /** Saves already refused for building on an outdated copy. */
     conflicts = 0,
@@ -977,7 +1003,16 @@ export function SectionsEditor({
       }
     }
 
+    const waitingKey = `${sectionIndex}:${targetSectionVariantIndex}`;
     const write = () => {
+      // Built now, this save would assume the one on the wire lands; it runs
+      // once that one settles instead (runWaitingFormSaves).
+      if (formSaveInFlightRef.current) {
+        waitingFormSavesRef.current.set(waitingKey, write);
+        return;
+      }
+      const nextValue =
+        typeof nextInput === "function" ? nextInput() : nextInput;
       const {
         rawSections: latestRawSections,
         parsedSections: latestParsedSections,
@@ -1059,13 +1094,26 @@ export function SectionsEditor({
         formBaseRef.current === formBase &&
         formBase?.emitted === nextValue;
       if (overwritten.length > 0) {
+        // Nothing of the form's own is left to save when the merge is just
+        // what is stored.
+        const onlyThose =
+          !!stored &&
+          canonicalBlockJson(rebased) === canonicalBlockJson(stored);
         toast.warning(
-          t("sectionsEditor.sectionsEditor.formFieldsKeptFromStored", {
-            fields: describeConflictFields(overwritten),
-          }),
+          t(
+            onlyThose
+              ? "sectionsEditor.sectionsEditor.formFieldsKeptFromStoredOnly"
+              : "sectionsEditor.sectionsEditor.formFieldsKeptFromStored",
+            {
+              fields: describeConflictFields(overwritten, activeSchema),
+            },
+          ),
+          { id: STALE_FORM_TOAST },
         );
       } else if (rebased) {
-        toast.info(t("sectionsEditor.sectionsEditor.blockMergedWithOthers"));
+        toast.info(t("sectionsEditor.sectionsEditor.blockMergedWithOthers"), {
+          id: STALE_FORM_TOAST,
+        });
       }
       if (showRebased && formBase) {
         formBase.emitted = rebased;
@@ -1088,11 +1136,16 @@ export function SectionsEditor({
             if (formBase) formBase.version = undefined;
             // The save re-read the branch; build on that copy once more.
             if (conflicts === 0) {
-              const latest = formBase?.emitted;
+              // The retry carries whatever the form holds when it runs, so
+              // a save that waited behind this one has nothing left to add.
+              waitingFormSavesRef.current.delete(waitingKey);
               scheduleAutoSave(
-                latest && typeof latest === "object"
-                  ? (latest as Record<string, unknown>)
-                  : nextValue,
+                () => {
+                  const latest = formBase?.emitted;
+                  return latest && typeof latest === "object"
+                    ? (latest as Record<string, unknown>)
+                    : nextValue;
+                },
                 sectionIndex,
                 conflicts + 1,
               );
@@ -1104,29 +1157,49 @@ export function SectionsEditor({
           saveBlock.reportError(err);
         },
       };
+      // mutateAsync, not mutate: mutate's callbacks run only for the latest
+      // call, and this form must hear how each of its saves ended.
+      const sendFormSave = (
+        variables: Parameters<typeof saveBlock.mutateAsync>[0],
+      ) => {
+        formSaveInFlightRef.current = true;
+        let refused = false;
+        void saveBlock
+          .mutateAsync(variables)
+          .then(
+            () => saveCallbacks.onSuccess(),
+            (err: Error) => {
+              refused = true;
+              saveCallbacks.onError(err);
+            },
+          )
+          .finally(() => {
+            formSaveInFlightRef.current = false;
+            // After a refusal the stored copy is re-read first; give the
+            // editor a render to show it before building on it.
+            runWaitingFormSaves(refused ? AUTOSAVE_DELAY : 0);
+          });
+      };
 
       // Saved block: write the block entry directly (savedBlockKey unwraps hidden wrappers).
       if (parsed.isSavedBlock) {
         const blockKey = savedBlockKey(rawSection, parsed);
         if (!blockKey) return;
-        saveBlock.mutate(
-          {
-            blockKey,
-            data: value,
-            // The version this write builds on, for the server's stale check.
-            ...(startedFrom
-              ? { base: { value: rebased ? stored : startedFrom } }
-              : {}),
-            // A refused save comes back here and goes through the checks above.
-            rebaseOnConflict: false,
-            guard: formSaveGuard({
-              formBase,
-              rebased: !!rebased,
-              versionOf: protocolVersionOf,
-            }),
-          },
-          saveCallbacks,
-        );
+        sendFormSave({
+          blockKey,
+          data: value,
+          // The version this write builds on, for the server's stale check.
+          ...(startedFrom
+            ? { base: { value: rebased ? stored : startedFrom } }
+            : {}),
+          // A refused save comes back here and goes through the checks above.
+          rebaseOnConflict: false,
+          guard: formSaveGuard({
+            formBase,
+            rebased: !!rebased,
+            versionOf: protocolVersionOf,
+          }),
+        });
         return;
       }
 
@@ -1203,19 +1276,16 @@ export function SectionsEditor({
       } else {
         fullPageData.sections = updatedSections;
       }
-      saveBlock.mutate(
-        {
-          blockKey: latestPageKey,
-          data: fullPageData,
-          rebaseOnConflict: false,
-          guard: formSaveGuard({
-            formBase: null,
-            rebased: false,
-            versionOf: protocolVersionOf,
-          }),
-        },
-        saveCallbacks,
-      );
+      sendFormSave({
+        blockKey: latestPageKey,
+        data: fullPageData,
+        rebaseOnConflict: false,
+        guard: formSaveGuard({
+          formBase: null,
+          rebased: false,
+          versionOf: protocolVersionOf,
+        }),
+      });
     };
     pendingSectionSaveRef.current = {
       sectionIndex,
@@ -2398,6 +2468,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
@@ -2453,6 +2524,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const current = fullPageData.sections;
     if (!current || typeof current !== "object" || Array.isArray(current))
@@ -2641,6 +2713,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const pageKey = latestRef.current.activePageKey;
     const latestDecofile: Record<string, unknown> = latestRef.current.decofile;
@@ -2787,6 +2860,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const {
       selectedSectionIndex: sectionIndex,
@@ -2962,6 +3036,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const { activePageKey: blockKey, decofile: latestDecofile } =
       latestRef.current;
@@ -3074,6 +3149,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const { activePageKey: targetBlockKey, decofile: latestDecofile } =
       latestRef.current;
