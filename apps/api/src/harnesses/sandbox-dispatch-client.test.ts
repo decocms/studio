@@ -75,6 +75,24 @@ describe("selectRunConnections", () => {
     { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
   ];
 
+  test("mounts a sandbox sign-in connection without the agent or the org-wide flag, unless excluded", () => {
+    const figma = {
+      id: "conn_figma",
+      status: "active",
+      connection_url: "https://mcp.figma.com/mcp",
+    };
+    const select = (excludedIds?: Set<string>) =>
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set<string>(),
+        excludedIds,
+        connections: [...connections, figma],
+      }).map((c) => c.id);
+    expect(select()).toEqual(["conn_figma"]);
+    expect(select(new Set(["conn_figma"]))).toEqual([]);
+  });
+
   test("mounts the agent's own connections without the org-wide flag", () => {
     expect(
       selectRunConnections({

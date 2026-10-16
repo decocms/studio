@@ -533,7 +533,6 @@ export class SandboxDispatchClient {
         (aggregation) => aggregation.connection_id,
       ),
     );
-    if (!orgWide && ownIds.size === 0) return [];
     // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
     const { items } = await this.ctx.storage.connections.list(organization.id);
     return selectRunConnections({
@@ -1481,7 +1480,11 @@ export async function* ndjsonLines(
  * branch is the whole behaviour, so it is what the unit test pins.
  */
 export function selectRunConnections<
-  T extends { id: string; status?: string | null },
+  T extends {
+    id: string;
+    status?: string | null;
+    connection_url?: string | null;
+  },
 >(args: {
   organizationId: string;
   /** The org opted into every connection (`coding_agent_org_mcps`). */
@@ -1500,7 +1503,11 @@ export function selectRunConnections<
 }): T[] {
   return args.connections.filter(
     (connection) =>
-      (args.orgWide || args.ownIds.has(connection.id)) &&
+      // A sandbox sign-in server is the only way a run reaches it, so it is
+      // not left to the agent or the org-wide opt-in.
+      (args.orgWide ||
+        args.ownIds.has(connection.id) ||
+        signsInFromSandbox(connection.connection_url)) &&
       !args.excludedIds?.has(connection.id) &&
       // A connection Studio already knows is erroring only costs the session
       // a failed connect at startup.
