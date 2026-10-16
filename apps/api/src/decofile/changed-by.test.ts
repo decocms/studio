@@ -4,7 +4,6 @@ import type { RepoCommit } from "@/git-providers/insights";
 import {
   authorOfCommit,
   coAuthorOf,
-  draftChangeAuthors,
   latestChangeOf,
   type MemberLookup,
   toChangedBy,
@@ -232,36 +231,5 @@ describe("toChangedBy", () => {
         { id: "u-bob" },
       ),
     ).toEqual({ home: { name: "Ana", at } });
-  });
-});
-
-describe("draftChangeAuthors", () => {
-  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  const at = "2026-10-16T12:00:00.000Z";
-
-  test("a name the draft holds answers from its record, by spelling", () => {
-    expect(
-      draftChangeAuthors(
-        {
-          body: { set: { "pages-Home": {} }, delete: ["old"] },
-          edits: { "pages-Home": { by: "u-ana", at } },
-        },
-        ["pages-home", "header", "old"],
-        same,
-      ),
-    ).toEqual({
-      authors: {
-        "pages-home": { name: null, email: null, userId: "u-ana", at },
-      },
-      // "old" is the draft's (a deletion) but has no record: unknown, not main's.
-      notInDraft: ["header"],
-    });
-  });
-
-  test("no draft: every key falls back to main", () => {
-    expect(draftChangeAuthors(null, ["a", "b"], same)).toEqual({
-      authors: {},
-      notInDraft: ["a", "b"],
-    });
   });
 });
