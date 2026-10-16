@@ -10,7 +10,7 @@ import {
   createCollectionListOutputSchema,
 } from "@decocms/bindings/collections";
 import { defineTool } from "../../core/define-tool";
-import { requireOrganization } from "../../core/studio-context";
+import { getUserId, requireOrganization } from "../../core/studio-context";
 import { normalizeThreadForResponse } from "./helpers";
 import { ThreadEntitySchema } from "@decocms/shared/thread/schema";
 import { z } from "zod";
@@ -82,7 +82,7 @@ export const COLLECTION_THREADS_LIST = defineTool({
 
   handler: async (input, ctx) => {
     await ctx.access.check();
-    const userId = ctx.auth.user?.id;
+    const userId = getUserId(ctx);
     if (!userId) {
       throw new Error("User ID required to list threads");
     }
