@@ -77,7 +77,7 @@ export interface AutomationWithTriggerInfo extends AutomationWithTriggerCount {
 }
 
 export interface BoardTrigger {
-  type: "board_column_transition" | "board_pr_ready";
+  type: "board_column_transition" | "board_pr_ready" | "board_pr_merged";
   column_key: string;
 }
 
@@ -401,7 +401,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .select(
         sql<BoardTrigger[]>`coalesce(
           jsonb_agg(jsonb_build_object('type', t.type, 'column_key', t.column_key))
-            filter (where t.type in ('board_column_transition', 'board_pr_ready')),
+            filter (where t.type in ('board_column_transition', 'board_pr_ready', 'board_pr_merged')),
           '[]'::jsonb)`.as("board_triggers"),
       )
       .where("a.organization_id", "=", organizationId);

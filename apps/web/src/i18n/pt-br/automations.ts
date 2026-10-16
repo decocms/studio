@@ -201,6 +201,10 @@ export const automations = {
     "Revisa o pull request de um card quando ele fica pronto para review (aberto, checks terminados, preview no último commit) e registra um veredito: aprovar manda o card para QA, pedir mudanças passa o card para uma pessoa. Desligar aqui é o mesmo que desligar o Reviewer em Settings → Review. A revisão segue as instruções e skills da coluna In Review no board; mude lá.",
   "automations.builtin.linkedChatsDescription":
     "Deixa um chat linkado a um card, ou a run de outra automação nele, mover o card como a run do Implementer move: uma mensagem com o card em In Review volta ele para In Progress; quando a run termina, um card em In Progress segue para In Review (com pull request) ou QA; um pull request que ela abre inicia a review do card; uma run que falha é tentada de novo pelo Implementer ou manda o card de volta para o Backlog. Desligada, só a run do Implementer move card. Não roda agente.",
+  "automations.builtin.prMergedDescription":
+    "Move um card em review para Post-deploy Validation quando o pull request dele é mergeado, onde quer que o merge aconteça (botão de merge do GitHub, auto-merge da branch protection). Desligada, um pull request mergeado deixa o card onde está. Não roda agente.",
+  "automations.builtin.chatPrDescription":
+    "Quando um chat sem card abre um pull request por uma tool do provedor, coloca ele no board: escolhe o card aberto a que o trabalho pertence, ou cria um, linka o pull request e o chat, e passa o card ao Super Agent para o Reviewer pegar. Desligada, o pull request fica fora do board. Um chat já linkado a um card nunca é tocado.",
   "automations.builtin.description":
     "O Studio roda esta automação para o board. Ela segue as instruções e skills das colunas do board; mude lá.",
   "automations.columnTransitionDialog.title":
@@ -241,6 +245,10 @@ export const automations = {
     "Quando o pull request de um card fica pronto para review",
   "automations.triggerCard.linkedChatRun":
     "Quando um chat linkado a um card roda",
+  "automations.triggerCard.prMerged":
+    "Quando o pull request de um card é mergeado",
+  "automations.triggerCard.chatPrOpened":
+    "Quando um chat sem card abre um pull request",
   "automations.triggerCard.unownedOnly": "Só cards sem dono",
   "automations.triggerCard.fromEarlier": "De uma coluna anterior",
   "automations.triggerCard.fromLater": "De uma coluna posterior (devolvido)",

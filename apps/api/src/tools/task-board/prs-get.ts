@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { builtinActive, PR_MERGED_SYSTEM_KEY } from "@/automations/builtin";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
@@ -909,7 +910,8 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
      * change request only advances the card when someone opens this modal.
      * Upgrade path: a `pull_request`/`merge_request` webhook calling the same
      * forward move. Best-effort; a failure must never break the read.
-     * Forward-only via `movesForward`.
+     * Forward-only via `movesForward`; off with the built-in "Ship merged
+     * pull requests", like the sweep's `shipIfMerged`.
      */
     if (cardWorkLanded(prs)) {
       try {
@@ -917,6 +919,7 @@ const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
         if (
           item &&
           movesForward(item.status, shipped) &&
+          (await builtinActive(ctx, organizationId, PR_MERGED_SYSTEM_KEY)) &&
           !(await ctx.storage.taskBoard.hasHumanRejectedDone(
             taskBoardItemId,
             organizationId,

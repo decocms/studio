@@ -6611,6 +6611,8 @@ export interface StudioToolIO {
             | "board_column_transition"
             | "board_pr_ready"
             | "linked_chat_run"
+            | "board_pr_merged"
+            | "chat_pr_opened"
             | "jira_transition";
           cron_expression: string | null;
           connection_id: string | null;
@@ -6644,7 +6646,10 @@ export interface StudioToolIO {
         virtual_mcp_id: string;
         system_key: string | null;
         board_triggers: {
-          type: "board_column_transition" | "board_pr_ready";
+          type:
+            | "board_column_transition"
+            | "board_pr_ready"
+            | "board_pr_merged";
           column_key: string;
         }[];
       }[];
@@ -6690,6 +6695,8 @@ export interface StudioToolIO {
         | "board_column_transition"
         | "board_pr_ready"
         | "linked_chat_run"
+        | "board_pr_merged"
+        | "chat_pr_opened"
         | "jira_transition";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
@@ -6725,6 +6732,8 @@ export interface StudioToolIO {
         | "board_column_transition"
         | "board_pr_ready"
         | "linked_chat_run"
+        | "board_pr_merged"
+        | "chat_pr_opened"
         | "jira_transition";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;
