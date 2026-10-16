@@ -4,7 +4,7 @@ import {
   authorFromChangedBy,
   authorFromChangeEntry,
   conflictAuthorSource,
-  draftEditFor,
+  authorFromBlockMeta,
   resolveMemberAuthor,
   versionTag,
 } from "./conflict-author";
@@ -21,14 +21,14 @@ const protocol = (source: "github" | "local" | "sandbox"): ContentBackend => ({
 });
 
 describe("conflictAuthorSource", () => {
-  test("a Fast Preview session reads Studio's history; a hosted v8 draft its own edits", () => {
+  test("a Fast Preview session and a hosted v8 draft fall back to Studio's history", () => {
     expect(conflictAuthorSource({ kind: "legacy" }, true, params)).toEqual({
       kind: "history",
       key: "acme/p1/draft-1",
       params,
     });
     expect(conflictAuthorSource(protocol("github"), false, params)).toEqual({
-      kind: "draft",
+      kind: "history",
       key: "acme/p1/draft-1",
       params,
     });
@@ -104,28 +104,27 @@ describe("versionTag", () => {
   });
 });
 
-describe("draftEditFor", () => {
-  const at = "2026-10-16T12:00:00Z";
-  const edits = {
-    "pages-Home Page": { userId: "u-ana", at },
-    header: null,
-  };
+describe("authorFromBlockMeta", () => {
+  const at = "2026-10-16T12:00:00.000Z";
 
-  test("a name the draft holds, by any spelling; null when not recorded", () => {
-    expect(draftEditFor(edits, "pages-Home Page")).toEqual({
-      userId: "u-ana",
-      at,
-    });
-    // Another spelling of the same name (as the protocol's file names).
-    expect(draftEditFor(edits, "pages-Home%20Page")).toEqual({
-      userId: "u-ana",
-      at,
-    });
-    expect(draftEditFor(edits, "header")).toBeNull();
+  test("the stored block's __meta is the author, with no request", () => {
+    expect(
+      authorFromBlockMeta({
+        __resolveType: "hero",
+        title: "Theirs",
+        __meta: { lastEditedBy: "u-ana", lastEditedAt: at },
+      }),
+    ).toEqual({ kind: "member", userId: "u-ana", at });
   });
 
-  test("a name the draft doesn't hold is main's (undefined)", () => {
-    expect(draftEditFor(edits, "footer")).toBeUndefined();
+  test("a block without one (or a malformed one) falls back to history", () => {
+    expect(authorFromBlockMeta({ __resolveType: "hero" })).toBeNull();
+    expect(
+      authorFromBlockMeta({
+        __meta: { lastEditedBy: "u-ana", lastEditedAt: "soon" },
+      }),
+    ).toBeNull();
+    expect(authorFromBlockMeta(undefined)).toBeNull();
   });
 });
 
