@@ -142,6 +142,19 @@ export function computeIdempotencyKey(
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
 }
 
+/** Whether any organization has a thread under this id. */
+async function threadIdInUse(
+  ctx: StudioContext,
+  threadId: string,
+): Promise<boolean> {
+  const row = await ctx.db
+    .selectFrom("threads")
+    .select("id")
+    .where("id", "=", threadId)
+    .executeTakeFirst();
+  return Boolean(row);
+}
+
 export function shouldPersistRequestMessage(input: {
   alreadyPersisted: boolean;
   role: ChatMessage["role"];
@@ -739,6 +752,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // must fail closed: treating it as a missing row could race a native pin
       // and enqueue hosted work against the newly native thread.
       const existingThread = await ctx.storage.threads.get(taskId);
+      // Thread ids are global: refuse another org's before writing parts under it.
+      if (!existingThread && (await threadIdInUse(ctx, taskId))) {
+        throw new HTTPException(404, { message: "Thread not found" });
+      }
 
       // Fall back to the "ephemeral" synthetic branch when neither the
       // thread row nor the request body pins one. Synthetic branches
