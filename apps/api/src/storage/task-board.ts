@@ -394,13 +394,34 @@ export class TaskBoardStorage {
       .where("organization_id", "=", organizationId)
       .executeTakeFirst();
     if (!row) return null;
-    const threads = await this.db
+    const threads = await this.linkedThreadProjects([id], organizationId);
+    return {
+      virtualMcpId: row.virtual_mcp_id,
+      repo: row.repo,
+      threads: threads.get(id) ?? [],
+    };
+  }
+
+  /** The project of every thread linked to each of `ids`, keyed by card. */
+  async linkedThreadProjects(
+    ids: readonly string[],
+    organizationId: string,
+  ): Promise<Map<string, TaskBoardItemAttribution["threads"]>> {
+    const byCard = new Map<string, { virtualMcpId: string | null }[]>();
+    if (ids.length === 0) return byCard;
+    const rows = await this.db
       .selectFrom("task_board_item_threads as link")
       .innerJoin("threads as t", "t.id", "link.thread_id")
-      .select("t.virtual_mcp_id as virtualMcpId")
-      .where("link.task_board_item_id", "=", id)
+      .select(["link.task_board_item_id as cardId", "t.virtual_mcp_id"])
+      .where("link.organization_id", "=", organizationId)
+      .where("link.task_board_item_id", "in", ids)
       .execute();
-    return { virtualMcpId: row.virtual_mcp_id, repo: row.repo, threads };
+    for (const row of rows) {
+      const threads = byCard.get(row.cardId) ?? [];
+      threads.push({ virtualMcpId: row.virtual_mcp_id });
+      byCard.set(row.cardId, threads);
+    }
+    return byCard;
   }
 
   async getById(

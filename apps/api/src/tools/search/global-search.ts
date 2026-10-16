@@ -179,12 +179,11 @@ export const GLOBAL_SEARCH = defineTool({
           : null,
         resolveHiddenProjectIds(ctx),
       ]);
-    const visible = (projectId: string | null | undefined) =>
-      !projectId || !hidden.has(projectId);
 
     if (threadsResult) {
-      const threads = threadsResult.threads.filter((thread) =>
-        visible(thread.virtual_mcp_id),
+      const threads = threadsResult.threads.filter(
+        (thread) =>
+          !thread.virtual_mcp_id || !hidden.has(thread.virtual_mcp_id),
       );
       totalCount +=
         threadsResult.total - (threadsResult.threads.length - threads.length);
@@ -207,8 +206,20 @@ export const GLOBAL_SEARCH = defineTool({
     }
 
     if (tasksResult) {
+      // Search rows carry no thread refs; a card a hidden project reaches
+      // only through a linked thread needs them read.
+      const linked =
+        hidden.size > 0
+          ? await ctx.storage.taskBoard.linkedThreadProjects(
+              tasksResult.map((task) => task.id),
+              organization.id,
+            )
+          : null;
       const tasks = tasksResult.filter((task) =>
-        isCardInVisibleProject(hidden, task),
+        isCardInVisibleProject(hidden, {
+          ...task,
+          threads: linked?.get(task.id) ?? task.threads,
+        }),
       );
       totalCount += tasks.length;
       for (const task of tasks) {
@@ -229,11 +240,8 @@ export const GLOBAL_SEARCH = defineTool({
     }
 
     if (connectionsResult) {
-      const connections = connectionsResult.filter((connection) =>
-        visible(connection.id),
-      );
-      totalCount += connections.length;
-      for (const connection of connections) {
+      totalCount += connectionsResult.length;
+      for (const connection of connectionsResult) {
         items.push({
           type: "connection",
           id: connection.id,
