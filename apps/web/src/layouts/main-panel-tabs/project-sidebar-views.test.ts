@@ -294,6 +294,21 @@ describe("project sidebar views", () => {
     ).toBe(false);
   });
 
+  test("keeps a Releases deep link while main's schema is being read", () => {
+    const none = projectSidebarViewPresence(true, nativePresence([]));
+    const settled = { assets: false, siteAccess: false };
+
+    expect(
+      projectSidebarViewUnavailable("releases", none, {
+        ...settled,
+        releases: true,
+      }),
+    ).toBe(false);
+    expect(projectSidebarViewUnavailable("releases", none, settled)).toBe(true);
+    const v8 = projectSidebarViewPresence(true, nativePresence(["releases"]));
+    expect(projectSidebarViewUnavailable("releases", v8, settled)).toBe(false);
+  });
+
   test("rejects source-backed views immediately when source is absent", () => {
     const none = projectSidebarViewPresence(false, nativePresence([]));
     const pending = { assets: true, siteAccess: true };
