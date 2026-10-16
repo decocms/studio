@@ -8,6 +8,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session; 409 block-conflict on a stale `expect`)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/changed-by?block=…  who last changed blocks, and when (session)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -24,6 +25,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
   assertSafeDecoBlockKey,
+  blockKeyToFileStem,
   isReservedResolverBlockKey,
   PlaintextSecretError,
   sanitizeSecretsForPersistence,
@@ -37,6 +39,7 @@ import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import {
   RepoWriteConflict,
   contentClientForProjectRepo,
+  insightsClientForProjectRepo,
   repoErrorStatus,
   type RepoContentClient,
 } from "@/git-providers";
@@ -45,9 +48,16 @@ import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
+import {
+  gitChangeAuthors,
+  MAX_CHANGED_BY_BLOCKS,
+  memberLookupFor,
+  type MemberLookup,
+  toChangedBy,
+} from "@/decofile/changed-by";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
-import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import { blocksDirPath, readDecofileSnapshot } from "@/decofile/read-decofile";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -65,6 +75,14 @@ interface DecofileScope {
 type DecofileEnv = Env & {
   Variables: Env["Variables"] & { decofileScope: DecofileScope };
 };
+
+/** Opens the project repository's history client (tests pass a fake). */
+export type InsightsClientFor = typeof insightsClientForProjectRepo;
+/** The org's members, for `changed-by` (tests pass a fake). */
+export type MembersFor = (
+  ctx: Env["Variables"]["studioContext"],
+  organizationId: string,
+) => MemberLookup;
 
 const BRANCH_RE = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
 
@@ -174,7 +192,8 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
+      c.req.method === "GET" &&
+      !c.req.path.match(/\/(publish|status|changed-by)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -281,8 +300,17 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   return c.json({ error: message }, 500);
 }
 
-export function createDecofileRoutes() {
+export function createDecofileRoutes(
+  options: {
+    insightsClientFor?: InsightsClientFor;
+    membersFor?: MembersFor;
+  } = {},
+) {
   const app = new Hono<DecofileEnv>();
+  const insightsClientFor =
+    options.insightsClientFor ?? insightsClientForProjectRepo;
+  const membersFor: MembersFor =
+    options.membersFor ?? ((ctx, orgId) => memberLookupFor(ctx.db, orgId));
 
   app.use("/:virtualMcpId/:branch", resolveDecofileScope);
   app.use("/:virtualMcpId/:branch/*", resolveDecofileScope);
@@ -516,6 +544,59 @@ export function createDecofileRoutes() {
         }
         throw err;
       }
+    } catch (err) {
+      return errorResponse(c, err);
+    }
+  });
+
+  /**
+   * Who last changed these blocks, and when, for the "someone else changed
+   * this" dialog: asked once per version it shows, never per poll. Each
+   * block file's latest commit on the branch (one history call per block)
+   * gives the Co-authored-by trailer the coalescer appends, else the commit
+   * author when it is a person. `changedBy` leaves out what can't be told.
+   */
+  app.get("/:virtualMcpId/:branch/changed-by", async (c) => {
+    const scope = c.get("decofileScope");
+    if (!scope.userId) return c.json({ error: "Unauthorized" }, 401);
+    const keys = [...new Set(c.req.queries("block") ?? [])];
+    if (
+      keys.length === 0 ||
+      keys.length > MAX_CHANGED_BY_BLOCKS ||
+      keys.some((k) => k.length === 0 || k.length > MAX_BLOCK_KEY_LENGTH)
+    ) {
+      return c.json(
+        { error: `1 to ${MAX_CHANGED_BY_BLOCKS} block keys are required` },
+        400,
+      );
+    }
+    const ctx = c.var.studioContext;
+    try {
+      const insights = await insightsClientFor(
+        ctx,
+        scope.organizationId,
+        scope.repository,
+      );
+      const dir = blocksDirPath(scope.packagePath);
+      const authors = await gitChangeAuthors(
+        insights,
+        scope.branch,
+        Object.fromEntries(
+          keys.flatMap((key) => {
+            try {
+              return [[key, `${dir}/${blockKeyToFileStem(key)}.json`]];
+            } catch {
+              return []; // Not a key a file can have.
+            }
+          }),
+        ),
+      );
+      const changedBy = await toChangedBy(
+        authors,
+        membersFor(ctx, scope.organizationId),
+        { id: scope.userId, email: ctx.auth.user?.email ?? null },
+      );
+      return c.json({ changedBy });
     } catch (err) {
       return errorResponse(c, err);
     }
