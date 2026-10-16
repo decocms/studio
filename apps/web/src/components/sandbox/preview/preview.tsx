@@ -30,6 +30,8 @@ import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -173,6 +175,7 @@ const PREVIEW_VIEWPORTS: Record<
 const PREVIEW_OFFSET = 1;
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
+const EDITING_MODES: PreviewEditingMode[] = ["preview", "visual", "blocks"];
 
 // Device labels are resolved per-render in the component to use t()
 const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
@@ -366,11 +369,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** Singular: Visual and Blocks cannot both be active, while device size is
    *  independent and survives a switch. Blocks starts open whenever the shared
    *  Content gate and desktop constraint allow it. */
-  const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
+  const [defaultEditingMode] = useState<PreviewEditingMode>(() =>
     defaultPreviewEditingMode({ cmsMode, isMobile }),
   );
+  /** `null` until the user picks a mode, so the gated default above still
+   *  applies on a first visit instead of being frozen into storage. */
+  const [storedEditingMode, setEditingMode] =
+    useLocalStorage<PreviewEditingMode | null>(
+      LOCALSTORAGE_KEYS.previewEditingMode(virtualMcpId),
+      (existing) =>
+        existing && EDITING_MODES.includes(existing) ? existing : null,
+    );
+  const editingMode = storedEditingMode ?? defaultEditingMode;
   const [previewDeviceSize, setPreviewDeviceSize] =
-    useState<PreviewDeviceSize>("desktop");
+    useLocalStorage<PreviewDeviceSize>(
+      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId),
+      (existing) =>
+        existing && DEVICE_CYCLE.includes(existing) ? existing : "desktop",
+    );
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   /**

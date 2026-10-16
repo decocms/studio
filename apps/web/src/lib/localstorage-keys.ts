@@ -60,4 +60,8 @@ export const LOCALSTORAGE_KEYS = {
    *  project metadata. */
   localPreviewUrl: (virtualMcpId: string) =>
     `studio:local-preview-url:${virtualMcpId}`,
+  previewDeviceSize: (virtualMcpId: string) =>
+    `studio:preview:device-size:${virtualMcpId}`,
+  previewEditingMode: (virtualMcpId: string) =>
+    `studio:preview:editing-mode:${virtualMcpId}`,
 } as const;
