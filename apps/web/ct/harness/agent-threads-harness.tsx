@@ -55,7 +55,8 @@ const RUNNING: TaskComment = {
  * CT surface for Super Agent run threads: a finished run, optionally a run in
  * progress, and the task composer routed the way the dialog routes it. Posts
  * do what the server is meant to: a mention starts a run in a new thread, or
- * lands in the live run's thread, and a reply to a finished run resumes it.
+ * lands in the live run's thread, a reply to a finished run resumes it, and
+ * Stop stops the run in progress.
  */
 export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
   const [threads, setThreads] = useState<TaskComment[]>(
@@ -68,6 +69,21 @@ export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
       thread.run?.status === "running" || thread.run?.status === "waiting",
   );
   const nowRunning: CommentRun = { status: "running", onOpen: () => {} };
+  /** Like the server: the stop is accepted at once, and the run reads as
+   *  stopped a moment later. */
+  const stop = async (threadId: string) => {
+    setTimeout(
+      () =>
+        setThreads((prev) =>
+          prev.map((thread) =>
+            thread.id === threadId
+              ? { ...thread, run: { status: "stopped", onOpen: () => {} } }
+              : thread,
+          ),
+        ),
+      800,
+    );
+  };
   const post = (body: string, parentId?: string) =>
     setThreads((prev) => {
       const comment: TaskComment = {
@@ -100,7 +116,14 @@ export function AgentThreadsHarness({ running = true }: { running?: boolean }) {
       {threads.map((thread) => (
         <CommentThreadCard
           key={thread.id}
-          thread={thread}
+          thread={
+            thread.run?.status === "running"
+              ? {
+                  ...thread,
+                  run: { ...thread.run, onStop: () => stop(thread.id) },
+                }
+              : thread
+          }
           me={ME}
           onEdit={async () => true}
           onDelete={() => {}}

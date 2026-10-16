@@ -98,3 +98,18 @@ test("a finished run's thread opens folded, and unfolds on demand", async ({
   await finished.getByRole("button", { name: "Hide replies" }).click();
   await expect(finished).toHaveAttribute("data-expanded", "false");
 });
+
+test("Stop stops the run in progress, and the card is free for the next", async ({
+  mount,
+}) => {
+  const component = await mount(<AgentThreadsHarness />);
+  const running = component.getByTestId("comment-thread").last();
+
+  await running.getByRole("button", { name: "Stop" }).click();
+  await expect(running.getByText("Stopping…")).toBeVisible();
+  await expect(running.getByText("Stopped", { exact: true })).toBeVisible();
+  await expect(running.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  await expect(
+    running.getByRole("button", { name: "Continue this run" }),
+  ).toBeVisible();
+});
