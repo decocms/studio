@@ -1,12 +1,6 @@
 export const thread = {
-  "thread.branchPicker.allLoaded": "All loaded",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
   "thread.branchPicker.branchesTab": "Branches",
-  "thread.branchPicker.couldntLoadBranches":
-    "Couldn't load branches from GitHub. You can still pick from your branches.",
-  "thread.branchPicker.couldntLoadPullRequests":
-    "Couldn't load pull requests from GitHub.",
-  "thread.branchPicker.createBranch": 'Create "{name}"',
   "thread.branchPicker.advanced": "Advanced",
   "thread.branchPicker.advancedBack": "Back",
   "thread.branchPicker.cancel": "Cancel",
@@ -33,27 +27,14 @@ export const thread = {
   "thread.branchPicker.selectVersion": "Select a version",
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
-  "thread.branchPicker.hiddenForkPrs":
-    "{count} PR(s) from forks hidden — open on a branch in this repo",
-  "thread.branchPicker.last7Days": "Last 7 days",
   "thread.branchPicker.loadMoreBranches": "Load more branches",
   "thread.branchPicker.loadingMore": "Loading more…",
   "thread.branchPicker.loadingPullRequests": "Loading pull requests…",
-  "thread.branchPicker.moreMatches":
-    "{count} more match(es) — refine your search",
-  "thread.branchPicker.new": "New",
   "thread.branchPicker.noBranchesFound": "No branches found.",
-  "thread.branchPicker.noPullRequestsFound":
-    "No pull requests match your search.",
   "thread.branchPicker.noOpenPullRequests": "No open pull requests.",
-  "thread.branchPicker.openPullRequests": "Open pull requests",
-  "thread.branchPicker.otherBranchesInRepo": "Other branches in repo",
   "thread.branchPicker.prsTab": "PRs",
   "thread.branchPicker.searchBranches": "Search branches…",
-  "thread.branchPicker.searchingBranches": "Searching branches…",
   "thread.branchPicker.searchPullRequests": "Search pull requests…",
-  "thread.branchPicker.selectBranch": "Select branch…",
-  "thread.branchPicker.yourBranches": "Your branches",
   "thread.cmsActions.checksFailing":
     "{failed} of {total} checks are not passing",
   "thread.cmsActions.checksRunning": "Running checks {done} of {total} done",
