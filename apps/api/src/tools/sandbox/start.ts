@@ -10,6 +10,7 @@
  */
 
 import { markTurn } from "@/harnesses/turn-latency";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
@@ -824,6 +825,9 @@ async function provisionSandbox(params: StartParams): Promise<{
           // omitted workload still installed (404 packages, competing with the run
           // that only wanted the checkout).
           cloneOnly,
+          ...(orgFlagEnabled(orgSettings?.flags, "sandbox_repo_snapshots")
+            ? { repoSnapshot: true }
+            : {}),
           ...(purpose ? { purpose } : {}),
           ...(provider ? { provider } : {}),
           ...(sandboxImage !== "default" ? { sandboxImage } : {}),

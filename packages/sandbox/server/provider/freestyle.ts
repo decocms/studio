@@ -26,6 +26,7 @@ import {
 } from "../daemon-client";
 import type { SandboxProvider } from "./agent-sandbox";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
+import { normalizeRepoUrl } from "./agent-sandbox/tenant-pools";
 import {
   buildConfigPayload,
   computeHandle,
@@ -74,6 +75,8 @@ const HOST_SETUP = [
 /** Metadata keys; values are capped at 63 chars, which the 48-hex token fits. */
 const TOKEN_KEY = "studio-daemon-token";
 const ORG_KEY = "studio-org-id";
+/** The base snapshot a VM's daemon took its sentinel from, when it forked a repo snapshot. */
+const BASE_KEY = "studio-base-snapshot";
 const USER_KEY = "studio-user-id";
 
 /** The daemon answers within seconds of boot; this bounds a VM that never serves. */
@@ -94,6 +97,18 @@ const WATCH_TIMEOUT_MS = 5 * 60_000;
 const LOOKUP_TIMEOUT_MS = 3_000;
 const IDLE_SWEEP_MS = 60_000;
 const IDLE_SWEEP_PAGE = 100;
+/** A repo snapshot is rebuilt daily, so a fork's checkout is at most a day behind. */
+const REPO_SNAPSHOT_GENERATION_MS = 24 * 60 * 60_000;
+/** Outlives the next generation, so a replica still on the old one finds it. */
+const REPO_SNAPSHOT_TTL_SECONDS = 3 * 24 * 60 * 60;
+/** Clone, install and dev boot of a large storefront; past this the build is dropped. */
+const REPO_SNAPSHOT_READY_TIMEOUT_MS = 30 * 60_000;
+const REPO_SNAPSHOT_POLL_MS = 5_000;
+const REPO_SNAPSHOT_RETRY_MS = 60 * 60_000;
+/** The guest agent refuses an exec longer than 5 minutes. */
+const EXEC_MAX_MS = 290_000;
+const REPO_DIR = `${WORKDIR}/repo`;
+const CLONE_LOG = `${WORKDIR}/tmp/app/clone`;
 
 export interface FreestyleSandboxProviderOptions {
   apiKey: string;
@@ -154,6 +169,15 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   >();
   private readonly idleSweep: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
+  /** Org + repo → the newest repo snapshot known to exist. */
+  private readonly repoSnapshots = new Map<
+    string,
+    { slug: string; generation: number }
+  >();
+  /** Org + repo + generation already looked up, so a miss costs one lookup. */
+  private readonly repoSnapshotLookups = new Set<string>();
+  /** When a repo's last build failed; a build takes up to 30 min, so not on every ensure. */
+  private readonly repoSnapshotFailures = new Map<string, number>();
 
   constructor(opts: FreestyleSandboxProviderOptions) {
     this.apiKey = opts.apiKey;
@@ -338,6 +362,182 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     );
   }
 
+  // ---- Repo snapshots -------------------------------------------------------
+
+  /**
+   * The repo snapshot a sandbox for `opts.repo` forks, or null for the base.
+   * Opt-in per ensure (`repoSnapshot`), keyed by org and repo. When today's is
+   * missing, builds it in the background from this ensure's own credential,
+   * and meanwhile serves yesterday's if it still exists.
+   *
+   * ponytail: rebuilt daily rather than on push; a fork checks out its own
+   * branch anyway, so a day-old snapshot costs an incremental install.
+   */
+  private async repoSnapshotFor(
+    opts: EnsureOptions,
+    base: string,
+  ): Promise<string | null> {
+    const repo = opts.repo;
+    if (!opts.repoSnapshot || !repo || !opts.tenant) return null;
+    if ((opts.sandboxImage ?? "default") !== "default") return null;
+    const repoUrl = normalizeRepoUrl(repo.cloneUrl)?.toLowerCase();
+    if (!repoUrl) return null;
+    const key = `${base}\n${opts.tenant.orgId}\n${repoUrl}`;
+    const generation = Math.floor(Date.now() / REPO_SNAPSHOT_GENERATION_MS);
+    const slugOf = (g: number) =>
+      `studio-repo-${createHash("sha256").update(`${key}\n${g}`).digest("hex").slice(0, 16)}`;
+    for (const g of [generation, generation - 1]) {
+      if ((this.repoSnapshots.get(key)?.generation ?? -1) >= g) break;
+      const lookup = `${key}\n${g}`;
+      if (this.repoSnapshotLookups.has(lookup)) continue;
+      this.repoSnapshotLookups.add(lookup);
+      if (await this.snapshotExists(slugOf(g)).catch(() => false)) {
+        this.repoSnapshots.set(key, { slug: slugOf(g), generation: g });
+      }
+    }
+    const known = this.repoSnapshots.get(key);
+    const failedAt = this.repoSnapshotFailures.get(key) ?? 0;
+    // A harness run has no dev server to snapshot; it only forks one.
+    if (
+      (known?.generation ?? -1) < generation &&
+      !opts.cloneOnly &&
+      Date.now() - failedAt > REPO_SNAPSHOT_RETRY_MS
+    ) {
+      const slug = slugOf(generation);
+      void this.buildRepoSnapshot(opts, repo, base, slug).then(
+        () => this.repoSnapshots.set(key, { slug, generation }),
+        (err: unknown) => {
+          this.repoSnapshotFailures.set(key, Date.now());
+          console.warn(
+            `[${LOG_LABEL}] repo snapshot ${slug} for ${repoUrl} failed: ${errMsg(err)}`,
+          );
+        },
+      );
+    }
+    return known?.slug ?? null;
+  }
+
+  /**
+   * Fork the base, configure its daemon the way a Kubernetes pool pod is (on
+   * the sentinel, no user), wait until the dev server serves, then snapshot.
+   * The fork's daemon keeps the base's sentinel, so a sandbox forked from this
+   * one claims it exactly as it would a base fork.
+   *
+   * ⚠️ SECURITY: the snapshot outlives the credentials it was built with, so
+   * they are taken off `origin` and out of the daemon's config first, and the
+   * build fails closed if one is still anywhere on disk. Memory is snapshotted
+   * too, so freed heap may still hold them; only the same org's sandboxes for
+   * the same repo fork it, and each of those is handed the same credentials.
+   */
+  private buildRepoSnapshot(
+    opts: EnsureOptions,
+    repo: NonNullable<EnsureOptions["repo"]>,
+    base: string,
+    slug: string,
+  ): Promise<string> {
+    return this.snapshotInflight.run(slug, async () => {
+      if (await this.snapshotExists(slug)) return slug;
+      const { cloneUrl } = repo;
+      const submodules = repo.submoduleCredentials ?? [];
+      console.log(`[${LOG_LABEL}] building repo snapshot ${slug}`);
+      // The default branch, no user and no extra repos: the daemon stays
+      // unclaimed, like a Kubernetes pool pod, and each fork checks out its own.
+      const payload = (url: string, credentials: typeof submodules) =>
+        this.configPayload({
+          workload: opts.workload,
+          repo: {
+            cloneUrl: url,
+            userName: "",
+            userEmail: "",
+            submoduleCredentials: credentials,
+          },
+        }) ?? {};
+      const sentinel = this.sentinelToken(base);
+      const { vm } = await this.freestyle.vms.create({
+        snapshotId: base,
+        ttlSeconds: (REPO_SNAPSHOT_READY_TIMEOUT_MS + 10 * 60_000) / 1000,
+        firewall: {
+          rules: [
+            { action: "allow", source: {}, destination: { public: true } },
+          ],
+        },
+      });
+      try {
+        await this.postConfigInVm(vm, sentinel, payload(cloneUrl, submodules));
+        await this.waitUntilServing(vm);
+        const bare = withoutCredentials(cloneUrl);
+        // An empty list clears them; an absent one would keep them.
+        await this.postConfigInVm(vm, sentinel, payload(bare, []));
+        await this.run(
+          vm,
+          `docker exec ${CONTAINER} git -c safe.directory='*' -C ${REPO_DIR} remote set-url origin "$ORIGIN_URL"`,
+          { env: { ORIGIN_URL: bare } },
+        );
+        // The daemon's clone log records the credentialed URL.
+        await this.run(vm, `docker exec -u 0 ${CONTAINER} rm -f ${CLONE_LOG}`);
+        const secrets = [
+          credentialOf(cloneUrl),
+          ...submodules.map((s) => s.token),
+        ].filter(Boolean);
+        if (secrets.length > 0) {
+          // Install can write a credentialed git URL anywhere a package
+          // manager caches. grep exits 1 for "not found"; a hit (0), an error
+          // (2) or a scan that cannot finish fails the build.
+          const scan = await this.run(
+            vm,
+            `docker exec -u 0 -e SECRETS ${CONTAINER} sh -c 'printf "%s\\n" "$SECRETS" > /tmp/.s && grep -rqsF -f /tmp/.s --exclude-dir=objects ${WORKDIR} /home /tmp --exclude=.s; echo "scan=$?"; rm -f /tmp/.s'`,
+            { env: { SECRETS: secrets.join("\n") }, timeoutMs: EXEC_MAX_MS },
+          );
+          if (!scan.includes("scan=1")) {
+            throw new Error(
+              scan.includes("scan=0")
+                ? "a credential survived on disk; not snapshotting"
+                : `credential scan did not finish (${scan.trim().slice(-80)}); not snapshotting`,
+            );
+          }
+        }
+        await vm.snapshot({ slug, ttlSeconds: REPO_SNAPSHOT_TTL_SECONDS });
+      } catch (err) {
+        if (!(await this.snapshotExists(slug))) throw err;
+      } finally {
+        await vm.delete().catch(() => {});
+      }
+      return slug;
+    });
+  }
+
+  /** The body travels in the exec's env, so neither it nor the bearer lands in a shell line. */
+  private async postConfigInVm(
+    vm: Vm,
+    token: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.run(
+      vm,
+      `curl -sf -o /dev/null -X POST -H "Authorization: Bearer $DAEMON_AUTH" -H 'Content-Type: application/json' --data "$DAEMON_BODY" http://127.0.0.1:${DAEMON_PORT}/_sandbox/config`,
+      {
+        env: { DAEMON_AUTH: token, DAEMON_BODY: JSON.stringify(payload) },
+        timeoutMs: 60_000,
+      },
+    );
+  }
+
+  /** `ready` is the daemon's own verdict that the dev server serves. */
+  private async waitUntilServing(vm: Vm): Promise<void> {
+    const deadline = Date.now() + REPO_SNAPSHOT_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const health = await this.run(
+        vm,
+        `curl -sf http://127.0.0.1:${DAEMON_PORT}/health`,
+      ).catch(() => "");
+      if (/"ready":\s*true/.test(health)) return;
+      await sleep(REPO_SNAPSHOT_POLL_MS);
+    }
+    throw new Error(
+      `dev server not serving after ${REPO_SNAPSHOT_READY_TIMEOUT_MS / 60_000} min`,
+    );
+  }
+
   private async snapshotExists(slug: string): Promise<boolean> {
     try {
       await this.freestyle.vms.snapshots.get(slug);
@@ -374,27 +574,31 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     return this.inflight.run(handle, async () => {
       this.cancelRelease(handle);
       const existing = await this.find(handle, { refresh: true });
+      let warmPoolAdopted = false;
       if (existing) {
         await this.resume(existing, opts);
       } else {
-        await this.create(handle, opts);
+        warmPoolAdopted = await this.create(handle, opts);
       }
       return {
         handle,
         workdir: WORKDIR,
         previewUrl: this.daemonUrl(handle),
-        warmPoolAdopted: false,
+        warmPoolAdopted,
         provider: "freestyle",
       };
     });
   }
 
   private async resume(found: Found, opts: EnsureOptions): Promise<void> {
-    const { state, sourceSnapshotSlugAtCreate } = await found.vm.data();
+    const { state, sourceSnapshotSlugAtCreate, metadata } =
+      await found.vm.data();
     if (state !== "running") await found.vm.start();
     await this.waitForDaemon(found.daemon.url);
-    if (sourceSnapshotSlugAtCreate) {
-      await this.reclaim(found, sourceSnapshotSlugAtCreate, opts);
+    // A repo snapshot's daemon still holds its base's sentinel.
+    const sentinelSlug = metadata[BASE_KEY] ?? sourceSnapshotSlugAtCreate;
+    if (sentinelSlug) {
+      await this.reclaim(found, sentinelSlug, opts);
     }
     // A rebooted VM lost its mounts with the tmpfs ctl dir. A mounted sidecar
     // ignores the rewrite, and the daemon takes the fresh token either way.
@@ -451,7 +655,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     await this.claimDaemon(url, sentinel, token, payload);
   }
 
-  private async create(handle: string, opts: EnsureOptions): Promise<void> {
+  /** True when it forked a repo snapshot: cloned, installed and serving. */
+  private async create(handle: string, opts: EnsureOptions): Promise<boolean> {
     if (opts.env && Object.keys(opts.env).length > 0) {
       // The container runs inside the snapshot, before any sandbox exists.
       throw new Error(
@@ -464,15 +669,17 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       ms[name] = Date.now() - last;
       last = Date.now();
     };
-    const snapshotId = await this.baseSnapshot();
+    const base = await this.baseSnapshot();
+    const repoSnapshot = await this.repoSnapshotFor(opts, base);
     step("snapshot");
     const token = randomBytes(24).toString("hex");
     const { vm } = await this.createVm({
-      snapshotId,
+      snapshotId: repoSnapshot ?? base,
       slug: handle,
       idleTimeoutSeconds: this.idleTimeoutSeconds,
       metadata: {
         [TOKEN_KEY]: token,
+        ...(repoSnapshot ? { [BASE_KEY]: base } : {}),
         ...(opts.tenant
           ? { [ORG_KEY]: opts.tenant.orgId, [USER_KEY]: opts.tenant.userId }
           : {}),
@@ -496,7 +703,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     try {
       await this.claimDaemon(
         daemon.url,
-        this.sentinelToken(snapshotId),
+        this.sentinelToken(base),
         token,
         this.configPayload(opts) ?? {},
       );
@@ -507,13 +714,16 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         );
       }
       step("orgfs-config");
-      console.log(`[${LOG_LABEL}] create ${handle} ms=${JSON.stringify(ms)}`);
+      console.log(
+        `[${LOG_LABEL}] create ${handle} from=${repoSnapshot ?? base} ms=${JSON.stringify(ms)}`,
+      );
     } catch (err) {
       await vm.delete().catch(() => {});
       this.lookups.delete(handle);
       throw err;
     }
     this.remember(handle, { vm, daemon });
+    return repoSnapshot !== null;
   }
 
   /**
@@ -861,6 +1071,19 @@ async function daemonIdleMs(url: string): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+/** `url` without userinfo, in the same shape, so the daemon sees the same repo. */
+function withoutCredentials(url: string): string {
+  const parsed = new URL(url);
+  parsed.username = "";
+  parsed.password = "";
+  return parsed.toString();
+}
+
+function credentialOf(url: string): string {
+  const { username, password } = new URL(url);
+  return decodeURIComponent(password || username);
 }
 
 function shellQuote(s: string): string {

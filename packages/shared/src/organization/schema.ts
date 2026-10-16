@@ -229,6 +229,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
     ),
+  sandbox_repo_snapshots: z
+    .boolean()
+    .optional()
+    .describe(
+      "Keep a daily Freestyle snapshot of each project repo with its dependencies installed and its dev server running, so a new sandbox for that repo starts already serving. Off by default: each repo costs a snapshot build a day.",
+    ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
     .optional()
