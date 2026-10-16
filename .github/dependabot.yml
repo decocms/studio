@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # JavaScript/TypeScript dependencies (Bun workspaces, root manifest)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "[chore]"
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+
+  # GitHub Actions used in workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "[chore]"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
