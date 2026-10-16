@@ -315,6 +315,21 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   var renderQueue = Promise.resolve();
   var TRANSITION_TAG =
     "<style id=\\"deco-disable-transitions\\">* { transition: none !important; }</style></head>";
+
+  // A quick second save skips the running transition: its ready and
+  // updateCallbackDone promises then reject with "Transition was skipped".
+  // Only finished says when the swap is over, so the other two are settled
+  // here rather than left as uncaught errors in the page's console.
+  var runSwapTransition = function(swap) {
+    if (typeof document.startViewTransition !== "function") {
+      swap();
+      return Promise.resolve();
+    }
+    var vt = document.startViewTransition(swap);
+    vt.ready.catch(function() {});
+    vt.updateCallbackDone.catch(function() {});
+    return vt.finished;
+  };
   var renderInPlace = function(src, body) {
     if (renderCtrl) renderCtrl.abort();
     var ctrl = new AbortController();
@@ -349,10 +364,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
           function(el) { return el.href ? fetch(el.href).catch(function() {}) : null; }
         );
         return Promise.all(sheets).then(function() {
-          if (typeof document.startViewTransition === "function") {
-            return document.startViewTransition(swap).finished;
-          }
-          swap();
+          return runSwapTransition(swap);
         });
       }).then(function() {
         var t = document.getElementById("deco-disable-transitions");
