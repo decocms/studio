@@ -18,8 +18,10 @@ import type { EditorUploads } from "./editor-uploads";
 import { MarkdownImage } from "./image-node";
 import { MarkdownMention } from "./mention-node";
 import { UploadSlots } from "./upload-slots";
+import { parseMentions } from "@decocms/shared/mentions";
 import {
   MENTION_SUGGESTION_KEY,
+  type MentionAgent,
   MentionMenu,
   MentionMenuStore,
   mentionSuggestionExtension,
@@ -46,6 +48,9 @@ export function MentionInput({
   onSubmit,
   onEmptyChange,
   onSendingChange,
+  onMentionsChange,
+  agents,
+  autoFocus,
   uploads,
   ref,
   className,
@@ -57,6 +62,11 @@ export function MentionInput({
   onEmptyChange: (empty: boolean) => void;
   /** For the composer's own file controls, which `attach` ignores while a send is in flight. */
   onSendingChange?: (sending: boolean) => void;
+  /** The ids mentioned in the draft, as it changes. */
+  onMentionsChange?: (ids: string[]) => void;
+  /** Pickable besides the org's members. */
+  agents?: MentionAgent[];
+  autoFocus?: boolean;
   /** Turns on pasted, dropped and attached files. Read at creation time. */
   uploads?: EditorUploads;
   /** Submit and focus, for the send button and the click-anywhere-to-type
@@ -116,7 +126,14 @@ export function MentionInput({
       handlePaste: uploads?.handlePaste,
       handleDrop: uploads?.handleDrop,
     },
-    onUpdate: ({ editor }) => onEmptyChange(editor.isEmpty),
+    // A field opened on request (a reply) takes the caret once, when created.
+    onCreate: ({ editor }) => {
+      if (autoFocus) editor.commands.focus("end");
+    },
+    onUpdate: ({ editor }) => {
+      onEmptyChange(editor.isEmpty);
+      onMentionsChange?.(parseMentions(editor.getMarkdown()));
+    },
   });
 
   async function submit() {
@@ -131,6 +148,7 @@ export function MentionInput({
       if ((await onSubmit(markdown)) !== false) {
         editor.commands.clearContent();
         onEmptyChange(true);
+        onMentionsChange?.([]);
       }
     } finally {
       sending.current = false;
@@ -152,7 +170,7 @@ export function MentionInput({
   return (
     <>
       <EditorContent editor={editor} className={className} />
-      <MentionMenu store={mentionStore} />
+      <MentionMenu store={mentionStore} agents={agents} />
     </>
   );
 }
