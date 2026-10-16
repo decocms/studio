@@ -535,6 +535,21 @@ test.describe("site editor over deco serve", () => {
       undefined,
       schemaWithSettings,
     );
+    // Holds the editor's polls once armed, until its save goes out, so the
+    // editor can't read the other writer's block first: only the guard
+    // (`ifMatch: { CMS: null }`) can tell. Under load a poll used to land
+    // between the write and the click and show the conflict before any save.
+    let holdPolls = false;
+    let releasePolls = () => {};
+    const polls = new Promise<void>((resolve) => {
+      releasePolls = resolve;
+    });
+    await page.route(stub.endpoint, async (route) => {
+      const body = route.request().postData() ?? "";
+      if (body.includes('"blocks.apply"')) releasePolls();
+      else if (holdPolls && body.includes('"blocks.list"')) await polls;
+      await route.continue();
+    });
     try {
       await page.goto(linkOf(stub, "/site-editor/content"));
       const content = page.getByTestId("main-panel");
@@ -545,6 +560,7 @@ test.describe("site editor over deco serve", () => {
         page.getByTestId("cms-settings-defaults-notice"),
       ).toBeVisible();
       // Another writer saves a block named CMS, of another type, first.
+      holdPolls = true;
       const theirs = `${JSON.stringify({ __resolveType: "site/sections/Cms.tsx" }, null, 2)}\n`;
       await stub.writeFile("CMS.json", theirs);
       await content.getByRole("button", { name: "Telemetry" }).click();
@@ -555,6 +571,7 @@ test.describe("site editor over deco serve", () => {
       });
       expect((await stub.readFiles())["CMS.json"]).toBe(theirs);
     } finally {
+      releasePolls();
       await stub.close();
     }
   });
