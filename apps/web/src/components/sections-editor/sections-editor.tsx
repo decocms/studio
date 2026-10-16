@@ -43,6 +43,7 @@ import {
   formSourceMovedOn,
   formValueOnBase,
   displayedOverBase,
+  markEditedSinceDisplayed,
   isOwnVersion,
   mergedFormDisplay,
   rememberOwnVersion,
@@ -1331,6 +1332,15 @@ export function SectionsEditor({
         next,
         sectionCount: latestRef.current.rawSections.length,
       });
+      // While the form shows the user's text over a merge (FormBase.displayed),
+      // what they change from here on is theirs, even typed back the same.
+      const tracked = formBaseRef.current;
+      if (tracked?.displayed) {
+        tracked.displayed = markEditedSinceDisplayed(
+          tracked.displayed,
+          next,
+        ) as Record<string, unknown>;
+      }
     }
     setFormValue(next);
     if (selectedSectionIndex !== null) {
