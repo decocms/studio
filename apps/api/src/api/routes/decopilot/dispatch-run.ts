@@ -1411,6 +1411,14 @@ async function prepareRun(
       userContext,
     };
 
+    // Agent repo = Code Agent chat, previewed live; a task run's repo is on the thread.
+    const previewWatched = Boolean(
+      (
+        effectiveVirtualMcp.metadata as {
+          repository?: RepositoryBinding | null;
+        } | null
+      )?.repository?.url,
+    );
     const wireHarnessInput: WireHarnessInput = {
       threadId: mem.thread.id,
       userMessage:
@@ -1444,6 +1452,7 @@ async function prepareRun(
                 agentId: input.agent.id,
                 userEmail: ctx.auth.user?.email,
                 userContext,
+                previewWatched,
               }),
             ]
               .filter(Boolean)
@@ -1511,15 +1520,7 @@ async function prepareRun(
               // Where its `starting-sandbox` stage goes — the same stream the
               // rest of the run's status chunks ride.
               streamBuffer,
-              // A repo on the AGENT means a Code Agent chat, with a person
-              // watching its preview; a task run's repo is on the thread.
-              interactive: Boolean(
-                (
-                  effectiveVirtualMcp.metadata as {
-                    repository?: RepositoryBinding | null;
-                  } | null
-                )?.repository?.url,
-              ),
+              interactive: previewWatched,
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
               ...(resumeFromSeq > 0

@@ -338,6 +338,7 @@ const ALL_TOOL_NAMES = [
   "web_search",
   "deep_research",
   "suggest_task",
+  "preview_navigate",
   "update_interests",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
@@ -1688,6 +1689,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Chat",
   },
   {
+    name: "preview_navigate",
+    description: "Navigate the user's live preview to a page",
+    category: "Chat",
+  },
+  {
     name: "update_interests",
     description: "Record the user's durable goals for the current agent",
     category: "Chat",
@@ -1868,6 +1874,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "web_search",
       "deep_research",
       "suggest_task",
+      "preview_navigate",
       "update_interests",
     ],
   },

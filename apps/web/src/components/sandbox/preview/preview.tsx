@@ -104,6 +104,7 @@ import {
   writeLastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
+import { usePreviewNavigateHandler } from "./preview-navigate-request";
 import {
   classifyParamKinds,
   collectPageLoaderResolveTypes,
@@ -1307,6 +1308,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       path: page.path,
     });
   };
+
+  /** Same as following a link inside the frame: no page is pinned. */
+  const navigatePreviewToAgentPath = (path: string) => {
+    if (activeGlobalSection || normPath(path) !== normPath(resolvedPath)) {
+      beginNavigation();
+    }
+    intendedPathRef.current = path;
+    setActiveGlobalSection(null);
+    setActiveLoaderKey(null);
+    setDirectPreviewUrl(null);
+    setCmsSelectedSection(null);
+    setPinnedPageKey(null);
+    setCurrentPath(path);
+    persistLastPage({ path, pageKey: null, params: {} });
+  };
+
+  usePreviewNavigateHandler(previewStorageKey, navigatePreviewToAgentPath);
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
     if (!sectionPreviewBase || !meta) {

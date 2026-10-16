@@ -75,6 +75,11 @@ import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
 import { useTaskReadState } from "../../hooks/use-task-read-state";
 import { authClient } from "../../lib/auth-client";
 import { track } from "../../lib/posthog-client";
+import { lastPreviewPageKey } from "../sandbox/preview/last-preview-page";
+import {
+  PreviewNavigateInputSchema,
+  requestPreviewNavigate,
+} from "../sandbox/preview/preview-navigate-request";
 
 // Module-level set so a given chat fires `chat_opened` at most once per page
 // session per thread_id. Prevents duplicates from re-renders while still
@@ -896,6 +901,8 @@ export function ActiveTaskProvider({
     openPanel,
     orgId: org.id,
     orgSlug: org.slug,
+    virtualMcpId,
+    currentBranch,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
@@ -908,6 +915,8 @@ export function ActiveTaskProvider({
     openPanel,
     orgId: org.id,
     orgSlug: org.slug,
+    virtualMcpId,
+    currentBranch,
   };
 
   // Race-free body reconcile for queued turns. When a message is sent behind a
@@ -1109,7 +1118,20 @@ export function ActiveTaskProvider({
         setChatError(error);
         console.error("[chat] Error", error);
       },
-      onToolCall: (event) => cbRef.current.onToolCall(event as never),
+      onToolCall: (event) => {
+        const cb = cbRef.current;
+        const navigate =
+          event.toolCall.toolName === "preview_navigate" &&
+          PreviewNavigateInputSchema.safeParse(event.toolCall.input);
+        if (navigate && navigate.success && cb.currentBranch) {
+          requestPreviewNavigate(
+            lastPreviewPageKey(cb.orgSlug, cb.virtualMcpId, cb.currentBranch),
+            navigate.data.path,
+          );
+          cb.openPanel("site-editor");
+        }
+        cb.onToolCall(event as never);
+      },
     };
     conn.observer = observer;
 

@@ -986,6 +986,7 @@ export interface StudioToolIO {
     input: { title: string; summary: string };
     output: { shown: true };
   };
+  preview_navigate: { input: { path: string }; output: { shown: true } };
   update_interests: {
     input: { interests: { title: string; summary: string }[] };
     output: { ok: true; count: number };

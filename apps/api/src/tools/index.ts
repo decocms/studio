@@ -102,6 +102,7 @@ export const CORE_TOOLS = [
   ChatTools.WEB_SEARCH,
   ChatTools.DEEP_RESEARCH,
   ChatTools.SUGGEST_TASK,
+  ChatTools.PREVIEW_NAVIGATE,
   ChatTools.UPDATE_INTERESTS,
   TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
   TaskBoardTools.TASK_BOARD_DELIVERY,
