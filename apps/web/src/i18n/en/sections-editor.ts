@@ -20,6 +20,8 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Delete",
   "sectionsEditor.arrayField.duplicate": "Duplicate",
   "sectionsEditor.arrayField.hideItem": "Hide item",
+  "sectionsEditor.arrayField.layoutDrill": "Open one item at a time",
+  "sectionsEditor.arrayField.layoutInline": "Edit items in the list",
   "sectionsEditor.arrayField.openActionsFor": "Open actions for {label}",
   "sectionsEditor.arrayField.sectionPickerNotAvailable":
     "Section picker is not available in this editor.",
