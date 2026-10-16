@@ -122,6 +122,16 @@ export function useTaskBoardLiveSync(): void {
             }
           : prev,
       );
+      // How a card's run failed (stopped or not) isn't on the event; read it
+      // back.
+      const onCard = queryClient
+        .getQueryData<TaskBoardData>(queryKey)
+        ?.items.some((item) =>
+          item.threads.some((t) => t.threadId === threadId),
+        );
+      if (status === "failed" && onCard) {
+        queryClient.invalidateQueries({ queryKey });
+      }
     },
   });
 }
