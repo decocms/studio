@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
@@ -20,7 +21,9 @@ import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { expandRecursiveSchema } from "./fields/resolved-schema-cache";
 import { isSecretBlock } from "@decocms/shared/decofile";
-import { isSecretField, SecretField } from "./fields/secret-field";
+import { isSecretField } from "./fields/secret-field";
+import { SecretFieldForBackend } from "./fields/protocol-secret-field";
+import { isLazyFieldSchema, unwrapLazy, wrapLazy } from "./lazy-value";
 import {
   isEmptyFieldValue,
   RequiredFieldProvider,
@@ -175,6 +178,21 @@ export function renderField(fieldProps: FieldProps) {
     schema: expandRecursiveSchema(fieldProps.schema, fieldProps.meta),
   };
   const { schema, value } = props;
+
+  // `Lazy<T>`: edit the `T`; the stored value is the `lazy` block around it.
+  if (isLazyFieldSchema(schema)) {
+    const inner = schema.properties.value;
+    return renderField({
+      ...props,
+      schema: {
+        ...inner,
+        title: schema.title ?? inner.title,
+        description: schema.description ?? inner.description,
+      },
+      value: unwrapLazy(value),
+      onChange: (next) => props.onChange(wrapLazy(next)),
+    });
+  }
 
   if (isMultivariateArrayWrapper(value)) {
     const multivariateArray = unwrapMultivariateArrayValue(value);
@@ -353,7 +371,7 @@ export function renderField(fieldProps: FieldProps) {
 
   // Deco secrets (loader blocks and their `@format secret` value) must never hit a plain text input.
   if (isSecretField(schema, value)) {
-    return <SecretField key={props.path} {...props} />;
+    return <SecretFieldForBackend key={props.path} {...props} />;
   }
 
   // Resolved block-ref value whose schema lost its picker branch — see renderResolvedBlockRefValue. Skip when a format/enum widget owns the field.
@@ -374,7 +392,13 @@ export function renderField(fieldProps: FieldProps) {
   if (effectiveValue === null || effectiveValue === undefined) return null;
 
   if (isSecretBlock(effectiveValue)) {
-    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+    return (
+      <SecretFieldForBackend
+        key={props.path}
+        {...props}
+        value={effectiveValue}
+      />
+    );
   }
 
   const effectiveProps = { ...props, value: effectiveValue };
@@ -515,6 +539,8 @@ function SchemaFormBody({
   onVariantMatcherOp,
 }: SchemaFormProps) {
   const t = useT();
+  // Which blocks editor renders this form, for browser tests to tell apart.
+  const editor = useNewBlocksEditor() ? "new" : "classic";
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -667,7 +693,7 @@ function SchemaFormBody({
       ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-6" data-blocks-editor={editor}>
       {visibleKeys.map((key) => {
         const propSchema = properties[key];
         if (!propSchema) return null;

@@ -6,7 +6,17 @@
  * degrades (a card without sub-lines, or an "other" row), never throws.
  */
 
-import { decoBlockKeyFromFileStem } from "@decocms/shared/decofile";
+import {
+  blockNameFromFile,
+  type Change,
+  spellingKey,
+} from "@decocms/blocks/protocol";
+import {
+  decoBlockKeyFromFileStem,
+  isSecretBlock as isLegacySecretBlock,
+} from "@decocms/shared/decofile";
+import { SECRET_BLOCK_TYPE } from "@decocms/shared/secret-ciphertext";
+import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
 import {
   globalSectionLabel,
   isSiteAppBlock,
@@ -53,8 +63,15 @@ export interface PublishChange {
   /** True when the block is the site app / site configuration block. */
   isSiteApp: boolean;
   status: PublishChangeStatus;
-  /** The diff paths behind this card — what Revert discards. */
+  /** The diff paths behind this card — what Revert discards (git sources). */
   filepaths: string[];
+  /**
+   * A v8 change (`changes.list`): the entry behind this card and the version
+   * the list showed, which its discard is guarded by. `filepaths` is empty.
+   */
+  entry?: { name: string; version: string | null };
+  /** v8: the sides that exist but couldn't be read (invalid JSON, too large). */
+  unreadable?: Array<"before" | "after">;
   sections: PublishSectionChange[];
   fromJson: Record<string, unknown> | null;
   toJson: Record<string, unknown> | null;
@@ -654,4 +671,146 @@ export function publishChangeDigest(
     }
   }
   return digest;
+}
+
+/** The text a secret shows in a change summary: it's compared, never shown. */
+export const SECRET_MASK = "••••••";
+
+/**
+ * `value` with every secret's ciphertext (a v8 `secret` block's `ciphertext`,
+ * a v7 secret loader's `encrypted`) replaced by {@link SECRET_MASK}. Applied
+ * after comparing, so a changed secret still shows as changed.
+ */
+export function maskSecrets<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(maskSecrets) as T;
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, inner] of Object.entries(record))
+    out[key] = maskSecrets(inner);
+  if (record.__resolveType === SECRET_BLOCK_TYPE && "ciphertext" in record) {
+    out.ciphertext = SECRET_MASK;
+  }
+  if (isLegacySecretBlock(record) && "encrypted" in record) {
+    out.encrypted = SECRET_MASK;
+  }
+  return out as T;
+}
+
+function maskFields(fields: PublishFieldChange[]): PublishFieldChange[] {
+  return fields.map((field) => ({
+    ...field,
+    from: maskSecrets(field.from),
+    to: maskSecrets(field.to),
+  }));
+}
+
+interface ContentChangesInput {
+  /** `changes.list`'s answer: the whole card list. */
+  changes: Record<string, Change>;
+  /** Both sides (`changes.get`), once loaded: they only enrich the cards. */
+  sides?: ContentChangeSides | null;
+  /** The current blocks (the editor's decofile), for names and kinds. */
+  lookup?: Record<string, unknown> | null;
+}
+
+/**
+ * The publish change model from a v8 source's changes (`changes.list`),
+ * keyed by entry name, each card carrying the version its discard is guarded
+ * by. As with {@link summarizePublishManifest}, a card's identity, kind,
+ * status and order come from the list and the current blocks alone; both
+ * sides only add what changed inside it. Secrets are compared, never shown.
+ */
+export function summarizeContentChanges(
+  input: ContentChangesInput,
+): PublishChangeSummary {
+  const { changes, sides, lookup } = input;
+  const pages: PublishChange[] = [];
+  const blocks: PublishChange[] = [];
+  /** The sides of `name` the server couldn't read (any spelling's file). */
+  const unreadableOf = (name: string) => [
+    ...new Set(
+      (sides?.diagnostics ?? [])
+        .filter(
+          (d) => spellingKey(blockNameFromFile(d.file)) === spellingKey(name),
+        )
+        .map((d) => d.side),
+    ),
+  ];
+  const names = Object.keys(changes).sort((a, b) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  for (const name of names) {
+    const change = changes[name]!;
+    const status: PublishChangeStatus =
+      change.kind === "delete"
+        ? "removed"
+        : change.baseVersion === null
+          ? "new"
+          : "edited";
+    const detail = sides?.entries[name];
+    const fromJson = detail?.before ?? null;
+    const toJson = detail?.after ?? null;
+    const headShape = readBlockShape(lookup, name);
+    const nameShape = headShape ?? toJson ?? fromJson;
+    const unreadable = unreadableOf(name);
+    const common = {
+      blockKey: name,
+      status,
+      filepaths: [],
+      entry: { name, version: change.version },
+      ...(unreadable.length > 0 ? { unreadable } : {}),
+      fromJson: maskSecrets(fromJson),
+      toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
+    };
+
+    const headPage = headShape ? pageEntryFromBlock(name, headShape) : null;
+    const shapePage =
+      !headShape && nameShape ? pageEntryFromBlock(name, nameShape) : null;
+    if (headPage ?? shapePage ?? (!nameShape && looksLikePageKey(name))) {
+      const namePage = nameShape ? pageEntryFromBlock(name, nameShape) : null;
+      pages.push({
+        ...common,
+        kind: "page",
+        name: namePage?.name ?? parsePageName(name),
+        pagePath: namePage?.path ?? null,
+        isSiteApp: false,
+        sections:
+          status === "edited"
+            ? diffPageSections(fromJson, toJson).map((section) => ({
+                ...section,
+                fields: maskFields(section.fields),
+              }))
+            : [],
+      });
+      continue;
+    }
+    const label = globalSectionLabel(name, nameShape ?? {});
+    blocks.push({
+      ...common,
+      kind: "block",
+      name: label,
+      pagePath: null,
+      isSiteApp: isSiteAppBlock(name, headShape ?? nameShape ?? {}),
+      sections:
+        status === "edited"
+          ? [
+              {
+                name: label,
+                kind: "section" as const,
+                status: "edited" as const,
+                fields: maskFields(shallowFieldDiff(fromJson, toJson, [])),
+              },
+            ].filter((s) => s.fields.length > 0)
+          : [],
+    });
+  }
+  // Already in name order: a card never moves as its title sharpens.
+  return {
+    pages,
+    blocks,
+    other: [],
+    generated: [],
+    count: pages.length + blocks.length,
+  };
 }

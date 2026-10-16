@@ -29,6 +29,26 @@ describe("page-list", () => {
     ]);
   });
 
+  it("extractPages follows the manifest's pages group", () => {
+    const meta = {
+      manifest: { blocks: { pages: { page: {}, post: {} }, sections: {} } },
+      schema: {},
+    } as LiveMeta;
+    const decofile = {
+      home: { __resolveType: "page", path: "/", sections: [] },
+      "hello-world": { __resolveType: "post", path: "/blog/hello" },
+      hero: { __resolveType: "hero", path: "/not-a-page" },
+      legacy: { __resolveType: "website/pages/Page.tsx", path: "/old" },
+    };
+    expect(extractPages(decofile, meta).map((p) => p.key)).toEqual([
+      "home",
+      "hello-world",
+      "legacy",
+    ]);
+    // Without a schema only the legacy page types are pages.
+    expect(extractPages(decofile).map((p) => p.key)).toEqual(["legacy"]);
+  });
+
   it("findPageForPath prefers an explicit block key when paths collide", () => {
     const pages = [
       {

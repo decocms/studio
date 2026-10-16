@@ -10,3 +10,9 @@ ca3ca7032226a4a746382ec75674859d1c51b5bf:scripts/dev-hosting-mock.ts:generic-api
 # sha256 content hash of sandbox/dbos-credential-push.ts in the DBOS
 # workflow-source snapshot; matched only because its key says "credential".
 805fedd95ed19c6d0d9936dd60624f2a23586129:apps/api/src/dbos/workflow-source-guard.snapshot.json:generic-api-key:13
+
+# Synthetic site token in a component test: header {"alg":"EdDSA"}, payload
+# {"site":"acme-store"}, signature the literal "signature". Not a real token.
+# One fingerprint per commit that adds it (the v8 stack, then the folded PR).
+27835f8a61d0d0b45f76b15b21dbb06b8c7bbc50:apps/web/src/views/virtual-mcp/settings/site-token-section.test.tsx:jwt:19
+3d9473406ebcbc375e645ab9082b454eea285f22:apps/web/src/views/virtual-mcp/settings/site-token-section.test.tsx:jwt:19

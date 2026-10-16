@@ -14,6 +14,12 @@
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
+import {
+  isMainSchemaChangedResponse,
+  MainSchemaChangedError,
+  mainSchemaHeaders,
+  resetMainSchemaAnswer,
+} from "@/hooks/main-schema-changed";
 
 export interface DecofileScopeParams {
   orgSlug: string;
@@ -137,7 +143,16 @@ export async function fetchDecofile(
   queryClient: QueryClient,
   params: DecofileScopeParams,
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(decofileApiUrl(params), { cache: "no-store" });
+  // Only the v7 (legacy) editor reads this shape: a main that turned v8
+  // since answers `main_schema_changed`, and the editor decides again.
+  const res = await fetch(decofileApiUrl(params), {
+    cache: "no-store",
+    headers: mainSchemaHeaders("v7"),
+  });
+  if (await isMainSchemaChangedResponse(res)) {
+    resetMainSchemaAnswer(queryClient, params.orgSlug, params.virtualMcpId);
+    throw new MainSchemaChangedError();
+  }
   if (!res.ok) {
     const err = new Error(`Failed to fetch decofile: ${res.status}`);
     (err as { status?: number }).status = res.status;
