@@ -2461,11 +2461,17 @@ function ActivitySection({
   );
   const messageCount = (threads: TaskBoardCommentThread[]) =>
     threads.reduce((sum, thread) => sum + 1 + thread.replies.length, 0);
+  // A run its comment thread shows is never listed on its own.
+  const unthreaded = (runs: TaskBoardItemThread[]) =>
+    runs.filter(
+      (run) =>
+        !comments.threads.some((thread) => thread.threadId === run.threadId),
+    ).length;
   const behindTheScenesCount =
     messageCount(comments.threads) -
     messageCount(humanThreads) +
-    liveRuns.length -
-    waitingRuns.length;
+    unthreaded(liveRuns) -
+    unthreaded(waitingRuns);
 
   /** A comment's author, resolved from the org's members; falls back to the id
    *  so a comment from a since-removed member still renders. The Super Agent

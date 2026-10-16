@@ -84,7 +84,7 @@ test("task conversation keeps replies chronological and details accessible", asy
   await expect(composer).toBeVisible();
 });
 
-test("agent summaries and reports share a message layout and open their source chat", async ({
+test("a run's report is that run's thread on the card and opens the run", async ({
   authedPage,
 }) => {
   test.setTimeout(180_000);
@@ -135,25 +135,17 @@ test("agent summaries and reports share a message layout and open their source c
   await page.goto(`/${orgSlug}/tasks`);
   await page.getByText("Linked run messages", { exact: true }).click();
   const messages = page.getByTestId("task-message");
-  // The run's own post is agent work, shown behind the scenes.
+  // The report opens the run's thread, so the run isn't listed again, not
+  // even behind the scenes.
   await expect(messages).toHaveCount(1);
-  await page.getByRole("button", { name: "Behind the scenes (1)" }).click();
-  await expect(messages).toHaveCount(2);
-  await expect(messages.getByRole("button", { name: "Open chat" })).toHaveCount(
-    2,
-  );
+  await expect(
+    page.getByRole("button", { name: /^Behind the scenes/ }),
+  ).toHaveCount(0);
   const report = page.locator(`[data-comment-id="${comment.id}"]`);
   await expect(report.locator("strong")).toHaveText("Review complete");
   await expect(report.getByText("Reviewer", { exact: true })).toBeVisible();
   const taskUrl = page.url();
-  await report.getByRole("button", { name: "Open chat" }).click();
-  await expect(page.getByTestId("task-thread-sheet")).toBeVisible();
-  await expect(page).toHaveURL(taskUrl);
-  await page.keyboard.press("Escape");
-  await messages
-    .filter({ hasText: "Completed" })
-    .getByRole("button", { name: "Open chat" })
-    .click();
+  await report.getByRole("button", { name: "Open the run" }).click();
   await expect(page.getByTestId("task-thread-sheet")).toBeVisible();
   await expect(page).toHaveURL(taskUrl);
 });
