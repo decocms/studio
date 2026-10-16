@@ -57,7 +57,7 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
-import { daemonRunId, liveMessagesEnabled } from "@/harnesses/live-messages";
+import { daemonRunId } from "@/harnesses/live-messages";
 import type { StudioContext } from "../core/studio-context";
 import {
   mintMcpEndpoint,
@@ -617,9 +617,7 @@ export class SandboxDispatchClient {
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId, agent),
       // The run takes messages while it works (see `live-messages.ts`).
-      ...((await liveMessagesEnabled(this.ctx, organization.id))
-        ? { liveMessages: true }
-        : {}),
+      liveMessages: true,
     };
     markTurn(input.threadId, "mcp-and-workspace-resolved");
 

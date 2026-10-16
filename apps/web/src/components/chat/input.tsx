@@ -54,7 +54,6 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { QueueTray } from "./queue-tray";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/hooks/collections/use-ai-providers";
@@ -496,11 +495,8 @@ export function ChatInput({
   const hostedRuntimeBlocked = shouldBlockHostedRuntime(task?.harness_id);
   // A text message sent now goes into the running claude-code turn instead of
   // the queue (the server decides; this only says so).
-  const liveMessagesOn = useOrgFlag("claude_code_live_messages");
   const sendsToRunningAgent =
-    liveMessagesOn &&
-    task?.harness_id === "claude-code" &&
-    (isStreaming || isRunInProgress);
+    task?.harness_id === "claude-code" && (isStreaming || isRunInProgress);
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.

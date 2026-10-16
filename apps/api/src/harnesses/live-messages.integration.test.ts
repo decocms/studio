@@ -15,7 +15,6 @@ import {
 } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import type { Thread } from "@/storage/types";
 import {
   setThreadSandboxMapEntry,
@@ -42,18 +41,13 @@ type Message = {
 describe("live messages", () => {
   let env: ThreadTestEnv;
   let ctx: StudioContext;
-  let settings: OrganizationSettingsStorage;
   let thread: Thread;
   let agentId: string;
   let n = 0;
 
   beforeAll(async () => {
     env = await buildThreadTestContext();
-    settings = new OrganizationSettingsStorage(env.database.db);
-    ctx = {
-      ...env.ctx,
-      storage: { ...env.ctx.storage, organizationSettings: settings },
-    } as StudioContext;
+    ctx = env.ctx;
     const agent = await ctx.storage.virtualMcps.create(env.orgId, env.userId, {
       title: "live-messages agent",
       connections: [],
@@ -69,9 +63,6 @@ describe("live messages", () => {
 
   /** A claude-code thread whose turn is running, as dispatch leaves it. */
   beforeEach(async () => {
-    await settings.upsert(env.orgId, {
-      flags: { claude_code_live_messages: true },
-    });
     const created = await ctx.storage.threads.create({
       id: `thrd_live_${++n}`,
       organization_id: env.orgId,
@@ -139,17 +130,6 @@ describe("live messages", () => {
       ...overrides,
     }).then((result) => ({ ...result, written }));
   };
-
-  test("with the flag off nothing is attempted or written", async () => {
-    await settings.upsert(env.orgId, {
-      flags: { claude_code_live_messages: false },
-    });
-    const m = message();
-    const result = await deliver(m);
-    expect(result.outcome).toBe("not-attempted");
-    expect(result.written).toEqual([]);
-    expect(await storedRows(thread.id, m.id)).toEqual([]);
-  });
 
   test("a run that cannot be reached falls back to the queue, stored once without a run", async () => {
     const m = message();

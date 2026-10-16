@@ -1,19 +1,17 @@
 /**
  * A message sent while a hosted claude-code run is working, delivered into that
- * run instead of queued as the next turn. Behind the organization flag
- * `claude_code_live_messages`.
+ * run instead of queued as the next turn.
  *
  * The path: the messages route persists the user row (once, with the target
  * run in `metadata.liveRunId`), then posts the text to the daemon of the run's
  * sandbox (`POST /_sandbox/runs/:runId/messages`). The daemon answers only after
  * the harness took it into the running turn. The harness then emits a
  * `data-live-message` part at the point the model read it, which is where the
- * chat shows the message. Anything that cannot be delivered — the flag is off,
- * the run just ended, the pod refuses — is stripped of its `liveRunId` and
- * queued exactly as before, so nothing is lost.
+ * chat shows the message. Anything that cannot be delivered — the run just
+ * ended, the pod refuses — is stripped of its `liveRunId` and queued exactly as
+ * before, so nothing is lost.
  */
 
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
@@ -28,19 +26,6 @@ const MAX_LIVE_MESSAGE_CHARS = 32_000;
 /** The daemon run a turn's harness runs as: one per turn, keyed by its fence. */
 export function daemonRunId(threadId: string, fenceToken: string): string {
   return `${threadId}:${fenceToken}`;
-}
-
-export async function liveMessagesEnabled(
-  ctx: StudioContext,
-  organizationId: string,
-): Promise<boolean> {
-  try {
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    return orgFlagEnabled(settings?.flags, "claude_code_live_messages");
-  } catch (err) {
-    console.warn("[live-messages] flag read failed", err);
-    return false;
-  }
 }
 
 /**
@@ -204,8 +189,7 @@ export async function deliverLiveMessage<M extends LiveMessage>(args: {
     args.harnessId !== "claude-code" ||
     thread.status !== "in_progress" ||
     thread.created_by !== args.userId ||
-    args.storedLiveRunId === null ||
-    !(await liveMessagesEnabled(ctx, args.organizationId))
+    args.storedLiveRunId === null
   ) {
     return skip;
   }

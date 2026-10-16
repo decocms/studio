@@ -2,10 +2,10 @@ import { createContext, useContext } from "react";
 import type { ChatMessage } from "./types.ts";
 
 /**
- * Messages delivered into a running claude-code turn (org flag
- * `claude_code_live_messages`). The user row carries `metadata.liveRunId`; the
- * run's assistant message carries a `data-live-message` part where the model
- * read it, and that is where the body shows it.
+ * Messages delivered into a running claude-code turn. The user row carries
+ * `metadata.liveRunId`; the run's assistant message carries a
+ * `data-live-message` part where the model read it, and that is where the body
+ * shows it.
  */
 export const LIVE_MESSAGE_PART = "data-live-message";
 

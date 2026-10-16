@@ -1,9 +1,9 @@
 /**
  * E2E: a message sent while a claude-code turn is running.
  *
- * With the org flag `claude_code_live_messages` on, `POST .../messages` tries
- * to deliver the message into the running turn through the sandbox daemon
- * (`POST /_sandbox/runs/:runId/messages`). This suite has no sandbox, so it
+ * `POST .../messages` tries to deliver the message into the running turn
+ * through the sandbox daemon (`POST /_sandbox/runs/:runId/messages`). This
+ * suite has no sandbox, so it
  * asserts the Studio side of the contract: the response says where the message
  * went, a message that cannot be delivered is queued exactly as before (stored
  * once, with no run on it), and nothing reaches another organization's thread.
@@ -31,12 +31,11 @@ async function orgIdForSlug(db: Db, slug: string): Promise<string> {
   return id;
 }
 
-/** A model the route can resolve, the flag, and an agent, in `orgSlug`. */
+/** A model the route can resolve and an agent, in `orgSlug`. */
 async function configureOrg(
   api: APIRequestContext,
   db: Db,
   orgSlug: string,
-  liveMessages: boolean,
 ): Promise<{ agentId: string }> {
   const organizationId = await orgIdForSlug(db, orgSlug);
   // A stored key is enough for the route to resolve a model; it is never called.
@@ -62,7 +61,6 @@ async function configureOrg(
         deep_research: null,
       },
     },
-    flags: { claude_code_live_messages: liveMessages },
   });
   const agent = await callSelfMcpTool<{ item: { id: string } }>(
     api,
@@ -86,9 +84,8 @@ async function runningClaudeCodeThread(
   db: Db,
   orgSlug: string,
   userId: string,
-  liveMessages: boolean,
 ): Promise<{ threadId: string; agentId: string }> {
-  const { agentId } = await configureOrg(api, db, orgSlug, liveMessages);
+  const { agentId } = await configureOrg(api, db, orgSlug);
   const thread = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,
@@ -144,37 +141,6 @@ async function storedMessage(db: Db, threadId: string, messageId: string) {
 }
 
 test.describe("live messages to a running claude-code turn", () => {
-  test("with the flag off, a message during a run is queued as before", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const api = page.context().request;
-    const db = await connectDevDb();
-    try {
-      const { threadId, agentId } = await runningClaudeCodeThread(
-        api,
-        db,
-        orgSlug,
-        user.userId,
-        false,
-      );
-      const messageId = `msg-off-${Date.now()}`;
-      const res = await postMessage(api, orgSlug, threadId, agentId, messageId);
-      expect(res.status()).toBe(202);
-      expect(await res.json()).toEqual({
-        taskId: threadId,
-        delivery: "queued",
-      });
-      const rows = await storedMessage(db, threadId, messageId);
-      expect(rows.map((row) => row.kind).sort()).toEqual(["finish", "text"]);
-      expect(
-        rows.find((row) => row.kind === "finish")?.metadata?.liveRunId,
-      ).toBeUndefined();
-    } finally {
-      await db.end();
-    }
-  });
-
   test("a run that cannot take it falls back to the queue, once per message id", async ({
     authedPage,
   }) => {
@@ -187,7 +153,6 @@ test.describe("live messages to a running claude-code turn", () => {
         db,
         orgSlug,
         user.userId,
-        true,
       );
       const messageId = `msg-fallback-${Date.now()}`;
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -229,7 +194,6 @@ test.describe("live messages to a running claude-code turn", () => {
         db,
         orgSlug,
         user.userId,
-        true,
       );
       const other = await signUpViaApi(intruder);
       const otherOrgId = await orgIdForSlug(db, other.orgSlug);
@@ -241,7 +205,7 @@ test.describe("live messages to a running claude-code turn", () => {
       expect(setActive.ok()).toBe(true);
       // Everything the route needs in the intruder's own org, so a refusal
       // can only be about the thread.
-      const own = await configureOrg(intruder, db, other.orgSlug, true);
+      const own = await configureOrg(intruder, db, other.orgSlug);
 
       const messageId = `msg-intruder-${Date.now()}`;
       // Through the intruder's own org, with its own agent…
