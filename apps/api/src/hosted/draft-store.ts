@@ -6,6 +6,11 @@
  * it, so the next edit starts a new slug.
  *
  * The slug is random (holding the URL is the permission to read the draft).
+ *
+ * Who last changed each draft name, and when (`edits`), lives next to the
+ * slug in the org KV, never in the draft object: the object is served to
+ * anyone holding its URL, and the site editor only needs it to say who made
+ * the other change when two people edit the same values.
  */
 
 import type { KVStorage } from "@/storage/kv";
@@ -26,12 +31,22 @@ export interface HostedDraftRef {
   virtualMcpId: string;
   branch: string;
   site: string;
+  /** The Studio user saving through this ref, recorded in `edits`. */
+  editor?: string | null;
+}
+
+/** The last change to one draft name: a Studio user id and an ISO time. */
+export interface DraftEdit {
+  by: string;
+  at: string;
 }
 
 export interface LoadedDraft {
   slug: string;
   body: DraftBody;
   etag: string | null;
+  /** By draft name; a name changed by no known user is absent. */
+  edits: Record<string, DraftEdit>;
 }
 
 function emptyDraft(): DraftBody {
@@ -61,6 +76,67 @@ function parseDraftBody(value: unknown): DraftBody {
     set: Object.fromEntries(Object.entries(v.set as Record<string, unknown>)),
     delete: [...(v.delete as string[])],
   };
+}
+
+function parseEdits(value: unknown): Record<string, DraftEdit> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  // fromEntries: an entry named "__proto__" stays an entry.
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([name, edit]) => {
+      const e = edit as Partial<DraftEdit> | null;
+      return typeof e?.by === "string" && typeof e.at === "string"
+        ? [[name, { by: e.by, at: e.at }]]
+        : [];
+    }),
+  );
+}
+
+/**
+ * The edits after a save from `before` to `after`: names whose value (or
+ * deletion) changed are stamped with `by` at `at`; untouched names keep
+ * theirs; names no longer in the draft (discarded, published) are dropped.
+ * Without `by`, a changed name loses its stamp rather than keep a wrong one.
+ */
+export function stampDraftEdits(
+  edits: Record<string, DraftEdit>,
+  before: DraftBody,
+  after: DraftBody,
+  by: string | null | undefined,
+  at: string,
+): Record<string, DraftEdit> {
+  const deletedBefore = new Set(before.delete);
+  const deletedAfter = new Set(after.delete);
+  const next: Array<[string, DraftEdit]> = [];
+  for (const name of new Set([...Object.keys(after.set), ...after.delete])) {
+    const changed =
+      deletedBefore.has(name) !== deletedAfter.has(name) ||
+      Object.hasOwn(before.set, name) !== Object.hasOwn(after.set, name) ||
+      JSON.stringify(before.set[name]) !== JSON.stringify(after.set[name]);
+    const kept = Object.hasOwn(edits, name) ? edits[name] : undefined;
+    if (!changed) {
+      if (kept) next.push([name, kept]);
+    } else if (by) {
+      next.push([name, { by, at }]);
+    }
+  }
+  // fromEntries: an entry named "__proto__" stays an entry.
+  return Object.fromEntries(next);
+}
+
+function sameEdits(
+  a: Record<string, DraftEdit>,
+  b: Record<string, DraftEdit>,
+): boolean {
+  const ka = Object.keys(a);
+  return (
+    ka.length === Object.keys(b).length &&
+    ka.every(
+      (k) =>
+        Object.hasOwn(b, k) && b[k]!.by === a[k]!.by && b[k]!.at === a[k]!.at,
+    )
+  );
 }
 
 // OPEN: O-S1 — the draft slug lives in the org KV under (project, branch),
@@ -109,20 +185,26 @@ export function createDraftStore(deps: {
 }): DraftStore {
   const { kv, store } = deps;
 
-  const slugOf = async (ref: HostedDraftRef): Promise<string | null> => {
+  const recordOf = async (
+    ref: HostedDraftRef,
+  ): Promise<{ slug: string; edits: Record<string, DraftEdit> } | null> => {
     const record = await kv.get(ref.organizationId, slugKey(ref));
-    return typeof record?.slug === "string" ? record.slug : null;
+    return typeof record?.slug === "string"
+      ? { slug: record.slug, edits: parseEdits(record.edits) }
+      : null;
   };
 
   const load = async (ref: HostedDraftRef): Promise<LoadedDraft | null> => {
-    const slug = await slugOf(ref);
-    if (!slug) return null;
+    const record = await recordOf(ref);
+    if (!record) return null;
+    const { slug, edits } = record;
     const object = await store.get(deliveryKeys.draft(ref.site, slug));
-    if (!object) return { slug, body: emptyDraft(), etag: null };
+    if (!object) return { slug, body: emptyDraft(), etag: null, edits };
     return {
       slug,
       body: parseDraftBody(JSON.parse(object.text)),
       etag: object.etag,
+      edits,
     };
   };
 
@@ -135,13 +217,34 @@ export function createDraftStore(deps: {
         if (!current) {
           await kv.set(ref.organizationId, slugKey(ref), { slug });
         }
-        const body = change(current?.body ?? emptyDraft());
+        const before = current?.body ?? emptyDraft();
+        const body = change(before);
         const { etag } = await store.putJson(
           deliveryKeys.draft(ref.site, slug),
           body,
           CACHE_DRAFT,
         );
-        return { slug, body, etag };
+        const previous = current?.edits ?? {};
+        const edits = stampDraftEdits(
+          previous,
+          before,
+          body,
+          ref.editor,
+          new Date().toISOString(),
+        );
+        if (!sameEdits(previous, edits)) {
+          // After the object: a failed write here costs only the "changed
+          // by" line, never the save.
+          await kv
+            .set(ref.organizationId, slugKey(ref), { slug, edits })
+            .catch((error) =>
+              console.warn("hosted draft: edits not recorded", {
+                organizationId: ref.organizationId,
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+        }
+        return { slug, body, etag, edits };
       }),
     remove: (ref, expectedEtag) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
