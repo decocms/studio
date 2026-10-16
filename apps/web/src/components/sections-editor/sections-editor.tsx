@@ -609,6 +609,10 @@ export function SectionsEditor({
     formConflicts[0]
       ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
       : null,
+    // Theirs as stored: its `__meta` says who and when, first.
+    formConflicts[0]?.blockKey && decofile
+      ? (decofile as Record<string, unknown>)[formConflicts[0].blockKey]
+      : undefined,
   );
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
