@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseWebhookTransition } from "./trigger";
+import { movedByIntegration, parseWebhookTransition } from "./trigger";
 
 describe("parseWebhookTransition", () => {
   const updated = (items: Array<{ field: string; toString?: string }>) => ({
@@ -57,5 +57,41 @@ describe("parseWebhookTransition", () => {
     ]) {
       expect(parseWebhookTransition(bad)).toBeNull();
     }
+  });
+});
+
+/**
+ * A run that moves its issue on is handing it over: the next fire waits for
+ * that run to end instead of stopping it. Only the integration's own account
+ * counts; anything uncertain is treated as a person, who takes over at once.
+ */
+describe("movedByIntegration", () => {
+  const BOT = { accountId: "acc-bot", displayName: "Studio Bot" };
+  const client = { myself: async () => BOT };
+
+  it("is true for a move by the integration's account", async () => {
+    expect(await movedByIntegration(client, BOT)).toBe(true);
+  });
+
+  it("is false for a move by a person", async () => {
+    expect(
+      await movedByIntegration(client, {
+        accountId: "acc-ana",
+        displayName: "Ana",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a move with no author", async () => {
+    expect(await movedByIntegration(client, null)).toBe(false);
+  });
+
+  it("is false when the integration's account cannot be read", async () => {
+    const failing = {
+      myself: async (): Promise<typeof BOT> => {
+        throw new Error("401");
+      },
+    };
+    expect(await movedByIntegration(failing, BOT)).toBe(false);
   });
 });
