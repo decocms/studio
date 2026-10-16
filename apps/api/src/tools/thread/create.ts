@@ -170,7 +170,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       sandboxOnlyChats &&
       getSettings().sandboxPrewarmOnThreadCreateEnabled
     ) {
-      void prewarmThreadSandbox(ctx, userId, result).catch((err) =>
+      void prewarmThreadSandbox(ctx, result).catch((err) =>
         console.warn("[thread-create] sandbox prewarm failed", err),
       );
     }
