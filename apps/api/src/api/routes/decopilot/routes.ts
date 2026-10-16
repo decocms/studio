@@ -142,19 +142,6 @@ export function computeIdempotencyKey(
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
 }
 
-/** Whether any organization has a thread under this id. */
-async function threadIdInUse(
-  ctx: StudioContext,
-  threadId: string,
-): Promise<boolean> {
-  const row = await ctx.db
-    .selectFrom("threads")
-    .select("id")
-    .where("id", "=", threadId)
-    .executeTakeFirst();
-  return Boolean(row);
-}
-
 export function shouldPersistRequestMessage(input: {
   alreadyPersisted: boolean;
   role: ChatMessage["role"];
@@ -317,7 +304,7 @@ export function applyThreadLock(args: {
       // here would make the first turn use the synthetic "ephemeral" sandbox
       // while continuations use the thread's real branch. This matches the
       // pin-write resolution in the POST handler
-      // (`existingThread?.branch ?? …`).
+      // (`existingThread.branch ?? …`).
       //
       // Only consult the thread row when there is a real `taskIdInput`;
       // legacy callers with no thread id must ignore the row entirely (the
@@ -747,13 +734,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new ClaudeCodeProviderRequiredError();
       }
 
-      // Re-read the canonical row for its pin and message-storage version.
-      // Only a real null uses the legacy create-on-send path. A storage error
-      // must fail closed: treating it as a missing row could race a native pin
-      // and enqueue hosted work against the newly native thread.
+      // Re-read the canonical row for its pin and message-storage version. A
+      // storage error must fail closed: treating it as a missing row could
+      // race a native pin and enqueue hosted work against the newly native
+      // thread.
       const existingThread = await ctx.storage.threads.get(taskId);
-      // Thread ids are global: refuse another org's before writing parts under it.
-      if (!existingThread && (await threadIdInUse(ctx, taskId))) {
+      // Clients create the thread first; no row here is unknown or another org's.
+      if (!existingThread) {
         throw new HTTPException(404, { message: "Thread not found" });
       }
 
@@ -767,14 +754,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const fallbackBranch = sandboxOnlyChats
         ? threadBranch(taskId)
         : "ephemeral";
-      let branch = existingThread?.branch ?? input.branch ?? fallbackBranch;
+      let branch = existingThread.branch ?? input.branch ?? fallbackBranch;
 
       // Determine the pinned harness. If the thread row has one, use it.
       // Otherwise this is the first message — derive the hosted default and
       // persist it to the thread row.
-      let pinnedHarness = (existingThread?.harness_id ??
+      let pinnedHarness = (existingThread.harness_id ??
         null) as HarnessId | null;
-      let messageStorageVersion = existingThread?.message_storage_version ?? 2;
+      let messageStorageVersion = existingThread.message_storage_version;
 
       // A non-null harness is the runtime lock. An unlocked thread is claimed
       // by the hosted dispatcher.
@@ -789,40 +776,38 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         );
         assertHostedHarness(pinnedHarness);
 
-        if (existingThread) {
-          // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
-          // every NEW thread (no prior messages, not already v2) to v2 so the
-          // ingest → JetStream → durable-projector pipeline persists its parts.
-          // Pre-existing v1 threads WITH history stay v1: deprecated read-only
-          // legacy — their `thread_messages` rows still render via the v1 read
-          // path; no backfill. The message-count probe only runs for not-yet-v2
-          // threads, so already-v2 threads add no DB read.
-          let pinV2 = false;
-          if (existingThread.message_storage_version !== 2) {
-            try {
-              const { total } = await ctx.storage.threads.listMessages(taskId, {
-                limit: 1,
-              });
-              pinV2 = total === 0;
-            } catch {
-              pinV2 = false;
-            }
+        // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
+        // every NEW thread (no prior messages, not already v2) to v2 so the
+        // ingest → JetStream → durable-projector pipeline persists its parts.
+        // Pre-existing v1 threads WITH history stay v1: deprecated read-only
+        // legacy — their `thread_messages` rows still render via the v1 read
+        // path; no backfill. The message-count probe only runs for not-yet-v2
+        // threads, so already-v2 threads add no DB read.
+        let pinV2 = false;
+        if (existingThread.message_storage_version !== 2) {
+          try {
+            const { total } = await ctx.storage.threads.listMessages(taskId, {
+              limit: 1,
+            });
+            pinV2 = total === 0;
+          } catch {
+            pinV2 = false;
           }
-          // Claim all runtime pins in one CAS. A native start can race this
-          // request, so an unconditional update would let the hosted path
-          // overwrite a runtime that became native after our preceding read.
-          const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
-            harnessId: pinnedHarness,
-            branch,
-            ...(pinV2 ? { messageStorageVersion: 2 } : {}),
-          });
-          if (!claimed.thread) {
-            throw new HTTPException(404, { message: "Thread not found" });
-          }
-          pinnedHarness = claimed.thread.harness_id as HarnessId | null;
-          branch = claimed.thread.branch ?? fallbackBranch;
-          messageStorageVersion = claimed.thread.message_storage_version;
         }
+        // Claim all runtime pins in one CAS. A native start can race this
+        // request, so an unconditional update would let the hosted path
+        // overwrite a runtime that became native after our preceding read.
+        const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
+          harnessId: pinnedHarness,
+          branch,
+          ...(pinV2 ? { messageStorageVersion: 2 } : {}),
+        });
+        if (!claimed.thread) {
+          throw new HTTPException(404, { message: "Thread not found" });
+        }
+        pinnedHarness = claimed.thread.harness_id as HarnessId | null;
+        branch = claimed.thread.branch ?? fallbackBranch;
+        messageStorageVersion = claimed.thread.message_storage_version;
       }
       // Reject a persisted non-hosted runtime before mutating it.
       assertHostedHarness(pinnedHarness);
@@ -836,7 +821,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       // Re-assert against the canonical row: a task-board run can mark the
       // thread read-only between `validate()`'s read and this one.
-      if (existingThread?.metadata?.read_only === true) {
+      if (existingThread.metadata?.read_only === true) {
         throw new HTTPException(409, {
           message: "Thread is read only and cannot accept new messages",
         });
@@ -958,7 +943,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
       if (
-        existingThread?.status !== "in_progress" &&
+        existingThread.status !== "in_progress" &&
         shouldPublishRunStatus(pinnedHarness)
       ) {
         await publishRunStatusStage({

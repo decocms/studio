@@ -1,11 +1,11 @@
 /**
- * E2E: a message posted to a thread id the caller's organization does not
- * own is refused, and nothing is stored under that id.
+ * E2E: a message posted to a thread id the caller's organization has no
+ * thread under is refused, and nothing is stored under that id.
  *
  * Thread ids are global and the message route takes one from the path, while
- * message parts are read by thread id alone. So the route has to tell "a new
- * thread" (no row anywhere) from "another organization's thread" (a row it
- * cannot see) before it writes anything.
+ * message parts are read by thread id alone. Clients create the thread first,
+ * so a missing row is either an id nobody created or another organization's
+ * thread, and neither may take a message.
  */
 import type { APIRequestContext } from "@playwright/test";
 import { signUpViaApi } from "../fixtures/auth-api";
@@ -147,6 +147,29 @@ test("a message for another organization's thread is refused, and nothing is sto
     expect(rows).toEqual([]);
   } finally {
     await other.dispose();
+    await db.end();
+  }
+});
+
+test("a message for a thread id nobody created is refused", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  const db = await connectDevDb();
+  try {
+    const { agentId } = await configureOrg(api, db, orgSlug);
+    const threadId = `thrd_never_created_${Date.now()}`;
+
+    const res = await postMessage(api, orgSlug, threadId, agentId, "msg-1");
+
+    expect(res.status()).toBe(404);
+    const { rows } = await db.query(
+      "SELECT 1 FROM threads WHERE id = $1 UNION ALL SELECT 1 FROM thread_message_parts WHERE thread_id = $1",
+      [threadId],
+    );
+    expect(rows).toEqual([]);
+  } finally {
     await db.end();
   }
 });
