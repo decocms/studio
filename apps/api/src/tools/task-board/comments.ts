@@ -143,7 +143,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
   description:
     "Post a comment on a task board item, or a reply to one. " +
     'Inside a task run a new comment is `internal` by default: handoff for other agents, hidden from the people reading the task. Pass `audience: "human"` for the note written for them. A reply takes the audience of the comment it answers unless you pass one. ' +
-    "In a run a person started or wrote to from a comment, a comment with no `parentId` is a reply in that person's comment thread. " +
+    "Inside a run, a comment with no `parentId` is a reply in the run's comment thread on the card: under the person's comment that started or wrote to the run (and then for them), or under the note that opened a board run's thread (still `internal` by default). " +
     "A person's comment that mentions the Super Agent, or replies in a run's comment thread, goes to that run (or starts one); it is refused while another run is working the card.",
   annotations: {
     title: "Create Task Comment",
