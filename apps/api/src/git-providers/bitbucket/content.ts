@@ -117,6 +117,20 @@ export type ResolvedChange =
   | { path: string; deleted: true };
 
 /**
+ * Bitbucket's `POST /src` reads these field names as commit metadata, not as
+ * file content — a write to a path with one of these names would silently
+ * overwrite (or be swallowed by) the commit's own message, branch or parent,
+ * rather than writing the file the caller asked for.
+ */
+const RESERVED_SRC_FORM_FIELDS = new Set([
+  "message",
+  "author",
+  "files",
+  "branch",
+  "parents",
+]);
+
+/**
  * The multipart body of `POST /src`: `message`, `branch`, `parents`, one
  * field per written file named by its path, and a `files` entry per deleted
  * path. Two changes to one path collapse to the last one. Null when nothing
@@ -138,6 +152,13 @@ export function buildCommitForm(params: {
   const form = new FormData();
   let entries = 0;
   for (const [path, change] of collapsed) {
+    if (RESERVED_SRC_FORM_FIELDS.has(path)) {
+      throw new GitProviderError({
+        provider: "bitbucket",
+        status: 400,
+        message: `Bitbucket cannot write a file literally named "${path}": it collides with POST /src's own form field`,
+      });
+    }
     if ("deleted" in change) {
       if (!params.existsAtParent(path)) continue;
       form.append("files", path);
