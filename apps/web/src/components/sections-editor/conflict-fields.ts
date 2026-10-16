@@ -26,6 +26,18 @@ function pointerLabels(pointer: string, schema?: SchemaProperty | null) {
 }
 
 /**
+ * One value's label as the form shows it: `/slides/0/title` reads "Slides ›
+ * 1 › Title" with the section's schema, "slides › 1 › title" without.
+ */
+export function conflictFieldLabel(
+  pointer: string,
+  schema?: SchemaProperty | null,
+): string {
+  const parts = pointerLabels(pointer, schema);
+  return parts.length > 0 ? parts.join(" › ") : "*";
+}
+
+/**
  * Human-readable list of the values an edit and the stored block both
  * changed, from their JSON pointers: `/slides/0/title` reads "slides › 1 ›
  * title", or with the section's schema the form's own labels ("Slides › 1 ›
@@ -36,12 +48,7 @@ export function describeConflictFields(
   schema?: SchemaProperty | null,
 ): string {
   const labels = [
-    ...new Set(
-      pointers.map((pointer) => {
-        const parts = pointerLabels(pointer, schema);
-        return parts.length > 0 ? parts.join(" › ") : "*";
-      }),
-    ),
+    ...new Set(pointers.map((pointer) => conflictFieldLabel(pointer, schema))),
   ];
   const shown = labels.slice(0, MAX_LISTED).join(", ");
   const rest = labels.length - MAX_LISTED;

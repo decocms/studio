@@ -41,23 +41,30 @@ import {
   findSectionMovedTo,
   focusInside,
   formSourceMovedOn,
-  formValueOnBase,
-  displayedOverBase,
-  markEditedSinceDisplayed,
   isOwnVersion,
-  mergedFormDisplay,
   rememberOwnVersion,
   sectionFormSource,
   sectionTypeChanged,
+  showMergeInForm,
   trackFormChange,
   type FormBase,
 } from "./form-base";
-import { describeConflictFields } from "./conflict-fields";
+import {
+  type ConflictChoices,
+  carryConflictChoices,
+  chooseAll,
+  conflictFields,
+  everyConflictChosen,
+  type FormConflictPlan,
+  planFormConflict,
+  resolveFormConflict,
+} from "./form-conflict";
+import { FormConflictDialog, FormConflictNotice } from "./form-conflict-dialog";
 import { BlockConflictError } from "./decofile-api";
-import { canonicalBlockJson, mergeBlockJson } from "@decocms/shared/decofile";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
-import { resolveSchema } from "./resolve-schema";
+import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -160,6 +167,70 @@ const STALE_FORM_TOAST = "section-form-stale-save";
 /** Refused saves the form rebuilds and retries before reloading. */
 const CONFLICT_RETRIES = 3;
 const CONFLICT_RETRY_BASE_MS = 1_000;
+
+/**
+ * Where a section form's save goes, fixed when the save is scheduled: the
+ * form's record, the page (or global block) and the variants it was on. A
+ * save that runs later (a retry, a choice made after the user moved on)
+ * still writes there.
+ */
+interface FormSaveTarget {
+  formBase: FormBase | null;
+  pageKey: string | null;
+  global: boolean;
+  pageVariantIndex: number;
+  sectionVariantIndex: number;
+  /** The section's schema, for the fields' labels. */
+  schema: SchemaProperty | null;
+}
+
+/** The sections of a save target's page as stored in `decofile`. */
+function sectionsAtTarget(
+  decofile: Record<string, unknown>,
+  target: FormSaveTarget,
+) {
+  const pageVariants: PageVariant[] =
+    target.global && target.pageKey
+      ? [
+          {
+            label: "Default",
+            sections: [{ __resolveType: target.pageKey } as RawSection],
+          },
+        ]
+      : parsePageVariantsForEditor(
+          target.pageKey
+            ? (decofile[target.pageKey] as Record<string, unknown> | undefined)
+                ?.sections
+            : undefined,
+          decofile,
+        );
+  const variantIndex = Math.max(
+    0,
+    Math.min(target.pageVariantIndex, pageVariants.length - 1),
+  );
+  const rawSections: RawSection[] = pageVariants[variantIndex]?.sections ?? [];
+  return {
+    pageVariants,
+    variantIndex,
+    rawSections,
+    parsedSections: parseSections(rawSections, decofile),
+  };
+}
+
+/**
+ * A save that found the user and someone else changed the same values of a
+ * section: it waits, with the form's other saves, for the user to choose
+ * (FormConflictDialog).
+ */
+interface PendingFormConflict {
+  plan: FormConflictPlan;
+  formBase: FormBase;
+  target: FormSaveTarget;
+  sectionIndex: number;
+  choices: ConflictChoices;
+  /** Their version changed again since the dialog first showed it. */
+  changedAgain: boolean;
+}
 
 export function SectionsEditor({
   orgSlug,
@@ -423,8 +494,15 @@ export function SectionsEditor({
   const formSaveRetryPendingRef = useRef(false);
   const waitingFormSavesRef = useRef(new Map<string, () => void>());
   // The open form re-reads the stored section once the user leaves it: a
-  // change it can't show under their cursor (see mergedFormDisplay).
+  // change it can't show under their cursor (see reloadStaleForm).
   const formRefreshOnLeaveRef = useRef(false);
+  // Saves waiting for the user to choose between their version and someone
+  // else's (FormConflictDialog), first one shown. Mirrors `formConflicts`
+  // for the timers.
+  const formConflictsRef = useRef<PendingFormConflict[]>([]);
+  // Forms whose choice was applied and not yet saved: asked again, their
+  // version changed again meanwhile.
+  const choiceAppliedRef = useRef(new WeakSet<FormBase>());
 
   // Keep a ref to the latest render-scope values so debounced callbacks
   // always read fresh data instead of a stale closure.
@@ -451,6 +529,11 @@ export function SectionsEditor({
   // A request to re-seed the open form from the stored section (see reloadStaleForm).
   const [formReloadRequest, setFormReloadRequest] = useState(0);
   const [formReloadHandled, setFormReloadHandled] = useState(0);
+  // See formConflictsRef; the dialog shows the first, one at a time.
+  const [formConflicts, setFormConflictsState] = useState<
+    PendingFormConflict[]
+  >([]);
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
   // Declared above the early returns below: a hook after a conditional return
   // is skipped on the loading render, so the next render calls one more hook
@@ -789,6 +872,54 @@ export function SectionsEditor({
     }
   }
 
+  // Their version changed again while the user's choice waits (the editor
+  // read a newer copy): the dialog shows that one, keeping the choices that
+  // still apply. Nothing is written until they apply.
+  const waitingChoice = formConflicts[0];
+  if (waitingChoice) {
+    const { formBase: waitingBase, target: waitingTarget } = waitingChoice;
+    const at = sectionsAtTarget(decofile, waitingTarget);
+    const index = waitingBase.sectionIndex;
+    const nowStored =
+      at.rawSections.length === waitingBase.sectionCount
+        ? sectionFormSource(
+            at.rawSections[index],
+            at.parsedSections[index],
+            waitingTarget.sectionVariantIndex,
+            decofile,
+          )
+        : null;
+    if (
+      nowStored &&
+      !sectionTypeChanged(waitingChoice.plan.ancestor, nowStored) &&
+      formSourceMovedOn(waitingChoice.plan.theirs, nowStored) &&
+      !isOwnVersion(waitingBase, nowStored)
+    ) {
+      const plan = planFormConflict({
+        ...waitingChoice.plan,
+        theirs: nowStored,
+      });
+      // With no clash left, the choice stays as asked: applying it merges
+      // onto the newer copy whichever version was picked.
+      if (plan.pointers.length > 0) {
+        const updated: PendingFormConflict = {
+          ...waitingChoice,
+          plan,
+          choices: carryConflictChoices(
+            waitingChoice.plan,
+            waitingChoice.choices,
+            plan,
+          ),
+          changedAgain: true,
+        };
+        const next = [updated, ...formConflicts.slice(1)];
+        // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mirrors the state set below for the save timers
+        formConflictsRef.current = next;
+        setFormConflictsState(next);
+      }
+    }
+  }
+
   const sandbox = {
     orgSlug,
     virtualMcpId,
@@ -892,11 +1023,13 @@ export function SectionsEditor({
 
   /**
    * Re-read the stored section into the form, when one waits for the user to
-   * leave it (see mergedFormDisplay): once they have and the form's own saves
+   * leave it (see reloadStaleForm): once they have and the form's own saves
    * have settled, so it shows what those saves stored.
    */
   const refreshFormIfLeft = () => {
     if (!formRefreshOnLeaveRef.current || editingForm()) return;
+    // Not while the form's edits wait for the user's choice.
+    if (formConflictsRef.current.length > 0) return;
     if (
       debounceRef.current !== null ||
       formSaveInFlightRef.current ||
@@ -930,20 +1063,201 @@ export function SectionsEditor({
     }, delay);
   };
 
+  /** Where a save of the open form's section goes (see FormSaveTarget). */
+  const openFormTarget = (sectionIndex: number): FormSaveTarget => {
+    const { activePageKey, variantIndex, sectionVariantIndex } =
+      latestRef.current;
+    const tracked = formBaseRef.current;
+    return {
+      formBase:
+        tracked?.sectionIndex === sectionIndex &&
+        tracked.variantIndex === sectionVariantIndex
+          ? tracked
+          : null,
+      pageKey: activePageKey,
+      global: isGlobalBlockMode,
+      pageVariantIndex: variantIndex,
+      sectionVariantIndex,
+      schema: activeSchema,
+    };
+  };
+
+  const setFormConflicts = (next: PendingFormConflict[]) => {
+    formConflictsRef.current = next;
+    setFormConflictsState(next);
+  };
+
+  /**
+   * A form's save found the user and someone else changed the same values:
+   * ask them (one dialog, the first waiting choice). Asked again for the same
+   * form, the dialog shows the new versions and keeps the choices that still
+   * apply.
+   */
+  const waitForChoice = (conflict: PendingFormConflict) => {
+    const list = formConflictsRef.current;
+    const i = list.findIndex((item) => item.formBase === conflict.formBase);
+    const previous = i >= 0 ? list[i] : undefined;
+    const next = previous
+      ? list.with(i, {
+          ...conflict,
+          choices: carryConflictChoices(
+            previous.plan,
+            previous.choices,
+            conflict.plan,
+          ),
+          changedAgain:
+            previous.changedAgain ||
+            canonicalBlockJson(previous.plan.theirs) !==
+              canonicalBlockJson(conflict.plan.theirs),
+        })
+      : [
+          ...list,
+          {
+            ...conflict,
+            changedAgain: choiceAppliedRef.current.has(conflict.formBase),
+          },
+        ];
+    setFormConflicts(next);
+    setConflictDialogOpen(true);
+  };
+
+  /**
+   * True while `formBase` waits for the user's choice; `mine`, the form's
+   * value now, becomes their version. When it no longer clashes with theirs
+   * (they typed back what is stored), the choice is dropped and the save goes
+   * ahead.
+   */
+  const waitsForChoice = (
+    formBase: FormBase,
+    mine: Record<string, unknown>,
+  ): boolean => {
+    const list = formConflictsRef.current;
+    const i = list.findIndex((item) => item.formBase === formBase);
+    const waiting = list[i];
+    if (!waiting) return false;
+    if (canonicalBlockJson(waiting.plan.mine) === canonicalBlockJson(mine)) {
+      return true;
+    }
+    const plan = planFormConflict({ ...waiting.plan, mine });
+    if (plan.pointers.length === 0) {
+      const rest = list.filter((item) => item !== waiting);
+      setFormConflicts(rest);
+      if (rest.length === 0) setConflictDialogOpen(false);
+      return false;
+    }
+    setFormConflicts(
+      list.with(i, {
+        ...waiting,
+        plan,
+        choices: carryConflictChoices(waiting.plan, waiting.choices, plan),
+      }),
+    );
+    return true;
+  };
+
+  /** The open form is on the section a waiting choice is about. */
+  const formShowsTarget = (conflict: PendingFormConflict) => {
+    const latest = latestRef.current;
+    return (
+      latest.selectedSectionIndex === conflict.formBase.sectionIndex &&
+      latest.activePageKey === conflict.target.pageKey &&
+      latest.variantIndex === conflict.target.pageVariantIndex &&
+      latest.sectionVariantIndex === conflict.target.sectionVariantIndex
+    );
+  };
+
+  /**
+   * The first waiting choice with the form's latest value as the user's
+   * version: what they typed since it was asked, saved or not yet. Drops the
+   * form's armed and queued saves, which held older copies of that value.
+   */
+  const latestWaitingChoice = (): PendingFormConflict | null => {
+    const first = formConflictsRef.current[0];
+    if (!first) return null;
+    const { formBase, target } = first;
+    if (
+      debounceRef.current &&
+      pendingSectionSaveRef.current?.sectionIndex === formBase.sectionIndex &&
+      pendingSectionSaveRef.current.sectionVariantIndex ===
+        target.sectionVariantIndex
+    ) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      pendingSectionSaveRef.current = null;
+    }
+    waitingFormSavesRef.current.delete(
+      `${target.pageKey}:${formBase.sectionIndex}:${target.sectionVariantIndex}`,
+    );
+    const mine = formBase.emitted;
+    if (
+      mine &&
+      typeof mine === "object" &&
+      !waitsForChoice(formBase, mine as Record<string, unknown>)
+    ) {
+      // No clash left: the form's edit is saved like any other.
+      scheduleAutoSave(
+        mine as Record<string, unknown>,
+        formBase.sectionIndex,
+        0,
+        target,
+      );
+    }
+    return formConflictsRef.current[0] ?? null;
+  };
+
+  /** "Choose versions": ask again, with what the form holds now. */
+  const reviewFormConflict = () => {
+    if (latestWaitingChoice()) setConflictDialogOpen(true);
+  };
+
+  /**
+   * The user chose: save their pick, value by value, over their version (the
+   * stored section the dialog showed). The save expects that version; one
+   * stored meanwhile refuses it, and the same choice is asked again with the
+   * newer version.
+   */
+  const applyFormConflict = () => {
+    const shown = formConflictsRef.current[0];
+    const conflict = latestWaitingChoice();
+    // Nothing left to choose (the user typed back what is stored): that save
+    // went ahead on its own.
+    if (!conflict || conflict.formBase !== shown?.formBase) return;
+    // What they typed just before clashes on a value they haven't chosen
+    // for yet: the dialog now shows it.
+    if (!everyConflictChosen(conflict.plan, conflict.choices)) return;
+    const resolved = resolveFormConflict(conflict.plan, conflict.choices);
+    const rest = formConflictsRef.current.slice(1);
+    setFormConflicts(rest);
+    setConflictDialogOpen(rest.length > 0);
+    const { formBase, target } = conflict;
+    formBase.base = conflict.plan.theirs;
+    formBase.emitted = resolved;
+    choiceAppliedRef.current.add(formBase);
+    if (formBaseRef.current === formBase || formShowsTarget(conflict)) {
+      formBaseRef.current = formBase;
+      setFormValue(resolved);
+      setFormResetKey((key) => key + 1);
+    }
+    scheduleAutoSave(resolved, formBase.sectionIndex, 0, target);
+  };
+
+  const setConflictChoices = (choices: ConflictChoices) => {
+    const [first, ...rest] = formConflictsRef.current;
+    if (first) setFormConflicts([{ ...first, choices }, ...rest]);
+  };
+
   const scheduleAutoSave = (
     /** The form's value, or a getter read when the save runs (a retry). */
     nextInput: Record<string, unknown> | (() => Record<string, unknown>),
     sectionIndex: number,
     /** Saves already refused for building on an outdated copy. */
     conflicts = 0,
+    /** Where it goes; by default the open form's section. */
+    given?: FormSaveTarget,
   ) => {
-    const targetSectionVariantIndex = latestRef.current.sectionVariantIndex;
-    const tracked = formBaseRef.current;
-    const formBase =
-      tracked?.sectionIndex === sectionIndex &&
-      tracked.variantIndex === targetSectionVariantIndex
-        ? tracked
-        : null;
+    const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
+    const targetSectionVariantIndex = target.sectionVariantIndex;
+    const formBase = target.formBase;
     const pending = pendingSectionSaveRef.current;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -958,7 +1272,7 @@ export function SectionsEditor({
       }
     }
 
-    const waitingKey = `${sectionIndex}:${targetSectionVariantIndex}`;
+    const waitingKey = `${target.pageKey}:${sectionIndex}:${targetSectionVariantIndex}`;
     const write = () => {
       // Built now, this save would assume the one on the wire lands; it runs
       // once that one settles instead (runWaitingFormSaves).
@@ -966,19 +1280,20 @@ export function SectionsEditor({
         waitingFormSavesRef.current.set(waitingKey, write);
         return;
       }
-      const formValue =
+      const nextValue =
         typeof nextInput === "function" ? nextInput() : nextInput;
-      // What the user changed since a merge they were told about is theirs;
-      // the rest of what the form shows defers to the stored section.
-      const nextValue = formValueOnBase(formBase, formValue);
+      // The form waits for the user's choice between their version and
+      // someone else's: nothing of it is saved until then, and what they
+      // change meanwhile is part of their version.
+      if (formBase && waitsForChoice(formBase, nextValue)) return;
+      const latestDecofile = latestRef.current.decofile;
       const {
         rawSections: latestRawSections,
         parsedSections: latestParsedSections,
-        decofile: latestDecofile,
-        activePageKey: latestPageKey,
         pageVariants: latestVariants,
         variantIndex: latestVariantIndex,
-      } = latestRef.current;
+      } = sectionsAtTarget(latestDecofile, target);
+      const latestPageKey = target.pageKey;
       const rawSection = latestRawSections[sectionIndex];
       if (!rawSection) return;
       const parsed = latestParsedSections[sectionIndex];
@@ -1034,57 +1349,48 @@ export function SectionsEditor({
         if (typeof movedTo === "number" && formBase) {
           formBase.sectionCount = latestRawSections.length;
           formBase.sectionIndex = movedTo;
-          setSelectedSectionIndex(movedTo);
-          scheduleAutoSave(nextValue, movedTo, conflicts);
+          if (formBaseRef.current === formBase)
+            setSelectedSectionIndex(movedTo);
+          scheduleAutoSave(nextValue, movedTo, conflicts, target);
           return;
         }
       }
-      // The section changed since the form last saved it (a publish, a sync):
-      // apply the form's own edits on top of what is stored. Where both
-      // changed the same value, the stored one stays and the user is told.
-      const overwritten: string[] = [];
-      const rebased =
+      // The section changed since the form last saved it (a publish, a sync,
+      // another editor): apply the form's own edits on top of what is stored.
+      const plan =
         movedOn && startedFrom && stored
-          ? (mergeBlockJson(startedFrom, nextValue, stored, {
-              prefer: "theirs",
-              conflicts: overwritten,
-            }) as Record<string, unknown>)
+          ? planFormConflict({
+              ancestor: startedFrom,
+              mine: nextValue,
+              theirs: stored,
+            })
           : null;
+      // Both changed some of the same values: nothing is written until the
+      // user chooses whose version to keep, value by value.
+      if (plan && plan.pointers.length > 0 && formBase) {
+        formBase.sectionCount = latestRawSections.length;
+        waitForChoice({
+          plan,
+          formBase,
+          target,
+          sectionIndex,
+          choices: {},
+          changedAgain: false,
+        });
+        return;
+      }
+      const rebased = plan ? plan.merged : null;
       const value = rebased ?? nextValue;
-      // Show the merged section only while the form is still on it and has
-      // not moved past `nextValue`, and not under the user's cursor when it
-      // replaces a field they changed (mergedFormDisplay). Under their cursor
-      // the form keeps what they typed while its baseline becomes the merge,
-      // so what they type next is saved over the stored value they were told
-      // about, and the fields they leave alone keep it.
-      const display = mergedFormDisplay({
+      // Show the merged section while the form is still on it and has not
+      // moved past `nextValue`. The merge kept every value the user changed,
+      // so nothing under their cursor changes.
+      const showRebased = showMergeInForm({
         merged: !!rebased,
         tracked: formBase,
         current: formBaseRef.current,
-        saved: formValue,
-        keptStored: overwritten.length > 0,
-        editing: editingForm(),
+        saved: nextValue,
       });
-      const showRebased = display === "now";
-      if (display === "on-leave") formRefreshOnLeaveRef.current = true;
-      if (overwritten.length > 0) {
-        // Nothing of the form's own is left to save when the merge is just
-        // what is stored.
-        const onlyThose =
-          !!stored &&
-          canonicalBlockJson(rebased) === canonicalBlockJson(stored);
-        toast.warning(
-          t(
-            onlyThose
-              ? "sectionsEditor.sectionsEditor.formFieldsKeptFromStoredOnly"
-              : "sectionsEditor.sectionsEditor.formFieldsKeptFromStored",
-            {
-              fields: describeConflictFields(overwritten, activeSchema),
-            },
-          ),
-          { id: STALE_FORM_TOAST },
-        );
-      } else if (rebased) {
+      if (rebased) {
         toast.info(t("sectionsEditor.sectionsEditor.blockMergedWithOthers"), {
           id: STALE_FORM_TOAST,
         });
@@ -1094,23 +1400,20 @@ export function SectionsEditor({
         setFormValue(rebased);
       }
       // The stored copy becomes this value; a failed write puts it back.
-      const savedBase =
-        showRebased || !rebased || display === "on-leave" ? value : nextValue;
-      const displayedBefore = formBase?.displayed;
+      const savedBase = showRebased || !rebased ? value : nextValue;
       if (formBase) {
         formBase.base = savedBase;
-        formBase.displayed = showRebased
-          ? undefined
-          : displayedOverBase(formValue, savedBase);
         formBase.sectionCount = latestRawSections.length;
         rememberOwnVersion(formBase, savedBase);
       }
       const saveCallbacks = {
-        onSuccess: () => onSaved?.(),
+        onSuccess: () => {
+          if (formBase) choiceAppliedRef.current.delete(formBase);
+          onSaved?.();
+        },
         onError: (err: Error) => {
           if (formBase?.base === savedBase && startedFrom) {
             formBase.base = startedFrom;
-            formBase.displayed = displayedBefore;
           }
           if (err instanceof BlockConflictError) {
             // The save re-read the branch; build on that copy again. Right
@@ -1134,6 +1437,7 @@ export function SectionsEditor({
                     },
                     sectionIndex,
                     conflicts + 1,
+                    target,
                   );
                   // Saves of this form made meanwhile are in the retry; the
                   // others run behind it (or now, when it sends nothing).
@@ -1332,15 +1636,6 @@ export function SectionsEditor({
         next,
         sectionCount: latestRef.current.rawSections.length,
       });
-      // While the form shows the user's text over a merge (FormBase.displayed),
-      // what they change from here on is theirs, even typed back the same.
-      const tracked = formBaseRef.current;
-      if (tracked?.displayed) {
-        tracked.displayed = markEditedSinceDisplayed(
-          tracked.displayed,
-          next,
-        ) as Record<string, unknown>;
-      }
     }
     setFormValue(next);
     if (selectedSectionIndex !== null) {
@@ -3919,6 +4214,32 @@ export function SectionsEditor({
             </div>
           )}
         </div>
+
+        {formConflicts.length > 0 && !conflictDialogOpen && (
+          <FormConflictNotice onReview={reviewFormConflict} />
+        )}
+        {waitingChoice && (
+          <FormConflictDialog
+            open={conflictDialogOpen}
+            fields={conflictFields(
+              waitingChoice.plan,
+              waitingChoice.target.schema,
+            )}
+            choices={waitingChoice.choices}
+            changedAgain={waitingChoice.changedAgain}
+            onChoose={(pointer, choice) =>
+              setConflictChoices({
+                ...waitingChoice.choices,
+                [pointer]: choice,
+              })
+            }
+            onChooseAll={(choice) =>
+              setConflictChoices(chooseAll(waitingChoice.plan, choice))
+            }
+            onApply={applyFormConflict}
+            onDecideLater={() => setConflictDialogOpen(false)}
+          />
+        )}
 
         {/* Drill-down: section form or global-block form, else the panel accordion */}
         {managingSectionVariants ? (
