@@ -273,6 +273,8 @@ export const sectionsEditor = {
     "Not saved: {fields} changed while you were editing. The latest version is loaded.",
   "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
     "Changed while you were editing: {fields}. The latest version of those fields was kept, and the rest of your changes were saved.",
+  "sectionsEditor.sectionsEditor.formFieldsKeptFromStoredOnly":
+    "Changed while you were editing: {fields}. The latest version was kept.",
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "This section was replaced while you were editing. The form now shows the current section, and your last change was not saved.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":
