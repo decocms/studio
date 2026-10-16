@@ -194,6 +194,12 @@ export async function openReviewCycleForRun(
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
+    if (
+      threadId &&
+      !(await ctx.storage.taskBoard.runMovesLinkedCards(threadId, orgId))
+    ) {
+      return;
+    }
     for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const opened = await ctx.storage.taskBoard.openReviewCycleIfInProgress(
         itemId,
@@ -348,6 +354,7 @@ export async function reactToFailedTaskRun(
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
     if (!failure) return;
+    const movesCards = await taskBoard.runMovesLinkedCards(threadId, orgId);
     const budget = retryBudgetFor(failure);
     for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(itemId, orgId);
@@ -363,6 +370,7 @@ export async function reactToFailedTaskRun(
           .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
           .catch(() => {});
       }
+      if (!movesCards) continue;
       if (item.status !== LANES.progress) continue;
       // A REVIEWER's run failed, not the author's, on a card whose cycle the
       // previous release opened In Progress. Retrying it here would dispatch a

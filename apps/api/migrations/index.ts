@@ -28,6 +28,7 @@ import * as migration248dropretiredruletables from "./248-drop-retired-rule-tabl
 import * as migration249taskboarditemproject from "./249-task-board-item-project";
 import * as migration250githubcopilotsubscriptions from "./250-github-copilot-subscriptions";
 import * as migration251orgsharedplans from "./251-org-shared-plans";
+import * as migration252automationlinkedchattrigger from "./252-automation-linked-chat-trigger";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -542,6 +543,7 @@ const migrations: Record<string, Migration> = {
   "249-task-board-item-project": migration249taskboarditemproject,
   "250-github-copilot-subscriptions": migration250githubcopilotsubscriptions,
   "251-org-shared-plans": migration251orgsharedplans,
+  "252-automation-linked-chat-trigger": migration252automationlinkedchattrigger,
 };
 
 export default migrations;

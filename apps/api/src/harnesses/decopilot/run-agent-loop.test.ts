@@ -220,6 +220,7 @@ describe("runAgentLoop PR-open → task board thread-link resolution", () => {
       storage: {
         virtualMcps: { list: async () => [] },
         taskBoard: {
+          runMovesLinkedCards: async () => true,
           linkedTaskIds: async (threadId: string, orgId: string) => {
             linkedCalls.push({ threadId, orgId });
             return [];

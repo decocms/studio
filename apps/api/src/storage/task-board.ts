@@ -9,8 +9,13 @@ import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
-import { IMPLEMENTER_SYSTEM_KEY } from "../automations/builtin";
+import {
+  IMPLEMENTER_SYSTEM_KEY,
+  LINKED_CHATS_SYSTEM_KEY,
+} from "../automations/builtin";
 import { isReportsTask } from "../billing/task-quota";
+import { isBoardRunThread } from "../tools/task-board/task-run-context";
+import { createAutomationsStorage } from "./automations";
 import type {
   Database,
   TaskBoardActivity,
@@ -1918,6 +1923,54 @@ export class TaskBoardStorage {
     return row.systemKey !== IMPLEMENTER_SYSTEM_KEY;
   }
 
+  /**
+   * The thread is a run of the built-in Implementer: its trigger is the
+   * Implementer's, or it is a trigger-less board run from before every card
+   * run was an Implementer fire (#7933) and not a reviewer's.
+   */
+  async isImplementerRun(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("threads as t")
+      .leftJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
+      .leftJoin("automations as a", "a.id", "tr.automation_id")
+      .select([
+        "t.title",
+        "t.metadata",
+        "t.trigger_id as triggerId",
+        "a.system_key as systemKey",
+      ])
+      .where("t.id", "=", threadId)
+      .where("t.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return false;
+    if (row.triggerId) return row.systemKey === IMPLEMENTER_SYSTEM_KEY;
+    return (
+      isBoardRunThread(row) &&
+      !REVIEWER_KINDS.some((kind) => isReviewerThreadTitle(row.title, kind))
+    );
+  }
+
+  /**
+   * Whether a run on `threadId` may move the cards it is linked to. The
+   * Implementer's always may; any other thread only while the built-in "Move
+   * cards from linked chats" is on, and an org not seeded with it yet keeps
+   * the behavior it had before it existed.
+   */
+  async runMovesLinkedCards(
+    threadId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    if (await this.isImplementerRun(threadId, organizationId)) return true;
+    const on = await createAutomationsStorage(this.db).builtinActive(
+      organizationId,
+      LINKED_CHATS_SYSTEM_KEY,
+    );
+    return on ?? true;
+  }
+
   async advanceLinkedTasksToReviewOnThreadFinish(
     threadId: string,
     organizationId: string,
@@ -1926,6 +1979,9 @@ export class TaskBoardStorage {
     // Handing a finished card on is the Implementer's step. Another
     // automation's run works the card where it is.
     if (await this.isOtherAutomationRun(threadId, organizationId)) return moved;
+    if (!(await this.runMovesLinkedCards(threadId, organizationId))) {
+      return moved;
+    }
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
@@ -2165,6 +2221,7 @@ export class TaskBoardStorage {
     ) {
       return [];
     }
+    if (!(await this.runMovesLinkedCards(threadId, organizationId))) return [];
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);

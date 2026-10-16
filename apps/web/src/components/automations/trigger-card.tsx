@@ -79,7 +79,12 @@ export function TriggerCard({
   const isCron = trigger.type === "cron";
   const isWebhook = trigger.type === "webhook";
   const isColumnTransition = trigger.type === "board_column_transition";
-  const isPrReady = trigger.type === "board_pr_ready";
+  const prStarter =
+    trigger.type === "board_pr_ready"
+      ? t("automations.triggerCard.prReady")
+      : trigger.type === "linked_chat_run"
+        ? t("automations.triggerCard.linkedChatRun")
+        : null;
   const isJiraTransition = trigger.type === "jira_transition";
 
   const handleRemove = async () => {
@@ -163,7 +168,7 @@ export function TriggerCard({
           <Clock size={14} className="text-muted-foreground shrink-0" />
         ) : isJiraTransition ? (
           <JiraIcon size={14} className="shrink-0" />
-        ) : isColumnTransition || isPrReady ? (
+        ) : isColumnTransition || prStarter ? (
           <Columns01 size={14} className="text-muted-foreground shrink-0" />
         ) : isWebhook ? (
           <Globe01 size={14} className="text-muted-foreground shrink-0" />
@@ -223,8 +228,8 @@ export function TriggerCard({
                   ? t("automations.triggerCard.cardEntersColumn", {
                       lane: laneHeader(trigger.column_key ?? "", t).label,
                     })
-                  : isPrReady
-                    ? t("automations.triggerCard.prReady")
+                  : prStarter
+                    ? prStarter
                     : isJiraTransition
                       ? t("automations.triggerCard.issueEntersJiraStatus", {
                           status: trigger.column_key ?? "",
@@ -238,7 +243,7 @@ export function TriggerCard({
             {!isCron &&
               !isWebhook &&
               !isColumnTransition &&
-              !isPrReady &&
+              !prStarter &&
               !isJiraTransition &&
               trigger.params &&
               Object.keys(trigger.params).length > 0 && (

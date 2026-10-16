@@ -188,6 +188,8 @@ export const automations = {
     "Picks up each unassigned card that lands in In Progress and works on it as the Super Agent. It is also what runs when someone clicks Run or Re-run on a card, delegates one to the agent, or the board retries a run. Turning it off stops it picking cards up on its own; Run on a card still works. The run follows the In Progress column's instructions and skills on the board; change them there.",
   "automations.builtin.reviewerDescription":
     "Reviews a card's pull request once it is ready for review (open, checks done, preview on its latest commit) and records a verdict: an approval sends the card to QA, a request for changes hands it to a person. Turning it off is the same as turning off the Reviewer in Settings → Review. The review follows the In Review column's instructions and skills on the board; change them there.",
+  "automations.builtin.linkedChatsDescription":
+    "Lets a chat linked to a card, or another automation's run on it, move the card the way the Implementer's run does: a message while the card is In Review moves it back to In Progress; when the run ends, a card In Progress moves on to In Review (with a pull request) or QA; a pull request it opens starts the card's review; a failed run is retried by the Implementer or sends the card back to Backlog. Off, only the Implementer's run moves a card. It runs no agent.",
   "automations.builtin.description":
     "Studio runs this automation for the board. It follows the board's column instructions and skills; change them there.",
   "automations.columnTransitionDialog.title": "When a card enters a column",
@@ -222,6 +224,7 @@ export const automations = {
   "automations.jiraTransitionDialog.add": "Add starter",
   "automations.triggerCard.prReady":
     "When a card's pull request is ready for review",
+  "automations.triggerCard.linkedChatRun": "When a chat linked to a card runs",
   "automations.triggerCard.unownedOnly": "Only cards nobody owns",
   "automations.triggerCard.fromEarlier": "From an earlier column",
   "automations.triggerCard.fromLater": "From a later column (sent back)",

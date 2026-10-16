@@ -343,6 +343,7 @@ describe("reactToFailedTaskRun on a card that already moved on", () => {
     const calls: string[] = [];
     const taskBoard = {
       failedRunInfo: async () => ({ kind: "error", errorText: null }),
+      runMovesLinkedCards: async () => true,
       linkedTaskIds: async () => ["item-1"],
       getById: async () => ({
         id: "item-1",

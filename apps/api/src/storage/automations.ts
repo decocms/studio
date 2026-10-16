@@ -131,6 +131,10 @@ export interface AutomationsStorage {
     organizationId: string,
     systemKey: string,
   ): Promise<{ automationId: string; triggerId: string } | null>;
+  builtinActive(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<boolean | null>;
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
@@ -746,6 +750,21 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ...triggerFromDbRow(row),
       automation: automationFromAliasedRow(row),
     }));
+  }
+
+  /** Whether a built-in is on in one org; null when the org was not seeded
+   *  with it. */
+  async builtinActive(
+    organizationId: string,
+    systemKey: string,
+  ): Promise<boolean | null> {
+    const row = await this.db
+      .selectFrom("automations")
+      .select("active")
+      .where("organization_id", "=", organizationId)
+      .where("system_key", "=", systemKey)
+      .executeTakeFirst();
+    return row?.active ?? null;
   }
 
   /**

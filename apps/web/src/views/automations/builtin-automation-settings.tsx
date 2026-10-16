@@ -70,7 +70,9 @@ export function BuiltinAutomationSettings({
             ? t("automations.builtin.implementerDescription")
             : automation.system_key === "reviewer"
               ? t("automations.builtin.reviewerDescription")
-              : t("automations.builtin.description")}
+              : automation.system_key === "linked_chats"
+                ? t("automations.builtin.linkedChatsDescription")
+                : t("automations.builtin.description")}
         </p>
       </div>
     </div>

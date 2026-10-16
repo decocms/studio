@@ -16,6 +16,7 @@
  *   two on a status may not claim the same origin.
  */
 
+import { builtinOwningStarter } from "../../automations/builtin";
 import { computeNextRunAt } from "../../automations/fire";
 import { syncTriggerCreated } from "../../automations/dbos-sync";
 import { Cron } from "croner";
@@ -119,10 +120,9 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       throw new Error("A built-in automation's starters can't be changed.");
     }
 
-    if (input.type === "board_pr_ready") {
-      throw new Error(
-        "The pull-request-ready starter belongs to the built-in Reviewer for now.",
-      );
+    const owner = builtinOwningStarter(input.type);
+    if (owner) {
+      throw new Error(`This starter belongs to the built-in ${owner} for now.`);
     }
 
     if (input.type === "cron") {
