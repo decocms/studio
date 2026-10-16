@@ -35,14 +35,14 @@ const BUILT_IN_ITEMS: CatalogItem[] = [
   {
     id: "figma/mcp",
     name: "figma",
-    title: "Figma",
+    title: "Official Figma MCP",
     description:
-      "Read Figma designs, components and variables, and take screenshots of frames.",
+      "Figma's own remote MCP server: read designs, components and variables, and take screenshots of frames.",
     server: {
       name: "figma",
-      title: "Figma",
+      title: "Official Figma MCP",
       description:
-        "Read Figma designs, components and variables, and take screenshots of frames.",
+        "Figma's own remote MCP server: read designs, components and variables, and take screenshots of frames.",
       icons: [{ src: "https://static.figma.com/app/icon/1/icon-192.png" }],
       remotes: [{ type: "http", url: "https://mcp.figma.com/mcp" }],
       websiteUrl: "https://www.figma.com",
@@ -50,7 +50,7 @@ const BUILT_IN_ITEMS: CatalogItem[] = [
     _meta: {
       "mcp.studio": {
         verified: true,
-        friendly_name: "Figma",
+        friendly_name: "Official Figma MCP",
         has_remote: true,
         has_oauth: true,
       },
