@@ -15,6 +15,7 @@ export const HOSTED_PROVIDER_IDS = [
   "llmapi",
   "google",
   "openai-compatible",
+  "orcarouter",
 ] as const;
 
 export type HostedProviderId = (typeof HOSTED_PROVIDER_IDS)[number];
