@@ -21,6 +21,7 @@ import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 import { splitRequestMessages } from "./conversation";
@@ -95,6 +96,9 @@ const HISTORY_PREFIX_WINDOW = 50;
 // deliverPolicy / cross-run replay race) is visible. The null-tail (204) case
 // is logged unconditionally below since it always means a degraded buffer.
 const STREAM_TAIL_TRACE = process.env.DECOPILOT_STREAM_TRACE === "1";
+
+// Mirrors MAX_DEV_INLINE_BYTES (file-materializer.ts) — this path has no other body-size bound.
+const MAX_MESSAGE_BODY_BYTES = 20 * 1024 * 1024;
 
 // ============================================================================
 // Canonical serialization helper
@@ -683,7 +687,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   //     the message contents gives each round a fresh workflowID while
   //     still collapsing genuine network retries of the same POST.
 
-  app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
+  const handleMessages = async (
+    c: Context<{ Variables: { studioContext: StudioContext } }>,
+  ) => {
     try {
       const ctx = c.get("studioContext");
 
@@ -991,7 +997,16 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         500,
       );
     }
-  });
+  };
+
+  app.post(
+    "/:org/decopilot/threads/:threadId/messages",
+    bodyLimit({
+      maxSize: MAX_MESSAGE_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    handleMessages,
+  );
 
   // ============================================================================
   // Cancel Endpoint — cancel a hosted run locally or via NATS to its owning pod
