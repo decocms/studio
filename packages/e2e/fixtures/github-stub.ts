@@ -53,6 +53,8 @@
  *   POST /__admin/repos                    seed a repo (see SeedRepoBody)
  *   GET  /__admin/repos/{o}/{r}            inspect refs/commits/files per branch
  *   POST /__admin/repos/{o}/{r}/config     { mergeMode } — flip merge behavior
+ *   POST /__admin/repos/{o}/{r}/push       { branch, files, message, author } — a commit
+ *                                          pushed from elsewhere (a developer)
  */
 
 import { createHash } from "node:crypto";
@@ -77,6 +79,10 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
+  /** When it was made (ISO): the history's committedDate. */
+  date: string;
+  /** The git author; Studio's own commits have none ("e2e"). */
+  author?: { name: string; email: string | null };
 }
 
 interface PullRecord {
@@ -182,13 +188,21 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
+  author?: CommitRecord["author"],
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message });
+  repo.commits.set(sha, {
+    sha,
+    treeSha,
+    parents,
+    message,
+    date: new Date().toISOString(),
+    ...(author ? { author } : {}),
+  });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -350,12 +364,19 @@ async function handleGraphql(
     return;
   }
   const ref = typeof vars.ref === "string" ? vars.ref : repo.defaultBranch;
+  const path = typeof vars.path === "string" ? vars.path : null;
   const shas: string[] = [];
   for (
     let sha = repo.refs.get(ref);
     sha !== undefined;
     sha = repo.commits.get(sha)?.parents[0]
   ) {
+    // `history(path:)`: only the commits that changed that file.
+    if (path !== null) {
+      const parent = repo.commits.get(sha)?.parents[0];
+      const before = parent ? treeOfCommit(repo, parent).get(path) : undefined;
+      if (treeOfCommit(repo, sha).get(path) === before) continue;
+    }
     shas.push(sha);
   }
   const start = typeof vars.after === "string" ? Number(vars.after) : 0;
@@ -369,14 +390,18 @@ async function handleGraphql(
       },
       nodes: page.map((oid) => ({
         oid,
-        committedDate: new Date().toISOString(),
+        committedDate: repo.commits.get(oid)?.date ?? new Date().toISOString(),
         messageHeadline: (repo.commits.get(oid)?.message ?? "").split("\n")[0],
         messageBody: (repo.commits.get(oid)?.message ?? "")
           .split("\n")
           .slice(1)
           .join("\n")
           .trim(),
-        author: { name: "e2e", email: null, user: null },
+        author: {
+          name: repo.commits.get(oid)?.author?.name ?? "e2e",
+          email: repo.commits.get(oid)?.author?.email ?? null,
+          user: null,
+        },
       })),
     },
   };
@@ -454,6 +479,38 @@ async function handleAdmin(
     };
     if (body.mergeMode) repo.mergeMode = body.mergeMode;
     json(res, 200, { mergeMode: repo.mergeMode });
+    return;
+  }
+
+  if (req.method === "POST" && segments[4] === "push") {
+    const body = JSON.parse((await readBody(req)) || "{}") as {
+      branch?: string;
+      files?: Record<string, string | null>;
+      message?: string;
+      author?: { name: string; email?: string | null };
+    };
+    const branch = body.branch ?? repo.defaultBranch;
+    const head = repo.refs.get(branch);
+    if (!head) {
+      notFound(res);
+      return;
+    }
+    const tree = new Map(treeOfCommit(repo, head));
+    for (const [path, content] of Object.entries(body.files ?? {})) {
+      if (content === null) tree.delete(path);
+      else tree.set(path, putBlob(repo, content));
+    }
+    const sha = putCommit(
+      repo,
+      putTree(repo, tree),
+      [head],
+      body.message ?? "push",
+      body.author
+        ? { name: body.author.name, email: body.author.email ?? null }
+        : undefined,
+    );
+    repo.refs.set(branch, sha);
+    json(res, 200, { sha });
     return;
   }
 
@@ -606,7 +663,7 @@ async function handleRepos(
     json(res, 200, {
       sha: commit.sha,
       message: commit.message,
-      committer: { date: new Date().toISOString() },
+      committer: { date: commit.date },
       tree: { sha: commit.treeSha },
       parents: commit.parents.map((sha) => ({ sha })),
     });
