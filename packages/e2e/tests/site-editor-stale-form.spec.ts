@@ -6,10 +6,10 @@
  * published to the branch, a sync moved it), saving that copy silently put
  * the old values back. The save now names the version it was made against;
  * the server refuses a stale one, and the editor applies the form's edits on
- * top of the stored version: edits to different values are both kept, a value
- * both changed keeps the stored one (and the user is told), a section pushed
- * to another position is followed there, and a page save outside the form is
- * replayed on the fresh page.
+ * top of the stored version: edits to different values are both kept, values
+ * both changed wait for the user to choose whose version to keep (a dialog,
+ * value by value), a section pushed to another position is followed there,
+ * and a page save outside the form is replayed on the fresh page.
  *
  * Wire-contract strings (labels, toast copy) are inlined on purpose — this
  * suite owns its contract (see ban-e2e-app-imports).
@@ -28,13 +28,17 @@ import { expect, test } from "../fixtures/test";
 test.use({ newBlocksEditor: true });
 
 const MERGED = "This block was updated while you were editing";
-// Names the field as the form labels it; nothing else of the form's was left to save.
-const KEPT_STORED =
-  "Changed while you were editing: Headline. The latest version was kept.";
+
+/** The dialog that asks whose version to keep for values both changed. */
+const conflictDialog = (page: Page) =>
+  page.getByRole("dialog", {
+    name: "Someone else changed this while you were editing",
+  });
 
 const hero = {
   __resolveType: "site/sections/HeroSlideShow.tsx",
   headline: "Original headline",
+  subtitle: "Original subtitle",
   slides: [{ title: "First slide", description: "Original description" }],
 };
 
@@ -57,6 +61,7 @@ const meta = {
         title: "HeroSlideShow",
         properties: {
           headline: { type: "string", title: "Headline" },
+          subtitle: { type: "string", title: "Subtitle" },
           slides: {
             type: "array",
             title: "Slides",
@@ -235,6 +240,8 @@ test.describe("Site Editor stale section form", () => {
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual({ ...published, headline: "Draft headline" });
       await expect(headline).toHaveValue("Draft headline");
+      // Different fields: merged without asking.
+      await expect(conflictDialog(page)).toHaveCount(0);
 
       // The form now shows the merged block, so a further edit keeps it too.
       await headline.fill("Second edit");
@@ -339,10 +346,6 @@ test.describe("Site Editor stale section form", () => {
         },
       );
       const mergedToasts = await countToasts(page, MERGED);
-      const keptToasts = await countToasts(
-        page,
-        "Changed while you were editing",
-      );
       await headline.fill("Draft one");
       await expect.poll(() => held).toBe(true);
       await headline.fill("Draft two");
@@ -364,7 +367,7 @@ test.describe("Site Editor stale section form", () => {
       await expect(headline).toHaveValue("Draft two");
       // Counted as they appear: under load the toast can expire before here.
       expect(await mergedToasts()).toBe(1);
-      expect(await keptToasts()).toBe(0);
+      await expect(conflictDialog(page)).toHaveCount(0);
     } finally {
       await previewSite.close();
     }
@@ -444,7 +447,7 @@ test.describe("Site Editor stale section form", () => {
       await previewSite.close();
     }
   });
-  test("an edit to a value someone else also changed keeps the stored value and says so", async ({
+  test("an edit to a value someone else also changed asks which to keep, and Keep mine saves the user's", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -458,80 +461,177 @@ test.describe("Site Editor stale section form", () => {
       );
       const published = { ...hero, headline: "Published headline" };
       await writeElsewhere(page.request, url, "SharedHero", published);
-
-      await headline.fill("Draft headline");
-      await expect(page.getByText(KEPT_STORED)).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(page.getByText(/the rest of your changes/)).toHaveCount(0);
-      // Shown once the user leaves the field, not under their cursor.
-      await headline.blur();
-      await expect(headline).toHaveValue("Published headline");
-      await expect
-        .poll(() => storedBlock(page.request, url, "SharedHero"))
-        .toEqual(published);
-    } finally {
-      await previewSite.close();
-    }
-  });
-
-  test("typing on after a save kept the other editor's value saves what the user typed, never mixed with that value", async ({
-    authedPage: { page, orgSlug },
-  }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    const previewSite = await startPreviewSite();
-    try {
-      const { headline, url } = await openEditor(
-        page,
-        orgSlug,
-        previewSite.url,
-        { __resolveType: "SharedHero" },
-      );
-      const published = { ...hero, headline: "Published headline" };
-      await writeElsewhere(page.request, url, "SharedHero", published);
-
-      // The user pauses mid-word (as on a busy machine): the autosave goes
-      // out, is refused as stale and keeps the other editor's headline.
-      const keptToasts = await countToasts(
+      const oldToasts = await countToasts(
         page,
         "Changed while you were editing",
       );
-      await headline.click();
-      await headline.press("ControlOrMeta+a");
-      await headline.pressSequentially("Draft");
-      await expect(page.getByText(KEPT_STORED)).toBeVisible({
-        timeout: 20_000,
-      });
 
-      // They type on. The field must not have been swapped under the cursor
-      // (that put "Published headline more" in it, and saved it).
-      await headline.pressSequentially(" more");
-      await expect(headline).toHaveValue("Draft more");
-      // Typing on after the notice is a new edit: it is saved over the
-      // stored headline they were told about (it used to be dropped, and the
-      // field went back to "Published headline" when they left it).
-      const typedOn = { ...published, headline: "Draft more" };
+      await headline.fill("Draft headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      // Both versions, under the field's label; nothing written meanwhile.
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline",
+      );
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      // Modal: typing goes nowhere near the form behind it.
+      await page.keyboard.type("xyz");
+      await expect(headline).toHaveValue("Draft headline");
+
+      await expect(
+        dialog.getByRole("button", { name: "Apply" }),
+      ).toBeDisabled();
+      await field.getByRole("radio", { name: "Keep mine" }).click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await expect(dialog).toBeHidden();
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"), {
           timeout: 20_000,
         })
-        .toEqual(typedOn);
-      await expect(headline).toHaveValue("Draft more");
+        .toEqual({ ...published, headline: "Draft headline" });
+      await expect(headline).toHaveValue("Draft headline");
 
-      // Leaving the field shows what is stored; one toast for it all.
-      await headline.blur();
-      await expect(headline).toHaveValue("Draft more");
-      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
-        typedOn,
-      );
-      // Counted as they appear: under load the toast can expire before here.
-      expect(await keptToasts()).toBe(1);
+      // The form goes on from the saved choice.
+      await headline.fill("Later edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...published, headline: "Later edit" });
+      await expect(dialog).toHaveCount(0);
+      expect(await oldToasts()).toBe(0);
     } finally {
       await previewSite.close();
     }
   });
 
-  test("typing the same text again after the latest version was kept saves it", async ({
+  test("Decide later keeps the user's edit unsaved and visible; Use theirs then keeps theirs", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { blocks, headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      await headline.fill("Draft headline");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      await dialog.getByRole("button", { name: "Decide later" }).click();
+      await expect(dialog).toBeHidden();
+
+      // Their version stays stored; the user's edit stays in the form, with
+      // a calm way back to the choice. What they type meanwhile waits too.
+      const notice = page.getByTestId("form-conflict-notice");
+      await expect(notice).toBeVisible();
+      await expect(headline).toHaveValue("Draft headline");
+      await headline.fill("Draft headline, edited on");
+      await page.waitForTimeout(3_000);
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+
+      await notice.getByRole("button", { name: "Choose versions" }).click();
+      await expect(dialog).toBeVisible();
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline, edited on",
+      );
+      await dialog.getByRole("button", { name: "Use all theirs" }).click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await expect(dialog).toBeHidden();
+      await expect(notice).toBeHidden();
+      await expect(headline).toHaveValue("Published headline");
+      await page.waitForTimeout(3_000);
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      // Saves go on as usual afterwards.
+      await blocks.getByRole("button", { name: /^First slide/ }).click();
+      await blocks
+        .getByRole("textbox", { name: "Description", exact: true })
+        .fill("After the choice");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({
+          ...published,
+          slides: [{ title: "First slide", description: "After the choice" }],
+        });
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("each field keeps the version chosen for it, and fields only one side changed merge on their own", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { blocks, headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = {
+        ...hero,
+        headline: "Published headline",
+        subtitle: "Published subtitle",
+        slides: [{ title: "First slide", description: "Published elsewhere" }],
+      };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      // Two fields both changed, within one autosave; the slide only they
+      // changed merges without asking.
+      const subtitle = blocks.getByRole("textbox", {
+        name: "Subtitle",
+        exact: true,
+      });
+      await headline.fill("Draft headline");
+      await subtitle.fill("Draft subtitle");
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      await expect(dialog.getByRole("radiogroup")).toHaveCount(2);
+      await dialog
+        .getByRole("radiogroup", { name: "Headline" })
+        .getByRole("radio", { name: "Keep mine" })
+        .click();
+      await dialog
+        .getByRole("radiogroup", { name: "Subtitle" })
+        .getByRole("radio", { name: "Use theirs" })
+        .click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await expect(dialog).toBeHidden();
+
+      const chosen = { ...published, headline: "Draft headline" };
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual(chosen);
+      await expect(headline).toHaveValue("Draft headline");
+      await expect(subtitle).toHaveValue("Published subtitle");
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("another change while the dialog is open asks again with the newer version", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -547,25 +647,41 @@ test.describe("Site Editor stale section form", () => {
       await writeElsewhere(page.request, url, "SharedHero", published);
 
       await headline.fill("Draft headline");
-      await expect(page.getByText(KEPT_STORED)).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect
-        .poll(() => storedBlock(page.request, url, "SharedHero"))
-        .toEqual(published);
+      const dialog = conflictDialog(page);
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Headline" });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Published headline",
+      );
 
-      // Still in the field (it shows their text), they type it again on
-      // purpose: that is a new edit, saved over the stored headline.
-      await headline.press("ControlOrMeta+a");
-      await headline.pressSequentially("Draft headline");
-      const insisted = { ...published, headline: "Draft headline" };
+      // A third editor saves while the user decides.
+      const third = { ...hero, headline: "Third headline" };
+      await writeElsewhere(page.request, url, "SharedHero", third);
+      await field.getByRole("radio", { name: "Keep mine" }).click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+
+      // That save expected the version the dialog showed: it is refused, and
+      // the same choice is asked with the newer version. Nothing is written
+      // over it without the user's word.
+      await expect(
+        dialog.getByText("Their version changed again while this was open."),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(field.getByTestId("conflict-theirs")).toHaveText(
+        "Third headline",
+      );
+      await expect(field.getByTestId("conflict-mine")).toHaveText(
+        "Draft headline",
+      );
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
+
+      await field.getByRole("radio", { name: "Keep mine" }).click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await expect(dialog).toBeHidden();
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"), {
           timeout: 20_000,
         })
-        .toEqual(insisted);
-      await headline.blur();
-      await expect(headline).toHaveValue("Draft headline");
+        .toEqual({ ...third, headline: "Draft headline" });
     } finally {
       await previewSite.close();
     }
@@ -727,9 +843,7 @@ test.describe("Site Editor stale section form", () => {
         })
         .toEqual({ ...hero, headline: "Second edit" });
       await expect(headline).toHaveValue("Second edit");
-      await expect(
-        page.getByText("Changed while you were editing"),
-      ).toHaveCount(0);
+      await expect(conflictDialog(page)).toHaveCount(0);
     } finally {
       await previewSite.close();
     }
