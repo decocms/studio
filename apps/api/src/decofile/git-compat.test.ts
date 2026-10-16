@@ -5,6 +5,7 @@ import {
   buildMergeReplayPlan,
   buildPublishStatus,
   normalizeCompareStatus,
+  previewValue,
 } from "./git-compat";
 
 describe("buildMergeReplayPlan", () => {
@@ -206,5 +207,25 @@ describe("buildPublishStatus", () => {
     expect(status.staged).toEqual([]);
     expect(status.files).toEqual([]);
     expect(status.unpushed).toBe(0);
+  });
+});
+
+describe("previewValue", () => {
+  it("shows strings as they are and other primitives as JSON", () => {
+    expect(previewValue("Summer sale")).toBe("Summer sale");
+    expect(previewValue(680)).toBe("680");
+    expect(previewValue(false)).toBe("false");
+  });
+
+  it("summarizes containers and marks an absent value", () => {
+    expect(previewValue([1, 2, 3])).toBe("[3]");
+    expect(previewValue({ a: 1 })).toBe("{…}");
+    expect(previewValue(undefined)).toBe("—");
+  });
+
+  it("cuts long text", () => {
+    const shown = previewValue("x".repeat(200));
+    expect(shown).toHaveLength(60);
+    expect(shown.endsWith("…")).toBe(true);
   });
 });
