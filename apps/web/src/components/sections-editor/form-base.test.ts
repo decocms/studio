@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   displayedOverBase,
   formValueOnBase,
+  markEditedSinceDisplayed,
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
@@ -359,5 +360,64 @@ describe("displayedOverBase", () => {
   it("is what the form shows when it differs from what is stored", () => {
     const shown = { a: 1 };
     expect(displayedOverBase(shown, { a: 2 })).toBe(shown);
+  });
+});
+
+describe("markEditedSinceDisplayed", () => {
+  const displayed = { headline: "Draft", subtitle: "Old", cta: "Buy" };
+  const base = { headline: "Published", subtitle: "Theirs", cta: "Buy" };
+  const tracked = (shown: Record<string, unknown>): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base,
+    displayed: shown,
+    emitted: shown,
+    sectionCount: 1,
+    own: [],
+  });
+
+  it("keeps a field the user typed back to the same text as theirs", () => {
+    // Select all, type "Draft" again: the field went through other values.
+    let shown: unknown = displayed;
+    for (const headline of ["D", "Dr", "Dra", "Draf", "Draft"]) {
+      shown = markEditedSinceDisplayed(shown, { ...displayed, headline });
+    }
+    expect(
+      formValueOnBase(tracked(shown as Record<string, unknown>), displayed),
+    ).toEqual({ headline: "Draft", subtitle: "Theirs", cta: "Buy" });
+  });
+
+  it("leaves the fields the user did not touch as shown", () => {
+    const shown = markEditedSinceDisplayed(displayed, {
+      ...displayed,
+      cta: "Buy now",
+    });
+    expect(shown).toMatchObject({ headline: "Draft", subtitle: "Old" });
+    expect(
+      formValueOnBase(tracked(shown as Record<string, unknown>), {
+        ...displayed,
+        cta: "Buy now",
+      }),
+    ).toEqual({ headline: "Published", subtitle: "Theirs", cta: "Buy now" });
+  });
+
+  it("marks nested values one by one and a cleared value as edited", () => {
+    const nested = { hero: { title: "a", text: "b" }, tag: "x" };
+    const now = { hero: { title: "a2", text: "b" } };
+    const shown = markEditedSinceDisplayed(nested, now) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(shown.hero?.text).toBe("b");
+    expect(shown.hero?.title).not.toBe("a");
+    expect(
+      formValueOnBase(
+        {
+          ...tracked(shown),
+          base: { hero: { title: "z", text: "y" }, tag: "w" },
+        },
+        now,
+      ),
+    ).toEqual({ hero: { title: "a2", text: "y" } });
   });
 });
