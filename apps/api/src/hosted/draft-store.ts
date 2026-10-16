@@ -7,10 +7,13 @@
  *
  * The slug is random (holding the URL is the permission to read the draft).
  *
- * Who last changed each draft name, and when (`edits`), lives next to the
- * slug in the org KV, never in the draft object: the object is served to
- * anyone holding its URL, and the site editor only needs it to say who made
- * the other change when two people edit the same values.
+ * Who last changed each draft name, and when, is public next to the draft,
+ * at `sites/<site>/drafts/<slug>.edits.json` as `{ edits: { <name>: {
+ * userId, at } } }`: a Studio user id and an ISO time, nothing else (the
+ * site editor resolves the name and avatar from the org's members). Not in
+ * the draft object itself: every released `@decocms/blocks` 8 refuses a
+ * draft with any field but `set` and `delete` (`parseDraftChanges`), and the
+ * SDK never reads this one, so it can't reach a rendered page.
  */
 
 import type { KVStorage } from "@/storage/kv";
@@ -31,13 +34,13 @@ export interface HostedDraftRef {
   virtualMcpId: string;
   branch: string;
   site: string;
-  /** The Studio user saving through this ref, recorded in `edits`. */
+  /** The Studio user saving through this ref, recorded in the draft's edits. */
   editor?: string | null;
 }
 
 /** The last change to one draft name: a Studio user id and an ISO time. */
 export interface DraftEdit {
-  by: string;
+  userId: string;
   at: string;
 }
 
@@ -45,8 +48,6 @@ export interface LoadedDraft {
   slug: string;
   body: DraftBody;
   etag: string | null;
-  /** By draft name; a name changed by no known user is absent. */
-  edits: Record<string, DraftEdit>;
 }
 
 function emptyDraft(): DraftBody {
@@ -86,8 +87,8 @@ function parseEdits(value: unknown): Record<string, DraftEdit> {
   return Object.fromEntries(
     Object.entries(value).flatMap(([name, edit]) => {
       const e = edit as Partial<DraftEdit> | null;
-      return typeof e?.by === "string" && typeof e.at === "string"
-        ? [[name, { by: e.by, at: e.at }]]
+      return typeof e?.userId === "string" && typeof e.at === "string"
+        ? [[name, { userId: e.userId, at: e.at }]]
         : [];
     }),
   );
@@ -97,13 +98,13 @@ function parseEdits(value: unknown): Record<string, DraftEdit> {
  * The edits after a save from `before` to `after`: names whose value (or
  * deletion) changed are stamped with `by` at `at`; untouched names keep
  * theirs; names no longer in the draft (discarded, published) are dropped.
- * Without `by`, a changed name loses its stamp rather than keep a wrong one.
+ * Without `userId`, a changed name loses its stamp rather than keep a wrong one.
  */
 export function stampDraftEdits(
   edits: Record<string, DraftEdit>,
   before: DraftBody,
   after: DraftBody,
-  by: string | null | undefined,
+  userId: string | null | undefined,
   at: string,
 ): Record<string, DraftEdit> {
   const deletedBefore = new Set(before.delete);
@@ -117,12 +118,31 @@ export function stampDraftEdits(
     const kept = Object.hasOwn(edits, name) ? edits[name] : undefined;
     if (!changed) {
       if (kept) next.push([name, kept]);
-    } else if (by) {
-      next.push([name, { by, at }]);
+    } else if (userId) {
+      next.push([name, { userId, at }]);
     }
   }
   // fromEntries: an entry named "__proto__" stays an entry.
   return Object.fromEntries(next);
+}
+
+/**
+ * Who last changed each name `body` holds (`set` and `delete`), `null` when
+ * not recorded (saved before edits were kept, or by no known user): what the
+ * site editor's session read answers with `?edits=1`.
+ */
+export function heldDraftEdits(
+  body: DraftBody | null,
+  edits: Record<string, DraftEdit>,
+): Record<string, DraftEdit | null> {
+  if (!body) return {};
+  // fromEntries: a name like "__proto__" stays an entry.
+  return Object.fromEntries(
+    [...Object.keys(body.set), ...body.delete].map((name) => [
+      name,
+      Object.hasOwn(edits, name) ? edits[name]! : null,
+    ]),
+  );
 }
 
 function sameEdits(
@@ -134,7 +154,9 @@ function sameEdits(
     ka.length === Object.keys(b).length &&
     ka.every(
       (k) =>
-        Object.hasOwn(b, k) && b[k]!.by === a[k]!.by && b[k]!.at === a[k]!.at,
+        Object.hasOwn(b, k) &&
+        b[k]!.userId === a[k]!.userId &&
+        b[k]!.at === a[k]!.at,
     )
   );
 }
@@ -163,6 +185,12 @@ export interface DraftStore {
   /** The draft, or null when this (project, branch) has none. */
   load(ref: HostedDraftRef): Promise<LoadedDraft | null>;
   /**
+   * Who last changed each name of the draft (none without a draft, or for a
+   * name saved before edits were kept). One extra read: only the site
+   * editor's session read asks, never a content read.
+   */
+  edits(ref: HostedDraftRef): Promise<Record<string, DraftEdit>>;
+  /**
    * Applies `change` to the current draft (empty when none) and PUTs it,
    * creating the slug on the first write.
    */
@@ -185,31 +213,44 @@ export function createDraftStore(deps: {
 }): DraftStore {
   const { kv, store } = deps;
 
-  const recordOf = async (
-    ref: HostedDraftRef,
-  ): Promise<{ slug: string; edits: Record<string, DraftEdit> } | null> => {
+  const slugOf = async (ref: HostedDraftRef): Promise<string | null> => {
     const record = await kv.get(ref.organizationId, slugKey(ref));
-    return typeof record?.slug === "string"
-      ? { slug: record.slug, edits: parseEdits(record.edits) }
-      : null;
+    return typeof record?.slug === "string" ? record.slug : null;
   };
 
   const load = async (ref: HostedDraftRef): Promise<LoadedDraft | null> => {
-    const record = await recordOf(ref);
-    if (!record) return null;
-    const { slug, edits } = record;
+    const slug = await slugOf(ref);
+    if (!slug) return null;
     const object = await store.get(deliveryKeys.draft(ref.site, slug));
-    if (!object) return { slug, body: emptyDraft(), etag: null, edits };
+    if (!object) return { slug, body: emptyDraft(), etag: null };
     return {
       slug,
       body: parseDraftBody(JSON.parse(object.text)),
       etag: object.etag,
-      edits,
     };
+  };
+
+  const editsAt = async (
+    site: string,
+    slug: string,
+  ): Promise<Record<string, DraftEdit>> => {
+    const object = await store
+      .get(deliveryKeys.draftEdits(site, slug))
+      .catch(() => null);
+    if (!object) return {};
+    try {
+      return parseEdits((JSON.parse(object.text) as { edits?: unknown }).edits);
+    } catch {
+      return {};
+    }
   };
 
   return {
     load,
+    edits: async (ref) => {
+      const slug = await slugOf(ref);
+      return slug ? editsAt(ref.site, slug) : {};
+    },
     update: (ref, change) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
         const current = await load(ref);
@@ -224,7 +265,7 @@ export function createDraftStore(deps: {
           body,
           CACHE_DRAFT,
         );
-        const previous = current?.edits ?? {};
+        const previous = current ? await editsAt(ref.site, slug) : {};
         const edits = stampDraftEdits(
           previous,
           before,
@@ -233,10 +274,14 @@ export function createDraftStore(deps: {
           new Date().toISOString(),
         );
         if (!sameEdits(previous, edits)) {
-          // After the object: a failed write here costs only the "changed
+          // After the draft: a failed write here costs only the "changed
           // by" line, never the save.
-          await kv
-            .set(ref.organizationId, slugKey(ref), { slug, edits })
+          await store
+            .putJson(
+              deliveryKeys.draftEdits(ref.site, slug),
+              { edits },
+              CACHE_DRAFT,
+            )
             .catch((error) =>
               console.warn("hosted draft: edits not recorded", {
                 organizationId: ref.organizationId,
@@ -244,7 +289,7 @@ export function createDraftStore(deps: {
               }),
             );
         }
-        return { slug, body, etag, edits };
+        return { slug, body, etag };
       }),
     remove: (ref, expectedEtag) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
@@ -254,6 +299,9 @@ export function createDraftStore(deps: {
           return false;
         }
         await store.delete(deliveryKeys.draft(ref.site, current.slug));
+        await store
+          .delete(deliveryKeys.draftEdits(ref.site, current.slug))
+          .catch(() => {});
         await kv.delete(ref.organizationId, slugKey(ref));
         return true;
       }),
