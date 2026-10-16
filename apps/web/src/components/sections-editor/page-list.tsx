@@ -60,8 +60,11 @@ export interface PageDeepLink {
  * CMS `pageId`, the concrete `path` the user was on, and that route's
  * `pathTemplate`. Page blocks are keyed `pages-<name>-<id>` and their `path`
  * field stores the *template* (e.g. `/produto/*`), so we try, in order: the
- * page id (exact key, then `-<id>` suffix), the template, then the concrete
- * path (for static pages where the two coincide). Returns null if nothing fits.
+ * page id (exact key, then `-<id>` suffix), a page whose path is exactly the
+ * one the user was on (a static page serves its own path ahead of any
+ * template), then the template. A storefront that doesn't know its page sends
+ * the catch-all `/*` as the template; checking the path first keeps "." on the
+ * home page from opening the Not Found page. Returns null if nothing fits.
  */
 export function resolveDeepLinkPage(
   pages: PageEntry[],
@@ -76,14 +79,14 @@ export function resolveDeepLinkPage(
     if (suffixed) return suffixed;
   }
 
-  if (pathTemplate) {
-    const byTemplate = findPageForPath(pages, pathTemplate);
-    if (byTemplate) return byTemplate;
-  }
-
   if (path) {
     const byPath = findPageForPath(pages, path);
     if (byPath) return byPath;
+  }
+
+  if (pathTemplate) {
+    const byTemplate = findPageForPath(pages, pathTemplate);
+    if (byTemplate) return byTemplate;
   }
 
   return null;
