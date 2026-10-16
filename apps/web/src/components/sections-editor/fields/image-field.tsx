@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Image01, Trash01, Upload01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -12,7 +12,14 @@ import type { FieldProps } from "./field-props";
 import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
 import { isSafeImageUrl, safeImageSrc } from "./safe-image-url";
-import { useImageUpload } from "./use-image-upload";
+import { ACCEPTED_IMAGE_TYPES, useImageUpload } from "./use-image-upload";
+import {
+  useServeAssetSrc,
+  useServeAssetUpload,
+} from "./use-serve-asset-upload";
+
+/** How many times a thumbnail served by the site's dev app is retried. */
+const SERVED_SRC_RETRIES = 3;
 
 export function ImageField({
   schema,
@@ -30,7 +37,18 @@ export function ImageField({
   const [imageErrored, setImageErrored] = useState(false);
   // An author types this field, so the value is untrusted until it has been
   // through `safeImageSrc`; an unsafe scheme reduces to "".
-  const src = safeImageSrc(strValue);
+  // On a connected `deco serve` (v8), `/assets/*` loads from the site's dev
+  // app; everywhere else this is `strValue` unchanged.
+  const servedSrc = useServeAssetSrc(sandbox, strValue);
+  // A file just uploaded to `deco serve` can 404 for a moment, until the dev
+  // app's file watcher sees it: a dev-app thumbnail is retried a few times
+  // before it shows as unavailable.
+  const [loadRetry, setLoadRetry] = useState(0);
+  const src = safeImageSrc(
+    loadRetry > 0
+      ? `${servedSrc}${servedSrc.includes("?") ? "&" : "?"}retry=${loadRetry}`
+      : servedSrc,
+  );
   const unsafe = !!strValue && !src;
   const fileName = strValue ? basename(strValue) : "";
   const ext = fileName ? extension(fileName) : "";
@@ -46,6 +64,7 @@ export function ImageField({
   function setValue(next: string) {
     setImageLoaded(false);
     setImageErrored(false);
+    setLoadRetry(0);
     onChange(next);
   }
 
@@ -87,11 +106,19 @@ export function ImageField({
     if (urlDraft.trim() && !isSafeImageUrl(urlDraft)) setUrlDraft(strValue);
   }
 
-  const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
-    siteSlug: sandbox?.siteSlug,
-    onUploaded: setValue,
-    onNeedsPicker: () => setPickerOpen(true),
-  });
+  const serveUpload = useServeAssetUpload(sandbox);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Choose a file: the system file dialog for `deco serve`, else the picker. */
+  const browse = () =>
+    serveUpload ? fileInputRef.current?.click() : setPickerOpen(true);
+
+  const { isDragging, isPending, lockedConfigId, dropProps, handleFiles } =
+    useImageUpload({
+      siteSlug: sandbox?.siteSlug,
+      onUploaded: setValue,
+      onNeedsPicker: () => setPickerOpen(true),
+      serveUpload,
+    });
 
   return (
     // grid-cols-[minmax(0,1fr)] forces every child to be at most 100% of
@@ -124,7 +151,7 @@ export function ImageField({
           <>
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              onClick={browse}
               aria-label={t("sectionsEditor.imageField.replaceImage")}
               className={cn(
                 "relative block w-full cursor-pointer bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]",
@@ -144,7 +171,16 @@ export function ImageField({
                     !imageLoaded && "opacity-0",
                   )}
                   onLoad={() => setImageLoaded(true)}
-                  onError={() => setImageErrored(true)}
+                  onError={() => {
+                    if (
+                      servedSrc !== strValue &&
+                      loadRetry < SERVED_SRC_RETRIES
+                    ) {
+                      setTimeout(() => setLoadRetry((n) => n + 1), 600);
+                    } else {
+                      setImageErrored(true);
+                    }
+                  }}
                 />
               )}
               {(imageErrored || unsafe) && (
@@ -176,7 +212,7 @@ export function ImageField({
         ) : (
           <button
             type="button"
-            onClick={() => setPickerOpen(true)}
+            onClick={browse}
             className={cn(
               "flex w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               compact ? "h-28" : "h-40",
@@ -223,7 +259,7 @@ export function ImageField({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setPickerOpen(true)}
+            onClick={browse}
             className="h-9 shrink-0"
           >
             <Upload01 size={14} />
@@ -247,13 +283,26 @@ export function ImageField({
         )}
       </div>
 
-      <FilePickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        mode="image"
-        onSelect={(url) => setValue(url)}
-        lockedConfigId={lockedConfigId}
-      />
+      {serveUpload ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={[...ACCEPTED_IMAGE_TYPES].join(",")}
+          className="hidden"
+          onChange={(e) => {
+            void handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+      ) : (
+        <FilePickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          mode="image"
+          onSelect={(url) => setValue(url)}
+          lockedConfigId={lockedConfigId}
+        />
+      )}
     </div>
   );
 }

@@ -146,6 +146,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageSections.blockNameAlreadyExists":
     "A block with this name already exists.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "A block type already uses this name. Choose another one.",
   "sectionsEditor.pageSections.blockNameInvalidChars":
     "Use letters, numbers, spaces, hyphens, or underscores. Must start with a letter.",
   "sectionsEditor.pageSections.blockNameNoSlashes":
@@ -193,8 +195,16 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Encrypt",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Couldn't encrypt this secret with the site's key, so it was not saved. Check that the site is online and try again.",
+  "sectionsEditor.fileField.tooLarge":
+    "This file is larger than the local server accepts ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Secrets can be edited once the site's content server answers.",
   "sectionsEditor.secretField.encryptingMessage":
     "Encrypting with the site's key…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "This secret was saved by an older Deco site and can't be edited here. It's re-encrypted when the site migrates.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Add the site's public key, .deco/secrets.pub, to edit secret fields. Values are encrypted in your browser with it.",
   "sectionsEditor.secretField.pendingMessage":
     "Not saved yet. Press Enter to encrypt and save.",
   "sectionsEditor.secretField.plaintextStoredMessage":

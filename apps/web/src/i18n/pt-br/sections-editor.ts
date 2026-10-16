@@ -150,6 +150,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageSections.blockNameAlreadyExists":
     "Já existe um bloco com este nome.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "Um tipo de bloco já usa este nome. Escolha outro.",
   "sectionsEditor.pageSections.blockNameInvalidChars":
     "Use letras, números, espaços, hífens ou sublinhados. Deve começar com uma letra.",
   "sectionsEditor.pageSections.blockNameNoSlashes":
@@ -199,8 +201,16 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Criptografar",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.fileField.tooLarge":
+    "Este arquivo é maior do que o servidor local aceita ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
   "sectionsEditor.secretField.encryptingMessage":
     "Criptografando com a chave do site…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":
