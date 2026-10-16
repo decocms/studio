@@ -32,7 +32,6 @@ import {
   useSetNewBlocksEditor,
   useSetOrgFlag,
 } from "@/hooks/use-organization-settings";
-import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { track } from "@/lib/posthog-client";
 import { useConnections, useProjectContext, WellKnownOrgMCPId } from "@/sdk";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
@@ -463,7 +462,8 @@ export function BlogSettings() {
  */
 export function BlocksEditorSettings() {
   const t = useT();
-  const enabled = useNewBlocksEditor();
+  // The org's own choice, not one site's editor (v8 sites always get it).
+  const enabled = useOrgFlag("new_blocks_editor");
   const setEnabled = useSetNewBlocksEditor();
   return (
     <SettingsSection title={t("sidebar.projectNav.siteEditor")}>

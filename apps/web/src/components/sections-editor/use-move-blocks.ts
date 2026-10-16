@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
@@ -16,6 +15,10 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useContentBackend } from "./use-content-backend";
+import { applyProtocolPatch } from "./content-protocol-api";
+import { runContentChange } from "./content-sync";
+import { useDecofileCacheKey } from "./use-decofile";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 
 interface UseMoveBlocksParams {
@@ -63,59 +66,82 @@ export function useMoveBlocks({
    * nothing reads AND tried a real write against the branch.
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
-  const queryKey = KEYS.decofile(
-    decofileCacheKey({ orgSlug, virtualMcpId, branch, localPreviewUrl }),
-  );
+  const backend = useContentBackend(virtualMcpId, branch);
+  const protocol = backend.kind === "protocol" ? backend : null;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
+  const queryKey = KEYS.decofile(cacheKey);
+
+  /** A move on any backend but the content protocol. */
+  const moveLegacy = async (
+    writes: BlockMove["writes"],
+    deletes: BlockMove["deletes"],
+  ) => {
+    // Local: no persistence — the optimistic cache write is the save.
+    if (localPreviewUrl) return { ok: true as const };
+    if (fastPreviewActive) {
+      // One PATCH, one commit — the server applies set and delete together.
+      const draft = await patchDecofile(
+        { orgSlug, virtualMcpId, branch },
+        { set: writes, delete: deletes },
+      );
+      setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+      // Awaited like useSaveBlock: observers must not see a pre-move status.
+      await queryClient.invalidateQueries({
+        queryKey: sandboxGitStatusQueryKey({
+          orgSlug,
+          virtualMcpId,
+          branch,
+          threadId,
+        }),
+      });
+      return draft;
+    }
+    const ref = { orgSlug, virtualMcpId, branch, threadId };
+    // Write before unlink: a failure between them leaves the old key, not neither.
+    for (const [blockKey, data] of Object.entries(writes)) {
+      const res = await fetch(buildSandboxUrl(ref, "write"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          path: decoRepoPath(packagePath, decoBlockFilePath(blockKey)),
+          content: JSON.stringify(data, null, 2),
+        }),
+      });
+      if (!res.ok) return throwResponseError(res, "Write");
+    }
+    for (const blockKey of deletes) {
+      const res = await fetch(buildSandboxUrl(ref, "unlink"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          path: decoRepoPath(packagePath, decoBlockFilePath(blockKey)),
+        }),
+      });
+      if (!res.ok) return throwResponseError(res, "Delete");
+    }
+    return { ok: true as const };
+  };
 
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
       const writes = sanitizeSecretsForPersistence(rawWrites);
-      // Local: no persistence — the optimistic cache write is the save.
-      if (localPreviewUrl) return { ok: true as const };
-      if (fastPreviewActive) {
-        // One PATCH, one commit — the server applies set and delete together.
-        const draft = await patchDecofile(
+      if (protocol) {
+        // One `blocks.apply`: the write and the delete land together.
+        return applyProtocolPatch(
+          queryClient,
+          protocol,
           { orgSlug, virtualMcpId, branch },
-          { set: writes, delete: deletes },
+          cacheKey,
+          { set: writes, delete: deletes.filter((key) => !(key in writes)) },
         );
-        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        // Awaited like useSaveBlock: observers must not see a pre-move status.
-        await queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey({
-            orgSlug,
-            virtualMcpId,
-            branch,
-            threadId,
-          }),
-        });
-        return draft;
       }
-      const ref = { orgSlug, virtualMcpId, branch, threadId };
-      // Write before unlink: a failure between them leaves the old key, not neither.
-      for (const [blockKey, data] of Object.entries(writes)) {
-        const res = await fetch(buildSandboxUrl(ref, "write"), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            path: decoRepoPath(packagePath, decoBlockFilePath(blockKey)),
-            content: JSON.stringify(data, null, 2),
-          }),
-        });
-        if (!res.ok) return throwResponseError(res, "Write");
-      }
-      for (const blockKey of deletes) {
-        const res = await fetch(buildSandboxUrl(ref, "unlink"), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            path: decoRepoPath(packagePath, decoBlockFilePath(blockKey)),
-          }),
-        });
-        if (!res.ok) return throwResponseError(res, "Delete");
-      }
-      return { ok: true as const };
+      // Every other backend: the same pending state, with its own refresh.
+      return runContentChange(
+        { queryClient, orgSlug, virtualMcpId, branch, backend, cacheKey },
+        { kind: "edit", write: () => moveLegacy(writes, deletes) },
+      );
     },
     onSuccess: () => {
       // The move changed which blocks resolve, so the schema must be re-read.

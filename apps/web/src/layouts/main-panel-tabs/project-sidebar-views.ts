@@ -7,6 +7,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "board",
   "site-editor",
   "assets",
+  "releases",
   "hosting",
   "e2e",
   "analytics",
@@ -33,6 +34,7 @@ export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 /** Native panels whose availability is discovered from project resources. */
 export const PROJECT_NATIVE_VIEW_IDS = [
   "assets",
+  "releases",
   "hosting",
   "e2e",
   "analytics",
@@ -132,8 +134,8 @@ export function isProjectNativeViewId(
   return PROJECT_NATIVE_VIEW_IDS.some((viewId) => viewId === value);
 }
 
-/** Combine permanent project capabilities with the five resource-backed
- * native panels. */
+/** Combine permanent project capabilities with the resource-backed native
+ * panels. */
 export function projectSidebarViewPresence(
   hasClonableSource: boolean,
   native: ProjectNativeViewPresence,
@@ -144,6 +146,8 @@ export function projectSidebarViewPresence(
     board: hasClonableSource,
     "site-editor": hasClonableSource,
     assets: native.assets,
+    // Hosted Deco CMS releases: a v8 site's repo history.
+    releases: hasClonableSource && native.releases,
     hosting: native.hosting,
     e2e: native.e2e,
     analytics: native.analytics,
@@ -212,6 +216,8 @@ export function projectSidebarViewUnavailable(
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
+  // Releases follows the project's v8 marker, known with the project itself.
+  if (viewId === "releases") return true;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

@@ -11,10 +11,15 @@ variables where callers need to override them through `className`.
 
 Only the redesigned blocks editor remains opt-in, per organization, through
 **Settings → General → New blocks editor** (the `new_blocks_editor` org flag,
-off by default). Any member may switch it, through the basic-usage
-`ORGANIZATION_BLOCKS_EDITOR_SET` tool; General shows plain members only that
-switch. Components in the editor read
-`useNewBlocksEditor()`. Switching it changes only the editor for every member;
+off by default), and only on v7 sites: a v8 (content-protocol) site always
+gets it, including on the org-less `/site-editor`. Any member may switch it,
+through the basic-usage `ORGANIZATION_BLOCKS_EDITOR_SET` tool; General shows
+plain members only that switch. Components in the editor read
+`useNewBlocksEditor()`, which decides from the site's content backend
+(`NewBlocksEditorProvider`, mounted by the Content and Preview tabs) and the
+flag (`newBlocksEditorEnabled`); editor roots wait on
+`useNewBlocksEditorState()` while the site's version is detected. Switching
+it changes only the editor for every member;
 navigation, page headers, and other application screens keep the default UI.
 Editor browser tests opt in with `test.use({ newBlocksEditor: true })`, which
 sets the flag on the test's org. Component tests choose the editor through the

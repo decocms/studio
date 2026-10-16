@@ -173,8 +173,12 @@ describe("one v8 detector", () => {
   test("the scan sees the code it guards", () => {
     const rels = new Set(files.map((f) => f.rel));
     expect(rels.has("apps/api/src/hosted/scope.ts")).toBe(true);
-    // Plain JS too (scripts, the vite plugin).
+    expect(
+      rels.has("apps/web/src/components/sections-editor/content-backend.ts"),
+    ).toBe(true);
+    // Plain JS too (scripts, the vite plugin), and the e2e fixtures.
     expect([...rels].some((rel) => /\.(m|c)?js$/.test(rel))).toBe(true);
+    expect(rels.has("packages/e2e/fixtures/deco-serve-stub.ts")).toBe(true);
     expect(isTestFile("packages/e2e/fixtures/deco-serve-stub.ts")).toBe(true);
   });
 
@@ -314,6 +318,10 @@ describe("one v8 detector", () => {
     const DECIDERS = [
       "apps/api/src/hosted/scope.ts",
       "apps/api/src/hosted/blocks-major.ts",
+      "apps/web/src/components/sections-editor/content-backend.ts",
+      "apps/web/src/components/sections-editor/use-content-backend.ts",
+      "apps/web/src/hooks/use-main-schema-v8.ts",
+      "apps/web/src/hooks/use-deco-serve-connection.ts",
     ];
     const deciders = source.filter((f) => DECIDERS.includes(f.rel));
     expect(deciders.map((f) => f.rel).sort()).toEqual([...DECIDERS].sort());

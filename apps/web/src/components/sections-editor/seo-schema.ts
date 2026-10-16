@@ -34,13 +34,14 @@ function seoTypeLabel(resolveType: string, title: string): string {
 
 function seoOptionsFromPropertySchema(
   schema: SchemaProperty | null | undefined,
+  meta: LiveMeta,
 ): SeoTypeOption[] {
   const refs = collectAnyOfRefsFromSchema(schema);
   const seen = new Set<string>();
   const options: SeoTypeOption[] = [];
   for (const ref of refs) {
     if (!isSeoSectionResolveType(ref.resolveType)) continue;
-    if (isSavedBlockResolveType(ref.resolveType)) continue;
+    if (isSavedBlockResolveType(ref.resolveType, meta)) continue;
     if (seen.has(ref.resolveType)) continue;
     seen.add(ref.resolveType);
     options.push({
@@ -59,7 +60,10 @@ function seoOptionsFromPropertySchema(
 export function listPageSeoTypeOptions(meta: LiveMeta): SeoTypeOption[] {
   const pageRt = findLivePageResolveType(meta);
   const pageSchema = resolveSchema(pageRt, meta);
-  const fromPage = seoOptionsFromPropertySchema(pageSchema?.properties?.seo);
+  const fromPage = seoOptionsFromPropertySchema(
+    pageSchema?.properties?.seo,
+    meta,
+  );
   if (fromPage.length > 0) return fromPage;
 
   return listManifestSeoSectionOptions(meta);
@@ -111,7 +115,10 @@ export function listSiteSeoTypeOptions(
   const siteRt = siteBlockData.__resolveType;
   if (typeof siteRt === "string") {
     const siteSchema = resolveSchema(siteRt, meta);
-    const fromSite = seoOptionsFromPropertySchema(siteSchema?.properties?.seo);
+    const fromSite = seoOptionsFromPropertySchema(
+      siteSchema?.properties?.seo,
+      meta,
+    );
     if (fromSite.length > 0) return fromSite;
   }
   return listPageSeoTypeOptions(meta);
