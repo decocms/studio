@@ -150,7 +150,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
   const { deleteRelease } = useReleases(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
+  const {
+    currentBranch: branch,
+    setCurrentTaskBranch,
+    createTask,
+    taskId,
+  } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   /** `mode` and the policy override outlive `open`, so the closing animation
@@ -278,7 +283,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
    * called only on some renders breaks React's hook-order invariant.
    */
   const { previewUrl } = useSandboxLifecycle();
-  const { previewServerUrl } = useSessionRuntime(virtualMcpId);
+  const { previewServerUrl, projectDefault } = useSessionRuntime(virtualMcpId);
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
@@ -365,7 +370,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
     // Always land on a fresh editable draft, never on read-only production.
     const published = branch;
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
-    await setCurrentTaskBranch(nextBranch);
+    // A new branch in this session would boot another sandbox (pods are keyed by branch).
+    if (projectDefault === "cms") {
+      createTask({ runtime: "cms", branch: nextBranch });
+    } else {
+      await setCurrentTaskBranch(nextBranch);
+    }
     if (published && published !== baseBranch) {
       await deleteRelease(published);
     }
