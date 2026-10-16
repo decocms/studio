@@ -188,6 +188,7 @@ export async function runAutomationOnCard(
         agentId: automation.virtual_mcp_id,
         triggerId,
         fence,
+        announce: true,
       },
     });
   } catch (err) {
@@ -228,6 +229,7 @@ async function runManuallyOnCard(
         agentId: automation.virtual_mcp_id,
         triggerId,
         fence,
+        announce: true,
       },
     });
   } catch (err) {

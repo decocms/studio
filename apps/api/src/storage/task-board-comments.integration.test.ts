@@ -351,6 +351,114 @@ describe("TaskBoardStorage comments", () => {
     expect(shown[0]!.body).toContain("Decide whether member discounts stack");
   });
 
+  it("still shows a change request's notes when only the run's opening note is for people", async () => {
+    const task = await storage.create({
+      organizationId: "org_test",
+      title: "Board review without a note",
+      by: "user_test",
+    });
+    await storage.createRunRoot({
+      taskBoardItemId: task.id,
+      organizationId: "org_test",
+      threadId: "thrd_reviewer_opened",
+      body: "Reviewer started reviewing this card.",
+    });
+    const [opening] = await storage.listComments(task.id, "org_test");
+
+    await ensureReviewerCommented(
+      ctx,
+      task,
+      "reviewer",
+      "thrd_reviewer_opened",
+      {
+        decision: "request_changes",
+        notes: "Decide whether the banner shows on mobile. NO VISUAL SURFACE.",
+      },
+    );
+
+    const mirrored = (await storage.listComments(task.id, "org_test")).filter(
+      (c) => c.id !== opening!.id,
+    );
+    expect(mirrored).toHaveLength(1);
+    expect(mirrored[0]).toMatchObject({
+      parentId: opening!.id,
+      audience: "human",
+      threadId: "thrd_reviewer_opened",
+    });
+  });
+
+  describe("board run threads", () => {
+    let card: string;
+
+    beforeAll(async () => {
+      card = (
+        await storage.create({
+          organizationId: "org_test",
+          title: "Card a board run works",
+          by: "user_test",
+        })
+      ).id;
+    });
+
+    it("opens a run's thread once, and only on a card of the run's org", async () => {
+      const opened = {
+        taskBoardItemId: card,
+        threadId: "thrd_board_once",
+        body: "Implementer started working on this card.",
+      };
+      await storage.createRunRoot({ ...opened, organizationId: "org_other" });
+      await storage.createRunRoot({ ...opened, organizationId: "org_test" });
+      await storage.createRunRoot({ ...opened, organizationId: "org_test" });
+
+      const roots = (await storage.listComments(card, "org_test")).filter(
+        (c) => c.threadId === "thrd_board_once",
+      );
+      expect(roots).toHaveLength(1);
+      expect(roots[0]).toMatchObject({
+        parentId: null,
+        authorId: "super-agent",
+        audience: "human",
+        body: opened.body,
+      });
+    });
+
+    it("writes the run's notes under its opening note, as handoff unless addressed to people", async () => {
+      await storage.createRunRoot({
+        taskBoardItemId: card,
+        organizationId: "org_test",
+        threadId: "thrd_board_notes",
+        body: "Implementer started working on this card.",
+      });
+      const opening = (await storage.listComments(card, "org_test")).find(
+        (c) => c.threadId === "thrd_board_notes",
+      );
+      const inRun = <T>(fn: () => Promise<T>) =>
+        taskRunContextStore.run({ threadId: "thrd_board_notes" }, fn);
+
+      const handoff = await inRun(() =>
+        TASK_BOARD_COMMENT_CREATE.handler(
+          { taskBoardItemId: card, body: "Branch pushed, CI pending." },
+          ctx,
+        ),
+      );
+      const forPeople = await inRun(() =>
+        TASK_BOARD_COMMENT_CREATE.handler(
+          { taskBoardItemId: card, body: "PR is up.", audience: "human" },
+          ctx,
+        ),
+      );
+
+      expect(handoff.comment).toMatchObject({
+        parentId: opening!.id,
+        audience: "internal",
+      });
+      expect(forPeople.comment).toMatchObject({
+        parentId: opening!.id,
+        audience: "human",
+      });
+    });
+  });
+
   describe("Super Agent mentions", () => {
     const MENTION = `${mentionMarkdown("super-agent", "Super Agent")} look`;
     let card: string;
