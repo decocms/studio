@@ -612,6 +612,8 @@ export class SandboxDispatchClient {
             branch,
             // Headless loop, no preview — unless someone is watching it.
             purpose: interactive ? "interactive" : "harness-run",
+            // A continuation lost this sandbox; its claim surviving proves nothing.
+            revalidate: resume !== null,
             // The longest silence in the run: pod boot, clone, and
             // (interactive) install. The chat has no per-thread stream here, so
             // this rides the org `/watch`. Only on a cold start — an
@@ -636,7 +638,10 @@ export class SandboxDispatchClient {
         lastHandle = sandbox.sandboxHandle;
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
-        await pushEnvIfChanged(provider, sandbox, runEnv);
+        // A rebound daemon may have booted without the env the cache says it has.
+        if (resume)
+          await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
+        else await pushEnvIfChanged(provider, sandbox, runEnv);
         markTurn(runId, "env-pushed");
         // Assembled HERE, not at enqueue: the prompt is written before a pod
         // exists, and which kind this run gets is decided by the claim above.
@@ -1165,10 +1170,11 @@ async function* dispatchToDaemon(args: {
     const detail = await res.text().catch(() => res.statusText);
     const summary = `sandbox dispatch failed (${res.status}): ${detail.slice(0, 512)}`;
     // 404/410/5xx is the pod, not the envelope — retriable on a fresh sandbox.
-    // Anything else the daemon would reject the same way forever (bad input,
-    // unauthorized, tombstoned run), so it surfaces as the run's failure rather
-    // than an empty successful run.
-    if (isUnreachableStatus(res.status)) {
+    // So is a 401: a daemon recreated or rebooted under a live claim lost our
+    // token, and the continuation's ensure rebinds it. Anything else the daemon
+    // would reject the same way forever (bad input, tombstoned run), so it
+    // surfaces as the run's failure rather than an empty successful run.
+    if (isUnreachableStatus(res.status) || res.status === 401) {
       throw new SandboxUnreachableError(summary);
     }
     throw new Error(summary);

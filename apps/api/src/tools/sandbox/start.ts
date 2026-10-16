@@ -270,6 +270,14 @@ export async function ensureSandbox(
      * bound there, so a caller keeps whatever it already assumed.
      */
     onBound?: (info: { warmPoolAdopted: boolean }) => void;
+    /**
+     * Skip the resume fast path, for a caller that just lost this sandbox
+     * mid-turn. A claim or VM that still exists says nothing about the daemon
+     * behind it: a pod recreated under its claim, or a rebooted VM, comes back
+     * on the shared bootstrap token and rejects ours. `provider.ensure` rebinds
+     * it.
+     */
+    revalidate?: boolean;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -313,7 +321,7 @@ export async function ensureSandbox(
   // A recorded entry is trusted only if a pod actually answers at it. Nothing
   // but SANDBOX_DELETE removes a cell, so an evicted pod leaves one behind
   // forever; probing it is what makes that self-healing rather than sticky.
-  if (existing) {
+  if (existing && !input.revalidate) {
     // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
     // the same way the events handler does. Reaping on a throttled control-plane
     // call would tear down a healthy sandbox and re-clone it from scratch.
@@ -374,7 +382,7 @@ export async function ensureSandbox(
       ctx,
       provisioningThreadId,
     ),
-    existing: null,
+    existing: input.revalidate ? existing : null,
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
