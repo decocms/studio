@@ -159,11 +159,13 @@ async function openPrForTask(
   return undefined;
 }
 
+/** The run's thread, and whether this call started it (false when its fence
+ *  had already started one). */
 export async function enqueueSuperAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
-): Promise<void> {
+): Promise<{ threadId: string; isNew: boolean }> {
   // A frozen card must not dispatch at all.
   await assertNotFrozenDemoCard(ctx, task);
 
@@ -314,4 +316,5 @@ export async function enqueueSuperAgentForTask(
       ...(opts?.runClass ? { run_class: opts.runClass } : {}),
     },
   });
+  return dispatched;
 }

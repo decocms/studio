@@ -192,6 +192,46 @@ describe("board column transition trigger (real Postgres)", () => {
       .filter((a) => a.action === "status_changed")
       .map((a) => a.id);
 
+  it("runs a mention's fire on the card without claiming it", async () => {
+    await ensureBuiltinAutomations(database.db, { id: ORG, createdBy: USER });
+    const builtin = await automations.findBuiltinTrigger(ORG, "agent_mentions");
+    const automation = await automations.findById(builtin!.automationId, ORG);
+    const item = await taskBoard.create({
+      organizationId: ORG,
+      title: "a card",
+      by: USER,
+    });
+    const comment = await taskBoard.createComment({
+      taskBoardItemId: item.id,
+      organizationId: ORG,
+      authorId: USER,
+      body: "[@Super Agent](mention:super-agent) take it",
+    });
+
+    const outcome = await runOnCardStep(automation!, builtin!.triggerId, {
+      kind: "card",
+      itemId: item.id,
+      columnKey: item.status,
+      eventKey: `mention:${item.id}:first`,
+      movedBy: USER,
+      mention: {
+        commentId: comment!.id,
+        body: comment!.body,
+        authorId: USER,
+        authorName: "u",
+        rootId: comment!.id,
+        tieId: comment!.id,
+      },
+    });
+
+    // The dispatch needs a model and a sandbox this tier lacks: refused, and
+    // nothing on the card changed hands or got tied to a run.
+    expect(outcome).toMatchObject({ skipped: "rejected" });
+    expect(await claimedForAgent(item.id)).toBe(false);
+    expect((await taskBoard.getById(item.id, ORG))?.assigneeId).toBeNull();
+    expect((await taskBoard.getComment(comment!.id, ORG))?.threadId).toBeNull();
+  });
+
   it("fires a settled move once, however many sweeps see it", async () => {
     await triggerOn("in_progress");
     const moved = await card([
