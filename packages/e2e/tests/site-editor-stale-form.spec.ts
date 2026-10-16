@@ -523,6 +523,46 @@ test.describe("Site Editor stale section form", () => {
     }
   });
 
+  test("typing the same text again after the latest version was kept saves it", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      await headline.fill("Draft headline");
+      await expect(page.getByText(KEPT_STORED)).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual(published);
+
+      // Still in the field (it shows their text), they type it again on
+      // purpose: that is a new edit, saved over the stored headline.
+      await headline.press("ControlOrMeta+a");
+      await headline.pressSequentially("Draft headline");
+      const insisted = { ...published, headline: "Draft headline" };
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual(insisted);
+      await headline.blur();
+      await expect(headline).toHaveValue("Draft headline");
+    } finally {
+      await previewSite.close();
+    }
+  });
+
   test("a form follows its section when one is inserted above it", async ({
     authedPage: { page, orgSlug },
   }) => {
