@@ -480,9 +480,17 @@ test.describe("Site Editor stale section form", () => {
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
         published,
       );
-      // Modal: typing goes nowhere near the form behind it.
+      // Modal: typing goes nowhere near the form behind it. The form is
+      // aria-hidden while the dialog is open, so it is found with
+      // includeHidden.
       await page.keyboard.type("xyz");
-      await expect(headline).toHaveValue("Draft headline");
+      await expect(
+        page.getByTestId("blocks-panel").getByRole("textbox", {
+          name: "Headline",
+          exact: true,
+          includeHidden: true,
+        }),
+      ).toHaveValue("Draft headline");
 
       await expect(
         dialog.getByRole("button", { name: "Apply" }),
