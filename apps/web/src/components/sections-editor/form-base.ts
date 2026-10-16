@@ -292,3 +292,44 @@ export function displayedOverBase(
     ? undefined
     : shown;
 }
+
+/**
+ * Stands in `FormBase.displayed` for a value the user edited after the merge,
+ * so that value counts as theirs even when they type back the same text (a
+ * user insisting on what the field already shows). No stored JSON equals it.
+ */
+const EDITED_AFTER_MERGE = Object.freeze({
+  "\u0000edited after the merge": true,
+});
+
+/**
+ * Marks in `displayed` every value `next` (the form's new value) changes, as
+ * edited by the user (see formValueOnBase). Values it leaves alone stay as
+ * shown, so they keep the stored value.
+ */
+export function markEditedSinceDisplayed(
+  displayed: unknown,
+  next: unknown,
+): unknown {
+  if (canonicalBlockJson(displayed) === canonicalBlockJson(next)) {
+    return displayed;
+  }
+  if (
+    displayed &&
+    next &&
+    typeof displayed === "object" &&
+    typeof next === "object" &&
+    !Array.isArray(displayed) &&
+    !Array.isArray(next) &&
+    displayed !== EDITED_AFTER_MERGE
+  ) {
+    const shown = displayed as Record<string, unknown>;
+    const now = next as Record<string, unknown>;
+    const marked: Record<string, unknown> = { ...shown };
+    for (const key of new Set([...Object.keys(shown), ...Object.keys(now)])) {
+      marked[key] = markEditedSinceDisplayed(shown[key], now[key]);
+    }
+    return marked;
+  }
+  return EDITED_AFTER_MERGE;
+}
