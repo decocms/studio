@@ -281,10 +281,30 @@ export const sectionsEditor = {
     "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
-    "Mudou enquanto você editava: {fields}. Mantivemos a versão mais recente desses campos e salvamos o resto das suas alterações.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStoredOnly":
-    "Mudou enquanto você editava: {fields}. Mantivemos a versão mais recente.",
+  "sectionsEditor.formConflict.title":
+    "Outra pessoa mudou isto enquanto você editava",
+  "sectionsEditor.formConflict.description":
+    "Vocês dois mudaram os campos abaixo. Escolha qual versão manter em cada um. A versão da outra pessoa continua salva até você aplicar sua escolha.",
+  "sectionsEditor.formConflict.changedAgain":
+    "A versão da outra pessoa mudou de novo enquanto isto estava aberto. Os campos abaixo já mostram essa mudança.",
+  "sectionsEditor.formConflict.yourVersion": "Sua versão",
+  "sectionsEditor.formConflict.theirVersion": "Versão da outra pessoa",
+  "sectionsEditor.formConflict.keepMine": "Manter a minha",
+  "sectionsEditor.formConflict.useTheirs": "Usar a outra",
+  "sectionsEditor.formConflict.keepAllMine": "Manter todas as minhas",
+  "sectionsEditor.formConflict.useAllTheirs": "Usar todas as outras",
+  "sectionsEditor.formConflict.apply": "Aplicar",
+  "sectionsEditor.formConflict.decideLater": "Decidir depois",
+  "sectionsEditor.formConflict.chooseEach":
+    "Escolha uma versão para cada campo para aplicar.",
+  "sectionsEditor.formConflict.empty": "Vazio",
+  "sectionsEditor.formConflict.yes": "Sim",
+  "sectionsEditor.formConflict.no": "Não",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} itens",
+  "sectionsEditor.formConflict.notice":
+    "Suas alterações nesta seção ainda não foram salvas: outra pessoa também a mudou.",
+  "sectionsEditor.formConflict.review": "Escolher versões",
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "Esta seção foi substituída enquanto você editava. O formulário agora mostra a seção atual, e sua última alteração não foi salva.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":

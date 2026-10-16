@@ -1,16 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
-  displayedOverBase,
-  formValueOnBase,
-  markEditedSinceDisplayed,
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
   focusInside,
   isOwnVersion,
-  mergedFormDisplay,
   rememberOwnVersion,
   sectionFormSource,
+  showMergeInForm,
   trackFormChange,
   type FormBase,
 } from "./form-base";
@@ -223,7 +220,7 @@ describe("own versions", () => {
   });
 });
 
-describe("mergedFormDisplay", () => {
+describe("showMergeInForm", () => {
   const tracked = (): FormBase => ({
     sectionIndex: 0,
     variantIndex: 0,
@@ -233,47 +230,18 @@ describe("mergedFormDisplay", () => {
     own: [],
   });
 
-  it("waits for the user to leave the form when the merge kept the stored value of a field they changed", () => {
-    // Showing it now would put their next keystrokes after the stored text.
+  it("shows a merge at once while the form is still on the value saved", () => {
+    // The merge kept every value the user changed: nothing under the cursor
+    // changes (values both changed wait for the user's choice instead).
     const form = tracked();
     expect(
-      mergedFormDisplay({
+      showMergeInForm({
         merged: true,
         tracked: form,
         current: form,
         saved: form.emitted,
-        keptStored: true,
-        editing: true,
       }),
-    ).toBe("on-leave");
-  });
-
-  it("shows the merge at once when the user is not in the form", () => {
-    const form = tracked();
-    expect(
-      mergedFormDisplay({
-        merged: true,
-        tracked: form,
-        current: form,
-        saved: form.emitted,
-        keptStored: true,
-        editing: false,
-      }),
-    ).toBe("now");
-  });
-
-  it("shows a merge that kept every field the form changed at once, even while typing", () => {
-    const form = tracked();
-    expect(
-      mergedFormDisplay({
-        merged: true,
-        tracked: form,
-        current: form,
-        saved: form.emitted,
-        keptStored: false,
-        editing: true,
-      }),
-    ).toBe("now");
+    ).toBe(true);
   });
 
   it("leaves the form alone when nothing was merged or it moved on", () => {
@@ -283,15 +251,11 @@ describe("mergedFormDisplay", () => {
       tracked: form,
       current: form,
       saved: form.emitted,
-      keptStored: false,
-      editing: false,
     };
-    expect(mergedFormDisplay({ ...base, merged: false })).toBe("never");
-    expect(mergedFormDisplay({ ...base, current: tracked() })).toBe("never");
-    expect(mergedFormDisplay({ ...base, saved: { title: "older" } })).toBe(
-      "never",
-    );
-    expect(mergedFormDisplay({ ...base, tracked: null })).toBe("never");
+    expect(showMergeInForm({ ...base, merged: false })).toBe(false);
+    expect(showMergeInForm({ ...base, current: tracked() })).toBe(false);
+    expect(showMergeInForm({ ...base, saved: { title: "older" } })).toBe(false);
+    expect(showMergeInForm({ ...base, tracked: null })).toBe(false);
   });
 });
 
@@ -307,117 +271,5 @@ describe("focusInside", () => {
     expect(focusInside(form as Element, {} as Element)).toBe(false);
     expect(focusInside(null, input as Element)).toBe(false);
     expect(focusInside(form as Element, null)).toBe(false);
-  });
-});
-
-describe("formValueOnBase", () => {
-  // The form shows the user's "Draft" while the stored headline is the other
-  // editor's "Published" (and their new subtitle), which the user was told.
-  const waiting = (): FormBase => ({
-    sectionIndex: 0,
-    variantIndex: 0,
-    base: { headline: "Published", subtitle: "Theirs", cta: "Buy" },
-    displayed: { headline: "Draft", subtitle: "Old", cta: "Buy" },
-    emitted: { headline: "Draft", subtitle: "Old", cta: "Buy" },
-    sectionCount: 1,
-    own: [],
-  });
-
-  it("saves what the user types after the merge over the stored value", () => {
-    expect(
-      formValueOnBase(waiting(), {
-        headline: "Draft more",
-        subtitle: "Old",
-        cta: "Buy",
-      }),
-    ).toEqual({ headline: "Draft more", subtitle: "Theirs", cta: "Buy" });
-  });
-
-  it("keeps the stored value of every field the user leaves alone", () => {
-    expect(
-      formValueOnBase(waiting(), {
-        headline: "Draft",
-        subtitle: "Old",
-        cta: "Buy now",
-      }),
-    ).toEqual({ headline: "Published", subtitle: "Theirs", cta: "Buy now" });
-  });
-
-  it("passes the form's value through when it shows the stored section", () => {
-    const value = { headline: "typed" };
-    expect(formValueOnBase({ ...waiting(), displayed: undefined }, value)).toBe(
-      value,
-    );
-    expect(formValueOnBase(null, value)).toBe(value);
-  });
-});
-
-describe("displayedOverBase", () => {
-  it("is unset when the form shows what is stored", () => {
-    expect(displayedOverBase({ b: 1, a: 2 }, { a: 2, b: 1 })).toBeUndefined();
-  });
-
-  it("is what the form shows when it differs from what is stored", () => {
-    const shown = { a: 1 };
-    expect(displayedOverBase(shown, { a: 2 })).toBe(shown);
-  });
-});
-
-describe("markEditedSinceDisplayed", () => {
-  const displayed = { headline: "Draft", subtitle: "Old", cta: "Buy" };
-  const base = { headline: "Published", subtitle: "Theirs", cta: "Buy" };
-  const tracked = (shown: Record<string, unknown>): FormBase => ({
-    sectionIndex: 0,
-    variantIndex: 0,
-    base,
-    displayed: shown,
-    emitted: shown,
-    sectionCount: 1,
-    own: [],
-  });
-
-  it("keeps a field the user typed back to the same text as theirs", () => {
-    // Select all, type "Draft" again: the field went through other values.
-    let shown: unknown = displayed;
-    for (const headline of ["D", "Dr", "Dra", "Draf", "Draft"]) {
-      shown = markEditedSinceDisplayed(shown, { ...displayed, headline });
-    }
-    expect(
-      formValueOnBase(tracked(shown as Record<string, unknown>), displayed),
-    ).toEqual({ headline: "Draft", subtitle: "Theirs", cta: "Buy" });
-  });
-
-  it("leaves the fields the user did not touch as shown", () => {
-    const shown = markEditedSinceDisplayed(displayed, {
-      ...displayed,
-      cta: "Buy now",
-    });
-    expect(shown).toMatchObject({ headline: "Draft", subtitle: "Old" });
-    expect(
-      formValueOnBase(tracked(shown as Record<string, unknown>), {
-        ...displayed,
-        cta: "Buy now",
-      }),
-    ).toEqual({ headline: "Published", subtitle: "Theirs", cta: "Buy now" });
-  });
-
-  it("marks nested values one by one and a cleared value as edited", () => {
-    const nested = { hero: { title: "a", text: "b" }, tag: "x" };
-    const now = { hero: { title: "a2", text: "b" } };
-    const shown = markEditedSinceDisplayed(nested, now) as Record<
-      string,
-      Record<string, unknown>
-    >;
-    expect(shown.hero?.text).toBe("b");
-    expect(shown.hero?.title).not.toBe("a");
-    expect(
-      formValueOnBase(
-        {
-          ...tracked(shown),
-          base: { hero: { title: "z", text: "y" }, tag: "w" },
-        },
-        now,
-      ),
-    ).toEqual({ hero: { title: "a2", text: "y" } });
   });
 });

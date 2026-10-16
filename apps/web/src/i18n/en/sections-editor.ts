@@ -269,10 +269,30 @@ export const sectionsEditor = {
     "This block changed while you were editing and could not be saved. The latest version is loaded.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Not saved: {fields} changed while you were editing. The latest version is loaded.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
-    "Changed while you were editing: {fields}. The latest version of those fields was kept, and the rest of your changes were saved.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStoredOnly":
-    "Changed while you were editing: {fields}. The latest version was kept.",
+  "sectionsEditor.formConflict.title":
+    "Someone else changed this while you were editing",
+  "sectionsEditor.formConflict.description":
+    "You both changed the fields below. Choose which version to keep for each one. Their version stays saved until you apply your choice.",
+  "sectionsEditor.formConflict.changedAgain":
+    "Their version changed again while this was open. The fields below show it.",
+  "sectionsEditor.formConflict.yourVersion": "Your version",
+  "sectionsEditor.formConflict.theirVersion": "Their version",
+  "sectionsEditor.formConflict.keepMine": "Keep mine",
+  "sectionsEditor.formConflict.useTheirs": "Use theirs",
+  "sectionsEditor.formConflict.keepAllMine": "Keep all mine",
+  "sectionsEditor.formConflict.useAllTheirs": "Use all theirs",
+  "sectionsEditor.formConflict.apply": "Apply",
+  "sectionsEditor.formConflict.decideLater": "Decide later",
+  "sectionsEditor.formConflict.chooseEach":
+    "Choose a version for each field to apply.",
+  "sectionsEditor.formConflict.empty": "Empty",
+  "sectionsEditor.formConflict.yes": "Yes",
+  "sectionsEditor.formConflict.no": "No",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} items",
+  "sectionsEditor.formConflict.notice":
+    "Your changes to this section aren't saved yet: someone else changed it too.",
+  "sectionsEditor.formConflict.review": "Choose versions",
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "This section was replaced while you were editing. The form now shows the current section, and your last change was not saved.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":

@@ -1,4 +1,4 @@
-import { canonicalBlockJson, mergeBlockJson } from "@decocms/shared/decofile";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
 import { formatMatcher } from "./format-matcher";
@@ -54,12 +54,6 @@ export interface FormBase {
    * past, not someone else's change.
    */
   own: string[];
-  /**
-   * What the form shows instead of `base`, while a merge that kept the stored
-   * value of a field the user changed waits for them to leave the form
-   * (mergedFormDisplay "on-leave"). Their later edits are relative to it.
-   */
-  displayed?: Record<string, unknown>;
 }
 
 const OWN_VERSIONS_KEPT = 50;
@@ -169,26 +163,18 @@ export function findSectionMovedTo(
 }
 
 /**
- * When the open form shows the value a save merged onto the stored section.
- *
- * - `"never"`: there is nothing merged, or the form has moved on (another
- *   section, or a newer value than the one merged); it keeps what it shows.
- * - `"on-leave"`: the merge kept the stored value of a field the form changed
- *   while the user is still in the form. Replacing the field under their
- *   cursor would put their next keystrokes after the stored text, and that
- *   mix would be saved as their edit. The form keeps showing what they type
- *   (`FormBase.displayed`: what they change after the merge is saved over
- *   the stored value, what they leave alone keeps it) and re-reads the
- *   stored section once they leave it and its saves have settled.
- * - `"now"`: show it at once.
+ * True when the open form shows, at once, the value a save merged onto the
+ * stored section: there is a merge, the form is still on that section (its
+ * record now is the one the save was built from) and has not moved past the
+ * value saved. The merge kept every value the user changed (values both
+ * changed wait for their choice instead, see form-conflict.ts), so nothing
+ * under their cursor changes.
  */
-export function mergedFormDisplay({
+export function showMergeInForm({
   merged,
   tracked,
   current,
   saved,
-  keptStored,
-  editing,
 }: {
   merged: boolean;
   /** The form's record when the save was built. */
@@ -197,14 +183,10 @@ export function mergedFormDisplay({
   current: FormBase | null;
   /** The value the save was built from. */
   saved: unknown;
-  /** The merge kept the stored value of a field the form changed. */
-  keptStored: boolean;
-  /** Focus is inside the form. */
-  editing: boolean;
-}): "now" | "on-leave" | "never" {
-  if (!merged || !tracked || current !== tracked) return "never";
-  if (tracked.emitted !== saved) return "never";
-  return keptStored && editing ? "on-leave" : "now";
+}): boolean {
+  return (
+    !!merged && !!tracked && current === tracked && tracked.emitted === saved
+  );
 }
 
 /** True while focus is inside `container` (an input of the open form). */
@@ -213,73 +195,4 @@ export function focusInside(
   active: Element | null | undefined,
 ): boolean {
   return !!container && !!active && container.contains(active);
-}
-
-/**
- * The form's value as an edit of `base`, the section as stored. While the form
- * shows something else (`displayed`, a merge waiting for the user to leave the
- * form), a field the user changes after that is theirs, saved over the stored
- * value they were told about; a field they leave alone keeps the stored value.
- * Without it, what they type after "The latest version was kept" would be
- * merged against the old copy again and dropped.
- */
-export function formValueOnBase(
-  tracked: FormBase | null,
-  value: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!tracked?.displayed) return value;
-  return mergeBlockJson(tracked.displayed, value, tracked.base, {
-    prefer: "ours",
-  }) as Record<string, unknown>;
-}
-
-/** What `displayed` becomes when the form shows `shown` over `base`. */
-export function displayedOverBase(
-  shown: Record<string, unknown>,
-  base: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  return canonicalBlockJson(shown) === canonicalBlockJson(base)
-    ? undefined
-    : shown;
-}
-
-/**
- * Stands in `FormBase.displayed` for a value the user edited after the merge,
- * so that value counts as theirs even when they type back the same text (a
- * user insisting on what the field already shows). No stored JSON equals it.
- */
-const EDITED_AFTER_MERGE = Object.freeze({
-  "\u0000edited after the merge": true,
-});
-
-/**
- * Marks in `displayed` every value `next` (the form's new value) changes, as
- * edited by the user (see formValueOnBase). Values it leaves alone stay as
- * shown, so they keep the stored value.
- */
-export function markEditedSinceDisplayed(
-  displayed: unknown,
-  next: unknown,
-): unknown {
-  if (canonicalBlockJson(displayed) === canonicalBlockJson(next)) {
-    return displayed;
-  }
-  if (
-    displayed &&
-    next &&
-    typeof displayed === "object" &&
-    typeof next === "object" &&
-    !Array.isArray(displayed) &&
-    !Array.isArray(next) &&
-    displayed !== EDITED_AFTER_MERGE
-  ) {
-    const shown = displayed as Record<string, unknown>;
-    const now = next as Record<string, unknown>;
-    const marked: Record<string, unknown> = { ...shown };
-    for (const key of new Set([...Object.keys(shown), ...Object.keys(now)])) {
-      marked[key] = markEditedSinceDisplayed(shown[key], now[key]);
-    }
-    return marked;
-  }
-  return EDITED_AFTER_MERGE;
 }
