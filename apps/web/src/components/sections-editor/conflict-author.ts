@@ -1,26 +1,27 @@
 /**
  * Who made the other change a same-field conflict dialog shows, and when.
  *
- * - A Fast Preview draft (v7): Studio's history of the block
- *   (`GET …/changed-by`): the Studio member, or a developer's git name.
- * - A hosted v8 draft: the draft's own edits (the session read with
- *   `?edits=1`): a Studio user id and a time per name it holds, resolved to
- *   the member from the org's members (time only when the id isn't one). A
- *   name the draft doesn't hold is main's: `changed-by`, like v7.
- * - Localhost (`deco serve`): the protocol has no authors, and local edits are
- *   the developer's own; the file's modification time, when the server
- *   reports it (`changes.get` entries' optional `modifiedAt`), is shown as
- *   "on your computer".
- * - Anything else (a sandbox's working tree, an older `deco serve`): nothing.
+ * - First, the stored block's own record: every save stamps `__meta` (`{
+ *   lastEditedBy: <Studio user id>, lastEditedAt }`) on the block, on every
+ *   backend. The id is resolved to the member's name and avatar from the
+ *   org's members (`useMembersQuery`'s cache), `you` for the viewer; only
+ *   the time when the id isn't a member's.
+ * - A block without one (saved before stamping, or by hand):
+ *   - Fast Preview (v7) and hosted v8: Studio's git history of the block
+ *     (`GET …/changed-by`): the Studio member, or a developer's git name.
+ *   - Localhost (`deco serve`): the file's modification time, when the server
+ *     reports it (`changes.get` entries' optional `modifiedAt`), shown as
+ *     "on your computer".
+ *   - Anything else (a sandbox's working tree, an older `deco serve`): nothing.
  *
- * Asked once per version of theirs the dialog shows (the query key carries
- * it), never per poll; a failure is "unknown", and the dialog then shows no
- * line at all.
+ * The history is asked once per version of theirs the dialog shows (the
+ * query key carries it), never per poll; a failure is "unknown", and the
+ * dialog then shows no line at all.
  */
 
-import { type ContentClient, spellingKey } from "@decocms/blocks/protocol";
+import type { ContentClient } from "@decocms/blocks/protocol";
+import { blockMetaOf } from "@decocms/shared/decofile";
 import { useQuery } from "@tanstack/react-query";
-import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
 import { useMembersQuery } from "@/hooks/use-members";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
@@ -50,7 +51,6 @@ export type AuthorRecord =
 
 export type ConflictAuthorSource =
   | { kind: "history"; key: string; params: DecofileScopeParams }
-  | { kind: "draft"; key: string; params: DecofileScopeParams }
   | { kind: "local"; key: string; client: ContentClient }
   | null;
 
@@ -65,7 +65,7 @@ export function conflictAuthorSource(
     return fastPreview ? { kind: "history", key, params } : null;
   }
   if (backend.kind !== "protocol") return null;
-  if (backend.source === "github") return { kind: "draft", key, params };
+  if (backend.source === "github") return { kind: "history", key, params };
   if (backend.source === "local") {
     return {
       kind: "local",
@@ -106,41 +106,6 @@ export function authorFromChangeEntry(entry: unknown): ConflictAuthor | null {
   return at ? { kind: "local", at } : null;
 }
 
-/** One draft edit (`{ userId, at }`) as the session read answers it. */
-interface DraftEdit {
-  userId: string;
-  at: string;
-}
-
-/**
- * The draft's record for `blockKey`: `undefined` when the draft doesn't hold
- * it (main's history knows), `null` when it holds it without a record.
- */
-export function draftEditFor(
-  edits: Record<string, DraftEdit | null>,
-  blockKey: string,
-): DraftEdit | null | undefined {
-  if (Object.hasOwn(edits, blockKey)) return edits[blockKey] ?? null;
-  const key = spellingKey(blockKey);
-  const name = Object.keys(edits).find((n) => spellingKey(n) === key);
-  return name === undefined ? undefined : (edits[name] ?? null);
-}
-
-/** Who last changed each name a hosted v8 draft holds (the session read). */
-async function fetchDraftEdits(
-  params: DecofileScopeParams,
-): Promise<Record<string, DraftEdit | null>> {
-  const res = await fetch(
-    `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}?edits=1`,
-    { cache: "no-store", headers: mainSchemaHeaders("v8") },
-  );
-  if (!res.ok) return {};
-  const body = (await res.json().catch(() => ({}))) as {
-    edits?: Record<string, DraftEdit | null>;
-  };
-  return body.edits ?? {};
-}
-
 async function readMainHistory(
   params: DecofileScopeParams,
   blockKey: string,
@@ -158,13 +123,6 @@ async function readAuthor(
   try {
     if (source.kind === "history") {
       return await readMainHistory(source.params, blockKey);
-    }
-    if (source.kind === "draft") {
-      const edit = draftEditFor(await fetchDraftEdits(source.params), blockKey);
-      if (edit === undefined)
-        return await readMainHistory(source.params, blockKey);
-      const at = validTime(edit?.at);
-      return edit && at ? { kind: "member", userId: edit.userId, at } : null;
     }
     const result = await source.client.call("changes.get", {
       names: [blockKey],
@@ -233,12 +191,29 @@ export function versionTag(text: string): string {
  * version shown: when it changes ("Their version changed again") the author
  * is read again. Null while unknown.
  */
+/** The stored block's own record (`__meta`), as an author to resolve. */
+export function authorFromBlockMeta(stored: unknown): AuthorRecord | null {
+  const meta = blockMetaOf(stored);
+  return meta
+    ? { kind: "member", userId: meta.lastEditedBy, at: meta.lastEditedAt }
+    : null;
+}
+
+/**
+ * Who made the change a conflict dialog shows. `stored` is the stored block
+ * (theirs): its `__meta` answers first, with no request. Otherwise the
+ * source's history, read once per version of theirs (`theirs`): when it
+ * changes ("Their version changed again") the author is read again. Null
+ * while unknown.
+ */
 export function useConflictAuthor(
   source: ConflictAuthorSource,
   blockKey: string | null,
   theirs: string | null,
+  stored?: unknown,
 ): ConflictAuthor | null {
-  const enabled = !!source && !!blockKey && theirs !== null;
+  const fromBlock = blockKey ? authorFromBlockMeta(stored) : null;
+  const enabled = !fromBlock && !!source && !!blockKey && theirs !== null;
   const { data } = useQuery({
     queryKey: KEYS.conflictAuthor(
       source?.key ?? "",
@@ -252,7 +227,7 @@ export function useConflictAuthor(
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const record = enabled ? (data ?? null) : null;
+  const record = fromBlock ?? (enabled ? (data ?? null) : null);
   const members = useMembersFor(
     record?.kind === "member" ? record.userId : null,
   );

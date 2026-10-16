@@ -96,6 +96,27 @@ describe("SchemalessContent", () => {
     expect((getByLabelText("label") as HTMLInputElement).value).toBe("Buy");
   });
 
+  test("never shows a block's __meta (who edited it last) as a field", () => {
+    const { getByRole, queryByLabelText, queryByText } = render(
+      <SchemalessContent
+        decofile={{
+          ...decofile,
+          Hero: {
+            ...hero,
+            __meta: {
+              lastEditedBy: "u-ana",
+              lastEditedAt: "2026-10-16T12:00:00Z",
+            },
+          },
+        }}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(getByRole("button", { name: "Hero" }));
+    expect(queryByLabelText("lastEditedBy")).toBeNull();
+    expect(queryByText("__meta")).toBeNull();
+  });
+
   test("a save changes only the edited value, keeping types and key order", () => {
     const onChange = mock();
     const { getByRole, getByLabelText } = render(
