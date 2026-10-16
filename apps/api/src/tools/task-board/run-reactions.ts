@@ -50,7 +50,7 @@ import {
 import { recordTaskActivity } from "./activity";
 import { LANE_RANK, inReviewPhase, laneRank } from "./lanes";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import type { TaskBoardItem } from "@/storage/types";
+import type { TaskBoardItemAttribution, TaskBoardItem } from "@/storage/types";
 
 /** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System
  *  actions with no acting user — org identity, person processing off.
@@ -89,13 +89,14 @@ export function emitTaskBoardPrsUpdated(
   orgId: string,
   itemId: string,
   prs: unknown[],
+  card: TaskBoardItemAttribution | null,
 ): void {
   sseHub.emit(orgId, {
     id: crypto.randomUUID(),
     type: TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
     source: "task-board",
     subject: itemId,
-    data: { id: itemId, prs },
+    data: { id: itemId, prs, card },
     time: new Date().toISOString(),
   });
 }

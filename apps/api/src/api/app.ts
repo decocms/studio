@@ -60,6 +60,10 @@ import {
   createStudioContextFactory,
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
+import {
+  boardEventForListener,
+  resolveHiddenProjectIds,
+} from "../core/project-scope";
 import { startSSEHub } from "../event-bus";
 import {
   closeDatabase,
@@ -841,6 +845,10 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   }
 
   const listenerId = crypto.randomUUID();
+  // Refreshed with the keepalive so an open board picks up edits to the role.
+  let hiddenProjects: ReadonlySet<string> = allOrgs
+    ? new Set()
+    : await resolveHiddenProjectIds(studioContext);
 
   return streamSSE(c, async (stream) => {
     // Send initial connection event
@@ -861,19 +869,22 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
       typePatterns: typePatterns?.length ? typePatterns : null,
       push: (event: SSEEvent, eventOrgId: string) => {
         // Write to the SSE stream — fire-and-forget
-        stream
-          .writeSSE({
-            id: event.id,
-            event: event.type,
-            data: JSON.stringify(
-              allOrgs ? { ...event, organizationId: eventOrgId } : event,
-            ),
-          })
-          .catch(() => {
-            // Stream broken — remove immediately so no further events are
-            // attempted. onAbort handles interval cleanup.
-            sseHub.remove(listenerKey, listenerId);
-          });
+        const write = (scoped: SSEEvent | null) => {
+          if (!scoped) return;
+          stream
+            .writeSSE({
+              id: scoped.id,
+              event: scoped.type,
+              data: JSON.stringify(
+                allOrgs ? { ...scoped, organizationId: eventOrgId } : scoped,
+              ),
+            })
+            .catch(() => {
+              // Stream broken; onAbort handles interval cleanup.
+              sseHub.remove(listenerKey, listenerId);
+            });
+        };
+        write(boardEventForListener(hiddenProjects, event));
       },
     });
 
@@ -890,6 +901,16 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
 
     // Send periodic keepalive comments to detect dead connections
     const keepaliveInterval = setInterval(() => {
+      if (!allOrgs) {
+        resolveHiddenProjectIds(studioContext).then(
+          (hidden) => {
+            hiddenProjects = hidden;
+          },
+          (error: unknown) => {
+            console.error("[watch] project scope refresh failed:", error);
+          },
+        );
+      }
       stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
         // Don't wait for onAbort, which may never fire for a half-closed socket.
         clearInterval(keepaliveInterval);

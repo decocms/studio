@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assertCardVisible } from "@/core/project-scope";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import { LANES } from "@decocms/shared/task-board";
@@ -35,6 +36,7 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await assertCardVisible(ctx, taskBoardItemId, organizationId);
 
     const item = await ctx.storage.taskBoard.getById(
       taskBoardItemId,

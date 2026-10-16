@@ -265,6 +265,37 @@ test.describe("project-scoped role", () => {
     expect(cardIds).not.toContain(hiddenCard);
     expect(cardIds).not.toContain(legacyCard);
 
+    // A hidden card reads as missing through the tools that take its id.
+    const call = (tool: string, data: Record<string, unknown>) =>
+      memberCtx.post(`/api/${owner.orgSlug}/tools/${tool}`, { data });
+    for (const id of [hiddenCard, legacyCard]) {
+      for (const [tool, data] of [
+        ["TASK_BOARD_COMMENT_LIST", { taskBoardItemId: id }],
+        ["TASK_BOARD_ACTIVITY_LIST", { taskBoardItemId: id }],
+        ["TASK_BOARD_ITEM_UPDATE", { id, title: "renamed" }],
+      ] as const) {
+        const res = await call(tool, data);
+        expect(res.ok(), `${tool} on a hidden card`).toBe(false);
+        expect(await res.text()).toContain("not found");
+      }
+    }
+    const visibleComments = await call("TASK_BOARD_COMMENT_LIST", {
+      taskBoardItemId: openCard,
+    });
+    expect(visibleComments.ok()).toBe(true);
+
+    const search = await call("GLOBAL_SEARCH", {
+      query: "card",
+      types: ["task"],
+    });
+    expect(search.ok(), `member search: HTTP ${search.status()}`).toBe(true);
+    const foundIds = (
+      (await search.json()) as { items: { id: string }[] }
+    ).items.map((item) => item.id);
+    expect(foundIds).toContain(openCard);
+    expect(foundIds).not.toContain(hiddenCard);
+    expect(foundIds).not.toContain(legacyCard);
+
     // Projects created after the role still reach it.
     const laterId = await createProject(
       memberCtx,

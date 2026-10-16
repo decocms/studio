@@ -23,6 +23,13 @@ import {
 import { isScopableProject } from "@decocms/shared/sdk";
 import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "./context-factory";
+import {
+  TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
+  TASK_BOARD_ITEM_UPDATED_EVENT,
+} from "@decocms/shared/task-board";
+import type { SSEEvent } from "../event-bus/sse-hub";
+import type { TaskBoardItemAttribution } from "../storage/types";
 import type { StudioContext } from "./studio-context";
 
 export async function resolveCallerProjectScope(
@@ -88,11 +95,24 @@ export async function resolveHiddenProjectIds(
   );
 }
 
-/** The fields the board attributes a card to a project by. */
-interface ProjectAttributedCard {
-  virtualMcpId: string | null;
-  repo: string | null;
-  threads: readonly { virtualMcpId: string | null }[];
+function isTaskBoardItemAttribution(
+  value: unknown,
+): value is TaskBoardItemAttribution {
+  if (typeof value !== "object" || value === null) return false;
+  const card = value as Record<string, unknown>;
+  const optionalString = (field: unknown) =>
+    field === null || typeof field === "string";
+  return (
+    optionalString(card.virtualMcpId) &&
+    optionalString(card.repo) &&
+    Array.isArray(card.threads) &&
+    card.threads.every(
+      (thread) =>
+        typeof thread === "object" &&
+        thread !== null &&
+        optionalString((thread as Record<string, unknown>).virtualMcpId),
+    )
+  );
 }
 
 /**
@@ -103,7 +123,7 @@ interface ProjectAttributedCard {
  */
 export function isCardInVisibleProject(
   hidden: ReadonlySet<string>,
-  card: ProjectAttributedCard,
+  card: TaskBoardItemAttribution,
 ): boolean {
   if (hidden.size === 0) return true;
   const named = [
@@ -112,4 +132,60 @@ export function isCardInVisibleProject(
     ...card.threads.map((thread) => thread.virtualMcpId),
   ];
   return !named.some((id) => id && hidden.has(id));
+}
+
+/**
+ * Throws the not-found error a missing card gets when the caller's role hides
+ * the card's project. Free for a caller with nothing hidden.
+ */
+export async function assertCardVisible(
+  ctx: StudioContext,
+  id: string,
+  organizationId: string,
+): Promise<void> {
+  const hidden = await resolveHiddenProjectIds(ctx);
+  if (hidden.size === 0) return;
+  const card = await ctx.storage.taskBoard.getAttribution(id, organizationId);
+  if (card && !isCardInVisibleProject(hidden, card)) {
+    throw new Error(`Task board item not found: ${id}`);
+  }
+}
+
+/**
+ * What a realtime listener whose role hides `hidden` projects receives for
+ * `event`. A card update for a hidden project becomes that card's deletion,
+ * so a card moved into one leaves the listener's board; a PR update for a
+ * hidden card, or one that does not say which card it is, is dropped. Other
+ * events pass through. Synchronous, so it adds no I/O per listener.
+ */
+export function boardEventForListener(
+  hidden: ReadonlySet<string>,
+  event: SSEEvent,
+): SSEEvent | null {
+  if (hidden.size === 0) return event;
+  if (event.type === TASK_BOARD_ITEM_UPDATED_EVENT) {
+    if (
+      isTaskBoardItemAttribution(event.data) &&
+      isCardInVisibleProject(hidden, event.data)
+    ) {
+      return event;
+    }
+    if (!event.subject) return null;
+    return {
+      ...event,
+      type: TASK_BOARD_ITEM_DELETED_EVENT,
+      data: { id: event.subject },
+    };
+  }
+  if (event.type === TASK_BOARD_ITEM_PRS_UPDATED_EVENT) {
+    const card =
+      typeof event.data === "object" && event.data !== null
+        ? (event.data as Record<string, unknown>).card
+        : undefined;
+    return isTaskBoardItemAttribution(card) &&
+      isCardInVisibleProject(hidden, card)
+      ? event
+      : null;
+  }
+  return event;
 }

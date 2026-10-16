@@ -31,6 +31,7 @@
  * everywhere else.
  */
 
+import { assertCardVisible } from "@/core/project-scope";
 import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
@@ -83,6 +84,7 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
       );
     }
 
+    await assertCardVisible(ctx, id, organizationId);
     const item = await ctx.storage.taskBoard.getById(id, organizationId);
     if (!item) throw new Error(`Task board item not found: ${id}`);
 

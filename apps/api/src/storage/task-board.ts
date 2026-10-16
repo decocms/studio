@@ -16,6 +16,7 @@ import type {
   TaskBoardActivity,
   TaskBoardActivityAction,
   TaskBoardItem,
+  TaskBoardItemAttribution,
   TaskBoardItemPriority,
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
@@ -379,6 +380,27 @@ export class TaskBoardStorage {
       .execute();
 
     return rows.map((row) => this.itemFromDbRow(row));
+  }
+
+  /** A card's project attribution without the refs `getById` attaches. */
+  async getAttribution(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardItemAttribution | null> {
+    const row = await this.db
+      .selectFrom("task_board_items")
+      .select(["virtual_mcp_id", "repo"])
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return null;
+    const threads = await this.db
+      .selectFrom("task_board_item_threads as link")
+      .innerJoin("threads as t", "t.id", "link.thread_id")
+      .select("t.virtual_mcp_id as virtualMcpId")
+      .where("link.task_board_item_id", "=", id)
+      .execute();
+    return { virtualMcpId: row.virtual_mcp_id, repo: row.repo, threads };
   }
 
   async getById(

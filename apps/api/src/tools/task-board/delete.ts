@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assertCardVisible } from "@/core/project-scope";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import { emitTaskBoardDeleted } from "./run-reactions";
@@ -27,6 +28,7 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await assertCardVisible(ctx, input.id, organizationId);
 
     // Storage dismisses a reports task instead of dropping the row.
     const deleted = await ctx.storage.taskBoard.delete(

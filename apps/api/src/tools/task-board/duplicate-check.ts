@@ -29,6 +29,10 @@
 
 import { generateText } from "ai";
 import { z } from "zod";
+import {
+  isCardInVisibleProject,
+  resolveHiddenProjectIds,
+} from "@/core/project-scope";
 import type { StudioContext } from "@/core/studio-context";
 import {
   type DecisionModel,
@@ -686,7 +690,11 @@ export async function findDuplicateTask(
   orgId: string,
   draft: TaskDraft,
 ): Promise<DuplicateOutcome> {
-  const items = await ctx.storage.taskBoard.list(orgId);
+  const [allItems, hidden] = await Promise.all([
+    ctx.storage.taskBoard.list(orgId),
+    resolveHiddenProjectIds(ctx),
+  ]);
+  const items = allItems.filter((item) => isCardInVisibleProject(hidden, item));
   const candidates = selectDuplicateCandidates(items, draft);
   if (candidates.length === 0) return { status: "no_match" };
   const decided = await askDecisionModel(
