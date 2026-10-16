@@ -23,6 +23,10 @@ export const taskBoard = {
   "taskBoard.agentThread.statusWaiting": "Esperando você",
   "taskBoard.agentThread.statusFailed": "Falhou",
   "taskBoard.agentThread.statusDone": "Concluído",
+  "taskBoard.agentThread.statusStopped": "Parado",
+  "taskBoard.agentThread.stop": "Parar",
+  "taskBoard.agentThread.stopping": "Parando…",
+  "taskBoard.agentThread.stopFailed": "Não deu para parar o run",
   "taskBoard.agentThread.openRun": "Abrir o run",
   "taskBoard.agentThread.routeStart":
     "Começa um run do Super Agent neste card.",

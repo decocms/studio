@@ -2441,6 +2441,7 @@ function ActivitySection({
   const t = useT();
 
   const { data: activity } = useTaskBoardActivity(item.id);
+  const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
@@ -2503,6 +2504,17 @@ function ActivitySection({
     };
   };
   const shownThreads = behindTheScenes ? comments.threads : humanThreads;
+  /** The chat's own Stop: only the run's owner may, and a refusal says so. */
+  const stopRun = async (threadId: string) => {
+    const res = await fetch(`/api/${org.slug}/decopilot/cancel/${threadId}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (res.ok) return;
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    toast.error(data.message ?? t("taskBoard.agentThread.stopFailed"));
+    throw new Error(data.message ?? "stop failed");
+  };
   // One run works a card at a time; this is it, if any.
   const runningRun = liveRuns.find(
     (run) => run.status === "in_progress" || run.status === "requires_action",
@@ -2519,10 +2531,13 @@ function ActivitySection({
           ? "running"
           : run.status === "requires_action"
             ? "waiting"
-            : run.status === "failed" || run.status === "expired"
-              ? "failed"
-              : "done",
+            : run.failureKind === "cancelled"
+              ? "stopped"
+              : run.status === "failed" || run.status === "expired"
+                ? "failed"
+                : "done",
       onOpen: openSourceRun(threadId),
+      onStop: () => stopRun(run.threadId),
     };
   };
   const threads: TaskComment[] = shownThreads.map((thread) => ({

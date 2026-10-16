@@ -39,6 +39,8 @@ import {
   DotsHorizontal,
   Edit03,
   MessageTextSquare01,
+  StopCircle,
+  StopSquare,
   Trash03,
   Upload01,
 } from "@untitledui/icons";
@@ -87,8 +89,11 @@ export type TaskComment = {
 };
 
 export type CommentRun = {
-  status: "running" | "waiting" | "done" | "failed";
+  status: "running" | "waiting" | "done" | "failed" | "stopped";
   onOpen?: () => void;
+  /** Stops the run in progress. Resolves once the stop is requested; the run
+   *  reads as stopped when the card next refreshes. */
+  onStop?: () => Promise<void>;
 };
 
 /**
@@ -162,7 +167,16 @@ export function CommentThreadCard({
     >
       <CommentEntry
         comment={thread}
-        metadata={thread.run && <RunStatus run={thread.run} />}
+        metadata={
+          thread.run && (
+            <>
+              <RunStatus run={thread.run} />
+              {live && thread.run.onStop && (
+                <StopRunButton onStop={thread.run.onStop} />
+              )}
+            </>
+          )
+        }
         onEdit={
           canEdit(thread, me) ? (body) => onEdit(thread.id, body) : undefined
         }
@@ -261,6 +275,35 @@ export function CommentThreadCard({
   );
 }
 
+/** Stops the run in progress. Stays "Stopping…" until the run reads as
+ *  stopped; a refused stop puts the button back. */
+function StopRunButton({ onStop }: { onStop: () => Promise<void> }) {
+  const t = useT();
+  const [stopping, setStopping] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={stopping}
+      onClick={async () => {
+        setStopping(true);
+        try {
+          await onStop();
+        } catch {
+          setStopping(false);
+        }
+      }}
+      className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-60"
+    >
+      {stopping ? <Spinner size="xs" /> : <StopSquare size={12} />}
+      {t(
+        stopping
+          ? "taskBoard.agentThread.stopping"
+          : "taskBoard.agentThread.stop",
+      )}
+    </button>
+  );
+}
+
 /** One line of a markdown body, for a folded thread: mentions and links
  *  read as their text, and the markup goes. */
 function plainExcerpt(markdown: string): string {
@@ -287,6 +330,11 @@ function RunStatus({ run }: { run: CommentRun }) {
       <span className={cn(chip, "bg-warning/15 text-warning")}>
         <AlertCircle size={12} />
         {t("taskBoard.agentThread.statusWaiting")}
+      </span>
+    ) : run.status === "stopped" ? (
+      <span className={cn(chip, "bg-muted text-muted-foreground")}>
+        <StopCircle size={12} />
+        {t("taskBoard.agentThread.statusStopped")}
       </span>
     ) : run.status === "failed" ? (
       <span className={cn(chip, "bg-destructive/10 text-destructive")}>
