@@ -4,6 +4,7 @@
  * the UI nests by `parentId`.
  */
 
+import { assertCardVisible } from "@/core/project-scope";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -38,6 +39,21 @@ const TaskBoardCommentSchema = z.object({
   updatedAt: z.string(),
 });
 
+/** A comment reads as missing when its card does. */
+async function assertCommentVisible(
+  ctx: StudioContext,
+  commentId: string,
+  organizationId: string,
+): Promise<void> {
+  const comment = await ctx.storage.taskBoard.getComment(
+    commentId,
+    organizationId,
+  );
+  if (comment) {
+    await assertCardVisible(ctx, comment.taskBoardItemId, organizationId);
+  }
+}
+
 function requireOrg(ctx: StudioContext): string {
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
@@ -65,9 +81,11 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    await assertCardVisible(ctx, input.taskBoardItemId, organizationId);
     const comments = await ctx.storage.taskBoard.listComments(
       input.taskBoardItemId,
-      requireOrg(ctx),
+      organizationId,
     );
     // A run's endpoint is sandbox-hosted (thread-mcp.ts): there an upload's `/api/…` URL can't be fetched, its mounted path can.
     const orgSlug = ctx.organization?.slug;
@@ -146,6 +164,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const organizationId = requireOrg(ctx);
+    await assertCardVisible(ctx, input.taskBoardItemId, organizationId);
     // A comment from a task run is the Super Agent's, not the user's whose
     // credential the run acts under (the assigner) — see authorId below. The
     // store also carries the run's thread id, which is what turns the agent's
@@ -215,6 +234,7 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const organizationId = requireOrg(ctx);
+    await assertCommentVisible(ctx, input.id, organizationId);
     const existing =
       input.body !== undefined
         ? await ctx.storage.taskBoard.getComment(input.id, organizationId)
@@ -273,9 +293,11 @@ export const TASK_BOARD_COMMENT_DELETE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    await assertCommentVisible(ctx, input.id, organizationId);
     const deleted = await ctx.storage.taskBoard.deleteComment(
       input.id,
-      requireOrg(ctx),
+      organizationId,
       getUserId(ctx)!,
     );
     return { success: deleted };

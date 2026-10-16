@@ -15,6 +15,10 @@
  * that don't handle it should silently ignore unknown `type` values.
  */
 
+import {
+  isCardInVisibleProject,
+  resolveHiddenProjectIds,
+} from "@/core/project-scope";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireOrganization } from "../../core/studio-context";
@@ -149,34 +153,42 @@ export const GLOBAL_SEARCH = defineTool({
     let totalCount = 0;
 
     // Three independent lookups, run concurrently instead of one-at-a-time.
-    const [threadsResult, tasksResult, connectionsResult] = await Promise.all([
-      includeThreads
-        ? ctx.storage.threads.list(undefined, {
-            limit,
-            offset: 0,
-            search: normalizeSearchQuery(input.query),
-            includeArchived: false,
-          })
-        : null,
-      includeTasks
-        ? ctx.storage.taskBoard.searchByTitle(
-            organization.id,
-            normalizeSearchQuery(input.query) ?? "",
-            limit,
-          )
-        : null,
-      includeConnections
-        ? ctx.storage.connections.searchByTitle(
-            organization.id,
-            normalizeSearchQuery(input.query) ?? "",
-            limit,
-          )
-        : null,
-    ]);
+    const [threadsResult, tasksResult, connectionsResult, hidden] =
+      await Promise.all([
+        includeThreads
+          ? ctx.storage.threads.list(undefined, {
+              limit,
+              offset: 0,
+              search: normalizeSearchQuery(input.query),
+              includeArchived: false,
+            })
+          : null,
+        includeTasks
+          ? ctx.storage.taskBoard.searchByTitle(
+              organization.id,
+              normalizeSearchQuery(input.query) ?? "",
+              limit,
+            )
+          : null,
+        includeConnections
+          ? ctx.storage.connections.searchByTitle(
+              organization.id,
+              normalizeSearchQuery(input.query) ?? "",
+              limit,
+            )
+          : null,
+        resolveHiddenProjectIds(ctx),
+      ]);
+    const visible = (projectId: string | null | undefined) =>
+      !projectId || !hidden.has(projectId);
 
     if (threadsResult) {
-      totalCount += threadsResult.total;
-      for (const thread of threadsResult.threads) {
+      const threads = threadsResult.threads.filter((thread) =>
+        visible(thread.virtual_mcp_id),
+      );
+      totalCount +=
+        threadsResult.total - (threadsResult.threads.length - threads.length);
+      for (const thread of threads) {
         items.push({
           type: "thread",
           id: thread.id,
@@ -195,8 +207,11 @@ export const GLOBAL_SEARCH = defineTool({
     }
 
     if (tasksResult) {
-      totalCount += tasksResult.length;
-      for (const task of tasksResult) {
+      const tasks = tasksResult.filter((task) =>
+        isCardInVisibleProject(hidden, task),
+      );
+      totalCount += tasks.length;
+      for (const task of tasks) {
         items.push({
           type: "task",
           id: task.id,
@@ -214,8 +229,11 @@ export const GLOBAL_SEARCH = defineTool({
     }
 
     if (connectionsResult) {
-      totalCount += connectionsResult.length;
-      for (const connection of connectionsResult) {
+      const connections = connectionsResult.filter((connection) =>
+        visible(connection.id),
+      );
+      totalCount += connections.length;
+      for (const connection of connections) {
         items.push({
           type: "connection",
           id: connection.id,

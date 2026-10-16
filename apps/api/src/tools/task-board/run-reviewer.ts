@@ -19,6 +19,7 @@
  * request opened); every other skip comes back as `queued: false`.
  */
 
+import { assertCardVisible } from "@/core/project-scope";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
@@ -63,6 +64,7 @@ export const TASK_BOARD_RUN_REVIEWER = defineTool({
       );
     }
 
+    await assertCardVisible(ctx, id, organizationId);
     const item = await ctx.storage.taskBoard.getById(id, organizationId);
     if (!item) throw new Error(`Task board item not found: ${id}`);
 

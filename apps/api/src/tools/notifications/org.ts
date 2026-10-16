@@ -1,3 +1,4 @@
+import { assertCardVisible } from "@/core/project-scope";
 import type { StudioContext } from "@/core/studio-context";
 
 export function requireOrg(ctx: StudioContext): string {
@@ -26,5 +27,6 @@ export async function requireTaskInOrg(
     organizationId,
   );
   if (!item) throw new Error("Task board item not found");
+  await assertCardVisible(ctx, taskBoardItemId, organizationId);
   return organizationId;
 }

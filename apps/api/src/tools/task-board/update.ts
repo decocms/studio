@@ -1,4 +1,5 @@
 import { LANES } from "@decocms/shared/task-board";
+import { assertCardVisible } from "@/core/project-scope";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -248,6 +249,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await assertCardVisible(ctx, input.id, organizationId);
 
     // Parse the PR link before any write, so a bad URL fails without a partial edit.
     const pr = input.prUrl ? findChangeRequestIn(input.prUrl) : null;

@@ -5,6 +5,7 @@
  * feed in the task dialog.
  */
 
+import { assertCardVisible } from "@/core/project-scope";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
@@ -77,6 +78,7 @@ const TASK_BOARD_ACTIVITY_LIST_TOOL = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
+    await assertCardVisible(ctx, input.taskBoardItemId, organizationId);
     const activity = await ctx.storage.taskBoard.listActivity(
       input.taskBoardItemId,
       organizationId,

@@ -30,6 +30,7 @@ function makeWatchApp(opts?: {
   const ctx = {
     organization: { id: "org_1", slug: "acme" },
     auth: { user: { id: "user_1" } },
+    access: { getRole: () => undefined },
     storage: {
       threads: {
         list: async () => {
