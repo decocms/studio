@@ -3,10 +3,13 @@ import {
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
+  focusInside,
   isOwnVersion,
+  mergedFormDisplay,
   rememberOwnVersion,
   sectionFormSource,
   trackFormChange,
+  type FormBase,
 } from "./form-base";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
@@ -214,5 +217,92 @@ describe("own versions", () => {
     });
     if (!tracked) throw new Error("expected a tracked form");
     expect(isOwnVersion(tracked, { b: 2, a: 1 })).toBe(true);
+  });
+});
+
+describe("mergedFormDisplay", () => {
+  const tracked = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { title: "a" },
+    emitted: { title: "typed" },
+    sectionCount: 1,
+    own: [],
+  });
+
+  it("waits for the user to leave the form when the merge kept the stored value of a field they changed", () => {
+    // Showing it now would put their next keystrokes after the stored text.
+    const form = tracked();
+    expect(
+      mergedFormDisplay({
+        merged: true,
+        tracked: form,
+        current: form,
+        saved: form.emitted,
+        keptStored: true,
+        editing: true,
+      }),
+    ).toBe("on-leave");
+  });
+
+  it("shows the merge at once when the user is not in the form", () => {
+    const form = tracked();
+    expect(
+      mergedFormDisplay({
+        merged: true,
+        tracked: form,
+        current: form,
+        saved: form.emitted,
+        keptStored: true,
+        editing: false,
+      }),
+    ).toBe("now");
+  });
+
+  it("shows a merge that kept every field the form changed at once, even while typing", () => {
+    const form = tracked();
+    expect(
+      mergedFormDisplay({
+        merged: true,
+        tracked: form,
+        current: form,
+        saved: form.emitted,
+        keptStored: false,
+        editing: true,
+      }),
+    ).toBe("now");
+  });
+
+  it("leaves the form alone when nothing was merged or it moved on", () => {
+    const form = tracked();
+    const base = {
+      merged: true,
+      tracked: form,
+      current: form,
+      saved: form.emitted,
+      keptStored: false,
+      editing: false,
+    };
+    expect(mergedFormDisplay({ ...base, merged: false })).toBe("never");
+    expect(mergedFormDisplay({ ...base, current: tracked() })).toBe("never");
+    expect(mergedFormDisplay({ ...base, saved: { title: "older" } })).toBe(
+      "never",
+    );
+    expect(mergedFormDisplay({ ...base, tracked: null })).toBe("never");
+  });
+});
+
+describe("focusInside", () => {
+  const node = (children: unknown[] = []) => ({
+    contains: (other: unknown) => children.includes(other),
+  });
+
+  it("is true only for an element within the container", () => {
+    const input = {};
+    const form = node([input]);
+    expect(focusInside(form as Element, input as Element)).toBe(true);
+    expect(focusInside(form as Element, {} as Element)).toBe(false);
+    expect(focusInside(null, input as Element)).toBe(false);
+    expect(focusInside(form as Element, null)).toBe(false);
   });
 });
