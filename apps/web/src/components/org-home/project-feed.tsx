@@ -15,7 +15,6 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { FilterLines } from "@untitledui/icons";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   DropdownMenu,
@@ -29,10 +28,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { ProjectIcon } from "@/components/project-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
-import {
-  taskBoardItemsQueryOptions,
-  useTaskBoardLiveSync,
-} from "@/hooks/use-task-board-items";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import {
   buildProjectIndex,
@@ -57,9 +52,7 @@ import { TaskAssigneeAvatar } from "@/components/task-assignee-avatar";
 import { useMembersQuery } from "@/hooks/use-members";
 import { taskRouteSegment } from "@/layouts/task-board/task-route";
 import { formatTimeAgo } from "@/lib/format-time";
-import { useStudioTools } from "@/lib/studio-tools";
 import { taskKey } from "@decocms/shared/task-key";
-import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 
 /** Cards the stack shows before it defers to the board. */
@@ -324,27 +317,6 @@ function FeedCard({
       )}
     </article>
   );
-}
-
-/**
- * The org's board, read with SUSPENSE.
- *
- * The home has to know whether there is anything to show BEFORE it lays itself
- * out, and a non-suspense read answers "nothing" first and "something" a moment
- * later — a shift on every visit to an org that has a board. This shares the
- * board's query key, so it is the same request, just awaited — and mounts the
- * same live sync, so a card another actor moves reaches the feed the way it
- * reaches the board. Sharing the key alone would not: the SSE upserts and the
- * polling backstop hang off the subscription, not the cache entry.
- */
-export function useOrgTasksSuspense(): TaskBoardItem[] {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
-  useTaskBoardLiveSync();
-  const { data } = useSuspenseQuery(
-    taskBoardItemsQueryOptions(locator, studio),
-  );
-  return data.items;
 }
 
 export function ProjectFeed({
