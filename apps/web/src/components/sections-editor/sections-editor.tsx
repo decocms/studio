@@ -40,9 +40,11 @@ import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { protocolBlockVersion } from "./content-protocol-api";
 import {
   findSectionMovedTo,
+  focusInside,
   formSaveGuard,
   formSourceMovedOn,
   isOwnVersion,
+  mergedFormDisplay,
   rememberOwnVersion,
   sectionFormSource,
   sectionTypeChanged,
@@ -436,6 +438,9 @@ export function SectionsEditor({
   // next saves wait behind it, as behind a save on the wire.
   const formSaveRetryPendingRef = useRef(false);
   const waitingFormSavesRef = useRef(new Map<string, () => void>());
+  // The open form re-reads the stored section once the user leaves it: a
+  // change it can't show under their cursor (see mergedFormDisplay).
+  const formRefreshOnLeaveRef = useRef(false);
 
   // A discard of the block an armed autosave would write drops that autosave
   // (content-sync.ts): fired after the discard, it would bring the discarded
@@ -822,7 +827,18 @@ export function SectionsEditor({
       ruleDebounceRef.current !== null ||
       saveBlock.isPending ||
       pageBlockSave.isPending;
-    if (!ownSavePending && selectedSectionIndex !== null) {
+    // Not under the user's cursor either: their next keystrokes would land
+    // after the new text. Their saves merge onto the stored section, and the
+    // form re-reads it once they leave it.
+    const userInForm =
+      selectedSectionIndex !== null &&
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read once per content change: is focus in the form
+      focusInside(fieldScrollRef.current, document.activeElement);
+    if (!ownSavePending && userInForm) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- marks the re-read for when the user leaves the form
+      formRefreshOnLeaveRef.current = true;
+    }
+    if (!ownSavePending && !userInForm && selectedSectionIndex !== null) {
       const rawSection = rawSections[selectedSectionIndex];
       const parsed = parsedSections[selectedSectionIndex];
       setFieldBreadcrumbs([]);
@@ -950,6 +966,10 @@ export function SectionsEditor({
     setFormResetKey((key) => key + 1);
   };
 
+  /** Focus is in the open form: the user is typing or about to. */
+  const editingForm = () =>
+    focusInside(fieldScrollRef.current, document.activeElement);
+
   /**
    * Last resort when a save keeps colliding with newer stored content: drop
    * the pending edit and re-seed the form from the stored section, rather
@@ -965,7 +985,37 @@ export function SectionsEditor({
     waitingFormSavesRef.current.clear();
     pendingSectionSaveRef.current = null;
     toast.error(message, { id: STALE_FORM_TOAST });
+    if (editingForm()) {
+      formRefreshOnLeaveRef.current = true;
+      return;
+    }
     setFormReloadRequest((n) => n + 1);
+  };
+
+  /**
+   * Re-read the stored section into the form, when one waits for the user to
+   * leave it (see mergedFormDisplay): once they have and the form's own saves
+   * have settled, so it shows what those saves stored.
+   */
+  const refreshFormIfLeft = () => {
+    if (!formRefreshOnLeaveRef.current || editingForm()) return;
+    if (
+      debounceRef.current !== null ||
+      formSaveInFlightRef.current ||
+      formSaveRetryPendingRef.current ||
+      waitingFormSavesRef.current.size > 0
+    ) {
+      return;
+    }
+    formRefreshOnLeaveRef.current = false;
+    setFormReloadRequest((n) => n + 1);
+  };
+
+  /** Focus left an element of the form: maybe it left the form. */
+  const handleFormBlur = () => {
+    if (!formRefreshOnLeaveRef.current) return;
+    // Focus has moved by the next task; within the form, it stays put.
+    setTimeout(refreshFormIfLeft, 0);
   };
 
   /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
@@ -1105,11 +1155,20 @@ export function SectionsEditor({
           : null;
       const value = rebased ?? nextValue;
       // Show the merged section only while the form is still on it and has
-      // not moved past `nextValue`; otherwise its baseline stays `nextValue`.
-      const showRebased =
-        !!rebased &&
-        formBaseRef.current === formBase &&
-        formBase?.emitted === nextValue;
+      // not moved past `nextValue`, and not under the user's cursor when it
+      // replaces a field they changed (mergedFormDisplay); otherwise its
+      // baseline stays `nextValue`, so their next saves keep the stored value
+      // of that field too.
+      const display = mergedFormDisplay({
+        merged: !!rebased,
+        tracked: formBase,
+        current: formBaseRef.current,
+        saved: nextValue,
+        keptStored: overwritten.length > 0,
+        editing: editingForm(),
+      });
+      const showRebased = display === "now";
+      if (display === "on-leave") formRefreshOnLeaveRef.current = true;
       if (overwritten.length > 0) {
         // Nothing of the form's own is left to save when the merge is just
         // what is stored.
@@ -1210,6 +1269,7 @@ export function SectionsEditor({
             // After a refusal the stored copy is re-read first; give the
             // editor a render to show it before building on it.
             runWaitingFormSaves(refused ? AUTOSAVE_DELAY : 0);
+            refreshFormIfLeft();
           });
       };
 
@@ -1331,6 +1391,7 @@ export function SectionsEditor({
   };
 
   const handleSelectSection = (index: number) => {
+    formRefreshOnLeaveRef.current = false;
     setSelectedSectionIndex(index);
     setActiveSectionVariantIndex(0);
     setFieldBreadcrumbs([]);
@@ -3925,6 +3986,7 @@ export function SectionsEditor({
           <ScrollArea
             key="editor-section-form"
             viewportRef={fieldScrollRef}
+            onBlur={handleFormBlur}
             className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
           >
             {/* Classic only: compact moves these into the header select and the variant manager. */}
@@ -3958,6 +4020,7 @@ export function SectionsEditor({
           <ScrollArea
             key="editor-global-block"
             viewportRef={fieldScrollRef}
+            onBlur={handleFormBlur}
             className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
           >
             <SchemaFormPanel

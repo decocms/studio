@@ -427,10 +427,64 @@ test.describe("Site Editor stale section form", () => {
       await headline.fill("Draft headline");
       await expect(page.getByText(KEPT_STORED)).toBeVisible();
       await expect(page.getByText(/the rest of your changes/)).toHaveCount(0);
+      // Shown once the user leaves the field, not under their cursor.
+      await headline.blur();
       await expect(headline).toHaveValue("Published headline");
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"))
         .toEqual(published);
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("typing on after a save kept the other editor's value does not add the keystrokes to that value", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const published = { ...hero, headline: "Published headline" };
+      await writeElsewhere(page.request, url, "SharedHero", published);
+
+      // The user pauses mid-word (as on a busy machine): the autosave goes
+      // out, is refused as stale and keeps the other editor's headline.
+      await headline.click();
+      await headline.press("ControlOrMeta+a");
+      await headline.pressSequentially("Draft");
+      await expect(page.getByText(KEPT_STORED)).toBeVisible({
+        timeout: 20_000,
+      });
+
+      // They type on. The field must not have been swapped under the cursor
+      // (that put "Published headline more" in it, and saved it).
+      await headline.pressSequentially(" more");
+      await expect(headline).toHaveValue("Draft more");
+      // Its autosave (sent after the keystrokes) keeps the stored headline.
+      const save = await page.waitForRequest(
+        (r) => r.method() === "PATCH" && new URL(r.url()).pathname === url,
+      );
+      await save.response();
+      await expect(headline).toHaveValue("Draft more");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual(published);
+
+      // Leaving the field shows what is stored; one toast for it all.
+      await headline.blur();
+      await expect(headline).toHaveValue("Published headline");
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
+        published,
+      );
+      await expect(
+        page.getByText(/Changed while you were editing/),
+      ).toHaveCount(1);
     } finally {
       await previewSite.close();
     }
