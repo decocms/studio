@@ -1074,6 +1074,10 @@ function useImplementation(experiment: Experiment) {
   );
   const pr = prs?.[0] ?? null;
   const previewUrl = pr?.merged ? null : (pr?.previewUrl ?? null);
+  /** What the PR's base branch is serving — the control side for a project
+   *  with no preview server of its own. Once the PR merges its own deploy IS
+   *  this one, so there is nothing left to compare and it drops out. */
+  const baseDeployUrl = pr?.merged ? null : (pr?.baseDeployUrl ?? null);
   const stage = !experiment.taskBoardItemId
     ? ("none" as const)
     : !pr
@@ -1083,18 +1087,23 @@ function useImplementation(experiment: Experiment) {
         : previewUrl
           ? ("ready" as const)
           : ("deploying" as const);
-  return { pr, previewUrl, stage };
+  return { pr, previewUrl, baseDeployUrl, stage };
 }
 
 function ImplementationCard({
   experiment,
   org,
   implementation,
+  /** Whether the control renders from a DIFFERENT deployment than the
+   *  treatment. Without one, "comparing production with the preview" would
+   *  name a side that isn't there. */
+  hasOwnDeployment,
   onImplement,
 }: {
   experiment: Experiment;
   org: string;
   implementation: ReturnType<typeof useImplementation>;
+  hasOwnDeployment: boolean;
   onImplement: () => void;
 }) {
   const t = useT();
@@ -1108,7 +1117,12 @@ function ImplementationCard({
         : stage === "merged"
           ? t("experiments.implementation.merged", { number })
           : stage === "ready"
-            ? t("experiments.implementation.ready", { number })
+            ? t(
+                hasOwnDeployment
+                  ? "experiments.implementation.ready"
+                  : "experiments.implementation.readyPrOnly",
+                { number },
+              )
             : t("experiments.implementation.deploying", { number });
 
   return (
@@ -1189,6 +1203,12 @@ function ExperimentDetail({
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(experiment.name);
   const dirty = !sameArms(arms, saved);
+  /** Where the CONTROL renders from, worst answer last: the project's preview
+   *  server, else the base branch's deploy (the real before side, and the
+   *  provider knows it with nothing configured), else the pull request's own
+   *  preview — one build on both sides, but still better than no comparison. */
+  const compareBase =
+    baseUrl ?? implementation.baseDeployUrl ?? implementation.previewUrl;
   const valid =
     arms.reduce((a, arm) => a + arm.weight, 0) === 100 &&
     arms.every((a) => a.id.trim()) &&
@@ -1335,25 +1355,37 @@ function ExperimentDetail({
             experiment={experiment}
             org={org}
             implementation={implementation}
+            hasOwnDeployment={
+              !!compareBase && compareBase !== implementation.previewUrl
+            }
             onImplement={actions.onImplement}
           />
-          {!baseUrl ? (
+          {/* Nothing runs the treatment yet, so both sides would be the same
+              page — two identical frames read as "the test does nothing". */}
+          {implementation.stage === "writing" ||
+          implementation.stage === "deploying" ? null : compareBase ? (
+            <CompareCard
+              baseUrl={compareBase}
+              treatmentUrl={implementation.previewUrl}
+              testKey={experiment.key}
+              arms={experiment.variants}
+            />
+          ) : (
             <EmptyState
               title={t("experiments.preview.noUrlTitle")}
               description={t("experiments.preview.noUrlDesc")}
+              buttonComponent={
+                <Button variant="secondary" size="sm" asChild>
+                  <Link
+                    to={PROJECT_ROUTE.settings}
+                    params={{ org, agentId }}
+                    search={{ section: "site" }}
+                  >
+                    {t("experiments.preview.configureUrl")}
+                  </Link>
+                </Button>
+              }
             />
-          ) : (
-            /* No deployment runs the treatment yet, so both sides would be the
-               same page — two identical frames read as "the test does nothing". */
-            implementation.stage !== "writing" &&
-            implementation.stage !== "deploying" && (
-              <CompareCard
-                baseUrl={baseUrl}
-                treatmentUrl={implementation.previewUrl}
-                testKey={experiment.key}
-                arms={experiment.variants}
-              />
-            )
           )}
         </Page.Container>
       </Page.Content>

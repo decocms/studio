@@ -285,4 +285,15 @@ export interface ChangeRequestClient {
    * published URL yet.
    */
   readDeployedUrl(sha: string): Promise<string | null>;
+
+  /**
+   * What a BRANCH is currently serving — the before side of a before/after
+   * comparison, where {@link readDeployedUrl} covers the after.
+   *
+   * Matched on the live ENVIRONMENT first and the ref second, because deploy
+   * bots commonly record a deployment's sha in `ref`, so a ref match alone
+   * finds nothing. Not resolved via the branch's head sha: that costs a call
+   * and answers null for a branch pushed since its last deploy.
+   */
+  readLiveDeployedUrl(ref: string): Promise<string | null>;
 }

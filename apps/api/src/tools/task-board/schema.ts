@@ -157,6 +157,14 @@ export const TaskBoardItemPrSchema = z.object({
   /** deco.cx deploy preview URL for the PR, lifted from a deploy status posted
    *  on the head commit. `null` when the site posts no such status. */
   previewUrl: z.string().nullable(),
+  /** What the PR's BASE branch is currently deployed at, from the provider's
+   *  own deployments — the "before" to `previewUrl`'s "after". `null` when the
+   *  base publishes no deployment URL, or on a host we don't frame.
+   *
+   *  Optional, unlike its siblings: cards cached by an earlier release have no
+   *  such key, and a required field would fail this tool's output validation
+   *  for every one of them until their entries expired. */
+  baseDeployUrl: z.string().nullable().optional(),
 });
 
 export const TaskBoardItemSchema = z.object({

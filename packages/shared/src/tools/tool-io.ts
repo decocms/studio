@@ -681,6 +681,7 @@ export interface StudioToolIO {
           summary: string | null;
         }[];
         previewUrl: string | null;
+        baseDeployUrl?: string | null | undefined;
       }[];
     };
   };

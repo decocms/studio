@@ -37,6 +37,7 @@ export const experiments = {
   "experiments.preview.noUrlTitle": "No preview URL for this site",
   "experiments.preview.noUrlDesc":
     "This project has no preview/production URL set, so variants can't be rendered here.",
+  "experiments.preview.configureUrl": "Set the preview URL",
   "experiments.preview.saveChanges": "Save changes",
   "experiments.preview.control": "Control",
   "experiments.implementation.title": "Implementation",
@@ -49,6 +50,8 @@ export const experiments = {
     "Pull request #{number} is open — waiting for its preview deploy to compare before and after.",
   "experiments.implementation.ready":
     "Comparing production (control) with pull request #{number}'s preview (treatment).",
+  "experiments.implementation.readyPrOnly":
+    "Both arms render from pull request #{number}'s preview — this project has no deployment of its own to compare against.",
   "experiments.implementation.merged":
     "Pull request #{number} is merged — the change is on the site itself.",
   "experiments.implementation.viewImplementation": "Follow implementation",

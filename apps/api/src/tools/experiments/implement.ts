@@ -4,7 +4,7 @@ import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { findOwnedProject } from "./ownership";
 import { assertExperimentsV2 } from "./v2-gate";
 import { resolveRepositoryForProject } from "./resolve-site-repository";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskKey } from "@decocms/shared/task-key";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
 import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
@@ -175,7 +175,11 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       organizationId: organization.id,
       title: `Implement experiment: ${experiment.name}`,
       description: buildInstruction(experiment),
-      status: "todo",
+      /** The run starts below, and everything that then moves the card —
+       *  down to the sweeper that links the pull request a sandboxed run
+       *  opened — is keyed on this lane. In Todo the card was invisible to
+       *  all of it, forever. */
+      status: LANES.progress,
       assigneeId: SUPER_AGENT_ASSIGNEE_ID,
       assignedBy: owner?.userId ?? null,
       repositoryId: repository.id,

@@ -309,6 +309,10 @@ type PrLiveState = {
   checksStatus: ChecksSummary;
   checks: PrCheck[];
   previewUrl: string | null;
+  /** What the BASE branch is serving — the before side of the comparison
+   *  `previewUrl` is the after side of. Same trusted-host gate, since a
+   *  surface frames it. */
+  baseDeployUrl: string | null;
 };
 
 /** One CI check on the change request, for the card's expandable footer.
@@ -335,6 +339,7 @@ const NO_LIVE_STATE: PrLiveState = {
   checksStatus: null,
   checks: [],
   previewUrl: null,
+  baseDeployUrl: null,
 };
 
 /**
@@ -450,6 +455,15 @@ async function fetchPrLiveState(
     previewUrl = deployed && isTrustedPreviewHost(deployed) ? deployed : null;
   }
 
+  /** Keyed on the BRANCH, so every change request against the same base
+   *  shares one read rather than paying for it each. */
+  const baseDeployed = await cachedRead<string | null>(
+    namespace,
+    `base-deploy:${detail.base}`,
+    `${prLabel(pr)} (base ${detail.base} deployment)`,
+    () => client.readLiveDeployedUrl(detail.base),
+  );
+
   return {
     title: detail.title,
     body: detail.body,
@@ -462,6 +476,8 @@ async function fetchPrLiveState(
     checksStatus: detail.checks,
     checks: await checkRows(client, namespace, pr, detail.checkRuns),
     previewUrl,
+    baseDeployUrl:
+      baseDeployed && isTrustedPreviewHost(baseDeployed) ? baseDeployed : null,
   };
 }
 

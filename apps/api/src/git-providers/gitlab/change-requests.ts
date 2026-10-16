@@ -41,6 +41,9 @@ const PAGE_SIZE = 100;
 const COMMENT_PAGE_SIZE = 50;
 /** Newest deployments scanned when looking for a published environment URL. */
 const DEPLOYMENTS_SCANNED = 30;
+/** GitLab's conventional name for the environment a project's live site is
+ *  deployed to — see {@link ChangeRequestClient.readLiveDeployedUrl}. */
+const PRODUCTION_ENVIRONMENT = "production";
 /**
  * A job trace is the whole build log and can be megabytes. Only its tail says
  * why the job failed, which is what a reader expanding the row is after.
@@ -548,16 +551,43 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       : text;
   }
 
-  async readDeployedUrl(sha: string): Promise<string | null> {
+  readDeployedUrl(sha: string): Promise<string | null> {
+    return this.deployedUrl((d) => d.sha === sha);
+  }
+
+  /** The live environment first, the ref as the fallback — see
+   *  {@link ChangeRequestClient.readLiveDeployedUrl} for why both. */
+  async readLiveDeployedUrl(ref: string): Promise<string | null> {
+    return (
+      (await this.deployedUrl(
+        (d) => d.environment?.name === PRODUCTION_ENVIRONMENT,
+      )) ?? (await this.deployedUrl((d) => d.ref === ref))
+    );
+  }
+
+  /** The newest successful deployment `matches` accepts, scanned from the
+   *  project's deployment list — which carries no server-side filter for
+   *  sha or ref, so those are matched here. */
+  private async deployedUrl(
+    matches: (deployment: {
+      sha?: string | null;
+      ref?: string | null;
+      environment?: { name?: string | null } | null;
+    }) => boolean,
+  ): Promise<string | null> {
     const deployments = await this.json<
       Array<{
         sha?: string | null;
+        ref?: string | null;
         status?: string | null;
-        environment?: { external_url?: string | null } | null;
+        environment?: {
+          name?: string | null;
+          external_url?: string | null;
+        } | null;
       }>
     >(`/deployments?order_by=id&sort=desc&per_page=${DEPLOYMENTS_SCANNED}`);
     for (const deployment of deployments ?? []) {
-      if (deployment.sha !== sha) continue;
+      if (!matches(deployment)) continue;
       if (deployment.status !== "success") continue;
       const url = deployment.environment?.external_url;
       if (typeof url === "string" && url.length > 0) return url;
