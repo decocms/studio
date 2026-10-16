@@ -42,6 +42,7 @@ export const SANDBOX_PLACEMENT_REASONS = [
   "capacity",
   "fallback",
   "image",
+  // No longer chosen, but a control plane on an older controller still sends it.
   "warm-pool",
   "freestyle-unavailable",
 ] as const;

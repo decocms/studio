@@ -209,7 +209,7 @@ describe("SandboxProviderRouter", () => {
     expect(freestyle.calls).not.toContain("owns");
   });
 
-  test("keeps orgs with a tenant warm pool on Kubernetes", async () => {
+  test("places an org with a tenant warm pool by the split too", async () => {
     const router = new SandboxProviderRouter(
       {
         kubernetes: fake("k8s", {
@@ -221,12 +221,9 @@ describe("SandboxProviderRouter", () => {
     );
     const tenant = { orgId: "org-1", userId: "u1" };
     expect(await router.place(HANDLE, { tenant })).toEqual({
-      kind: "kubernetes",
-      reason: "warm-pool",
+      kind: "freestyle",
+      reason: "split",
     });
-    expect(
-      await kindOf(router, HANDLE, { tenant: { ...tenant, orgId: "org-2" } }),
-    ).toBe("freestyle");
   });
 
   test("falls back to Kubernetes when Freestyle fails", async () => {
