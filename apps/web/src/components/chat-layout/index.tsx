@@ -24,6 +24,7 @@ import {
 import { useSidePanelWidth } from "@/hooks/use-side-panel-width";
 import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t";
+import { isStaleAssetError } from "@/lib/stale-build-reload";
 import { RoutePageHeader } from "@/layouts/route-page-header";
 
 const THREAD_PANEL_ID = "chat-layout-thread";
@@ -343,6 +344,8 @@ export function ChatLayoutPending() {
 /** Route validation and loading errors keep the content region and navigation mounted. */
 export function ChatLayoutError({ error, reset }: ErrorComponentProps) {
   const t = useT();
+  // A stale chunk needs a page reload, which only the root boundary does.
+  if (isStaleAssetError(error)) throw error;
   return (
     <ChatLayoutContent>
       <div
