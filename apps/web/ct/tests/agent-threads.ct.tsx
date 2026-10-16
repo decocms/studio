@@ -65,7 +65,10 @@ test("replying to a finished run picks it up again, unless another run is workin
   await idle.unmount();
 
   const busy = await mount(<AgentThreadsHarness />);
-  await busy.getByRole("button", { name: "Reply" }).first().click();
+  await busy
+    .getByRole("button", { name: "Reply", exact: true })
+    .first()
+    .click();
   const reply = busy.getByRole("textbox", {
     name: "Message the Super Agent...",
   });
@@ -77,4 +80,21 @@ test("replying to a finished run picks it up again, unless another run is workin
   await expect(
     busy.locator('[data-agent-route="busy"]').getByLabel("Send"),
   ).toBeDisabled();
+});
+
+test("a finished run's thread opens folded, and unfolds on demand", async ({
+  mount,
+}) => {
+  const component = await mount(<AgentThreadsHarness />);
+  const finished = component.getByTestId("comment-thread").first();
+  const running = component.getByTestId("comment-thread").last();
+
+  await expect(finished).toHaveAttribute("data-expanded", "false");
+  await expect(running).toHaveAttribute("data-expanded", "true");
+  await expect(finished.getByText(/^Done\. The promotional/)).toHaveCount(0);
+
+  await finished.getByRole("button", { name: /1 reply/ }).click();
+  await expect(finished.getByText(/^Done\. The promotional/)).toBeVisible();
+  await finished.getByRole("button", { name: "Hide replies" }).click();
+  await expect(finished).toHaveAttribute("data-expanded", "false");
 });

@@ -34,6 +34,8 @@ import {
   AlertCircle,
   ArrowUp,
   CheckCircle,
+  ChevronDown,
+  ChevronRight,
   DotsHorizontal,
   Edit03,
   MessageTextSquare01,
@@ -134,6 +136,12 @@ export function CommentThreadCard({
   const [replying, setReplying] = useState(false);
   const live =
     thread.run?.status === "running" || thread.run?.status === "waiting";
+  // A finished run's thread opens folded to the comment that started it; the
+  // live one, and a plain comment's, stay open.
+  const [expanded, setExpanded] = useState(
+    !thread.run || live || thread.replies.length === 0,
+  );
+  const lastReply = thread.replies.at(-1);
   // Replying in a run's thread is talking to the run, @ or not.
   const replyRoute: AgentRoute | undefined = thread.run
     ? live
@@ -144,7 +152,14 @@ export function CommentThreadCard({
     : undefined;
 
   return (
-    <div className={cn("flex flex-col", "border-b border-border/50 pb-4")}>
+    <div
+      data-testid="comment-thread"
+      data-expanded={expanded}
+      className={cn(
+        "flex flex-col rounded-xl border bg-card px-4 pb-3",
+        live ? "border-success/50" : "border-border/70",
+      )}
+    >
       <CommentEntry
         comment={thread}
         metadata={thread.run && <RunStatus run={thread.run} />}
@@ -153,7 +168,39 @@ export function CommentThreadCard({
         }
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
       />
-      {thread.replies.map((reply, i) => (
+      {!expanded && lastReply && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="-mx-1.5 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronRight size={14} className="shrink-0" />
+          <span className="shrink-0 font-medium">
+            {thread.replies.length === 1
+              ? t("taskBoard.agentThread.repliesCountOne")
+              : t("taskBoard.agentThread.repliesCount", {
+                  count: thread.replies.length,
+                })}
+          </span>
+          <span className="min-w-0 truncate">
+            · {lastReply.author.name}: {plainExcerpt(lastReply.body)}
+          </span>
+        </button>
+      )}
+      {expanded && thread.run && thread.replies.length > 0 && !live && (
+        <button
+          type="button"
+          onClick={() => {
+            setExpanded(false);
+            setReplying(false);
+          }}
+          className="-mx-1.5 flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronDown size={14} />
+          {t("taskBoard.agentThread.hideReplies")}
+        </button>
+      )}
+      {(expanded ? thread.replies : []).map((reply, i) => (
         <Fragment key={reply.id}>
           {/* Between two replies the rule starts at their text, so the run of
               replies reads as one exchange under the root comment. */}
@@ -194,7 +241,10 @@ export function CommentThreadCard({
         ) : (
           <button
             type="button"
-            onClick={() => setReplying(true)}
+            onClick={() => {
+              setExpanded(true);
+              setReplying(true);
+            }}
             className="ml-11 mt-1 flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <MessageTextSquare01 size={14} />
@@ -209,6 +259,16 @@ export function CommentThreadCard({
         ))}
     </div>
   );
+}
+
+/** One line of a markdown body, for a folded thread: mentions and links
+ *  read as their text, and the markup goes. */
+function plainExcerpt(markdown: string): string {
+  return markdown
+    .replace(/\[@?([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`#>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** The run's state beside the comment that started it. */
