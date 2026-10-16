@@ -373,6 +373,25 @@ describe("page-list", () => {
       );
     });
 
+    it("opens the page that serves the path ahead of a catch-all template", () => {
+      // A storefront that doesn't know its page sends the "/*" fallback.
+      const withNotFound: PageEntry[] = [
+        ...pages,
+        { key: "pages-NotFound-mno345", name: "Not Found", path: "/*" },
+      ];
+      expect(
+        resolveDeepLinkPage(withNotFound, { path: "/", pathTemplate: "/*" })
+          ?.key,
+      ).toBe("pages-Home-abc123456789");
+      // A path no page serves still lands on the template's page.
+      expect(
+        resolveDeepLinkPage(withNotFound, {
+          path: "/nao-existe",
+          pathTemplate: "/*",
+        })?.key,
+      ).toBe("pages-NotFound-mno345");
+    });
+
     it("returns null when nothing fits", () => {
       expect(resolveDeepLinkPage(pages, { path: "/nao-existe" })).toBeNull();
       expect(resolveDeepLinkPage(pages, {})).toBeNull();
