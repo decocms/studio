@@ -73,7 +73,6 @@ import {
   getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
-  getThreadSandboxMap,
   removeThreadSandboxMapEntry,
   setThreadSandboxMapEntry,
   syntheticBranchToGitRef,
@@ -84,6 +83,7 @@ import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
+import { lookupRecordedSandbox } from "./recorded-sandbox";
 import {
   cloneInfoForRepository,
   findRepositoryForBinding,
@@ -282,40 +282,16 @@ export async function ensureSandbox(
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
-  // Inline auth + lookup; the standard `requireVmEntry` runs
-  // `ctx.access.check()`, which expects resource scoping that the
-  // streaming turn doesn't carry. Storage writes below still go through
-  // the per-port authorization hooks.
-  requireAuth(ctx);
-  const organization = requireOrganization(ctx);
-  const userId = getUserId(ctx);
-  if (!userId) throw new Error("User ID required");
-
-  const virtualMcp = await ctx.storage.virtualMcps.findById(input.virtualMcpId);
-  if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
-    throw new Error("Virtual MCP not found");
-  }
-  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  // See resolveSandboxUserId: one sandbox per thread, keyed by its creator.
-  const sandboxUserId = await resolveSandboxUserId(ctx, input.branch, userId);
-  // Thread-scoped sandboxes are recorded on the thread (the agent write is a
-  // no-op for them), so the resume fast path has to look there too.
-  const recordThreadId =
-    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
-  const agentEntry = resolveVm(
-    readSandboxMap(metadata),
+  // Storage writes below still go through the per-port authorization hooks.
+  const {
+    organization,
+    userId,
+    metadata,
     sandboxUserId,
-    input.branch,
-  );
-  const existing: SandboxRecord | null =
-    agentEntry ??
-    (recordThreadId
-      ? resolveVm(
-          await getThreadSandboxMap(ctx, recordThreadId),
-          sandboxUserId,
-          input.branch,
-        )
-      : null);
+    recordThreadId,
+    agentEntry,
+    existing,
+  } = await lookupRecordedSandbox(input, ctx);
 
   const runner = await getAgentSandboxProvider(ctx);
 

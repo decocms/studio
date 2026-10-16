@@ -57,6 +57,7 @@ import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
+import { daemonRunId } from "@/harnesses/live-messages";
 import type { StudioContext } from "../core/studio-context";
 import {
   mintMcpEndpoint,
@@ -615,6 +616,8 @@ export class SandboxDispatchClient {
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId, agent),
+      // The run takes messages while it works (see `live-messages.ts`).
+      liveMessages: true,
     };
     markTurn(input.threadId, "mcp-and-workspace-resolved");
 
@@ -622,7 +625,7 @@ export class SandboxDispatchClient {
     // recovery) keeps the fence, so it reattaches or takes over (the daemon's
     // `Registry.claim`), while the next turn never reattaches to a stopped one or
     // hits the tombstone `DELETE /_sandbox/runs/:runId` leaves behind.
-    const runId = `${input.threadId}:${this.fenceToken}`;
+    const runId = daemonRunId(input.threadId, this.fenceToken);
     const { ctx, harnessId, virtualMcpId, branch, interactive, streamBuffer } =
       this;
     const credentialProviderId = this.credential.providerId;

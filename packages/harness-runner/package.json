@@ -10,6 +10,7 @@
   "files": [
     "main.ts",
     "claude-code.ts",
+    "live-messages.ts",
     "session-id.ts",
     "to-ui-chunks.ts"
   ],

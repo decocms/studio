@@ -17,7 +17,10 @@ produced. stderr is the pod's log. The daemon adds the run's terminal `done`
 frame itself — this process only emits what the harness produced.
 
 The wire is defined by `daemon-go/internal/dispatch/runner.go`; the frame shape
-is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. One
+is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. A run
+whose input sets `liveMessages` keeps stdin open after the envelope line, and
+the daemon writes one `{"liveMessage":{"id","text"}}` line for each message a
+person sends while the turn works (`daemon-go/internal/dispatch/live_messages.go`). One
 harness is implemented, `claude-code`, driven by the Claude Agent SDK; any other
 `harnessId` gets an `unknown_harness` error frame and a non-zero exit.
 
@@ -29,6 +32,14 @@ harness is implemented, `claude-code`, driven by the Claude Agent SDK; any other
   the daemon needs new part types.
 - Emit a frame per turn, and always emit a final frame — including on a throw.
 - Remember the per-thread session id so a follow-up turn resumes.
+- Take live messages into the running turn. Each one goes into the SDK's
+  streaming input as a `priority: "next"` user message, which Claude Code reads
+  between tool rounds; `--replay-user-messages` echoes it back at that point,
+  where the run emits a `data-live-message` part naming Studio's message id. A
+  message the turn ends without reading starts the CLI's next turn, which the
+  same run keeps reading. Every message gets a `{"liveMessageAck":…}` stdout
+  line, `accepted: false` once the turn has decided to finish, so the daemon
+  answers Studio only with what is true.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch
@@ -58,8 +69,9 @@ by Studio and reaching this process as its spawn environment:
 
 ## Architecture
 
-- `main.ts` — the wire: stdin envelope in, NDJSON frames out.
+- `main.ts` — the wire: stdin envelope and live messages in, NDJSON frames out.
 - `claude-code.ts` — SDK options policy, the per-turn loop, session persistence.
+- `live-messages.ts` — the live-message line, ack and per-turn bookkeeping.
 - `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s, with Claude
   Code's tools renamed to the canonical part names the chat UI renders
   (`Bash` → `bash`, `AskUserQuestion` → `user_ask`, `mcp__studio__<name>` →
