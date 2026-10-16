@@ -7,11 +7,11 @@
  * trailer (`appendCoAuthorTrailer`), so the block file's latest commit says
  * who and when: the trailer, else the commit's author when it is a person
  * (a developer's push), and the commit time. A Blocks v8 draft is an object
- * on the delivery bucket instead; its saves record the Studio user per name
- * (`DraftEdit`, in the org KV), and a name the draft doesn't hold falls back
- * to main's history like a v7 block.
+ * on the delivery bucket instead: the editor reads who changed the names it
+ * holds from the draft's own edits (`DraftEdit`), and asks here only for the
+ * others, which are main's, like a v7 block.
  *
- * Either way the identity is shown as the org's member (name, avatar) when
+ * The identity is shown as the org's member (name, avatar) when
  * it is one, else by its git name; `you` when it is the viewer (another tab
  * or window). Unknown parts are left out, never guessed.
  */
@@ -41,7 +41,7 @@ export interface ChangedBy {
 export interface ChangeAuthor {
   name: string | null;
   email: string | null;
-  /** A Studio user id, when the history recorded one (v8 hosted drafts). */
+  /** A Studio user id, when the history recorded one. */
   userId: string | null;
   at: string;
 }
@@ -233,40 +233,4 @@ export async function gitChangeAuthors(
     }),
   );
   return Object.fromEntries(found.flat());
-}
-
-/**
- * A v8 draft's own record of who changed `keys` (`DraftEdit`s, matched by
- * `same`, the protocol's spelling rule), and the keys it has no record of.
- * A name the draft holds without a record (saved before edits were kept)
- * stays unknown rather than fall back to main, which wouldn't be its change.
- */
-export function draftChangeAuthors(
-  draft: {
-    body: { set: Record<string, unknown>; delete: string[] };
-    edits: Record<string, { by: string; at: string }>;
-  } | null,
-  keys: string[],
-  same: (a: string, b: string) => boolean,
-): { authors: Record<string, ChangeAuthor>; notInDraft: string[] } {
-  const authors: Array<[string, ChangeAuthor]> = [];
-  const notInDraft: string[] = [];
-  const names = draft
-    ? [...Object.keys(draft.body.set), ...draft.body.delete]
-    : [];
-  for (const key of keys) {
-    const name = names.find((n) => same(n, key));
-    if (name === undefined) {
-      notInDraft.push(key);
-      continue;
-    }
-    const edit = Object.hasOwn(draft!.edits, name)
-      ? draft!.edits[name]
-      : undefined;
-    const at = edit ? validTime(edit.at) : null;
-    if (edit && at) {
-      authors.push([key, { name: null, email: null, userId: edit.by, at }]);
-    }
-  }
-  return { authors: Object.fromEntries(authors), notInDraft };
 }

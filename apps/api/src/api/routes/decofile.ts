@@ -68,7 +68,6 @@ import {
 } from "@/decofile/commit-coalescer";
 import {
   type ChangeAuthor,
-  draftChangeAuthors,
   gitChangeAuthors,
   MAX_CHANGED_BY_BLOCKS,
   memberLookupFor,
@@ -88,7 +87,11 @@ import {
   createDraftContentStorage,
   createV7MainStorage,
 } from "@/hosted/draft-content-storage";
-import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
+import {
+  type DraftStore,
+  type HostedDraftRef,
+  heldDraftEdits,
+} from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
 import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
@@ -99,7 +102,7 @@ import {
   MAIN_SCHEMA_HEADER,
 } from "@decocms/shared/blocks-major";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
-import { blockFileName, spellingKey } from "@decocms/blocks/protocol";
+import { blockFileName } from "@decocms/blocks/protocol";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -554,6 +557,16 @@ export function createDecofileRoutes(
       if (hosted && mainV8) {
         const draft = await hosted.drafts.load(hosted.ref);
         const version = bareEtag(draft?.etag);
+        // `?edits=1` (the same-field dialog): who last changed each name the
+        // draft holds (`null`: not recorded). Ids only; the editor resolves
+        // the people from the org's members.
+        const edits =
+          c.req.query("edits") === "1"
+            ? heldDraftEdits(
+                draft?.body ?? null,
+                draft ? await hosted.drafts.edits(hosted.ref) : {},
+              )
+            : undefined;
         return c.json(
           {
             draft:
@@ -561,6 +574,7 @@ export function createDecofileRoutes(
                 ? draftPointerTarget(hosted.ref.site, draft.slug)
                 : null,
             version,
+            ...(edits ? { edits } : {}),
           },
           200,
           { "Cache-Control": "no-store" },
@@ -862,21 +876,17 @@ export function createDecofileRoutes(
       let authors: Record<string, ChangeAuthor>;
       const mainBranch = hosted ? await client.getDefaultBranch() : null;
       if (hosted && mainBranch && (await scopeIsV8(c, client, mainBranch))) {
-        const draft = await hosted.drafts.load(hosted.ref);
-        const { authors: fromDraft, notInDraft } = draftChangeAuthors(
-          draft,
-          keys,
-          (a, b) => spellingKey(a) === spellingKey(b),
-        );
+        // A v8 draft is not git: the editor reads who changed the names the
+        // draft holds from the draft's own edits (the session GET with
+        // `?edits=1`) and asks here only for the others, which are main's.
         const dir = blocksDirPath(scope.packagePath);
-        const fromMain = await gitChangeAuthors(
+        authors = await gitChangeAuthors(
           insights,
           mainBranch,
           Object.fromEntries(
-            notInDraft.map((key) => [key, `${dir}/${blockFileName(key)}`]),
+            keys.map((key) => [key, `${dir}/${blockFileName(key)}`]),
           ),
         );
-        authors = { ...fromMain, ...fromDraft };
       } else {
         const dir = blocksDirPath(scope.packagePath);
         authors = await gitChangeAuthors(
