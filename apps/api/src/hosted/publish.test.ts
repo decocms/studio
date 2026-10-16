@@ -96,7 +96,6 @@ describe("publishDraft", () => {
     });
     expect(delivery.log).toEqual([
       `delete ${deliveryKeys.draft("acme", slug)}`,
-      `delete ${deliveryKeys.draftEdits("acme", slug)}`,
       `put ${deliveryKeys.revision("acme", sha)}`,
       `put ${deliveryKeys.latest("acme")}`,
       `purge ${deliveryKeys.latest("acme")}`,
@@ -188,8 +187,7 @@ describe("publishDraft", () => {
     });
     // One purge call (its single retry is inside it) and one pointer write:
     // no restore.
-    // The draft and its edits are deleted first.
-    expect(delivery.log.slice(2)).toEqual([
+    expect(delivery.log.slice(1)).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
       `purge ${deliveryKeys.latest("acme")}`,
@@ -226,8 +224,7 @@ describe("publishDraft", () => {
     });
     expect(calls).toBe(2);
     // No restore: the pointer written once stays.
-    // The draft and its edits are deleted first.
-    expect(delivery.log.slice(2)).toEqual([
+    expect(delivery.log.slice(1)).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
       `put ${deliveryKeys.latest("acme")}`,
     ]);
@@ -282,8 +279,7 @@ describe("publishDraft", () => {
       sha: git.head(),
       release: "created",
     });
-    // The draft and its edits are deleted first.
-    expect(delivery.log.slice(2)).toEqual([
+    expect(delivery.log.slice(1)).toEqual([
       `put ${deliveryKeys.revision("acme", git.head())}`,
     ]);
     expect(await drafts.load(REF)).toBeNull();
