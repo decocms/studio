@@ -89,6 +89,9 @@ export type SuperAgentPromptOpts = {
     /** Absent for a manual fire, which no trigger started. */
     triggerId?: string;
     fence: { threadId: string; workflowID: string };
+    /** Open the run's thread on the card with the Super Agent's comment.
+     *  Not for a run a comment started, which is its own thread's root. */
+    announce?: boolean;
   };
 };
 
@@ -164,11 +167,13 @@ async function openPrForTask(
   return undefined;
 }
 
+/** The run's thread, and whether this call started it (false when its fence
+ *  had already started one). */
 export async function enqueueSuperAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
-): Promise<void> {
+): Promise<{ threadId: string; isNew: boolean }> {
   // Quota claim at dispatch — the funnel every FRESH execution shares
   // (update flip, import auto-delegation, review/conflict re-runs). A stall
   // nudge re-prompts an existing thread directly (stall-recovery.ts) and
@@ -185,6 +190,7 @@ export async function enqueueSuperAgentForTask(
     opts?.userInitiated ? userInitiatedTaskQuotaConfig() : undefined,
   );
 
+  let dispatched: { threadId: string; isNew: boolean };
   try {
     // A re-run told to update an existing PR must land on that PR's BRANCH.
     // Asking the model to `gh pr checkout` (which the prompt does, and has
@@ -284,7 +290,7 @@ export async function enqueueSuperAgentForTask(
       // Names the candidates so the run doesn't spend its first step asking what exists.
       ...("choices" in choice ? { repoChoices: choice.choices } : {}),
     });
-    const dispatched = await enqueueAgentRunForTask(ctx, task, {
+    dispatched = await enqueueAgentRunForTask(ctx, task, {
       title,
       rulesColumn,
       ...(runMetadata ? { metadata: runMetadata } : {}),
@@ -300,6 +306,11 @@ export async function enqueueSuperAgentForTask(
             agentId: opts.automation.agentId,
             triggerId: opts.automation.triggerId,
             fence: opts.automation.fence,
+            ...(opts.automation.announce
+              ? {
+                  runRoot: `${opts.automation.name} started working on this card.`,
+                }
+              : {}),
           }
         : {}),
     });
@@ -362,4 +373,5 @@ export async function enqueueSuperAgentForTask(
       ...(opts?.runClass ? { run_class: opts.runClass } : {}),
     },
   });
+  return dispatched;
 }

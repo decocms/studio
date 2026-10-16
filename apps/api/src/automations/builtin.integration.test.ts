@@ -199,11 +199,17 @@ describe("built-in automations (real Postgres)", () => {
         select a.system_key, a.active, t.type, t.column_key
           from automations a
           join automation_triggers t on t.automation_id = a.id
-         where a.system_key in ('pr_merged', 'chat_pr')
+         where a.system_key in ('pr_merged', 'chat_pr', 'agent_mentions')
          order by a.system_key
       `.execute(database.db)
     ).rows;
     expect(rows).toEqual([
+      {
+        system_key: "agent_mentions",
+        active: true,
+        type: "card_mention",
+        column_key: null,
+      },
       {
         system_key: "chat_pr",
         active: true,
@@ -248,6 +254,7 @@ describe("built-in automations (real Postgres)", () => {
     expect(builtinOwningStarter("chat_pr_opened")).toBe(
       "Track chat pull requests",
     );
+    expect(builtinOwningStarter("card_mention")).toBe("Super Agent mentions");
     expect(builtinOwningStarter("board_column_transition")).toBeUndefined();
   });
 });

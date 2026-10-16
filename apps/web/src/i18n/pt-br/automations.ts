@@ -205,6 +205,8 @@ export const automations = {
     "Move um card em review para Post-deploy Validation quando o pull request dele é mergeado, onde quer que o merge aconteça (botão de merge do GitHub, auto-merge da branch protection). Desligada, um pull request mergeado deixa o card onde está. Não roda agente.",
   "automations.builtin.chatPrDescription":
     "Quando um chat sem card abre um pull request por uma tool do provedor, coloca ele no board: escolhe o card aberto a que o trabalho pertence, ou cria um, linka o pull request e o chat, e passa o card ao Super Agent para o Reviewer pegar. Desligada, o pull request fica fora do board. Um chat já linkado a um card nunca é tocado.",
+  "automations.builtin.mentionsDescription":
+    "Mencione o Super Agent nos comentários de um card para rodá-lo ali. Sem run no card, o comentário começa um, e o agente responde na thread desse comentário; com um run em andamento, o comentário vai para esse run. Uma resposta na thread de um run vai para esse run, e retoma um que já terminou. Um run por vez em cada card. Desligada, uma menção é um comentário comum.",
   "automations.builtin.description":
     "O Studio roda esta automação para o board. Ela segue as instruções e skills das colunas do board; mude lá.",
   "automations.columnTransitionDialog.title":
@@ -247,6 +249,8 @@ export const automations = {
     "Quando um chat linkado a um card roda",
   "automations.triggerCard.prMerged":
     "Quando o pull request de um card é mergeado",
+  "automations.triggerCard.cardMention":
+    "Quando um comentário menciona o Super Agent, ou responde a um run",
   "automations.triggerCard.chatPrOpened":
     "Quando um chat sem card abre um pull request",
   "automations.triggerCard.unownedOnly": "Só cards sem dono",

@@ -134,6 +134,10 @@ export async function enqueueAgentRunForTask(
     /** The automation trigger that fired this run, stamped on the thread so
      *  the automation's run history lists it. */
     triggerId?: string;
+    /** The Super Agent's comment the run's thread on the card hangs off,
+     *  written once the run is dispatched. Omitted when the caller's own
+     *  comment is the root (a mention) or no board shows the card (Jira). */
+    runRoot?: string;
   },
 ): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
@@ -262,8 +266,6 @@ export async function enqueueAgentRunForTask(
   // in the card and derive its live run state.
   await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
 
-  await emitRunLinked(ctx, task.id, organizationId);
-
   const requestMessage = {
     id: crypto.randomUUID(),
     role: "user" as const,
@@ -329,6 +331,21 @@ export async function enqueueAgentRunForTask(
     },
     opts.fence ? { workflowID: opts.fence.workflowID } : undefined,
   );
+
+  // Best-effort: without its comment the run still shows, as an activity row.
+  if (opts.runRoot) {
+    await ctx.storage.taskBoard
+      .createRunRoot({
+        taskBoardItemId: task.id,
+        organizationId,
+        threadId: thread.id,
+        body: opts.runRoot,
+      })
+      .catch((err) =>
+        console.error("[task-board] run root comment failed", err),
+      );
+  }
+  await emitRunLinked(ctx, task.id, organizationId);
 
   return { threadId: thread.id, isNew: true };
 }

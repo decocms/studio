@@ -6613,6 +6613,7 @@ export interface StudioToolIO {
             | "linked_chat_run"
             | "board_pr_merged"
             | "chat_pr_opened"
+            | "card_mention"
             | "jira_transition";
           cron_expression: string | null;
           connection_id: string | null;
@@ -6697,6 +6698,7 @@ export interface StudioToolIO {
         | "linked_chat_run"
         | "board_pr_merged"
         | "chat_pr_opened"
+        | "card_mention"
         | "jira_transition";
       cron_expression?: string | undefined;
       connection_id?: string | undefined;
@@ -6734,6 +6736,7 @@ export interface StudioToolIO {
         | "linked_chat_run"
         | "board_pr_merged"
         | "chat_pr_opened"
+        | "card_mention"
         | "jira_transition";
       created_at: string;
       webhook?: { url: string; token: string } | null | undefined;

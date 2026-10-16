@@ -18,6 +18,22 @@ import {
   sandboxPathsAsUploads,
 } from "./description-uploads";
 import { taskRunContextStore } from "./task-run-context";
+import { planMention, runCommentParent, runMention } from "./mention-runs";
+import { emitTaskBoardUpdated } from "./run-reactions";
+
+/** Comments have no push of their own: an open card re-reads them when the
+ *  card is pushed. The hidden Jira anchor is on no board. */
+async function pushCard(
+  ctx: StudioContext,
+  itemId: string,
+  organizationId: string,
+): Promise<void> {
+  const card = await ctx.storage.taskBoard
+    .getById(itemId, organizationId)
+    .catch(() => null);
+  if (card && card.source !== "jira")
+    emitTaskBoardUpdated(organizationId, card);
+}
 
 /** No real comment is this long — caps the row a single POST can write. */
 const MAX_COMMENT_BODY_LENGTH = 50_000;
@@ -126,7 +142,9 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
   name: "TASK_BOARD_COMMENT_CREATE",
   description:
     "Post a comment on a task board item, or a reply to one. " +
-    'Inside a task run a new comment is `internal` by default: handoff for other agents, hidden from the people reading the task. Pass `audience: "human"` for the note written for them. A reply takes the audience of the comment it answers unless you pass one.',
+    'Inside a task run a new comment is `internal` by default: handoff for other agents, hidden from the people reading the task. Pass `audience: "human"` for the note written for them. A reply takes the audience of the comment it answers unless you pass one. ' +
+    "Inside a run, a comment with no `parentId` is a reply in the run's comment thread on the card: under the person's comment that started or wrote to the run (and then for them), or under the note that opened a board run's thread (still `internal` by default). " +
+    "A person's comment that mentions the Super Agent, or replies in a run's comment thread, goes to that run (or starts one); it is refused while another run is working the card.",
   annotations: {
     title: "Create Task Comment",
     readOnlyHint: false,
@@ -156,22 +174,65 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       taskRun?.threadId && orgSlug
         ? bodyFromRun(input.body, taskRun.threadId, orgSlug)
         : input.body;
+    // A person's comment may be for the Super Agent (`mention-runs.ts`): decided
+    // before writing, so a refused one is never written.
+    const item = taskRun
+      ? null
+      : await ctx.storage.taskBoard.getById(
+          input.taskBoardItemId,
+          organizationId,
+        );
+    const plan = item ? await planMention(ctx, item, input) : null;
+    const runRoot =
+      taskRun && !input.parentId
+        ? runCommentParent(
+            await ctx.storage.taskBoard.listComments(
+              input.taskBoardItemId,
+              organizationId,
+            ),
+            taskRun.threadId,
+          )
+        : null;
+    const answersPerson =
+      !!runRoot && runRoot.authorId !== SUPER_AGENT_ASSIGNEE_ID;
+    const parentId = taskRun
+      ? (input.parentId ?? runRoot?.id ?? null)
+      : plan?.kind === "send"
+        ? plan.parentId
+        : (input.parentId ?? null);
     const comment = await ctx.storage.taskBoard.createComment({
       taskBoardItemId: input.taskBoardItemId,
       organizationId,
-      parentId: input.parentId ?? null,
+      parentId,
       // Same id the board already uses for the agent as an assignee, so the UI
       // renders it as the agent without a second concept.
       authorId: taskRun ? SUPER_AGENT_ASSIGNEE_ID : getUserId(ctx)!,
       // Which run wrote it — the only way to tell one agent's comments from
       // another's, since they all share the author id above.
       threadId: taskRun?.threadId ?? null,
-      // A run's new thread is handoff; its reply goes to whoever it answers.
+      // A run's own note is handoff, under its thread's root too; one that
+      // answers a person's comment is for them.
       audience:
-        input.audience ?? (taskRun && !input.parentId ? "internal" : undefined),
+        input.audience ??
+        (taskRun && !input.parentId && !answersPerson ? "internal" : undefined),
       body,
     });
     if (!comment) throw new Error("Task board item not found");
+    if (item && plan) {
+      try {
+        await runMention(ctx, item, comment, plan);
+      } catch (err) {
+        // Nothing reached the agent: take the comment back, so the draft is
+        // what the person retries, not a second copy.
+        await ctx.storage.taskBoard.deleteComment(
+          comment.id,
+          organizationId,
+          getUserId(ctx)!,
+        );
+        throw err;
+      }
+    }
+    await pushCard(ctx, comment.taskBoardItemId, organizationId);
     // Nobody is notified about a comment the feed hides from them.
     if (comment.audience === "internal") return { comment };
     // Not an activity action, hence its own fan-out. The agent has no inbox.

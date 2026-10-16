@@ -194,6 +194,8 @@ export const automations = {
     "Moves a card under review to Post-deploy Validation once its pull request is merged, wherever it was merged (GitHub's merge button, branch protection's auto-merge). Off, a merged pull request leaves the card where it is. It runs no agent.",
   "automations.builtin.chatPrDescription":
     "When a chat with no card opens a pull request through a provider tool, puts it on the board: it picks the open card the work belongs to, or creates one, links the pull request and the chat, and hands the card to the Super Agent so the Reviewer picks it up. Off, the pull request stays off the board. A chat already linked to a card is never touched.",
+  "automations.builtin.mentionsDescription":
+    "Mention the Super Agent in a card's comments to run it there. With no run on the card, the comment starts one, and the agent answers in that comment's thread; with a run in progress, the comment goes to that run. A reply in a run's thread goes to that run, and picks a finished one up again. One run works a card at a time. Off, a mention is a plain comment.",
   "automations.builtin.description":
     "Studio runs this automation for the board. It follows the board's column instructions and skills; change them there.",
   "automations.columnTransitionDialog.title": "When a card enters a column",
@@ -230,6 +232,8 @@ export const automations = {
     "When a card's pull request is ready for review",
   "automations.triggerCard.linkedChatRun": "When a chat linked to a card runs",
   "automations.triggerCard.prMerged": "When a card's pull request is merged",
+  "automations.triggerCard.cardMention":
+    "When a comment mentions the Super Agent, or replies to a run",
   "automations.triggerCard.chatPrOpened":
     "When a chat with no card opens a pull request",
   "automations.triggerCard.unownedOnly": "Only cards nobody owns",

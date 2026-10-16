@@ -1509,6 +1509,7 @@ export type AutomationTriggerType =
   | "linked_chat_run"
   | "board_pr_merged"
   | "chat_pr_opened"
+  | "card_mention"
   | "jira_transition";
 
 /**

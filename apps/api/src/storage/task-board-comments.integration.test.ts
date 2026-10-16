@@ -9,6 +9,10 @@ import type { StudioContext } from "../core/studio-context";
 import type { StudioDatabase } from "../database";
 import { TaskBoardStorage } from "./task-board";
 import { NotificationStorage } from "./notifications";
+import { createAutomationsStorage } from "./automations";
+import { SqlThreadStorage } from "./threads";
+import { ensureBuiltinAutomations } from "../automations/builtin";
+import { sql } from "kysely";
 import {
   TASK_BOARD_COMMENT_CREATE,
   TASK_BOARD_COMMENT_UPDATE,
@@ -36,7 +40,11 @@ describe("TaskBoardStorage comments", () => {
       },
       auth: { user: { id: "user_1", email: "user_1@test.com", name: "u1" } },
       organization: { id: "org_test", slug: "org_test", name: "org_test" },
-      storage: { taskBoard: storage, notifications },
+      storage: {
+        taskBoard: storage,
+        notifications,
+        automations: createAutomationsStorage(database.db),
+      },
       access: {
         granted: () => true,
         check: async () => {},
@@ -341,5 +349,231 @@ describe("TaskBoardStorage comments", () => {
     expect(shown).toHaveLength(1);
     expect(shown[0]!.threadId).toBe("thrd_reviewer_cr");
     expect(shown[0]!.body).toContain("Decide whether member discounts stack");
+  });
+
+  it("still shows a change request's notes when only the run's opening note is for people", async () => {
+    const task = await storage.create({
+      organizationId: "org_test",
+      title: "Board review without a note",
+      by: "user_test",
+    });
+    await storage.createRunRoot({
+      taskBoardItemId: task.id,
+      organizationId: "org_test",
+      threadId: "thrd_reviewer_opened",
+      body: "Reviewer started reviewing this card.",
+    });
+    const [opening] = await storage.listComments(task.id, "org_test");
+
+    await ensureReviewerCommented(
+      ctx,
+      task,
+      "reviewer",
+      "thrd_reviewer_opened",
+      {
+        decision: "request_changes",
+        notes: "Decide whether the banner shows on mobile. NO VISUAL SURFACE.",
+      },
+    );
+
+    const mirrored = (await storage.listComments(task.id, "org_test")).filter(
+      (c) => c.id !== opening!.id,
+    );
+    expect(mirrored).toHaveLength(1);
+    expect(mirrored[0]).toMatchObject({
+      parentId: opening!.id,
+      audience: "human",
+      threadId: "thrd_reviewer_opened",
+    });
+  });
+
+  describe("board run threads", () => {
+    let card: string;
+
+    beforeAll(async () => {
+      card = (
+        await storage.create({
+          organizationId: "org_test",
+          title: "Card a board run works",
+          by: "user_test",
+        })
+      ).id;
+    });
+
+    it("opens a run's thread once, and only on a card of the run's org", async () => {
+      const opened = {
+        taskBoardItemId: card,
+        threadId: "thrd_board_once",
+        body: "Implementer started working on this card.",
+      };
+      await storage.createRunRoot({ ...opened, organizationId: "org_other" });
+      await storage.createRunRoot({ ...opened, organizationId: "org_test" });
+      await storage.createRunRoot({ ...opened, organizationId: "org_test" });
+
+      const roots = (await storage.listComments(card, "org_test")).filter(
+        (c) => c.threadId === "thrd_board_once",
+      );
+      expect(roots).toHaveLength(1);
+      expect(roots[0]).toMatchObject({
+        parentId: null,
+        authorId: "super-agent",
+        audience: "human",
+        body: opened.body,
+      });
+    });
+
+    it("writes the run's notes under its opening note, as handoff unless addressed to people", async () => {
+      await storage.createRunRoot({
+        taskBoardItemId: card,
+        organizationId: "org_test",
+        threadId: "thrd_board_notes",
+        body: "Implementer started working on this card.",
+      });
+      const opening = (await storage.listComments(card, "org_test")).find(
+        (c) => c.threadId === "thrd_board_notes",
+      );
+      const inRun = <T>(fn: () => Promise<T>) =>
+        taskRunContextStore.run({ threadId: "thrd_board_notes" }, fn);
+
+      const handoff = await inRun(() =>
+        TASK_BOARD_COMMENT_CREATE.handler(
+          { taskBoardItemId: card, body: "Branch pushed, CI pending." },
+          ctx,
+        ),
+      );
+      const forPeople = await inRun(() =>
+        TASK_BOARD_COMMENT_CREATE.handler(
+          { taskBoardItemId: card, body: "PR is up.", audience: "human" },
+          ctx,
+        ),
+      );
+
+      expect(handoff.comment).toMatchObject({
+        parentId: opening!.id,
+        audience: "internal",
+      });
+      expect(forPeople.comment).toMatchObject({
+        parentId: opening!.id,
+        audience: "human",
+      });
+    });
+  });
+
+  describe("Super Agent mentions", () => {
+    const MENTION = `${mentionMarkdown("super-agent", "Super Agent")} look`;
+    let card: string;
+
+    /** A run linked to `card`, in `status`. */
+    const linkedRun = async (
+      id: string,
+      status: "completed" | "in_progress",
+    ) => {
+      await new SqlThreadStorage(database.db).create({
+        id,
+        organization_id: "org_test",
+        title: "run",
+        status,
+        message_storage_version: 2,
+        created_by: "user_test",
+      });
+      await storage.linkThread(card, id, "org_test");
+    };
+
+    beforeAll(async () => {
+      await ensureBuiltinAutomations(database.db, {
+        id: "org_test",
+        createdBy: "user_test",
+      });
+      card = (
+        await storage.create({
+          organizationId: "org_test",
+          title: "Card the agent works",
+          by: "user_test",
+        })
+      ).id;
+    });
+
+    it("answers a run's own comment under the person's comment that started it", async () => {
+      await linkedRun("thrd_mention_answer", "completed");
+      const root = await storage.createComment({
+        taskBoardItemId: card,
+        organizationId: "org_test",
+        authorId: "user_1",
+        threadId: "thrd_mention_answer",
+        body: MENTION,
+      });
+
+      const answer = await taskRunContextStore.run(
+        { threadId: "thrd_mention_answer" },
+        () =>
+          TASK_BOARD_COMMENT_CREATE.handler(
+            { taskBoardItemId: card, body: "Done, PR is up." },
+            ctx,
+          ),
+      );
+
+      expect(answer.comment.parentId).toBe(root!.id);
+      expect(answer.comment.audience).toBe("human");
+    });
+
+    it("refuses a reply to a finished run while another works the card, and writes nothing", async () => {
+      await linkedRun("thrd_mention_done", "completed");
+      await linkedRun("thrd_mention_live", "in_progress");
+      const root = await storage.createComment({
+        taskBoardItemId: card,
+        organizationId: "org_test",
+        authorId: "user_1",
+        threadId: "thrd_mention_done",
+        body: MENTION,
+      });
+      const before = (await storage.listComments(card, "org_test")).length;
+
+      await expect(
+        TASK_BOARD_COMMENT_CREATE.handler(
+          { taskBoardItemId: card, body: "one more thing", parentId: root!.id },
+          ctx,
+        ),
+      ).rejects.toThrow(/Another run is working on this card/);
+      expect(await storage.listComments(card, "org_test")).toHaveLength(before);
+    });
+
+    it("is a plain comment while Super Agent mentions is off", async () => {
+      await sql`update automations set active = false
+                 where organization_id = 'org_test' and system_key = 'agent_mentions'`.execute(
+        database.db,
+      );
+      try {
+        const posted = await TASK_BOARD_COMMENT_CREATE.handler(
+          { taskBoardItemId: card, body: MENTION },
+          ctx,
+        );
+        expect(posted.comment.threadId).toBeNull();
+        expect(posted.comment.parentId).toBeNull();
+      } finally {
+        await sql`update automations set active = true
+                   where organization_id = 'org_test' and system_key = 'agent_mentions'`.execute(
+          database.db,
+        );
+      }
+    });
+
+    it("ties a comment to a run only within its own organization", async () => {
+      const posted = await storage.createComment({
+        taskBoardItemId: card,
+        organizationId: "org_test",
+        authorId: "user_1",
+        body: "tie me",
+      });
+
+      await storage.setCommentThread(posted!.id, "org_other", "thrd_x");
+      expect(
+        (await storage.getComment(posted!.id, "org_test"))?.threadId,
+      ).toBeNull();
+
+      await storage.setCommentThread(posted!.id, "org_test", "thrd_x");
+      expect((await storage.getComment(posted!.id, "org_test"))?.threadId).toBe(
+        "thrd_x",
+      );
+    });
   });
 });
