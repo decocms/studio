@@ -73,6 +73,8 @@ export function bareEtag(etag: string | null | undefined): string | null {
 export interface StoredObject {
   text: string;
   etag: string | null;
+  /** User-defined metadata (`x-amz-meta-*`), keys lowercased; absent when none. */
+  metadata?: Record<string, string>;
 }
 
 /** The four object operations the hosted features need. */
@@ -81,6 +83,8 @@ export interface DeliveryStore {
     key: string,
     value: unknown,
     cacheControl: string,
+    /** User-defined metadata (`x-amz-meta-*`): ASCII values, 2 KB in all. */
+    metadata?: Record<string, string>,
   ): Promise<{ etag: string | null }>;
   /** The object, or null when there is none. */
   get(key: string): Promise<StoredObject | null>;
@@ -134,7 +138,7 @@ function createS3DeliveryStore(config: {
   });
   const Bucket = config.bucket;
   return {
-    async putJson(key, value, cacheControl) {
+    async putJson(key, value, cacheControl, metadata) {
       const res = await client.send(
         new PutObjectCommand({
           Bucket,
@@ -142,6 +146,9 @@ function createS3DeliveryStore(config: {
           Body: Buffer.from(JSON.stringify(value), "utf-8"),
           ContentType: "application/json; charset=utf-8",
           CacheControl: cacheControl,
+          ...(metadata && Object.keys(metadata).length > 0
+            ? { Metadata: metadata }
+            : {}),
         }),
       );
       return { etag: res.ETag ?? null };
@@ -152,7 +159,11 @@ function createS3DeliveryStore(config: {
           new GetObjectCommand({ Bucket, Key: key }),
         );
         const text = (await res.Body?.transformToString("utf-8")) ?? "";
-        return { text, etag: res.ETag ?? null };
+        return {
+          text,
+          etag: res.ETag ?? null,
+          ...(res.Metadata ? { metadata: res.Metadata } : {}),
+        };
       } catch (error) {
         if (isNotFound(error)) return null;
         throw error;
