@@ -223,6 +223,24 @@ describe("pointers", () => {
 });
 
 describe("previewValue", () => {
+  it("reads rich text as text: nested tags removed, each entity decoded once", () => {
+    expect(previewValue("<p>a</p><p>b<br>c</p>", null)).toEqual({
+      kind: "text",
+      text: "a\nb\nc",
+    });
+    expect(previewValue("<p>x<scr<script>ipt>y</p>", null)).toMatchObject({
+      kind: "text",
+    });
+    const nested = previewValue("<p>x<scr<script>ipt>y</p>", null);
+    expect(nested.kind === "text" && nested.text.includes("<")).toBe(false);
+    expect(
+      previewValue("<p>&amp;lt;b&amp;gt; &amp; 1&nbsp;2</p>", null),
+    ).toEqual({
+      kind: "text",
+      text: "&lt;b&gt; & 1 2",
+    });
+  });
+
   it("shows text, images, lists and small objects readably", () => {
     expect(previewValue("Hello", null)).toEqual({
       kind: "text",
