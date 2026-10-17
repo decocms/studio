@@ -154,20 +154,12 @@ export function mapCommit(row: GitlabCommitRow): RepoCommit {
     sha: row.id ?? "",
     date: row.committed_date ?? row.created_at ?? "",
     message: row.title ?? firstLine(row.message ?? ""),
-    ...bodyOf(row.message),
     author: {
       name: row.author_name ?? null,
       email: row.author_email ?? null,
       login: null,
     },
   };
-}
-
-/** The message after its subject line, when there is any. */
-function bodyOf(message = ""): { body?: string } {
-  const end = message.indexOf("\n");
-  const body = end === -1 ? "" : message.slice(end + 1).trim();
-  return body ? { body } : {};
 }
 
 function firstLine(message: string): string {
@@ -409,7 +401,6 @@ export class GitlabInsightsClient implements RepoInsightsClient {
       per_page: String(limit),
       page: String(pageFromCursor(params.cursor)),
     });
-    if (params.path !== undefined) query.set("path", params.path);
     const page = await this.rows<GitlabCommitRow>(
       `/repository/commits?${query}`,
     );

@@ -275,12 +275,6 @@ export const sectionsEditor = {
     "You both changed the fields below. Choose which version to keep for each one. Their version stays saved until you apply your choice.",
   "sectionsEditor.formConflict.changedAgain":
     "Their version changed again while this was open. The fields below show it.",
-  "sectionsEditor.formConflict.changedBy": "Changed by {name} · {when}",
-  "sectionsEditor.formConflict.changedByYou":
-    "You, in another tab or window · {when}",
-  "sectionsEditor.formConflict.changedAt": "Changed {when}",
-  "sectionsEditor.formConflict.changedLocally":
-    "Changed on your computer · {when}",
   "sectionsEditor.formConflict.yourVersion": "Your version",
   "sectionsEditor.formConflict.theirVersion": "Their version",
   "sectionsEditor.formConflict.keepMine": "Keep mine",

@@ -105,13 +105,6 @@ describe("commitHistoryQuery", () => {
     expect(query).not.toContain("defaultBranchRef");
   });
 
-  test("a path filter is a variable too, and only when asked for", () => {
-    const query = commitHistoryQuery(true, true);
-    expect(query).toContain("$path: String!");
-    expect(query).toContain("after: $after, path: $path)");
-    expect(commitHistoryQuery(true)).not.toContain("$path");
-  });
-
   test("both shapes select the author email the histogram keys on", () => {
     for (const hasRef of [true, false]) {
       expect(commitHistoryQuery(hasRef)).toContain(
