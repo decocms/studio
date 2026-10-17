@@ -24,7 +24,7 @@
  * site, whether main is v8 (no route of its own). The editor's draft is an object on the delivery CDN
  * (`hosted/draft-content-storage.ts`), never a git branch: `rpc` reads main
  * with the draft layered on and saves into the draft; the session GET answers
- * a v8 project's `?__draft=` pointer (`{ draft, version }`) instead of the
+ * a v8 project's `?__draft=` pointer (`{ draft, version, changedBy }`) instead of the
  * decofile; publish commits the draft to main and releases it. `rpc` doesn't
  * need a preview server: the protocol never renders.
  *
@@ -76,6 +76,7 @@ import {
   createDraftContentStorage,
   createV7MainStorage,
 } from "@/hosted/draft-content-storage";
+import type { DraftEditors } from "@/hosted/draft-editors";
 import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
 import { MainMovedError, publishDraft } from "@/hosted/publish";
 import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
@@ -296,6 +297,19 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   return next();
 });
 
+/** A draft's editors as the session read answers them: ISO times. */
+function draftChangedBy(
+  editors: DraftEditors,
+): Record<string, { userId: string; at: string }> {
+  // fromEntries: a name like "__proto__" stays an entry.
+  return Object.fromEntries(
+    Object.entries(editors).map(([name, { userId, at }]) => [
+      name,
+      { userId, at: new Date(at * 1000).toISOString() },
+    ]),
+  );
+}
+
 /** Content-protocol routes that work without a preview server. */
 function isContentProtocolPath(path: string): boolean {
   return path.endsWith("/rpc");
@@ -320,6 +334,7 @@ function hostedScope(
       virtualMcpId: scope.virtualMcpId,
       branch: scope.branch,
       site: scope.site,
+      editor: scope.userId,
     },
   };
 }
@@ -527,6 +542,10 @@ export function createDecofileRoutes(
                 ? draftPointerTarget(hosted.ref.site, draft.slug)
                 : null,
             version,
+            // Who last changed each block the draft holds, from the draft
+            // object's metadata (no extra request): Studio user ids; the
+            // editor resolves the people from the org's members.
+            changedBy: draftChangedBy(draft?.editors ?? {}),
           },
           200,
           { "Cache-Control": "no-store" },
