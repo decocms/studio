@@ -10,7 +10,6 @@
  * editor takes over (see `isNoSchemaMeta`).
  */
 
-import { BLOCK_META_KEY } from "@decocms/shared/decofile";
 import { lazy, Suspense, useState } from "react";
 import {
   ChevronLeft,
@@ -238,7 +237,7 @@ function JsonValueField({
     const entries: [string, unknown, string | number][] = Array.isArray(value)
       ? value.map((item, index) => [itemLabel(item, index, t), item, index])
       : Object.entries(value)
-          .filter(([key]) => key !== "__resolveType" && key !== BLOCK_META_KEY)
+          .filter(([key]) => key !== "__resolveType")
           .map(([key, item]) => [key, item, key]);
     const type =
       isRecord(value) && typeof value.__resolveType === "string"
@@ -324,9 +323,8 @@ function SchemalessBlockEditor({
   };
   const type =
     typeof value.__resolveType === "string" ? value.__resolveType : null;
-  // `__meta` (who edited it last) is the editor's own record, not a field.
   const fields = Object.entries(value).filter(
-    ([key]) => key !== "__resolveType" && key !== BLOCK_META_KEY,
+    ([key]) => key !== "__resolveType",
   );
   const toggleJson = () => {
     if (jsonCode !== null) {

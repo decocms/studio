@@ -725,11 +725,6 @@ test.describe("site editor over deco serve", () => {
       await expect(field.getByTestId("conflict-theirs")).toHaveText(
         "Changed on disk",
       );
-      // Local edits are the developer's own: no name, the file's time.
-      await expect(dialog.getByTestId("form-conflict-author")).toHaveText(
-        /^Changed on your computer · /,
-        { timeout: 15_000 },
-      );
       // Nothing written over theirs while the user decides.
       expect((await heroOf(stub)).title).toBe("Changed on disk");
 

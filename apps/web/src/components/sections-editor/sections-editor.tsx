@@ -62,12 +62,6 @@ import {
   resolveFormConflict,
 } from "./form-conflict";
 import { FormConflictDialog, FormConflictNotice } from "./form-conflict-dialog";
-import {
-  conflictAuthorSource,
-  useConflictAuthor,
-  versionTag,
-} from "./conflict-author";
-import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { BlockConflictError } from "./decofile-api";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
@@ -246,8 +240,6 @@ interface PendingFormConflict {
   choices: ConflictChoices;
   /** Their version changed again since the dialog first showed it. */
   changedAgain: boolean;
-  /** The block the save writes (a saved block, else the page): whose history says who changed it. */
-  blockKey: string | null;
 }
 
 export function SectionsEditor({
@@ -338,9 +330,6 @@ export function SectionsEditor({
   // The content protocol never runs site code: no rendered gallery (cards show
   // the schema's name, description and image) and no loader-backed pickers.
   const contentBackend = useContentBackend(virtualMcpId, branch);
-  // A Fast Preview session saves each change as a commit: its history says
-  // who made the other change in a conflict.
-  const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
   const protocolProject = isProtocolProject(contentBackend);
   // v8 has no async rendering (migration strips Lazy wrappers): hidden once
   // the site is known to be v8, shown as before otherwise.
@@ -598,22 +587,6 @@ export function SectionsEditor({
   const [formConflicts, setFormConflictsState] = useState<
     PendingFormConflict[]
   >([]);
-  // Who made the change the dialog shows: read again when theirs changes.
-  const conflictAuthor = useConflictAuthor(
-    conflictAuthorSource(contentBackend, fastPreviewActive, {
-      orgSlug,
-      virtualMcpId,
-      branch,
-    }),
-    formConflicts[0]?.blockKey ?? null,
-    formConflicts[0]
-      ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
-      : null,
-    // Theirs as stored: its `__meta` says who and when, first.
-    formConflicts[0]?.blockKey && decofile
-      ? (decofile as Record<string, unknown>)[formConflicts[0].blockKey]
-      : undefined,
-  );
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
   // Declared above the early returns below: a hook after a conditional return
@@ -1515,9 +1488,6 @@ export function SectionsEditor({
           sectionIndex,
           choices: {},
           changedAgain: false,
-          blockKey: parsed.isSavedBlock
-            ? savedBlockKey(rawSection, parsed)
-            : latestPageKey,
         });
         return;
       }
@@ -4336,7 +4306,6 @@ export function SectionsEditor({
             )}
             choices={waitingChoice.choices}
             changedAgain={waitingChoice.changedAgain}
-            author={conflictAuthor}
             onChoose={(pointer, choice) =>
               setConflictChoices({
                 ...waitingChoice.choices,

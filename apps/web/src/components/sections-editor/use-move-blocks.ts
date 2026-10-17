@@ -3,11 +3,7 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
-import {
-  sanitizeSecretsForPersistence,
-  stampBlockMeta,
-} from "@decocms/shared/decofile";
-import { authClient } from "@/lib/auth-client";
+import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
@@ -126,20 +122,11 @@ export function useMoveBlocks({
     return { ok: true as const };
   };
 
-  const { data: session } = authClient.useSession();
-  const editorId = session?.user?.id ?? null;
-
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
-      // A moved block is a saved block too: it records who moved it, when.
-      const at = new Date().toISOString();
-      const writes = Object.fromEntries(
-        Object.entries(sanitizeSecretsForPersistence(rawWrites)).map(
-          ([key, value]) => [key, stampBlockMeta(value, editorId, at)],
-        ),
-      ) as typeof rawWrites;
+      const writes = sanitizeSecretsForPersistence(rawWrites);
       if (protocol) {
         // One `blocks.apply`: the write and the delete land together.
         return applyProtocolPatch(
