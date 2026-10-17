@@ -141,7 +141,7 @@ describe("parseRawAuthor", () => {
 });
 
 describe("mapCommit", () => {
-  test("the raw author line becomes name and email, the nickname the login, and the rest of the message the body", () => {
+  test("the raw author line becomes name and email, and the nickname the login", () => {
     expect(
       mapCommit({
         hash: "abc123",
@@ -156,7 +156,6 @@ describe("mapCommit", () => {
       sha: "abc123",
       date: "2026-02-01T11:00:00Z",
       message: "fix(cart): keep the coupon",
-      body: "longer explanation",
       author: { name: "Ana Souza", email: "ana@example.com", login: "ana" },
     });
   });

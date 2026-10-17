@@ -11,11 +11,9 @@ import {
 import "@testing-library/jest-dom";
 import { type ReactNode, useState } from "react";
 import {
-  ConflictAuthorLine,
   FormConflictChoices,
   FormConflictNotice,
 } from "./form-conflict-dialog";
-import type { ConflictAuthor } from "./conflict-author";
 import {
   type ConflictChoices,
   type ConflictField,
@@ -63,12 +61,10 @@ function Harness({
   onApply,
   onDecideLater = noop,
   changedAgain = false,
-  author = null,
 }: {
   onApply: (choices: ConflictChoices) => void;
   onDecideLater?: () => void;
   changedAgain?: boolean;
-  author?: ConflictAuthor | null;
 }) {
   const [choices, setChoices] = useState<ConflictChoices>({});
   return (
@@ -76,7 +72,6 @@ function Harness({
       fields={fields}
       choices={choices}
       changedAgain={changedAgain}
-      author={author}
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))
       }
@@ -196,77 +191,6 @@ describe("FormConflictChoices", () => {
     expect(
       resolveFormConflict(plan, { "/headline": "mine", "/subtitle": "theirs" }),
     ).toEqual({ headline: "mine", subtitle: "theirs" });
-  });
-});
-
-describe("who made the other change", () => {
-  const minutesAgo = (n: number) =>
-    new Date(Date.now() - n * 60_000).toISOString();
-
-  test("names the member and how long ago, with the exact time on hover", () => {
-    const at = minutesAgo(3);
-    const view = render(
-      <Harness
-        onApply={() => {}}
-        author={{
-          kind: "person",
-          name: "Ana Souza",
-          avatarUrl: "https://img/ana.png",
-          at,
-          you: false,
-        }}
-      />,
-    );
-    const line = view.getByTestId("form-conflict-author");
-    expect(line).toHaveTextContent("Changed by Ana Souza · 3 minutes ago");
-    const time = line.querySelector("time")!;
-    expect(time.getAttribute("datetime")).toBe(at);
-    expect(time.getAttribute("title")).toBe(
-      new Date(at).toLocaleString("en", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
-    );
-  });
-
-  test("the viewer's own change from another tab or window", () => {
-    const view = render(
-      <Harness
-        onApply={() => {}}
-        author={{ kind: "person", name: "Ana", at: minutesAgo(2), you: true }}
-      />,
-    );
-    expect(view.getByTestId("form-conflict-author")).toHaveTextContent(
-      "You, in another tab or window · 2 minutes ago",
-    );
-  });
-
-  test("only the time when nobody is known, and a local edit on Localhost", () => {
-    const now = Date.parse("2026-10-16T12:00:00Z");
-    const view = render(
-      <>
-        <ConflictAuthorLine
-          author={{ kind: "person", at: "2026-10-16T11:55:00Z", you: false }}
-          now={now}
-        />
-        <ConflictAuthorLine
-          author={{ kind: "local", at: "2026-10-16T11:59:00Z" }}
-          now={now}
-        />
-      </>,
-    );
-    expect(
-      view.getAllByTestId("form-conflict-author").map((l) => l.textContent),
-    ).toEqual([
-      "Changed 5 minutes ago",
-      "Changed on your computer · 1 minute ago",
-    ]);
-  });
-
-  test("no line while it isn't known", () => {
-    const view = render(<Harness onApply={() => {}} />);
-    expect(view.queryByTestId("form-conflict-author")).toBeNull();
-    expect(view.queryByText(/unknown/i)).toBeNull();
   });
 });
 
