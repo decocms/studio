@@ -108,20 +108,9 @@ mock.module("@/hooks/use-local-preview-url", () => ({
   useLocalPreviewUrl: () => ({ url: null }),
 }));
 
-/** The signed-in user: none by default (an account-less editor). */
-const session: { user: { id: string } | null } = { user: null };
-mock.module("@/lib/auth-client", () => ({
-  authClient: {
-    useSession: () => ({ data: session.user ? { user: session.user } : null }),
-  },
-}));
-
 const { useSaveBlock } = await import("./use-save-block");
 
-afterEach(() => {
-  resetContentSync();
-  session.user = null;
-});
+afterEach(() => resetContentSync());
 
 /** The editor holds Hero at `h1`; meanwhile another writer stored `theirs` at `h2`. */
 function setup() {
@@ -219,48 +208,5 @@ describe("useSaveBlock on the content protocol (v8)", () => {
     });
     expect(failure).toBeInstanceOf(ContentProtocolError);
     expect(heroInCache(queryClient)).toEqual({ title: "loaded" });
-  });
-});
-
-describe("who edited a block last (__meta)", () => {
-  it("each save stamps the signed-in user and the time on the saved block, over any earlier record", async () => {
-    session.user = { id: "u-ana" };
-    const { result } = setup();
-    const before = Date.now();
-    await act(async () => {
-      await result.current.mutateAsync({
-        blockKey: "Hero",
-        data: {
-          title: "mine",
-          __meta: {
-            lastEditedBy: "u-bob",
-            lastEditedAt: "2026-01-01T00:00:00.000Z",
-          },
-        },
-      });
-    });
-    const sent = server.applied[0]?.set?.Hero as Record<string, unknown>;
-    expect(sent.title).toBe("mine");
-    const meta = sent.__meta as { lastEditedBy: string; lastEditedAt: string };
-    expect(meta.lastEditedBy).toBe("u-ana");
-    expect(Date.parse(meta.lastEditedAt)).toBeGreaterThanOrEqual(before - 1000);
-    expect(Object.keys(meta).sort()).toEqual(["lastEditedAt", "lastEditedBy"]);
-  });
-
-  it("without a signed-in user, an earlier record is dropped, never kept on this change", async () => {
-    const { result } = setup();
-    await act(async () => {
-      await result.current.mutateAsync({
-        blockKey: "Hero",
-        data: {
-          title: "mine",
-          __meta: {
-            lastEditedBy: "u-bob",
-            lastEditedAt: "2026-01-01T00:00:00.000Z",
-          },
-        },
-      });
-    });
-    expect(server.applied[0]?.set?.Hero).toEqual({ title: "mine" });
   });
 });

@@ -66,28 +66,6 @@ export async function moveStubMain(
   });
 }
 
-/**
- * A commit pushed to `branch` from outside Studio (a developer), by `author`:
- * `files` maps a path to its new content, or null to delete it.
- */
-export async function pushToStubBranch(
-  ctx: APIRequestContext,
-  owner: string,
-  repo: string,
-  params: {
-    branch: string;
-    files: Record<string, string | null>;
-    message: string;
-    author: { name: string; email: string };
-  },
-): Promise<void> {
-  const res = await ctx.post(
-    `${GITHUB_STUB_ORIGIN}/__admin/repos/${owner}/${repo}/push`,
-    { data: params },
-  );
-  expect(res.ok()).toBe(true);
-}
-
 export async function inspectStubRepo(
   ctx: APIRequestContext,
   owner: string,

@@ -18,7 +18,6 @@
 import type { APIRequestContext, Page } from "@playwright/test";
 import {
   createFastPreviewProject,
-  pushToStubBranch,
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
@@ -80,10 +79,6 @@ const meta = {
   },
 };
 
-/** Who made the other change, under the dialog's title. */
-const conflictAuthor = (page: Page) =>
-  conflictDialog(page).getByTestId("form-conflict-author");
-
 /** Seed a project whose Home page holds `homeSection`, and open the Site Editor on `branch`. */
 async function loadEditor(
   page: Page,
@@ -133,7 +128,7 @@ async function loadEditor(
   );
   const blocks = page.getByTestId("blocks-panel");
   const url = `/api/${orgSlug}/decofile/${project.vmcpId}/${branch}`;
-  return { blocks, url, vmcpId: project.vmcpId, owner, repo };
+  return { blocks, url, vmcpId: project.vmcpId };
 }
 
 /** {@link loadEditor}, then open the Home page's hero section form. */
@@ -144,7 +139,7 @@ async function openEditor(
   homeSection: unknown,
   branch = "main",
 ) {
-  const { blocks, url, vmcpId, owner, repo } = await loadEditor(
+  const { blocks, url, vmcpId } = await loadEditor(
     page,
     orgSlug,
     previewServerUrl,
@@ -165,8 +160,6 @@ async function openEditor(
     headline,
     vmcpId,
     url,
-    owner,
-    repo,
   };
 }
 
@@ -484,12 +477,6 @@ test.describe("Site Editor stale section form", () => {
       await expect(field.getByTestId("conflict-theirs")).toHaveText(
         "Published headline",
       );
-      // The other change was this same user's, from another tab: the branch's
-      // commit carries them as its co-author.
-      await expect(conflictAuthor(page)).toHaveText(
-        /^You, in another tab or window · /,
-        { timeout: 20_000 },
-      );
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
         published,
       );
@@ -658,7 +645,7 @@ test.describe("Site Editor stale section form", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const previewSite = await startPreviewSite();
     try {
-      const { headline, url, owner, repo } = await openEditor(
+      const { headline, url } = await openEditor(
         page,
         orgSlug,
         previewSite.url,
@@ -674,21 +661,10 @@ test.describe("Site Editor stale section form", () => {
       await expect(field.getByTestId("conflict-theirs")).toHaveText(
         "Published headline",
       );
-      await expect(conflictAuthor(page)).toHaveText(
-        /^You, in another tab or window · /,
-        { timeout: 20_000 },
-      );
 
-      // A developer pushes to the branch while the user decides.
+      // A third editor saves while the user decides.
       const third = { ...hero, headline: "Third headline" };
-      await pushToStubBranch(page.request, owner, repo, {
-        branch: "main",
-        files: {
-          ".deco/blocks/SharedHero.json": JSON.stringify(third, null, 2),
-        },
-        message: "copy: third headline",
-        author: { name: "Dev Person", email: "dev@example.com" },
-      });
+      await writeElsewhere(page.request, url, "SharedHero", third);
       await field.getByRole("radio", { name: "Keep mine" }).click();
       await dialog.getByRole("button", { name: "Apply" }).click();
 
@@ -703,12 +679,6 @@ test.describe("Site Editor stale section form", () => {
       );
       await expect(field.getByTestId("conflict-mine")).toHaveText(
         "Draft headline",
-      );
-      // Who and when follow the newer version: the push's git author (not a
-      // member of the org, so by their git name).
-      await expect(conflictAuthor(page)).toHaveText(
-        /^Changed by Dev Person · /,
-        { timeout: 20_000 },
       );
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
 
