@@ -1,3 +1,4 @@
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -12,7 +13,10 @@ import {
   RadioGroupItem,
 } from "@decocms/ui/components/radio-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { formatRelativeTime } from "@/lib/format-time.ts";
+import type { ConflictAuthor } from "./conflict-author";
 import {
   type ConflictChoice,
   type ConflictChoices,
@@ -33,6 +37,8 @@ interface FormConflictChoicesProps {
   choices: ConflictChoices;
   /** Their version changed again while the dialog was open. */
   changedAgain?: boolean;
+  /** Who made their change, and when; null (no line) while unknown. */
+  author?: ConflictAuthor | null;
   onChoose: (pointer: string, choice: ConflictChoice) => void;
   onChooseAll: (choice: ConflictChoice) => void;
   onApply: () => void;
@@ -72,6 +78,7 @@ export function FormConflictChoices({
   fields,
   choices,
   changedAgain = false,
+  author = null,
   onChoose,
   onChooseAll,
   onApply,
@@ -81,6 +88,7 @@ export function FormConflictChoices({
   const ready = fields.every((field) => choices[field.pointer] !== undefined);
   return (
     <>
+      {author && <ConflictAuthorLine author={author} />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p
           role="status"
@@ -136,6 +144,58 @@ export function FormConflictChoices({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+/**
+ * "Changed by Ana Souza · 3 minutes ago" (the exact time on hover), with the
+ * member's avatar when there is one; "You, in another tab or window · …" for
+ * the viewer's own change, "Changed 5 minutes ago" when only the time is
+ * known. Hosted v8 drafts only (the draft object's metadata).
+ */
+export function ConflictAuthorLine({
+  author,
+  now,
+}: {
+  author: ConflictAuthor;
+  /** Fixed "now" (tests); the current time by default. */
+  now?: number;
+}) {
+  const t = useT();
+  const [{ language }] = usePreferences();
+  const date = new Date(author.at);
+  const when = formatRelativeTime(date, language, now);
+  const text = author.you
+    ? t("sectionsEditor.formConflict.changedByYou", { when })
+    : author.name
+      ? t("sectionsEditor.formConflict.changedBy", { name: author.name, when })
+      : t("sectionsEditor.formConflict.changedAt", { when });
+  const avatarUrl = author.you ? undefined : author.avatarUrl;
+  return (
+    <p
+      data-testid="form-conflict-author"
+      className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground"
+    >
+      {avatarUrl && (
+        <Avatar
+          url={avatarUrl}
+          fallback={author.name?.charAt(0) ?? ""}
+          shape="circle"
+          size="xs"
+          className="shrink-0"
+        />
+      )}
+      <time
+        dateTime={date.toISOString()}
+        title={date.toLocaleString(language, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })}
+        className="min-w-0 truncate"
+      >
+        {text}
+      </time>
+    </p>
   );
 }
 

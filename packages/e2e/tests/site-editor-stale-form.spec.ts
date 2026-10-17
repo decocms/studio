@@ -477,6 +477,8 @@ test.describe("Site Editor stale section form", () => {
       await expect(field.getByTestId("conflict-theirs")).toHaveText(
         "Published headline",
       );
+      // Fast Preview (v7) says nothing about who made the other change.
+      await expect(dialog.getByTestId("form-conflict-author")).toHaveCount(0);
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(
         published,
       );

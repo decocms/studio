@@ -3,7 +3,9 @@
  * port, for the hosted content-protocol specs:
  *
  *   /<bucket>/<key>             the S3 API Studio writes through (path style):
- *                               PUT, GET, HEAD, DELETE, and GET ?list-type=2
+ *                               PUT, GET, HEAD, DELETE, and GET ?list-type=2;
+ *                               user metadata (`x-amz-meta-*`) is kept and
+ *                               answered on GET/HEAD, as S3 and R2 do
  *   GET /sites/<...>            the public custom domain sites read: the
  *                               object with its ETag and Cache-Control, and
  *                               304 on a matching If-None-Match
@@ -28,6 +30,8 @@ interface StoredObject {
   etag: string;
   contentType: string;
   cacheControl: string | null;
+  /** `x-amz-meta-*` headers, keys lowercased with the prefix. */
+  metadata: Record<string, string>;
 }
 
 const objects = new Map<string, StoredObject>();
@@ -128,6 +132,13 @@ async function s3(
       ),
       cacheControl:
         (req.headers["cache-control"] as string | undefined) ?? null,
+      metadata: Object.fromEntries(
+        Object.entries(req.headers).flatMap(([name, value]) =>
+          name.startsWith("x-amz-meta-") && typeof value === "string"
+            ? [[name, value]]
+            : [],
+        ),
+      ),
     });
     send(res, 200, { ETag: etag });
     return;
@@ -154,6 +165,7 @@ async function s3(
       ETag: object.etag,
       "content-type": object.contentType,
       ...(object.cacheControl ? { "cache-control": object.cacheControl } : {}),
+      ...object.metadata,
     },
     req.method === "HEAD" ? undefined : object.body,
   );
@@ -206,6 +218,7 @@ createServer((req, res) => {
                 text: o.body.toString("utf-8"),
                 etag: o.etag,
                 cacheControl: o.cacheControl,
+                metadata: o.metadata,
               },
             ]),
         ),

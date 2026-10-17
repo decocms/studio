@@ -795,6 +795,10 @@ export const KEYS = {
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  // Who made the other change a conflict dialog shows (hosted v8 drafts),
+  // per version of theirs.
+  conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
+    ["conflict-author", draftKey, blockKey, theirs] as const,
   // Both sides of the listed changes (`changes.get`), per changes revision.
   contentChangeSides: (cacheKey: string, revision: string) =>
     ["content-changes", cacheKey, "sides", revision] as const,

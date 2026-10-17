@@ -47,7 +47,15 @@ async function deliveryObjects(
   ctx: APIRequestContext,
   prefix: string,
 ): Promise<
-  Record<string, { text: string; etag: string; cacheControl: string | null }>
+  Record<
+    string,
+    {
+      text: string;
+      etag: string;
+      cacheControl: string | null;
+      metadata?: Record<string, string>;
+    }
+  >
 > {
   const res = await ctx.get(
     `${DELIVERY_STUB_ORIGIN}/__admin/objects?prefix=${encodeURIComponent(prefix)}`,
@@ -55,7 +63,12 @@ async function deliveryObjects(
   expect(res.ok()).toBe(true);
   return (await res.json()) as Record<
     string,
-    { text: string; etag: string; cacheControl: string | null }
+    {
+      text: string;
+      etag: string;
+      cacheControl: string | null;
+      metadata?: Record<string, string>;
+    }
   >;
 }
 
@@ -307,11 +320,22 @@ test.describe("content protocol on GitHub", () => {
         ctx,
         `sites/${project.owner}/drafts/`,
       );
+      // One object: exactly { set, delete } as JSON; who changed each name
+      // is in its storage metadata, never in the JSON.
+      expect(Object.keys(drafts)).toHaveLength(1);
       const [draft] = Object.values(drafts);
       expect(JSON.parse(draft!.text)).toEqual({
         set: { "hero-home": hero },
         delete: ["promo"],
       });
+      expect(draft!.text).not.toMatch(/__meta|userId|lastEdited/);
+      const edited = draft!.metadata?.["x-amz-meta-deco-edited"] ?? "";
+      expect(
+        edited
+          .split(";")
+          .map((entry) => entry.split(",")[0])
+          .sort(),
+      ).toEqual(["hero-home", "promo"]);
       expect(draft!.cacheControl).toBe("no-cache, max-age=0, must-revalidate");
 
       const after = await rpc<BlocksListResult>(ctx, path, "blocks.list");
@@ -1308,6 +1332,89 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       // Nothing is left to publish, and the draft holds no copy of main.
       const left = Object.values(await deliveryObjects(page.request, drafts));
       expect(left.some((o) => o.text.includes("Discard me"))).toBe(false);
+    } finally {
+      await preview.close();
+    }
+  });
+
+  test("a field another editor also changed asks whose version to keep, saying who and when", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const preview = await startPreviewSite();
+    try {
+      const { url, project } = await openEditor(
+        page.request,
+        orgSlug,
+        preview.url,
+        {
+          ".deco/schema.gen.json": JSON.stringify({
+            ...v7Meta,
+            blocksMajor: 8,
+          }),
+          ".deco/blocks/home.json": homePage,
+        },
+      );
+      await page.goto(url);
+      await expect(page.getByTestId("content-version-badge")).toHaveText("v8", {
+        timeout: 60_000,
+      });
+      const blocks = page.getByTestId("blocks-panel");
+      await blocks.getByText("Hero", { exact: true }).first().click();
+      const title = page.getByLabel("Title", { exact: true });
+      await expect(title).toHaveValue("Hello", { timeout: 30_000 });
+
+      // The same user, in another tab, saves the page with another title:
+      // the draft object's metadata records them as its editor.
+      const theirs = {
+        ...JSON.parse(homePage),
+        sections: [
+          { __resolveType: "site/sections/Hero.tsx", title: "Theirs" },
+        ],
+      };
+      const applied = await rpc(
+        page.request,
+        rpcPath(project, "main"),
+        "blocks.apply",
+        { set: { home: theirs } },
+      );
+      expect(applied.status).toBe(200);
+      expect(applied.error).toBeUndefined();
+
+      await title.fill("Mine");
+      const dialog = page.getByRole("dialog", {
+        name: "Someone else changed this while you were editing",
+      });
+      await expect(dialog).toBeVisible({ timeout: 30_000 });
+      const field = dialog.getByRole("radiogroup", { name: "Title" });
+      await expect(field.getByTestId("conflict-mine")).toHaveText("Mine");
+      await expect(field.getByTestId("conflict-theirs")).toHaveText("Theirs");
+      await expect(dialog.getByTestId("form-conflict-author")).toHaveText(
+        /^You, in another tab or window · /,
+        { timeout: 15_000 },
+      );
+
+      await field.getByRole("radio", { name: "Keep mine" }).click();
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await expect(dialog).toBeHidden();
+      const drafts = `sites/${project.owner}/drafts/`;
+      await expect
+        .poll(
+          async () =>
+            Object.values(await deliveryObjects(page.request, drafts)).some(
+              (o) => o.text.includes('"Mine"'),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+      // Still one object, its JSON free of editor data.
+      const objects = Object.values(
+        await deliveryObjects(page.request, drafts),
+      );
+      expect(objects).toHaveLength(1);
+      expect(objects[0]!.text).not.toMatch(/__meta|userId|lastEdited/);
+      expect(objects[0]!.metadata?.["x-amz-meta-deco-edited"]).toMatch(
+        /^home,/,
+      );
     } finally {
       await preview.close();
     }
