@@ -292,15 +292,7 @@ test.describe("content protocol on GitHub", () => {
         (await rpc(ctx, path, "blocks.list", { ref: "main" })).error?.code,
       ).toBe(-32602);
 
-      // As the site editor saves it: who edited it last rides on the block.
-      const hero = {
-        __resolveType: "hero",
-        title: "Hi",
-        __meta: {
-          lastEditedBy: "user-e2e",
-          lastEditedAt: "2026-10-16T12:00:00.000Z",
-        },
-      };
+      const hero = { __resolveType: "hero", title: "Hi" };
       const applied = await rpc<BlocksApplyResult>(ctx, path, "blocks.apply", {
         set: { "hero-home": hero },
         delete: ["promo"],
@@ -315,9 +307,6 @@ test.describe("content protocol on GitHub", () => {
         ctx,
         `sites/${project.owner}/drafts/`,
       );
-      // One object, the draft: exactly { set, delete }, and the block keeps
-      // its `__meta` (no sidecar file of any kind).
-      expect(Object.keys(drafts)).toHaveLength(1);
       const [draft] = Object.values(drafts);
       expect(JSON.parse(draft!.text)).toEqual({
         set: { "hero-home": hero },
@@ -1266,19 +1255,6 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
           { timeout: 30_000 },
         )
         .toBe(true);
-      // The editor's save stamped who edited the block, on the block itself.
-      const [saved] = Object.values(
-        await deliveryObjects(page.request, drafts),
-      );
-      const edited = Object.values(
-        (JSON.parse(saved!.text) as { set: Record<string, unknown> }).set,
-      ).find((block) => JSON.stringify(block).includes("Discard me")) as {
-        __meta?: { lastEditedBy?: unknown; lastEditedAt?: unknown };
-      };
-      expect(edited.__meta).toEqual({
-        lastEditedBy: expect.stringMatching(/.+/),
-        lastEditedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-      });
       // `<draft>@<etag>`: the frame renders the draft (not `__draft=off`).
       const showsDraft = (u: string) => /__draft=[^&]*(%40|@)/.test(u);
       await expect

@@ -11,8 +11,6 @@
  * refuses to start outside one), the working tree is a git repository whose
  * seeded files are committed: `HEAD` is the base `changes.*` compares with.
  * `outdated` plays an 8.1.x `deco serve` (protocol 1.0, no `changes.*`).
- * `changes.get` entries carry the file's modification time (`modifiedAt`,
- * the protocol's optional field) even where the installed package predates it.
  */
 
 import {
@@ -21,7 +19,6 @@ import {
   readdir,
   readFile,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import {
@@ -37,7 +34,6 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { createFsStorage } from "@decocms/blocks/protocol/storage/fs";
-import { blockFileName } from "@decocms/blocks/protocol";
 
 const run = promisify(execFile);
 
@@ -58,35 +54,22 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return stdout;
 }
 
-/** The JSON-RPC calls of a request body, for matching answers by id. */
-function callsOf(
-  body: string,
-): Array<{ id?: unknown; method?: string; params?: unknown }> {
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    return (Array.isArray(parsed) ? parsed : [parsed]) as Array<{
-      id?: unknown;
-      method?: string;
-      params?: unknown;
-    }>;
-  } catch {
-    return [];
-  }
-}
-
 /**
- * The handler's answer with each JSON-RPC answer passed through `fix`
- * (given the call it answers), sent back plain.
+ * An 8.1.x `deco serve`'s answers: `describe` says protocol 1.0, and the
+ * methods 1.1 added are unknown to it.
  */
-async function rewriteAnswers(
-  response: Response,
-  body: string,
-  fix: (
-    one: Record<string, unknown>,
-    call: { method?: string; params?: unknown } | undefined,
-  ) => Promise<Record<string, unknown>> | Record<string, unknown>,
-): Promise<Response> {
-  const methods = callsOf(body);
+async function asOutdated(response: Response, body: string): Promise<Response> {
+  const methods = (() => {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      return (Array.isArray(parsed) ? parsed : [parsed]) as Array<{
+        id?: unknown;
+        method?: string;
+      }>;
+    } catch {
+      return [];
+    }
+  })();
   // The handler gzips larger answers when the browser accepts it: read the
   // JSON through the encoding, then send it back plain.
   const gzipped = /gzip/i.test(response.headers.get("content-encoding") ?? "");
@@ -101,37 +84,17 @@ async function rewriteAnswers(
           ),
         ).text()
       : await response.text();
-  const headers = new Headers(response.headers);
-  headers.delete("content-length");
-  headers.delete("content-encoding");
   let answer: unknown;
   try {
     answer = JSON.parse(text);
   } catch {
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    headers.delete("content-encoding");
     return new Response(text, { status: response.status, headers });
   }
-  const one = (a: unknown) => {
-    const answerOne = a as Record<string, unknown>;
-    return fix(
-      answerOne,
-      methods.find((m) => m.id === answerOne.id),
-    );
-  };
-  const fixed = Array.isArray(answer)
-    ? await Promise.all(answer.map(one))
-    : await one(answer);
-  return new Response(JSON.stringify(fixed), {
-    status: response.status,
-    headers,
-  });
-}
-
-/**
- * An 8.1.x `deco serve`'s answers: `describe` says protocol 1.0, and the
- * methods 1.1 added are unknown to it.
- */
-function asOutdated(response: Response, body: string): Promise<Response> {
-  return rewriteAnswers(response, body, (one, call) => {
+  const fix = (one: Record<string, unknown>) => {
+    const call = methods.find((m) => m.id === one.id);
     if (call?.method?.startsWith("changes.")) {
       return {
         jsonrpc: "2.0",
@@ -146,39 +109,16 @@ function asOutdated(response: Response, body: string): Promise<Response> {
       return { ...one, result: { ...result, version: { major: 1, minor: 0 } } };
     }
     return one;
-  });
-}
-
-/**
- * `changes.get` entries with the file's modification time (`modifiedAt`),
- * as a `deco serve` with the protocol's optional field answers. Fills it
- * only where the package's handler left it out, so it steps aside once the
- * installed `@decocms/blocks` reports it itself.
- */
-function withModifiedAt(
-  response: Response,
-  body: string,
-  blocksDir: string,
-): Promise<Response> {
-  return rewriteAnswers(response, body, async (one, call) => {
-    const result = one.result as
-      | { entries?: Record<string, Record<string, unknown>> }
-      | undefined;
-    if (call?.method !== "changes.get" || !result?.entries) return one;
-    const entries: Record<string, Record<string, unknown>> = {};
-    for (const [name, entry] of Object.entries(result.entries)) {
-      if (entry.modifiedAt !== undefined || entry.after === null) {
-        entries[name] = entry;
-        continue;
-      }
-      const info = await stat(join(blocksDir, blockFileName(name))).catch(
-        () => null,
-      );
-      entries[name] = info
-        ? { ...entry, modifiedAt: info.mtime.toISOString() }
-        : entry;
-    }
-    return { ...one, result: { ...result, entries } };
+  };
+  const fixed = Array.isArray(answer)
+    ? answer.map((one) => fix(one as Record<string, unknown>))
+    : fix(answer as Record<string, unknown>);
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(JSON.stringify(fixed), {
+    status: response.status,
+    headers,
   });
 }
 
@@ -288,9 +228,7 @@ export async function startDecoServeStub(params: {
       const served = await rpc(request);
       const response = params.outdated
         ? await asOutdated(served, body)
-        : body.includes('"changes.get"')
-          ? await withModifiedAt(served, body, blocksDir)
-          : served;
+        : served;
       const headers = new Headers(response.headers);
       for (const [key, value] of Object.entries(cors)) headers.set(key, value);
       await send(

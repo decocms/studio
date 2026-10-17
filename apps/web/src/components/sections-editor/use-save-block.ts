@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { authClient } from "@/lib/auth-client";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecofileCacheKey } from "./use-decofile";
 import { useContentBackend } from "./use-content-backend";
@@ -16,7 +15,6 @@ import {
   decoBlockFingerprint,
   mergeBlockJson,
   sanitizeSecretsForPersistence,
-  stampBlockMeta,
 } from "@decocms/shared/decofile";
 import { sleep } from "@decocms/shared/std";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -159,12 +157,6 @@ export function useSaveBlock({
   const protocol = backend.kind === "protocol" ? backend : null;
   const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   const t = useT();
-  // Every saved block records who edited it last (`__meta`), on the wire:
-  // the form never holds it, and it isn't content (no version moves for it).
-  const { data: session } = authClient.useSession();
-  const editorId = session?.user?.id ?? null;
-  const stamped = (value: unknown) =>
-    stampBlockMeta(value, editorId, new Date().toISOString());
 
   /**
    * A save on any backend but the content protocol. On Fast Preview it sends
@@ -185,10 +177,7 @@ export function useSaveBlock({
         const expect = await blockExpectation(blockKey, from);
         return patchDecofile(
           { orgSlug, virtualMcpId, branch },
-          {
-            set: { [blockKey]: stamped(value) },
-            ...(expect ? { expect } : {}),
-          },
+          { set: { [blockKey]: value }, ...(expect ? { expect } : {}) },
         );
       };
       const versionsKey = `${cacheKey}:${blockKey}`;
@@ -319,7 +308,7 @@ export function useSaveBlock({
             protocol,
             params,
             cacheKey,
-            { set: { [blockKey]: stamped(data) } },
+            { set: { [blockKey]: data } },
             ifMatch,
           );
           if (ifMatch) guard?.onApplied?.(result.versions);
