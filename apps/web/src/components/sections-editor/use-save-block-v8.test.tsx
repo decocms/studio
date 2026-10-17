@@ -210,3 +210,17 @@ describe("useSaveBlock on the content protocol (v8)", () => {
     expect(heroInCache(queryClient)).toEqual({ title: "loaded" });
   });
 });
+
+describe("saved JSON carries no editor metadata", () => {
+  it("a save sends the block exactly as the form holds it: no __meta, no user id", async () => {
+    const { result } = setup();
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine" },
+      });
+    });
+    expect(server.applied).toEqual([{ set: { Hero: { title: "mine" } } }]);
+    expect(JSON.stringify(server.blocks)).not.toMatch(/__meta|lastEdited/);
+  });
+});

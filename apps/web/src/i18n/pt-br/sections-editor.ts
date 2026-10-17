@@ -299,6 +299,10 @@ export const sectionsEditor = {
     "Vocês dois mudaram os campos abaixo. Escolha qual versão manter em cada um. A versão da outra pessoa continua salva até você aplicar sua escolha.",
   "sectionsEditor.formConflict.changedAgain":
     "A versão da outra pessoa mudou de novo enquanto isto estava aberto. Os campos abaixo já mostram essa mudança.",
+  "sectionsEditor.formConflict.changedBy": "Alterado por {name} · {when}",
+  "sectionsEditor.formConflict.changedByYou":
+    "Você, em outra aba ou janela · {when}",
+  "sectionsEditor.formConflict.changedAt": "Alterado {when}",
   "sectionsEditor.formConflict.yourVersion": "Sua versão",
   "sectionsEditor.formConflict.theirVersion": "Versão da outra pessoa",
   "sectionsEditor.formConflict.keepMine": "Manter a minha",
