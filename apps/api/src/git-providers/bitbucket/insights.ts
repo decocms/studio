@@ -510,7 +510,6 @@ export class BitbucketInsightsClient implements RepoInsightsClient {
         pagelen: String(Math.min(limit, PAGE_SIZE)),
       });
       if (cursor) query.set("page", cursor);
-      if (params.path !== undefined) query.set("path", params.path);
       const page = await this.json<BitbucketPage<BitbucketCommitRow>>(
         `${this.repoBase}/commits/${encodeRef(ref)}?${query}`,
       );

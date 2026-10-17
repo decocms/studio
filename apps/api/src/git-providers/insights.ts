@@ -224,8 +224,6 @@ export interface ListCommitsParams {
   ref?: string;
   /** Required: an unbounded history walk is never what a caller wants here. */
   since: string;
-  /** Only commits that changed this repository-relative file. */
-  path?: string;
   cursor?: string | null;
   limit?: number;
 }
