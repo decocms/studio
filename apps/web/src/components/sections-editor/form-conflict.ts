@@ -275,17 +275,42 @@ function plainText(text: string, schema: SchemaProperty | null): string {
     schema?.format === "html" ||
     /<\/?[a-z][^>]*>/i.test(text);
   if (!rich) return text;
-  return text
+  // Line breaks for the tags that end a line, then the text the browser would show: the parser
+  // drops every tag and decodes every entity once (no regex sanitizing, no double unescaping).
+  const marked = text
     .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n");
+  return htmlToText(marked)
+    .replace(/\u00a0/g, " ")
     .replace(/\n{2,}/g, "\n")
     .trim();
+}
+
+const ENTITIES: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+};
+
+/** The text content of an HTML fragment. Shown as text, never as markup. */
+function htmlToText(html: string): string {
+  if (typeof DOMParser !== "undefined") {
+    return (
+      new DOMParser().parseFromString(html, "text/html").body.textContent ?? ""
+    );
+  }
+  // No DOM (tests, server): drop tags until none is left, then decode each entity once.
+  let out = html;
+  for (let previous = ""; previous !== out; ) {
+    previous = out;
+    out = out.replace(/<[^<>]*>/g, "");
+  }
+  return out
+    .replace(/<|>/g, "")
+    .replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (m) => ENTITIES[m] ?? m);
 }
 
 function shorten(text: string): string {
