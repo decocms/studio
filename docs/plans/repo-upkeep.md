@@ -69,9 +69,10 @@ Everything sits behind a new org flag, `repoUpkeep`, which is off by default
 
 - Add `IssueClient` next to `ChangeRequestClient`: `listOpen(limit)`,
   `read(number)`, `comment(number, body)`, `close(number, reason)`.
-- GitHub first. GitLab and Bitbucket answer `supported: false` as a normal
-  result, following the `searchCode` convention.
+- GitHub first. A repository on GitLab or Bitbucket reads like one with
+  issues turned off until those clients exist.
 - Exclude pull requests from GitHub's issues endpoint.
+- The factory in `clients.ts` lands with its first caller, the phase 2 sweep.
 - Tests: empty repository, a repository with issues disabled, pagination at the
   cap, a 403 or 404 reported as a failure rather than as "no issues".
 
