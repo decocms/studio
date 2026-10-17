@@ -3,10 +3,13 @@ import {
   formSourceMovedOn,
   sectionTypeChanged,
   findSectionMovedTo,
+  focusInside,
   isOwnVersion,
   rememberOwnVersion,
   sectionFormSource,
+  showMergeInForm,
   trackFormChange,
+  type FormBase,
 } from "./form-base";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
@@ -214,5 +217,59 @@ describe("own versions", () => {
     });
     if (!tracked) throw new Error("expected a tracked form");
     expect(isOwnVersion(tracked, { b: 2, a: 1 })).toBe(true);
+  });
+});
+
+describe("showMergeInForm", () => {
+  const tracked = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { title: "a" },
+    emitted: { title: "typed" },
+    sectionCount: 1,
+    own: [],
+  });
+
+  it("shows a merge at once while the form is still on the value saved", () => {
+    // The merge kept every value the user changed: nothing under the cursor
+    // changes (values both changed wait for the user's choice instead).
+    const form = tracked();
+    expect(
+      showMergeInForm({
+        merged: true,
+        tracked: form,
+        current: form,
+        saved: form.emitted,
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves the form alone when nothing was merged or it moved on", () => {
+    const form = tracked();
+    const base = {
+      merged: true,
+      tracked: form,
+      current: form,
+      saved: form.emitted,
+    };
+    expect(showMergeInForm({ ...base, merged: false })).toBe(false);
+    expect(showMergeInForm({ ...base, current: tracked() })).toBe(false);
+    expect(showMergeInForm({ ...base, saved: { title: "older" } })).toBe(false);
+    expect(showMergeInForm({ ...base, tracked: null })).toBe(false);
+  });
+});
+
+describe("focusInside", () => {
+  const node = (children: unknown[] = []) => ({
+    contains: (other: unknown) => children.includes(other),
+  });
+
+  it("is true only for an element within the container", () => {
+    const input = {};
+    const form = node([input]);
+    expect(focusInside(form as Element, input as Element)).toBe(true);
+    expect(focusInside(form as Element, {} as Element)).toBe(false);
+    expect(focusInside(null, input as Element)).toBe(false);
+    expect(focusInside(form as Element, null)).toBe(false);
   });
 });

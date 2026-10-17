@@ -161,3 +161,38 @@ export function findSectionMovedTo(
   );
   return matches.length === 1 ? (matches[0] as number) : "unknown";
 }
+
+/**
+ * True when the open form shows, at once, the value a save merged onto the
+ * stored section: there is a merge, the form is still on that section (its
+ * record now is the one the save was built from) and has not moved past the
+ * value saved. The merge kept every value the user changed (values both
+ * changed wait for their choice instead, see form-conflict.ts), so nothing
+ * under their cursor changes.
+ */
+export function showMergeInForm({
+  merged,
+  tracked,
+  current,
+  saved,
+}: {
+  merged: boolean;
+  /** The form's record when the save was built. */
+  tracked: FormBase | null;
+  /** The form's record now. */
+  current: FormBase | null;
+  /** The value the save was built from. */
+  saved: unknown;
+}): boolean {
+  return (
+    !!merged && !!tracked && current === tracked && tracked.emitted === saved
+  );
+}
+
+/** True while focus is inside `container` (an input of the open form). */
+export function focusInside(
+  container: Element | null | undefined,
+  active: Element | null | undefined,
+): boolean {
+  return !!container && !!active && container.contains(active);
+}
