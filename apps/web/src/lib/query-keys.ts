@@ -781,6 +781,55 @@ export const KEYS = {
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
+  // Which content backend (legacy / content protocol) a project's editor uses.
+  contentBackend: (...parts: string[]) =>
+    ["content-backend", ...parts] as const,
+  // Whether Localhost's app (the preview `deco serve` names) answers.
+  localAppReachable: (url: string) => ["local-app-reachable", url] as const,
+  // Last content-protocol blocks revision and schema version a project saw.
+  contentRevision: (cacheKey: string) =>
+    ["content-revision", cacheKey] as const,
+  // Per block, the content-protocol version of the copy the editor holds.
+  contentVersions: (cacheKey: string) =>
+    ["content-versions", cacheKey] as const,
+  // A protocol project's changes against its base (`changes.list`); the
+  // prefix of its sides too, so one invalidation refreshes both.
+  contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  // Who made the other change a conflict dialog shows (hosted v8 drafts),
+  // per version of theirs.
+  conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
+    ["conflict-author", draftKey, blockKey, theirs] as const,
+  // Both sides of the listed changes (`changes.get`), per changes revision.
+  contentChangeSides: (cacheKey: string, revision: string) =>
+    ["content-changes", cacheKey, "sides", revision] as const,
+  // A hosted v8 project's draft pointer ({ draft, version }), from the
+  // session decofile read (GitHub backend).
+  protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
+  // Main's schema answer (`isV8Schema` on main, from the server), once per
+  // project per session: what the editor waits for.
+  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
+    ["main-schema-v8", orgSlug, virtualMcpId] as const,
+  // Hosted Deco CMS (v8): a project's releases and site tokens.
+  hostedReleases: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-releases", orgSlug, virtualMcpId] as const,
+  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
+  hostedReapplyCheck: (
+    orgSlug: string,
+    virtualMcpId: string,
+    sha: string | null,
+    latest: string | null,
+  ) =>
+    [
+      "hosted-releases",
+      orgSlug,
+      virtualMcpId,
+      "reapply-check",
+      sha,
+      latest,
+    ] as const,
+  hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
+    ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // icon-select previews: the site's /sprites.svg, fetched via the preview proxy

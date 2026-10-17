@@ -5,6 +5,7 @@ import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
+import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useProjectContext } from "@/sdk";
 import {
   resolveAgentSiteSlug,
@@ -16,10 +17,12 @@ export interface ProjectNativeViewPresenceResult {
   presence: ProjectNativeViewPresence;
   assetsPending: boolean;
   siteAccessPending: boolean;
+  /** Main's schema is still being read: Releases may yet be there. */
+  releasesPending: boolean;
 }
 
 /**
- * Resolve the five native per-project views once for every surface that needs
+ * Resolve the native per-project views once for every surface that needs
  * them. Product rollout, deployment wiring, tenant ownership, and per-site
  * resources are presence; the Layout preference is deliberately layered on by
  * the sidebar only.
@@ -31,6 +34,10 @@ export function useProjectNativeViewPresence(
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
+  // The hosted Deco CMS: Blocks v8 sites (main's schema, `isV8Schema`). A v7
+  // site never gets Releases.
+  const mainSchema = useMainSchemaV8(project?.id);
+  const hostedCms = mainSchema === "v8";
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
   const monitorEnabled =
@@ -56,6 +63,7 @@ export function useProjectNativeViewPresence(
   return {
     presence: {
       assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
+      releases: hostedCms && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
@@ -63,6 +71,11 @@ export function useProjectNativeViewPresence(
       experiments: controlPlaneViews.experiments,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
+    // "error" is a site last found v8 whose main can't be read yet: the
+    // editor waits for it, and so does a Releases deep link.
+    releasesPending:
+      !!project?.metadata?.siteSlug &&
+      (mainSchema === "loading" || mainSchema === "error"),
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending:

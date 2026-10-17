@@ -38,7 +38,10 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
+import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
+import { useContentChanges } from "../../sections-editor/content-changes.ts";
+import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
+import { useContentSyncBusy } from "../../sections-editor/content-sync.ts";
 import {
   useDraftPointer,
   useFastPreviewDraftUrl,
@@ -52,6 +55,8 @@ import { useChatTask } from "../../chat/index";
 import { PublishDialog, type CmsPublishMode } from "./publish-dialog.tsx";
 import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
+  hostedCmsHeaderButton,
+  hostedHeaderState,
   isCmsStateSettling,
   selectCmsHeaderButton,
   type CmsAction,
@@ -140,9 +145,20 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
   );
 
+  // A hosted v8 draft is not a branch: no pull request and nothing to sync,
+  // so its header offers Publish only, with no chevron. Its changes are the
+  // content protocol's (`changes.list`: the draft against main), never git's.
+  const backend = useContentBackend(virtualMcpId, branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  const cacheKey = useDecofileCacheKey(
+    branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
+  );
+  const changesQuery = useContentChanges(hosted ? backend : null, cacheKey);
+
   /** Poll-free on purpose: every call forwards to the provider; save hooks invalidate
    *  this key. Shared verbatim with the publish popover, which reads the
-   *  changed-file manifest off the same entry — hence one options factory. */
+   *  changed-file manifest off the same entry — hence one options factory.
+   *  Held until the backend is known, and never read for a hosted v8 draft. */
   const statusQuery = useQuery({
     ...sandboxGitStatusQueryOptions({
       orgSlug: org.slug,
@@ -150,21 +166,26 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       branch: branch ?? "",
       threadId: taskId ?? null,
     }),
-    enabled: !!branch,
+    enabled: !!branch && backend.kind !== "pending" && !hosted,
   });
-  const status = statusQuery.data ?? null;
-  const branchMeta: BranchMeta = status
-    ? {
-        kind: "ready",
-        branch: readGitHeadBranch(status) ?? branch ?? "",
-        base: status.base ?? "main",
-        workingTreeDirty: hasPublishableLocalWork(status),
-        unpushed: status.unpushed ?? 0,
-        aheadOfBase: status.aheadOfBase ?? 0,
-        behindBase: status.behindBase ?? 0,
-        headSha: status.headSha ?? "",
-      }
-    : { kind: "unknown" };
+  const status = hosted ? null : (statusQuery.data ?? null);
+  const hostedState = hosted
+    ? hostedHeaderState(changesQuery.data, branch ?? "")
+    : null;
+  const branchMeta: BranchMeta = hostedState
+    ? hostedState.branchMeta
+    : status
+      ? {
+          kind: "ready",
+          branch: readGitHeadBranch(status) ?? branch ?? "",
+          base: status.base ?? "main",
+          workingTreeDirty: hasPublishableLocalWork(status),
+          unpushed: status.unpushed ?? 0,
+          aheadOfBase: status.aheadOfBase ?? 0,
+          behindBase: status.behindBase ?? 0,
+          headSha: status.headSha ?? "",
+        }
+      : { kind: "unknown" };
 
   /**
    * The publishable change count, derived from the SAME manifest summarizer the
@@ -173,11 +194,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    * whether there is anything to publish — auto-generated artifacts are excluded
    * in both. `null` when the manifest is absent (sandbox daemon); the state
    * machine then falls back to the branch's `aheadOfBase` commit count, which
-   * the popover doesn't, so the two can drift apart in that window alone.
+   * the popover doesn't, so the two can drift apart in that window alone. A
+   * hosted v8 draft counts its listed changes, as its popover does.
    */
-  const publishableChangeCount = status?.changedFiles
-    ? summarizePublishManifest({ files: status.changedFiles }).count
-    : null;
+  const publishableChangeCount = hostedState
+    ? hostedState.publishableChangeCount
+    : status?.changedFiles
+      ? summarizePublishManifest({ files: status.changedFiles }).count
+      : null;
+  const listQuery = hosted ? changesQuery : statusQuery;
 
   const headBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ?? branch ?? null;
@@ -247,9 +272,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         await deleteRelease(published);
       }
     },
-    /** The dialog is already closed by now, so a toast is the only surface. */
+    /** The publish already succeeded and showed its one toast; this clean-up
+     *  is nothing the user can act on, so it is logged, not toasted. */
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : String(err));
+      console.error("site editor: settling after publish failed", err);
     },
   });
 
@@ -292,8 +318,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     },
   });
 
-  /** Same in-flight signal the preview's autosave indicator reads. */
-  const saving = useDecofileWriting(org.slug, virtualMcpId, branch ?? "");
+  /**
+   * A content change is saving or its preview is reloading: the same state
+   * the preview's progress bar reads (content-sync.ts).
+   */
+  const saving = useContentSyncBusy(org.slug, virtualMcpId);
 
   /**
    * Only the tail of the publish — the branch switch that follows the merge.
@@ -307,7 +336,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    */
   const publishing = publishCompletion.isPending;
 
-  const button = selectCmsHeaderButton({
+  const selected = selectCmsHeaderButton({
     branch: branchMeta,
     pr,
     checks: checksQuery.data ?? [],
@@ -315,17 +344,18 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     publishing,
     saving,
     syncing: getLatest.isPending,
-    statusRetrying: statusQuery.isFetching && !!statusQuery.error,
+    statusRetrying: listQuery.isFetching && !!listQuery.error,
     statusError:
-      statusQuery.error instanceof Error
-        ? statusQuery.error.message
-        : statusQuery.error
-          ? String(statusQuery.error)
+      listQuery.error instanceof Error
+        ? listQuery.error.message
+        : listQuery.error
+          ? String(listQuery.error)
           : null,
     loading: Boolean(settling),
     publishableChangeCount,
     t,
   });
+  const button = hosted ? hostedCmsHeaderButton(selected) : selected;
 
   /** Keyed by head so a failed sync isn't retried until the branch moves. */
   const autoGetLatestKey =
@@ -413,7 +443,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         getLatest.mutate({ branch: headBranch, base: baseBranch });
         return;
       case "retry-status":
-        void statusQuery.refetch();
+        void listQuery.refetch();
         return;
       case "open-pr":
         if (pr?.htmlUrl) {

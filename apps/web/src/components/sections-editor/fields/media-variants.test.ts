@@ -75,6 +75,22 @@ describe("wrapAsMultivariate / flattenMultivariate round-trip", () => {
   });
 });
 
+describe("multivariate (next-major short name)", () => {
+  test("keeps each variant's value in a lazy block", () => {
+    const wrapped = wrapAsMultivariate("Sale!", "multivariate");
+    expect(wrapped.variants.map((v) => v.value)).toEqual([
+      { __resolveType: "lazy", value: "Sale!" },
+      { __resolveType: "lazy", value: "Sale!" },
+    ]);
+    expect(flattenMultivariate(wrapped)).toBe("Sale!");
+  });
+
+  test("legacy names keep plain values", () => {
+    const wrapped = wrapAsMultivariate("Sale!", RESOLVE_TYPE);
+    expect(wrapped.variants[0]?.value).toBe("Sale!");
+  });
+});
+
 describe("flattenMultivariate", () => {
   test("picks the always variant", () => {
     const wrapper: MultivariateWrapper = {

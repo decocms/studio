@@ -150,6 +150,8 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
   "sectionsEditor.pageSections.blockNameAlreadyExists":
     "Já existe um bloco com este nome.",
+  "sectionsEditor.pageSections.blockNameIsBlockType":
+    "Um tipo de bloco já usa este nome. Escolha outro.",
   "sectionsEditor.pageSections.blockNameInvalidChars":
     "Use letras, números, espaços, hífens ou sublinhados. Deve começar com uma letra.",
   "sectionsEditor.pageSections.blockNameNoSlashes":
@@ -199,8 +201,16 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.encryptButton": "Criptografar",
   "sectionsEditor.secretField.encryptFailedMessage":
     "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.fileField.tooLarge":
+    "Este arquivo é maior do que o servidor local aceita ({max}).",
+  "sectionsEditor.secretField.backendUnavailableMessage":
+    "Os segredos podem ser editados quando o servidor de conteúdo do site responder.",
   "sectionsEditor.secretField.encryptingMessage":
     "Criptografando com a chave do site…",
+  "sectionsEditor.secretField.legacySecretUnavailableMessage":
+    "Este segredo foi salvo por um site Deco mais antigo e não pode ser editado aqui. Ele é recriptografado quando o site migra.",
+  "sectionsEditor.secretField.noPublicKeyMessage":
+    "Adicione a chave pública do site, .deco/secrets.pub, para editar campos secretos. Os valores são criptografados no seu navegador com ela.",
   "sectionsEditor.secretField.pendingMessage":
     "Ainda não salvo. Pressione Enter para criptografar e salvar.",
   "sectionsEditor.secretField.plaintextStoredMessage":
@@ -281,8 +291,34 @@ export const sectionsEditor = {
     "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
-  "sectionsEditor.sectionsEditor.formFieldsKeptFromStored":
-    "Mudou enquanto você editava: {fields}. Mantivemos a versão mais recente desses campos e salvamos o resto das suas alterações.",
+  "sectionsEditor.formConflict.title":
+    "Outra pessoa mudou isto enquanto você editava",
+  "sectionsEditor.formConflict.description":
+    "Vocês dois mudaram os campos abaixo. Escolha qual versão manter em cada um. A versão da outra pessoa continua salva até você aplicar sua escolha.",
+  "sectionsEditor.formConflict.changedAgain":
+    "A versão da outra pessoa mudou de novo enquanto isto estava aberto. Os campos abaixo já mostram essa mudança.",
+  "sectionsEditor.formConflict.changedBy": "Alterado por {name} · {when}",
+  "sectionsEditor.formConflict.changedByYou":
+    "Você, em outra aba ou janela · {when}",
+  "sectionsEditor.formConflict.changedAt": "Alterado {when}",
+  "sectionsEditor.formConflict.yourVersion": "Sua versão",
+  "sectionsEditor.formConflict.theirVersion": "Versão da outra pessoa",
+  "sectionsEditor.formConflict.keepMine": "Manter a minha",
+  "sectionsEditor.formConflict.useTheirs": "Usar a outra",
+  "sectionsEditor.formConflict.keepAllMine": "Manter todas as minhas",
+  "sectionsEditor.formConflict.useAllTheirs": "Usar todas as outras",
+  "sectionsEditor.formConflict.apply": "Aplicar",
+  "sectionsEditor.formConflict.decideLater": "Decidir depois",
+  "sectionsEditor.formConflict.chooseEach":
+    "Escolha uma versão para cada campo para aplicar.",
+  "sectionsEditor.formConflict.empty": "Vazio",
+  "sectionsEditor.formConflict.yes": "Sim",
+  "sectionsEditor.formConflict.no": "Não",
+  "sectionsEditor.formConflict.oneItem": "1 item",
+  "sectionsEditor.formConflict.items": "{count} itens",
+  "sectionsEditor.formConflict.notice":
+    "Suas alterações nesta seção ainda não foram salvas: outra pessoa também a mudou.",
+  "sectionsEditor.formConflict.review": "Escolher versões",
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "Esta seção foi substituída enquanto você editava. O formulário agora mostra a seção atual, e sua última alteração não foi salva.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":

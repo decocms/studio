@@ -25,7 +25,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
-import { useDecofile } from "./use-decofile";
+import { useDecofile, useDecofileCacheKey } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import {
@@ -37,22 +37,41 @@ import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
+import { protocolBlockVersion } from "./content-protocol-api";
 import {
   findSectionMovedTo,
+  focusInside,
+  formSaveGuard,
   formSourceMovedOn,
   isOwnVersion,
   rememberOwnVersion,
   sectionFormSource,
   sectionTypeChanged,
+  showMergeInForm,
   trackFormChange,
   type FormBase,
 } from "./form-base";
-import { describeConflictFields } from "./conflict-fields";
+import {
+  type ConflictChoices,
+  carryConflictChoices,
+  chooseAll,
+  conflictFields,
+  everyConflictChosen,
+  type FormConflictPlan,
+  planFormConflict,
+  resolveFormConflict,
+} from "./form-conflict";
+import { FormConflictDialog, FormConflictNotice } from "./form-conflict-dialog";
+import {
+  conflictAuthorDraft,
+  useConflictAuthor,
+  versionTag,
+} from "./conflict-author";
 import { BlockConflictError } from "./decofile-api";
-import { mergeBlockJson } from "@decocms/shared/decofile";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
-import { resolveSchema } from "./resolve-schema";
+import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -61,8 +80,12 @@ import { PageSeoForm } from "./page-seo-form";
 import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
+import { errorDetail, errorDetailsDescription } from "./site-editor-toast";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
+import { useContentBackend } from "./use-content-backend";
+import { isProtocolProject } from "./content-backend";
+import { useContentDiscardListener, useContentSyncState } from "./content-sync";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -127,6 +150,10 @@ import {
   buildSectionVariantOverrideParams,
   type PageVariantInfo,
 } from "./variant-matcher-override";
+import {
+  buildPageForcedVariants,
+  buildSectionForcedVariants,
+} from "./variant-draft-pointer";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
 import { formatMatcher } from "./format-matcher";
@@ -143,6 +170,9 @@ import {
 import { VariantRuleEditor } from "./variant-rule-editor";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
 
+/** One toast for a section form's save outcome, however many saves it took. */
+const STALE_FORM_TOAST = "section-form-stale-save";
+
 /**
  * Side panel for editing deco.cx page sections.
  * Renders sections for the currently active page and a schema-driven form.
@@ -152,6 +182,72 @@ import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
 /** Refused saves the form rebuilds and retries before reloading. */
 const CONFLICT_RETRIES = 3;
 const CONFLICT_RETRY_BASE_MS = 1_000;
+
+/**
+ * Where a section form's save goes, fixed when the save is scheduled: the
+ * form's record, the page (or global block) and the variants it was on. A
+ * save that runs later (a retry, a choice made after the user moved on)
+ * still writes there.
+ */
+interface FormSaveTarget {
+  formBase: FormBase | null;
+  pageKey: string | null;
+  global: boolean;
+  pageVariantIndex: number;
+  sectionVariantIndex: number;
+  /** The section's schema, for the fields' labels. */
+  schema: SchemaProperty | null;
+}
+
+/** The sections of a save target's page as stored in `decofile`. */
+function sectionsAtTarget(
+  decofile: Record<string, unknown>,
+  target: FormSaveTarget,
+) {
+  const pageVariants: PageVariant[] =
+    target.global && target.pageKey
+      ? [
+          {
+            label: "Default",
+            sections: [{ __resolveType: target.pageKey } as RawSection],
+          },
+        ]
+      : parsePageVariantsForEditor(
+          target.pageKey
+            ? (decofile[target.pageKey] as Record<string, unknown> | undefined)
+                ?.sections
+            : undefined,
+          decofile,
+        );
+  const variantIndex = Math.max(
+    0,
+    Math.min(target.pageVariantIndex, pageVariants.length - 1),
+  );
+  const rawSections: RawSection[] = pageVariants[variantIndex]?.sections ?? [];
+  return {
+    pageVariants,
+    variantIndex,
+    rawSections,
+    parsedSections: parseSections(rawSections, decofile),
+  };
+}
+
+/**
+ * A save that found the user and someone else changed the same values of a
+ * section: it waits, with the form's other saves, for the user to choose
+ * (FormConflictDialog).
+ */
+interface PendingFormConflict {
+  plan: FormConflictPlan;
+  formBase: FormBase;
+  target: FormSaveTarget;
+  sectionIndex: number;
+  choices: ConflictChoices;
+  /** Their version changed again since the dialog first showed it. */
+  changedAgain: boolean;
+  /** The block the save writes (a saved block, else the page): whose change the dialog names. */
+  blockKey: string | null;
+}
 
 export function SectionsEditor({
   orgSlug,
@@ -205,9 +301,11 @@ export function SectionsEditor({
   onFocusedBlockChange?: (blockKey: string | null) => void;
   /**
    * Called when the selected section variant changes so the host can force the
-   * preview iframe to render that variant via `x-deco-matchers-override`.
-   * Passes `null` when no variant override should be applied (non-multivariate
-   * section, or nothing selected).
+   * preview iframe to render that variant: `x-deco-matchers-override` params on
+   * a legacy (v7) site, forced variants for the `?__draft=` pointer on a
+   * content-protocol (v8) site (see variant-draft-pointer). Passes `null` when
+   * no variant override should be applied (non-multivariate section, or
+   * nothing selected).
    */
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
@@ -233,8 +331,17 @@ export function SectionsEditor({
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
     virtualMcpId,
+    branch,
     sandboxUrl: previewUrl,
   });
+  // The content protocol never runs site code: no rendered gallery (cards show
+  // the schema's name, description and image) and no loader-backed pickers.
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  const protocolProject = isProtocolProject(contentBackend);
+  // v8 has no async rendering (migration strips Lazy wrappers): hidden once
+  // the site is known to be v8, shown as before otherwise.
+  const asyncRenderAvailable = !protocolProject;
+  const galleryAvailable = !!sectionPreviewBase || protocolProject;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -336,7 +443,10 @@ export function SectionsEditor({
   );
 
   const queryClient = useQueryClient();
-  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const decofileCacheKey = useDecofileCacheKey(
+    { orgSlug, virtualMcpId, branch },
+    { tunnel: false },
+  );
   const pageBlockSave = useDebouncedSaveBlock({
     orgSlug,
     virtualMcpId,
@@ -381,12 +491,7 @@ export function SectionsEditor({
       { blockKey: refKey, data },
       {
         onSuccess: () => onSaved?.(),
-        onError: (err) =>
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
+        onError: saveBlock.reportError,
       },
     );
   });
@@ -406,6 +511,59 @@ export function SectionsEditor({
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
   // What the open section form's edits are relative to (see trackFormChange).
   const formBaseRef = useRef<FormBase | null>(null);
+  // A section form sends one save at a time: the next is built once the one
+  // on the wire has landed or been refused, so it starts from what is stored
+  // rather than from a copy that may never land (see scheduleAutoSave).
+  const formSaveInFlightRef = useRef(false);
+  // A refused save waiting out its backoff before it is retried: the form's
+  // next saves wait behind it, as behind a save on the wire.
+  const formSaveRetryPendingRef = useRef(false);
+  const waitingFormSavesRef = useRef(new Map<string, () => void>());
+  // The open form re-reads the stored section once the user leaves it: a
+  // change it can't show under their cursor (see reloadStaleForm).
+  const formRefreshOnLeaveRef = useRef(false);
+  // Saves waiting for the user to choose between their version and someone
+  // else's (FormConflictDialog), first one shown. Mirrors `formConflicts`
+  // for the timers.
+  const formConflictsRef = useRef<PendingFormConflict[]>([]);
+  // Forms whose choice was applied and not yet saved: asked again, their
+  // version changed again meanwhile.
+  const choiceAppliedRef = useRef(new WeakSet<FormBase>());
+
+  // A discard of the block an armed autosave would write drops that autosave
+  // (content-sync.ts): fired after the discard, it would bring the discarded
+  // edit back. The open page and the section's saved block are what this
+  // form's timers write; any of them discarded drops them all.
+  useContentDiscardListener(orgSlug, virtualMcpId, (keys) => {
+    const { activePageKey, rawSections, parsedSections, selectedSectionIndex } =
+      latestRef.current;
+    const targets = new Set<string>();
+    if (activePageKey) targets.add(activePageKey);
+    for (const index of [
+      pendingSectionSaveRef.current?.sectionIndex,
+      selectedSectionIndex,
+    ]) {
+      const raw = index == null ? undefined : rawSections[index];
+      const parsed = index == null ? undefined : parsedSections[index];
+      const saved =
+        raw && parsed?.isSavedBlock ? savedBlockKey(raw, parsed) : null;
+      if (saved) targets.add(saved);
+    }
+    if (![...targets].some((key) => keys.has(key))) return;
+    for (const timer of [
+      debounceRef,
+      ruleDebounceRef,
+      sectionRuleDebounceRef,
+    ]) {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+    }
+    pendingSectionSaveRef.current = null;
+    waitingFormSavesRef.current.clear();
+    if (activePageKey && keys.has(activePageKey)) {
+      pendingPageFieldsRef.current = {};
+    }
+  });
 
   // Keep a ref to the latest render-scope values so debounced callbacks
   // always read fresh data instead of a stale closure.
@@ -432,6 +590,20 @@ export function SectionsEditor({
   // A request to re-seed the open form from the stored section (see reloadStaleForm).
   const [formReloadRequest, setFormReloadRequest] = useState(0);
   const [formReloadHandled, setFormReloadHandled] = useState(0);
+  // See formConflictsRef; the dialog shows the first, one at a time.
+  const [formConflicts, setFormConflictsState] = useState<
+    PendingFormConflict[]
+  >([]);
+  // Who made the change the dialog shows (hosted v8 drafts only): read
+  // again when theirs changes.
+  const conflictAuthor = useConflictAuthor(
+    conflictAuthorDraft(contentBackend, { orgSlug, virtualMcpId, branch }),
+    formConflicts[0]?.blockKey ?? null,
+    formConflicts[0]
+      ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
+      : null,
+  );
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
   // Declared above the early returns below: a hook after a conditional return
   // is skipped on the loading render, so the next render calls one more hook
@@ -440,6 +612,9 @@ export function SectionsEditor({
   const [prevPageVariantSeedKey, setPrevPageVariantSeedKey] = useState<
     string | null
   >(null);
+  // Bumped by a content change this form didn't make (content-sync.ts).
+  const contentEpoch = useContentSyncState(orgSlug, virtualMcpId).epoch;
+  const [seenContentEpoch, setSeenContentEpoch] = useState(contentEpoch);
 
   if (!previewReady || decofileLoading || metaLoading) {
     return (
@@ -457,7 +632,7 @@ export function SectionsEditor({
     );
   }
 
-  const pages = extractPages(decofile);
+  const pages = extractPages(decofile, meta);
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
@@ -599,12 +774,10 @@ export function SectionsEditor({
       onVariantPreviewOverride(null);
       return;
     }
-    const params = buildPageVariantOverrideParams(
-      activePageKey,
-      { multivariate: true, index, variants },
-      decofile,
-      meta,
-    );
+    const page = { multivariate: true, index, variants };
+    const params = protocolProject
+      ? buildPageForcedVariants(activePageKey, page)
+      : buildPageVariantOverrideParams(activePageKey, page, decofile, meta);
     onVariantPreviewOverride(params.length > 0 ? params : null);
   };
 
@@ -638,26 +811,24 @@ export function SectionsEditor({
       return;
     }
     const pageInfo = currentPageVariantInfo();
-    const pageParams = buildPageVariantOverrideParams(
-      activePageKey,
-      pageInfo,
-      decofile,
-      meta,
-    );
+    const pageParams = protocolProject
+      ? buildPageForcedVariants(activePageKey, pageInfo)
+      : buildPageVariantOverrideParams(activePageKey, pageInfo, decofile, meta);
     if (!mvObj || sectionIndex < 0) {
       onVariantPreviewOverride(pageParams.length > 0 ? pageParams : null);
       return;
     }
-    const sectionParams = buildSectionVariantOverrideParams({
+    const section = {
       pageKey: activePageKey,
       page: pageInfo,
       sectionIndex,
       sectionLazy: parsedSections[sectionIndex]?.isLazy ?? false,
       mvObj,
       selectedVariantIndex: variantIndex,
-      decofile,
-      meta,
-    });
+    };
+    const sectionParams = protocolProject
+      ? buildSectionForcedVariants(section)
+      : buildSectionVariantOverrideParams({ ...section, decofile, meta });
     const params = [...pageParams, ...sectionParams];
     onVariantPreviewOverride(params.length > 0 ? params : null);
   };
@@ -742,6 +913,66 @@ export function SectionsEditor({
     }
   }
 
+  // A discard, a publish or someone else's change rewrote the content: the
+  // open form re-reads its block, or its next autosave would send the old
+  // values back. Not while its own save is pending: that save is newer.
+  if (contentEpoch !== seenContentEpoch) {
+    setSeenContentEpoch(contentEpoch);
+    const ownSavePending =
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read once per content change: is an autosave timer armed
+      debounceRef.current !== null ||
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, a form save waiting for the one on the wire
+      waitingFormSavesRef.current.size > 0 ||
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the section rule's timer
+      sectionRuleDebounceRef.current !== null ||
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the page rule's timer
+      ruleDebounceRef.current !== null ||
+      saveBlock.isPending ||
+      pageBlockSave.isPending ||
+      // The form's edits wait for the user's choice between two versions.
+      formConflicts.length > 0;
+    // Not under the user's cursor either: their next keystrokes would land
+    // after the new text. Their saves merge onto the stored section, and the
+    // form re-reads it once they leave it.
+    const userInForm =
+      selectedSectionIndex !== null &&
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read once per content change: is focus in the form
+      focusInside(fieldScrollRef.current, document.activeElement);
+    if (!ownSavePending && userInForm) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- marks the re-read for when the user leaves the form
+      formRefreshOnLeaveRef.current = true;
+    }
+    if (!ownSavePending && !userInForm && selectedSectionIndex !== null) {
+      const rawSection = rawSections[selectedSectionIndex];
+      const parsed = parsedSections[selectedSectionIndex];
+      setFieldBreadcrumbs([]);
+      setFormResetKey((key) => key + 1);
+      if (!rawSection || !parsed) {
+        setSelectedSectionIndex(null);
+        setFormValue(null);
+        setActiveResolveType(null);
+      } else if (parsed.isMultivariate) {
+        applySectionVariant(
+          rawSection,
+          parsed,
+          activeSectionVariantIndex,
+          selectedSectionIndex,
+        );
+      } else {
+        const unwrapped = unwrapSection(rawSection, parsed, decofile);
+        setFormValue(unwrapped?.data ?? null);
+        setActiveResolveType(unwrapped?.resolveType ?? null);
+      }
+    }
+    if (!ownSavePending && editingSeo) {
+      setSeoFormValue(null);
+      setSeoRawOverride(undefined);
+      setSeoFormResetKey((key) => key + 1);
+    }
+  }
+
+  // A save refused as stale (or a section replaced under the form) asks for
+  // the form to start over from the stored section (see reloadStaleForm).
   if (formReloadRequest !== formReloadHandled) {
     setFormReloadHandled(formReloadRequest);
     const rawSection =
@@ -761,9 +992,57 @@ export function SectionsEditor({
           selectedSectionIndex,
         );
       } else {
-        const unwrapped = unwrapSection(rawSection, parsed, decofile ?? {});
+        const unwrapped = unwrapSection(rawSection, parsed, decofile);
         setFormValue(unwrapped?.data ?? null);
         setActiveResolveType(unwrapped?.resolveType ?? null);
+      }
+    }
+  }
+
+  // Their version changed again while the user's choice waits (the editor
+  // read a newer copy): the dialog shows that one, keeping the choices that
+  // still apply. Nothing is written until they apply.
+  const waitingChoice = formConflicts[0];
+  if (waitingChoice) {
+    const { formBase: waitingBase, target: waitingTarget } = waitingChoice;
+    const at = sectionsAtTarget(decofile, waitingTarget);
+    const index = waitingBase.sectionIndex;
+    const nowStored =
+      at.rawSections.length === waitingBase.sectionCount
+        ? sectionFormSource(
+            at.rawSections[index],
+            at.parsedSections[index],
+            waitingTarget.sectionVariantIndex,
+            decofile,
+          )
+        : null;
+    if (
+      nowStored &&
+      !sectionTypeChanged(waitingChoice.plan.ancestor, nowStored) &&
+      formSourceMovedOn(waitingChoice.plan.theirs, nowStored) &&
+      !isOwnVersion(waitingBase, nowStored)
+    ) {
+      const plan = planFormConflict({
+        ...waitingChoice.plan,
+        theirs: nowStored,
+      });
+      // With no clash left, the choice stays as asked: applying it merges
+      // onto the newer copy whichever version was picked.
+      if (plan.pointers.length > 0) {
+        const updated: PendingFormConflict = {
+          ...waitingChoice,
+          plan,
+          choices: carryConflictChoices(
+            waitingChoice.plan,
+            waitingChoice.choices,
+            plan,
+          ),
+          changedAgain: true,
+        };
+        const next = [updated, ...formConflicts.slice(1)];
+        // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mirrors the state set below for the save timers
+        formConflictsRef.current = next;
+        setFormConflictsState(next);
       }
     }
   }
@@ -773,7 +1052,7 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
     threadId,
-    previewUrl: previewUrl ?? undefined,
+    previewUrl: protocolProject ? undefined : (previewUrl ?? undefined),
     siteSlug: agentSiteSlug,
   };
 
@@ -794,6 +1073,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     if (sectionRuleDebounceRef.current) {
       clearTimeout(sectionRuleDebounceRef.current);
       sectionRuleDebounceRef.current = null;
@@ -819,11 +1099,7 @@ export function SectionsEditor({
         onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
         onError: (err) => {
           options?.onError?.();
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          );
+          saveBlock.reportError(err);
         },
       },
     );
@@ -842,6 +1118,10 @@ export function SectionsEditor({
     setFormResetKey((key) => key + 1);
   };
 
+  /** Focus is in the open form: the user is typing or about to. */
+  const editingForm = () =>
+    focusInside(fieldScrollRef.current, document.activeElement);
+
   /**
    * Last resort when a save keeps colliding with newer stored content: drop
    * the pending edit and re-seed the form from the stored section, rather
@@ -854,24 +1134,258 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     pendingSectionSaveRef.current = null;
-    toast.error(message);
+    toast.error(message, { id: STALE_FORM_TOAST });
+    if (editingForm()) {
+      formRefreshOnLeaveRef.current = true;
+      return;
+    }
     setFormReloadRequest((n) => n + 1);
   };
 
+  /**
+   * Re-read the stored section into the form, when one waits for the user to
+   * leave it (see reloadStaleForm): once they have and the form's own saves
+   * have settled, so it shows what those saves stored.
+   */
+  const refreshFormIfLeft = () => {
+    if (!formRefreshOnLeaveRef.current || editingForm()) return;
+    // Not while the form's edits wait for the user's choice.
+    if (formConflictsRef.current.length > 0) return;
+    if (
+      debounceRef.current !== null ||
+      formSaveInFlightRef.current ||
+      formSaveRetryPendingRef.current ||
+      waitingFormSavesRef.current.size > 0
+    ) {
+      return;
+    }
+    formRefreshOnLeaveRef.current = false;
+    setFormReloadRequest((n) => n + 1);
+  };
+
+  /** Focus left an element of the form: maybe it left the form. */
+  const handleFormBlur = () => {
+    if (!formRefreshOnLeaveRef.current) return;
+    // Focus has moved by the next task; within the form, it stays put.
+    setTimeout(refreshFormIfLeft, 0);
+  };
+
+  /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
+  const protocolVersionOf = (blockKey: string) =>
+    protocolBlockVersion(queryClient, decofileCacheKey, blockKey);
+
+  /** Run the form saves that waited for the one on the wire, after `delay`. */
+  const runWaitingFormSaves = (delay: number) => {
+    if (waitingFormSavesRef.current.size === 0) return;
+    setTimeout(() => {
+      // A save sent meanwhile runs them when it settles.
+      if (formSaveInFlightRef.current || formSaveRetryPendingRef.current) {
+        return;
+      }
+      const waiting = [...waitingFormSavesRef.current.values()];
+      waitingFormSavesRef.current.clear();
+      for (const write of waiting) write();
+    }, delay);
+  };
+
+  /** Where a save of the open form's section goes (see FormSaveTarget). */
+  const openFormTarget = (sectionIndex: number): FormSaveTarget => {
+    const { activePageKey, variantIndex, sectionVariantIndex } =
+      latestRef.current;
+    const tracked = formBaseRef.current;
+    return {
+      formBase:
+        tracked?.sectionIndex === sectionIndex &&
+        tracked.variantIndex === sectionVariantIndex
+          ? tracked
+          : null,
+      pageKey: activePageKey,
+      global: isGlobalBlockMode,
+      pageVariantIndex: variantIndex,
+      sectionVariantIndex,
+      schema: activeSchema,
+    };
+  };
+
+  const setFormConflicts = (next: PendingFormConflict[]) => {
+    formConflictsRef.current = next;
+    setFormConflictsState(next);
+  };
+
+  /**
+   * A form's save found the user and someone else changed the same values:
+   * ask them (one dialog, the first waiting choice). Asked again for the same
+   * form, the dialog shows the new versions and keeps the choices that still
+   * apply.
+   */
+  const waitForChoice = (conflict: PendingFormConflict) => {
+    const list = formConflictsRef.current;
+    const i = list.findIndex((item) => item.formBase === conflict.formBase);
+    const previous = i >= 0 ? list[i] : undefined;
+    const next = previous
+      ? list.with(i, {
+          ...conflict,
+          choices: carryConflictChoices(
+            previous.plan,
+            previous.choices,
+            conflict.plan,
+          ),
+          changedAgain:
+            previous.changedAgain ||
+            canonicalBlockJson(previous.plan.theirs) !==
+              canonicalBlockJson(conflict.plan.theirs),
+        })
+      : [
+          ...list,
+          {
+            ...conflict,
+            changedAgain: choiceAppliedRef.current.has(conflict.formBase),
+          },
+        ];
+    setFormConflicts(next);
+    setConflictDialogOpen(true);
+  };
+
+  /**
+   * True while `formBase` waits for the user's choice; `mine`, the form's
+   * value now, becomes their version. When it no longer clashes with theirs
+   * (they typed back what is stored), the choice is dropped and the save goes
+   * ahead.
+   */
+  const waitsForChoice = (
+    formBase: FormBase,
+    mine: Record<string, unknown>,
+  ): boolean => {
+    const list = formConflictsRef.current;
+    const i = list.findIndex((item) => item.formBase === formBase);
+    const waiting = list[i];
+    if (!waiting) return false;
+    if (canonicalBlockJson(waiting.plan.mine) === canonicalBlockJson(mine)) {
+      return true;
+    }
+    const plan = planFormConflict({ ...waiting.plan, mine });
+    if (plan.pointers.length === 0) {
+      const rest = list.filter((item) => item !== waiting);
+      setFormConflicts(rest);
+      if (rest.length === 0) setConflictDialogOpen(false);
+      return false;
+    }
+    setFormConflicts(
+      list.with(i, {
+        ...waiting,
+        plan,
+        choices: carryConflictChoices(waiting.plan, waiting.choices, plan),
+      }),
+    );
+    return true;
+  };
+
+  /** The open form is on the section a waiting choice is about. */
+  const formShowsTarget = (conflict: PendingFormConflict) => {
+    const latest = latestRef.current;
+    return (
+      latest.selectedSectionIndex === conflict.formBase.sectionIndex &&
+      latest.activePageKey === conflict.target.pageKey &&
+      latest.variantIndex === conflict.target.pageVariantIndex &&
+      latest.sectionVariantIndex === conflict.target.sectionVariantIndex
+    );
+  };
+
+  /**
+   * The first waiting choice with the form's latest value as the user's
+   * version: what they typed since it was asked, saved or not yet. Drops the
+   * form's armed and queued saves, which held older copies of that value.
+   */
+  const latestWaitingChoice = (): PendingFormConflict | null => {
+    const first = formConflictsRef.current[0];
+    if (!first) return null;
+    const { formBase, target } = first;
+    if (
+      debounceRef.current &&
+      pendingSectionSaveRef.current?.sectionIndex === formBase.sectionIndex &&
+      pendingSectionSaveRef.current.sectionVariantIndex ===
+        target.sectionVariantIndex
+    ) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      pendingSectionSaveRef.current = null;
+    }
+    waitingFormSavesRef.current.delete(
+      `${target.pageKey}:${formBase.sectionIndex}:${target.sectionVariantIndex}`,
+    );
+    const mine = formBase.emitted;
+    if (
+      mine &&
+      typeof mine === "object" &&
+      !waitsForChoice(formBase, mine as Record<string, unknown>)
+    ) {
+      // No clash left: the form's edit is saved like any other.
+      scheduleAutoSave(
+        mine as Record<string, unknown>,
+        formBase.sectionIndex,
+        0,
+        target,
+      );
+    }
+    return formConflictsRef.current[0] ?? null;
+  };
+
+  /** "Choose versions": ask again, with what the form holds now. */
+  const reviewFormConflict = () => {
+    if (latestWaitingChoice()) setConflictDialogOpen(true);
+  };
+
+  /**
+   * The user chose: save their pick, value by value, over their version (the
+   * stored section the dialog showed). The save expects that version; one
+   * stored meanwhile refuses it, and the same choice is asked again with the
+   * newer version.
+   */
+  const applyFormConflict = () => {
+    const shown = formConflictsRef.current[0];
+    const conflict = latestWaitingChoice();
+    // Nothing left to choose (the user typed back what is stored): that save
+    // went ahead on its own.
+    if (!conflict || conflict.formBase !== shown?.formBase) return;
+    // What they typed just before clashes on a value they haven't chosen
+    // for yet: the dialog now shows it.
+    if (!everyConflictChosen(conflict.plan, conflict.choices)) return;
+    const resolved = resolveFormConflict(conflict.plan, conflict.choices);
+    const rest = formConflictsRef.current.slice(1);
+    setFormConflicts(rest);
+    setConflictDialogOpen(rest.length > 0);
+    const { formBase, target } = conflict;
+    formBase.base = conflict.plan.theirs;
+    formBase.version = undefined;
+    formBase.emitted = resolved;
+    choiceAppliedRef.current.add(formBase);
+    if (formBaseRef.current === formBase || formShowsTarget(conflict)) {
+      formBaseRef.current = formBase;
+      setFormValue(resolved);
+      setFormResetKey((key) => key + 1);
+    }
+    scheduleAutoSave(resolved, formBase.sectionIndex, 0, target);
+  };
+
+  const setConflictChoices = (choices: ConflictChoices) => {
+    const [first, ...rest] = formConflictsRef.current;
+    if (first) setFormConflicts([{ ...first, choices }, ...rest]);
+  };
+
   const scheduleAutoSave = (
-    nextValue: Record<string, unknown>,
+    /** The form's value, or a getter read when the save runs (a retry). */
+    nextInput: Record<string, unknown> | (() => Record<string, unknown>),
     sectionIndex: number,
     /** Saves already refused for building on an outdated copy. */
     conflicts = 0,
+    /** Where it goes; by default the open form's section. */
+    given?: FormSaveTarget,
   ) => {
-    const targetSectionVariantIndex = latestRef.current.sectionVariantIndex;
-    const tracked = formBaseRef.current;
-    const formBase =
-      tracked?.sectionIndex === sectionIndex &&
-      tracked.variantIndex === targetSectionVariantIndex
-        ? tracked
-        : null;
+    const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
+    const targetSectionVariantIndex = target.sectionVariantIndex;
+    const formBase = target.formBase;
     const pending = pendingSectionSaveRef.current;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -886,15 +1400,28 @@ export function SectionsEditor({
       }
     }
 
+    const waitingKey = `${target.pageKey}:${sectionIndex}:${targetSectionVariantIndex}`;
     const write = () => {
+      // Built now, this save would assume the one on the wire lands; it runs
+      // once that one settles instead (runWaitingFormSaves).
+      if (formSaveInFlightRef.current || formSaveRetryPendingRef.current) {
+        waitingFormSavesRef.current.set(waitingKey, write);
+        return;
+      }
+      const nextValue =
+        typeof nextInput === "function" ? nextInput() : nextInput;
+      // The form waits for the user's choice between their version and
+      // someone else's: nothing of it is saved until then, and what they
+      // change meanwhile is part of their version.
+      if (formBase && waitsForChoice(formBase, nextValue)) return;
+      const latestDecofile = latestRef.current.decofile;
       const {
         rawSections: latestRawSections,
         parsedSections: latestParsedSections,
-        decofile: latestDecofile,
-        activePageKey: latestPageKey,
         pageVariants: latestVariants,
         variantIndex: latestVariantIndex,
-      } = latestRef.current;
+      } = sectionsAtTarget(latestDecofile, target);
+      const latestPageKey = target.pageKey;
       const rawSection = latestRawSections[sectionIndex];
       if (!rawSection) return;
       const parsed = latestParsedSections[sectionIndex];
@@ -950,37 +1477,54 @@ export function SectionsEditor({
         if (typeof movedTo === "number" && formBase) {
           formBase.sectionCount = latestRawSections.length;
           formBase.sectionIndex = movedTo;
-          setSelectedSectionIndex(movedTo);
-          scheduleAutoSave(nextValue, movedTo, conflicts);
+          if (formBaseRef.current === formBase)
+            setSelectedSectionIndex(movedTo);
+          scheduleAutoSave(nextValue, movedTo, conflicts, target);
           return;
         }
       }
-      // The section changed since the form last saved it (a publish, a sync):
-      // apply the form's own edits on top of what is stored. Where both
-      // changed the same value, the stored one stays and the user is told.
-      const overwritten: string[] = [];
-      const rebased =
+      // The section changed since the form last saved it (a publish, a sync,
+      // another editor): apply the form's own edits on top of what is stored.
+      const plan =
         movedOn && startedFrom && stored
-          ? (mergeBlockJson(startedFrom, nextValue, stored, {
-              prefer: "theirs",
-              conflicts: overwritten,
-            }) as Record<string, unknown>)
+          ? planFormConflict({
+              ancestor: startedFrom,
+              mine: nextValue,
+              theirs: stored,
+            })
           : null;
+      // Both changed some of the same values: nothing is written until the
+      // user chooses whose version to keep, value by value.
+      if (plan && plan.pointers.length > 0 && formBase) {
+        formBase.sectionCount = latestRawSections.length;
+        waitForChoice({
+          plan,
+          formBase,
+          target,
+          sectionIndex,
+          choices: {},
+          changedAgain: false,
+          blockKey: parsed.isSavedBlock
+            ? savedBlockKey(rawSection, parsed)
+            : latestPageKey,
+        });
+        return;
+      }
+      const rebased = plan ? plan.merged : null;
       const value = rebased ?? nextValue;
-      // Show the merged section only while the form is still on it and has
-      // not moved past `nextValue`; otherwise its baseline stays `nextValue`.
-      const showRebased =
-        !!rebased &&
-        formBaseRef.current === formBase &&
-        formBase?.emitted === nextValue;
-      if (overwritten.length > 0) {
-        toast.warning(
-          t("sectionsEditor.sectionsEditor.formFieldsKeptFromStored", {
-            fields: describeConflictFields(overwritten),
-          }),
-        );
-      } else if (rebased) {
-        toast.info(t("sectionsEditor.sectionsEditor.blockMergedWithOthers"));
+      // Show the merged section while the form is still on it and has not
+      // moved past `nextValue`. The merge kept every value the user changed,
+      // so nothing under their cursor changes.
+      const showRebased = showMergeInForm({
+        merged: !!rebased,
+        tracked: formBase,
+        current: formBaseRef.current,
+        saved: nextValue,
+      });
+      if (rebased) {
+        toast.info(t("sectionsEditor.sectionsEditor.blockMergedWithOthers"), {
+          id: STALE_FORM_TOAST,
+        });
       }
       if (showRebased && formBase) {
         formBase.emitted = rebased;
@@ -994,27 +1538,44 @@ export function SectionsEditor({
         rememberOwnVersion(formBase, savedBase);
       }
       const saveCallbacks = {
-        onSuccess: () => onSaved?.(),
+        onSuccess: () => {
+          if (formBase) choiceAppliedRef.current.delete(formBase);
+          onSaved?.();
+        },
         onError: (err: Error) => {
           if (formBase?.base === savedBase && startedFrom) {
             formBase.base = startedFrom;
           }
           if (err instanceof BlockConflictError) {
+            // The version is read again with the block the save re-read.
+            if (formBase) formBase.version = undefined;
             // The save re-read the branch; build on that copy again. Right
             // after a commit the provider can keep answering with the
             // previous head for a few seconds, so back off between tries
-            // before giving up.
+            // before giving up. The retry carries whatever the form holds
+            // when it runs, so a save that waited behind this one has
+            // nothing left to add, and later saves wait behind the retry.
             if (conflicts < CONFLICT_RETRIES) {
+              waitingFormSavesRef.current.delete(waitingKey);
+              formSaveRetryPendingRef.current = true;
               setTimeout(
                 () => {
-                  const latest = formBase?.emitted;
+                  formSaveRetryPendingRef.current = false;
                   scheduleAutoSave(
-                    latest && typeof latest === "object"
-                      ? (latest as Record<string, unknown>)
-                      : nextValue,
+                    () => {
+                      const latest = formBase?.emitted;
+                      return latest && typeof latest === "object"
+                        ? (latest as Record<string, unknown>)
+                        : nextValue;
+                    },
                     sectionIndex,
                     conflicts + 1,
+                    target,
                   );
+                  // Saves of this form made meanwhile are in the retry; the
+                  // others run behind it (or now, when it sends nothing).
+                  waitingFormSavesRef.current.delete(waitingKey);
+                  runWaitingFormSaves(AUTOSAVE_DELAY);
                 },
                 CONFLICT_RETRY_BASE_MS * 2 ** conflicts,
               );
@@ -1023,31 +1584,53 @@ export function SectionsEditor({
             }
             return;
           }
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          );
+          saveBlock.reportError(err);
         },
+      };
+      // mutateAsync, not mutate: mutate's callbacks run only for the latest
+      // call, and this form must hear how each of its saves ended.
+      const sendFormSave = (
+        variables: Parameters<typeof saveBlock.mutateAsync>[0],
+      ) => {
+        formSaveInFlightRef.current = true;
+        let refused = false;
+        void saveBlock
+          .mutateAsync(variables)
+          .then(
+            () => saveCallbacks.onSuccess(),
+            (err: Error) => {
+              refused = true;
+              saveCallbacks.onError(err);
+            },
+          )
+          .finally(() => {
+            formSaveInFlightRef.current = false;
+            // After a refusal the stored copy is re-read first; give the
+            // editor a render to show it before building on it.
+            runWaitingFormSaves(refused ? AUTOSAVE_DELAY : 0);
+            refreshFormIfLeft();
+          });
       };
 
       // Saved block: write the block entry directly (savedBlockKey unwraps hidden wrappers).
       if (parsed.isSavedBlock) {
         const blockKey = savedBlockKey(rawSection, parsed);
         if (!blockKey) return;
-        saveBlock.mutate(
-          {
-            blockKey,
-            data: value,
-            // The version this write builds on, for the server's stale check.
-            ...(startedFrom
-              ? { base: { value: rebased ? stored : startedFrom } }
-              : {}),
-            // A refused save comes back here and goes through the checks above.
-            rebaseOnConflict: false,
-          },
-          saveCallbacks,
-        );
+        sendFormSave({
+          blockKey,
+          data: value,
+          // The version this write builds on, for the server's stale check.
+          ...(startedFrom
+            ? { base: { value: rebased ? stored : startedFrom } }
+            : {}),
+          // A refused save comes back here and goes through the checks above.
+          rebaseOnConflict: false,
+          guard: formSaveGuard({
+            formBase,
+            rebased: !!rebased,
+            versionOf: protocolVersionOf,
+          }),
+        });
         return;
       }
 
@@ -1124,14 +1707,16 @@ export function SectionsEditor({
       } else {
         fullPageData.sections = updatedSections;
       }
-      saveBlock.mutate(
-        {
-          blockKey: latestPageKey,
-          data: fullPageData,
-          rebaseOnConflict: false,
-        },
-        saveCallbacks,
-      );
+      sendFormSave({
+        blockKey: latestPageKey,
+        data: fullPageData,
+        rebaseOnConflict: false,
+        guard: formSaveGuard({
+          formBase: null,
+          rebased: false,
+          versionOf: protocolVersionOf,
+        }),
+      });
     };
     pendingSectionSaveRef.current = {
       sectionIndex,
@@ -1145,6 +1730,7 @@ export function SectionsEditor({
   };
 
   const handleSelectSection = (index: number) => {
+    formRefreshOnLeaveRef.current = false;
     setSelectedSectionIndex(index);
     setActiveSectionVariantIndex(0);
     setFieldBreadcrumbs([]);
@@ -1642,7 +2228,7 @@ export function SectionsEditor({
   const handleMakeReusableSubmit = async (blockId: string) => {
     if (makeReusableIndex === null || !activePageKey) return;
 
-    const validationError = validateBlockId(blockId, decofile);
+    const validationError = validateBlockId(blockId, decofile, meta);
     if (validationError) {
       toast.error(validationError);
       return;
@@ -1692,11 +2278,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -1722,7 +2306,7 @@ export function SectionsEditor({
   const availableMatcherGlobals =
     meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
   const canAddSection =
-    !isGlobalBlockMode && !!(sectionPreviewBase && meta && decofile);
+    !isGlobalBlockMode && !!(galleryAvailable && meta && decofile);
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
@@ -1751,9 +2335,10 @@ export function SectionsEditor({
       await deleteBlock.mutateAsync({ blockKey });
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        {
+          description: errorDetailsDescription(t, errorDetail(err)),
+        },
       );
     }
   };
@@ -1803,12 +2388,7 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) =>
-              toast.error(
-                t("sectionsEditor.sectionsEditor.saveFailed", {
-                  error: err.message,
-                }),
-              ),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -1826,12 +2406,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) =>
-            toast.error(
-              t("sectionsEditor.sectionsEditor.saveFailed", {
-                error: err.message,
-              }),
-            ),
+          onError: saveBlock.reportError,
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1914,11 +2489,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -1981,12 +2554,7 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) =>
-              toast.error(
-                t("sectionsEditor.sectionsEditor.saveFailed", {
-                  error: err.message,
-                }),
-              ),
+            onError: saveBlock.reportError,
           },
         );
         return;
@@ -2016,12 +2584,7 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) =>
-            toast.error(
-              t("sectionsEditor.sectionsEditor.saveFailed", {
-                error: err.message,
-              }),
-            ),
+          onError: saveBlock.reportError,
         },
       );
     }, AUTOSAVE_DELAY);
@@ -2116,11 +2679,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -2339,6 +2900,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
@@ -2362,12 +2924,7 @@ export function SectionsEditor({
           setRuleFormValue(null);
           setRuleResolveType(null);
         },
-        onError: (err) =>
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -2399,6 +2956,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const current = fullPageData.sections;
     if (!current || typeof current !== "object" || Array.isArray(current))
@@ -2432,12 +2990,7 @@ export function SectionsEditor({
             }
           })();
         },
-        onError: (err) =>
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
+        onError: saveBlock.reportError,
       },
     );
   };
@@ -2592,6 +3145,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const pageKey = latestRef.current.activePageKey;
     const latestDecofile: Record<string, unknown> = latestRef.current.decofile;
@@ -2666,7 +3220,7 @@ export function SectionsEditor({
       }
 
       const blockId = suggestBlockId(trimmed);
-      const validationError = validateBlockId(blockId, latestDecofile);
+      const validationError = validateBlockId(blockId, latestDecofile, meta);
       if (validationError) {
         toast.error(validationError);
         return;
@@ -2711,11 +3265,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2740,6 +3292,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const {
       selectedSectionIndex: sectionIndex,
@@ -2833,7 +3386,7 @@ export function SectionsEditor({
       }
 
       const blockId = suggestBlockId(trimmed);
-      const validationError = validateBlockId(blockId, latestDecofile);
+      const validationError = validateBlockId(blockId, latestDecofile, meta);
       if (validationError) {
         toast.error(validationError);
         return;
@@ -2873,11 +3426,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -2917,6 +3468,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const { activePageKey: blockKey, decofile: latestDecofile } =
       latestRef.current;
@@ -3006,11 +3558,9 @@ export function SectionsEditor({
       );
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.failedToRenameVariant"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     } finally {
       setRenameVariantPending(false);
     }
@@ -3031,6 +3581,7 @@ export function SectionsEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    waitingFormSavesRef.current.clear();
 
     const { activePageKey: targetBlockKey, decofile: latestDecofile } =
       latestRef.current;
@@ -3061,11 +3612,9 @@ export function SectionsEditor({
       }
       onSaved?.();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
-      );
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
+        description: errorDetailsDescription(t, errorDetail(err)),
+      });
     }
   };
 
@@ -3451,7 +4000,7 @@ export function SectionsEditor({
         onDuplicate={handleDuplicateSection}
         onMakeReusable={setMakeReusableIndex}
         onToggleHidden={handleToggleHidden}
-        onToggleLazy={handleToggleLazy}
+        onToggleLazy={asyncRenderAvailable ? handleToggleLazy : undefined}
         onAddVariant={handleAddSectionVariant}
         onDetach={handleDetachSection}
         onAddSection={() => setAddSectionOpen(true)}
@@ -3485,6 +4034,7 @@ export function SectionsEditor({
           onInnerChange={handleSeoInnerChange}
           onClearForm={clearSeoForm}
           onBumpFormKey={bumpSeoFormKey}
+          asyncRenderAvailable={asyncRenderAvailable}
         />
       ) : (
         <div className="px-3 py-6 text-center text-xs text-muted-foreground">
@@ -3518,6 +4068,7 @@ export function SectionsEditor({
               onInnerChange={handleSeoInnerChange}
               onClearForm={clearSeoForm}
               onBumpFormKey={bumpSeoFormKey}
+              asyncRenderAvailable={asyncRenderAvailable}
             />
           ) : (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">
@@ -3762,6 +4313,33 @@ export function SectionsEditor({
           )}
         </div>
 
+        {formConflicts.length > 0 && !conflictDialogOpen && (
+          <FormConflictNotice onReview={reviewFormConflict} />
+        )}
+        {waitingChoice && (
+          <FormConflictDialog
+            open={conflictDialogOpen}
+            fields={conflictFields(
+              waitingChoice.plan,
+              waitingChoice.target.schema,
+            )}
+            choices={waitingChoice.choices}
+            changedAgain={waitingChoice.changedAgain}
+            author={conflictAuthor}
+            onChoose={(pointer, choice) =>
+              setConflictChoices({
+                ...waitingChoice.choices,
+                [pointer]: choice,
+              })
+            }
+            onChooseAll={(choice) =>
+              setConflictChoices(chooseAll(waitingChoice.plan, choice))
+            }
+            onApply={applyFormConflict}
+            onDecideLater={() => setConflictDialogOpen(false)}
+          />
+        )}
+
         {/* Drill-down: section form or global-block form, else the panel accordion */}
         {managingSectionVariants ? (
           <VariantsManagerScreen
@@ -3774,6 +4352,7 @@ export function SectionsEditor({
           <ScrollArea
             key="editor-section-form"
             viewportRef={fieldScrollRef}
+            onBlur={handleFormBlur}
             className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
           >
             {/* Classic only: compact moves these into the header select and the variant manager. */}
@@ -3807,6 +4386,7 @@ export function SectionsEditor({
           <ScrollArea
             key="editor-global-block"
             viewportRef={fieldScrollRef}
+            onBlur={handleFormBlur}
             className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
           >
             <SchemaFormPanel
@@ -3878,7 +4458,7 @@ export function SectionsEditor({
           onSubmit={handleMakeReusableSubmit}
         />
 
-        {sectionPreviewBase && (
+        {galleryAvailable && (
           <AddSectionModal
             open={addSectionOpen}
             onOpenChange={(open) => {

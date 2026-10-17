@@ -29,6 +29,26 @@ describe("page-list", () => {
     ]);
   });
 
+  it("extractPages follows the manifest's pages group", () => {
+    const meta = {
+      manifest: { blocks: { pages: { page: {}, post: {} }, sections: {} } },
+      schema: {},
+    } as LiveMeta;
+    const decofile = {
+      home: { __resolveType: "page", path: "/", sections: [] },
+      "hello-world": { __resolveType: "post", path: "/blog/hello" },
+      hero: { __resolveType: "hero", path: "/not-a-page" },
+      legacy: { __resolveType: "website/pages/Page.tsx", path: "/old" },
+    };
+    expect(extractPages(decofile, meta).map((p) => p.key)).toEqual([
+      "home",
+      "hello-world",
+      "legacy",
+    ]);
+    // Without a schema only the legacy page types are pages.
+    expect(extractPages(decofile).map((p) => p.key)).toEqual(["legacy"]);
+  });
+
   it("findPageForPath prefers an explicit block key when paths collide", () => {
     const pages = [
       {
@@ -351,6 +371,25 @@ describe("page-list", () => {
       expect(resolveDeepLinkPage(pages, { path: "/sobre" })?.key).toBe(
         "pages-About-jkl012",
       );
+    });
+
+    it("opens the page that serves the path ahead of a catch-all template", () => {
+      // A storefront that doesn't know its page sends the "/*" fallback.
+      const withNotFound: PageEntry[] = [
+        ...pages,
+        { key: "pages-NotFound-mno345", name: "Not Found", path: "/*" },
+      ];
+      expect(
+        resolveDeepLinkPage(withNotFound, { path: "/", pathTemplate: "/*" })
+          ?.key,
+      ).toBe("pages-Home-abc123456789");
+      // A path no page serves still lands on the template's page.
+      expect(
+        resolveDeepLinkPage(withNotFound, {
+          path: "/nao-existe",
+          pathTemplate: "/*",
+        })?.key,
+      ).toBe("pages-NotFound-mno345");
     });
 
     it("returns null when nothing fits", () => {

@@ -215,3 +215,56 @@ describe("CMS_EDITOR_SCRIPT", () => {
     ).toEqual([0, null, 1]);
   });
 });
+
+// A quick second save skips the running transition; Chrome then rejects its
+// ready promise with "AbortError: Transition was skipped".
+describe("runSwapTransition", () => {
+  const buildRunner = (document: unknown) => {
+    const start = CMS_EDITOR_SCRIPT.indexOf(
+      "var runSwapTransition = function(",
+    );
+    const end = CMS_EDITOR_SCRIPT.indexOf("var renderInPlace", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const src = CMS_EDITOR_SCRIPT.slice(start, end);
+    return new Function("document", `${src}; return runSwapTransition;`)(
+      document,
+    ) as (swap: () => void) => Promise<unknown>;
+  };
+
+  it("leaves no rejection unhandled when the transition is skipped", async () => {
+    const skipped = () => {
+      const error = new Error("Transition was skipped");
+      error.name = "AbortError";
+      return error;
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      let swapped = 0;
+      const run = buildRunner({
+        startViewTransition: (swap: () => void) => {
+          swap();
+          return {
+            ready: Promise.reject(skipped()),
+            updateCallbackDone: Promise.reject(skipped()),
+            finished: Promise.resolve(),
+          };
+        },
+      });
+      await run(() => swapped++);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(swapped).toBe(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("swaps right away where view transitions don't exist", async () => {
+    let swapped = 0;
+    await buildRunner({})(() => swapped++);
+    expect(swapped).toBe(1);
+  });
+});

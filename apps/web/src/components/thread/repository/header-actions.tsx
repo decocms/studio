@@ -5,7 +5,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
-import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
+import { useContentSyncBusy } from "@/components/sections-editor/content-sync";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SplitButton,
@@ -264,11 +264,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
 
   /** An in-flight autosave means the branch state is mid-change — hold the publish surfaces until the write lands. */
-  const decofileSaving = useDecofileWriting(
-    org.slug,
-    virtualMcpId,
-    branch ?? sandboxRouteBranch ?? "",
-  );
+  const decofileSaving = useContentSyncBusy(org.slug, virtualMcpId);
 
   /**
    * Preview URL must come from the sandbox lifecycle — the raw
