@@ -62,6 +62,11 @@ import {
   resolveFormConflict,
 } from "./form-conflict";
 import { FormConflictDialog, FormConflictNotice } from "./form-conflict-dialog";
+import {
+  conflictAuthorDraft,
+  useConflictAuthor,
+  versionTag,
+} from "./conflict-author";
 import { BlockConflictError } from "./decofile-api";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
@@ -240,6 +245,8 @@ interface PendingFormConflict {
   choices: ConflictChoices;
   /** Their version changed again since the dialog first showed it. */
   changedAgain: boolean;
+  /** The block the save writes (a saved block, else the page): whose change the dialog names. */
+  blockKey: string | null;
 }
 
 export function SectionsEditor({
@@ -587,6 +594,15 @@ export function SectionsEditor({
   const [formConflicts, setFormConflictsState] = useState<
     PendingFormConflict[]
   >([]);
+  // Who made the change the dialog shows (hosted v8 drafts only): read
+  // again when theirs changes.
+  const conflictAuthor = useConflictAuthor(
+    conflictAuthorDraft(contentBackend, { orgSlug, virtualMcpId, branch }),
+    formConflicts[0]?.blockKey ?? null,
+    formConflicts[0]
+      ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
+      : null,
+  );
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
   // Declared above the early returns below: a hook after a conditional return
@@ -1488,6 +1504,9 @@ export function SectionsEditor({
           sectionIndex,
           choices: {},
           changedAgain: false,
+          blockKey: parsed.isSavedBlock
+            ? savedBlockKey(rawSection, parsed)
+            : latestPageKey,
         });
         return;
       }
@@ -4306,6 +4325,7 @@ export function SectionsEditor({
             )}
             choices={waitingChoice.choices}
             changedAgain={waitingChoice.changedAgain}
+            author={conflictAuthor}
             onChoose={(pointer, choice) =>
               setConflictChoices({
                 ...waitingChoice.choices,

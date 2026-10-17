@@ -725,6 +725,8 @@ test.describe("site editor over deco serve", () => {
       await expect(field.getByTestId("conflict-theirs")).toHaveText(
         "Changed on disk",
       );
+      // Localhost says nothing about who made the other change.
+      await expect(dialog.getByTestId("form-conflict-author")).toHaveCount(0);
       // Nothing written over theirs while the user decides.
       expect((await heroOf(stub)).title).toBe("Changed on disk");
 
