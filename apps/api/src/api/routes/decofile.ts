@@ -8,7 +8,6 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session; 409 block-conflict on a stale `expect`)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
- *   GET    /api/:org/decofile/:virtualMcpId/:branch/changed-by?block=…  who last changed blocks, and when (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session; main's schema for any site)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
@@ -43,7 +42,6 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
   assertSafeDecoBlockKey,
-  blockKeyToFileStem,
   isReservedResolverBlockKey,
   PlaintextSecretError,
   sanitizeSecretsForPersistence,
@@ -57,7 +55,6 @@ import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import {
   RepoWriteConflict,
   contentClientForProjectRepo,
-  insightsClientForProjectRepo,
   repoErrorStatus,
   type RepoContentClient,
 } from "@/git-providers";
@@ -66,17 +63,9 @@ import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
-import {
-  type ChangeAuthor,
-  gitChangeAuthors,
-  MAX_CHANGED_BY_BLOCKS,
-  memberLookupFor,
-  type MemberLookup,
-  toChangedBy,
-} from "@/decofile/changed-by";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
-import { blocksDirPath, readDecofileSnapshot } from "@/decofile/read-decofile";
+import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import {
   bareEtag,
   deliveryStore,
@@ -98,7 +87,6 @@ import {
   MAIN_SCHEMA_HEADER,
 } from "@decocms/shared/blocks-major";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
-import { blockFileName } from "@decocms/blocks/protocol";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -120,20 +108,11 @@ interface DecofileScope {
 
 /** Opens the project repository's content client (tests pass a fake). */
 export type RepoClientFor = typeof contentClientForProjectRepo;
-/** Opens the project repository's history client (tests pass a fake). */
-export type InsightsClientFor = typeof insightsClientForProjectRepo;
-/** The org's members, for `changed-by` (tests pass a fake). */
-export type MembersFor = (
-  ctx: Env["Variables"]["studioContext"],
-  organizationId: string,
-) => MemberLookup;
 
 type DecofileEnv = Env & {
   Variables: Env["Variables"] & {
     decofileScope: DecofileScope;
     repoClientFor: RepoClientFor;
-    insightsClientFor: InsightsClientFor;
-    membersFor: MembersFor;
   };
 };
 
@@ -245,8 +224,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" &&
-      !c.req.path.match(/\/(publish|status|changed-by)$/);
+      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -318,9 +296,9 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   return next();
 });
 
-/** Routes that work without a preview server (a v8 project may have none). */
+/** Content-protocol routes that work without a preview server. */
 function isContentProtocolPath(path: string): boolean {
-  return path.endsWith("/rpc") || path.endsWith("/changed-by");
+  return path.endsWith("/rpc");
 }
 
 /**
@@ -512,22 +490,12 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
 }
 
 export function createDecofileRoutes(
-  options: {
-    repoClientFor?: RepoClientFor;
-    insightsClientFor?: InsightsClientFor;
-    membersFor?: MembersFor;
-  } = {},
+  options: { repoClientFor?: RepoClientFor } = {},
 ) {
   const app = new Hono<DecofileEnv>();
   const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
-  const insightsClientFor =
-    options.insightsClientFor ?? insightsClientForProjectRepo;
-  const membersFor: MembersFor =
-    options.membersFor ?? ((ctx, orgId) => memberLookupFor(ctx.db, orgId));
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
-    c.set("insightsClientFor", insightsClientFor);
-    c.set("membersFor", membersFor);
     await next();
   });
 
@@ -822,77 +790,6 @@ export function createDecofileRoutes(
         }
         throw err;
       }
-    } catch (err) {
-      return errorResponse(c, err);
-    }
-  });
-
-  /**
-   * Who last changed these blocks, and when, for the "someone else changed
-   * this" dialog: asked once per version it shows, never per poll. A Fast
-   * Preview draft (and a v8 block the draft doesn't hold) answers from the
-   * block file's latest commit, one history call per block; a v8 draft from
-   * its own record. `changedBy` leaves out what can't be told.
-   */
-  app.get("/:virtualMcpId/:branch/changed-by", async (c) => {
-    const scope = c.get("decofileScope");
-    if (!scope.userId) return c.json({ error: "Unauthorized" }, 401);
-    const keys = [...new Set(c.req.queries("block") ?? [])];
-    if (
-      keys.length === 0 ||
-      keys.length > MAX_CHANGED_BY_BLOCKS ||
-      keys.some((k) => k.length === 0 || k.length > MAX_BLOCK_KEY_LENGTH)
-    ) {
-      return c.json(
-        { error: `1 to ${MAX_CHANGED_BY_BLOCKS} block keys are required` },
-        400,
-      );
-    }
-    const ctx = c.var.studioContext;
-    try {
-      const client = await contentClientForScope(c);
-      const insights = await c.var.insightsClientFor(
-        ctx,
-        scope.organizationId,
-        scope.repository,
-      );
-      const hosted = hostedScope(c);
-      let authors: Record<string, ChangeAuthor>;
-      const mainBranch = hosted ? await client.getDefaultBranch() : null;
-      if (hosted && mainBranch && (await scopeIsV8(c, client, mainBranch))) {
-        // A v8 draft is not git: the editor reads who changed a block from
-        // its `__meta` and asks here only for blocks without one, from
-        // main's history.
-        const dir = blocksDirPath(scope.packagePath);
-        authors = await gitChangeAuthors(
-          insights,
-          mainBranch,
-          Object.fromEntries(
-            keys.map((key) => [key, `${dir}/${blockFileName(key)}`]),
-          ),
-        );
-      } else {
-        const dir = blocksDirPath(scope.packagePath);
-        authors = await gitChangeAuthors(
-          insights,
-          scope.branch,
-          Object.fromEntries(
-            keys.flatMap((key) => {
-              try {
-                return [[key, `${dir}/${blockKeyToFileStem(key)}.json`]];
-              } catch {
-                return []; // Not a key a file can have.
-              }
-            }),
-          ),
-        );
-      }
-      const changedBy = await toChangedBy(
-        authors,
-        c.var.membersFor(ctx, scope.organizationId),
-        { id: scope.userId, email: ctx.auth.user?.email ?? null },
-      );
-      return c.json({ changedBy });
     } catch (err) {
       return errorResponse(c, err);
     }

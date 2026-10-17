@@ -1,4 +1,4 @@
-import { BLOCK_META_KEY, canonicalBlockJson } from "./fingerprint";
+import { canonicalBlockJson } from "./fingerprint";
 
 export interface BlockMergeOptions {
   /** Which side keeps a value both sides changed. Defaults to `ours`. */
@@ -51,15 +51,6 @@ function mergeAt(
       ...Object.keys(theirs).filter((key) => !(key in ours)),
     ];
     for (const key of keys) {
-      // Metadata, never a conflict: the preferred side's record stands.
-      if (key === BLOCK_META_KEY) {
-        const meta =
-          options.prefer === "theirs"
-            ? (theirs[key] ?? ours[key])
-            : (ours[key] ?? theirs[key]);
-        if (meta !== undefined) merged[key] = meta;
-        continue;
-      }
       const value = mergeAt(
         `${path}/${escapePointer(key)}`,
         base[key],
