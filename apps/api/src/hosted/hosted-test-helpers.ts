@@ -19,20 +19,36 @@ import type { DeliveryStore } from "./delivery-store";
 export function memoryDeliveryStore() {
   const objects = new Map<
     string,
-    { text: string; etag: string; cacheControl: string }
+    {
+      text: string;
+      etag: string;
+      cacheControl: string;
+      metadata?: Record<string, string>;
+    }
   >();
   const log: string[] = [];
   let n = 0;
   const store: DeliveryStore = {
-    async putJson(key, value, cacheControl) {
+    async putJson(key, value, cacheControl, metadata) {
       const etag = `"etag${++n}"`;
-      objects.set(key, { text: JSON.stringify(value), etag, cacheControl });
+      objects.set(key, {
+        text: JSON.stringify(value),
+        etag,
+        cacheControl,
+        ...(metadata ? { metadata: { ...metadata } } : {}),
+      });
       log.push(`put ${key}`);
       return { etag };
     },
     async get(key) {
       const o = objects.get(key);
-      return o ? { text: o.text, etag: o.etag } : null;
+      return o
+        ? {
+            text: o.text,
+            etag: o.etag,
+            ...(o.metadata ? { metadata: { ...o.metadata } } : {}),
+          }
+        : null;
     },
     async delete(key) {
       objects.delete(key);
