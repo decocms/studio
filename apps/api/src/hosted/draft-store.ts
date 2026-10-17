@@ -6,9 +6,20 @@
  * it, so the next edit starts a new slug.
  *
  * The slug is random (holding the URL is the permission to read the draft).
+ *
+ * Who last changed each name, and when, rides in the object's storage
+ * metadata (`draft-editors.ts`), never in the JSON. A save reads the previous
+ * object anyway, so it carries the map forward with no extra request.
  */
 
 import type { KVStorage } from "@/storage/kv";
+import {
+  DRAFT_EDITORS_META,
+  type DraftEditors,
+  decodeDraftEditors,
+  encodeDraftEditors,
+  stampDraftEditors,
+} from "./draft-editors";
 import {
   CACHE_DRAFT,
   type DeliveryStore,
@@ -26,12 +37,16 @@ export interface HostedDraftRef {
   virtualMcpId: string;
   branch: string;
   site: string;
+  /** The Studio user saving through this ref, recorded as each changed name's editor. */
+  editor?: string | null;
 }
 
 export interface LoadedDraft {
   slug: string;
   body: DraftBody;
   etag: string | null;
+  /** Who last changed each name the draft holds (the object's metadata). */
+  editors: DraftEditors;
 }
 
 function emptyDraft(): DraftBody {
@@ -118,11 +133,12 @@ export function createDraftStore(deps: {
     const slug = await slugOf(ref);
     if (!slug) return null;
     const object = await store.get(deliveryKeys.draft(ref.site, slug));
-    if (!object) return { slug, body: emptyDraft(), etag: null };
+    if (!object) return { slug, body: emptyDraft(), etag: null, editors: {} };
     return {
       slug,
       body: parseDraftBody(JSON.parse(object.text)),
       etag: object.etag,
+      editors: decodeDraftEditors(object.metadata?.[DRAFT_EDITORS_META]),
     };
   };
 
@@ -135,13 +151,24 @@ export function createDraftStore(deps: {
         if (!current) {
           await kv.set(ref.organizationId, slugKey(ref), { slug });
         }
-        const body = change(current?.body ?? emptyDraft());
+        const before = current?.body ?? emptyDraft();
+        const body = change(before);
+        const editors = stampDraftEditors(
+          current?.editors ?? {},
+          before,
+          body,
+          ref.editor,
+          Math.floor(Date.now() / 1000),
+        );
+        const encoded = encodeDraftEditors(editors);
         const { etag } = await store.putJson(
           deliveryKeys.draft(ref.site, slug),
           body,
           CACHE_DRAFT,
+          encoded ? { [DRAFT_EDITORS_META]: encoded } : undefined,
         );
-        return { slug, body, etag };
+        // What was kept: the oldest may not have fit.
+        return { slug, body, etag, editors: decodeDraftEditors(encoded) };
       }),
     remove: (ref, expectedEtag) =>
       withDraftLock(`${ref.organizationId}\0${slugKey(ref)}`, async () => {
