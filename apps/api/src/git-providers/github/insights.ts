@@ -183,18 +183,16 @@ query RepoChangeRequests($owner: String!, $name: String!, $limit: Int!, $after: 
  * the other — which is cheaper than resolving the default branch over REST
  * first just to name it here.
  */
-export function commitHistoryQuery(hasRef: boolean, hasPath = false): string {
+export function commitHistoryQuery(hasRef: boolean): string {
   const target = hasRef ? "ref(qualifiedName: $ref)" : "defaultBranchRef";
   const refVar = hasRef ? ", $ref: String!" : "";
-  const pathVar = hasPath ? ", $path: String!" : "";
-  const pathArg = hasPath ? ", path: $path" : "";
   return `
-query RepoCommits($owner: String!, $name: String!, $since: GitTimestamp!, $limit: Int!, $after: String${refVar}${pathVar}) {
+query RepoCommits($owner: String!, $name: String!, $since: GitTimestamp!, $limit: Int!, $after: String${refVar}) {
   repository(owner: $owner, name: $name) {
     ${target} {
       target {
         ... on Commit {
-          history(first: $limit, since: $since, after: $after${pathArg}) {
+          history(first: $limit, since: $since, after: $after) {
             pageInfo { hasNextPage endCursor }
             nodes {
               oid
@@ -520,9 +518,8 @@ export class GithubInsightsClient implements RepoInsightsClient {
   async listCommits(params: ListCommitsParams): Promise<RepoCommitPage> {
     const limit = cappedLimit(params.limit, MAX_COMMIT_PAGE, MAX_COMMIT_PAGE);
     const hasRef = params.ref !== undefined;
-    const hasPath = params.path !== undefined;
     const payload = await this.graphql<CommitsPayload>({
-      query: commitHistoryQuery(hasRef, hasPath),
+      query: commitHistoryQuery(hasRef),
       variables: {
         owner: this.owner,
         name: this.name,
@@ -530,7 +527,6 @@ export class GithubInsightsClient implements RepoInsightsClient {
         limit,
         after: params.cursor ?? null,
         ...(hasRef ? { ref: params.ref } : {}),
-        ...(hasPath ? { path: params.path } : {}),
       },
       label: `commit history for ${this.repo.path}`,
       operation: "insights_commits",
