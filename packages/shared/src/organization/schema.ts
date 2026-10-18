@@ -301,6 +301,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Hide the `deco-cms/blog` built-in post blocks everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
     ),
+  repo_upkeep: z
+    .boolean()
+    .optional()
+    .describe(
+      "Repository upkeep: a daily background brief of each repository bound to a project, used to review its open pull requests and issues. Off by default; with it off no brief is built and no model credits are spent on it.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

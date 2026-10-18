@@ -40,6 +40,10 @@ import {
   setTaskBoardMergedTagSweepRuntime,
 } from "@/tools/task-board/dbos-tag-merged-sweep";
 import {
+  registerRepoBriefSweepWorkflow,
+  setRepoBriefSweepRuntime,
+} from "@/repo-upkeep/dbos-brief-sweep";
+import {
   GITHUB_READS_QUEUE_PARAMS,
   registerTaskBoardGithubReadWorkflow,
   setTaskBoardGithubReadRuntime,
@@ -1667,6 +1671,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly `merged` tagging of Done cards whose PRs landed.
   setTaskBoardMergedTagSweepRuntime({ db: database.db });
 
+  // Hourly: repository briefs for orgs with repository upkeep on.
+  setRepoBriefSweepRuntime({ db: database.db });
+
   // The review sweep's rate-limited GitHub reads.
   setTaskBoardGithubReadRuntime({ db: database.db });
 
@@ -1961,6 +1968,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerBoardTransitionWorkflows();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
+  registerRepoBriefSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
   registerSandboxCredentialPushWorkflow();
 
