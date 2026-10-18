@@ -212,6 +212,11 @@ import {
   registerBoardTransitionWorkflows,
   setBoardTransitionRuntime,
 } from "../automations/board-column-transition-workflows";
+import {
+  durableAwaitLiveRunThenFire,
+  registerAwaitLiveRunWorkflow,
+  setAwaitLiveRunRuntime,
+} from "../automations/await-live-run";
 import { ensureBuiltinAutomations } from "../automations/builtin";
 import { buildOrgContext } from "../tools/task-board/org-context";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
@@ -240,6 +245,7 @@ import {
 import {
   BOARD_TRANSITIONS_QUEUE,
   GITHUB_READS_QUEUE,
+  LIVE_RUN_WAITS_QUEUE,
 } from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
@@ -1768,10 +1774,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Fires `board_column_transition` automation triggers when a card settles
   // in a column: every logged lane move is offered to the settle wait, and a
   // 5-minute sweep catches what it missed.
+  // A fire on a card a run still works waits for the run to end.
+  setAwaitLiveRunRuntime({
+    taskBoard: projectorTaskBoard,
+    fire: enqueueAutomationFire,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+  });
   setBoardTransitionRuntime({
     automations: automationsStorage,
     taskBoard: projectorTaskBoard,
     fire: enqueueAutomationFire,
+    fireAfterLiveRun: durableAwaitLiveRunThenFire,
     systemDatabaseUrl: withSslmode(
       getSettings().databaseUrl,
       getSettings().databasePgSsl,
@@ -1959,6 +1975,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerBoardTransitionWorkflows();
+  registerAwaitLiveRunWorkflow();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
@@ -2493,6 +2510,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
     await DBOS.registerQueue(BOARD_TRANSITIONS_QUEUE);
+    await DBOS.registerQueue(LIVE_RUN_WAITS_QUEUE);
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.
