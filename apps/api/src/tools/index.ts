@@ -101,6 +101,7 @@ export const CORE_TOOLS = [
   ForumTools.FORUM_TOPIC_LIST,
   ForumTools.FORUM_TOPIC_GET,
   ForumTools.FORUM_TOPIC_VOTE,
+  ForumTools.FORUM_TOPIC_SCORE,
   TaskBoardTools.TASK_ADD_REPO,
   // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
   ChatTools.GENERATE_IMAGE,

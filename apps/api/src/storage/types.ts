@@ -768,7 +768,7 @@ export interface BetterAuthOrganizationTable {
   createdAt: ColumnType<Date, string, string>;
 }
 
-/** A member's linked plan shared with their org (migration 254). */
+/** A member's linked plan shared with their org (migration 251). */
 export interface OrgSharedPlanTable {
   organization_id: string;
   provider_id: string;

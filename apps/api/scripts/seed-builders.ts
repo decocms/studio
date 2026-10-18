@@ -16,6 +16,9 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { closeDatabase, getDb } from "../src/database";
 import { TaskBoardStorage } from "../src/storage/task-board";
 import { VirtualMCPStorage } from "../src/storage/virtual";
+import { scoreReplyMarkdown } from "../src/tools/forum/score";
+import { fetchPublicOnePager } from "../src/tools/reports/public-report";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
 const ORG = { name: "Deco Builders", slug: "builders" };
 
@@ -32,7 +35,8 @@ const MEMBERS = [
   { key: "sofia", name: "Sofia Andrade" },
 ] as const;
 
-type Author = (typeof MEMBERS)[number]["key"] | "owner";
+/** `deco` is the Super Agent, which answers `/score` topics. */
+type Author = (typeof MEMBERS)[number]["key"] | "owner" | "deco";
 
 const KINDS: Record<string, string> = {
   Announcement: "#6366f1",
@@ -44,6 +48,7 @@ const KINDS: Record<string, string> = {
   Profile: "#14b8a6",
   Help: "#64748b",
   "Show & tell": "#ec4899",
+  Score: "#f97316",
 };
 
 interface Reply {
@@ -63,6 +68,8 @@ interface Topic {
   body: string;
   voters: Author[];
   replies: Reply[];
+  /** A `/score` topic: deco's first reply is this domain's live Deco Score. */
+  score?: string;
 }
 
 interface Channel {
@@ -464,6 +471,58 @@ You'll own 5–10 accounts with agents doing the repetitive work. Reply here or 
       },
     ],
   },
+  {
+    title: "Scores",
+    description:
+      "Post a store with /score. deco scans it, and the community helps fix what it finds.",
+    kinds: ["Score"],
+    topics: [
+      {
+        by: "owner",
+        kind: "Score",
+        daysAgo: 2,
+        score: "decocms.com",
+        title: "Deco Score · decocms.com",
+        body: "Starting with our own house. Roast it.",
+        voters: ["marina", "diego", "priya", "kenji", "lucas", "sofia"],
+        replies: [
+          {
+            by: "kenji",
+            at: 1,
+            body: 'The LCP one is almost always the hero image. Give it `fetchpriority="high"` and a preload, and stop lazy-loading it. Ten-minute fix.',
+            replies: [
+              {
+                by: "owner",
+                at: 3,
+                body: "Fair. Turning this into a task so the agent opens the PR, and I'll post the before and after here.",
+              },
+            ],
+          },
+          {
+            by: "priya",
+            at: 6,
+            body: "Would love a weekly re-score on this thread, so we can watch the number move.",
+          },
+        ],
+      },
+      {
+        by: "diego",
+        kind: "Score",
+        daysAgo: 5,
+        score: "deco.cx",
+        title: "Deco Score · deco.cx",
+        body: "",
+        voters: ["ana", "otavio", "julia"],
+        replies: [
+          {
+            by: "sofia",
+            at: 4,
+            body: "Not bad for a site that has been around this long. The failing checks are mostly the same handful of things every storefront gets wrong.",
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 const HOUR = 3600_000;
@@ -525,10 +584,10 @@ async function main() {
       .values({ organization_id: organizationId })
       .execute();
 
-    const userIds: Record<Author, string> = { owner: owner.id } as Record<
-      Author,
-      string
-    >;
+    const userIds = {
+      owner: owner.id,
+      deco: SUPER_AGENT_ASSIGNEE_ID,
+    } as Record<Author, string>;
     for (const m of MEMBERS) {
       const email = `${m.key}@example.com`;
       const found = await db
@@ -544,6 +603,7 @@ async function main() {
       userIds[m.key] = id;
     }
     for (const [key, userId] of Object.entries(userIds)) {
+      if (key === "deco") continue;
       await db
         .insertInto("member")
         .values({
@@ -624,6 +684,19 @@ async function main() {
           replyCount++;
           return comment.id;
         };
+        // deco answers first, with the site's real published score. A
+        // domain the engine can't serve leaves the topic to the humans.
+        const report = topic.score
+          ? await fetchPublicOnePager(topic.score, { lang: "en" }).catch(
+              () => null,
+            )
+          : null;
+        if (report?.scanned_at) {
+          await postReply(
+            { by: "deco", at: 0.05, body: scoreReplyMarkdown(report) },
+            null,
+          );
+        }
         for (const reply of topic.replies) {
           const rootId = await postReply(reply, null);
           for (const child of reply.replies ?? []) {

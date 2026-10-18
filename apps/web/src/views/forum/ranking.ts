@@ -2,7 +2,7 @@
 
 import type { ForumTopic } from "./use-forum";
 
-export type ForumSort = "hot" | "new" | "top" | "unanswered";
+export type ForumSort = "hot" | "following" | "new" | "top" | "unanswered";
 
 const HOUR = 3_600_000;
 
@@ -20,9 +20,14 @@ export function sortTopics(
   now: number,
 ): ForumTopic[] {
   const list =
-    sort === "unanswered" ? topics.filter((t) => t.replyCount === 0) : topics;
+    sort === "unanswered"
+      ? topics.filter((t) => t.replyCount === 0)
+      : sort === "following"
+        ? topics.filter((t) => t.viewerFollows)
+        : topics;
   const by: Record<ForumSort, (a: ForumTopic, b: ForumTopic) => number> = {
     hot: (a, b) => hotScore(b, now) - hotScore(a, now),
+    following: (a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt),
     new: (a, b) => b.createdAt.localeCompare(a.createdAt),
     top: (a, b) => b.votes - a.votes,
     unanswered: (a, b) => b.createdAt.localeCompare(a.createdAt),

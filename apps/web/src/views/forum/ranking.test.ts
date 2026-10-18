@@ -18,6 +18,7 @@ function topic(id: string, over: Partial<ForumTopic>): ForumTopic {
     tags: [],
     votes: 0,
     viewerVoted: false,
+    viewerFollows: false,
     replyCount: 0,
     createdAt: hoursAgo(1),
     lastActivityAt: hoursAgo(1),
@@ -43,6 +44,18 @@ describe("sortTopics", () => {
   it("top is by votes, new is by creation", () => {
     expect(sortTopics(all, "top", NOW)[0]?.id).toBe("popular-old");
     expect(sortTopics(all, "new", NOW)[0]?.id).toBe("quiet-new");
+  });
+
+  it("following keeps the viewer's topics, latest activity first", () => {
+    const mine = [
+      { ...popularOld, viewerFollows: true },
+      { ...busyToday, viewerFollows: true },
+      quietNew,
+    ];
+    expect(sortTopics(mine, "following", NOW).map((t) => t.id)).toEqual([
+      "busy-today",
+      "popular-old",
+    ]);
   });
 
   it("unanswered keeps only topics without replies", () => {

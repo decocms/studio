@@ -1,4 +1,5 @@
 import { Page } from "@/components/page";
+import { useForumChannels } from "@/views/forum/use-forum";
 import { ThreadsView } from "@/views/forum/threads-view";
 import { TopicPage } from "@/views/forum/topic-page";
 import { Panel } from "@/components/panel";
@@ -1084,6 +1085,7 @@ function TaskBoardBody({
     null,
   );
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
+  const forumChannels = useForumChannels();
   const {
     filters: urlFilters,
     setFilters,
@@ -1099,8 +1101,13 @@ function TaskBoardBody({
     setSortDirection,
   } = useBoardSearch(
     {
-      // A forum channel is read as threads first; its cards are topics.
-      layout: scopedProject?.metadata?.forum
+      // A forum channel, or an org whose projects are forum channels, is
+      // read as threads first: its cards are topics.
+      layout: (
+        scopedProject
+          ? scopedProject.metadata?.forum
+          : (forumChannels.data?.length ?? 0) > 0
+      )
         ? "threads"
         : inlineTabs && feedEnabled
           ? "feed"

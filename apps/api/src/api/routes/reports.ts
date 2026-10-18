@@ -2,14 +2,16 @@
 
 import { Hono, type MiddlewareHandler } from "hono";
 import { auth } from "@/auth";
-import { resolveApiKey, resolveBaseUrl } from "@/tools/reports/auth-client";
-import { fetchPublicOnePager } from "@/tools/reports/public-report";
+import { resolveBaseUrl } from "@/tools/reports/auth-client";
+import {
+  fetchPublicOnePager,
+  getEngineScanStatus,
+  startEngineScan,
+} from "@/tools/reports/public-report";
 import type {
   DomainSuggestion,
   ReportState,
   ResolvedLinkToken,
-  ScanStatus,
-  ScanTrigger,
 } from "@decocms/shared/reports/public-report";
 
 function engineFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -28,8 +30,6 @@ async function fetchReport(
     ? { status: "ready", report }
     : { status: "empty", report: null };
 }
-
-const TERMINAL = new Set(["complete", "errored", "terminated", "unknown"]);
 
 /** Pull `domain`/`distinctId` out of the POST /run body. `body` is whatever
  *  `JSON.parse` produced — including `null` for a literal `null` body, which
@@ -116,33 +116,7 @@ app.post("/run", async (c) => {
   const email = user?.email;
 
   try {
-    const res = await engineFetch(`/api/v2/diagnostics/run`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resolveApiKey({})}`,
-      },
-      body: JSON.stringify({
-        url: domain,
-        ...(email ? { email } : {}),
-        distinct_id: distinctId,
-      }),
-    });
-    if (!res.ok) return c.json({ error: `run HTTP ${res.status}` }, 502);
-    const j = (await res.json()) as {
-      id?: string;
-      status?: string;
-      blocked?: boolean;
-      mode?: string;
-    };
-    const trigger: ScanTrigger = j.blocked
-      ? { state: "blocked" }
-      : j.status === "fresh"
-        ? { state: "fresh" }
-        : j.mode === "sync"
-          ? { state: "sync" }
-          : { state: "running", id: j.id ?? null };
-    return c.json(trigger);
+    return c.json(await startEngineScan(domain, { email, distinctId }));
   } catch {
     return c.json({ error: "run failed" }, 502);
   }
@@ -153,15 +127,7 @@ app.get("/status", async (c) => {
   const id = c.req.query("id");
   if (!id) return c.json({ error: "id is required" }, 400);
   try {
-    const res = await engineFetch(
-      `/api/v2/diagnostics/status?id=${encodeURIComponent(id)}`,
-      { headers: { Authorization: `Bearer ${resolveApiKey({})}` } },
-    );
-    if (!res.ok) return c.json({ error: `status HTTP ${res.status}` }, 502);
-    const j = (await res.json()) as { status?: string };
-    const status = j.status ?? "unknown";
-    const scan: ScanStatus = { done: TERMINAL.has(status), status };
-    return c.json(scan);
+    return c.json(await getEngineScanStatus(id));
   } catch {
     return c.json({ error: "status failed" }, 502);
   }

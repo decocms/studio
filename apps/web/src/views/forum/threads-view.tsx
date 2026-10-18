@@ -23,7 +23,8 @@ import {
   type ForumTopic,
 } from "./use-forum";
 
-const SORTS: ForumSort[] = ["hot", "new", "top", "unanswered"];
+/** The org timeline reads like /dev/null: Trending, Following, Latest. */
+const SORTS: ForumSort[] = ["hot", "following", "new", "unanswered"];
 
 type TopicAddress = { id: string; keySeq: number | null };
 
@@ -91,7 +92,7 @@ export function ThreadsView({
               {name}
             </button>
           ))}
-        {project && (
+        {(channels.data?.length ?? 0) > 0 && (
           <Button
             size="sm"
             variant="outline"
@@ -114,7 +115,9 @@ export function ThreadsView({
           <li className="p-6 text-sm text-muted-foreground">
             {sort === "unanswered"
               ? t("forum.emptyUnanswered")
-              : t("forum.empty")}
+              : sort === "following"
+                ? t("forum.emptyFollowing")
+                : t("forum.empty")}
           </li>
         )}
         {visible.map((topic) => (
@@ -127,9 +130,10 @@ export function ThreadsView({
         ))}
       </ul>
 
-      {composing && project && (
+      {composing && (
         <NewTopicDialog
-          project={project}
+          channels={channels.data ?? []}
+          defaultChannelId={project?.id}
           onClose={() => setComposing(false)}
           onCreated={onOpen}
         />

@@ -50,6 +50,8 @@ export interface ForumTopic {
   tags: ForumTopicTag[];
   votes: number;
   viewerVoted: boolean;
+  /** The viewer follows the topic (author, replier, or an explicit follow). */
+  viewerFollows: boolean;
   replyCount: number;
   createdAt: string;
   lastActivityAt: string;
@@ -153,6 +155,9 @@ export class ForumStorage {
         sql<boolean>`exists(select 1 from task_board_item_votes v where v.task_board_item_id = i.id and v.user_id = ${viewerId})`.as(
           "viewer_voted",
         ),
+        sql<boolean>`exists(select 1 from notification_subscriptions ns where ns.task_board_item_id = i.id and ns.user_id = ${viewerId} and ns.subscribed)`.as(
+          "viewer_follows",
+        ),
         sql<number>`(select count(*)::int from task_board_comments c where c.task_board_item_id = i.id)`.as(
           "reply_count",
         ),
@@ -205,6 +210,7 @@ export class ForumStorage {
       tags: tagsByItem.get(r.id) ?? [],
       votes: r.votes,
       viewerVoted: r.viewer_voted,
+      viewerFollows: r.viewer_follows,
       replyCount: r.reply_count,
       createdAt: iso(r.created_at),
       lastActivityAt: iso(r.last_activity_at),

@@ -48,6 +48,7 @@ const TopicSchema = z.object({
   ),
   votes: z.number(),
   viewerVoted: z.boolean(),
+  viewerFollows: z.boolean(),
   replyCount: z.number(),
   createdAt: z.string(),
   lastActivityAt: z.string(),
@@ -179,3 +180,5 @@ export const FORUM_TOPIC_VOTE = defineTool({
     return ctx.storage.forum.toggleVote(item.id, userId);
   },
 });
+
+export { FORUM_TOPIC_SCORE } from "./score";

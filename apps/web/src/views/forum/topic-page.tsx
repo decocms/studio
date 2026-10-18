@@ -16,17 +16,28 @@ import {
   type TaskComment,
 } from "@/layouts/task-board/task-comments";
 import { KindBadge, StatusPill, VoteButton } from "./forum-parts";
-import { useForumMutations, useForumTopic, type ForumReply } from "./use-forum";
+import {
+  awaitingAgent,
+  useForumMutations,
+  useForumTopic,
+  type ForumReply,
+} from "./use-forum";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { SuperAgentIcon } from "@/components/super-agent-icon";
 
-/** Replies come back flat; a reply's parent is always a root. */
-function toThreads(replies: ForumReply[]): TaskComment[] {
+/** Replies come back flat; a reply's parent is always a root. deco's own
+ *  replies (a `/score` answer) sign with its glyph. */
+function toThreads(replies: ForumReply[], agentName: string): TaskComment[] {
   const toComment = (reply: ForumReply): TaskComment => ({
     id: reply.id,
-    author: {
-      id: reply.author.id,
-      name: reply.author.name,
-      image: reply.author.image,
-    },
+    author:
+      reply.author.id === SUPER_AGENT_ASSIGNEE_ID
+        ? { id: reply.author.id, name: agentName, isAgent: true }
+        : {
+            id: reply.author.id,
+            name: reply.author.name,
+            image: reply.author.image,
+          },
     body: reply.body,
     createdAt: reply.createdAt,
     replies: [],
@@ -76,7 +87,7 @@ export function TopicPage({
   }
 
   const { topic } = data;
-  const threads = toThreads(data.replies);
+  const threads = toThreads(data.replies, t("forum.agentName"));
   const me: CommentAuthor = {
     id: session?.user.id ?? "",
     name: session?.user.name ?? "",
@@ -123,6 +134,12 @@ export function TopicPage({
           <h2 className="text-sm font-medium text-muted-foreground">
             {t("forum.replies", { count: data.replies.length })}
           </h2>
+          {awaitingAgent(data) && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <SuperAgentIcon size={24} />
+              <span className="animate-pulse">{t("forum.agentScoring")}</span>
+            </div>
+          )}
           {threads.map((thread) => (
             <CommentThreadCard
               key={thread.id}

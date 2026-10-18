@@ -955,6 +955,7 @@ export interface StudioToolIO {
         tags: { id: string; name: string; color: string | null }[];
         votes: number;
         viewerVoted: boolean;
+        viewerFollows: boolean;
         replyCount: number;
         createdAt: string;
         lastActivityAt: string;
@@ -976,6 +977,7 @@ export interface StudioToolIO {
         tags: { id: string; name: string; color: string | null }[];
         votes: number;
         viewerVoted: boolean;
+        viewerFollows: boolean;
         replyCount: number;
         createdAt: string;
         lastActivityAt: string;
@@ -992,6 +994,10 @@ export interface StudioToolIO {
   FORUM_TOPIC_VOTE: {
     input: { topicId: string };
     output: { voted: boolean; votes: number };
+  };
+  FORUM_TOPIC_SCORE: {
+    input: { topicId: string; domain: string };
+    output: { domain: string };
   };
   TASK_ADD_REPO: {
     input: { id?: string | undefined; connectionId?: string | undefined };

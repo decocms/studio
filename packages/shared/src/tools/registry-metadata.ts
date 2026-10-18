@@ -322,6 +322,7 @@ const ALL_TOOL_NAMES = [
   "FORUM_TOPIC_LIST",
   "FORUM_TOPIC_GET",
   "FORUM_TOPIC_VOTE",
+  "FORUM_TOPIC_SCORE",
   "TASK_BOARD_ADMIN_ORG_LIST",
   "TASK_BOARD_DELIVERY",
   "TASK_BOARD_OPERATION",
@@ -1600,6 +1601,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "FORUM_TOPIC_SCORE",
+    description: "Answer a forum topic with a domain's Deco Score",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_ADMIN_ORG_LIST",
     description:
       "Whether the caller may read every org's task board, and the orgs that have board items",
@@ -1878,6 +1884,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FORUM_TOPIC_LIST",
       "FORUM_TOPIC_GET",
       "FORUM_TOPIC_VOTE",
+      "FORUM_TOPIC_SCORE",
       "TASK_BOARD_ADMIN_ORG_LIST",
       "TASK_BOARD_DELIVERY",
       "TASK_BOARD_OPERATION",

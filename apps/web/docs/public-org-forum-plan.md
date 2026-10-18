@@ -4,26 +4,40 @@ Status: forum slice built (see below) · Owner: Gui · Branch: `gui/public-org-p
 
 ## Built so far
 
-Built on the project-first navigation (on by default):
-projects are the channels, and the forum is a lens on the board.
+Built on the project-first navigation (the "Project-first navigation"
+preference): projects are the channels, and the forum is a lens on the board.
+The shape borrows from developer forums like /dev/null (a timeline of
+Trending / Following / Latest, slash commands in the composer, agents acting
+on posts), pointed at digital experience and e-commerce.
 
 - **Org:** "Deco Builders", slug `/builders`.
 - **Data:** a topic is a card stamped with its project
   (`task_board_items.virtual_mcp_id`, migration 249), plus
   `task_board_item_votes` (migration 254). A channel is a project with
   `metadata.forum` (`visibility`, `kinds`); topic kinds are org tags.
-- **Tools:** `FORUM_CHANNEL_LIST`, `FORUM_TOPIC_LIST`, `FORUM_TOPIC_GET` and
-  `FORUM_TOPIC_VOTE`. Topics are created with `TASK_BOARD_ITEM_CREATE`
-  (`virtualMcpId`) and replied to with the card comment tools.
+- **Tools:** `FORUM_CHANNEL_LIST`, `FORUM_TOPIC_LIST` (with `viewerFollows`),
+  `FORUM_TOPIC_GET`, `FORUM_TOPIC_VOTE` and `FORUM_TOPIC_SCORE`. Topics are
+  created with `TASK_BOARD_ITEM_CREATE` (`virtualMcpId`) and replied to with
+  the card comment tools.
 - **Web:** the board has a fourth view, **Threads** (Feed · Threads · Board ·
-  List), with Hot / New / Top / Unanswered and kind chips. A forum project
-  opens on Threads, and an open topic replaces the list. The org-wide Tasks
-  board's Threads view spans every channel.
+  List). On the org's Tasks it is a timeline across every channel; on a
+  channel it is that channel's topics. Tabs: Trending, Following, Latest,
+  Unanswered. A forum project, and an org with forum channels, open on
+  Threads. An open topic replaces the list.
+- **Composer:** the title takes slash commands. `/bounty`, `/vaga`, `/freela`,
+  `/proposal`, `/help` and the rest pick the kind and fill its template; on
+  the org timeline they also pick the channel that has that kind.
+- **`/score shop.com`:** deco answers the topic with the site's Deco Score:
+  the score and band, the engine's share card with screenshots, the three
+  things to fix first, and a link to the full report. A report scanned in the
+  last week is reused; otherwise a scan runs and is polled, falling back to
+  the last published report. The poll is in-process (see `forum/score.ts`).
 - **Seed:** `apps/api/scripts/seed-builders.ts` creates `/builders` with
-  Roadmap, Jobs & Bounties, Open to Work and Help, synthetic members, topics,
-  replies and votes.
-- **Not built yet:** unread counts on sidebar projects, and everything in P0
-  steps 1–3, 6 and 8 (the `community` role, open join, author checks, join
+  Roadmap, Jobs & Bounties, Open to Work, Help and Scores, synthetic members,
+  topics, replies, votes, and two `/score` threads answered with live data.
+- **Not built yet:** unread counts on sidebar projects, "turn this score into
+  a task" on a score thread, and everything in P0 steps 1–3, 6 and 8 (the
+  `community` role, open join with GitHub sign-in, author checks, join
   screen), and P1 onward. Until the role exists, only invite a trusted group:
   members still get the `user` role.
 
