@@ -15,6 +15,7 @@ import type { ColumnType } from "kysely";
 import type { SprintState } from "@decocms/shared/sprints";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
+import type { RepositoryBrief } from "../repo-upkeep/brief";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
@@ -2389,6 +2390,17 @@ export interface RepositoryTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** Repository upkeep's daily brief of one repository (migration 254). */
+export interface RepositoryBriefTable {
+  repository_id: string;
+  organization_id: string;
+  head_sha: string | null;
+  brief: JsonObject<RepositoryBrief> | null;
+  built_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  attempted_at: ColumnType<Date, Date | string, Date | string>;
+  error: string | null;
+}
+
 /** A/B experiments — per-site metadata (the traffic-split block lives in the
  *  site's decofile, not here). */
 export interface ExperimentVariant {
@@ -2512,6 +2524,7 @@ export interface Database {
   claude_subscriptions: ClaudeSubscriptionTable;
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
+  repository_briefs: RepositoryBriefTable;
 
   // Automations tables
   automations: AutomationTable;

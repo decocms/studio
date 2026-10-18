@@ -30,6 +30,7 @@ import * as migration250githubcopilotsubscriptions from "./250-github-copilot-su
 import * as migration251orgsharedplans from "./251-org-shared-plans";
 import * as migration252automationlinkedchattrigger from "./252-automation-linked-chat-trigger";
 import * as migration253automationprbuiltintriggers from "./253-automation-pr-builtin-triggers";
+import * as migration254repositorybriefs from "./254-repository-briefs";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -546,6 +547,7 @@ const migrations: Record<string, Migration> = {
   "251-org-shared-plans": migration251orgsharedplans,
   "252-automation-linked-chat-trigger": migration252automationlinkedchattrigger,
   "253-automation-pr-builtin-triggers": migration253automationprbuiltintriggers,
+  "254-repository-briefs": migration254repositorybriefs,
 };
 
 export default migrations;

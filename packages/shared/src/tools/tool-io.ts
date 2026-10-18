@@ -137,6 +137,7 @@ export interface StudioToolIO {
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            repo_upkeep?: boolean | undefined;
           }
         | null
         | undefined;
@@ -219,6 +220,7 @@ export interface StudioToolIO {
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            repo_upkeep?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -297,6 +299,7 @@ export interface StudioToolIO {
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            repo_upkeep?: boolean | undefined;
           }
         | null
         | undefined;

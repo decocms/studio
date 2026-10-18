@@ -49,10 +49,10 @@ Worst case for one repository, when every call fails and is retried once:
 
 | Step | Cap | Provider reads | LLM calls |
 | --- | --- | --- | --- |
-| Brief (README, tree, 30 merged PRs, up to 20 files) | 1 per day | about 25 | 1 |
+| Brief (commits, tree, README, agent guide, merged PRs) | 1 per day | at most 5; 1 when the branch has not moved | at most 1 |
 | Open pull requests: `read` + checks + comments | 50 | about 150 | at most 50, judgement verdicts only |
 | Open issues: list + comments | 100 | about 105 | at most 100, judgement verdicts only |
-| **Total, doubled for retries** | | **about 560** | **about 300** |
+| **Total, doubled for retries** | | **about 520** | **about 300** |
 
 This runs only on a schedule into a snapshot. Opening the board reads the
 snapshot and never calls GitHub. Each run has a per-repository read budget
@@ -72,18 +72,25 @@ Everything sits behind a new org flag, `repoUpkeep`, which is off by default
 - GitHub first. A repository on GitLab or Bitbucket reads like one with
   issues turned off until those clients exist.
 - Exclude pull requests from GitHub's issues endpoint.
-- The factory in `clients.ts` lands with its first caller, the phase 2 sweep.
+- The factory in `clients.ts` lands with its first caller, the phase 3 verdicts.
 - Tests: empty repository, a repository with issues disabled, pagination at the
   cap, a 403 or 404 reported as a failure rather than as "no issues".
 
 ### 2. Repository brief (Context)
 
-- DBOS workflow, daily per bound repository, using `buildOrgContext`.
-- Input: README, top-level tree, recent merged pull requests, and the
-  project's org context files.
-- Output: purpose, active areas, abandoned areas, and conventions, stored as a
-  snapshot keyed by `(organization_id, repository_id)`.
-- Rebuild when the default branch moves past a threshold, not on every push.
+- `repoBriefSweepWorkflow` (`apps/api/src/repo-upkeep/`): an hourly DBOS tick
+  that takes at most 20 repositories that are bound to a project, in orgs with
+  `repo_upkeep` on, and have no brief from the last 24 hours. A failed build
+  waits an hour before it is tried again.
+- Input: the last 30 days of commits and merged pull requests, the top-level
+  tree, the README, `AGENTS.md` or `CLAUDE.md`, and the org's shared
+  `MEMORY.md`.
+- Output: purpose, active areas, abandoned areas, and conventions, from the
+  org's fast tier, stored in `repository_briefs` (one row per repository,
+  deleted with it). A failure only records the error and never replaces a
+  good brief.
+- When the default branch's newest commit has not changed since the last good
+  brief, it costs one read and no model call.
 
 ### 3. Verdicts (Plan)
 
