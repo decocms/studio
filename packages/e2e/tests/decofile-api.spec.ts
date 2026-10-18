@@ -5,6 +5,7 @@
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
+ *   GET    /api/:org/decofile/:virtualMcpId/:branch/overwrites  values a publish would replace (session)
  *
  * All GitHub traffic lands on the local Git Data stub (fixtures/github-stub.ts,
  * wired via GITHUB_API_BASE_URL in the Playwright config) — nothing reaches
@@ -938,6 +939,82 @@ test.describe("decofile API", () => {
       // No commit ever landed.
       const inspected = await inspectStubRepo(ctx, owner, repo);
       expect(inspected.commits.length).toBe(1); // the seed commit only
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("overwrites lists only the values the default branch and the draft both changed", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+      const header = { title: "a", label: "SSRio", collection: "680" };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: { ".deco/blocks/Header.json": blockFileContent(header) },
+          },
+          draft: {
+            files: { ".deco/blocks/Header.json": blockFileContent(header) },
+          },
+        },
+      });
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+      });
+      const overwritesUrl = `${decofileUrl(project, "draft")}/overwrites`;
+
+      const write = async (branch: string, value: unknown) => {
+        const res = await ctx.patch(decofileUrl(project, branch), {
+          data: { set: { Header: value } },
+        });
+        expect(res.ok()).toBe(true);
+      };
+      // The live site changes the title and the label...
+      await write("main", { ...header, title: "live", label: "SS Rio" });
+      // ...and the draft changes the title and the collection.
+      await write("draft", { ...header, title: "draft", collection: "667" });
+
+      const res = await ctx.get(overwritesUrl);
+      expect(res.status()).toBe(200);
+      expect(await res.json()).toEqual({
+        base: "main",
+        overwrites: [
+          {
+            block: "Header",
+            fields: [{ path: "/title", live: "live", draft: "draft" }],
+          },
+        ],
+      });
+
+      // Once the draft no longer touches the title, nothing is overwritten.
+      await write("draft", { ...header, collection: "667" });
+      expect(await (await ctx.get(overwritesUrl)).json()).toEqual({
+        base: "main",
+        overwrites: [],
+      });
+
+      // Anonymous callers can't read it, even with a draft token.
+      const anon = await newApiContext(playwright);
+      try {
+        const body = (await (
+          await ctx.get(decofileUrl(project, "draft"))
+        ).json()) as DecofileGetBody;
+        const denied = await anon.get(
+          `${overwritesUrl}?token=${encodeURIComponent(body.token as string)}`,
+        );
+        expect(denied.status()).toBe(401);
+      } finally {
+        await anon.dispose();
+      }
     } finally {
       await ctx.dispose();
     }

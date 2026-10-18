@@ -177,6 +177,12 @@ export const thread = {
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
     "Última publicação {when} por {name}",
+  "thread.publishPopover.overwritesTitle":
+    "Publicar vai substituir valores que mudaram no site publicado depois que este draft começou:",
+  "thread.publishPopover.overwritesMore": "e mais {count} blocos",
+  "thread.publishPopover.overwritesMoreFields": "e mais {count} valores",
+  "thread.publishPopover.overwritesHint":
+    "Para manter um valor publicado, copie-o para este draft antes de publicar.",
   "thread.publishPopover.needsReviewGeneric":
     "Estas alterações precisam da revisão de um colega antes de irem ao ar",
   "thread.publishPopover.newPageSections": "Página nova com {count} seções",

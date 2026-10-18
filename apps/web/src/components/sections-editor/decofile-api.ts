@@ -13,6 +13,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import { KEYS } from "@/lib/query-keys";
 
 export interface DecofileScopeParams {
@@ -187,4 +188,35 @@ export async function patchDecofile(
   const body = (await res.json()) as Partial<DecofileDraft> &
     Pick<DecofileDraft, "version" | "token">;
   return { ...body, apiHost: body.apiHost ?? window.location.host };
+}
+
+const blockOverwritesSchema = z.object({
+  overwrites: z.array(
+    z.object({
+      block: z.string(),
+      fields: z.array(
+        z.object({ path: z.string(), live: z.string(), draft: z.string() }),
+      ),
+    }),
+  ),
+});
+
+/** Values in a block that publishing the draft would replace on the default branch. */
+export type BlockOverwrite = z.infer<
+  typeof blockOverwritesSchema
+>["overwrites"][number];
+
+/**
+ * Values the default branch changed after the draft started and the draft
+ * changed too. Publishing keeps the draft's version, so these are what the
+ * live site loses.
+ */
+export async function fetchBlockOverwrites(
+  params: DecofileScopeParams,
+): Promise<BlockOverwrite[]> {
+  const res = await fetch(`${decofileApiUrl(params)}/overwrites`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return throwResponseError(res, "Overwrite check");
+  return blockOverwritesSchema.parse(await res.json()).overwrites;
 }

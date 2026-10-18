@@ -33,7 +33,14 @@ import {
   RefreshCw01,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ReactNode } from "react";
-import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import {
+  QueryErrorResetBoundary,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys.ts";
+import { fetchBlockOverwrites } from "@/components/sections-editor/decofile-api.ts";
+import { describeConflictFields } from "@/components/sections-editor/conflict-fields.ts";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
@@ -110,6 +117,9 @@ export interface PublishDialogProps {
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
 }
+
+/** Blocks listed in the overwrite warning before it collapses to a count. */
+const OVERWRITES_SHOWN = 4;
 
 export function PublishDialog(props: PublishDialogProps) {
   /** Set by the body while the publish flow runs — an outside click or Escape
@@ -461,6 +471,36 @@ function CmsPublishContent({
     .filter((id) => changes.some((change) => changeId(change) === id))
     .slice(0, MAX_LIVE_PANES);
   const isReview = mode === "review";
+
+  /**
+   * Values production changed after this draft started that the draft changed
+   * too. Publishing keeps the draft's version (the sync is branch-favoured per
+   * value), so list them before the user commits to that.
+   */
+  const overwritesQuery = useQuery({
+    queryKey: KEYS.decofileOverwrites(
+      orgSlug,
+      virtualMcpId,
+      branch,
+      headSha ?? "",
+    ),
+    queryFn: () => fetchBlockOverwrites({ orgSlug, virtualMcpId, branch }),
+    enabled: fastPreview && !isReview && !!headSha,
+    staleTime: 30_000,
+  });
+  const overwrites = overwritesQuery.data ?? [];
+  const queryClient = useQueryClient();
+  /** A page block reads better by its page name than by its key. */
+  const blockLabel = (block: string) => {
+    const stored = queryClient.getQueryData<Record<string, unknown>>(
+      KEYS.decofile(`${orgSlug}/${virtualMcpId}/${branch}`),
+    )?.[block];
+    const name =
+      stored && typeof stored === "object"
+        ? (stored as Record<string, unknown>).name
+        : undefined;
+    return typeof name === "string" && name ? name : block;
+  };
   const surfaceState: PublishSurfaceState = cardsPending
     ? "loading"
     : bodiesPending
@@ -626,6 +666,55 @@ function CmsPublishContent({
     );
   })();
 
+  const overwritesRow =
+    isReview || summary.count === 0 || overwrites.length === 0 ? null : (
+      <div
+        className="border-t px-4 py-2.5 text-xs"
+        data-testid="publish-overwrites"
+      >
+        <div className="flex items-start gap-2 text-warning">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <span>{t("thread.publishPopover.overwritesTitle")}</span>
+        </div>
+        <ul className="mt-1.5 space-y-0.5 pl-5.5 text-muted-foreground">
+          {overwrites.slice(0, OVERWRITES_SHOWN).map((o) => (
+            <li key={o.block}>
+              <span className="font-medium text-foreground">
+                {blockLabel(o.block)}
+              </span>
+              <ul className="mt-0.5 space-y-0.5">
+                {o.fields.slice(0, OVERWRITES_SHOWN).map((f) => (
+                  <li key={f.path} className="truncate">
+                    {describeConflictFields([f.path])}:{" "}
+                    <span className="line-through">{f.live}</span>
+                    {" → "}
+                    <span className="text-foreground">{f.draft}</span>
+                  </li>
+                ))}
+                {o.fields.length > OVERWRITES_SHOWN && (
+                  <li>
+                    {t("thread.publishPopover.overwritesMoreFields", {
+                      count: o.fields.length - OVERWRITES_SHOWN,
+                    })}
+                  </li>
+                )}
+              </ul>
+            </li>
+          ))}
+          {overwrites.length > OVERWRITES_SHOWN && (
+            <li>
+              {t("thread.publishPopover.overwritesMore", {
+                count: overwrites.length - OVERWRITES_SHOWN,
+              })}
+            </li>
+          )}
+        </ul>
+        <p className="mt-1.5 pl-5.5 text-muted-foreground">
+          {t("thread.publishPopover.overwritesHint")}
+        </p>
+      </div>
+    );
+
   // Never offer an all-files action over a set the server truncated.
   const discardAllControl =
     summary.count <= 1 ||
@@ -780,7 +869,12 @@ function CmsPublishContent({
               </>
             )
           }
-          gate={gateRow}
+          gate={
+            <>
+              {overwritesRow}
+              {gateRow}
+            </>
+          }
           footer={
             <>
               <div className="flex gap-2">

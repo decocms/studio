@@ -778,6 +778,14 @@ export const KEYS = {
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
+  // Values publishing a Fast Preview draft would replace on the default
+  // branch; keyed by the draft head so a new save re-asks.
+  decofileOverwrites: (
+    orgSlug: string,
+    virtualMcpId: string,
+    branch: string,
+    headSha: string,
+  ) => ["decofile-overwrites", orgSlug, virtualMcpId, branch, headSha] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
