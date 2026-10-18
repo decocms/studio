@@ -162,17 +162,27 @@ async function rpc<T>(
   return { status: 200, ...body };
 }
 
+/**
+ * The session read of a hosted v8 project: its CDN draft pointer, and who last
+ * changed each block the draft holds (Studio user ids, ISO times).
+ */
+interface DraftPointer {
+  draft: string | null;
+  version: string | null;
+  changedBy: Record<string, { userId: string; at: string }>;
+}
+
 /** The session read, as the v8 editor makes it: its CDN draft pointer. */
 async function draftPointer(
   ctx: APIRequestContext,
   project: FastPreviewProject,
   branch: string,
-): Promise<{ draft: string | null; version: string | null }> {
+): Promise<DraftPointer> {
   const res = await ctx.get(
     `/api/${project.org}/decofile/${project.vmcpId}/${branch}`,
   );
   expect(res.status()).toBe(200);
-  return (await res.json()) as { draft: string | null; version: string | null };
+  return (await res.json()) as DraftPointer;
 }
 
 /**
@@ -640,6 +650,7 @@ test.describe("content protocol on GitHub", () => {
       expect(await draftPointer(ctx, project, "draft-1")).toEqual({
         draft: null,
         version: null,
+        changedBy: {},
       });
 
       const hero = { __resolveType: "hero", title: "Summer" };
@@ -659,6 +670,10 @@ test.describe("content protocol on GitHub", () => {
         ),
       );
       expect(pointer.version).toEqual(expect.any(String));
+      // The save recorded its editor next to the draft, not in it.
+      expect(pointer.changedBy).toEqual({
+        "hero-home": { userId: expect.any(String), at: expect.any(String) },
+      });
 
       // What the site's SDK fetches: the draft, then 304 while it is unchanged.
       const url = `http://${pointer.draft}?v=${pointer.version}`;
