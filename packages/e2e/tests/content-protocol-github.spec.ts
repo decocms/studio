@@ -134,7 +134,10 @@ function contextFetch(ctx: APIRequestContext) {
         : Buffer.from(await request.arrayBuffer());
     const res = await ctx.fetch(request.url, {
       method: request.method,
-      headers: Object.fromEntries(request.headers),
+      // One socket per request: the suite's oversize-body case is answered
+      // 413 before the body is read, the dev/preview proxy then breaks that
+      // socket (EPIPE), and a later request reusing it fails with ECONNRESET.
+      headers: { ...Object.fromEntries(request.headers), connection: "close" },
       data: body,
       maxRedirects: 0,
     });
