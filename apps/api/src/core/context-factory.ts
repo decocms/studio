@@ -581,6 +581,7 @@ import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
 import { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
 import { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import { TaskBoardStorage } from "@/storage/task-board";
+import { ForumStorage } from "@/storage/forum";
 import { NotificationStorage } from "@/storage/notifications";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
@@ -1537,6 +1538,7 @@ export async function createStudioContextFactory(
     repositories: new RepositoryStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),
+    forum: new ForumStorage(config.db),
     taskBoardPrompts: new TaskBoardPromptStorage(config.db),
     taskBoardAnalytics: new TaskBoardAnalyticsStorage(config.db),
     threadAnalytics: new ThreadAnalyticsStorage(config.db),

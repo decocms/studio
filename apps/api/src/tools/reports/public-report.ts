@@ -1,8 +1,10 @@
 import {
   type OnePager,
   OnePagerSchema,
+  type ScanStatus,
+  type ScanTrigger,
 } from "@decocms/shared/reports/public-report";
-import { resolveBaseUrl } from "./auth-client";
+import { resolveApiKey, resolveBaseUrl } from "./auth-client";
 
 /** The engine's anonymous one-pager routes for a domain. */
 function onePagerUrl(domain: string, suffix: "" | ".md", lang?: string) {
@@ -10,6 +12,14 @@ function onePagerUrl(domain: string, suffix: "" | ".md", lang?: string) {
   return `${resolveBaseUrl({})}/api/v2/public/diagnostics/${encodeURIComponent(
     domain,
   )}/onepager${suffix}${qs}`;
+}
+
+/** The engine's public share card for a domain: favicon, URL, score ring and
+ *  the captured screenshots. Always an image, even for an unscanned domain. */
+export function onePagerImageUrl(domain: string): string {
+  return `${resolveBaseUrl({})}/api/v2/public/diagnostics/${encodeURIComponent(
+    domain,
+  )}/og.png`;
 }
 
 /**
@@ -42,4 +52,61 @@ export async function fetchPublicOnePagerMarkdown(
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`onepager markdown HTTP ${res.status}`);
   return res.text();
+}
+
+const TERMINAL_SCAN_STATES = new Set([
+  "complete",
+  "errored",
+  "terminated",
+  "unknown",
+]);
+
+/**
+ * Start a scan of `domain` with the master key. The engine is idempotent and
+ * single-flight, so repeating this never starts parallel runs. `email` is the
+ * requester's notification address; pass it only from a session, never from
+ * caller input. Throws when the key is unset or the engine refuses.
+ */
+export async function startEngineScan(
+  domain: string,
+  opts: { email?: string; distinctId?: string } = {},
+): Promise<ScanTrigger> {
+  const res = await fetch(`${resolveBaseUrl({})}/api/v2/diagnostics/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${resolveApiKey({})}`,
+    },
+    body: JSON.stringify({
+      url: domain,
+      ...(opts.email ? { email: opts.email } : {}),
+      distinct_id: opts.distinctId,
+    }),
+  });
+  if (!res.ok) throw new Error(`run HTTP ${res.status}`);
+  const j = (await res.json()) as {
+    id?: string;
+    status?: string;
+    blocked?: boolean;
+    mode?: string;
+  };
+  return j.blocked
+    ? { state: "blocked" }
+    : j.status === "fresh"
+      ? { state: "fresh" }
+      : j.mode === "sync"
+        ? { state: "sync" }
+        : { state: "running", id: j.id ?? null };
+}
+
+/** Poll a durable scan started by {@link startEngineScan}. */
+export async function getEngineScanStatus(id: string): Promise<ScanStatus> {
+  const res = await fetch(
+    `${resolveBaseUrl({})}/api/v2/diagnostics/status?id=${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${resolveApiKey({})}` } },
+  );
+  if (!res.ok) throw new Error(`status HTTP ${res.status}`);
+  const j = (await res.json()) as { status?: string };
+  const status = j.status ?? "unknown";
+  return { done: TERMINAL_SCAN_STATES.has(status), status };
 }
