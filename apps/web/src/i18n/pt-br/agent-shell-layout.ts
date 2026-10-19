@@ -13,11 +13,5 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.creatingTask": "Criando tarefa…",
   "agentShellLayout.agentShellLayout.goToOrgHome":
     "Ir para a página inicial da organização",
-  "agentShellLayout.agentShellLayout.somethingWentWrong":
-    "Algo deu errado. Tente atualizar.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",
-  "agentShellLayout.toggleButtons.hideChat": "Ocultar chat",
-  "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
-  "agentShellLayout.toggleButtons.hidePanel": "Ocultar painel",
-  "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;
