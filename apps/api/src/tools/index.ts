@@ -351,8 +351,6 @@ export const CORE_TOOLS = [
   ChangeRequestTools.CHANGE_REQUEST_OPEN,
   ChangeRequestTools.CHANGE_REQUEST_MERGE,
 
-  // Link tools
-
   // Search tools
   SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
