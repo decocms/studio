@@ -119,6 +119,15 @@ export function dropPendingBody(threadId: string, messageId: string): void {
 }
 
 /**
+ * Guards `refreshMessageQueue` against out-of-order responses: callers fire
+ * it from several independent events without awaiting each other, so two
+ * requests for the same thread can race. Each call claims the next sequence
+ * number for its thread; a response only applies if its call is still the
+ * latest one issued for that thread.
+ */
+const latestRequestSeq = new Map<string, number>();
+
+/**
  * Fetch the server's gate queue for a thread and replace the local store.
  * Best-effort: on any error the optimistic store stands until the next call.
  */
@@ -126,6 +135,8 @@ export async function refreshMessageQueue(
   orgSlug: string,
   threadId: string,
 ): Promise<void> {
+  const seq = (latestRequestSeq.get(threadId) ?? 0) + 1;
+  latestRequestSeq.set(threadId, seq);
   try {
     const res = await fetch(
       `/api/${encodeURIComponent(orgSlug)}/decopilot/queue/${encodeURIComponent(threadId)}`,
@@ -133,6 +144,8 @@ export async function refreshMessageQueue(
     );
     if (!res.ok) return;
     const body = (await res.json()) as { items?: QueueItemDTO[] };
+    // Superseded response — don't clobber newer state.
+    if (latestRequestSeq.get(threadId) !== seq) return;
     setQueue(threadId, body.items ?? []);
   } catch {
     // best-effort — leave the current store contents in place
