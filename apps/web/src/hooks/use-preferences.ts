@@ -18,6 +18,9 @@ interface Preferences {
    * renamed lane can't resurrect the wrong column.
    */
   shownTaskBoardLanes: string[];
+  /** Task-board lanes this person chose to hide, on top of the hidden-by-default
+   *  ones. Empty by default: everyone sees every lane. */
+  hiddenTaskBoardLanes: string[];
   /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
    *  the same reason as `shownTaskBoardLanes`. */
   collapsedTaskBoardLanes: string[];
@@ -32,6 +35,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   language: detectLocale(),
   shownTaskBoardLanes: [],
+  hiddenTaskBoardLanes: [],
   collapsedTaskBoardLanes: [],
   projectFirstNav: false,
 };
@@ -110,6 +114,9 @@ export function usePreferences() {
       }
       if (!Array.isArray(merged.shownTaskBoardLanes)) {
         merged.shownTaskBoardLanes = [];
+      }
+      if (!Array.isArray(merged.hiddenTaskBoardLanes)) {
+        merged.hiddenTaskBoardLanes = [];
       }
       if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
         merged.collapsedTaskBoardLanes = [];

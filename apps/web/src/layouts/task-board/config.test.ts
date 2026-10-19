@@ -378,11 +378,10 @@ describe("laneHeader", () => {
 });
 
 describe("laneVisibility", () => {
-  const shown: string[] = [];
-
   test("draws every lane but the hidden-by-default ones", () => {
-    const { lanes, hidden, hideable } = laneVisibility({
-      shownLanes: shown,
+    const { lanes, hidden } = laneVisibility({
+      shownLanes: [],
+      hiddenLanes: [],
     });
     expect(lanes).toEqual([
       "triage",
@@ -396,22 +395,35 @@ describe("laneVisibility", () => {
       "done",
     ]);
     expect(hidden).toEqual(["archived"]);
-    expect(hideable).toEqual(["archived"]);
   });
 
-  test("showing a hidden lane puts its column back", () => {
+  test("showing a hidden-by-default lane puts its column back", () => {
     const { lanes, hidden } = laneVisibility({
       shownLanes: ["archived"],
+      hiddenLanes: [],
     });
     expect(lanes).toContain("archived");
     expect(hidden).toEqual([]);
   });
 
+  test("a lane the person hid leaves the board, the others stay", () => {
+    const { lanes, hidden } = laneVisibility({
+      shownLanes: [],
+      hiddenLanes: ["qa", "done"],
+    });
+    expect(lanes).not.toContain("qa");
+    expect(lanes).not.toContain("done");
+    expect(lanes).toContain("todo");
+    expect(hidden).toEqual(["qa", "done", "archived"]);
+  });
+
   test("a lane removed from the product can linger in the preference", () => {
     const { lanes } = laneVisibility({
       shownLanes: ["a_lane_that_no_longer_exists"],
+      hiddenLanes: ["another_dead_lane"],
     });
     expect(lanes).not.toContain("a_lane_that_no_longer_exists");
+    expect(lanes).toContain("todo");
   });
 });
 

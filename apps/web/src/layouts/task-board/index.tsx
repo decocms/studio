@@ -179,6 +179,7 @@ import {
 import {
   AppliedFiltersBar,
   BoardSettingsButton,
+  ColumnsButton,
   GroupByButton,
   SortByButton,
   TaskFilterButton,
@@ -1158,6 +1159,7 @@ function TaskBoardBody({
           : null,
       );
   const [preferences] = usePreferences();
+  const columnVisibility = useLaneVisibility();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
     setSelection((prev) => {
@@ -1521,11 +1523,17 @@ function TaskBoardBody({
                         scoped={scopeId !== null}
                         onChange={handleFiltersChange}
                       />
-                      {layout === "list" && (
+                      {layout === "list" ? (
                         <>
                           <GroupByButton {...grouping} />
                           <SortByButton {...sorting} />
                         </>
+                      ) : (
+                        <ColumnsButton
+                          all={CANONICAL_COLUMN_KEYS}
+                          hidden={columnVisibility.hidden}
+                          onToggle={columnVisibility.setLaneShown}
+                        />
                       )}
                     </div>
                   </>
@@ -2215,6 +2223,27 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
   return a.sortOrder - b.sortOrder;
 }
 
+/** Shown and hidden lanes persist per person, so the choice survives a
+ *  reload. The toolbar menu and the board read the same preference. */
+function useLaneVisibility() {
+  const [preferences, setPreferences] = usePreferences();
+  const { lanes, hidden } = laneVisibility({
+    shownLanes: preferences.shownTaskBoardLanes,
+    hiddenLanes: preferences.hiddenTaskBoardLanes,
+  });
+  const setLaneShown = (status: string, shown: boolean) =>
+    setPreferences((prev) => ({
+      ...prev,
+      shownTaskBoardLanes: shown
+        ? [...prev.shownTaskBoardLanes.filter((s) => s !== status), status]
+        : prev.shownTaskBoardLanes.filter((s) => s !== status),
+      hiddenTaskBoardLanes: shown
+        ? prev.hiddenTaskBoardLanes.filter((s) => s !== status)
+        : [...prev.hiddenTaskBoardLanes.filter((s) => s !== status), status],
+    }));
+  return { lanes, hidden, setLaneShown };
+}
+
 function Lanes({
   items,
   members,
@@ -2347,22 +2376,11 @@ function Lanes({
   const laneItems = (status: string) =>
     placed.filter((item) => item.status === status).sort(bySortOrder);
 
-  /** Shown-again lanes persist per person, so pulling one onto the board
-   *  survives a reload. */
   const {
     lanes: boardLanes,
     hidden: hiddenLanes,
-    hideable: hideableLanes,
-  } = laneVisibility({
-    shownLanes: preferences.shownTaskBoardLanes,
-  });
-  const setLaneShown = (status: string, shown: boolean) =>
-    setPreferences((prev) => ({
-      ...prev,
-      shownTaskBoardLanes: shown
-        ? [...prev.shownTaskBoardLanes, status]
-        : prev.shownTaskBoardLanes.filter((s) => s !== status),
-    }));
+    setLaneShown,
+  } = useLaneVisibility();
   const collapsedLanes = preferences.collapsedTaskBoardLanes;
   const toggleLaneCollapsed = (status: string) =>
     setPreferences((prev) => ({
@@ -2559,7 +2577,7 @@ function Lanes({
               onTypeChange={onTypeChange}
               onDueDateChange={onDueDateChange}
               onHide={
-                hideableLanes.includes(status)
+                boardLanes.length > 1
                   ? () => setLaneShown(status, false)
                   : undefined
               }
@@ -2936,7 +2954,9 @@ function Lane({
                 draggedCount > 1
                   ? "taskBoard.dropHint.pickUpMany"
                   : "taskBoard.dropHint.pickUp",
-                { names: takers.join(", ") },
+                {
+                  names: takers.join(", "),
+                },
               )}
             </span>
           </div>

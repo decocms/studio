@@ -359,29 +359,26 @@ export const TASK_TYPE_CONFIG: Record<
   },
 };
 
-/**
- * Which lanes the board draws as columns, and which collapse into the "Hidden
- * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
- * unless `shownLanes` brings it back.
- */
+/** Lanes drawn as columns vs. the "Hidden columns" drawer. */
 export function laneVisibility({
   shownLanes,
+  hiddenLanes,
 }: {
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
+  hiddenLanes: readonly string[];
 }): {
   lanes: CanonicalColumnKey[];
   hidden: CanonicalColumnKey[];
-  hideable: CanonicalColumnKey[];
 } {
-  const hideable = CANONICAL_COLUMN_KEYS.filter((s) =>
-    HIDDEN_STATUSES.includes(s),
+  const hidden = CANONICAL_COLUMN_KEYS.filter((s) =>
+    HIDDEN_STATUSES.includes(s)
+      ? !shownLanes.includes(s) || hiddenLanes.includes(s)
+      : hiddenLanes.includes(s),
   );
-  const hidden = hideable.filter((s) => !shownLanes.includes(s));
   return {
     lanes: CANONICAL_COLUMN_KEYS.filter((s) => !hidden.includes(s)),
     hidden,
-    hideable,
   };
 }
 

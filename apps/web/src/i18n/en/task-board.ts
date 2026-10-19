@@ -76,6 +76,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.tasksTitle": "Tasks",
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
+  "taskBoard.taskBoard.columnsLabel": "Columns",
   "taskBoard.taskBoard.hideColumn": "Hide",
   "taskBoard.taskBoard.collapseColumn": "Collapse",
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Collapse {lane}",
