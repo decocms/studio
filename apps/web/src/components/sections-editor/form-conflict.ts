@@ -6,8 +6,8 @@ import type { SchemaProperty } from "./resolve-schema";
  * A section form's edit and someone else's change to the same section, when
  * both changed some of the same values to different things. Values only one
  * side changed are merged without asking; for the others the user chooses,
- * value by value, whose version to keep (form-conflict-dialog.tsx). Nothing
- * of the form's is saved until they do.
+ * value by value, whose version to keep (form-conflict-dialog.tsx), each
+ * value starting on "yours". Nothing of the form's is saved until they do.
  */
 export interface FormConflictValues {
   /** The section as the form started from (both edits are relative to it). */
@@ -99,7 +99,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * The section to save once the user chose: everything both edits agree on
  * (or only one changed), and, for each value both changed, the version they
- * picked. A value with no choice keeps theirs.
+ * picked. A value with no choice keeps theirs (the dialog always sends one).
  */
 export function resolveFormConflict(
   plan: FormConflictPlan,
@@ -117,14 +117,6 @@ export function resolveFormConflict(
   return resolved as Record<string, unknown>;
 }
 
-/** True when every value in conflict has a choice. */
-export function everyConflictChosen(
-  plan: FormConflictPlan,
-  choices: ConflictChoices,
-): boolean {
-  return plan.pointers.every((pointer) => choices[pointer] !== undefined);
-}
-
 /** The same choice for every value in conflict. */
 export function chooseAll(
   plan: FormConflictPlan,
@@ -133,17 +125,24 @@ export function chooseAll(
   return Object.fromEntries(plan.pointers.map((pointer) => [pointer, choice]));
 }
 
+/** Where the dialog starts: "yours" for every value in conflict. */
+export function defaultConflictChoices(
+  plan: FormConflictPlan,
+): ConflictChoices {
+  return chooseAll(plan, "mine");
+}
+
 /**
- * The choices that still hold after the plan was made again (their version
- * changed again, or the user typed on): a choice is kept only for a value
- * still in conflict whose two versions are the ones the user chose between.
+ * The choices after the plan was made again (their version changed again):
+ * a choice is kept for a value still in conflict whose two versions are the
+ * ones the user chose between; every other value starts on "yours" again.
  */
 export function carryConflictChoices(
   previous: FormConflictPlan,
   choices: ConflictChoices,
   next: FormConflictPlan,
 ): ConflictChoices {
-  const carried: ConflictChoices = {};
+  const carried = defaultConflictChoices(next);
   for (const pointer of next.pointers) {
     const choice = choices[pointer];
     if (!choice || !previous.pointers.includes(pointer)) continue;

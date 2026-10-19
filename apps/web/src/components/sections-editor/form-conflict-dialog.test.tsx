@@ -10,10 +10,7 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { type ReactNode, useState } from "react";
-import {
-  FormConflictChoices,
-  FormConflictNotice,
-} from "./form-conflict-dialog";
+import { FormConflictChoices } from "./form-conflict-dialog";
 import {
   type ConflictChoices,
   type ConflictField,
@@ -54,19 +51,20 @@ const fields: ConflictField[] = [
   },
 ];
 
-/** The dialog with its choices kept in state, as the editor keeps them. */
-const noop = () => {};
-
+/**
+ * The dialog with its choices kept in state, as the editor keeps them:
+ * starting on "yours" for every field (defaultConflictChoices).
+ */
 function Harness({
   onApply,
-  onDecideLater = noop,
   changedAgain = false,
 }: {
   onApply: (choices: ConflictChoices) => void;
-  onDecideLater?: () => void;
   changedAgain?: boolean;
 }) {
-  const [choices, setChoices] = useState<ConflictChoices>({});
+  const [choices, setChoices] = useState<ConflictChoices>(() =>
+    Object.fromEntries(fields.map((field) => [field.pointer, "mine"])),
+  );
   return (
     <FormConflictChoices
       fields={fields}
@@ -81,13 +79,12 @@ function Harness({
         )
       }
       onApply={() => onApply(choices)}
-      onDecideLater={onDecideLater}
     />
   );
 }
 
-// The body of FormConflictDialog. The Radix dialog around it (title, focus
-// trap, Escape) is covered by the e2e: a test file loaded earlier in the same
+// The body of FormConflictDialog. The Radix alert dialog around it (title,
+// focus trap, Escape and click outside not closing it) is covered by the e2e: a test file loaded earlier in the same
 // run can import Radix before the DOM is registered, and its portal then
 // never mounts here.
 describe("FormConflictChoices", () => {
@@ -119,44 +116,15 @@ describe("FormConflictChoices", () => {
     expect(within(slides).getByText("2 items")).toBeInTheDocument();
   });
 
-  test("applies only once every field has a choice, with mixed choices", () => {
+  test("starts on yours, so one click saves the user's version", () => {
     const onApply = mock((_: ConflictChoices) => {});
     const view = render(<Harness onApply={onApply} />);
-    const apply = view.getByRole("button", { name: "Apply" });
-    expect(apply).toBeDisabled();
-    expect(
-      view.getByText("Choose a version for each field to apply."),
-    ).toBeInTheDocument();
-
-    const pick = (label: string, name: string) =>
-      fireEvent.click(
-        within(view.getByRole("radiogroup", { name: label })).getByRole(
-          "radio",
-          { name },
-        ),
-      );
-    pick("Headline", "Keep mine");
-    pick("Banner", "Use theirs");
-    expect(apply).toBeDisabled();
-    pick("Slides", "Keep mine");
-    expect(apply).toBeEnabled();
-    fireEvent.click(apply);
-    expect(onApply).toHaveBeenCalledWith({
-      "/headline": "mine",
-      "/banner": "theirs",
-      "/slides": "mine",
-    });
-  });
-
-  test("keep all mine / use all theirs choose for every field", () => {
-    const onApply = mock((_: ConflictChoices) => {});
-    const view = render(<Harness onApply={onApply} />);
-    fireEvent.click(view.getByRole("button", { name: "Use all theirs" }));
-    for (const radio of view.getAllByRole("radio", { name: "Use theirs" })) {
+    for (const radio of view.getAllByRole("radio", { name: "Keep yours" })) {
       expect(radio).toBeChecked();
     }
-    fireEvent.click(view.getByRole("button", { name: "Keep all mine" }));
-    fireEvent.click(view.getByRole("button", { name: "Apply" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "Save selected versions" }),
+    );
     expect(onApply).toHaveBeenCalledWith({
       "/headline": "mine",
       "/banner": "mine",
@@ -164,13 +132,52 @@ describe("FormConflictChoices", () => {
     });
   });
 
-  test("closing it is deciding later", () => {
-    const onDecideLater = mock(() => {});
-    const view = render(
-      <Harness onApply={() => {}} onDecideLater={onDecideLater} />,
+  test("saves mixed choices, field by field", () => {
+    const onApply = mock((_: ConflictChoices) => {});
+    const view = render(<Harness onApply={onApply} />);
+    fireEvent.click(
+      within(view.getByRole("radiogroup", { name: "Banner" })).getByRole(
+        "radio",
+        { name: "Use theirs" },
+      ),
     );
-    fireEvent.click(view.getByRole("button", { name: "Decide later" }));
-    expect(onDecideLater).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      view.getByRole("button", { name: "Save selected versions" }),
+    );
+    expect(onApply).toHaveBeenCalledWith({
+      "/headline": "mine",
+      "/banner": "theirs",
+      "/slides": "mine",
+    });
+  });
+
+  test("Use theirs / Keep yours switch every field", () => {
+    const onApply = mock((_: ConflictChoices) => {});
+    const view = render(<Harness onApply={onApply} />);
+    fireEvent.click(view.getByRole("button", { name: "Use theirs" }));
+    for (const radio of view.getAllByRole("radio", { name: "Use theirs" })) {
+      expect(radio).toBeChecked();
+    }
+    fireEvent.click(
+      view.getByRole("button", { name: "Save selected versions" }),
+    );
+    expect(onApply).toHaveBeenLastCalledWith({
+      "/headline": "theirs",
+      "/banner": "theirs",
+      "/slides": "theirs",
+    });
+    fireEvent.click(view.getByRole("button", { name: "Keep yours" }));
+    for (const radio of view.getAllByRole("radio", { name: "Keep yours" })) {
+      expect(radio).toBeChecked();
+    }
+  });
+
+  test("has no way to close it without choosing", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    expect(
+      view.getAllByRole("button").map((button) => button.textContent),
+    ).toEqual(["Keep yours", "Use theirs", "Save selected versions"]);
+    expect(view.queryByText(/mine|decide later/i)).toBeNull();
   });
 
   test("says so when their version changed again while it was open", () => {
@@ -191,19 +198,5 @@ describe("FormConflictChoices", () => {
     expect(
       resolveFormConflict(plan, { "/headline": "mine", "/subtitle": "theirs" }),
     ).toEqual({ headline: "mine", subtitle: "theirs" });
-  });
-});
-
-describe("FormConflictNotice", () => {
-  test("says the changes wait and reopens the choice", () => {
-    const onReview = mock(() => {});
-    const view = render(<FormConflictNotice onReview={onReview} />);
-    expect(
-      view.getByText(
-        "Your changes to this section aren't saved yet: someone else changed it too.",
-      ),
-    ).toBeInTheDocument();
-    fireEvent.click(view.getByRole("button", { name: "Choose versions" }));
-    expect(onReview).toHaveBeenCalledTimes(1);
   });
 });
