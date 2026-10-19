@@ -189,7 +189,7 @@ export function FormConflictChoices(props: FormConflictChoicesProps) {
 }
 
 /** What saving does: "Keep yours", "Use theirs" or, field by field, "Keep a mix". */
-export function applyLabel(
+function applyLabel(
   t: TFunction,
   fields: readonly ConflictField[],
   choices: ConflictChoices,
