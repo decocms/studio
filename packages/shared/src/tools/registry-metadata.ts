@@ -90,6 +90,8 @@ const ALL_TOOL_NAMES = [
   "INFRA_BILLING_SITES_LIST",
   "INFRA_BILLING_GET",
   "INFRA_BILLING_PORTAL",
+  // Customer data lake
+  "CUSTOMER_LAKE_QUERY",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -572,6 +574,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "INFRA_BILLING_PORTAL",
     description: "Open the Stripe billing portal for an owned site",
     category: "Organizations",
+  },
+  {
+    name: "CUSTOMER_LAKE_QUERY",
+    description: "Run read-only SQL over the organization's data lake",
+    category: "Monitoring",
   },
   {
     name: "ORGANIZATION_HAS_SITE",
@@ -2156,6 +2163,14 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     section: "Developer",
     tools: ["DELETE_OBJECT", "DELETE_OBJECTS"],
     dangerous: true,
+  },
+  {
+    id: "lake:read",
+    label: "Query the data lake",
+    description:
+      "Run read-only SQL over the organization's own data lake (orders from connected stores)",
+    section: "Developer",
+    tools: ["CUSTOMER_LAKE_QUERY"],
   },
   {
     id: "connections:sql",

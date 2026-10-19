@@ -401,6 +401,11 @@ export function resolveConfig(
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
     clickhouseAnalyticsPassword: envVars.CLICKHOUSE_ANALYTICS_PASSWORD,
+    customerLakeUrl: envVars.CUSTOMER_LAKE_URL,
+    customerLakeAdminUsername:
+      envVars.CUSTOMER_LAKE_ADMIN_USERNAME || "customer_lake_user_admin",
+    customerLakeAdminPassword: envVars.CUSTOMER_LAKE_ADMIN_PASSWORD,
+    customerLakeTenantSecret: envVars.CUSTOMER_LAKE_TENANT_SECRET,
     oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
     // New name first, legacy Reports envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a

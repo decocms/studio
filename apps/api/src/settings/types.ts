@@ -314,6 +314,14 @@ export interface Settings {
   clickhouseAnalyticsUrl: string | undefined;
   clickhouseAnalyticsUsername: string;
   clickhouseAnalyticsPassword: string | undefined;
+  /** Customer data lake: ClickHouse `customer_lake` on the stats-lake cluster.
+   *  Each org reads it as its own read-only user, created on first use through
+   *  the admin account; see customer-lake/client.ts. Unset url, admin password
+   *  or tenant secret = CUSTOMER_LAKE_QUERY reports the lake as unavailable. */
+  customerLakeUrl: string | undefined;
+  customerLakeAdminUsername: string;
+  customerLakeAdminPassword: string | undefined;
+  customerLakeTenantSecret: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source
    *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
   oneDollarStatsApiKey: string | undefined;

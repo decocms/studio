@@ -33,6 +33,7 @@ import * as GithubCopilotTools from "./github-copilot";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
+import * as CustomerLakeTools from "./customer-lake";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import * as JiraTools from "./jira";
@@ -147,6 +148,7 @@ export const CORE_TOOLS = [
   InfraBillingTools.INFRA_BILLING_SITES_LIST,
   InfraBillingTools.INFRA_BILLING_GET,
   InfraBillingTools.INFRA_BILLING_PORTAL,
+  CustomerLakeTools.CUSTOMER_LAKE_QUERY,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
