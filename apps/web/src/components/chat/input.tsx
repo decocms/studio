@@ -39,7 +39,6 @@ import {
   Telescope,
   Upload01,
   X,
-  Zap,
 } from "@untitledui/icons";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -493,11 +492,6 @@ export function ChatInput({
   const ownerName =
     owner?.user?.name ?? owner?.user?.email?.split("@")[0] ?? null;
   const hostedRuntimeBlocked = shouldBlockHostedRuntime(task?.harness_id);
-  // A text message sent now goes into the running sandbox turn instead of
-  // the queue (the server decides; this only says so).
-  const sendsToRunningAgent =
-    (task?.harness_id === "claude-code" || task?.harness_id === "codex") &&
-    (isStreaming || isRunInProgress);
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
@@ -768,13 +762,6 @@ export function ChatInput({
           {stream && taskCtx && <ChatHighlight />}
 
           {stream && taskCtx && taskId ? <QueueTray taskId={taskId} /> : null}
-
-          {stream && taskCtx && sendsToRunningAgent ? (
-            <div className="mb-1 flex items-center gap-1.5 px-3 text-xs text-muted-foreground">
-              <Zap className="size-3.5 shrink-0" />
-              <span>{t("chat.input.liveMessageHint")}</span>
-            </div>
-          ) : null}
 
           <TiptapProvider
             key={taskId}

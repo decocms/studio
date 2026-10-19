@@ -249,8 +249,6 @@ export const chat = {
   "chat.input.modelCannotReadAttachments":
     "Este modelo não consegue ler anexos — mude para um com suporte a visão ou arquivos",
   "chat.input.planMode": "Modo de planejamento",
-  "chat.input.liveMessageHint":
-    "O agente está trabalhando. Uma mensagem de texto vai direto para ele e é lida depois do passo atual.",
   "chat.liveMessage.pending":
     "Enviada ao agente em execução · lida depois do passo atual",
   "chat.liveMessage.readByAgent": "Lida pelo agente enquanto trabalhava",
