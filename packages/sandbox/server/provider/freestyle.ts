@@ -116,6 +116,8 @@ const REPO_DIR = `${WORKDIR}/repo`;
 const CLONE_LOG = `${WORKDIR}/tmp/app/clone`;
 
 export interface FreestyleSandboxProviderOptions {
+  /** Allow nested user namespaces inside the VM's sandbox container. Default off. */
+  allowUserNamespaces?: boolean;
   apiKey: string;
   /** The sandbox image. Default: the release built from this package's version. */
   image?: string;
@@ -154,6 +156,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly lookupClient: Freestyle;
   private readonly image: string;
   private readonly sidecarImage: string;
+  private readonly allowUserNamespaces: boolean;
   private readonly idleTimeoutSeconds: number;
   private readonly idlePauseMs: number;
   private readonly autoDeleteSeconds: number;
@@ -208,6 +211,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.image =
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
+    this.allowUserNamespaces = opts.allowUserNamespaces ?? false;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
     this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
@@ -288,7 +292,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
 
   private baseSnapshot(): Promise<string> {
     const { image, sidecarImage } = this;
-    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning`).digest("hex").slice(0, 16)}`;
+    const namespaceMode = this.allowUserNamespaces ? "\nuser-namespaces" : "";
+    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning${namespaceMode}`).digest("hex").slice(0, 16)}`;
     if (this.knownSnapshots.has(slug)) return Promise.resolve(slug);
     return this.snapshotInflight.run(slug, async () => {
       if (await this.snapshotExists(slug)) {
@@ -362,7 +367,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     );
     await this.run(
       vm,
-      `docker run -d --name ${CONTAINER} --restart=always -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
+      // Codex's read-only sandbox uses bubblewrap inside this per-user VM.
+      `docker run -d --name ${CONTAINER} --restart=always${this.allowUserNamespaces ? " --security-opt seccomp=unconfined --security-opt apparmor=unconfined" : ""} -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
       { env, timeoutMs: IMAGE_PULL_TIMEOUT_MS },
     );
   }

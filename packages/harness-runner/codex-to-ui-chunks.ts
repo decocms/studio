@@ -51,6 +51,7 @@ export class CodexChunkTranslator {
   private planUpdates = 0;
   awaitingUser = false;
   usage: unknown;
+  contextWindow: number | undefined;
   private usageBaseline:
     | { input: number; output: number; cached: number }
     | undefined;
@@ -152,6 +153,8 @@ export class CodexChunkTranslator {
       const last = record(tokenUsage.last);
       const count = (value: unknown) =>
         typeof value === "number" && Number.isFinite(value) ? value : 0;
+      const contextWindow = count(tokenUsage.modelContextWindow);
+      if (contextWindow > 0) this.contextWindow = contextWindow;
       // App-server reports session totals. The first update includes this turn's
       // first model request in `last`, so subtract the preceding conversation.
       this.usageBaseline ??= {

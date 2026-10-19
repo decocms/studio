@@ -866,7 +866,11 @@ export async function* dispatchWithContinuation(args: {
         reason: err.message,
         termination: infra,
       });
-      resume = { reason: resumeReason(err.message, infra) };
+      // A stale binding can fail before the harness starts. Preserve its saved
+      // conversation instead of treating an unstarted turn as interrupted.
+      if (forwardedStart) {
+        resume = { reason: resumeReason(err.message, infra) };
+      }
     }
   }
 }

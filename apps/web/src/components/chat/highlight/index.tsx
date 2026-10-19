@@ -187,7 +187,7 @@ export function ChatHighlight({
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
-  const { chatMode, simpleModeTier } = useChatPrefs();
+  const { chatMode, setChatMode, simpleModeTier } = useChatPrefs();
   const canBuyCredits = useFeature("credits");
   const { mutate: subscribe } = useOpenBillingUrl(
     "ORGANIZATION_BILLING_CHECKOUT_START",
@@ -287,6 +287,7 @@ export function ChatHighlight({
   };
 
   const handlePlanApprove = (planText: string) => {
+    setChatMode("default");
     // Set approval level to auto and persist
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 

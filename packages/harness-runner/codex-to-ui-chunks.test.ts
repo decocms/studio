@@ -172,8 +172,13 @@ describe("Codex chunks", () => {
       cachedInputTokens: number,
     ) => ({ inputTokens, outputTokens, cachedInputTokens });
     translator.translate("thread/tokenUsage/updated", {
-      tokenUsage: { total: usage(150, 30, 80), last: usage(50, 10, 30) },
+      tokenUsage: {
+        total: usage(150, 30, 80),
+        last: usage(50, 10, 30),
+        modelContextWindow: 272000,
+      },
     });
+    expect(translator.contextWindow).toBe(272000);
     expect(translator.usage).toEqual({
       inputTokens: 50,
       outputTokens: 10,
@@ -191,5 +196,6 @@ describe("Codex chunks", () => {
       cachedInputTokens: 70,
       contextTokens: 60,
     });
+    expect(translator.contextWindow).toBe(272000);
   });
 });

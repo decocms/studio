@@ -369,9 +369,12 @@ export async function runCodex(
           {
             type: "finish",
             finishReason: translator.awaitingUser ? "tool-calls" : "stop",
-            ...(translator.usage
-              ? { messageMetadata: { usage: translator.usage } }
-              : {}),
+            messageMetadata: {
+              ...(translator.usage ? { usage: translator.usage } : {}),
+              ...(translator.contextWindow
+                ? { modelLimits: { contextWindow: translator.contextWindow } }
+                : {}),
+            },
           },
         ],
       });

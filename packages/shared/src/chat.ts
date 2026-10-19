@@ -30,6 +30,8 @@ export interface ChatUserConfig {
  * Metadata persisted and transported alongside a Studio thread message.
  */
 export interface Metadata {
+  /** Models reported by the executor for this message. */
+  models?: Record<string, { id: string; title?: string; provider?: string }>;
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;
   /** Tier to use for model resolution on the backend */
@@ -92,6 +94,6 @@ export interface Metadata {
   /** Runtime-reported per-turn limits. */
   modelLimits?: {
     contextWindow: number;
-    maxOutputTokens: number;
+    maxOutputTokens?: number;
   };
 }

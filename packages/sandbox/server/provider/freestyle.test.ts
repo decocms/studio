@@ -58,7 +58,7 @@ describe("FreestyleSandboxProvider", () => {
     provider.close();
   });
 
-  test("warm builds a missing base snapshot once", async () => {
+  test("warm caches each namespace mode in a separate base snapshot", async () => {
     const snapshots: string[] = [];
     const exec: string[] = [];
     const vm = {
@@ -91,6 +91,26 @@ describe("FreestyleSandboxProvider", () => {
     await provider.warm();
     expect(snapshots).toHaveLength(1);
     expect(exec.some((c) => c.includes("example/sandbox:1"))).toBe(true);
+    const ordinaryRun = exec.find((c) =>
+      c.startsWith("docker run -d --name sandbox"),
+    );
+    expect(ordinaryRun).not.toContain("seccomp=unconfined");
+    expect(ordinaryRun).not.toContain("apparmor=unconfined");
+    const nested = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      image: "example/sandbox:1",
+      allowUserNamespaces: true,
+    });
+    await nested.warm();
+    expect(snapshots).toHaveLength(2);
+    expect(new Set(snapshots).size).toBe(2);
+    const nestedRun = exec.findLast((c) =>
+      c.startsWith("docker run -d --name sandbox"),
+    );
+    expect(nestedRun).toContain("--security-opt seccomp=unconfined");
+    expect(nestedRun).toContain("--security-opt apparmor=unconfined");
+    nested.close();
     provider.close();
   });
 

@@ -539,7 +539,10 @@ export function ChatInput({
     .find((m) => m.role === "assistant")?.metadata;
   const contextWindow =
     lastAssistantMetadata?.modelLimits?.contextWindow ??
-    selectedModel?.limits?.contextWindow;
+    (!lastAssistantMetadata?.models?.thinking ||
+    lastAssistantMetadata.models.thinking.id === selectedModel?.modelId
+      ? selectedModel?.limits?.contextWindow
+      : undefined);
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
   // True while the @/ suggestion dropdown is open — read by TiptapProvider's

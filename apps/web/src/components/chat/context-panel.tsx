@@ -283,10 +283,16 @@ export function ChatContextPanel({
     .reverse()
     .find((m) => m.role === "assistant" && m.metadata?.usage);
   const lastAssistantUsage = lastAssistantMessage?.metadata?.usage;
+  const reportedModel = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.metadata?.models)
+    ?.metadata?.models?.thinking;
   // Prefer runtime-reported limits (Claude Code fills these from CLI result); fall back to catalog.
   const contextWindow =
     lastAssistantMessage?.metadata?.modelLimits?.contextWindow ??
-    selectedModel?.limits?.contextWindow ??
+    (!reportedModel || reportedModel.id === selectedModel?.modelId
+      ? selectedModel?.limits?.contextWindow
+      : null) ??
     null;
   // Per-turn context size only — cumulative `totalTokens` would read as
   // if the model's window is far fuller than it actually is.
@@ -343,9 +349,7 @@ export function ChatContextPanel({
       ),
   );
 
-  const modelLabel = selectedModel?.modelId
-    ? formatModelId(selectedModel.modelId)
-    : "—";
+  const modelLabel = formatModelId(reportedModel?.id ?? selectedModel?.modelId);
 
   const agentTitle = selectedVirtualMcp?.title ?? "Super Agent";
 

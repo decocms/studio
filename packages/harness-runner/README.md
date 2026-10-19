@@ -73,6 +73,11 @@ stores auth and MCP configuration in a private temporary directory; only the
 per-tool built-in restrictions fails before starting Codex, since Codex does
 not implement Claude's tool subtraction policy.
 
+On Linux, Codex plan and read-only commands require bubblewrap user namespaces
+inside the sandbox runtime. Freestyle deployments opt in with
+`STUDIO_SANDBOX_FREESTYLE_USER_NAMESPACES=true`; see the
+[provider configuration](../sandbox/README.md#hosted-provisioning).
+
 ## Architecture
 
 - `main.ts` — the wire: stdin envelope in, NDJSON frames out.
