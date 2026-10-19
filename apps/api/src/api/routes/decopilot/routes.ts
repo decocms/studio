@@ -32,6 +32,7 @@ import {
 } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 import { splitRequestMessages } from "./conversation";
@@ -102,6 +103,13 @@ import { buildHistoryPrefix } from "./history-prefix";
 /** Newest messages scanned for a re-pinned thread's history; the token budget
  *  in `buildHistoryPrefix` trims further. */
 const HISTORY_PREFIX_WINDOW = 50;
+
+/** A turn's message can carry inline `data:` URL attachments (uploadFileParts
+ *  materializes them to storage before dispatch), so the body is not just a
+ *  few KB of text like most other JSON routes — but it must still be bounded,
+ *  matching the bodyLimit convention on every other upload-carrying route
+ *  (dev-assets, org-fs, decofile). */
+const MAX_MESSAGE_BODY_BYTES = 25 * 1024 * 1024;
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -768,7 +776,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   //     the message contents gives each round a fresh workflowID while
   //     still collapsing genuine network retries of the same POST.
 
-  app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
+  async function postMessage(
+    c: Context<{ Variables: { studioContext: StudioContext } }>,
+  ) {
     try {
       const ctx = c.get("studioContext");
 
@@ -1124,7 +1134,16 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         500,
       );
     }
-  });
+  }
+
+  app.post(
+    "/:org/decopilot/threads/:threadId/messages",
+    bodyLimit({
+      maxSize: MAX_MESSAGE_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    postMessage,
+  );
 
   // ============================================================================
   // Cancel Endpoint — cancel a hosted run locally or via NATS to its owning pod
