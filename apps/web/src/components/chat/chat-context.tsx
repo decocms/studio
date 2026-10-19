@@ -86,6 +86,24 @@ import {
 // re-firing when the user switches tasks.
 const openedChats = new Set<string>();
 
+/** Cap on distinct threads tracked for the chat_opened dedup, so a long-lived
+ *  tab that visits many threads over a session doesn't grow this set without
+ *  bound. Evicting the oldest-tracked thread risks one duplicate analytics
+ *  event for it much later — an acceptable trade-off for bounded memory. */
+const MAX_OPENED_CHATS = 500;
+
+/** Returns true the first time a given taskId is seen (or re-seen after
+ *  eviction) in this page session — the caller should fire `chat_opened`. */
+export function markChatOpened(taskId: string): boolean {
+  if (openedChats.has(taskId)) return false;
+  if (openedChats.size >= MAX_OPENED_CHATS) {
+    const oldest = openedChats.values().next().value;
+    if (oldest !== undefined) openedChats.delete(oldest);
+  }
+  openedChats.add(taskId);
+  return true;
+}
+
 /** Threads with a sendMessage currently in flight — a synchronous latch so a
  * rapid double-Enter can't double-submit/double-queue the same draft (the
  * composer intentionally never disables; state-based guards re-render too
@@ -851,8 +869,7 @@ export function ActiveTaskProvider({
    * chat_started (thread creation). A route that names no thread never reaches
    * this provider, so the id here is always one a person actually opened.
    */
-  if (!openedChats.has(taskId)) {
-    openedChats.add(taskId);
+  if (markChatOpened(taskId)) {
     track("chat_opened", { thread_id: taskId });
   }
   const {
