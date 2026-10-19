@@ -731,7 +731,6 @@ test.describe("site editor over deco serve", () => {
       ).toHaveAccessibleDescription(
         "Their version · already saved Changed on disk",
       );
-      await expect(dialog.getByTestId("form-conflict-author")).toHaveCount(0);
       // Nothing written over theirs while the user decides.
       expect((await heroOf(stub)).title).toBe("Changed on disk");
 

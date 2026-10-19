@@ -1414,7 +1414,6 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
         name: "You, in another tab or window",
       });
       await expect(theirCard).toHaveAccessibleDescription(/^saved .+ Theirs$/);
-      await expect(dialog.getByTestId("form-conflict-author")).toHaveCount(0);
 
       // Yours is chosen: one click saves the user's version.
       await expect(

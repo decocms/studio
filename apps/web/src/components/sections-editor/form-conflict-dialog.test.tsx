@@ -11,18 +11,18 @@ import {
 import "@testing-library/jest-dom";
 import { type ReactNode, useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
-import type { ConflictAuthor } from "./conflict-author";
 import {
-  ConflictAuthorLine,
   type ConflictViewer,
   conflictHeading,
   fieldInSentence,
   FormConflictChoices,
   initials,
 } from "./form-conflict-dialog";
+import type { ConflictAuthor } from "./conflict-author";
 import {
   type ConflictChoices,
   type ConflictField,
+  type ConflictFreshness,
   resolveFormConflict,
   planFormConflict,
 } from "./form-conflict";
@@ -60,6 +60,8 @@ const fields: ConflictField[] = [
   },
 ];
 
+const noFresh: ConflictFreshness = {};
+
 /**
  * The dialog with its choices kept in state, as the editor keeps them:
  * starting on "yours" for every field (defaultConflictChoices).
@@ -69,12 +71,14 @@ function Harness({
   only = fields,
   changedAgain = false,
   viewer = null,
+  fresh = noFresh,
   author = null,
 }: {
   onApply: (choices: ConflictChoices) => void;
   only?: ConflictField[];
   changedAgain?: boolean;
   viewer?: ConflictViewer | null;
+  fresh?: ConflictFreshness;
   author?: ConflictAuthor | null;
 }) {
   const [choices, setChoices] = useState<ConflictChoices>(() =>
@@ -85,8 +89,9 @@ function Harness({
       fields={only}
       choices={choices}
       changedAgain={changedAgain}
-      viewer={viewer}
+      fresh={fresh}
       author={author}
+      viewer={viewer}
       onChoose={(pointer, choice) =>
         setChoices((now) => ({ ...now, [pointer]: choice }))
       }
@@ -107,7 +112,7 @@ function Heading({
   only: ConflictField[];
   author?: ConflictAuthor | null;
 }) {
-  const heading = conflictHeading(useT(), only, author);
+  const heading = conflictHeading(useT(), only, 0, {}, author);
   return (
     <>
       <h2>{heading.title}</h2>
@@ -216,74 +221,169 @@ describe("one field: two cards", () => {
   });
 });
 
-describe("several fields: a switch per field", () => {
-  test("says how many fields changed", () => {
-    const view = render(<Heading only={fields} />);
-    expect(view.getByRole("heading")).toHaveTextContent(
-      "Someone else changed 3 fields while you were editing",
+describe("several fields: one field per step", () => {
+  const heading = (view: ReturnType<typeof render>) =>
+    view.getByRole("heading").textContent;
+  const dots = (view: ReturnType<typeof render>) =>
+    within(view.getByRole("group", { name: "Fields to choose" })).getAllByRole(
+      "button",
     );
-    expect(
-      view.getByText("Choose which version to keep for each field."),
-    ).toBeInTheDocument();
-  });
+  const step = (view: ReturnType<typeof render>) =>
+    view.getByText(/^\d of 3$/).textContent;
 
-  test("each field has a Yours / Theirs switch, on yours, showing that side", () => {
+  test("a dot per field, each a button named by it, the current one marked", () => {
     const view = render(<Harness onApply={() => {}} />);
-    for (const label of ["Headline", "Banner", "Slides"]) {
-      const group = view.getByRole("radiogroup", { name: label });
-      expect(within(group).getByRole("radio", { name: "Yours" })).toBeChecked();
-      expect(
-        within(group).getByRole("radio", { name: "Theirs" }),
-      ).not.toBeChecked();
-    }
-    expect(view.getAllByTestId("conflict-mine")).toHaveLength(3);
-    expect(view.queryByTestId("conflict-theirs")).toBeNull();
-    expect(marks(view.getAllByTestId("conflict-mine")[0]!)).toEqual([
-      "Summer ",
+    expect(dots(view).map((dot) => dot.getAttribute("aria-label"))).toEqual([
+      "Headline",
+      "Banner",
+      "Slides",
     ]);
+    expect(dots(view)[0]).toHaveAttribute("aria-current", "step");
+    expect(dots(view)[1]).not.toHaveAttribute("aria-current");
+    expect(step(view)).toBe("1 of 3");
   });
 
-  test("switching a field shows their value, lists summarized", () => {
+  test("each step: the field's title, the hint and the two cards as radios", () => {
     const view = render(<Harness onApply={() => {}} />);
-    expect(view.getByText("1 item")).toBeInTheDocument();
-    fireEvent.click(
-      within(view.getByRole("radiogroup", { name: "Slides" })).getByRole(
-        "radio",
-        { name: "Theirs" },
-      ),
-    );
-    expect(view.getByText("2 items")).toBeInTheDocument();
-    expect(view.queryByText("1 item")).toBeNull();
+    expect(heading(view)).toBe("Someone else also changed the headline");
+    expect(
+      view.getByText("Pick the one to keep. You can go back before saving."),
+    ).toBeInTheDocument();
+    const group = view.getByRole("radiogroup", { name: "Headline" });
+    expect(
+      within(group)
+        .getAllByRole("radio")
+        .map((radio) => radio.getAttribute("aria-checked")),
+    ).toEqual(["true", "false"]);
+    expect(marks(view.getByTestId("conflict-mine"))).toEqual(["Summer "]);
+    expect(marks(view.getByTestId("conflict-theirs"))).toEqual(["Winter "]);
   });
 
-  test("the button names the outcome: yours, a mix, theirs", () => {
+  test("Next keeps the pick and moves on; Back and a dot revisit", () => {
     const onApply = mock((_: ConflictChoices) => {});
     const view = render(<Harness onApply={onApply} />);
-    const buttons = () =>
-      view.getAllByRole("button").map((button) => button.textContent);
-    expect(buttons()).toEqual(["Use theirs for all", "Keep yours"]);
+    fireEvent.click(view.getByRole("radio", { name: "Someone else" }));
+    fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(step(view)).toBe("2 of 3");
+    expect(heading(view)).toBe("Someone else also changed the banner");
+    expect(view.getByRole("radio", { name: "You" })).toBeChecked();
+    expect(dots(view)[0]).toHaveAttribute("data-answered");
+    expect(view.getByTestId("conflict-mine").querySelector("img")?.src).toBe(
+      "https://cdn.example.com/mine.png",
+    );
+    fireEvent.click(view.getByRole("button", { name: "Back" }));
+    expect(step(view)).toBe("1 of 3");
+    expect(view.getByRole("radio", { name: "Someone else" })).toBeChecked();
+    fireEvent.click(view.getByRole("button", { name: "Slides" }));
+    expect(step(view)).toBe("3 of 3");
+    expect(view.getByText("1 item")).toBeInTheDocument();
+    expect(view.getByText("2 items")).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  test("Back does nothing on the first step and keeps focus", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    const back = view.getByRole("button", { name: "Back" });
+    expect(back).toHaveAttribute("aria-disabled", "true");
+    back.focus();
+    fireEvent.click(back);
+    expect(step(view)).toBe("1 of 3");
+    expect(back).toHaveFocus();
+  });
+
+  test("the ←/→ keys move between steps, but not in a text field", () => {
+    const view = render(
+      <>
+        <Harness onApply={() => {}} />
+        <input aria-label="Some text" />
+      </>,
+    );
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(step(view)).toBe("2 of 3");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(step(view)).toBe("3 of 3");
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(step(view)).toBe("2 of 3");
+    fireEvent.keyDown(view.getByRole("textbox", { name: "Some text" }), {
+      key: "ArrowLeft",
+    });
+    expect(step(view)).toBe("2 of 3");
+    fireEvent.keyDown(document.body, { key: "ArrowLeft", shiftKey: true });
+    expect(step(view)).toBe("2 of 3");
+  });
+
+  test("on a card, ↑/↓ change the pick and ←/→ the step", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    const mine = view.getByRole("radio", { name: "You" });
+    mine.focus();
+    fireEvent.keyDown(mine, { key: "ArrowDown" });
+    const theirs = view.getByRole("radio", { name: "Someone else" });
+    expect(theirs).toBeChecked();
+    expect(theirs).toHaveFocus();
+    fireEvent.keyDown(theirs, { key: "ArrowRight" });
+    expect(step(view)).toBe("2 of 3");
+    expect(view.getByRole("radio", { name: "You" })).toBeChecked();
+  });
+
+  test("yours by default; the last step's button names the outcome and saves", () => {
+    const onApply = mock((_: ConflictChoices) => {});
+    const view = render(<Harness onApply={onApply} />);
+    fireEvent.click(view.getByRole("button", { name: "Slides" }));
+    expect(view.queryByRole("button", { name: "Next" })).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "Keep yours" }));
     expect(onApply).toHaveBeenLastCalledWith({
       "/headline": "mine",
       "/banner": "mine",
       "/slides": "mine",
     });
-    fireEvent.click(
-      within(view.getByRole("radiogroup", { name: "Banner" })).getByRole(
-        "radio",
-        { name: "Theirs" },
-      ),
-    );
+    fireEvent.click(view.getByRole("radio", { name: "Someone else" }));
     fireEvent.click(view.getByRole("button", { name: "Keep a mix" }));
     expect(onApply).toHaveBeenLastCalledWith({
       "/headline": "mine",
-      "/banner": "theirs",
-      "/slides": "mine",
+      "/banner": "mine",
+      "/slides": "theirs",
     });
+    expect(onApply).toHaveBeenCalledTimes(2);
+  });
+
+  test("the second click of a double click on Next doesn't save", () => {
+    const onApply = mock((_: ConflictChoices) => {});
+    const view = render(<Harness onApply={onApply} />);
+    fireEvent.click(view.getByRole("button", { name: "Next" }));
+    fireEvent.click(view.getByRole("button", { name: "Next" }), { detail: 1 });
+    fireEvent.click(view.getByRole("button", { name: "Keep yours" }), {
+      detail: 2,
+    });
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  test("the last step sums up the picks instead of the hint", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    fireEvent.click(view.getByRole("button", { name: "Next" }));
+    fireEvent.click(view.getByRole("radio", { name: "Someone else" }));
+    fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(heading(view)).toBe("Someone else also changed the slides");
+    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
+      "Headline: yours · Banner: theirs · Slides: yours",
+    );
+    expect(
+      view.queryByText("Pick the one to keep. You can go back before saving."),
+    ).toBeNull();
+  });
+
+  test("Use theirs for all picks theirs everywhere and shows the summary, unsaved", () => {
+    const onApply = mock((_: ConflictChoices) => {});
+    const view = render(<Harness onApply={onApply} />);
     fireEvent.click(view.getByRole("button", { name: "Use theirs for all" }));
-    for (const radio of view.getAllByRole("radio", { name: "Theirs" })) {
-      expect(radio).toBeChecked();
+    expect(step(view)).toBe("3 of 3");
+    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
+      "Headline: theirs · Banner: theirs · Slides: theirs",
+    );
+    for (const dot of dots(view).slice(0, 2)) {
+      expect(dot).toHaveAttribute("data-answered");
     }
+    expect(onApply).not.toHaveBeenCalled();
     fireEvent.click(view.getByRole("button", { name: "Use theirs" }));
     expect(onApply).toHaveBeenLastCalledWith({
       "/headline": "theirs",
@@ -291,11 +391,60 @@ describe("several fields: a switch per field", () => {
       "/slides": "theirs",
     });
   });
+
+  test("a field whose version changed while open gets a ring until visited", () => {
+    const view = render(<Harness onApply={() => {}} />);
+    view.rerender(<Harness onApply={() => {}} fresh={{ "/slides": 1 }} />);
+    const slides = () => view.getByRole("button", { name: /^Slides/ });
+    expect(slides()).toHaveAttribute("data-changed-again");
+    expect(slides()).toHaveAttribute("aria-label", "Slides, changed again");
+    fireEvent.click(slides());
+    fireEvent.click(view.getByRole("button", { name: "Back" }));
+    expect(slides()).not.toHaveAttribute("data-changed-again");
+    expect(slides()).toHaveAttribute("aria-label", "Slides");
+    // The step on screen (Banner, after Back) when it changes: seen already.
+    view.rerender(
+      <Harness onApply={() => {}} fresh={{ "/slides": 1, "/banner": 1 }} />,
+    );
+    expect(view.getByRole("button", { name: "Banner" })).not.toHaveAttribute(
+      "data-changed-again",
+    );
+    fireEvent.click(view.getByRole("button", { name: "Back" }));
+    expect(view.getByRole("button", { name: "Banner" })).not.toHaveAttribute(
+      "data-changed-again",
+    );
+    // Changed again since the last visit.
+    view.rerender(
+      <Harness onApply={() => {}} fresh={{ "/slides": 2, "/banner": 1 }} />,
+    );
+    expect(slides()).toHaveAttribute("data-changed-again");
+  });
+
+  test("their change while open is said once for all the steps", () => {
+    const view = render(<Harness onApply={() => {}} changedAgain />);
+    expect(
+      view.getByText(
+        "Their version changed again while this was open. Each step now shows the newer one.",
+      ),
+    ).toBeVisible();
+  });
+
+  test("one field: no dots, no Back or Next", () => {
+    const view = render(<Harness onApply={() => {}} only={headline} />);
+    expect(view.queryByRole("group", { name: "Fields to choose" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Next" })).toBeNull();
+    expect(
+      view.queryByRole("button", { name: "Use theirs for all" }),
+    ).toBeNull();
+  });
 });
 
 describe("FormConflictChoices", () => {
   test("says so when their version changed again while it was open", () => {
-    const view = render(<Harness onApply={() => {}} changedAgain />);
+    const view = render(
+      <Harness onApply={() => {}} only={headline} changedAgain />,
+    );
     expect(
       view.getByText(
         "Their version changed again while this was open. It's shown below.",
@@ -357,8 +506,6 @@ describe("who made the other change (hosted v8)", () => {
     // The button keeps "Use theirs": "Usar a de Ana" doesn't read well in pt-br.
     fireEvent.click(theirs);
     expect(view.getByRole("button", { name: "Use theirs" })).toBeVisible();
-    // No separate line: the card says who and when.
-    expect(view.queryByTestId("form-conflict-author")).toBeNull();
   });
 
   test("one field: the viewer's own change from another tab or window", () => {
@@ -389,24 +536,23 @@ describe("who made the other change (hosted v8)", () => {
     ).toHaveAccessibleDescription("saved 5 minutes ago Winter sale on shoes");
   });
 
-  test("several fields: the title names them, a line says who and when", () => {
-    const at = minutesAgo(3);
-    const heading = render(<Heading only={fields} author={ana(at)} />);
-    expect(heading.getByRole("heading")).toHaveTextContent(
-      "Ana changed 3 fields while you were editing",
+  test("several fields: each step names the member, the summary says whose", () => {
+    const view = render(<Harness onApply={() => {}} author={ana()} />);
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Ana also changed the headline",
     );
-    heading.unmount();
-    const view = render(<Harness onApply={() => {}} author={ana(at)} />);
-    const line = view.getByTestId("form-conflict-author");
-    expect(line).toHaveTextContent("Ana Souza · 3 minutes ago");
-    const time = line.querySelector("time")!;
-    expect(time.getAttribute("datetime")).toBe(at);
-    expect(time.getAttribute("title")).toBe(
-      new Date(at).toLocaleString("en", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
+    expect(
+      view.getByRole("radio", { name: "Ana Souza" }),
+    ).toHaveAccessibleDescription("saved 3 minutes ago Winter sale on shoes");
+    fireEvent.click(view.getByRole("radio", { name: "Ana Souza" }));
+    fireEvent.click(view.getByRole("button", { name: "Use theirs for all" }));
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Ana also changed the slides",
     );
+    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
+      "Headline: Ana's · Banner: Ana's · Slides: Ana's",
+    );
+    expect(view.getByRole("button", { name: "Use theirs" })).toBeVisible();
   });
 
   test("several fields: the viewer's own change", () => {
@@ -416,27 +562,20 @@ describe("who made the other change (hosted v8)", () => {
         author={{ name: "Ana", at: minutesAgo(2), you: true }}
       />,
     );
-    expect(view.getByTestId("form-conflict-author")).toHaveTextContent(
-      "You, in another tab or window · 2 minutes ago",
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "You also changed the headline in another tab or window",
+    );
+    fireEvent.click(view.getByRole("button", { name: "Use theirs for all" }));
+    expect(view.getByTestId("form-conflict-summary")).toHaveTextContent(
+      "Headline: theirs · Banner: theirs · Slides: theirs",
     );
   });
 
-  test("only the time when nobody is known (an id that isn't a member)", () => {
-    const now = Date.parse("2026-10-16T12:00:00Z");
-    const view = render(
-      <ConflictAuthorLine
-        author={{ at: "2026-10-16T11:55:00Z", you: false }}
-        now={now}
-      />,
-    );
-    expect(view.getByTestId("form-conflict-author").textContent).toBe(
-      "Changed 5 minutes ago",
-    );
-  });
-
-  test("no line while it isn't known", () => {
+  test("several fields while who is unknown: someone else", () => {
     const view = render(<Harness onApply={() => {}} />);
-    expect(view.queryByTestId("form-conflict-author")).toBeNull();
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Someone else also changed the headline",
+    );
     expect(view.queryByText(/unknown/i)).toBeNull();
   });
 });

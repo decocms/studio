@@ -53,11 +53,13 @@ import {
 } from "./form-base";
 import {
   type ConflictChoices,
+  type ConflictFreshness,
   carryConflictChoices,
   chooseAll,
   conflictFields,
   defaultConflictChoices,
   type FormConflictPlan,
+  markTheirsChanged,
   planFormConflict,
   refreshWaitingChoice,
   resolveFormConflict,
@@ -248,6 +250,20 @@ interface PendingFormConflict {
   changedAgain: boolean;
   /** The block the save writes (a saved block, else the page): whose change the dialog names. */
   blockKey: string | null;
+  /** Which values' "their" version changed while it was shown, and how often. */
+  fresh: ConflictFreshness;
+}
+
+/** One dialog per waiting choice: its steps start over for the next one. */
+const conflictDialogKeys = new WeakMap<FormBase, number>();
+let lastConflictDialogKey = 0;
+function conflictDialogKey(formBase: FormBase): number {
+  let key = conflictDialogKeys.get(formBase);
+  if (key === undefined) {
+    key = ++lastConflictDialogKey;
+    conflictDialogKeys.set(formBase, key);
+  }
+  return key;
 }
 
 export function SectionsEditor({
@@ -1223,6 +1239,11 @@ export function SectionsEditor({
             previous.choices,
             conflict.plan,
           ),
+          fresh: markTheirsChanged(
+            previous.plan,
+            conflict.plan,
+            previous.fresh,
+          ),
           changedAgain:
             previous.changedAgain ||
             canonicalBlockJson(previous.plan.theirs) !==
@@ -1495,6 +1516,7 @@ export function SectionsEditor({
           blockKey: parsed.isSavedBlock
             ? savedBlockKey(rawSection, parsed)
             : latestPageKey,
+          fresh: {},
         });
         return;
       }
@@ -4303,6 +4325,7 @@ export function SectionsEditor({
 
         {waitingChoice && (
           <FormConflictDialog
+            key={conflictDialogKey(waitingChoice.formBase)}
             open
             fields={conflictFields(
               waitingChoice.plan,
@@ -4311,6 +4334,7 @@ export function SectionsEditor({
             choices={waitingChoice.choices}
             changedAgain={waitingChoice.changedAgain}
             author={conflictAuthor}
+            fresh={waitingChoice.fresh}
             onChoose={(pointer, choice) =>
               setConflictChoices({
                 ...waitingChoice.choices,
