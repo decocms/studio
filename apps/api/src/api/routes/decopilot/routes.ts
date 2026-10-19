@@ -111,6 +111,14 @@ const HISTORY_PREFIX_WINDOW = 50;
  *  (dev-assets, org-fs, decofile). */
 const MAX_MESSAGE_BODY_BYTES = 25 * 1024 * 1024;
 
+/** /flip's body is one short id; bounded like every other small-JSON route
+ *  (kv, trigger-callback) rather than left to parse an unbounded body. */
+const MAX_FLIP_BODY_BYTES = 16 * 1024;
+
+/** Generous ceiling for a tool-call id (observed ids are short UUID-based
+ *  strings); rejects a pathological value before it reaches the NATS broadcast. */
+const MAX_TOOL_CALL_ID_LENGTH = 256;
+
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
 // deliverPolicy, run age, and the delivered chunk count per connection so a
@@ -1294,19 +1302,30 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // frees up and the user can keep chatting. Fanned out over NATS to whichever
   // pod runs the turn (like cancel); that pod's running `subtask` call aborts
   // its inline run and re-runs it as a durable background job. Owner-only.
-  app.post("/:org/decopilot/flip/:threadId", async (c) => {
-    const { taskId, thread } = await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(thread.harness_id);
-    const body = (await c.req.json().catch(() => null)) as {
-      toolCallId?: unknown;
-    } | null;
-    const toolCallId = body?.toolCallId;
-    if (typeof toolCallId !== "string" || toolCallId.length === 0) {
-      return c.json({ error: "toolCallId is required" }, 400);
-    }
-    broadcastFlip(taskId, toolCallId);
-    return c.json({ flipped: true, async: true }, 202);
-  });
+  app.post(
+    "/:org/decopilot/flip/:threadId",
+    bodyLimit({
+      maxSize: MAX_FLIP_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    async (c) => {
+      const { taskId, thread } = await validateThreadOwnership(c);
+      assertPersistedHostedRuntime(thread.harness_id);
+      const body = (await c.req.json().catch(() => null)) as {
+        toolCallId?: unknown;
+      } | null;
+      const toolCallId = body?.toolCallId;
+      if (
+        typeof toolCallId !== "string" ||
+        toolCallId.length === 0 ||
+        toolCallId.length > MAX_TOOL_CALL_ID_LENGTH
+      ) {
+        return c.json({ error: "toolCallId is required" }, 400);
+      }
+      broadcastFlip(taskId, toolCallId);
+      return c.json({ flipped: true, async: true }, 202);
+    },
+  );
 
   // ==========================================================================
   // Queue Endpoints — the thread's pending gate workflows (running head +
