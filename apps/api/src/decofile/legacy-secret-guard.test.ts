@@ -4,9 +4,8 @@
  * A v7 `website/loaders/secret.ts` block marks its `encrypted` string
  * `"format": "secret"`, but that string is the site's own hex ciphertext, not
  * a v8 `Secret` field. The guard must let it through unchanged, and stay strict
- * for v8 `Secret` fields and `secret` blocks. The published
- * `@decocms/blocks@8.1.0-next.3` lacks the exemption, so Studio carries it as
- * `patches/@decocms%2Fblocks@8.1.0-next.3.patch` until a release includes it.
+ * for v8 `Secret` fields and `secret` blocks. The exemption ships in
+ * `@decocms/blocks` itself (no Studio patch); this test keeps it covered.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
