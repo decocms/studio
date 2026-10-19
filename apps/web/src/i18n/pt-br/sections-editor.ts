@@ -326,7 +326,7 @@ export const sectionsEditor = {
     "{name} também mudou o campo “{label}”",
   "sectionsEditor.formConflict.titleStepYou":
     "Você também mudou o campo “{label}” em outra aba ou janela",
-  "sectionsEditor.formConflict.summaryTheirsNamed": "a deles",
+  "sectionsEditor.formConflict.summaryTheirsNamed": "a de {name}",
   "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
   "sectionsEditor.formConflict.savedAt": "salva {when}",
   "sectionsEditor.formConflict.empty": "Vazio",
