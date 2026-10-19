@@ -156,7 +156,7 @@ function ChatMessages() {
     hiddenFromBody.size === 0
       ? messages
       : messages.filter((m) => !hiddenFromBody.has(m.id));
-  // Messages sent into a running claude-code turn render inside its answer,
+  // Messages sent into a running sandbox turn render inside its answer,
   // not as turns of their own (see live-messages.ts).
   const liveMessages = placeLiveMessages(
     unqueuedMessages,

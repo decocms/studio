@@ -27,6 +27,9 @@ describe.skipIf(!codex)("daemon Codex dispatch", () => {
   let upstream: ReturnType<typeof Bun.serve>;
   let requests = 0;
   let modelSawSkill = false;
+  let holdResponse: Promise<void> | undefined;
+  let onModelRequest: ((body: string) => void) | undefined;
+  const modelInputs: string[] = [];
   const mcpHeaders: Array<string | null> = [];
   const secret = "synthetic-mcp-credential-example";
 
@@ -60,7 +63,12 @@ describe.skipIf(!codex)("daemon Codex dispatch", () => {
           return Response.json({ jsonrpc: "2.0", id: message.id, result });
         }
         if (path === "/v1/responses" && req.method === "POST") {
-          modelSawSkill ||= (await req.text()).includes("example-codex-skill");
+          const body = await req.text();
+          modelSawSkill ||= body.includes("example-codex-skill");
+          modelInputs.push(body);
+          onModelRequest?.(body);
+          const hold = holdResponse;
+          if (hold) await hold;
           requests++;
           const item = {
             id: `message_example_${requests}`,
@@ -164,44 +172,51 @@ describe.skipIf(!codex)("daemon Codex dispatch", () => {
     if (home) await rm(home, { recursive: true, force: true });
   }, HOOK_TIMEOUT_MS);
 
+  function envelope(runId: string, threadId: string) {
+    return {
+      harnessId: "codex",
+      runId: runId,
+      input: {
+        threadId: threadId,
+        userMessage: {
+          id: `message_${runId}`,
+          role: "user",
+          parts: [{ type: "text", text: "Say hello." }],
+        },
+        harness: {},
+        workspace: { cwd: "/repo", branch: null },
+        models: {
+          thinking: {
+            id: "gpt-6.1-sol",
+            title: "Codex",
+            credentialId: "key_example",
+          },
+        },
+        mcp: {
+          url: `http://localhost:${upstream.port}/mcp`,
+          headers: { Authorization: `Bearer ${secret}` },
+          expiresAt: Date.now() + 3600000,
+        },
+        mode: "default",
+        temperature: 0,
+        liveMessages: false,
+        toolApprovalLevel: "auto",
+        user: { id: "user_example", email: "user@example.com" },
+        organizationId: "org_example",
+        agent: { id: "agent_example" },
+      },
+    };
+  }
+
   test("streams two turns, resumes the session, counts usage per turn, and excludes MCP credentials from persisted transcripts", async () => {
     let session: string | undefined;
     for (let turn = 0; turn < 2; turn++) {
       const res = await fetch(url(daemon, "/_sandbox/dispatch"), {
         method: "POST",
         headers: authHeaders({ "content-type": "application/json" }),
-        body: JSON.stringify({
-          harnessId: "codex",
-          runId: `run_codex_example_${turn}`,
-          input: {
-            threadId: "thread_codex_example",
-            userMessage: {
-              id: `message_example_${turn}`,
-              role: "user",
-              parts: [{ type: "text", text: "Say hello." }],
-            },
-            harness: {},
-            workspace: { cwd: "/repo", branch: null },
-            models: {
-              thinking: {
-                id: "gpt-6.1-sol",
-                title: "Codex",
-                credentialId: "key_example",
-              },
-            },
-            mcp: {
-              url: `http://localhost:${upstream.port}/mcp`,
-              headers: { Authorization: `Bearer ${secret}` },
-              expiresAt: Date.now() + 3600000,
-            },
-            mode: "default",
-            temperature: 0,
-            toolApprovalLevel: "auto",
-            user: { id: "user_example", email: "user@example.com" },
-            organizationId: "org_example",
-            agent: { id: "agent_example" },
-          },
-        }),
+        body: JSON.stringify(
+          envelope(`run_codex_example_${turn}`, "thread_codex_example"),
+        ),
         signal: AbortSignal.timeout(30000),
       });
       expect(res.ok).toBeTrue();
@@ -244,4 +259,105 @@ describe.skipIf(!codex)("daemon Codex dispatch", () => {
     for (const path of transcripts)
       expect(await readFile(join(home, path), "utf8")).not.toContain(secret);
   }, 60000);
+
+  test.each([false, true])(
+    "steers the active native turn through the daemon, persistent=%s",
+    async (persistent) => {
+      const runId = `run_steer_example_${persistent}`;
+      let release: (() => void) | undefined;
+      holdResponse = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const modelStarted = new Promise<void>((resolve) => {
+        onModelRequest = () => resolve();
+      });
+      const before = modelInputs.length;
+      const body = envelope(runId, `thread_steer_example_${persistent}`);
+      body.input.liveMessages = true;
+      const response = fetch(url(daemon, "/_sandbox/dispatch"), {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          ...body,
+          ...(persistent ? { sessionKey: "steer-session-example" } : {}),
+        }),
+        signal: AbortSignal.timeout(30000),
+      }).then(async (res) => {
+        expect(res.ok).toBeTrue();
+        return res.text();
+      });
+      void response.catch(() => {});
+      try {
+        await modelStarted;
+        const endpoint = url(daemon, `/_sandbox/runs/${runId}/messages`);
+        const message = {
+          id: "live_message_example",
+          text: "STEER_MARKER_EXAMPLE: focus on tests",
+        };
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const delivered = await fetch(endpoint, {
+            method: "POST",
+            headers: authHeaders({ "content-type": "application/json" }),
+            body: JSON.stringify(message),
+            signal: AbortSignal.timeout(5000),
+          });
+          expect(delivered.status).toBe(200);
+          expect(await delivered.json()).toEqual({
+            delivered: true,
+            ...(attempt ? { duplicate: true } : {}),
+          });
+        }
+        release?.();
+        const frames = (await response)
+          .trim()
+          .split("\n")
+          .filter((line) => line.trim())
+          .map((line) => JSON.parse(line));
+        expect(frames.some((frame) => frame.error)).toBeFalse();
+        expect(frames.at(-1).done).toBeTrue();
+        const chunks = frames.flatMap((frame) => frame.chunks);
+        expect(chunks.filter((chunk) => chunk.type === "start")).toHaveLength(
+          1,
+        );
+        expect(chunks.filter((chunk) => chunk.type === "finish")).toHaveLength(
+          1,
+        );
+        expect(
+          chunks.filter((chunk) => chunk.type === "data-live-message"),
+        ).toEqual([
+          {
+            type: "data-live-message",
+            id: "live-message-live_message_example",
+            data: { messageId: message.id },
+          },
+        ]);
+        expect(
+          modelInputs
+            .slice(before)
+            .some((input) => input.includes(message.text)),
+        ).toBeTrue();
+        const finish = chunks.find((chunk) => chunk.type === "finish");
+        // The first inference was steered before producing a response. Only the completed call is billed.
+        expect(finish.messageMetadata.usage.totalTokens).toBe(7);
+        expect(
+          (
+            await fetch(endpoint, {
+              method: "POST",
+              headers: authHeaders({ "content-type": "application/json" }),
+              body: JSON.stringify({
+                id: "late_message_example",
+                text: "too late",
+              }),
+            })
+          ).status,
+        ).toBe(409);
+      } finally {
+        onModelRequest = undefined;
+        holdResponse = undefined;
+        release?.();
+        await response.catch(() => {});
+      }
+    },
+    30000,
+  );
 });

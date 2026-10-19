@@ -493,10 +493,11 @@ export function ChatInput({
   const ownerName =
     owner?.user?.name ?? owner?.user?.email?.split("@")[0] ?? null;
   const hostedRuntimeBlocked = shouldBlockHostedRuntime(task?.harness_id);
-  // A text message sent now goes into the running claude-code turn instead of
+  // A text message sent now goes into the running sandbox turn instead of
   // the queue (the server decides; this only says so).
   const sendsToRunningAgent =
-    task?.harness_id === "claude-code" && (isStreaming || isRunInProgress);
+    (task?.harness_id === "claude-code" || task?.harness_id === "codex") &&
+    (isStreaming || isRunInProgress);
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.

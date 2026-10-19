@@ -34,12 +34,16 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   the daemon needs new part types.
 - Emit a frame per turn, and always emit a final frame — including on a throw.
 - Remember the per-thread session id so a follow-up turn resumes.
-- Take live messages into the running turn. Each one goes into the SDK's
-  streaming input as a `priority: "next"` user message, which Claude Code reads
+- Take live messages into the running turn. Claude Code sends each one into
+  the SDK's streaming input as a `priority: "next"` user message, which it reads
   between tool rounds; `--replay-user-messages` echoes it back at that point,
   where the run emits a `data-live-message` part naming Studio's message id. A
   message the turn ends without reading starts the CLI's next turn, which the
-  same run keeps reading. Every message gets a `{"liveMessageAck":…}` stdout
+  same run keeps reading. Codex uses `turn/steer` with the active turn id and
+  the Studio message id. Its `userMessage` item echo places the same inline
+  marker. The runner confirms delivery only after the native steer succeeds;
+  a finishing or refused turn falls back to Studio's queue. Every message gets
+  a `{"liveMessageAck":…}` stdout
   line, `accepted: false` once the turn has decided to finish, so the daemon
   answers Studio only with what is true.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a

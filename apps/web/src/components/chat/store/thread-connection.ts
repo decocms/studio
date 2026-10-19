@@ -419,7 +419,7 @@ export class ThreadConnection {
    */
   /**
    * POST a message sent while a run is in progress. `live` when the server
-   * delivered it into that run (a claude-code run with live messages on);
+   * delivered it into that run (a sandbox run with live messages on);
    * `queued` when it waits behind the run as the next turn.
    */
   async enqueue(

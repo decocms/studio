@@ -15,6 +15,7 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import type { UIMessageChunk } from "ai";
 import { promptForRun, type EmitFrame } from "./claude-code";
 import { CodexChunkTranslator, record } from "./codex-to-ui-chunks";
+import { liveMessageChunk, type LiveMessageInbox } from "./live-messages";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -68,6 +69,8 @@ function toml(value: unknown): string {
 export async function runCodex(
   input: HarnessStreamInputWire,
   emit: EmitFrame,
+  _turnStartedAt?: number,
+  inbox?: LiveMessageInbox,
 ): Promise<void> {
   const translator = new CodexChunkTranslator();
   const home =
@@ -192,18 +195,22 @@ export async function runCodex(
     const request = (
       method: string,
       params: unknown,
+      timeoutMs = 60000,
     ): Promise<Record<string, unknown>> =>
       new Promise((resolve, reject) => {
         const id = nextId++;
         const timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error(`Codex ${method} timed out`));
-        }, 60000);
+        }, timeoutMs);
         pending.set(id, { resolve, reject, timer });
         send({ id, method, params });
       });
     let threadId = "";
     let turnId = "";
+    let turnEnded = false;
+    const liveDeliveries = new Map<string, Promise<boolean>>();
+    const liveRead = new Set<string>();
     let finish: ((turn: Record<string, unknown>) => void) | undefined;
     let fail: ((error: Error) => void) | undefined;
     const done = new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -259,10 +266,24 @@ export async function runCodex(
             turnId = String(record(params.turn).id ?? "");
           if (params.turnId && params.turnId !== turnId) continue;
           if (message.method === "turn/completed") {
+            turnEnded = true;
+            inbox?.close();
             finish?.(record(params.turn));
             continue;
           }
           if (started) {
+            const item = record(params.item);
+            if (
+              (message.method === "item/started" ||
+                message.method === "item/completed") &&
+              item.type === "userMessage" &&
+              typeof item.clientId === "string" &&
+              liveDeliveries.has(item.clientId) &&
+              !liveRead.has(item.clientId)
+            ) {
+              liveRead.add(item.clientId);
+              emit({ chunks: [liveMessageChunk(item.clientId)] });
+            }
             const chunks = translator.translate(message.method, params);
             if (chunks.length) emit({ chunks });
           }
@@ -351,7 +372,32 @@ export async function runCodex(
           : {}),
       });
       turnId = String(record(turn.turn).id ?? turnId);
+      if (input.liveMessages && !turnEnded) {
+        inbox?.open((message) => {
+          if (turnEnded || translator.awaitingUser || !turnId) return false;
+          const existing = liveDeliveries.get(message.id);
+          if (existing) return existing;
+          const expectedTurnId = turnId;
+          const delivery = request(
+            "turn/steer",
+            {
+              threadId,
+              expectedTurnId,
+              clientUserMessageId: message.id,
+              input: [{ type: "text", text: message.text, text_elements: [] }],
+            },
+            20000,
+          )
+            .then((result) => result.turnId === expectedTurnId)
+            .catch(() => liveRead.has(message.id));
+          liveDeliveries.set(message.id, delivery);
+          return delivery;
+        });
+      }
       const result = await done;
+      // The native completion can race a steer response. Let its ack settle
+      // before the runner exits, so Studio can queue any refused message.
+      await Promise.all(liveDeliveries.values());
       const failed =
         result.status === "failed" ||
         (result.status === "interrupted" && !translator.awaitingUser);
@@ -379,6 +425,7 @@ export async function runCodex(
         ],
       });
     } finally {
+      inbox?.close();
       proc.kill();
       await proc.exited;
       await pump;
@@ -408,6 +455,7 @@ export async function runCodex(
       error: { code: "harness_crashed", message: safe },
     });
   } finally {
+    inbox?.close();
     proc?.kill();
     authWatcher?.close();
     await syncFlight;

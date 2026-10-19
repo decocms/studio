@@ -1,5 +1,5 @@
 /**
- * A message sent while a hosted claude-code run is working, delivered into that
+ * A message sent while a hosted sandbox run is working, delivered into that
  * run instead of queued as the next turn.
  *
  * The path: the messages route persists the user row (once, with the target
@@ -158,7 +158,7 @@ export type LiveDeliveryOutcome =
   | "not-attempted";
 
 /**
- * Try to deliver `message` into the thread's running claude-code turn.
+ * Try to deliver `message` into the thread's running sandbox turn.
  *
  * Only the thread's creator can: a teammate's message to someone else's run
  * goes through the queue, as it does today. A message already persisted is
@@ -186,7 +186,7 @@ export async function deliverLiveMessage<M extends LiveMessage>(args: {
   if (
     text === null ||
     thread.organization_id !== args.organizationId ||
-    args.harnessId !== "claude-code" ||
+    (args.harnessId !== "claude-code" && args.harnessId !== "codex") ||
     thread.status !== "in_progress" ||
     thread.created_by !== args.userId ||
     args.storedLiveRunId === null

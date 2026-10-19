@@ -953,7 +953,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         runId: taskId,
       });
 
-      // A message for a claude-code run that is working goes into that run
+      // A message for a sandbox run that is working goes into that run
       // (see `harnesses/live-messages.ts`). Whatever it cannot deliver is
       // queued below exactly as before.
       if (existingThread && answer === null) {

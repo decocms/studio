@@ -1298,7 +1298,7 @@ export function ActiveTaskProvider({
           stashPendingBody(capturedTaskId, message);
           const delivery = await conn.enqueue(message, requestOptions);
           if (delivery.kind === "live") {
-            // Delivered into the running claude-code turn: no queue entry. It
+            // Delivered into the running sandbox turn: no queue entry. It
             // shows in the body, and moves to where the agent read it once the
             // run says so (`data-live-message`).
             dropPendingBody(capturedTaskId, message.id);

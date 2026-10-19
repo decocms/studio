@@ -77,6 +77,17 @@ describe("LiveMessageTurn", () => {
     inbox.close();
     expect(inbox.deliver({ id: "m2", text: "b" })).toBe(false);
   });
+
+  test("an asynchronous native refusal stays false after the inbox closes", async () => {
+    const inbox = new LiveMessageInbox();
+    const ack = Promise.withResolvers<boolean>();
+    inbox.open(() => ack.promise);
+    const delivery = inbox.deliver({ id: "m1", text: "a" });
+    inbox.close();
+    expect(inbox.deliver({ id: "m2", text: "b" })).toBe(false);
+    ack.resolve(false);
+    expect(await delivery).toBe(false);
+  });
 });
 
 test("usage is summed across CLI turns; the session's running cost is not", () => {

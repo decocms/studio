@@ -52,7 +52,12 @@ function envelopeLines(): AsyncIterator<string, undefined> {
       if (!line.trim()) continue;
       const message = parseLiveMessageLine(parseJson(line));
       if (message) {
-        console.log(liveMessageAckLine(message.id, inbox.deliver(message)));
+        // A native steer waits for its RPC ack. Keep reading stdin so other
+        // deliveries do not spend their daemon timeout behind that request.
+        void Promise.resolve(inbox.deliver(message)).then(
+          (accepted) => console.log(liveMessageAckLine(message.id, accepted)),
+          () => console.log(liveMessageAckLine(message.id, false)),
+        );
         continue;
       }
       ready.push(line);
@@ -139,7 +144,12 @@ if (typeof body.input !== "object" || body.input === null) {
 // exec'ing this, so the shape is trusted from here.
 switch (body.harnessId) {
   case "codex":
-    await runCodex(body.input as Parameters<typeof runCodex>[0], emit);
+    await runCodex(
+      body.input as Parameters<typeof runCodex>[0],
+      emit,
+      undefined,
+      inbox,
+    );
     process.exit(0);
   case "claude-code":
     await runClaudeCode(

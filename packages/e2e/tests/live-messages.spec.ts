@@ -78,14 +78,27 @@ async function configureOrg(
   return { agentId: agent.item.id };
 }
 
-/** A claude-code thread with a turn running, in `orgSlug`. */
-async function runningClaudeCodeThread(
+/** A sandbox thread with a turn running, in `orgSlug`. */
+async function runningSandboxThread(
   api: APIRequestContext,
   db: Db,
   orgSlug: string,
   userId: string,
+  harnessId: "claude-code" | "codex",
 ): Promise<{ threadId: string; agentId: string }> {
   const { agentId } = await configureOrg(api, db, orgSlug);
+  if (harnessId === "codex") {
+    await callSelfMcpTool(api, orgSlug, "CODEX_SUBSCRIPTION_CONNECT", {
+      authJson: JSON.stringify({
+        tokens: {
+          access_token: "synthetic-access-example",
+          refresh_token: "synthetic-refresh-example",
+          id_token: "synthetic-id-example",
+          account_id: "account_example",
+        },
+      }),
+    });
+  }
   const thread = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,
@@ -94,12 +107,12 @@ async function runningClaudeCodeThread(
   );
   const running = await db.query(
     `UPDATE threads
-        SET harness_id = 'claude-code',
+        SET harness_id = $3,
             status = 'in_progress',
             run_fence_token = 'fence-e2e',
             message_storage_version = 2
       WHERE id = $1 AND created_by = $2`,
-    [thread.item.id, userId],
+    [thread.item.id, userId, harnessId],
   );
   expect(running.rowCount).toBe(1);
   return { threadId: thread.item.id, agentId };
@@ -140,96 +153,100 @@ async function storedMessage(db: Db, threadId: string, messageId: string) {
   return rows;
 }
 
-test.describe("live messages to a running claude-code turn", () => {
-  test("a run that cannot take it falls back to the queue, once per message id", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const api = page.context().request;
-    const db = await connectDevDb();
-    try {
-      const { threadId, agentId } = await runningClaudeCodeThread(
-        api,
-        db,
-        orgSlug,
-        user.userId,
-      );
-      const messageId = `msg-fallback-${Date.now()}`;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const res = await postMessage(
+for (const harnessId of ["claude-code", "codex"] as const) {
+  test.describe(`live messages to a running ${harnessId} turn`, () => {
+    test("a run that cannot take it falls back to the queue, once per message id", async ({
+      authedPage,
+    }) => {
+      const { page, orgSlug, user } = authedPage;
+      const api = page.context().request;
+      const db = await connectDevDb();
+      try {
+        const { threadId, agentId } = await runningSandboxThread(
           api,
+          db,
+          orgSlug,
+          user.userId,
+          harnessId,
+        );
+        const messageId = `msg-fallback-${Date.now()}`;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const res = await postMessage(
+            api,
+            orgSlug,
+            threadId,
+            agentId,
+            messageId,
+          );
+          expect(res.status()).toBe(202);
+          expect(await res.json()).toEqual({
+            taskId: threadId,
+            delivery: "queued",
+          });
+        }
+        // Stored once, and not as delivered: the queued turn carries it.
+        const rows = await storedMessage(db, threadId, messageId);
+        expect(rows.map((row) => row.kind).sort()).toEqual(["finish", "text"]);
+        expect(
+          rows.find((row) => row.kind === "finish")?.metadata?.liveRunId,
+        ).toBeUndefined();
+      } finally {
+        await db.end();
+      }
+    });
+
+    test("a message for another organization's thread is refused", async ({
+      authedPage,
+      playwright,
+    }) => {
+      const { page, orgSlug, user } = authedPage;
+      const api = page.context().request;
+      const db = await connectDevDb();
+      const intruder = await newApiContext(playwright);
+      try {
+        const { threadId, agentId } = await runningSandboxThread(
+          api,
+          db,
+          orgSlug,
+          user.userId,
+          harnessId,
+        );
+        const other = await signUpViaApi(intruder);
+        const otherOrgId = await orgIdForSlug(db, other.orgSlug);
+        // With the intruder's own org active, as the app leaves a session.
+        const setActive = await intruder.post(
+          "/api/auth/organization/set-active",
+          { data: { organizationId: otherOrgId } },
+        );
+        expect(setActive.ok()).toBe(true);
+        // Everything the route needs in the intruder's own org, so a refusal
+        // can only be about the thread.
+        const own = await configureOrg(intruder, db, other.orgSlug);
+
+        const messageId = `msg-intruder-${Date.now()}`;
+        // Through the intruder's own org, with its own agent…
+        const viaOwnOrg = await postMessage(
+          intruder,
+          other.orgSlug,
+          threadId,
+          own.agentId,
+          messageId,
+        );
+        expect(viaOwnOrg.status()).toBe(404);
+        // …and through the victim's, which the intruder is not a member of.
+        const viaVictimOrg = await postMessage(
+          intruder,
           orgSlug,
           threadId,
           agentId,
           messageId,
         );
-        expect(res.status()).toBe(202);
-        expect(await res.json()).toEqual({
-          taskId: threadId,
-          delivery: "queued",
-        });
+        expect(viaVictimOrg.status()).toBe(403);
+        expect(await storedMessage(db, threadId, messageId)).toEqual([]);
+      } finally {
+        await intruder.dispose();
+        await db.end();
       }
-      // Stored once, and not as delivered: the queued turn carries it.
-      const rows = await storedMessage(db, threadId, messageId);
-      expect(rows.map((row) => row.kind).sort()).toEqual(["finish", "text"]);
-      expect(
-        rows.find((row) => row.kind === "finish")?.metadata?.liveRunId,
-      ).toBeUndefined();
-    } finally {
-      await db.end();
-    }
+    });
   });
-
-  test("a message for another organization's thread is refused", async ({
-    authedPage,
-    playwright,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const api = page.context().request;
-    const db = await connectDevDb();
-    const intruder = await newApiContext(playwright);
-    try {
-      const { threadId, agentId } = await runningClaudeCodeThread(
-        api,
-        db,
-        orgSlug,
-        user.userId,
-      );
-      const other = await signUpViaApi(intruder);
-      const otherOrgId = await orgIdForSlug(db, other.orgSlug);
-      // With the intruder's own org active, as the app leaves a session.
-      const setActive = await intruder.post(
-        "/api/auth/organization/set-active",
-        { data: { organizationId: otherOrgId } },
-      );
-      expect(setActive.ok()).toBe(true);
-      // Everything the route needs in the intruder's own org, so a refusal
-      // can only be about the thread.
-      const own = await configureOrg(intruder, db, other.orgSlug);
-
-      const messageId = `msg-intruder-${Date.now()}`;
-      // Through the intruder's own org, with its own agent…
-      const viaOwnOrg = await postMessage(
-        intruder,
-        other.orgSlug,
-        threadId,
-        own.agentId,
-        messageId,
-      );
-      expect(viaOwnOrg.status()).toBe(404);
-      // …and through the victim's, which the intruder is not a member of.
-      const viaVictimOrg = await postMessage(
-        intruder,
-        orgSlug,
-        threadId,
-        agentId,
-        messageId,
-      );
-      expect(viaVictimOrg.status()).toBe(403);
-      expect(await storedMessage(db, threadId, messageId)).toEqual([]);
-    } finally {
-      await intruder.dispose();
-      await db.end();
-    }
-  });
-});
+}

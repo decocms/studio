@@ -82,9 +82,11 @@ export function mergeTurnResults(
  * process; a turn opens it on start and closes it once it decides to finish.
  */
 export class LiveMessageInbox {
-  private handler: ((message: LiveMessage) => boolean) | null = null;
+  private handler:
+    | ((message: LiveMessage) => boolean | Promise<boolean>)
+    | null = null;
 
-  open(handler: (message: LiveMessage) => boolean): void {
+  open(handler: (message: LiveMessage) => boolean | Promise<boolean>): void {
     this.handler = handler;
   }
 
@@ -93,7 +95,7 @@ export class LiveMessageInbox {
   }
 
   /** Whether a turn took the message. No turn running means no. */
-  deliver(message: LiveMessage): boolean {
+  deliver(message: LiveMessage): boolean | Promise<boolean> {
     return this.handler ? this.handler(message) : false;
   }
 }

@@ -145,7 +145,7 @@ export const harnessStreamInputSchema = z
      * The run takes messages while it works (`POST /_sandbox/runs/:runId/
      * messages`): the harness keeps its input open and the model reads each
      * one after its current step. Absent = a one-prompt run. Studio sets it on
-     * every claude-code dispatch.
+     * every Claude Code and Codex dispatch.
      */
     liveMessages: z.boolean().optional(),
     /**

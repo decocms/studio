@@ -663,6 +663,7 @@ export class SandboxDispatchClient {
     let warmPoolAdopted = false;
     const dispatchOnce = (
       resume: { reason: string } | null,
+      revalidate: boolean,
     ): AsyncIterable<UIMessageChunk> =>
       (async function* () {
         const sandbox = await ensureSandbox(
@@ -672,7 +673,7 @@ export class SandboxDispatchClient {
             // Headless loop, no preview — unless someone is watching it.
             purpose: interactive ? "interactive" : "harness-run",
             // A continuation lost this sandbox; its claim surviving proves nothing.
-            revalidate: resume !== null,
+            revalidate,
             // The longest silence in the run: pod boot, clone, and
             // (interactive) install. The chat has no per-thread stream here, so
             // this rides the org `/watch`. Only on a cold start — an
@@ -698,7 +699,7 @@ export class SandboxDispatchClient {
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
         // A rebound daemon may have booted without the env the cache says it has.
-        if (resume)
+        if (revalidate)
           await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
         else await pushEnvIfChanged(provider, sandbox, runEnv);
         markTurn(runId, "env-pushed");
@@ -804,6 +805,7 @@ export async function* dispatchWithContinuation(args: {
   aborted: () => boolean;
   dispatchOnce: (
     resume: { reason: string } | null,
+    revalidate: boolean,
   ) => AsyncIterable<UIMessageChunk>;
   /**
    * Ask the infrastructure why the sandbox went away, once it has. Answers the
@@ -832,7 +834,10 @@ export async function* dispatchWithContinuation(args: {
   for (let attempt = 1; ; attempt++) {
     let progressed = false;
     try {
-      for await (const chunk of args.dispatchOnce(resume)) {
+      for await (const chunk of args.dispatchOnce(
+        resume,
+        attempt > 1 || args.resume !== null,
+      )) {
         progressed = true;
         if ((chunk as { type?: string }).type === "start") {
           if (forwardedStart) continue;
