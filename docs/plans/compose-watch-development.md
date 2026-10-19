@@ -44,16 +44,20 @@ downloads, synchronization, and cache management remain real costs.
 
 ## Baseline source review
 
-| Source | Current responsibility or limitation |
+This table records the pre-migration state this plan was written against.
+`ensure-services.ts`, `pipeline.ts`, `cli/commands/dev.ts`, and
+`scripts/dev-worktree*.ts` no longer exist; see Removal scope.
+
+| Source | Responsibility or limitation at the time of this review |
 | --- | --- |
 | `deploy/docker-compose/docker-compose.postgres.yml` | Complete image-based Studio/PostgreSQL/NATS/MinIO stack; fixed container names; no explicit NATS data volume/store directory |
 | `deploy/docker-compose/docker-compose.dev.yml` | Host-source development dependencies: PostgreSQL and three-node NATS; fixed names and ports |
 | `selfhost/examples/docker-compose/compose.yaml` | Includes the complete stack; preserve this contributor/self-host entry point |
 | `tests/multi-pod/docker-compose.yml` | Existing precedent for one-shot migrations before application processes |
-| `apps/api/src/services/ensure-services.ts` | Managed local dependency lifecycle, shared by repository development and the distributed CLI |
-| `apps/api/src/settings/pipeline.ts` | Resolves configuration, starts services, migrates, and assembles settings |
-| `apps/api/src/cli/commands/dev.ts` | Custom development launcher and lifecycle coordination |
-| `scripts/dev-worktree*.ts` | Worktree routing/ports and per-worktree managed homes |
+| `apps/api/src/services/ensure-services.ts` (removed) | Managed local dependency lifecycle, shared by repository development and the distributed CLI |
+| `apps/api/src/settings/pipeline.ts` (removed) | Resolves configuration, starts services, migrates, and assembles settings |
+| `apps/api/src/cli/commands/dev.ts` (removed) | Custom development launcher and lifecycle coordination |
+| `scripts/dev-worktree*.ts` (removed) | Worktree routing/ports and per-worktree managed homes |
 | `apps/api/package.json` | API development currently builds sandbox packages before server startup |
 
 This is a source review, not a successful Compose runtime verification. The
@@ -204,11 +208,11 @@ for deleting persisted data. Never use blanket volume deletion as branch cleanup
 
 ## Removal scope
 
-After verification, remove the repository and distributed CLI paths that manage
-embedded PostgreSQL, download NATS/MinIO, track service PIDs/state/ownership, or
-start/stop infrastructure with the application. Remove obsolete service commands,
-TUI lifecycle code, managed worktree homes, tests, dependencies such as
-`embedded-postgres` when unreferenced, and documentation for those paths.
+Done. The repository and distributed CLI paths that managed embedded
+PostgreSQL, downloaded NATS/MinIO, tracked service PIDs/state/ownership, or
+started/stopped infrastructure with the application were removed, along with
+obsolete service commands, TUI lifecycle code, managed worktree homes, tests,
+dependencies such as `embedded-postgres`, and documentation for those paths.
 
 Audit all callers, including `serve` and packaging, before deleting shared code.
 Retain application configuration validation, health checks, migrations, graceful
