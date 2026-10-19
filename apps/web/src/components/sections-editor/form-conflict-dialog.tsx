@@ -8,14 +8,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@decocms/ui/components/radio-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { type KeyboardEvent, type ReactNode, useId } from "react";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import { useT } from "@/i18n/use-t.ts";
+import { authClient } from "@/lib/auth-client";
 import { formatRelativeTime } from "@/lib/format-time.ts";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
 import type { ConflictAuthor } from "./conflict-author";
 import {
   type ConflictChoice,
@@ -28,22 +26,33 @@ import {
 } from "./form-conflict";
 
 /**
- * Asks the user, value by value, whose version to keep when they and someone
- * else changed the same fields of a section (form-conflict.ts). Every field
- * starts on "yours", so one click keeps the user's version. It must be
- * answered: an alert dialog with no close button, Escape or click outside;
- * nothing of the form's is saved until the user saves their choice.
+ * Asks the user whose version to keep when they and someone else changed the
+ * same fields of a section (form-conflict.ts). One field (the common case):
+ * two cards, theirs and yours, the whole card being the choice. Two or more:
+ * one row per field with a Yours / Theirs switch. Every field starts on
+ * "yours", so one click keeps the user's version, and the button names what
+ * saving does. On hosted v8 drafts their card names the member, with their
+ * avatar and when they saved (conflict-author.ts); elsewhere "Someone else".
+ * It must be answered: an alert dialog with no close button,
+ * Escape or click outside; nothing of the form's is saved until then.
  */
 interface FormConflictChoicesProps {
   fields: ConflictField[];
   choices: ConflictChoices;
   /** Their version changed again while the dialog was open. */
   changedAgain?: boolean;
-  /** Who made their change, and when; null (no line) while unknown. */
+  /** The signed-in user, for the avatar on their card. */
+  viewer?: ConflictViewer | null;
+  /** Who made their change, and when; null while unknown. */
   author?: ConflictAuthor | null;
   onChoose: (pointer: string, choice: ConflictChoice) => void;
   onChooseAll: (choice: ConflictChoice) => void;
   onApply: () => void;
+}
+
+export interface ConflictViewer {
+  name?: string | null;
+  image?: string | null;
 }
 
 export function FormConflictDialog({
@@ -51,11 +60,16 @@ export function FormConflictDialog({
   ...props
 }: FormConflictChoicesProps & { open: boolean }) {
   const t = useT();
+  const { data: session } = authClient.useSession();
+  const heading = conflictHeading(t, props.fields, props.author ?? null);
   return (
     // Controlled with no onOpenChange: only saving a choice closes it.
     <AlertDialog open={open}>
       <AlertDialogContent
-        className="sm:max-w-2xl max-h-[85vh] grid-rows-[auto_auto_minmax(0,1fr)_auto]"
+        className={cn(
+          "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto]",
+          props.fields.length === 1 ? "sm:max-w-lg" : "sm:max-w-xl",
+        )}
         data-testid="form-conflict-dialog"
         onEscapeKeyDown={(event) => event.preventDefault()}
         // An alert dialog focuses its Cancel button, and this one has none:
@@ -67,34 +81,71 @@ export function FormConflictDialog({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {t("sectionsEditor.formConflict.title")}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("sectionsEditor.formConflict.description")}
-          </AlertDialogDescription>
+          <AlertDialogTitle>{heading.title}</AlertDialogTitle>
+          <AlertDialogDescription>{heading.description}</AlertDialogDescription>
         </AlertDialogHeader>
-        <FormConflictChoices {...props} />
+        <FormConflictChoices {...props} viewer={session?.user ?? null} />
       </AlertDialogContent>
     </AlertDialog>
   );
 }
 
-/** The dialog's body: the fields in conflict, their choices and the actions. */
-export function FormConflictChoices({
-  fields,
-  choices,
-  changedAgain = false,
-  author = null,
-  onChoose,
-  onChooseAll,
-  onApply,
-}: FormConflictChoicesProps) {
+/**
+ * "Ana changed the title while you were editing" for one field, "… changed
+ * 2 fields …" for several; "Someone else" while who is unknown, "You … in
+ * another tab or window" for the viewer's own change.
+ */
+export function conflictHeading(
+  t: TFunction,
+  fields: readonly ConflictField[],
+  author: ConflictAuthor | null = null,
+): { title: string; description: string } {
+  const name = author?.name?.split(/\s+/)[0];
+  const [only] = fields;
+  if (fields.length === 1 && only) {
+    const vars = {
+      field: fieldInSentence(only.label),
+      label: only.label,
+      name: name ?? "",
+    };
+    return {
+      title: author?.you
+        ? t("sectionsEditor.formConflict.titleOneYou", vars)
+        : name
+          ? t("sectionsEditor.formConflict.titleOneNamed", vars)
+          : t("sectionsEditor.formConflict.titleOne", vars),
+      description: t("sectionsEditor.formConflict.descriptionOne"),
+    };
+  }
+  const vars = { count: String(fields.length), name: name ?? "" };
+  return {
+    title: author?.you
+      ? t("sectionsEditor.formConflict.titleManyYou", vars)
+      : name
+        ? t("sectionsEditor.formConflict.titleManyNamed", vars)
+        : t("sectionsEditor.formConflict.titleMany", vars),
+    description: t("sectionsEditor.formConflict.descriptionMany"),
+  };
+}
+
+/**
+ * A field's label inside an English sentence: "Title" -> "title"; a path
+ * ("Cta › Label") or an acronym ("SEO") as labeled.
+ */
+export function fieldInSentence(label: string): string {
+  return /^[A-Z][a-z]/.test(label) && !label.includes("›")
+    ? label.charAt(0).toLowerCase() + label.slice(1)
+    : label;
+}
+
+/** The dialog's body and actions: cards for one field, a switch per field for more. */
+export function FormConflictChoices(props: FormConflictChoicesProps) {
   const t = useT();
+  const { fields, changedAgain = false, author = null } = props;
   return (
     <>
-      {author && <ConflictAuthorLine author={author} />}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="-mx-2 flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-1">
+        {fields.length > 1 && author && <ConflictAuthorLine author={author} />}
         <p
           role="status"
           className={cn(
@@ -104,51 +155,319 @@ export function FormConflictChoices({
         >
           {changedAgain ? t("sectionsEditor.formConflict.changedAgain") : ""}
         </p>
-        <div className="ml-auto flex gap-2">
+        {fields.length === 1 && fields[0] ? (
+          <ConflictCards field={fields[0]} {...props} />
+        ) : (
+          <ul className="flex flex-col gap-4">
+            {fields.map((field) => (
+              <ConflictFieldRow
+                key={field.pointer}
+                field={field}
+                choice={props.choices[field.pointer] ?? "mine"}
+                onChoose={(choice) => props.onChoose(field.pointer, choice)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+      <AlertDialogFooter className="items-center gap-2">
+        {fields.length > 1 && (
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            onClick={() => onChooseAll("mine")}
+            onClick={() => props.onChooseAll("theirs")}
           >
-            {t("sectionsEditor.formConflict.keepYours")}
+            {t("sectionsEditor.formConflict.useTheirsForAll")}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onChooseAll("theirs")}
-          >
-            {t("sectionsEditor.formConflict.useTheirs")}
-          </Button>
-        </div>
-      </div>
-      <div className="-mx-2 min-h-0 overflow-y-auto px-2">
-        <ul className="flex flex-col gap-4">
-          {fields.map((field) => (
-            <ConflictFieldRow
-              key={field.pointer}
-              field={field}
-              choice={choices[field.pointer]}
-              onChoose={(choice) => onChoose(field.pointer, choice)}
-            />
-          ))}
-        </ul>
-      </div>
-      <AlertDialogFooter className="items-center">
-        <Button type="button" onClick={onApply}>
-          {t("sectionsEditor.formConflict.apply")}
+        )}
+        <Button type="button" onClick={props.onApply}>
+          {applyLabel(t, fields, props.choices)}
         </Button>
       </AlertDialogFooter>
     </>
   );
 }
 
+/** What saving does: "Keep yours", "Use theirs" or, field by field, "Keep a mix". */
+export function applyLabel(
+  t: TFunction,
+  fields: readonly ConflictField[],
+  choices: ConflictChoices,
+): string {
+  const picked = fields.map((field) => choices[field.pointer] ?? "mine");
+  const one = fields.length === 1;
+  if (picked.every((choice) => choice === "mine")) {
+    return t(
+      one
+        ? "sectionsEditor.formConflict.keepYours"
+        : "sectionsEditor.formConflict.keepAllYours",
+    );
+  }
+  if (picked.every((choice) => choice === "theirs")) {
+    return t(
+      one
+        ? "sectionsEditor.formConflict.useTheirs"
+        : "sectionsEditor.formConflict.useAllTheirs",
+    );
+  }
+  return t("sectionsEditor.formConflict.keepMix");
+}
+
+/** Both sides' values, with the words that differ marked when both are text. */
+function sides(field: ConflictField) {
+  const mine = previewValue(field.mine, field.schema);
+  const theirs = previewValue(field.theirs, field.schema);
+  const diff =
+    mine.kind === "text" && theirs.kind === "text"
+      ? diffWords(mine.text, theirs.text)
+      : null;
+  return (side: ConflictChoice) =>
+    diff ? (
+      <DiffText parts={diff[side]} />
+    ) : (
+      <Preview preview={side === "mine" ? mine : theirs} />
+    );
+}
+
 /**
- * "Changed by Ana Souza · 3 minutes ago" (the exact time on hover), with the
- * member's avatar when there is one; "You, in another tab or window · …" for
- * the viewer's own change, "Changed 5 minutes ago" when only the time is
- * known. Hosted v8 drafts only (the draft object's metadata).
+ * Arrow keys move the choice between a group's radios, as native radios do;
+ * Space and Enter press the focused one (they are buttons).
+ */
+function onRadioKeyDown(event: KeyboardEvent<HTMLElement>) {
+  const step = (
+    { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 } as Record<
+      string,
+      number
+    >
+  )[event.key];
+  if (!step) return;
+  const radios = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'),
+  ];
+  const at = radios.indexOf(document.activeElement as HTMLElement);
+  if (at < 0) return;
+  event.preventDefault();
+  const next = radios[(at + step + radios.length) % radios.length];
+  next?.focus();
+  next?.click();
+}
+
+/** One field: the user's card and the other person's, the whole card a radio. */
+function ConflictCards({
+  field,
+  choices,
+  viewer,
+  author = null,
+  onChoose,
+}: FormConflictChoicesProps & { field: ConflictField }) {
+  const t = useT();
+  const [{ language }] = usePreferences();
+  const viewerAvatar = (
+    <Avatar
+      url={viewer?.image ?? undefined}
+      fallback={initials(viewer?.name) || t("sectionsEditor.formConflict.you")}
+      shape="circle"
+      size="sm"
+      className="text-xs"
+    />
+  );
+  const theirAvatar = author?.you ? (
+    viewerAvatar
+  ) : author?.name ? (
+    <Avatar
+      url={author.avatarUrl}
+      fallback={initials(author.name)}
+      shape="circle"
+      size="sm"
+      className="text-xs"
+    />
+  ) : (
+    <Avatar url="icon://user" fallback="" muted shape="circle" size="sm" />
+  );
+  const savedAt = author ? new Date(author.at) : null;
+  const value = sides(field);
+  const choice = choices[field.pointer] ?? "mine";
+  return (
+    <div
+      role="radiogroup"
+      aria-label={field.label}
+      className="flex flex-col gap-2"
+      onKeyDown={onRadioKeyDown}
+    >
+      <ConflictCard
+        side="mine"
+        checked={choice === "mine"}
+        onChoose={() => onChoose(field.pointer, "mine")}
+        avatar={viewerAvatar}
+        who={t("sectionsEditor.formConflict.you")}
+        meta={t("sectionsEditor.formConflict.yourVersionNotSaved")}
+      >
+        {value("mine")}
+      </ConflictCard>
+      <ConflictCard
+        side="theirs"
+        checked={choice === "theirs"}
+        onChoose={() => onChoose(field.pointer, "theirs")}
+        avatar={theirAvatar}
+        who={
+          author?.you
+            ? t("sectionsEditor.formConflict.youElsewhere")
+            : author?.name || t("sectionsEditor.formConflict.someoneElse")
+        }
+        meta={
+          savedAt
+            ? t("sectionsEditor.formConflict.savedAt", {
+                when: formatRelativeTime(savedAt, language),
+              })
+            : t("sectionsEditor.formConflict.theirVersionSaved")
+        }
+        metaTitle={savedAt ? exactTime(savedAt, language) : undefined}
+      >
+        {value("theirs")}
+      </ConflictCard>
+    </div>
+  );
+}
+
+/** "Ana Souza" -> "AS". */
+export function initials(name: string | null | undefined): string {
+  return (name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join("");
+}
+
+function ConflictCard({
+  side,
+  checked,
+  onChoose,
+  avatar,
+  who,
+  meta,
+  metaTitle,
+  children,
+}: {
+  side: ConflictChoice;
+  checked: boolean;
+  onChoose: () => void;
+  avatar: ReactNode;
+  who: string;
+  meta: string;
+  /** The exact time, on hover. */
+  metaTitle?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      aria-labelledby={`${id}-who`}
+      aria-describedby={`${id}-meta ${id}-value`}
+      tabIndex={checked ? 0 : -1}
+      onClick={onChoose}
+      className={cn(
+        "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border bg-background p-3 text-left transition-[border-color,box-shadow,background-color] outline-none",
+        "focus-visible:ring-2 focus-visible:ring-ring/50",
+        checked
+          ? "border-primary bg-primary/5 ring-1 ring-primary"
+          : "hover:bg-muted/50",
+      )}
+    >
+      {avatar}
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground">
+          <span
+            id={`${id}-who`}
+            className="text-sm font-medium text-foreground"
+          >
+            {who}
+          </span>
+          <span id={`${id}-meta`} title={metaTitle}>
+            {meta}
+          </span>
+        </span>
+        <span
+          id={`${id}-value`}
+          data-testid={`conflict-${side}`}
+          className="min-w-0 text-sm"
+        >
+          {children}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** Two or more fields: each one's label, a Yours / Theirs switch and that side's value. */
+function ConflictFieldRow({
+  field,
+  choice,
+  onChoose,
+}: {
+  field: ConflictField;
+  choice: ConflictChoice;
+  onChoose: (choice: ConflictChoice) => void;
+}) {
+  const t = useT();
+  const value = sides(field);
+  return (
+    <li className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="min-w-0 text-sm font-medium">{field.label}</h3>
+        <div
+          role="radiogroup"
+          aria-label={field.label}
+          className="inline-flex shrink-0 gap-0.5 rounded-lg bg-muted p-[3px]"
+          onKeyDown={onRadioKeyDown}
+        >
+          {(["mine", "theirs"] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              role="radio"
+              aria-checked={choice === side}
+              tabIndex={choice === side ? 0 : -1}
+              onClick={() => onChoose(side)}
+              className={cn(
+                // Studio's pill tabs, as a radio.
+                "cursor-pointer rounded-md border px-3 py-1 text-xs font-medium outline-none transition-[color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring/50",
+                choice === side
+                  ? "bg-background text-foreground shadow-sm dark:border-input dark:bg-input/30"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t(
+                side === "mine"
+                  ? "sectionsEditor.formConflict.yours"
+                  : "sectionsEditor.formConflict.theirs",
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div
+        data-testid={`conflict-${choice}`}
+        className="min-w-0 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+      >
+        {value(choice)}
+      </div>
+    </li>
+  );
+}
+
+const exactTime = (date: Date, language: string) =>
+  date.toLocaleString(language, { dateStyle: "medium", timeStyle: "short" });
+
+/**
+ * "Ana Souza · 3 minutes ago" (the exact time on hover), with the member's
+ * avatar when there is one; "You, in another tab or window · …" for the
+ * viewer's own change, "Changed 5 minutes ago" when only the time is known.
+ * Above the fields when several are in conflict (one field: on their card).
  */
 export function ConflictAuthorLine({
   author,
@@ -176,91 +495,20 @@ export function ConflictAuthorLine({
       {avatarUrl && (
         <Avatar
           url={avatarUrl}
-          fallback={author.name?.charAt(0) ?? ""}
+          fallback={initials(author.name)}
           shape="circle"
           size="xs"
-          className="shrink-0"
+          className="shrink-0 text-[10px]"
         />
       )}
       <time
         dateTime={date.toISOString()}
-        title={date.toLocaleString(language, {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })}
+        title={exactTime(date, language)}
         className="min-w-0 truncate"
       >
         {text}
       </time>
     </p>
-  );
-}
-
-function ConflictFieldRow({
-  field,
-  choice,
-  onChoose,
-}: {
-  field: ConflictField;
-  choice: ConflictChoice | undefined;
-  onChoose: (choice: ConflictChoice) => void;
-}) {
-  const t = useT();
-  const mine = previewValue(field.mine, field.schema);
-  const theirs = previewValue(field.theirs, field.schema);
-  const diff =
-    mine.kind === "text" && theirs.kind === "text"
-      ? diffWords(mine.text, theirs.text)
-      : null;
-  return (
-    <li className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">{field.label}</h3>
-      <RadioGroup
-        aria-label={field.label}
-        value={choice ?? ""}
-        onValueChange={(value) => onChoose(value as ConflictChoice)}
-        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-      >
-        {(["mine", "theirs"] as const).map((side) => {
-          const selected = choice === side;
-          return (
-            <label
-              key={side}
-              className={cn(
-                "flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors",
-                selected ? "border-primary bg-primary/5" : "hover:bg-muted/50",
-              )}
-            >
-              <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <RadioGroupItem
-                  value={side}
-                  aria-label={t(
-                    side === "mine"
-                      ? "sectionsEditor.formConflict.keepYours"
-                      : "sectionsEditor.formConflict.useTheirs",
-                  )}
-                />
-                {t(
-                  side === "mine"
-                    ? "sectionsEditor.formConflict.yourVersion"
-                    : "sectionsEditor.formConflict.theirVersion",
-                )}
-              </span>
-              <span
-                data-testid={`conflict-${side}`}
-                className="min-w-0 text-sm"
-              >
-                {diff ? (
-                  <DiffText parts={diff[side]} />
-                ) : (
-                  <Preview preview={side === "mine" ? mine : theirs} />
-                )}
-              </span>
-            </label>
-          );
-        })}
-      </RadioGroup>
-    </li>
   );
 }
 

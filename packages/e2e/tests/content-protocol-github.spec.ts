@@ -1399,25 +1399,29 @@ test.describe("v8 editor: every content change refreshes the editor and the prev
       expect(applied.error).toBeUndefined();
 
       await title.fill("Mine");
-      const dialog = page.getByRole("alertdialog", {
-        name: "Someone else changed this while you were editing",
-      });
+      const dialog = page.getByRole("alertdialog");
       await expect(dialog).toBeVisible({ timeout: 30_000 });
       const field = dialog.getByRole("radiogroup", { name: "Title" });
       await expect(field.getByTestId("conflict-mine")).toHaveText("Mine");
       await expect(field.getByTestId("conflict-theirs")).toHaveText("Theirs");
-      await expect(dialog.getByTestId("form-conflict-author")).toHaveText(
-        /^You, in another tab or window · /,
+      // The draft's metadata says who and when: here the viewer, from the
+      // RPC above. One field: the title and their card say so.
+      await expect(dialog).toHaveAccessibleName(
+        "You changed the title in another tab or window",
         { timeout: 15_000 },
       );
+      const theirCard = field.getByRole("radio", {
+        name: "You, in another tab or window",
+      });
+      await expect(theirCard).toHaveAccessibleDescription(/^saved .+ Theirs$/);
+      await expect(dialog.getByTestId("form-conflict-author")).toHaveCount(0);
 
-      // Every field starts on yours: one click saves the user's version.
+      // Yours is chosen: one click saves the user's version.
       await expect(
-        field.getByRole("radio", { name: "Keep yours" }),
+        field.getByRole("radio", { name: "You", exact: true }),
       ).toBeChecked();
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      await expect(theirCard).not.toBeChecked();
+      await dialog.getByRole("button", { name: "Keep yours" }).click();
       await expect(dialog).toBeHidden();
       const drafts = `sites/${project.owner}/drafts/`;
       await expect

@@ -31,10 +31,11 @@ const MERGED = "Someone else also edited this block";
 
 /** The dialog that asks whose version to keep for values both changed. */
 // An alert dialog: it must be answered (no close button, Escape or click
-// outside).
+// outside). Named for the field ("Someone else changed the headline while
+// you were editing"), or the count of fields.
 const conflictDialog = (page: Page) =>
   page.getByRole("alertdialog", {
-    name: "Someone else changed this while you were editing",
+    name: /^Someone else changed .+ while you were editing$/,
   });
 
 const hero = {
@@ -509,13 +510,16 @@ test.describe("Site Editor stale section form", () => {
         published,
       );
 
-      // Every field starts on yours: one click saves the user's version.
+      // One field: two cards, named for the field. Yours is chosen, so one
+      // click saves the user's version.
+      await expect(dialog).toHaveAccessibleName(
+        "Someone else changed the headline while you were editing",
+      );
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
       await expect(
-        field.getByRole("radio", { name: "Keep yours" }),
-      ).toBeChecked();
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+        field.getByRole("radio", { name: "Someone else" }),
+      ).not.toBeChecked();
+      await dialog.getByRole("button", { name: "Keep yours" }).click();
       await expect(dialog).toBeHidden();
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"), {
@@ -538,7 +542,7 @@ test.describe("Site Editor stale section form", () => {
     }
   });
 
-  test("Use theirs keeps their version in every field and loads it into the form", async ({
+  test("choosing their card keeps their version and loads it into the form", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -557,13 +561,15 @@ test.describe("Site Editor stale section form", () => {
       const dialog = conflictDialog(page);
       await expect(dialog).toBeVisible({ timeout: 20_000 });
       const field = dialog.getByRole("radiogroup", { name: "Headline" });
-      await dialog.getByRole("button", { name: "Use theirs" }).click();
+      // The whole card is the choice; the button then names it.
+      await field.getByTestId("conflict-theirs").click();
       await expect(
-        field.getByRole("radio", { name: "Use theirs" }),
+        field.getByRole("radio", { name: "Someone else" }),
       ).toBeChecked();
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      await expect(
+        dialog.getByRole("button", { name: "Keep yours" }),
+      ).toHaveCount(0);
+      await dialog.getByRole("button", { name: "Use theirs" }).click();
       await expect(dialog).toBeHidden();
       await expect(headline).toHaveValue("Published headline");
       await page.waitForTimeout(3_000);
@@ -618,20 +624,32 @@ test.describe("Site Editor stale section form", () => {
       await subtitle.fill("Draft subtitle");
       const dialog = conflictDialog(page);
       await expect(dialog).toBeVisible({ timeout: 20_000 });
+      // Two fields: a Yours / Theirs switch per field.
+      await expect(dialog).toHaveAccessibleName(
+        "Someone else changed 2 fields while you were editing",
+      );
       await expect(dialog.getByRole("radiogroup")).toHaveCount(2);
-      // Headline stays on yours (the default); Subtitle switches to theirs.
+      // Headline stays on yours (the default); Subtitle switches to theirs,
+      // and shows their value.
+      const subtitleChoice = dialog
+        .getByRole("listitem")
+        .filter({ has: page.getByRole("radiogroup", { name: "Subtitle" }) });
       await expect(
         dialog
           .getByRole("radiogroup", { name: "Headline" })
-          .getByRole("radio", { name: "Keep yours" }),
+          .getByRole("radio", { name: "Yours" }),
       ).toBeChecked();
+      await expect(subtitleChoice.getByTestId("conflict-mine")).toHaveText(
+        "Draft subtitle",
+      );
       await dialog
         .getByRole("radiogroup", { name: "Subtitle" })
-        .getByRole("radio", { name: "Use theirs" })
+        .getByRole("radio", { name: "Theirs" })
         .click();
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      await expect(subtitleChoice.getByTestId("conflict-theirs")).toHaveText(
+        "Published subtitle",
+      );
+      await dialog.getByRole("button", { name: "Keep a mix" }).click();
       await expect(dialog).toBeHidden();
 
       const chosen = { ...published, headline: "Draft headline" };
@@ -673,9 +691,7 @@ test.describe("Site Editor stale section form", () => {
       // A third editor saves while the user decides.
       const third = { ...hero, headline: "Third headline" };
       await writeElsewhere(page.request, url, "SharedHero", third);
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      await dialog.getByRole("button", { name: "Keep yours" }).click();
 
       // That save expected the version the dialog showed: it is refused, and
       // the same choice is asked with the newer version. Nothing is written
@@ -691,12 +707,8 @@ test.describe("Site Editor stale section form", () => {
       );
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
 
-      await expect(
-        field.getByRole("radio", { name: "Keep yours" }),
-      ).toBeChecked();
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
+      await dialog.getByRole("button", { name: "Keep yours" }).click();
       await expect(dialog).toBeHidden();
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"), {
@@ -744,14 +756,10 @@ test.describe("Site Editor stale section form", () => {
       await expect(field.getByTestId("conflict-mine")).toHaveText(
         "Draft headline",
       );
-      await expect(
-        field.getByRole("radio", { name: "Keep yours" }),
-      ).toBeChecked();
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
       expect(await storedBlock(page.request, url, "SharedHero")).toEqual(third);
 
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      await dialog.getByRole("button", { name: "Keep yours" }).click();
       await expect(dialog).toBeHidden();
       await expect
         .poll(() => storedBlock(page.request, url, "SharedHero"), {

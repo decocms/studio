@@ -715,7 +715,7 @@ test.describe("site editor over deco serve", () => {
       await title.fill("Hello from Studio");
 
       const dialog = page.getByRole("alertdialog", {
-        name: "Someone else changed this while you were editing",
+        name: "Someone else changed the title while you were editing",
       });
       await expect(dialog).toBeVisible({ timeout: 30_000 });
       const field = dialog.getByRole("radiogroup", { name: "Title" });
@@ -726,6 +726,11 @@ test.describe("site editor over deco serve", () => {
         "Changed on disk",
       );
       // Localhost says nothing about who made the other change.
+      await expect(
+        field.getByRole("radio", { name: "Someone else" }),
+      ).toHaveAccessibleDescription(
+        "Their version · already saved Changed on disk",
+      );
       await expect(dialog.getByTestId("form-conflict-author")).toHaveCount(0);
       // Nothing written over theirs while the user decides.
       expect((await heroOf(stub)).title).toBe("Changed on disk");
@@ -737,13 +742,9 @@ test.describe("site editor over deco serve", () => {
       await expect(dialog).toBeVisible();
       expect((await heroOf(stub)).title).toBe("Changed on disk");
 
-      // Every field starts on yours: one click saves the user's version.
-      await expect(
-        field.getByRole("radio", { name: "Keep yours" }),
-      ).toBeChecked();
-      await dialog
-        .getByRole("button", { name: "Save selected versions" })
-        .click();
+      // Yours is chosen: one click saves the user's version.
+      await expect(field.getByRole("radio", { name: "You" })).toBeChecked();
+      await dialog.getByRole("button", { name: "Keep yours" }).click();
       await expect(dialog).toBeHidden();
       await expect
         .poll(async () => (await heroOf(stub)).title, { timeout: 15_000 })

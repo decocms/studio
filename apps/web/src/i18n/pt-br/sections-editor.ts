@@ -293,21 +293,43 @@ export const sectionsEditor = {
     "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
-  "sectionsEditor.formConflict.title":
-    "Outra pessoa mudou isto enquanto você editava",
-  "sectionsEditor.formConflict.description":
-    "Vocês dois mudaram os campos abaixo. A sua versão já está escolhida em cada um; troque para a deles onde preferir. A versão deles continua salva até você salvar sua escolha.",
+  "sectionsEditor.formConflict.titleOne":
+    "Outra pessoa mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.titleMany":
+    "Outra pessoa mudou {count} campos enquanto você editava",
+  "sectionsEditor.formConflict.descriptionOne":
+    "Escolha qual versão manter. A outra é descartada.",
+  "sectionsEditor.formConflict.descriptionMany":
+    "Escolha qual versão manter em cada campo.",
   "sectionsEditor.formConflict.changedAgain":
-    "A versão deles mudou de novo enquanto isto estava aberto. Os campos abaixo já mostram essa mudança.",
-  "sectionsEditor.formConflict.changedBy": "Alterado por {name} · {when}",
+    "A versão deles mudou de novo enquanto isto estava aberto e já aparece abaixo.",
+  "sectionsEditor.formConflict.you": "Você",
+  "sectionsEditor.formConflict.someoneElse": "Outra pessoa",
+  "sectionsEditor.formConflict.yourVersionNotSaved":
+    "Sua versão · ainda não salva",
+  "sectionsEditor.formConflict.theirVersionSaved": "Versão deles · já salva",
+  "sectionsEditor.formConflict.yours": "Sua",
+  "sectionsEditor.formConflict.theirs": "Deles",
+  "sectionsEditor.formConflict.keepYours": "Manter a sua",
+  "sectionsEditor.formConflict.useTheirs": "Usar a deles",
+  "sectionsEditor.formConflict.keepAllYours": "Manter as suas",
+  "sectionsEditor.formConflict.useAllTheirs": "Usar as deles",
+  "sectionsEditor.formConflict.keepMix": "Manter a combinação",
+  "sectionsEditor.formConflict.useTheirsForAll": "Usar a deles em todos",
+  "sectionsEditor.formConflict.titleOneNamed":
+    "{name} mudou o campo “{label}” enquanto você editava",
+  "sectionsEditor.formConflict.titleOneYou":
+    "Você mudou o campo “{label}” em outra aba ou janela",
+  "sectionsEditor.formConflict.titleManyNamed":
+    "{name} mudou {count} campos enquanto você editava",
+  "sectionsEditor.formConflict.titleManyYou":
+    "Você mudou {count} campos em outra aba ou janela",
+  "sectionsEditor.formConflict.youElsewhere": "Você, em outra aba ou janela",
+  "sectionsEditor.formConflict.savedAt": "salva {when}",
+  "sectionsEditor.formConflict.changedBy": "{name} · {when}",
   "sectionsEditor.formConflict.changedByYou":
     "Você, em outra aba ou janela · {when}",
   "sectionsEditor.formConflict.changedAt": "Alterado {when}",
-  "sectionsEditor.formConflict.yourVersion": "Sua versão",
-  "sectionsEditor.formConflict.theirVersion": "Versão deles",
-  "sectionsEditor.formConflict.keepYours": "Manter a sua",
-  "sectionsEditor.formConflict.useTheirs": "Usar a deles",
-  "sectionsEditor.formConflict.apply": "Salvar versões escolhidas",
   "sectionsEditor.formConflict.empty": "Vazio",
   "sectionsEditor.formConflict.yes": "Sim",
   "sectionsEditor.formConflict.no": "Não",
