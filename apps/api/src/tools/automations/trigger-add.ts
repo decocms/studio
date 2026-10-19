@@ -298,7 +298,17 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
     // waiting for the boot-time reconciler. Event triggers don't have
     // schedules (they fire on AutomationEventDispatcher.dispatchForEvents).
     // Webhook triggers also have no schedule — they fire on HTTP POST.
-    await syncTriggerCreated(trigger, automation);
+    try {
+      await syncTriggerCreated(trigger, automation);
+    } catch (err) {
+      // Roll back: don't leave a scheduleless cron trigger behind a thrown error.
+      await ctx.storage.automations.removeTrigger(
+        trigger.id,
+        trigger.automation_id,
+      );
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to schedule trigger: ${msg}`);
+    }
 
     return {
       id: trigger.id,
