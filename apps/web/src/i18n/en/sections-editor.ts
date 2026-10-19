@@ -290,7 +290,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "This section was replaced while you were editing. The form now shows the current section, and your last change was not saved.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":
-    "This block was updated while you were editing. Your changes were applied on top of the latest version.",
+    "Someone else also edited this block. Both changes were kept.",
   "sectionsEditor.sectionsEditor.saveFailed": "Save failed: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Saved global block "{blockId}"',

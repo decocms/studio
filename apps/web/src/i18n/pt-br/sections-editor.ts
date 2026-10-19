@@ -302,7 +302,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.sectionReplacedElsewhere":
     "Esta seção foi substituída enquanto você editava. O formulário agora mostra a seção atual, e sua última alteração não foi salva.",
   "sectionsEditor.sectionsEditor.blockMergedWithOthers":
-    "Este bloco foi atualizado enquanto você editava. Suas alterações foram aplicadas sobre a versão mais recente.",
+    "Outra pessoa também editou este bloco. As duas alterações foram mantidas.",
   "sectionsEditor.sectionsEditor.saveFailed": "Falha ao salvar: {error}",
   "sectionsEditor.sectionsEditor.savedGlobalBlock":
     'Bloco global salvo "{blockId}"',

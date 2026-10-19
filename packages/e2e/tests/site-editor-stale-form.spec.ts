@@ -27,7 +27,7 @@ import { expect, test } from "../fixtures/test";
 
 test.use({ newBlocksEditor: true });
 
-const MERGED = "This block was updated while you were editing";
+const MERGED = "Someone else also edited this block";
 
 /** The dialog that asks whose version to keep for values both changed. */
 // An alert dialog: it must be answered (no close button, Escape or click
