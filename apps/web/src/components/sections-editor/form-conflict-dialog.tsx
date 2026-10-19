@@ -52,6 +52,13 @@ export function FormConflictDialog({
         className="sm:max-w-2xl max-h-[85vh] grid-rows-[auto_auto_minmax(0,1fr)_auto]"
         data-testid="form-conflict-dialog"
         onEscapeKeyDown={(event) => event.preventDefault()}
+        // An alert dialog focuses its Cancel button, and this one has none:
+        // focus the dialog itself, so what the user was typing stops at it
+        // (not the form behind, and not a button a space would press).
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
       >
         <AlertDialogHeader>
           <AlertDialogTitle>
