@@ -46,14 +46,11 @@ export const LOCALSTORAGE_KEYS = {
   connectionsTab: (org: string) => `studio:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>
     `studio:chat:task-last-viewed:${locator}`,
-  sidebarGroupOrder: (orgId: string, userId: string) =>
-    `sidebar.group-order.${orgId}.${userId}`,
   /** Whether a sidebar project section (`folderId`, or "loose") is unfolded. */
   sidebarSectionOpen: (locator: ProjectLocator, folderId: string) =>
     `studio:sidebar:section-open:${locator}:${folderId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
-  cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
   /** Per-project "Local" preview override — a tunnel URL the CMS + preview point
    *  at instead of the managed sandbox/production. Per-browser: a tunnel to a
    *  dev server only this machine can reach, so it never belongs on shared
