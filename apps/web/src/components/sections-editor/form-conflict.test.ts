@@ -7,6 +7,7 @@ import {
   diffWords,
   planFormConflict,
   previewValue,
+  refreshWaitingChoice,
   resolveFormConflict,
   setAtPointer,
   summarizeValue,
@@ -337,5 +338,56 @@ describe("diffWords", () => {
     const { mine, theirs } = diffWords("", "Their text");
     expect(mine).toEqual([]);
     expect(marked(theirs).join("")).toBe("[Their text]");
+  });
+});
+
+// The open dialog's poll read a newer stored copy (QA-8027 step 5).
+describe("refreshWaitingChoice", () => {
+  const plan = planFormConflict({
+    ancestor,
+    mine: { ...ancestor, headline: "Mine", subtitle: "My subtitle" },
+    theirs: { ...ancestor, headline: "Theirs", subtitle: "Their subtitle" },
+  });
+  const waiting = {
+    plan,
+    choices: { "/headline": "theirs", "/subtitle": "theirs" } as const,
+  };
+  const notOwn = () => false;
+
+  it("shows their newer version in place, keeping the picks that still apply", () => {
+    const newer = { ...plan.theirs, subtitle: "Their newer subtitle" };
+    const refreshed = refreshWaitingChoice(waiting, newer, notOwn);
+    expect(refreshed?.plan.theirs).toEqual(newer);
+    expect(refreshed?.plan.mine).toEqual(plan.mine);
+    expect(refreshed?.plan.pointers).toEqual(["/headline", "/subtitle"]);
+    expect(refreshed?.choices).toEqual({
+      "/headline": "theirs",
+      "/subtitle": "mine",
+    });
+  });
+
+  it("leaves the dialog as it is for the same copy, its own save, another section type or no copy", () => {
+    expect(
+      refreshWaitingChoice(waiting, { ...plan.theirs }, notOwn),
+    ).toBeNull();
+    const newer = { ...plan.theirs, headline: "Newer" };
+    expect(refreshWaitingChoice(waiting, newer, () => true)).toBeNull();
+    expect(
+      refreshWaitingChoice(
+        waiting,
+        { ...newer, __resolveType: "site/sections/Other.tsx" },
+        notOwn,
+      ),
+    ).toBeNull();
+    expect(refreshWaitingChoice(waiting, null, notOwn)).toBeNull();
+  });
+
+  it("keeps the choice as asked when no clash is left", () => {
+    const agrees = {
+      ...plan.theirs,
+      headline: "Mine",
+      subtitle: "My subtitle",
+    };
+    expect(refreshWaitingChoice(waiting, agrees, notOwn)).toBeNull();
   });
 });

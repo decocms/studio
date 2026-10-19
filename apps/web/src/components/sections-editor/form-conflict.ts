@@ -1,5 +1,6 @@
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { conflictFieldLabel } from "./conflict-fields";
+import { formSourceMovedOn, sectionTypeChanged } from "./form-base";
 import type { SchemaProperty } from "./resolve-schema";
 
 /**
@@ -154,6 +155,36 @@ export function carryConflictChoices(
     if (unchanged) carried[pointer] = choice;
   }
   return carried;
+}
+
+/**
+ * A waiting choice against the section as stored now (`nowStored`, null when
+ * it can't be found where the form saves): their version becomes the newer
+ * copy, the picks whose two versions didn't change are kept, and the dialog
+ * says it changed again. Null when there is nothing to refresh: the same
+ * copy, a different kind of section, a version the form itself saved
+ * (`isOwn`), or no clash left (the choice then stays as asked: applying it
+ * merges onto the newer copy whichever version was picked).
+ */
+export function refreshWaitingChoice(
+  waiting: { plan: FormConflictPlan; choices: ConflictChoices },
+  nowStored: Record<string, unknown> | null,
+  isOwn: (stored: Record<string, unknown>) => boolean,
+): { plan: FormConflictPlan; choices: ConflictChoices } | null {
+  if (
+    !nowStored ||
+    sectionTypeChanged(waiting.plan.ancestor, nowStored) ||
+    !formSourceMovedOn(waiting.plan.theirs, nowStored) ||
+    isOwn(nowStored)
+  ) {
+    return null;
+  }
+  const plan = planFormConflict({ ...waiting.plan, theirs: nowStored });
+  if (plan.pointers.length === 0) return null;
+  return {
+    plan,
+    choices: carryConflictChoices(waiting.plan, waiting.choices, plan),
+  };
 }
 
 /** One value in conflict, as the dialog lists it. */

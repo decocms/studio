@@ -111,6 +111,36 @@ export function setDecofileDraft(
   queryClient.setQueryData(KEYS.decofileDraft(decofileCacheKey(params)), draft);
 }
 
+/** The draft pointer the last read or write stashed, if any. */
+export function getDecofileDraft(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+): DecofileDraft | null {
+  return (
+    queryClient.getQueryData<DecofileDraft>(
+      KEYS.decofileDraft(decofileCacheKey(params)),
+    ) ?? null
+  );
+}
+
+/**
+ * Whether the branch head moved past `version`: the same read as
+ * {@link fetchDecofile}, conditional on the head commit (`If-None-Match`), so
+ * an unchanged branch answers 304 with no body and no new draft grant (a new
+ * grant is a new preview pointer, which reloads the frame). Failures answer
+ * false: the caller asks again on its next tick.
+ */
+export async function decofileHeadMoved(
+  params: DecofileScopeParams,
+  version: string,
+): Promise<boolean> {
+  const res = await fetch(decofileApiUrl(params), {
+    cache: "no-store",
+    headers: { "if-none-match": `"${version}"` },
+  }).catch(() => null);
+  return res?.status === 200;
+}
+
 /**
  * Subscribe to the current draft pointer. Populated imperatively by decofile
  * reads/writes — the disabled query is only a cache subscription.
